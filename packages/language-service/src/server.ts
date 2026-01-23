@@ -17,7 +17,9 @@ import {
   type DefinitionParams,
   type ReferenceParams,
   type DocumentSymbolParams,
-  type SemanticTokensParams
+  type SemanticTokensParams,
+  type DocumentColorParams,
+  type ColorPresentationParams
 } from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createEngine } from './engine.js';
@@ -69,7 +71,8 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
         // Be explicit: VS Code has historically been stricter about the object form
         // than the boolean shorthand.
         full: { delta: false }
-      }
+      },
+      colorProvider: true
     }
   };
   return result;
@@ -142,6 +145,14 @@ connection.onDocumentLinks((params: DocumentLinkParams) => {
 
 connection.languages.semanticTokens.on((params: SemanticTokensParams) => {
   return engine.getSemanticTokens(params.textDocument.uri);
+});
+
+connection.onDocumentColor(async (params: DocumentColorParams) => {
+  return await engine.getDocumentColors(params.textDocument.uri);
+});
+
+connection.onColorPresentation((params: ColorPresentationParams) => {
+  return engine.getColorPresentations(params.textDocument.uri, params.color, params.range);
 });
 
 documents.listen(connection);

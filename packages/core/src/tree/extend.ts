@@ -141,6 +141,29 @@ export class Extend extends Node<ExtendValue> {
     // Don't convert non-ampersand selectors to ampersand - they should be used as-is
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
+    // #region agent log
+    const filePathForH48 = context.treeContext?.file?.fullPath ?? '';
+    if (typeof filePathForH48 === 'string' && filePathForH48.includes('extend-media')) {
+      const targetV = target.valueOf();
+      if (targetV === '.ext1') {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H48',
+          location: 'extend.ts:evalNode',
+          message: 'extend-root-check',
+          data: {
+            target: String(targetV),
+            extendWith: selector ? String(selector.valueOf()) : 'ampersand',
+            extendRootId: extendRoot ? String(extendRoot).substring(0, 80) : null,
+            contextRootId: context.root ? String(context.root).substring(0, 80) : null,
+            extendRootStackLength: context.extendRoots.extendRootStack.length
+          },
+          timestamp: Date.now()
+        });
+      }
+    }
+    // #endregion
     if (!extendRoot) {
       /** Throw error? */
       return new Nil();

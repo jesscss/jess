@@ -4,17 +4,6 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type Call } from './call.js';
-import { List } from './list.js';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-
-// Lazy getter for Call to break circular dependency:
-// rules.ts → cast.ts → color.ts → call.ts → rules.ts
-function getCall() {
-  return require('./call.js').Call;
-}
 
 type ColorValues = [number, number, number, number] | number[];
 
@@ -184,6 +173,8 @@ export class Color extends Node<ColorData> {
       // Convert from 0-1 to 0-255 range
       const rgb = [r * 255, g * 255, b * 255] as [number, number, number];
       this.value.rgb = rgb;
+      // Clear HSL - computed RGB might not match existing HSL
+      this.value.hsl = undefined;
       return rgb;
     }
 
@@ -192,6 +183,8 @@ export class Color extends Node<ColorData> {
       const { rgb, alpha } = parseHexString(this.value.node);
       this.value.rgb = rgb;
       this.value.alpha = alpha;
+      // Clear HSL - parsed RGB might not match existing HSL
+      this.value.hsl = undefined;
       return rgb;
     }
 
@@ -200,7 +193,7 @@ export class Color extends Node<ColorData> {
 
   set rgb(rgb: [number, number, number]) {
     this.value.rgb = rgb;
-    // Clear HSL cache since we're setting RGB directly
+    // Clear HSL since new RGB might not match the old HSL
     this.value.hsl = undefined;
   }
 
@@ -264,12 +257,14 @@ export class Color extends Node<ColorData> {
 
     const hsl = [h! * 360, s, l] as [number, number, number];
     this.value.hsl = hsl;
+    // Clear RGB - computed HSL might not match existing RGB
+    this.value.rgb = undefined;
     return hsl;
   }
 
   set hsl(hsl: [number, number, number]) {
     this.value.hsl = hsl;
-    // Clear RGB cache since we're setting HSL directly
+    // Clear RGB since new HSL might not match the old RGB
     this.value.rgb = undefined;
   }
 
@@ -306,6 +301,7 @@ export class Color extends Node<ColorData> {
     const [r, g, b, a] = rgba as [number, number, number, number];
     this.value.rgb = [r, g, b];
     this.value.alpha = a;
+    // Clear HSL since new RGB might not match the old HSL
     this.value.hsl = undefined;
   }
 
@@ -321,6 +317,7 @@ export class Color extends Node<ColorData> {
     const [h, s, l, a] = hsla;
     this.value.hsl = [h, s, l];
     this.value.alpha = a;
+    // Clear RGB since new HSL might not match the old RGB
     this.value.rgb = undefined;
   }
 
@@ -417,27 +414,10 @@ export class Color extends Node<ColorData> {
       rgb: newColorValues,
       alpha: newAlpha,
       format: format
+      // Don't preserve HSL - new RGB values represent a new color
     }).inherit(this);
 
     return newColor;
-  }
-
-  /** Create a new Color with a Call node for the original function */
-  static fromFunctionCall(format: ColorFormat, args: any[], alpha: number = 1): Color {
-    // Create a Call node with the original arguments
-    const Call = getCall();
-    const callNode = new Call({
-      name: format === ColorFormat.RGB ? 'rgb' : 'hsl',
-      args: new List(args)
-    });
-
-    const color = new Color({
-      format,
-      node: callNode,
-      alpha
-    });
-
-    return color;
   }
 }
 

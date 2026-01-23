@@ -1,15 +1,7 @@
-import { Dimension, Num, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper.js';
-
-export default defineFunction(
-  'floor',
-  function(value: Dimension | number) {
-    return mathHelper(Math.floor, ['value'], undefined, value);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+/**
+ * Less floor() function
+ * 
+ * Re-exports the shared floor function.
+ * The actual implementation is in shared/math/floor.ts
+ */
+export { floor as default } from '../shared/index.js';

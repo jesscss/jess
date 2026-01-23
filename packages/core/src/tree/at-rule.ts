@@ -10,7 +10,7 @@ import { isNode } from './util/is-node.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
-import { Sequence } from './sequence.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -122,13 +122,65 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Depth-first: preEval child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     if (rules && !rules.preEvaluated) {
+      // #region agent log
+      const filePath = context.treeContext?.file?.fullPath ?? '';
+      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+        const nameV = node.value.name?.value ?? '';
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H44',
+          location: 'at-rule.ts:_preEvalPrelude',
+          message: 'atrule-preEval-calling-childRules-preEval',
+          data: {
+            name: nameV,
+            extendsCountBefore: context.extends.length
+          },
+          timestamp: Date.now()
+        });
+      }
+      // #endregion
       const preEvaldRules = rules.preEval(context);
       if (isThenable(preEvaldRules)) {
         return (preEvaldRules as Promise<Rules>).then((evaldRules) => {
+          // #region agent log
+          if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+            const nameV = node.value.name?.value ?? '';
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H44',
+              location: 'at-rule.ts:_preEvalPrelude',
+              message: 'atrule-preEval-childRules-preEval-complete-async',
+              data: {
+                name: nameV,
+                extendsCountAfter: context.extends.length
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
           node.value.rules = evaldRules;
           return node;
         });
       }
+      // #region agent log
+      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+        const nameV = node.value.name?.value ?? '';
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H44',
+          location: 'at-rule.ts:_preEvalPrelude',
+          message: 'atrule-preEval-childRules-preEval-complete-sync',
+          data: {
+            name: nameV,
+            extendsCountAfter: context.extends.length
+          },
+          timestamp: Date.now()
+        });
+      }
+      // #endregion
       node.value.rules = preEvaldRules as Rules;
     }
     return node;

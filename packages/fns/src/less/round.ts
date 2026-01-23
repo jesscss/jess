@@ -1,21 +1,7 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper.js';
-import lodashRound from 'lodash-es/round.js';
-
-export default defineFunction(
-  'round',
-  function(value: Dimension | number, precision: Dimension | number = 0) {
-    return mathHelper(lodashRound, ['value', 'precision'], undefined, value, precision);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }, {
-      name: 'precision',
-      type: [Dimension, 'number'],
-      optional: true,
-      default: 0
-    }]
-  }
-);
+/**
+ * Less round() function
+ * 
+ * Re-exports the shared round function.
+ * The actual implementation is in shared/math/round.ts
+ */
+export { round as default } from '../shared/index.js';

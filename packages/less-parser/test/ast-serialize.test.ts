@@ -338,8 +338,21 @@ test('operation', () => {
     `);
 });
 
-test('function call', () => {
+test('static rgb() creates Color node', () => {
   const { errors, tree } = parser.parse('.test { color: rgb(255, 0, 0); }');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree)).toContainString(`
+      (Color
+        format: 0
+        rgb:
+        [255, 0, 0]
+        alpha: 1
+      )
+    `);
+});
+
+test('rgb() with variable creates Call node', () => {
+  const { errors, tree } = parser.parse('.test { color: rgb(@r, 0, 0); }');
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
       (Call
@@ -350,11 +363,26 @@ test('function call', () => {
         args: 
           (List
             [
-              (Number 255)
+              (Reference
+                key: 'r'
+              )
               (Number 0)
               (Number 0)
             ]
           )
+      )
+    `);
+});
+
+test('static hsl() creates Color node', () => {
+  const { errors, tree } = parser.parse('.test { color: hsl(120, 50%, 50%); }');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree)).toContainString(`
+      (Color
+        format: 1
+        hsl:
+        [120, 0.5, 0.5]
+        alpha: 1
       )
     `);
 });

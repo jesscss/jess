@@ -40,6 +40,10 @@
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
-    "chevrotain": "^11.0.3"
+    "chevrotain": "^11.0.3",
+    "color-name": "~2.0.0"
+  },
+  "devDependencies": {
+    "@types/color-name": "^1.1.1"
   }
 }

@@ -1297,6 +1297,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
       const innerResultPromise = serialForEach(entries, ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
         const [idx, rule] = item;
+        // #region agent log
+        const filePath = context.treeContext?.file?.fullPath ?? '';
+        if (typeof filePath === 'string' && filePath.includes('extend-media') && (rule.type === 'AtRule' || rule.type === 'Ruleset')) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H45',
+            location: 'rules.ts:_evaluateQueue',
+            message: 'evaluating-node',
+            data: {
+              priority: p,
+              idx,
+              type: rule.type,
+              name: rule.type === 'AtRule' ? (rule as any).value?.name?.value ?? '' : '',
+              selector: rule.type === 'Ruleset' ? ((rule as any).value?.selector?.valueOf?.() ?? '') : '',
+              extendsCountBefore: context.extends.length
+            },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
 
         /**
          * Var declarations have late evaluation, so they are skipped.
@@ -1745,7 +1766,9 @@ const NodeTypeToPriority = new Map([
   ['Mixin', Priority.Low],
   ['Ruleset', Priority.Low],
   /** Extend should evaluate at the same priority as Ruleset to ensure it evaluates before nested rulesets */
-  ['Extend', Priority.Low]
+  ['Extend', Priority.Low],
+  /** AtRule (e.g., @media) should evaluate at the same priority as Ruleset to preserve source order */
+  ['AtRule', Priority.Low]
   /** Then, everything else? */
 ]);
 

@@ -2235,6 +2235,7 @@ export function knownFunctions(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.urlFunction, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.varFunction, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.calcFunction, { ARGS: [ctx] }) },
+    // colorFunction is already in cssKnownFunctions default, so we don't need to add it here
     { ALT: () => $.SUBRULE($.ifFunction, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.booleanFunction, { ARGS: [ctx] }) }
   ];

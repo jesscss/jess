@@ -1,14 +1,7 @@
-import { defineFunction, Color, Num } from '@jesscss/core';
-
-export default defineFunction(
-  'red',
-  function(color: Color) {
-    return new Num(color.rgb[0]);
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }]
-  }
-);
+/**
+ * Less red() function
+ * 
+ * Re-exports the shared red function.
+ * The actual implementation is in shared/color/red.ts
+ */
+export { red as default } from '../shared/index.js';

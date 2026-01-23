@@ -10,6 +10,8 @@ import {
 } from '@jesscss/css-parser';
 
 import type { IToken } from 'chevrotain';
+import { Color, ColorFormat, Any } from '@jesscss/core';
+import colors from 'color-name';
 
 import type { JessTokenType, JessExtraTokenType } from './jessTokens.js';
 import * as productions from './productions.js';
@@ -89,5 +91,39 @@ export class JessActionsParser extends CssActionsParser {
     }
   }
 
-  // processValueToken is handled in productions, not here
+  /**
+   * Override processValueToken to handle PlainIdent tokens and convert color keywords to Color nodes
+   */
+  override processValueToken(token: IToken): Node {
+    const tokValue = token.image;
+    const tokType = token.tokenType;
+    const T = this.T;
+
+    // Check if it's a PlainIdent (Jess-specific token)
+    if (tokType === T.PlainIdent) {
+      // Check if it's a color keyword
+      const colorKey = tokValue.toLowerCase();
+      if (colors[colorKey as keyof typeof colors]) {
+        // Create a Color node with the keyword data
+        const colorValue = colors[colorKey as keyof typeof colors];
+        return new Color(
+          {
+            node: tokValue, // Store the original keyword string
+            format: ColorFormat.HEX,
+            rgb: colorValue,
+            alpha: 1
+          },
+          undefined,
+          this.getLocationInfo(token),
+          this.context
+        );
+      } else {
+        // Not a color keyword, create a generic Any node
+        return new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
+      }
+    }
+
+    // Fall back to base implementation for other token types
+    return super.processValueToken(token);
+  }
 }

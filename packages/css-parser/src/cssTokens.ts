@@ -197,10 +197,10 @@ export const rawCssTokens = () => ({
       /**
        * Special function names in CSS
        */
-      { name: 'Layer', pattern: /layer\(/, categories: ['BlockMarker', 'FunctionStart'] },
-      { name: 'Supports', pattern: /supports\(/, categories: ['BlockMarker', 'FunctionStart'] },
-      { name: 'Var', pattern: /var\(/, categories: ['BlockMarker', 'FunctionStart'] },
-      { name: 'Calc', pattern: /calc\(/, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Layer', pattern: /layer\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Supports', pattern: /supports\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Var', pattern: /var\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Calc', pattern: /calc\(/i, categories: ['BlockMarker', 'FunctionStart'] },
 
       /** Keyframe keywords */
       { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },

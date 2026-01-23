@@ -17,6 +17,9 @@ describe('jess-parser (baseline)', () => {
     const parser = new Parser();
     const result = parser.parse('$foo: red;');
     expect(result.lexerResult.errors.length).toBe(0);
+    if (result.errors.length > 0) {
+      console.log('Parser errors:', result.errors.map(e => ({ message: e.message, token: e.token })));
+    }
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
     expect(String(result.tree)).toContain('$foo: red;');

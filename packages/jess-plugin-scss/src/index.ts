@@ -14,8 +14,17 @@ import {
 import { Parser } from '@jesscss/scss-parser';
 import path from 'node:path';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
+import type { UnitMode } from '@jesscss/core';
 
 export type ScssPluginOptions = {
+  /**
+   * Unit mode for handling unit arithmetic.
+   * - 'loose': Convert units when possible (default for Less)
+   * - 'preserve': Create calc() expressions for unit errors (default for SCSS)
+   * - 'strict': Throw errors for unit mismatches
+   * @default 'preserve'
+   */
+  unitMode?: UnitMode;
   /**
    * Whether to collapse nested selectors (flatten nesting during print).
    * This is a Jess output option, not a Sass option.
@@ -27,9 +36,11 @@ export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
   parser: Parser;
+  unitMode: UnitMode;
 
   constructor(public opts: ScssPluginOptions = {}) {
     super();
+    this.unitMode = opts.unitMode ?? 'preserve';
     this.parser = new Parser();
   }
 
@@ -47,6 +58,7 @@ export class ScssPlugin extends AbstractPlugin {
         source
       },
       plugin: this,
+      unitMode: this.unitMode,
       collapseNesting: this.opts.collapseNesting ?? false
     });
 

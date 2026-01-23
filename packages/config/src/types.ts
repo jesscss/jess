@@ -6,7 +6,7 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
 /**
  * Unit conversion modes
  */
-export type UnitMode = 'loose' | 'strict';
+export type UnitMode = 'loose' | 'preserve' | 'strict';
 
 /**
  * Less compiler options
@@ -111,8 +111,9 @@ export interface LessOptions {
   /**
    * How to handle unit conversions in math operations
    * - 'loose': Less's default 1.x-4.x behavior
+   * - 'preserve': Create calc() expressions for unit errors
    * - 'strict': strict unit mode
-   * @default 'loose'
+   * @default 'preserve'
    */
   unitMode?: UnitMode;
 
@@ -128,7 +129,8 @@ export interface LessOptions {
 
   /**
    * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict'.
-   * If `false` or undefined, uses the `unitMode` value (defaults to 'loose').
+   * If `false`, sets the unitMode to 'loose.
+   * If undefined, uses the `unitMode` value (defaults to 'preserve').
    * @default false
    */
   strictUnits?: boolean;

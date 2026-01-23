@@ -1,15 +1,7 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper.js';
-
-export default defineFunction(
-  'abs',
-  function(value: Dimension | number) {
-    return mathHelper(Math.abs, ['value'], undefined, value);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+/**
+ * Less abs() function
+ * 
+ * Re-exports the shared abs function.
+ * The actual implementation is in shared/math/abs.ts
+ */
+export { abs as default } from '../shared/index.js';

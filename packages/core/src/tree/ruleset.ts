@@ -313,13 +313,65 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // are registered in source order before we process extends.
           const childRules = node.value.rules;
           if (childRules && !childRules.preEvaluated) {
+            // #region agent log
+            const filePath = context.treeContext?.file?.fullPath ?? '';
+            if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+              const selectorV = (node as Ruleset).selector?.valueOf?.() ?? '';
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H44',
+                location: 'ruleset.ts:preEval',
+                message: 'ruleset-preEval-calling-childRules-preEval',
+                data: {
+                  selector: selectorV,
+                  extendsCountBefore: context.extends.length
+                },
+                timestamp: Date.now()
+              });
+            }
+            // #endregion
             const preEvaldRules = childRules.preEval(context);
             if (isThenable(preEvaldRules)) {
               return (preEvaldRules as Promise<Rules>).then((rules) => {
+                // #region agent log
+                if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+                  const selectorV = (node as Ruleset).selector?.valueOf?.() ?? '';
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'run',
+                    hypothesisId: 'H44',
+                    location: 'ruleset.ts:preEval',
+                    message: 'ruleset-preEval-childRules-preEval-complete-async',
+                    data: {
+                      selector: selectorV,
+                      extendsCountAfter: context.extends.length
+                    },
+                    timestamp: Date.now()
+                  });
+                }
+                // #endregion
                 node.value.rules = rules;
                 return node;
               });
             }
+            // #region agent log
+            if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+              const selectorV = (node as Ruleset).selector?.valueOf?.() ?? '';
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H44',
+                location: 'ruleset.ts:preEval',
+                message: 'ruleset-preEval-childRules-preEval-complete-sync',
+                data: {
+                  selector: selectorV,
+                  extendsCountAfter: context.extends.length
+                },
+                timestamp: Date.now()
+              });
+            }
+            // #endregion
             node.value.rules = preEvaldRules as Rules;
           }
           return node;

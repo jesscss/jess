@@ -1,9 +1,120 @@
-import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call, TreeContext } from '@jesscss/core';
+import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call, TreeContext, Any } from '@jesscss/core';
 import { normalizeHue, percentOf, toNumber, splitSequence } from '@jesscss/core';
+import { parseRelativeColorSyntax, evaluateOriginColor, evaluateHSLChannelReference } from '../util/relative-color.js';
 
 const hsl = defineFunction(
   'hsl',
   async function(this: FunctionThis, ...args: any[]) {
+    // Check for relative color syntax first: hsl(from color h s l)
+    if (this?.context && this.rawArgs) {
+      const relativeData = parseRelativeColorSyntax(this.rawArgs);
+      if (relativeData) {
+        // Evaluate the origin color
+        const originColor = await evaluateOriginColor(relativeData.originColor, this.context);
+        
+        // Extract channel values from origin color
+        const originAlpha = originColor.value.alpha ?? 1;
+        
+        // Evaluate channel references
+        if (relativeData.channels.length < 3) {
+          throw new Error('Relative hsl() requires at least 3 channel values (h, s, l)');
+        }
+        
+        // Evaluate each channel reference
+        const hChannel = relativeData.channels[0]!;
+        const sChannel = relativeData.channels[1]!;
+        const lChannel = relativeData.channels[2]!;
+        const alphaChannel = relativeData.channels[3];
+        
+        // Evaluate H, S, L channels
+        // Channel references can reference any channel (h, s, l, alpha)
+        // Supports both simple identifiers and calc() expressions
+        let h = await evaluateHSLChannelReference(hChannel, originColor, this.context);
+        let s = await evaluateHSLChannelReference(sChannel, originColor, this.context);
+        let l = await evaluateHSLChannelReference(lChannel, originColor, this.context);
+        
+        // Handle alpha channel if present
+        // Alpha can be in two places:
+        // 1. As the 4th channel in the sequence: hsl(from color h s l alpha)
+        // 2. Separated by /: hsl(from color h s l / 0.5) - this is in relativeData.alpha
+        let alpha: number = originAlpha;
+        
+        // First check if alpha is separated by / (from parseRelativeColorSyntax)
+        if (relativeData.alpha) {
+          // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
+          const evaluated = await relativeData.alpha.eval(this.context);
+          if (evaluated instanceof Dimension) {
+            const alphaValue = evaluated.value.number;
+            const alphaUnit = evaluated.value.unit;
+            if (alphaUnit === '%') {
+              alpha = alphaValue / 100;
+            } else if (alphaUnit === '' || alphaUnit === undefined) {
+              alpha = alphaValue;
+            } else {
+              throw new Error(`Invalid alpha value unit: ${alphaUnit}`);
+            }
+            alpha = Math.max(0, Math.min(1, alpha));
+          } else {
+            throw new Error('Alpha value separated by / must evaluate to a Dimension');
+          }
+        } else if (alphaChannel) {
+          // Check if it's a channel reference (alpha) or an explicit value
+          if (alphaChannel instanceof Any && typeof alphaChannel.value === 'string') {
+            const channelName = alphaChannel.value.toLowerCase();
+            if (channelName === 'alpha') {
+              alpha = originAlpha;
+            } else {
+              throw new Error(`Invalid alpha channel reference: ${channelName}. Must be alpha`);
+            }
+          } else {
+            // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
+            const evaluated = await alphaChannel.eval(this.context);
+            if (evaluated instanceof Dimension) {
+              const alphaValue = evaluated.value.number;
+              const alphaUnit = evaluated.value.unit;
+              if (alphaUnit === '%') {
+                alpha = alphaValue / 100;
+              } else if (alphaUnit === '' || alphaUnit === undefined) {
+                alpha = alphaValue;
+              } else {
+                throw new Error(`Invalid alpha value unit: ${alphaUnit}`);
+              }
+              alpha = Math.max(0, Math.min(1, alpha));
+            } else {
+              throw new Error('Channel expressions (like calc()) are not yet supported in relative color syntax');
+            }
+          }
+        }
+        
+        // Normalize hue to 0-360 range
+        h = ((h % 360) + 360) % 360;
+        // Clamp saturation and lightness to 0-1
+        s = Math.max(0, Math.min(1, s));
+        l = Math.max(0, Math.min(1, l));
+        
+        // Create the new color
+        const color = new Color({
+          format: ColorFormat.HSL,
+          hsl: [h, s, l],
+          alpha
+        });
+        
+        // Store the original function call
+        let treeContext = this.context.treeContext;
+        this.context.treeContext = new TreeContext({
+          mathMode: 'parens-division'
+        });
+        
+        color.value.node = new Call({
+          name: 'hsl',
+          args: await this.rawArgs.eval(this.context)
+        });
+        this.context.treeContext = treeContext;
+        
+        return color;
+      }
+    }
+    
     // Handle overloaded signatures - check Dimension signature first (most common)
     if (args.length >= 3 && !(args[0] instanceof Color)) {
       // [Dimension, Dimension, Dimension, Dimension?] - h, s, l, optional alpha

@@ -1,14 +1,7 @@
-import { defineFunction, Color, Dimension } from '@jesscss/core';
-
-export default defineFunction(
-  'green',
-  function(color: Color) {
-    return new Dimension({ number: color.rgb[1], unit: '' });
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }]
-  }
-);
+/**
+ * Less green() function
+ * 
+ * Re-exports the shared green function.
+ * The actual implementation is in shared/color/green.ts
+ */
+export { green as default } from '../shared/index.js';

@@ -6,6 +6,13 @@ This file is updated daily with the most recent changes and improvements made to
 
 ## 2026-Jan-21
 
+### Language Service & Extension Development
+
+- **Cross-file navigation**: Implemented go-to-definition and find-references for variables and mixins across imported files
+- **Dynamic diagnostic severity**: Undefined variables are errors when `@use` (SCSS) or `@from`/`@compose` (Less) present, warnings otherwise
+- **Semantic token fixes**: Fixed variable reference coloring with AST-based detection
+- **Hierarchical document symbols**: Implemented hierarchical structure matching VS Code's CSS extension
+
 ### Jess language service pivot (LSP + extension)
 
 - **Pivoted tracking from `vscode-css-languageservice` fork into this monorepo**: added `docs/language-service.md` and a new project tracker at `packages/language-service/TRACKER.md`.

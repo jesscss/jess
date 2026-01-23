@@ -32,7 +32,9 @@ import {
   SelectionRange,
   SemanticTokens,
   SymbolKind,
-  TextEdit
+  TextEdit,
+  ColorInformation,
+  ColorPresentation
 } from 'vscode-languageserver-types';
 
 export type JessLang = 'css' | 'less' | 'scss' | 'jess';
@@ -218,6 +220,27 @@ function toRange(document: TextDocument, startOffset: number, endOffset: number)
   };
 }
 
+function containsRange(range: Range, otherRange: Range): boolean {
+  const otherStartLine = otherRange.start.line;
+  const otherEndLine = otherRange.end.line;
+  const rangeStartLine = range.start.line;
+  const rangeEndLine = range.end.line;
+
+  if (otherStartLine < rangeStartLine || otherEndLine < rangeStartLine) {
+    return false;
+  }
+  if (otherStartLine > rangeEndLine || otherEndLine > rangeEndLine) {
+    return false;
+  }
+  if (otherStartLine === rangeStartLine && otherRange.start.character < range.start.character) {
+    return false;
+  }
+  if (otherEndLine === rangeEndLine && otherRange.end.character > range.end.character) {
+    return false;
+  }
+  return true;
+}
+
 function pos(line1: number | undefined, col1: number | undefined): Position {
   return Position.create(Math.max(0, (line1 ?? 1) - 1), Math.max(0, (col1 ?? 1) - 1));
 }
@@ -292,6 +315,8 @@ export type JessLanguageServiceEngine = {
   formatDocument(uri: string): TextEdit[];
   getDocumentLinks(uri: string): DocumentLink[];
   getSemanticTokens(uri: string): SemanticTokens;
+  getDocumentColors(uri: string): Promise<ColorInformation[]> | ColorInformation[];
+  getColorPresentations(uri: string, color: import('vscode-languageserver-types').Color, range: Range): ColorPresentation[];
 };
 
 // Keep in sync with server semantic token legend.
@@ -354,6 +379,9 @@ function tokenTypeFromChevrotain(tok: ChevTok, lang: JessLang): SemanticTokenTyp
   }
 
   // At-rules and keywords.
+  // @charset is a special token that includes the entire declaration (e.g., '@charset "UTF-8";')
+  // Treat it as namespace (at-rule) like other at-rules
+  if (name === 'Charset') return 'namespace';
   if (hasCat('AtName') || /^At[A-Z]/.test(name)) return 'namespace';
   if (name === 'When' || name === 'DefaultGuardIdent' || name === 'DefaultGuardFunc') return 'keyword';
 
@@ -1193,54 +1221,112 @@ export function createEngine(): JessLanguageServiceEngine {
         return [];
       }
 
-      const out: DocumentSymbol[] = [];
+      const result: DocumentSymbol[] = [];
       const seen = new Set<Node>();
+      const parents: [DocumentSymbol, Range][] = [];
 
+      // Helper to add a document symbol with hierarchy
+      const addDocumentSymbol = (
+        name: string,
+        kind: SymbolKind,
+        symbolNode: Node,
+        nameNode: Node | null,
+        bodyNode: Node | null
+      ) => {
+        const symbolSpan = getSpan(symbolNode);
+        if (!symbolSpan) {
+          return;
+        }
+
+        const range = toRange(document, symbolSpan.start, symbolSpan.end);
+        let selectionRange: Range;
+        if (nameNode) {
+          const nameSpan = getSpan(nameNode);
+          if (nameSpan) {
+            const nameRange = toRange(document, nameSpan.start, nameSpan.end);
+            if (containsRange(range, nameRange)) {
+              selectionRange = nameRange;
+            } else {
+              selectionRange = Range.create(range.start, range.start);
+            }
+          } else {
+            selectionRange = Range.create(range.start, range.start);
+          }
+        } else {
+          selectionRange = Range.create(range.start, range.start);
+        }
+
+        const entry: DocumentSymbol = {
+          name: name || '<undefined>',
+          kind,
+          range,
+          selectionRange
+        };
+
+        // Find parent: pop from stack until we find one that contains this symbol
+        let top = parents.length > 0 ? parents[parents.length - 1] : null;
+        while (top && !containsRange(top[1], range)) {
+          parents.pop();
+          top = parents.length > 0 ? parents[parents.length - 1] : null;
+        }
+
+        if (top) {
+          const topSymbol = top[0];
+          if (!topSymbol.children) {
+            topSymbol.children = [];
+          }
+          topSymbol.children.push(entry);
+        } else {
+          result.push(entry);
+        }
+
+        // If this symbol has a body, push it onto the parent stack
+        if (bodyNode) {
+          const bodySpan = getSpan(bodyNode);
+          if (bodySpan) {
+            const bodyRange = toRange(document, bodySpan.start, bodySpan.end);
+            parents.push([entry, bodyRange]);
+          }
+        }
+      };
+
+      // Collect symbols in document order (index is already sorted)
       for (const entry of index.nodes) {
         const n = entry.node as any;
         if (!n || seen.has(n as Node)) {
           continue;
         }
 
-        let kind: SymbolKind | null = null;
-        let name: string | null = null;
+        seen.add(n as Node);
 
         if (n.type === 'Ruleset') {
-          kind = SymbolKind.Class;
-          name = asStringName((n as any).valueOf?.() ?? (n.value?.selector ? asStringName(n.value.selector) : 'ruleset'));
+          const selector = n.value?.selector;
+          const name = asStringName((n as any).valueOf?.() ?? (selector ? asStringName(selector) : 'ruleset'));
+          const bodyNode = n.value?.rules;
+          addDocumentSymbol(name, SymbolKind.Class, n as Node, selector as Node | null, bodyNode as Node | null);
         } else if (n.type === 'AtRule') {
-          kind = SymbolKind.Namespace;
-          name = asStringName(n.value?.name);
+          const nameNode = n.value?.name;
+          const atRuleName = asStringName(nameNode);
+          const bodyNode = n.value?.rules;
+          addDocumentSymbol(atRuleName, SymbolKind.Namespace, n as Node, nameNode as Node | null, bodyNode as Node | null);
         } else if (n.type === 'VarDeclaration') {
-          kind = SymbolKind.Variable;
-          name = formatVarName(tracked.lang, asStringName(n.value?.name));
+          const nameNode = n.value?.name;
+          const varName = formatVarName(tracked.lang, asStringName(nameNode));
+          addDocumentSymbol(varName, SymbolKind.Variable, n as Node, nameNode as Node | null, null);
         } else if (n.type === 'Mixin') {
-          kind = SymbolKind.Function;
-          name = asStringName(n.value?.name ?? 'mixin');
+          const nameNode = n.value?.name;
+          const mixinName = asStringName(n.value?.name ?? 'mixin');
+          const bodyNode = n.value?.rules;
+          addDocumentSymbol(mixinName, SymbolKind.Function, n as Node, nameNode as Node | null, bodyNode as Node | null);
         } else if (n.type === 'Func') {
-          kind = SymbolKind.Function;
-          name = asStringName(n.nameKey ?? n.value?.name ?? 'function');
-        } else {
-          continue;
+          const nameNode = n.value?.name;
+          const funcName = asStringName(n.nameKey ?? n.value?.name ?? 'function');
+          const bodyNode = n.value?.body;
+          addDocumentSymbol(funcName, SymbolKind.Function, n as Node, nameNode as Node | null, bodyNode as Node | null);
         }
-
-        const span = getSpan(n as Node);
-        if (!span) {
-          continue;
-        }
-
-        seen.add(n as Node);
-        const range = toRange(document, span.start, span.end);
-        out.push({
-          name: name ?? n.type,
-          kind,
-          range,
-          selectionRange: range,
-          children: []
-        });
       }
 
-      return out;
+      return result;
     },
 
     getDiagnostics(uri) {
@@ -1360,18 +1446,66 @@ export function createEngine(): JessLanguageServiceEngine {
             if (norm) declVars.add(norm);
           } else if (n.type === 'Mixin') {
             const nameNode = n.value?.name;
-            const nameStr = typeof nameNode === 'string' ? nameNode : String(nameNode?.valueOf?.() ?? nameNode?.value ?? '');
-            const norm = nameStr.trim();
+            const nameStr = asStringName(nameNode);
+            // Normalize mixin name: remove parentheses and arguments if present (e.g., ".light()" -> ".light", ".light(arg)" -> ".light")
+            let norm = nameStr.trim();
+            const parenIdx = norm.indexOf('(');
+            if (parenIdx >= 0) {
+              norm = norm.slice(0, parenIdx);
+            }
             if (norm) declMixins.add(norm);
           } else if (n.type === 'Reference' && n.options?.type === 'variable') {
             const key = n.value?.key;
             const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
             const norm = normalizeVar(raw);
             if (norm) refsVar.push({ name: norm, node });
+          } else if (n.type === 'Call') {
+            // Mixin calls can be Call nodes (e.g., .light() or .light(arg))
+            // In Less, only .foo() and #foo() are mixins - everything else is a function call
+            const nameNode = n.value?.name;
+            if (nameNode) {
+              // Check if the call name is a Reference to a mixin
+              const nameType = typeof nameNode === 'string' ? null : (nameNode as any)?.type;
+              const nameOptions = typeof nameNode === 'string' ? null : (nameNode as any)?.options;
+              if (nameType === 'Reference' && (nameOptions?.type === 'mixin' || nameOptions?.type === 'mixin-ruleset')) {
+                const key = (nameNode as any).value?.key;
+                const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+                // Normalize mixin name: remove parentheses and arguments if present
+                let nameStr = raw.trim();
+                const parenIdx = nameStr.indexOf('(');
+                if (parenIdx >= 0) {
+                  nameStr = nameStr.slice(0, parenIdx);
+                }
+                // In Less, mixins must start with . or # - everything else is a function call
+                if (tracked.lang === 'less' && nameStr && !nameStr.startsWith('.') && !nameStr.startsWith('#')) {
+                  // Not a mixin in Less - it's a function call
+                } else if (nameStr) {
+                  refsMixin.push({ name: nameStr, node: n }); // Use Call node for span
+                }
+              } else if (typeof nameNode === 'string') {
+                // Direct string name (e.g., "light" or ".light")
+                let nameStr = nameNode.trim();
+                const parenIdx = nameStr.indexOf('(');
+                if (parenIdx >= 0) {
+                  nameStr = nameStr.slice(0, parenIdx);
+                }
+                // In Less, mixins must start with . or # - everything else is a function call
+                if (tracked.lang === 'less' && nameStr && !nameStr.startsWith('.') && !nameStr.startsWith('#')) {
+                  // Not a mixin in Less - it's a function call
+                } else if (nameStr) {
+                  refsMixin.push({ name: nameStr, node: n });
+                }
+              }
+            }
           } else if (n.type === 'Reference' && (n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset')) {
             const key = n.value?.key;
             const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
-            const nameStr = raw.trim();
+            // Normalize mixin name: remove parentheses and arguments if present
+            let nameStr = raw.trim();
+            const parenIdx = nameStr.indexOf('(');
+            if (parenIdx >= 0) {
+              nameStr = nameStr.slice(0, parenIdx);
+            }
             if (nameStr) refsMixin.push({ name: nameStr, node });
           }
 
@@ -1389,13 +1523,25 @@ export function createEngine(): JessLanguageServiceEngine {
         };
 
         const spanFor = (n: any): { start: number; end: number } | null => {
+          // For Call nodes (mixin calls), the Call node itself should have location info
+          // that includes the full call including parentheses
           const span = getSpan(n as Node);
           if (span) return span;
+          
           // Fallback: use span of reference key (common for Less mixin-ruleset refs).
           const key = n?.value?.key;
           if (isNode(key)) {
             return getSpan(key as Node);
           }
+          
+          // For Call nodes, try to get span from the name node as fallback
+          if (n.type === 'Call' && n.value?.name) {
+            const nameNode = n.value.name;
+            if (isNode(nameNode)) {
+              return getSpan(nameNode as Node);
+            }
+          }
+          
           return null;
         };
 
@@ -1823,29 +1969,161 @@ export function createEngine(): JessLanguageServiceEngine {
         const tok = tokens[i]!;
         let type = tokenTypeFromChevrotain(tok, tracked.lang);
         
-        // Override classification for variable references using AST
-        // This ensures @bar in Less and $foo in SCSS are correctly colored as variables
-        // Check both the start and middle of the token to catch cases where the token
-        // is part of a larger variable reference node
-        if (index) {
+        // CRITICAL: Never override string tokens - strings should always remain strings
+        // Even if they contain interpolations like @{variable}, the string parts should stay as strings
+        // String tokens are identified by tokenTypeFromChevrotain and should never be overridden
+        const isStringToken = type === 'string';
+        
+        // Override classification using AST for:
+        // 1. Function calls (Call nodes) - ensure they're classified as 'function'
+        // 2. Variable references (Reference nodes) - ensure they're classified as 'variable'
+        // This ensures accurate semantic token coloring based on actual AST structure
+        // BUT: Never override string tokens - they should always remain strings
+        // Interpolations within strings (like @{variable}) should be separate tokens, not override the string
+        if (index && !isStringToken) {
           const tokStartLine = (tok.startLine ?? 1) - 1;
           const tokStartChar = (tok.startColumn ?? 1) - 1;
           const tokEndChar = (tok.endColumn ?? tokStartChar);
-          const tokStartOffset = doc.offsetAt(Position.create(tokStartLine, tokStartChar));
-          const tokMidOffset = doc.offsetAt(Position.create(tokStartLine, Math.floor((tokStartChar + tokEndChar) / 2)));
           
-          // Check if this token is part of a variable reference node
-          const nodeAtStart = index.findNodeAtOffset(tokStartOffset);
-          const nodeAtMid = index.findNodeAtOffset(tokMidOffset);
-          const varRefNode = (nodeAtStart && (nodeAtStart as any).type === 'Reference' && (nodeAtStart as any).options?.type === 'variable')
-            ? nodeAtStart
-            : (nodeAtMid && (nodeAtMid as any).type === 'Reference' && (nodeAtMid as any).options?.type === 'variable')
-              ? nodeAtMid
-              : null;
+          // Check multiple points within the token to find the AST node
+          const checkOffsets = [
+            doc.offsetAt(Position.create(tokStartLine, tokStartChar)), // Start
+            doc.offsetAt(Position.create(tokStartLine, Math.floor((tokStartChar + tokEndChar) / 2))), // Middle
+            doc.offsetAt(Position.create(tokStartLine, tokEndChar)), // End
+            // Also check just after the @ symbol for Less variables
+            doc.offsetAt(Position.create(tokStartLine, tokStartChar + 1))
+          ];
           
-          if (varRefNode) {
-            // This token is part of a variable reference, force it to be 'variable'
-            type = 'variable';
+          let varRefNode: any = null;
+          let callNode: any = null;
+          const tokenImage = String(tok.image ?? '');
+          
+          // First check: if this looks like an at-rule, don't treat it as a variable
+          // At-rules can be known (in AT_RULES_MAP) or unknown, but neither should be variables
+          const isAtRuleToken = tracked.lang === 'less' && tokenImage.startsWith('@') && tokenImage.length > 1;
+          const isKnownAtRule = isAtRuleToken && AT_RULES_MAP.has(tokenImage.toLowerCase());
+          
+          // If it's a known at-rule, ensure it's treated as namespace and skip variable detection
+          if (isKnownAtRule) {
+            // Don't override if it's already correctly classified
+            if (type !== 'namespace') {
+              type = 'namespace';
+            }
+          } else if (isAtRuleToken) {
+            // Unknown at-rule: check if it looks like an at-rule by context
+            // At-rules typically have { or ( after them (after optional whitespace)
+            // We need to check the next non-whitespace token
+            let nextTokenIdx = i + 1;
+            while (nextTokenIdx < tokens.length && (tokens[nextTokenIdx]?.tokenType?.name === 'WS' || tokens[nextTokenIdx]?.tokenType?.name === 'Newline')) {
+              nextTokenIdx++;
+            }
+            const nextToken = nextTokenIdx < tokens.length ? tokens[nextTokenIdx] : undefined;
+            const nextType = String(nextToken?.tokenType?.name ?? '');
+            const looksLikeAtRule = nextType === 'LCurly' || nextType === 'LParen';
+            
+            if (looksLikeAtRule) {
+              // It's an unknown at-rule, treat as namespace
+              if (type !== 'namespace') {
+                type = 'namespace';
+              }
+            } else {
+              // Not an at-rule, proceed with variable detection
+              for (const offset of checkOffsets) {
+                const node = index.findNodeAtOffset(offset);
+                if (!node) continue;
+                
+                // Check for Call node first (function calls take precedence)
+                if ((node as any).type === 'Call') {
+                  callNode = node;
+                  break;
+                }
+                
+                // Check the node itself for variable reference
+                if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
+                  varRefNode = node;
+                  break;
+                }
+                
+                // Walk up the parent chain to find a Call or Reference node
+                // This handles cases where the token is inside a node (e.g., just the identifier part)
+                let current: any = node;
+                while (current && (current as any).parent) {
+                  current = (current as any).parent;
+                  
+                  // Check for Call node first (function calls take precedence)
+                  if (current && current.type === 'Call') {
+                    callNode = current;
+                    break;
+                  }
+                  
+                  // Check for variable reference
+                  if (current && current.type === 'Reference' && current.options?.type === 'variable') {
+                    varRefNode = current;
+                    break;
+                  }
+                }
+                
+                if (callNode || varRefNode) break;
+              }
+              
+              // Function calls take precedence - don't override if already 'function'
+              if (callNode && type !== 'function') {
+                type = 'function';
+              } else if (varRefNode) {
+                // This token is part of a variable reference, force it to be 'variable'
+                type = 'variable';
+                // Store that this is a variable reference so we can apply declaration modifier later
+                // This makes variable references color the same as their declarations
+                (tok as any)._isVarRef = true;
+              }
+            }
+          } else {
+            // Not an @ token (or not Less), check for function calls and variable references
+            for (const offset of checkOffsets) {
+              const node = index.findNodeAtOffset(offset);
+              if (!node) continue;
+              
+              // Check for Call node first (function calls take precedence)
+              if ((node as any).type === 'Call') {
+                callNode = node;
+                break;
+              }
+              
+              // Check the node itself for variable reference
+              if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
+                varRefNode = node;
+                break;
+              }
+              
+              // Walk up the parent chain to find a Call or Reference node
+              let current: any = node;
+              while (current && (current as any).parent) {
+                current = (current as any).parent;
+                
+                // Check for Call node first (function calls take precedence)
+                if (current && current.type === 'Call') {
+                  callNode = current;
+                  break;
+                }
+                
+                // Check for variable reference
+                if (current && current.type === 'Reference' && current.options?.type === 'variable') {
+                  varRefNode = current;
+                  break;
+                }
+              }
+              
+              if (callNode || varRefNode) break;
+            }
+            
+            // Function calls take precedence - ensure they're classified as 'function'
+            if (callNode && type !== 'function') {
+              type = 'function';
+            } else if (varRefNode) {
+              // This token is part of a variable reference, force it to be 'variable'
+              type = 'variable';
+              (tok as any)._isVarRef = true;
+            }
           }
         }
         
@@ -1877,6 +2155,183 @@ export function createEngine(): JessLanguageServiceEngine {
         }
 
         const fullLen = Math.max(1, end.character - start.character);
+        const typeName = String(tok.tokenType?.name ?? '');
+
+        // Special handling for Charset tokens: split into @charset (namespace) and quoted string (string)
+        // The Charset token includes the entire '@charset "UTF-8";' as one token
+        if (typeName === 'Charset' && typeof tok.image === 'string') {
+          const image = tok.image;
+          // Match: @charset followed by optional whitespace, then quoted string, then semicolon
+          const match = image.match(/^(@charset\s*)(["'])([^"']*)\2(;?)$/);
+          if (match && match[1] && match[3] !== undefined) {
+            const atCharset = match[1];
+            const quotedValue = match[3];
+            const semicolon = match[4] || '';
+            const atCharsetLen = atCharset.length;
+            const quotedLen = quotedValue.length + 2; // +2 for the quotes
+            const semicolonLen = semicolon.length;
+            
+            // Emit @charset as namespace
+            if (atCharsetLen > 0) {
+              pending.push({
+                line,
+                char: startChar,
+                length: atCharsetLen,
+                typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('namespace'),
+                modifiers: 0
+              });
+            }
+            
+            // Emit quoted string as string
+            if (quotedLen > 0) {
+              pending.push({
+                line,
+                char: startChar + atCharsetLen,
+                length: quotedLen,
+                typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('string'),
+                modifiers: 0
+              });
+            }
+            
+            // Emit semicolon as operator (if present)
+            if (semicolonLen > 0) {
+              pending.push({
+                line,
+                char: startChar + atCharsetLen + quotedLen,
+                length: semicolonLen,
+                typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('operator'),
+                modifiers: 0
+              });
+            }
+            
+            // Skip normal processing for this token since we've split it
+            continue;
+          }
+        }
+
+        // Special handling for string tokens with interpolations: split into string parts and interpolated parts
+        // Example: "import/import-@{my_theme}-e.less" should be split so that:
+        // - "import/import-" is colored as string (including opening quote)
+        // - "@{my_theme}" is colored based on the inner node (variable, function, etc.)
+        // - "-e.less" is colored as string (including closing quote)
+        // This ensures quotes always look like quotes and don't "leak" variable token coloring
+        // Uses AST node information (Interpolated nodes with %% placeholders) instead of regex
+        // to handle complex expressions within interpolations correctly
+        if (type === 'string' && index) {
+          const tokenOffset = doc.offsetAt(Position.create(line, startChar));
+          const node = index.findNodeAtOffset(tokenOffset);
+          
+          // Check if this token corresponds to a Quoted node with an Interpolated value
+          let quotedNode: any = null;
+          let interpolatedNode: any = null;
+          
+          // Walk up the parent chain to find a Quoted node
+          let current: any = node;
+          while (current) {
+            if (current.type === 'Quoted') {
+              quotedNode = current;
+              // Check if the value is an Interpolated node
+              if (current.value && current.value.type === 'Interpolated') {
+                interpolatedNode = current.value;
+              }
+              break;
+            }
+            current = (current as any).parent;
+          }
+          
+          // If we found an Interpolated node, split the token using AST information
+          if (interpolatedNode && interpolatedNode.value && interpolatedNode.value.source && Array.isArray(interpolatedNode.value.replacements)) {
+            const source = interpolatedNode.value.source; // String with %% placeholders
+            const replacements = interpolatedNode.value.replacements; // Array of Node[]
+            const quoteNodeSpan = getSpan(quotedNode);
+            
+            if (quoteNodeSpan && source.includes('%%')) {
+              // Split source by %% placeholders
+              const parts = source.split('%%');
+              let currentSourcePos = 0;
+              let replacementIndex = 0;
+              
+              // Get the start position of the quoted content (after the opening quote)
+              const quoteChar = (quotedNode.options?.quote ?? '"');
+              const quotedStartOffset = quoteNodeSpan.start + 1; // +1 for opening quote
+              const quotedStartPos = doc.positionAt(quotedStartOffset);
+              
+              for (let i = 0; i < parts.length; i++) {
+                const stringPart = parts[i]!;
+                
+                // Emit string part
+                if (stringPart.length > 0) {
+                  // Calculate position relative to the token start
+                  // The source string doesn't include quotes, so we need to map it to the token
+                  const stringPartStartInSource = currentSourcePos;
+                  const stringPartEndInSource = currentSourcePos + stringPart.length;
+                  
+                  // Map source positions to token positions
+                  // The token image includes quotes, so we need to find where the source starts in the token
+                  const tokenImage = String(tok.image ?? '');
+                  const sourceInToken = tokenImage.slice(1, -1); // Remove quotes
+                  
+                  // Find where this part of the source appears in the token
+                  const sourceStartInToken = sourceInToken.indexOf(stringPart, currentSourcePos - currentSourcePos);
+                  if (sourceStartInToken >= 0) {
+                    const stringPartStartChar = startChar + 1 + sourceStartInToken; // +1 for opening quote
+                    pending.push({
+                      line,
+                      char: stringPartStartChar,
+                      length: stringPart.length,
+                      typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('string'),
+                      modifiers: 0
+                    });
+                  }
+                  
+                  currentSourcePos += stringPart.length;
+                }
+                
+                // Emit replacement node (interpolation) if there is one
+                if (i < parts.length - 1 && replacementIndex < replacements.length) {
+                  const replacementNode = replacements[replacementIndex]!;
+                  const replacementSpan = getSpan(replacementNode);
+                  
+                  if (replacementSpan) {
+                    const replacementStartPos = doc.positionAt(replacementSpan.start);
+                    const replacementEndPos = doc.positionAt(replacementSpan.end);
+                    
+                    // Only emit if the replacement is on the same line as the token
+                    if (replacementStartPos.line === line) {
+                      // Determine semantic token type based on the replacement node
+                      let replacementType: SemanticTokenType = 'variable';
+                      if (replacementNode.type === 'Reference' && replacementNode.options?.type === 'variable') {
+                        replacementType = 'variable';
+                      } else if (replacementNode.type === 'Call') {
+                        replacementType = 'function';
+                      } else if (replacementNode.type === 'Operation') {
+                        replacementType = 'number'; // Operations often produce numbers
+                      } else if (replacementNode.type === 'Any') {
+                        // Could be various types, default to property
+                        replacementType = 'property';
+                      }
+                      
+                      pending.push({
+                        line,
+                        char: replacementStartPos.character,
+                        length: replacementEndPos.character - replacementStartPos.character,
+                        typeIdx: SEMANTIC_TOKEN_TYPES.indexOf(replacementType),
+                        modifiers: 0
+                      });
+                    }
+                  }
+                  
+                  replacementIndex++;
+                  // The %% placeholder is 2 chars, so advance past it
+                  currentSourcePos += 2;
+                }
+              }
+              
+              // Skip normal processing for this token since we've split it
+              continue;
+            }
+          }
+        }
 
         // 1) Property name vs value idents: if an ident is immediately before `:`, it's a property name.
         // Otherwise treat plain idents as value-ish.
@@ -1974,10 +2429,16 @@ export function createEngine(): JessLanguageServiceEngine {
             modifiers |= MOD_DECLARATION;
           }
         }
+        
+        // Also apply declaration modifier to variable references detected via AST
+        // This makes them color the same as their declarations
+        // We do this for all variable references found via AST lookup, since they're at least syntactically valid
+        if (effType === 'variable' && (tok as any)._isVarRef) {
+          modifiers |= MOD_DECLARATION;
+        }
 
         // 3) Split dimensions like `1cm` into `number` + `unit` (we model unit as `type`).
         // This is purely for nicer theming (number colored differently from unit).
-        const typeName = String(tok.tokenType?.name ?? '');
         if (effType === 'number' && typeName.includes('Dimension') && typeof tok.image === 'string') {
           const m = tok.image.match(/^([+-]?(?:\d*\.\d+|\d+))(.*)$/);
           if (m && m[1] && m[2]) {
@@ -2015,6 +2476,48 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       return { data };
+    },
+
+    async getDocumentColors(uri) {
+      const tracked = ensure(uri);
+      const doc = tracked.document;
+      const parse = tracked.parse;
+      if (!parse || !parse.tree) {
+        return [];
+      }
+
+      const { findColorsInAST, colorToLSP, getNodeSpan } = require('./color-utils.js');
+      const colors = await findColorsInAST(parse.tree as Node);
+      const result: ColorInformation[] = [];
+
+      for (const { node, color: colorNode } of colors) {
+        const span = getNodeSpan(node);
+        if (!span) continue;
+
+        try {
+          const lspColor = colorToLSP(colorNode);
+          const range: Range = {
+            start: doc.positionAt(span.start),
+            end: doc.positionAt(span.end)
+          };
+          result.push({ color: lspColor, range });
+        } catch {
+          // Skip invalid colors
+        }
+      }
+
+      return result;
+    },
+
+    getColorPresentations(uri, color, range) {
+      const { getColorPresentations: getPresentations } = require('./color-utils.js');
+      const presentations = getPresentations(color);
+      
+      // Set textEdit for each presentation
+      return presentations.map((p: ColorPresentation) => ({
+        ...p,
+        textEdit: TextEdit.replace(range, p.label)
+      }));
     }
   };
 }

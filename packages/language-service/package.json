@@ -24,6 +24,7 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/fns": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
     "@jesscss/style-resolver": "workspace:*",

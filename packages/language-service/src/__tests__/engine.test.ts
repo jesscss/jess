@@ -394,8 +394,21 @@ describe('JessLanguageServiceEngine', () => {
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const syms = engine.getDocumentSymbols(doc.uri);
-      const names = syms.map(s => s.name);
-      const kinds = syms.map(s => s.kind);
+      
+      // Collect all symbols recursively (including children)
+      const allSymbols: DocumentSymbol[] = [];
+      const collect = (symbols: DocumentSymbol[]) => {
+        for (const sym of symbols) {
+          allSymbols.push(sym);
+          if (sym.children && sym.children.length > 0) {
+            collect(sym.children);
+          }
+        }
+      };
+      collect(syms);
+
+      const names = allSymbols.map(s => s.name);
+      const kinds = allSymbols.map(s => s.kind);
 
       expect(kinds).toContain(SymbolKind.Variable);
       expect(kinds).toContain(SymbolKind.Namespace);
@@ -404,6 +417,46 @@ describe('JessLanguageServiceEngine', () => {
       expect(names.some(n => n.includes('@media'))).toBe(true);
       expect(names.some(n => n.includes('.a'))).toBe(true);
       expect(names.some(n => n.includes('$primary'))).toBe(true);
+    });
+
+    it('returns hierarchical symbols with nested structure', () => {
+      const engine = createEngine();
+      const doc = createDocument(
+        'less',
+        `
+          @primary: red;
+          @media (min-width: 768px) {
+            .container {
+              @secondary: blue;
+              .button { color: @primary; }
+            }
+          }
+        `
+      );
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const syms = engine.getDocumentSymbols(doc.uri);
+      
+      // Find @media symbol
+      const mediaSym = syms.find(s => s.name.includes('@media'));
+      expect(mediaSym).toBeDefined();
+      expect(mediaSym?.kind).toBe(SymbolKind.Namespace);
+      
+      // @media should have .container as a child
+      expect(mediaSym?.children).toBeDefined();
+      const containerSym = mediaSym?.children?.find(s => s.name.includes('.container'));
+      expect(containerSym).toBeDefined();
+      expect(containerSym?.kind).toBe(SymbolKind.Class);
+      
+      // .container should have @secondary and .button as children
+      expect(containerSym?.children).toBeDefined();
+      const secondarySym = containerSym?.children?.find(s => s.name.includes('@secondary'));
+      expect(secondarySym).toBeDefined();
+      expect(secondarySym?.kind).toBe(SymbolKind.Variable);
+      
+      const buttonSym = containerSym?.children?.find(s => s.name.includes('.button'));
+      expect(buttonSym).toBeDefined();
+      expect(buttonSym?.kind).toBe(SymbolKind.Class);
     });
   });
 
@@ -512,6 +565,182 @@ describe('JessLanguageServiceEngine', () => {
       const targets = links.map(l => l.target);
       expect(targets.some(t => String(t).includes('import/import-once-test-c'))).toBe(true);
       expect(targets.some(t => String(t).includes('import/import-test-f.less'))).toBe(true);
+    });
+  });
+
+  describe('color detection', () => {
+    it('detects color keywords', async () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a { color: red; background: blue; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      expect(colors.length).toBeGreaterThanOrEqual(2);
+      
+      // Check that we found red and blue
+      const colorValues = colors.map(c => {
+        const r = Math.round(c.color.red * 255);
+        const g = Math.round(c.color.green * 255);
+        const b = Math.round(c.color.blue * 255);
+        return `${r},${g},${b}`;
+      });
+      
+      // Red is rgb(255, 0, 0)
+      expect(colorValues).toContain('255,0,0');
+      // Blue is rgb(0, 0, 255)
+      expect(colorValues).toContain('0,0,255');
+    });
+
+    it('detects hex colors', async () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a { color: #ff0000; background: #00ff00; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      expect(colors.length).toBeGreaterThanOrEqual(2);
+      
+      const colorValues = colors.map(c => {
+        const r = Math.round(c.color.red * 255);
+        const g = Math.round(c.color.green * 255);
+        const b = Math.round(c.color.blue * 255);
+        return `${r},${g},${b}`;
+      });
+      
+      // #ff0000 is red
+      expect(colorValues).toContain('255,0,0');
+      // #00ff00 is green
+      expect(colorValues).toContain('0,255,0');
+    });
+
+    it('detects rgb() color functions', async () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a { color: rgb(255, 0, 0); background: rgb(0, 128, 255); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      expect(colors.length).toBeGreaterThanOrEqual(2);
+      
+      const colorValues = colors.map(c => {
+        const r = Math.round(c.color.red * 255);
+        const g = Math.round(c.color.green * 255);
+        const b = Math.round(c.color.blue * 255);
+        return `${r},${g},${b}`;
+      });
+      
+      // rgb(255, 0, 0) is red
+      expect(colorValues).toContain('255,0,0');
+      // rgb(0, 128, 255) is a blue
+      expect(colorValues).toContain('0,128,255');
+    });
+
+    it('detects hsl() color functions', async () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a { color: hsl(0, 100%, 50%); background: hsl(120, 100%, 50%); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      expect(colors.length).toBeGreaterThanOrEqual(2);
+      
+      const colorValues = colors.map(c => {
+        const r = Math.round(c.color.red * 255);
+        const g = Math.round(c.color.green * 255);
+        const b = Math.round(c.color.blue * 255);
+        return `${r},${g},${b}`;
+      });
+      
+      // hsl(0, 100%, 50%) is red (approximately 255, 0, 0)
+      expect(colorValues.some(v => v.startsWith('255,0,0') || v.startsWith('254,0,0'))).toBe(true);
+      // hsl(120, 100%, 50%) is green (approximately 0, 255, 0)
+      expect(colorValues.some(v => v.startsWith('0,255,0') || v.startsWith('0,254,0'))).toBe(true);
+    });
+
+    it('detects rgba() color functions with alpha', async () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a { color: rgba(255, 0, 0, 0.5); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      expect(colors.length).toBeGreaterThanOrEqual(1);
+      
+      const color = colors[0]!;
+      expect(Math.round(color.color.red * 255)).toBe(255);
+      expect(Math.round(color.color.green * 255)).toBe(0);
+      expect(Math.round(color.color.blue * 255)).toBe(0);
+      expect(color.color.alpha).toBeCloseTo(0.5, 1);
+    });
+
+    it('detects Less color functions (rgb, hsl)', async () => {
+      const engine = createEngine();
+      const doc = createDocument('less', 'a { color: rgb(128, 64, 32); background: hsl(240, 50%, 50%); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      expect(colors.length).toBeGreaterThanOrEqual(2);
+      
+      const colorValues = colors.map(c => {
+        const r = Math.round(c.color.red * 255);
+        const g = Math.round(c.color.green * 255);
+        const b = Math.round(c.color.blue * 255);
+        return `${r},${g},${b}`;
+      });
+      
+      // rgb(128, 64, 32)
+      expect(colorValues).toContain('128,64,32');
+    });
+
+    it('handles invalid color functions gracefully', async () => {
+      const engine = createEngine();
+      // rgb() with wrong number of arguments or invalid values
+      const doc = createDocument('css', 'a { color: rgb(255); background: rgb(256, 0, 0); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      // Should not throw, but may or may not detect colors depending on evaluation
+      const colors = await engine.getDocumentColors(doc.uri);
+      // Should still work (might detect some colors or none, but shouldn't crash)
+      expect(Array.isArray(colors)).toBe(true);
+    });
+
+    it('handles color functions with variables (should not evaluate)', async () => {
+      const engine = createEngine();
+      // Less variable in color function - should not be evaluated
+      const doc = createDocument('less', '@r: 255;\na { color: rgb(@r, 0, 0); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      // Since @r is a variable, the function can't be statically evaluated
+      // So we might not get a color, but it shouldn't crash
+      expect(Array.isArray(colors)).toBe(true);
+    });
+
+    it('detects multiple color formats in one document', async () => {
+      const engine = createEngine();
+      const doc = createDocument(
+        'css',
+        `
+          a { color: red; }
+          b { color: #00ff00; }
+          c { color: rgb(0, 0, 255); }
+          d { color: hsl(60, 100%, 50%); }
+        `
+      );
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const colors = await engine.getDocumentColors(doc.uri);
+      expect(colors.length).toBeGreaterThanOrEqual(4);
+      
+      const colorValues = colors.map(c => {
+        const r = Math.round(c.color.red * 255);
+        const g = Math.round(c.color.green * 255);
+        const b = Math.round(c.color.blue * 255);
+        return `${r},${g},${b}`;
+      });
+      
+      // Should have red, green, blue, and yellow (from hsl)
+      expect(colorValues).toContain('255,0,0'); // red
+      expect(colorValues).toContain('0,255,0'); // green (#00ff00)
+      expect(colorValues).toContain('0,0,255'); // blue (rgb)
+      // Yellow from hsl(60, 100%, 50%) is approximately 255, 255, 0
+      expect(colorValues.some(v => v.startsWith('255,255,0') || v.startsWith('254,254,0'))).toBe(true);
     });
   });
 });

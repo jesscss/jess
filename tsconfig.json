@@ -1,8 +1,6 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "outDir": "./lib",
-    "rootDir": ".",
     "declaration": true,
     "esModuleInterop": true,
     "module": "ES2020",
@@ -15,6 +13,7 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "sourceMap": true,
+    "noEmit": true,
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]
@@ -27,5 +26,5 @@
     ]
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "lib"]
+  "exclude": ["node_modules", "lib", "**/*.js"]
 }

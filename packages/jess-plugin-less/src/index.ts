@@ -61,7 +61,7 @@ export class LessPlugin extends AbstractPlugin {
     } else if (opts.strictUnits === true) {
       unitMode = 'strict';
     } else {
-      unitMode = 'loose';
+      unitMode = 'preserve';
     }
     this.unitMode = unitMode;
     this.leakyRules = opts.leakyRules ?? true;

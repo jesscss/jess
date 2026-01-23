@@ -416,6 +416,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
+      '@jesscss/fns':
+        specifier: workspace:*
+        version: link:../fns
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
@@ -499,6 +502,13 @@ importers:
       chevrotain:
         specifier: ^11.0.3
         version: 11.1.0
+      color-name:
+        specifier: ~2.0.0
+        version: 2.0.2
+    devDependencies:
+      '@types/color-name':
+        specifier: ^1.1.1
+        version: 1.1.5
 
   packages/patch-css: {}
 

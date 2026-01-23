@@ -899,6 +899,29 @@ export class ExtendRootRegistry {
  * All extend processing logic is centralized here, not in rules.ts
  */
 export function processExtends(context: Context): void {
+  // #region agent log
+  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+    const filePath = context.treeContext?.file?.fullPath
+      || (context.treeContext?.file?.path && context.treeContext?.file?.name
+        ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+        : context.treeContext?.file?.path)
+      || '';
+    if (filePath.includes('extend-media')) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'run',
+        hypothesisId: 'H46',
+        location: 'extend-roots.ts:processExtends',
+        message: 'processExtends-called',
+        data: {
+          filePath: String(filePath).substring(0, 150),
+          extendsCount: context.extends.length
+        },
+        timestamp: Date.now()
+      });
+    }
+  }
+  // #endregion
   const allExtends = [...context.extends]; // All original extends
   // NOTE: We must NOT globally de-dupe extends by (target, extendWith, partial).
   // The same extend relationship must be applied to *any* ruleset whose selector matches
@@ -1116,6 +1139,30 @@ export function processExtends(context: Context): void {
     extendNode: Node,
     depth: number = 0
   ): void => {
+    // #region agent log
+    const targetV = String(target.valueOf());
+    if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetV.includes('ext')) {
+      try {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H47',
+          location: 'extend-roots.ts:processExtend',
+          message: 'processExtend-called',
+          data: {
+            target: targetV,
+            extendWith: String(selectorWithExtend.valueOf()),
+            partial: partial ? 'true' : 'false',
+            depth: String(depth)
+          },
+          timestamp: Date.now()
+        });
+      } catch (e) {
+        console.error('syncLog failed in processExtend:', e);
+      }
+    }
+    // #endregion
+
     const maxDepth = 100; // Prevent infinite loops
     if (depth >= maxDepth) {
       throw new Error(`Extend chaining exceeded maximum depth (${maxDepth}). Possible circular reference.`);
@@ -1179,15 +1226,131 @@ export function processExtends(context: Context): void {
       // Find rulesets matching this single target in accessible roots
       let rulesetSet: Ruleset[] | undefined;
 
+      // #region agent log
+      const targetV = singleTarget.valueOf();
+      const targetStr = String(targetV);
+      // Log ANY target that contains 'ext' to test logging
+      if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetStr.includes('ext')) {
+        try {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H47',
+            location: 'extend-roots.ts:processExtends',
+            message: 'processing-target-ext',
+            data: {
+              target: targetStr,
+              extendWith: String(selectorWithExtend.valueOf()),
+              partial: partial ? 'true' : 'false'
+            },
+            timestamp: Date.now()
+          });
+        } catch (e) {
+          // Log error if syncLog fails
+          console.error('syncLog failed:', e);
+        }
+      }
+      // #endregion
+
       for (const searchRoot of accessibleRoots) {
         const searchKeySet = singleTarget.keySet;
+        // #region agent log
+        if (targetStr.includes('ext1') && process.env.DEBUG_EXTEND_BOOT === 'true') {
+          // Check what rulesets are registered in this root
+          const registry = searchRoot.getRegistry('ruleset');
+          const allRulesets: any[] = [];
+          try {
+            // Try to get all registered rulesets to see what's available
+            if (registry && (registry as any).index) {
+              for (const rulesetSet of (registry as any).index.values()) {
+                if (rulesetSet && typeof rulesetSet.forEach === 'function') {
+                  rulesetSet.forEach((rs: any) => {
+                    try {
+                      const sel = rs?.value?.selector?.valueOf?.();
+                      if (sel && String(sel).includes('ext1')) {
+                        allRulesets.push(String(sel));
+                      }
+                    } catch {}
+                  });
+                }
+              }
+            }
+          } catch {}
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H47',
+            location: 'extend-roots.ts:processExtends',
+            message: 'before-search',
+            data: {
+              target: targetStr,
+              extendWith: String(selectorWithExtend.valueOf()),
+              rootId: String(searchRoot).substring(0, 80),
+              registeredExt1Rulesets: allRulesets.slice(0, 5),
+              searchKeySetType: typeof searchKeySet,
+              searchKeySetSize: searchKeySet instanceof Set ? searchKeySet.size : 'not-a-set'
+            },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
         const found = searchRoot.find('ruleset', searchKeySet);
+        // #region agent log
+        if (targetStr.includes('ext1') && process.env.DEBUG_EXTEND_BOOT === 'true') {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H47',
+            location: 'extend-roots.ts:processExtends',
+            message: 'search-root-result',
+            data: {
+              target: targetStr,
+              extendWith: String(selectorWithExtend.valueOf()),
+              rootId: String(searchRoot).substring(0, 80),
+              foundCount: found ? found.length : 0,
+              foundRulesets: found ? found.map((r: any) => {
+                try {
+                  return String((r as any).value?.selector?.valueOf?.() ?? 'unknown');
+                } catch {
+                  return 'unknown';
+                }
+              }).slice(0, 3) : []
+            },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
         if (found) {
           if (rulesetSet) {
             rulesetSet.push(...found);
           } else {
             rulesetSet = found;
           }
+          // #region agent log
+          if (targetV === '.ext1' && process.env.DEBUG_EXTEND_BOOT === 'true') {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H47',
+              location: 'extend-roots.ts:processExtends',
+              message: 'ruleset-added',
+              data: {
+                target: targetV,
+                extendWith: selectorWithExtend.valueOf(),
+                foundCount: found.length,
+                rulesetSetAfter: rulesetSet ? rulesetSet.length : 0,
+                rulesets: found.map((r: any) => {
+                  try {
+                    return String((r as any).value?.selector?.valueOf?.() ?? 'unknown');
+                  } catch {
+                    return 'unknown';
+                  }
+                })
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
         }
       }
       if (process.env.DEBUG && debugThisFile) {
@@ -1227,15 +1390,79 @@ export function processExtends(context: Context): void {
       // #endregion
 
       // Handle warnings for Less compatibility (only on first processing)
+      // #region agent log
+      if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetStr.includes('ext1')) {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H47',
+          location: 'extend-roots.ts:processExtends',
+          message: 'ext1-search-result',
+          data: {
+            target: targetStr,
+            extendWith: String(selectorWithExtend.valueOf()),
+            foundInAccessible: rulesetSet ? rulesetSet.length : 0,
+            accessibleRootsCount: accessibleRoots.size,
+            willCheckElsewhere: !rulesetSet || rulesetSet.length === 0
+          },
+          timestamp: Date.now()
+        });
+      }
+      // #endregion
+
       if (!rulesetSet || rulesetSet.length === 0) {
         // Check if target exists anywhere (not just in accessible roots)
         const allRootsForWarning = context.extendRoots.getAlts();
         let targetExistsElsewhere = false;
         let existsCount = 0;
 
+        // #region agent log
+        if (targetV === '.ext1' && process.env.DEBUG_EXTEND_BOOT === 'true') {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H47',
+            location: 'extend-roots.ts:processExtends',
+            message: 'ext1-not-found-in-accessible',
+            data: {
+              target: targetV,
+              extendWith: selectorWithExtend.valueOf(),
+              allRootsCount: allRootsForWarning.size,
+              checkingOtherRoots: true
+            },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
+
         for (const searchRoot of allRootsForWarning) {
           if (!accessibleRoots.has(searchRoot)) {
             const found = searchRoot.find('ruleset', singleTarget.keySet);
+            // #region agent log
+            if (targetV === '.ext1' && process.env.DEBUG_EXTEND_BOOT === 'true' && found && found.length > 0) {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H46',
+                location: 'extend-roots.ts:processExtends',
+                message: 'ext1-found-in-inaccessible-root',
+                data: {
+                  target: targetV,
+                  extendWith: selectorWithExtend.valueOf(),
+                  foundCount: found.length,
+                  rootId: String(searchRoot).substring(0, 50),
+                  rulesets: found.map((r: any) => {
+                    try {
+                      return String((r as any).value?.selector?.valueOf?.() ?? 'unknown');
+                    } catch {
+                      return 'unknown';
+                    }
+                  })
+                },
+                timestamp: Date.now()
+              });
+            }
+            // #endregion
             if (found && found.length > 0) {
               targetExistsElsewhere = true;
               existsCount += found.length;
@@ -1540,6 +1767,27 @@ export function processExtends(context: Context): void {
   }
   // #endregion
   for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of allExtends) {
+    // #region agent log
+    const targetV = target.valueOf();
+    if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetV.includes('ext1')) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'run',
+        hypothesisId: 'H46',
+        location: 'extend-roots.ts:processExtends',
+        message: 'about-to-process-extend',
+        data: {
+          target: targetV,
+          extendWith: selectorWithExtend.valueOf(),
+          partial: partial ? 'true' : 'false',
+          allExtendsCount: allExtends.length,
+          debugThisFile: String(debugThisFile),
+          debugFilePath: String(debugFilePath).substring(0, 150)
+        },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
     processExtend(target, selectorWithExtend, partial, extendRoot, extendNode);
   }
 

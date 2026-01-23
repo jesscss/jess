@@ -1,15 +1,7 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper.js';
-
-export default defineFunction(
-  'ceil',
-  function(value: Dimension | number) {
-    return mathHelper(Math.ceil, ['value'], undefined, value);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+/**
+ * Less ceil() function
+ * 
+ * Re-exports the shared ceil function.
+ * The actual implementation is in shared/math/ceil.ts
+ */
+export { ceil as default } from '../shared/index.js';
