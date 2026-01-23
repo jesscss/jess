@@ -1511,6 +1511,8 @@ export function createEngine(): JessLanguageServiceEngine {
             // Interpolated nodes contain replacement nodes in value.replacements
             // These replacement nodes should be collected as separate variable references
             // so each interpolation gets its own diagnostic span
+            // IMPORTANT: We need to process replacements BEFORE getValues(value) to ensure
+            // they're collected separately and not lost in the generic traversal
             const replacements = n.value?.replacements;
             if (Array.isArray(replacements)) {
               for (const replacementNode of replacements) {
@@ -1521,6 +1523,9 @@ export function createEngine(): JessLanguageServiceEngine {
                 }
               }
             }
+            // Don't traverse Interpolated node's value with getValues - we've already handled replacements
+            // The source string is not a node, so we skip it
+            continue;
           }
 
           const value = (node as any).value;
@@ -1537,6 +1542,140 @@ export function createEngine(): JessLanguageServiceEngine {
         };
 
         const spanFor = (n: any): { start: number; end: number } | null => {
+          // For Reference nodes inside interpolations, we need to find the @{...} boundaries FIRST
+          // before falling back to other methods, because the Reference node span might only cover
+          // the variable name, not the @{ and }
+          // Check if this is a Reference node first, before any other checks
+          if (n && n.type === 'Reference' && n.options?.type === 'variable') {
+            // Check if this Reference is inside an Interpolated node by walking up the parent chain
+            let isInInterpolation = false;
+            let current: any = n;
+            while (current && (current as any).parent) {
+              current = (current as any).parent;
+              if (current && current.type === 'Interpolated') {
+                isInInterpolation = true;
+                break;
+              }
+            }
+            
+            if (isInInterpolation) {
+              // Get the Reference node's span (this is the variable name inside @{...})
+              // The Reference node span should be just the variable name (e.g., "in" or "terpolation")
+              // Try multiple ways to get the span:
+              // 1. Direct span from the Reference node
+              // 2. Span from the key node
+              // 3. Span from the value.key if it's a node
+              let actualRefSpan = getSpan(n as Node);
+              if (!actualRefSpan) {
+                const key = n?.value?.key;
+                if (isNode(key)) {
+                  actualRefSpan = getSpan(key as Node);
+                }
+              }
+              
+              if (actualRefSpan) {
+                const refStartPos = doc.positionAt(actualRefSpan.start);
+                const refEndPos = doc.positionAt(actualRefSpan.end);
+                
+                // Look backwards from reference start to find @{
+                // The @{ should be immediately before the reference node
+                let atBraceStart = actualRefSpan.start;
+                if (refStartPos.character >= 2) {
+                  // Check the 2 characters immediately before the reference
+                  const lookBackStart = Math.max(0, refStartPos.character - 2);
+                  const textBefore = doc.getText(Range.create(
+                    Position.create(refStartPos.line, lookBackStart),
+                    refStartPos
+                  ));
+                  if (textBefore === '@{') {
+                    atBraceStart = doc.offsetAt(Position.create(refStartPos.line, lookBackStart));
+                  } else {
+                    // If not found immediately before, search backwards more carefully
+                    // Look for the nearest @{ before this reference
+                    for (let lookBack = 2; lookBack <= Math.min(20, refStartPos.character); lookBack++) {
+                      const checkStart = Math.max(0, refStartPos.character - lookBack);
+                      const checkText = doc.getText(Range.create(
+                        Position.create(refStartPos.line, checkStart),
+                        refStartPos
+                      ));
+                      if (checkText.endsWith('@{')) {
+                        atBraceStart = doc.offsetAt(Position.create(refStartPos.line, checkStart));
+                        break;
+                      }
+                    }
+                  }
+                }
+                
+                // Look forwards from reference end to find }
+                // The } should be immediately after the reference node
+                let braceEnd = actualRefSpan.end;
+                const textAfter = doc.getText(Range.create(
+                  refEndPos,
+                  Position.create(refEndPos.line, Math.min(doc.getText().length, refEndPos.character + 1))
+                ));
+                if (textAfter.startsWith('}')) {
+                  braceEnd = doc.offsetAt(Position.create(refEndPos.line, refEndPos.character + 1));
+                } else {
+                  // If not found immediately after, the reference span might be wrong
+                  // Try to find } after the reference
+                  const searchEnd = Math.min(doc.getText().length, refEndPos.character + 10);
+                  const searchText = doc.getText(Range.create(
+                    refEndPos,
+                    Position.create(refEndPos.line, searchEnd)
+                  ));
+                  const braceIdx = searchText.indexOf('}');
+                  if (braceIdx >= 0) {
+                    braceEnd = doc.offsetAt(Position.create(refEndPos.line, refEndPos.character + braceIdx + 1));
+                  }
+                }
+                
+                // Return the full interpolation span including @{ and }
+                // Only return if we found valid boundaries (atBraceStart should be before braceEnd)
+                if (atBraceStart < braceEnd && atBraceStart >= 0 && braceEnd > atBraceStart) {
+                  return { start: atBraceStart, end: braceEnd };
+                }
+                // If boundaries weren't found correctly, fall through to try other methods
+              } else {
+                // Reference node doesn't have a span - this shouldn't happen for interpolations
+                // but if it does, try to get span from the key
+                const key = n?.value?.key;
+                if (isNode(key)) {
+                  const keySpan = getSpan(key as Node);
+                  if (keySpan) {
+                    // Try to find @{ and } around the key span
+                    const keyStartPos = doc.positionAt(keySpan.start);
+                    const keyEndPos = doc.positionAt(keySpan.end);
+                    
+                    let atBraceStart = keySpan.start;
+                    if (keyStartPos.character >= 2) {
+                      const lookBackStart = Math.max(0, keyStartPos.character - 2);
+                      const textBefore = doc.getText(Range.create(
+                        Position.create(keyStartPos.line, lookBackStart),
+                        keyStartPos
+                      ));
+                      if (textBefore === '@{') {
+                        atBraceStart = doc.offsetAt(Position.create(keyStartPos.line, lookBackStart));
+                      }
+                    }
+                    
+                    let braceEnd = keySpan.end;
+                    const textAfter = doc.getText(Range.create(
+                      keyEndPos,
+                      Position.create(keyEndPos.line, Math.min(doc.getText().length, keyEndPos.character + 1))
+                    ));
+                    if (textAfter.startsWith('}')) {
+                      braceEnd = doc.offsetAt(Position.create(keyEndPos.line, keyEndPos.character + 1));
+                    }
+                    
+                    if (atBraceStart < braceEnd && atBraceStart >= 0 && braceEnd > atBraceStart) {
+                      return { start: atBraceStart, end: braceEnd };
+                    }
+                  }
+                }
+              }
+            }
+          }
+          
           // For Call nodes (mixin calls), the Call node itself should have location info
           // that includes the full call including parentheses
           const span = getSpan(n as Node);
@@ -1556,43 +1695,6 @@ export function createEngine(): JessLanguageServiceEngine {
             }
           }
           
-          // For Reference nodes inside interpolations, we need to find the @{...} boundaries
-          // The Reference node span might only cover the variable name, not the @{ and }
-          if (n.type === 'Reference' && n.options?.type === 'variable') {
-            const refSpan = getSpan(n as Node);
-            if (refSpan) {
-              // Look backwards from reference start to find @{
-              const refStartPos = doc.positionAt(refSpan.start);
-              const refEndPos = doc.positionAt(refSpan.end);
-              
-              // Look backwards from reference start to find @{
-              let atBraceStart = refSpan.start;
-              if (refStartPos.character >= 2) {
-                const lookBackStart = Math.max(0, refStartPos.character - 2);
-                const textBefore = doc.getText(Range.create(
-                  Position.create(refStartPos.line, lookBackStart),
-                  refStartPos
-                ));
-                if (textBefore.endsWith('@{')) {
-                  atBraceStart = doc.offsetAt(Position.create(refStartPos.line, lookBackStart));
-                }
-              }
-              
-              // Look forwards from reference end to find }
-              let braceEnd = refSpan.end;
-              const textAfter = doc.getText(Range.create(
-                refEndPos,
-                Position.create(refEndPos.line, refEndPos.character + 1)
-              ));
-              if (textAfter.startsWith('}')) {
-                braceEnd = doc.offsetAt(Position.create(refEndPos.line, refEndPos.character + 1));
-              }
-              
-              // Return the full interpolation span including @{ and }
-              return { start: atBraceStart, end: braceEnd };
-            }
-          }
-          
           return null;
         };
 
@@ -1607,12 +1709,15 @@ export function createEngine(): JessLanguageServiceEngine {
               }
               const span = spanFor(r.node);
               if (span) {
+                // For Reference nodes inside interpolations, ensure we use the node's actual span
+                // and find @{...} boundaries around it
+                const range = toRange(doc, span.start, span.end);
                 diagnostics.push({
                   code: 'var/undefined',
                   source: 'jess',
                   message: `Undefined variable ${formatVarName(tracked.lang, r.name)}`,
                   severity: sev,
-                  range: toRange(doc, span.start, span.end)
+                  range
                 });
               }
             }

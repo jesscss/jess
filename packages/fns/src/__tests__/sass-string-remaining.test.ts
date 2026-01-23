@@ -117,6 +117,9 @@ describe('Sass remaining string functions', () => {
       const end = new Dimension({ number: 4 });
       const result = strSlice(str, start, end);
       expect(result).toBeInstanceOf(Quoted);
+      // start: 2 (1-based) -> index 1 (0-based) = 'e'
+      // end: 4 (1-based) -> index 3 (0-based, inclusive) = 'l'
+      // So slice(1, 4) = 'ell'
       expect((result as Quoted).valueOf()).toBe('ell');
     });
 

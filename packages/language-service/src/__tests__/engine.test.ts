@@ -439,6 +439,9 @@ describe('JessLanguageServiceEngine', () => {
       // Find tokens on line 0 (the import line)
       const line0Tokens = tokens.filter(t => t.line === 0);
       
+      // Debug: log all tokens to see what we're getting
+      console.log('Line 0 tokens:', JSON.stringify(line0Tokens, null, 2));
+      
       // Should have separate tokens for:
       // - @import (namespace)
       // - " (string - opening quote)
@@ -467,6 +470,15 @@ describe('JessLanguageServiceEngine', () => {
       
       const diagnostics = engine.getDiagnostics(doc.uri);
       const varDiags = diagnostics.filter(d => d.code === 'var/undefined');
+      
+      // Debug: log diagnostics to see what we're getting
+      console.log('Variable diagnostics:', JSON.stringify(varDiags.map(d => ({
+        message: d.message,
+        range: d.range,
+        code: d.code
+      })), null, 2));
+      console.log('Document text:', JSON.stringify(doc.getText()));
+      console.log('Expected: @{in} should be around char 25, @{terpolation} should be around char 31');
       
       // Should have 2 separate diagnostics, one for @{in} and one for @{terpolation}
       expect(varDiags.length).toBeGreaterThanOrEqual(2);
