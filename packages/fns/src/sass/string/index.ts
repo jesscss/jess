@@ -17,9 +17,9 @@ export { default as unquote } from '../unquote.js';
 export { default as quote } from '../quote.js';
 export { default as toUpperCase } from '../to-upper-case.js';
 export { default as toLowerCase } from '../to-lower-case.js';
+export { default as uniqueId } from '../unique-id.js';
 // TODO: Implement remaining string module functions
-// - string.index()
-// - string.insert()
-// - string.slice()
+// - string.index() (use str-index for now)
+// - string.insert() (use str-insert for now)
+// - string.slice() (use str-slice for now)
 // - string.split()
-// - string.unique-id()

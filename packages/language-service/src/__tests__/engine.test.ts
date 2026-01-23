@@ -381,6 +381,107 @@ describe('JessLanguageServiceEngine', () => {
     });
   });
 
+  describe('semantic tokens', () => {
+    // Helper to decode semantic tokens data array
+    // Format: [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
+    function decodeSemanticTokens(data: number[], types: string[], modifiers: string[]): Array<{
+      line: number;
+      char: number;
+      length: number;
+      type: string;
+      modifiers: number;
+    }> {
+      const tokens: Array<{ line: number; char: number; length: number; type: string; modifiers: number }> = [];
+      let currentLine = 0;
+      let currentChar = 0;
+      
+      for (let i = 0; i < data.length; i += 5) {
+        const deltaLine = data[i]!;
+        const deltaStartChar = data[i + 1]!;
+        const length = data[i + 2]!;
+        const typeIdx = data[i + 3]!;
+        const tokenModifiers = data[i + 4]!;
+        
+        if (deltaLine === 0) {
+          currentChar += deltaStartChar;
+        } else {
+          currentLine += deltaLine;
+          currentChar = deltaStartChar;
+        }
+        
+        const type = types[typeIdx] || 'unknown';
+        tokens.push({
+          line: currentLine,
+          char: currentChar,
+          length,
+          type,
+          modifiers: tokenModifiers
+        });
+      }
+      
+      return tokens;
+    }
+
+    it('splits interpolated strings into separate tokens', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@import "import/import-@{my_theme}-e.less";');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      
+      const semanticTokens = engine.getSemanticTokens(doc.uri);
+      expect(semanticTokens).toBeDefined();
+      expect(semanticTokens.data).toBeDefined();
+      
+      // Decode tokens
+      const types = ['comment', 'string', 'keyword', 'enumMember', 'number', 'operator', 'function', 'variable', 'property', 'type', 'class', 'namespace'];
+      const modifiers: string[] = []; // No modifiers in legend for now
+      const tokens = decodeSemanticTokens(semanticTokens.data, types, modifiers);
+      
+      // Find tokens on line 0 (the import line)
+      const line0Tokens = tokens.filter(t => t.line === 0);
+      
+      // Should have separate tokens for:
+      // - @import (namespace)
+      // - " (string - opening quote)
+      // - import/import- (string)
+      // - @{my_theme} (variable)
+      // - -e.less (string)
+      // - " (string - closing quote)
+      // - ; (operator)
+      
+      const stringTokens = line0Tokens.filter(t => t.type === 'string');
+      const variableTokens = line0Tokens.filter(t => t.type === 'variable');
+      const namespaceTokens = line0Tokens.filter(t => t.type === 'namespace');
+      
+      // Should have at least 3 string tokens (opening quote, content parts, closing quote)
+      expect(stringTokens.length).toBeGreaterThanOrEqual(3);
+      // Should have 1 variable token for @{my_theme}
+      expect(variableTokens.length).toBeGreaterThanOrEqual(1);
+      // Should have 1 namespace token for @import
+      expect(namespaceTokens.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('creates separate diagnostics for each interpolation in a string', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@import "import/import-@{in}@{terpolation}.less";');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const varDiags = diagnostics.filter(d => d.code === 'var/undefined');
+      
+      // Should have 2 separate diagnostics, one for @{in} and one for @{terpolation}
+      expect(varDiags.length).toBeGreaterThanOrEqual(2);
+      
+      // Each diagnostic should have a different range
+      const ranges = varDiags.map(d => d.range);
+      expect(ranges.length).toBeGreaterThanOrEqual(2);
+      
+      // Verify the ranges are different (they should point to different interpolations)
+      if (ranges.length >= 2) {
+        expect(ranges[0]!.start.character).not.toBe(ranges[1]!.start.character);
+      }
+    });
+  });
+
   describe('document symbols', () => {
     it('returns symbols for at-rules, rulesets, and vars', () => {
       const engine = createEngine();

@@ -15,9 +15,10 @@
 export { abs, ceil, floor, round, max, min } from '../../shared/index.js';
 export { default as unitless } from '../unitless.js';
 export { default as compatible } from '../compatible.js';
+export { default as percentage } from '../percentage.js';
+export { default as unit } from '../unit.js';
+export { default as random } from '../random.js';
 // TODO: Implement remaining math module functions
-// - math.percentage()
-// - math.unit()
 // - math.sqrt()
 // - math.pow()
 // - math.log()

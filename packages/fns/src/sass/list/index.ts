@@ -11,14 +11,14 @@
  * ```
  */
 
-// TODO: Implement all list module functions
-// - list.length()
-// - list.nth()
-// - list.set-nth()
-// - list.join()
-// - list.append()
-// - list.zip()
-// - list.index()
-// - list.is-bracketed()
-// - list.separator()
+export { default as length } from './length.js';
+export { default as nth } from './nth.js';
+export { default as index } from './list-index.js';
+export { default as isBracketed } from './is-bracketed.js';
+export { default as separator } from './separator.js';
+export { default as setNth } from './set-nth.js';
+export { default as join } from './join.js';
+export { default as append } from './append.js';
+export { default as zip } from './zip.js';
+// TODO: Implement remaining list module functions
 // - list.slash()

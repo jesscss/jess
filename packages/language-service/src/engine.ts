@@ -1507,6 +1507,20 @@ export function createEngine(): JessLanguageServiceEngine {
               nameStr = nameStr.slice(0, parenIdx);
             }
             if (nameStr) refsMixin.push({ name: nameStr, node });
+          } else if (n.type === 'Interpolated') {
+            // Interpolated nodes contain replacement nodes in value.replacements
+            // These replacement nodes should be collected as separate variable references
+            // so each interpolation gets its own diagnostic span
+            const replacements = n.value?.replacements;
+            if (Array.isArray(replacements)) {
+              for (const replacementNode of replacements) {
+                if (isNode(replacementNode)) {
+                  // Push replacement node to stack so it gets processed
+                  // This will allow Reference nodes inside replacements to be collected
+                  stack.push(replacementNode as Node);
+                }
+              }
+            }
           }
 
           const value = (node as any).value;
@@ -1539,6 +1553,43 @@ export function createEngine(): JessLanguageServiceEngine {
             const nameNode = n.value.name;
             if (isNode(nameNode)) {
               return getSpan(nameNode as Node);
+            }
+          }
+          
+          // For Reference nodes inside interpolations, we need to find the @{...} boundaries
+          // The Reference node span might only cover the variable name, not the @{ and }
+          if (n.type === 'Reference' && n.options?.type === 'variable') {
+            const refSpan = getSpan(n as Node);
+            if (refSpan) {
+              // Look backwards from reference start to find @{
+              const refStartPos = doc.positionAt(refSpan.start);
+              const refEndPos = doc.positionAt(refSpan.end);
+              
+              // Look backwards from reference start to find @{
+              let atBraceStart = refSpan.start;
+              if (refStartPos.character >= 2) {
+                const lookBackStart = Math.max(0, refStartPos.character - 2);
+                const textBefore = doc.getText(Range.create(
+                  Position.create(refStartPos.line, lookBackStart),
+                  refStartPos
+                ));
+                if (textBefore.endsWith('@{')) {
+                  atBraceStart = doc.offsetAt(Position.create(refStartPos.line, lookBackStart));
+                }
+              }
+              
+              // Look forwards from reference end to find }
+              let braceEnd = refSpan.end;
+              const textAfter = doc.getText(Range.create(
+                refEndPos,
+                Position.create(refEndPos.line, refEndPos.character + 1)
+              ));
+              if (textAfter.startsWith('}')) {
+                braceEnd = doc.offsetAt(Position.create(refEndPos.line, refEndPos.character + 1));
+              }
+              
+              // Return the full interpolation span including @{ and }
+              return { start: atBraceStart, end: braceEnd };
             }
           }
           
@@ -1885,6 +1936,7 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       // 2) @import/@use links (tolerant extraction + real resolution).
+      // Skip links for imports with interpolations (they're not static file links)
       const fromFilePath = (() => {
         try {
           return doc.uri.startsWith('file:') ? fileURLToPath(doc.uri) : null;
@@ -1896,6 +1948,17 @@ export function createEngine(): JessLanguageServiceEngine {
         const raw = imp.specifier;
         const start = imp.specifierRange.startOffset;
         const end = imp.specifierRange.endOffset;
+        
+        // Check if this import specifier contains interpolations
+        // Look for @{...} pattern in the specifier text
+        const specifierText = text.substring(start, end);
+        const hasInterpolation = /@\{[^}]+\}/.test(specifierText);
+        
+        // Skip creating links for interpolated imports
+        if (hasInterpolation) {
+          continue;
+        }
+        
         if (fromFilePath) {
           const resolved = resolveImport(
             { exists: (p: string) => fs.existsSync(p) },
@@ -1974,13 +2037,30 @@ export function createEngine(): JessLanguageServiceEngine {
         // String tokens are identified by tokenTypeFromChevrotain and should never be overridden
         const isStringToken = type === 'string';
         
+        // Check if this is a string token that will be split for interpolations
+        // If so, we'll handle it specially and skip variable detection
+        let willBeSplitForInterpolation = false;
+        if (isStringToken && index) {
+          const tokenOffset = doc.offsetAt(Position.create((tok.startLine ?? 1) - 1, (tok.startColumn ?? 1) - 1));
+          const node = index.findNodeAtOffset(tokenOffset);
+          let current: any = node;
+          while (current) {
+            if (current.type === 'Quoted' && current.value && current.value.type === 'Interpolated') {
+              willBeSplitForInterpolation = true;
+              break;
+            }
+            current = (current as any).parent;
+          }
+        }
+        
         // Override classification using AST for:
         // 1. Function calls (Call nodes) - ensure they're classified as 'function'
         // 2. Variable references (Reference nodes) - ensure they're classified as 'variable'
         // This ensures accurate semantic token coloring based on actual AST structure
         // BUT: Never override string tokens - they should always remain strings
         // Interpolations within strings (like @{variable}) should be separate tokens, not override the string
-        if (index && !isStringToken) {
+        // Also skip if this string will be split for interpolation (handled separately)
+        if (index && !isStringToken && !willBeSplitForInterpolation) {
           const tokStartLine = (tok.startLine ?? 1) - 1;
           const tokStartChar = (tok.startColumn ?? 1) - 1;
           const tokEndChar = (tok.endColumn ?? tokStartChar);
@@ -2218,113 +2298,184 @@ export function createEngine(): JessLanguageServiceEngine {
         // Uses AST node information (Interpolated nodes with %% placeholders) instead of regex
         // to handle complex expressions within interpolations correctly
         if (type === 'string' && index) {
-          const tokenOffset = doc.offsetAt(Position.create(line, startChar));
-          const node = index.findNodeAtOffset(tokenOffset);
+          // Check multiple offsets within the token to find the Quoted node
+          const tokenStartOffset = doc.offsetAt(Position.create(line, startChar));
+          const tokenMidOffset = doc.offsetAt(Position.create(line, startChar + Math.floor(length / 2)));
+          const tokenEndOffset = doc.offsetAt(Position.create(line, startChar + length - 1));
+          
+          const checkOffsets = [tokenStartOffset, tokenMidOffset, tokenEndOffset];
           
           // Check if this token corresponds to a Quoted node with an Interpolated value
           let quotedNode: any = null;
           let interpolatedNode: any = null;
           
-          // Walk up the parent chain to find a Quoted node
-          let current: any = node;
-          while (current) {
-            if (current.type === 'Quoted') {
-              quotedNode = current;
-              // Check if the value is an Interpolated node
-              if (current.value && current.value.type === 'Interpolated') {
-                interpolatedNode = current.value;
+          // Try multiple offsets to find the Quoted node
+          for (const offset of checkOffsets) {
+            const node = index.findNodeAtOffset(offset);
+            if (!node) continue;
+            
+            // Walk up the parent chain to find a Quoted node
+            let current: any = node;
+            while (current) {
+              if (current.type === 'Quoted') {
+                quotedNode = current;
+                // Check if the value is an Interpolated node
+                if (current.value && current.value.type === 'Interpolated') {
+                  interpolatedNode = current.value;
+                }
+                break;
               }
-              break;
+              current = (current as any).parent;
             }
-            current = (current as any).parent;
+            
+            if (quotedNode && interpolatedNode) break;
           }
           
           // If we found an Interpolated node, split the token using AST information
+          // The source string contains %% placeholders that mark where interpolations occur
           if (interpolatedNode && interpolatedNode.value && interpolatedNode.value.source && Array.isArray(interpolatedNode.value.replacements)) {
             const source = interpolatedNode.value.source; // String with %% placeholders
             const replacements = interpolatedNode.value.replacements; // Array of Node[]
-            const quoteNodeSpan = getSpan(quotedNode);
+            const quotedSpan = getSpan(quotedNode);
             
-            if (quoteNodeSpan && source.includes('%%')) {
-              // Split source by %% placeholders
-              const parts = source.split('%%');
-              let currentSourcePos = 0;
-              let replacementIndex = 0;
+            if (quotedSpan && source.includes('%%')) {
+              const quotedContentStart = quotedSpan.start + 1; // +1 for opening quote
+              const quotedContentEnd = quotedSpan.end - 1; // -1 for closing quote
               
-              // Get the start position of the quoted content (after the opening quote)
-              const quoteChar = (quotedNode.options?.quote ?? '"');
-              const quotedStartOffset = quoteNodeSpan.start + 1; // +1 for opening quote
-              const quotedStartPos = doc.positionAt(quotedStartOffset);
+              // Get spans for all replacement nodes (interpolations) - these are in order
+              const replacementSpans: Array<{ start: number; end: number; node: any }> = [];
+              for (const replacementNode of replacements) {
+                const span = getSpan(replacementNode);
+                if (span) {
+                  replacementSpans.push({ start: span.start, end: span.end, node: replacementNode });
+                }
+              }
               
-              for (let i = 0; i < parts.length; i++) {
-                const stringPart = parts[i]!;
+              // Sort by start position to ensure correct order
+              replacementSpans.sort((a, b) => a.start - b.start);
+              
+              // Emit the opening quote as a string token
+              const quotedStartPos = doc.positionAt(quotedSpan.start);
+              if (quotedStartPos.line === line) {
+                pending.push({
+                  line,
+                  char: quotedStartPos.character,
+                  length: 1,
+                  typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('string'),
+                  modifiers: 0
+                });
+              }
+              
+              // Process string parts and interpolations
+              // String parts are the gaps between interpolations (and before first, after last)
+              let currentPos = quotedContentStart;
+              
+              for (let i = 0; i < replacementSpans.length; i++) {
+                const replacementSpan = replacementSpans[i]!;
                 
-                // Emit string part
-                if (stringPart.length > 0) {
-                  // Calculate position relative to the token start
-                  // The source string doesn't include quotes, so we need to map it to the token
-                  const stringPartStartInSource = currentSourcePos;
-                  const stringPartEndInSource = currentSourcePos + stringPart.length;
+                // Find @{ before and } after the replacement node to get full interpolation boundaries
+                const interpStartPos = doc.positionAt(replacementSpan.start);
+                const interpEndPos = doc.positionAt(replacementSpan.end);
+                
+                // Look backwards from replacement start to find @{
+                let atBraceStart = replacementSpan.start;
+                if (interpStartPos.character >= 2) {
+                  const lookBackStart = Math.max(0, interpStartPos.character - 2);
+                  const textBefore = doc.getText(Range.create(
+                    Position.create(interpStartPos.line, lookBackStart),
+                    interpStartPos
+                  ));
+                  if (textBefore.endsWith('@{')) {
+                    atBraceStart = doc.offsetAt(Position.create(interpStartPos.line, lookBackStart));
+                  }
+                }
+                
+                // Look forwards from replacement end to find }
+                let braceEnd = replacementSpan.end;
+                const textAfter = doc.getText(Range.create(
+                  interpEndPos,
+                  Position.create(interpEndPos.line, interpEndPos.character + 1)
+                ));
+                if (textAfter.startsWith('}')) {
+                  braceEnd = doc.offsetAt(Position.create(interpEndPos.line, interpEndPos.character + 1));
+                }
+                
+                // Emit string part before this interpolation
+                if (atBraceStart > currentPos) {
+                  const stringPartStartPos = doc.positionAt(currentPos);
+                  const stringPartEndPos = doc.positionAt(atBraceStart);
                   
-                  // Map source positions to token positions
-                  // The token image includes quotes, so we need to find where the source starts in the token
-                  const tokenImage = String(tok.image ?? '');
-                  const sourceInToken = tokenImage.slice(1, -1); // Remove quotes
-                  
-                  // Find where this part of the source appears in the token
-                  const sourceStartInToken = sourceInToken.indexOf(stringPart, currentSourcePos - currentSourcePos);
-                  if (sourceStartInToken >= 0) {
-                    const stringPartStartChar = startChar + 1 + sourceStartInToken; // +1 for opening quote
+                  if (stringPartStartPos.line === line && stringPartEndPos.line === line) {
                     pending.push({
                       line,
-                      char: stringPartStartChar,
-                      length: stringPart.length,
+                      char: stringPartStartPos.character,
+                      length: stringPartEndPos.character - stringPartStartPos.character,
                       typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('string'),
                       modifiers: 0
                     });
                   }
-                  
-                  currentSourcePos += stringPart.length;
                 }
                 
-                // Emit replacement node (interpolation) if there is one
-                if (i < parts.length - 1 && replacementIndex < replacements.length) {
-                  const replacementNode = replacements[replacementIndex]!;
-                  const replacementSpan = getSpan(replacementNode);
+                // Emit interpolation
+                const fullInterpStartPos = doc.positionAt(atBraceStart);
+                const fullInterpEndPos = doc.positionAt(braceEnd);
+                
+                if (fullInterpStartPos.line === line && fullInterpEndPos.line === line) {
+                  // Determine semantic token type based on the replacement node
+                  let replacementType: SemanticTokenType = 'variable';
+                  const replacementNode = replacementSpan.node;
                   
-                  if (replacementSpan) {
-                    const replacementStartPos = doc.positionAt(replacementSpan.start);
-                    const replacementEndPos = doc.positionAt(replacementSpan.end);
-                    
-                    // Only emit if the replacement is on the same line as the token
-                    if (replacementStartPos.line === line) {
-                      // Determine semantic token type based on the replacement node
-                      let replacementType: SemanticTokenType = 'variable';
-                      if (replacementNode.type === 'Reference' && replacementNode.options?.type === 'variable') {
-                        replacementType = 'variable';
-                      } else if (replacementNode.type === 'Call') {
-                        replacementType = 'function';
-                      } else if (replacementNode.type === 'Operation') {
-                        replacementType = 'number'; // Operations often produce numbers
-                      } else if (replacementNode.type === 'Any') {
-                        // Could be various types, default to property
-                        replacementType = 'property';
-                      }
-                      
-                      pending.push({
-                        line,
-                        char: replacementStartPos.character,
-                        length: replacementEndPos.character - replacementStartPos.character,
-                        typeIdx: SEMANTIC_TOKEN_TYPES.indexOf(replacementType),
-                        modifiers: 0
-                      });
-                    }
+                  if (replacementNode.type === 'Reference' && replacementNode.options?.type === 'variable') {
+                    replacementType = 'variable';
+                  } else if (replacementNode.type === 'Call') {
+                    replacementType = 'function';
+                  } else if (replacementNode.type === 'Operation') {
+                    replacementType = 'number';
+                  } else if (replacementNode.type === 'Any') {
+                    replacementType = 'property';
+                  } else if (replacementNode.type === 'Dimension' || replacementNode.type === 'Number') {
+                    replacementType = 'number';
                   }
                   
-                  replacementIndex++;
-                  // The %% placeholder is 2 chars, so advance past it
-                  currentSourcePos += 2;
+                  pending.push({
+                    line,
+                    char: fullInterpStartPos.character,
+                    length: fullInterpEndPos.character - fullInterpStartPos.character,
+                    typeIdx: SEMANTIC_TOKEN_TYPES.indexOf(replacementType),
+                    modifiers: 0
+                  });
                 }
+                
+                // Advance past the interpolation
+                currentPos = braceEnd;
+              }
+              
+              // Emit remaining string part after last interpolation (includes closing quote position)
+              if (currentPos <= quotedContentEnd) {
+                const stringPartStartPos = doc.positionAt(currentPos);
+                const stringPartEndPos = doc.positionAt(quotedContentEnd + 1); // Up to but not including closing quote
+                
+                if (stringPartStartPos.line === line && stringPartEndPos.line === line) {
+                  pending.push({
+                    line,
+                    char: stringPartStartPos.character,
+                    length: stringPartEndPos.character - stringPartStartPos.character,
+                    typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('string'),
+                    modifiers: 0
+                  });
+                }
+              }
+              
+              // Emit the closing quote as a string token
+              const quotedEndPos = doc.positionAt(quotedSpan.end);
+              if (quotedEndPos.line === line) {
+                pending.push({
+                  line,
+                  char: quotedEndPos.character - 1,
+                  length: 1,
+                  typeIdx: SEMANTIC_TOKEN_TYPES.indexOf('string'),
+                  modifiers: 0
+                });
               }
               
               // Skip normal processing for this token since we've split it

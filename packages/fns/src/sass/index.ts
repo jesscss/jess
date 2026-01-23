@@ -15,11 +15,11 @@
 export { abs, ceil, floor, round, max, min } from '../shared/index.js';
 export { default as unitless } from './unitless.js';
 export { default as compatible } from './compatible.js';
+export { default as percentage } from './percentage.js';
+export { default as unit } from './unit.js';
+export { default as random } from './random.js';
 // TODO: Implement remaining global math functions
-// - percentage()
-// - unit()
 // - comparable() (alias for math.compatible) - use compatible
-// - random()
 
 // Global Color Functions (Deprecated - use color.* module instead)
 export { red, green, blue, alpha } from '../shared/index.js';
@@ -61,33 +61,31 @@ export { default as unquote } from './unquote.js';
 export { default as quote } from './quote.js';
 export { default as toUpperCase } from './to-upper-case.js';
 export { default as toLowerCase } from './to-lower-case.js';
+export { default as uniqueId } from './unique-id.js';
+export { default as strInsert } from './str-insert.js';
+export { default as strIndex } from './str-index.js';
+export { default as strSlice } from './str-slice.js';
 // TODO: Implement remaining global string functions
-// - unique-id()
 // - str-length() (use string.length instead)
-// - str-insert()
-// - str-index()
-// - str-slice()
 
 // Global List Functions (Deprecated - use list.* module instead)
-// TODO: Implement global list functions
-// - length()
-// - nth()
-// - set-nth()
-// - join()
-// - append()
-// - zip()
-// - index()
-// - is-bracketed()
-// - list-separator()
+export { default as length } from './list/length.js';
+export { default as nth } from './list/nth.js';
+export { default as index } from './list/list-index.js';
+export { default as isBracketed } from './list/is-bracketed.js';
+export { default as listSeparator } from './list/separator.js';
+export { default as setNth } from './list/set-nth.js';
+export { default as join } from './list/join.js';
+export { default as append } from './list/append.js';
+export { default as zip } from './list/zip.js';
 
 // Global Map Functions (Deprecated - use map.* module instead)
-// TODO: Implement global map functions
-// - map-get()
-// - map-merge()
-// - map-remove()
-// - map-keys()
-// - map-values()
-// - map-has-key()
+export { default as mapGet } from './map/get.js';
+export { default as mapMerge } from './map/merge.js';
+export { default as mapRemove } from './map/remove.js';
+export { default as mapKeys } from './map/keys.js';
+export { default as mapValues } from './map/values.js';
+export { default as mapHasKey } from './map/has-key.js';
 
 // Note: Module-specific functions are exported from their respective module files:
 // - import * as color from '@jesscss/fns/sass/color';

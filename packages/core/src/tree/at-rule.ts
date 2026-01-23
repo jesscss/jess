@@ -122,6 +122,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Depth-first: preEval child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     if (rules && !rules.preEvaluated) {
+      // For nestable at-rules (like @media), push extend root during preEval
+      // so extends registered inside have the correct extend root
+      let pushedExtendRootForPreEval = false;
+      if (node.isNestable()) {
+        context.extendRoots.pushExtendRoot(rules);
+        pushedExtendRootForPreEval = true;
+      }
       // #region agent log
       const filePath = context.treeContext?.file?.fullPath ?? '';
       if (typeof filePath === 'string' && filePath.includes('extend-media')) {
@@ -134,7 +141,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           message: 'atrule-preEval-calling-childRules-preEval',
           data: {
             name: nameV,
-            extendsCountBefore: context.extends.length
+            extendsCountBefore: context.extends.length,
+            pushedExtendRoot: pushedExtendRootForPreEval
           },
           timestamp: Date.now()
         });
@@ -143,6 +151,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       const preEvaldRules = rules.preEval(context);
       if (isThenable(preEvaldRules)) {
         return (preEvaldRules as Promise<Rules>).then((evaldRules) => {
+          // Pop extend root after preEval completes
+          if (pushedExtendRootForPreEval) {
+            context.extendRoots.popExtendRoot();
+          }
           // #region agent log
           if (typeof filePath === 'string' && filePath.includes('extend-media')) {
             const nameV = node.value.name?.value ?? '';
@@ -163,6 +175,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           node.value.rules = evaldRules;
           return node;
         });
+      }
+      // Pop extend root after preEval completes
+      if (pushedExtendRootForPreEval) {
+        context.extendRoots.popExtendRoot();
       }
       // #region agent log
       if (typeof filePath === 'string' && filePath.includes('extend-media')) {
