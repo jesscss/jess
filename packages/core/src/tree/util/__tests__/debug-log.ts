@@ -20,13 +20,17 @@ function findMonorepoRoot(start: string): string {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = findMonorepoRoot(__dirname);
-const LOG_DIR = join(ROOT, '.cursor');
+const LOG_DIR = process.env.DEBUG_LOG_DIR || join(ROOT, '.cursor');
 const LOG_PATH = process.env.DEBUG_LOG_PATH || join(LOG_DIR, 'debug.log');
 
 // Ensure directory exists
 try {
   mkdirSync(LOG_DIR, { recursive: true });
 } catch {}
+
+export function getDebugLogPath(): string {
+  return LOG_PATH;
+}
 
 export const syncLog = (data: object) => {
   try {

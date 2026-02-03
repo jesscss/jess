@@ -18,6 +18,8 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { processLeadingIs } from './util/process-leading-is.js';
+import { syncLog } from './util/__tests__/debug-log.js';
+import { shouldTraceExtend, getExtendTraceRunId } from './util/extend-trace-debug.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -165,6 +167,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           const extendRoot = context.extendRoots.getCurrentExtendRoot();
           if (extendRoot) {
             extendRoot.getRegistry('ruleset').add(node as Ruleset);
+            if (Boolean(context.opts?.collapseNesting)) {
+              const selVal = typeof (node as Ruleset).value?.selector?.valueOf === 'function' ? (node as Ruleset).value!.selector!.valueOf() : '';
+              const isRelevant = selVal === '.ma' || selVal === '.md' || selVal === '';
+              if (isRelevant) {
+                const valueLen = extendRoot.value?.length ?? 0;
+                const first = extendRoot.value?.[0];
+                const firstType = first != null && typeof (first as { type?: string }).type === 'string' ? (first as { type: string }).type : undefined;
+                const firstRules = first != null && (first as { value?: { rules?: unknown } }).value?.rules;
+                const firstValueRulesType = firstRules != null && typeof (firstRules as { type?: string }).type === 'string' ? (firstRules as { type: string }).type : undefined;
+                const firstValueRulesLen = firstRules != null && Array.isArray((firstRules as { value?: unknown[] }).value) ? (firstRules as { value: unknown[] }).value.length : undefined;
+                syncLog({
+                  trace: 'ruleset_register',
+                  runId: getExtendTraceRunId(context),
+                  collapseNesting: Boolean(context.opts?.collapseNesting),
+                  selector: selVal,
+                  extendRoot: { valueLen, firstType, firstValueRulesType, firstValueRulesLen }
+                });
+              }
+            }
           }
           // Depth-first: preEval child rules immediately so all nested rulesets/extends
           // are registered in source order before we process extends.

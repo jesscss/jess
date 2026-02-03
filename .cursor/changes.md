@@ -4,6 +4,33 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Feb-03
+
+### Extend trace: parsed vs constructed (extend-chaining)
+
+- **Goal**: Determine why extend-chaining was said to be "only fixed for constructed AST" — log AST, registries, extend roots, search, options.
+- **Changes**:
+  - `extend-trace-debug.ts`: `shouldTraceExtend()` now true when `runId === 'constructed'` or path includes `extend-chaining`; added `isConstructedRun()`.
+  - `debug-log.ts`: `getDebugLogPath()`, support `DEBUG_LOG_DIR`; log path is monorepo-root `.cursor/debug.log` or `DEBUG_LOG_PATH`.
+  - `extend-roots.ts`: At start of `processExtends()` log `processExtends_enter` with `runId`, `collapseNesting`, `allRootsCount`, `rootSummaries` (per-root: `serializeTypes` head, `registryIndexSize`, `registryPendingSize`, `registryKeys`), `extendsCount`, `extendsSummary`.
+- **Findings from trace** (parsed extend-chaining.less, with core built):
+  - **collapseNesting:true**: `.ma:extend(.md)` runs with extendRoot = inner `Rules` (valueLen:1, firstType:Rules). rootsToSearch includes the wrapper (valueLen:3, firstType:Ruleset); search finds `.md` there (foundCount:1); filter keeps it (sameOrDescendantRootCount:1); tryExtend succeeds (changed:true). So the parsed case **does** find and apply the extend.
+  - **Registries**: At processExtends_enter, doc root has `registryIndexSize:0`, `registryPendingSize:30`; @media roots have pending 2 or 1. Index is filled on first `.find()` (lazy).
+  - **all-less.test.ts** (including extend-chaining.less CSS assertion): **31 passed**.
+  - **Failing test**: `extend-chaining-ast-compare.test.ts` — "serializes AST from Jess parsing extend-chaining.less (post-eval)" snapshot mismatch: selector list order differs (e.g. `.d`/`.e` and `.x`/`.z` order). So the remaining failure is **selector order in serialized AST**, not the extend merge itself.
+
+### Debugging orchestration (rules, commands, skills, subagents)
+
+- **Goal**: Make Cursor/LLMs more effective at debugging and preserve context across sessions (extend bugs have been stuck for weeks).
+- **Plan doc**: `.cursor/DEBUGGING_ORCHESTRATION.md` — problem statement, research (Cursor docs, LLM debugging best practices), and full implementation plan.
+- **Project memory**: `.cursor/PROJECT_STATE.md` — package dependency graph, build order, key test commands, current extend baseline section (update as debugging progresses). Read at start of debugging; update after progress or at end of session.
+- **New rule**: `.cursor/rules/debugging-state.mdc` — read/update state files; short sessions; log what was tried; use `/debug-extend`, `/run-extend-baseline`, `/update-debug-state`.
+- **Commands**: `.cursor/commands/` — `start-debugging.md`, `run-baseline.md`, `update-debug-state.md` (generic for any area).
+- **Skill**: `.cursor/skills/systematic-debugging/SKILL.md` — observe → hypothesize → trace → verify → fix → update state; anti-patterns.
+- **Subagent**: `.cursor/agents/debug-verifier.md` — run extend baseline and return short pass/fail report.
+- **Usage**: Start with `/start-debugging` (optionally specify area, e.g. "for extend"); use `/run-baseline` for a clean report; use `/update-debug-state` before ending session. Next session: "Read .cursor/PROJECT_STATE.md and continue."
+- **Generalization**: Commands and state are generic for any debugging area (extend, mixins, parser, etc.). Removed `/debug-extend` and `/run-extend-baseline`; replaced with `/start-debugging` and `/run-baseline`. PROJECT_STATE section 4 is "Current debugging focus" with area, plan file, last tried, next step. Extend is one example; other areas can add plan files as needed.
+
 ## 2026-Feb-01
 
 ### extend-roots.test.ts baseline (pre-existing vs regressions)

@@ -15,6 +15,19 @@ import type { Extend } from '../extend.js';
 import { tryExtendSelector, findChainedExtends, createProcessedSelector, setExtendOrderMap } from './extend.js';
 import { processLeadingIs } from './process-leading-is.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
+import { syncLog } from './__tests__/debug-log.js';
+import { serializeTypes } from './serialize-types.js';
+import { shouldTraceExtend, shouldTraceExtendMd, getExtendTraceRunId } from './extend-trace-debug.js';
+
+function rulesStructureSummary(r: Rules): Record<string, unknown> {
+  const len = r.value?.length ?? 0;
+  const first = r.value?.[0];
+  const firstType = first != null && typeof (first as Node).type === 'string' ? (first as Node).type : undefined;
+  const firstRules = first != null && (first as Ruleset).value?.rules;
+  const firstValueRulesType = firstRules != null && typeof (firstRules as Node).type === 'string' ? (firstRules as Node).type : undefined;
+  const firstValueRulesLen = firstRules != null && Array.isArray((firstRules as Rules).value) ? (firstRules as Rules).value.length : undefined;
+  return { valueLen: len, firstType, firstValueRulesType, firstValueRulesLen };
+}
 
 function maybeHoistMixedNestingSelectorList(
   ruleset: Ruleset,
@@ -179,7 +192,9 @@ function maybeHoistMixedNestingSelectorList(
           const complexThatMatch: ComplexSelector[] = [];
           for (const cs of complexItems) {
             const last = cs.value[cs.value.length - 1];
-            if (!isNode(last as any, 'BasicSelector')) continue;
+            if (!isNode(last as any, 'BasicSelector')) {
+              continue;
+            }
             const v = (last as any).valueOf();
             lastBasics.push({ node: last as any, v });
             // Only consider if it starts with one of the parent alternatives.
@@ -242,7 +257,9 @@ function maybeHoistMixedNestingSelectorList(
 
       let changed = false;
       const normalized = items.map((s) => {
-        if (!isNode(s, 'ComplexSelector')) return s;
+        if (!isNode(s, 'ComplexSelector')) {
+          return s;
+        }
         const cs = s as ComplexSelector;
         const a = cs.value[0];
         const b = cs.value[1];
@@ -394,16 +411,12 @@ function maybeHoistMixedNestingSelectorList(
  * Data architecture (mirrors ruleset frames):
  * - Tree: each extend root has a parent (except document root) and children.
  *   parentRoot: Rules -> parent Rules, childrenRoots: Rules -> Set<Rules>.
- * - Visible roots: for a given extend root, the set of roots that are VISIBLE to it —
- *   i.e. where we can look up rulesets for extend targets. Same idea as context.frames
- *   for rulesets: ancestors + self + descendants (stop at protected boundaries).
- *   So when we're inside @media, document root IS visible; when at root, @media blocks
- *   (children) are visible.
- * - Mergeable roots: we may only MERGE (add selector) into rulesets whose root is
- *   extendRoot or a descendant (isSameOrDescendantRoot). We must NOT merge into
- *   ancestor roots. When target is found in a visible-but-ancestor root, we should
- *   copy that target's declarations into the extending ruleset in extendRoot (Less
- *   behavior); that step is not yet implemented.
+ * - Accessible roots: for a given extend root, the set of roots where we look up
+ *   extend targets = the extend root itself + its descendants only (self + descendants).
+ *   No ancestor targeting. So document root can see itself and all @media/child roots;
+ *   a @media body root can see only itself and nested at-rules inside it.
+ * - Merge: we only merge (add selector) into rulesets whose root is extendRoot or
+ *   a descendant (isSameOrDescendantRoot).
  */
 export class ExtendRootRegistry {
   // Map Rules -> parent Rules (tree)
@@ -530,20 +543,17 @@ export class ExtendRootRegistry {
    *
    * Visible roots = where we can look up rulesets for extend targets:
    * - Self (the current root)
-   * - Ancestor roots (parent, grandparent, ... up to document root; stop at protected)
-   * - Children roots (recursively, if not protected)
+   * - Self (the root)
+   * - Descendant roots (children, recursively; stop at protected)
    * - Roots with same layer name (for @layer, if accessible)
    *
    * Excludes:
-   * - Roots behind protected boundaries (stop traversal at protected roots when going up or down)
+   * - Ancestor roots (we do not support extend targeting ancestors)
+   * - Roots behind protected boundaries (stop traversal at protected roots)
    * - Siblings (other children of ancestors, unless same layer)
    *
-   * Note: @import type uses parent's root, so extends inside @import
-   * can reach the parent. @compose type creates its own root and may be protected.
-   *
-   * Less compatibility: Extends INSIDE @media must see rules OUTSIDE (ancestor roots),
-   * and extends OUTSIDE must see rules INSIDE (child roots). So we include both
-   * ancestors (when not protected) and descendants.
+   * Note: @import type uses parent's root, so extends inside @import use that root's
+   * self + descendants. @compose type creates its own root and may be protected.
    */
   getAccessibleRoots(root: Rules): Set<Rules> {
     const accessible = new Set<Rules>();
@@ -584,6 +594,26 @@ export class ExtendRootRegistry {
         }
       }
 
+      // When collapseNesting wraps at-rule body in Ruleset(&), rulesets live in the inner Rules.
+      // Include that inner Rules so extends in the same at-rule (e.g. .ma:extend(.md) in @media) find same-root targets.
+      // When a root is a Rules with one child that is Rules (post-eval unwrapped), include that child so root extends find targets inside @media.
+      if (currentRoot.value?.length === 1) {
+        const first = currentRoot.value[0];
+        if (first && isNode(first, 'Ruleset') && first.value?.rules && isNode(first.value.rules, 'Rules')) {
+          const innerRules = first.value.rules as Rules;
+          if (!visited.has(innerRules)) {
+            accessible.add(innerRules);
+            traverseChildren(innerRules);
+          }
+        } else if (first && isNode(first, 'Rules')) {
+          const innerRules = first as Rules;
+          if (!visited.has(innerRules)) {
+            accessible.add(innerRules);
+            traverseChildren(innerRules);
+          }
+        }
+      }
+
       // Add roots with same layer name (if this root has a layer name)
       const layerName = this.layerName.get(currentRoot);
       if (layerName) {
@@ -603,27 +633,8 @@ export class ExtendRootRegistry {
       }
     };
 
-    // Traverse down from self to add self and descendants (extends OUTSIDE see rules INSIDE @media).
+    // Self + descendants only. No ancestor targeting.
     traverseChildren(root);
-
-    // Add ancestor chain (parent, grandparent, ... up to document root; stop at protected).
-    // Required so extends inside nested @media can find targets in outer @media or document
-    // (each root's registry only contains rulesets that registered to that root).
-    let current: Rules | undefined = this.parentRoot.get(root);
-    while (current) {
-      if (visited.has(current)) break;
-      visited.add(current);
-      if (this.isProtected.get(current)) break;
-      accessible.add(current);
-      current = this.parentRoot.get(current);
-    }
-
-    // If the registry has a document root and it wasn't reached by the parent chain (e.g. jess
-    // flow where root wasn't pushed before nested at-rules), include it so extends inside
-    // @media can still find root-level rulesets.
-    if (this.root && !accessible.has(this.root)) {
-      accessible.add(this.root);
-    }
 
     return accessible;
   }
@@ -633,28 +644,38 @@ export class ExtendRootRegistry {
    * Used to only merge extend into rulesets in the same or a child root (not ancestor).
    */
   isSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
-    if (rulesetRoot === extendRoot) return true;
+    if (rulesetRoot === extendRoot) {
+      return true;
+    }
     // Same-layer roots share extend scope (e.g. two @layer one { } blocks merge).
     const layerA = this.layerName.get(rulesetRoot);
     const layerB = this.layerName.get(extendRoot);
-    if (layerA && layerB && layerA === layerB) return true;
+    if (layerA && layerB && layerA === layerB) {
+      return true;
+    }
     const children = this.childrenRoots.get(extendRoot);
-    if (!children) return false;
+    if (!children) {
+      return false;
+    }
     for (const child of children) {
-      if (this.isSameOrDescendantRoot(rulesetRoot, child)) return true;
+      if (this.isSameOrDescendantRoot(rulesetRoot, child)) {
+        return true;
+      }
     }
     return false;
   }
 
   /**
    * True if possibleAncestor is an ancestor of root (walking parentRoot up from root).
-   * Used to detect when a target ruleset is in an ancestor root so we copy its declarations
-   * into the extending ruleset (Less behavior) instead of merging.
+   * Used only to reject merging into rulesets in an ancestor root (we do not support
+   * ancestor targeting or copying declarations from ancestor targets).
    */
   isAncestorRoot(possibleAncestor: Rules, root: Rules): boolean {
     let current: Rules | undefined = this.parentRoot.get(root);
     while (current) {
-      if (current === possibleAncestor) return true;
+      if (current === possibleAncestor) {
+        return true;
+      }
       current = this.parentRoot.get(current);
     }
     return false;
@@ -771,6 +792,58 @@ export class ExtendRootRegistry {
  */
 export function processExtends(context: Context): void {
   const allExtends = [...context.extends]; // All original extends
+  const trace = shouldTraceExtend(context);
+  const runId = getExtendTraceRunId(context);
+  if (trace) {
+    const opts = context.opts as { collapseNesting?: boolean; output?: { collapseNesting?: boolean } } | undefined;
+    const collapseNesting = Boolean(opts?.collapseNesting ?? opts?.output?.collapseNesting);
+    const allRootsForLog = context.extendRoots.getAlts();
+    const allRootsArrForLog = Array.isArray(allRootsForLog) ? allRootsForLog : [...allRootsForLog];
+    const rootSummaries: Array<{ summary: Record<string, unknown>; serializedHead: string; registryIndexSize: number; registryPendingSize: number; registryKeys: string[] }> = [];
+    for (const r of allRootsArrForLog) {
+      let serializedHead = '';
+      try {
+        serializedHead = serializeTypes(r, { maxStringLength: 80, indentSize: 1 }).slice(0, 500);
+      } catch {
+        serializedHead = '(serialize error)';
+      }
+      const reg = r.getRegistry('ruleset');
+      const indexSize = reg.index?.size ?? 0;
+      const pendingSize = (reg as { pendingItems?: Set<Ruleset> }).pendingItems?.size ?? 0;
+      const keys: string[] = [];
+      if (reg.index) {
+        for (const k of reg.index.keys()) {
+          keys.push(k);
+          if (keys.length >= 20) {
+            break;
+          }
+        }
+      }
+      rootSummaries.push({
+        summary: rulesStructureSummary(r),
+        serializedHead,
+        registryIndexSize: indexSize,
+        registryPendingSize: pendingSize,
+        registryKeys: keys
+      });
+    }
+    const extendsSummary = allExtends.map(([target, sel, partial, extRoot]) => ({
+      target: typeof target?.valueOf === 'function' ? target.valueOf() : '',
+      selectorWithExtend: typeof sel?.valueOf === 'function' ? sel.valueOf() : '',
+      partial,
+      extendRootSummary: rulesStructureSummary(extRoot)
+    }));
+    syncLog({
+      trace: 'processExtends_enter',
+      runId,
+      collapseNesting,
+      allRootsCount: allRootsArrForLog.length,
+      rootSummaries,
+      extendsCount: allExtends.length,
+      extendsSummary
+    });
+  }
+
   // NOTE: We must NOT globally de-dupe extends by (target, extendWith, partial).
   // The same extend relationship must be applied to *any* ruleset whose selector matches
   // the target, including selectors that become matchable only after previous extends.
@@ -786,7 +859,7 @@ export function processExtends(context: Context): void {
   }
   // Set the extend order map in extend.ts module for use during merging
   setExtendOrderMap(extendOrderMap);
-  
+
   // Track which extends have already transformed which rulesets: Map<rulesetId, Set<extendKey>>
   // Each extend can only transform a particular ruleset's selector once
   const transformedByExtend = new Map<Ruleset, Set<string>>();
@@ -797,7 +870,9 @@ export function processExtends(context: Context): void {
     let n: Node | undefined = ruleset;
     while (n) {
       const p: Node | undefined = n.parent;
-      if (p && isNode(p, 'Rules') && allRoots.has(p)) return p;
+      if (p && isNode(p, 'Rules') && allRoots.has(p)) {
+        return p;
+      }
       n = p;
     }
     return undefined;
@@ -913,7 +988,6 @@ export function processExtends(context: Context): void {
     extendNode: Node,
     depth: number = 0
   ): void => {
-
     const maxDepth = 100; // Prevent infinite loops
     if (depth >= maxDepth) {
       throw new Error(`Extend chaining exceeded maximum depth (${maxDepth}). Possible circular reference.`);
@@ -944,10 +1018,18 @@ export function processExtends(context: Context): void {
       ? (extendNamespace === '*' ? context.extendRoots.getAlts() : context.extendRoots.getByNamespace(extendNamespace))
       : context.extendRoots.getAccessibleRoots(extendRoot);
     // When collapseNesting wraps at-rule rules in Ruleset(&), rulesets register to the inner Rules.
-    // Ensure we search those inner Rules: add them from any registered root with wrapper structure,
-    // so extend finds targets (e.g. .ma inside @media for .mb:extend(.ma)) even if the wrapper
-    // is not in accessibleRoots due to registration order.
+    // Ensure we search those inner Rules so same-root extends (e.g. .ma:extend(.md) in @media) find targets.
     const rootsToSearch = new Set(accessibleRoots);
+    // Always add extendRoot's own inner Rules when it has wrapper structure (Ruleset(&) with .value.rules).
+    // Also when extendRoot is a Rules with one child that is Rules (post-eval unwrap), search that child.
+    if (extendRoot.value?.length === 1 && extendRoot.value[0] != null) {
+      const first = extendRoot.value[0];
+      if (isNode(first, 'Ruleset') && first.value?.rules && isNode(first.value.rules, 'Rules')) {
+        rootsToSearch.add(first.value.rules as Rules);
+      } else if (isNode(first, 'Rules')) {
+        rootsToSearch.add(first as Rules);
+      }
+    }
     for (const r of allRootsArr) {
       if (!accessibleRoots.has(r)) {
         continue;
@@ -972,112 +1054,256 @@ export function processExtends(context: Context): void {
         continue;
       }
 
+      const singleTargetStr = typeof singleTarget.valueOf === 'function' ? singleTarget.valueOf() : '';
+      const traceMd = shouldTraceExtendMd(context, singleTargetStr);
+
+      if (traceMd) {
+        let extendRootSerialized: string;
+        try {
+          extendRootSerialized = serializeTypes(extendRoot, { maxStringLength: 60, indentSize: 1 }).slice(0, 800);
+        } catch {
+          extendRootSerialized = '(serialize error)';
+        }
+        const opts = context.opts as { collapseNesting?: boolean; output?: { collapseNesting?: boolean } } | undefined;
+        syncLog({
+          trace: 'processExtend_start',
+          runId: getExtendTraceRunId(context),
+          collapseNesting: Boolean(opts?.collapseNesting ?? opts?.output?.collapseNesting),
+          target: singleTargetStr,
+          selectorWithExtend: typeof selectorWithExtend.valueOf === 'function' ? selectorWithExtend.valueOf() : '',
+          extendRootSummary: rulesStructureSummary(extendRoot),
+          extendRootSerialized,
+          rootsToSearchCount: accessibleRoots.size,
+          rootsToSearchSummaries: [...accessibleRoots].map(r => rulesStructureSummary(r))
+        });
+      }
+
       // Find rulesets matching this single target in accessible roots
       let rulesetSet: Ruleset[] | undefined;
 
       for (const searchRoot of accessibleRoots) {
         const searchKeySet = singleTarget.keySet;
         let found = searchRoot.find('ruleset', searchKeySet);
-        // When collapseNesting wraps at-rule rules in Ruleset(&), rulesets register to the inner
-        // Rules; always search that too so extend finds them (e.g. .ma inside @media for .mb:extend(.ma)).
+        // When collapseNesting wraps at-rule rules in Ruleset(&), rulesets can register to the
+        // parent root during preEval (before the wrapper is pushed). So the wrapper's and inner
+        // Rules' registries may not have them. Scan the inner Rules' value array as fallback so
+        // same-root extends (e.g. .ma:extend(.md) in @media) find targets.
         if (searchRoot.value?.length === 1) {
           const first = searchRoot.value[0];
           if (isNode(first, 'Ruleset') && first.value.rules && isNode(first.value.rules, 'Rules')) {
-            const innerFound = first.value.rules.find('ruleset', searchKeySet);
+            const innerRules = first.value.rules as Rules;
+            const innerFound = innerRules.find('ruleset', searchKeySet);
             if (innerFound) {
               found = found ? [...found, ...innerFound] : innerFound;
             }
+            // Fallback: with collapseNesting, inner rulesets can register to parent during preEval,
+            // so registries may be empty; scan value array for matching rulesets.
+            if (innerRules.value?.length) {
+              const keySet = searchKeySet instanceof Set ? searchKeySet : new Set(searchKeySet);
+              const targetValue = singleTarget.valueOf();
+              for (const node of innerRules.value) {
+                if (!isNode(node, 'Ruleset')) {
+                  continue;
+                }
+                const rs = node as Ruleset;
+                const sel = rs.selector;
+                if (!sel || isNode(sel, 'Nil')) {
+                  continue;
+                }
+                let matches = false;
+                if ('keySet' in sel) {
+                  let isSubset = true;
+                  for (const k of keySet) {
+                    if (!(sel as Selector).keySet.has(k as string)) {
+                      isSubset = false;
+                      break;
+                    }
+                  }
+                  matches = isSubset;
+                }
+                if (!matches && typeof sel.valueOf === 'function' && sel.valueOf() === targetValue) {
+                  matches = true;
+                }
+                if (matches) {
+                  const existing = found ?? [];
+                  if (!existing.includes(rs)) {
+                    found = existing.length ? [...existing, rs] : [rs];
+                  }
+                }
+              }
+            }
           }
+        }
+        if (traceMd) {
+          syncLog({
+            trace: 'search_root',
+            runId: getExtendTraceRunId(context),
+            searchRootSummary: rulesStructureSummary(searchRoot),
+            foundCount: found ? found.length : 0,
+            foundSelectors: found ? found.map(rs => typeof rs.selector?.valueOf === 'function' ? rs.selector.valueOf() : '') : []
+          });
         }
         if (found) {
           // Only merge into rulesets in extendRoot or in a descendant root of extendRoot.
           // Do NOT merge into rulesets in an ancestor root (e.g. .ma in @media extending .a at root
           // must not add .ma to the root .a ruleset; .tv-lowres in @media must not add to root).
           // Root .all:extend(.ext1) may add .all to .ext1 rulesets in root and in nested @media (descendants).
+          const filterRejectsTrace: { sel: string; reason: string }[] = [];
           const sameOrDescendantRoot = found.filter((rs: Ruleset) => {
+            // When extendRoot is a wrapper (Ruleset(&) with inner Rules), target in that inner Rules
+            // is same-root; allow merge so .ma:extend(.md) in @media finds .md. Check first so we
+            // don't reject due to effectiveRoot walking up to an unregistered clone.
+            if (
+              extendRoot.value?.length === 1
+              && extendRoot.value[0] != null
+              && isNode(extendRoot.value[0], 'Ruleset')
+            ) {
+              const innerRules = (extendRoot.value[0] as Ruleset).value?.rules;
+              if (innerRules != null && rs.parent === innerRules) {
+                return true;
+              }
+            }
+            // When extendRoot is a Rules with one child that is Rules (post-eval unwrapped body),
+            // target in that child is same-root.
+            if (
+              extendRoot.value?.length === 1
+              && extendRoot.value[0] != null
+              && isNode(extendRoot.value[0], 'Rules')
+              && rs.parent === extendRoot.value[0]
+            ) {
+              return true;
+            }
             const effectiveRoot = getEffectiveExtendRoot(rs);
-            if (!effectiveRoot) return true;
+            if (!effectiveRoot) {
+              return true;
+            }
             if (
               context.extendRoots.isAncestorRoot(effectiveRoot, extendRoot)
               && effectiveRoot !== extendRoot
             ) {
+              if (traceMd) {
+                filterRejectsTrace.push({
+                  sel: typeof rs.selector?.valueOf === 'function' ? rs.selector.valueOf() : '',
+                  reason: 'isAncestorRoot'
+                });
+              }
               return false;
             }
             // Same or descendant: merge into rulesets in extendRoot or its descendants.
-            if (context.extendRoots.isSameOrDescendantRoot(effectiveRoot, extendRoot)) return true;
+            if (context.extendRoots.isSameOrDescendantRoot(effectiveRoot, extendRoot)) {
+              return true;
+            }
+            // effectiveRoot is extendRoot's inner Rules (same object).
+            if (
+              extendRoot.value?.length === 1
+              && extendRoot.value[0] != null
+              && isNode(extendRoot.value[0], 'Ruleset')
+            ) {
+              const innerRules = (extendRoot.value[0] as Ruleset).value?.rules;
+              if (innerRules === effectiveRoot) {
+                return true;
+              }
+            }
             // When collapseNesting wraps at-rule body in a wrapper, rulesets can live in a clone that's
             // not in allRoots, so getEffectiveExtendRoot walks up to the wrapper. Allow merge only when
             // effectiveRoot is that wrapper (one child Ruleset with inner Rules), not any ancestor.
             const isAncestor = context.extendRoots.isAncestorRoot(effectiveRoot, extendRoot);
             const isDocRoot = effectiveRoot === context.root;
             const effIsWrapper =
-              effectiveRoot.value?.length === 1 &&
-              effectiveRoot.value[0] != null &&
-              isNode(effectiveRoot.value[0], 'Ruleset') &&
-              (effectiveRoot.value[0] as Ruleset).value?.rules != null &&
-              isNode((effectiveRoot.value[0] as Ruleset).value!.rules, 'Rules');
-            if (isAncestor && !isDocRoot && effIsWrapper) return true;
+              effectiveRoot.value?.length === 1
+              && effectiveRoot.value[0] != null
+              && isNode(effectiveRoot.value[0], 'Ruleset')
+              && (effectiveRoot.value[0] as Ruleset).value?.rules != null
+              && isNode((effectiveRoot.value[0] as Ruleset).value!.rules, 'Rules');
+            if (isAncestor && !isDocRoot && effIsWrapper) {
+              return true;
+            }
             const effectiveParent = context.extendRoots.getParentRoot(effectiveRoot);
             const extendParent = context.extendRoots.getParentRoot(extendRoot);
-            if (effectiveParent && extendParent && effectiveParent === extendParent) return true;
+            if (effectiveParent && extendParent && effectiveParent === extendParent) {
+              return true;
+            }
             // Same AST parent: two inner Rules (e.g. clone A vs clone B) under the same wrapper.
-            if (effectiveRoot.parent === extendRoot.parent) return true;
+            if (effectiveRoot.parent === extendRoot.parent) {
+              return true;
+            }
             // Same wrapper (grandparent): inner Rules may have different Ruleset parents after eval.
             const ep = effectiveRoot.parent;
             const xp = extendRoot.parent;
             if (
-              ep &&
-              xp &&
-              ep !== xp &&
-              isNode(ep, 'Ruleset') &&
-              isNode(xp, 'Ruleset') &&
-              ep.parent === xp.parent
+              ep
+              && xp
+              && ep !== xp
+              && isNode(ep, 'Ruleset')
+              && isNode(xp, 'Ruleset')
+              && ep.parent === xp.parent
             ) {
               return true;
             }
             // extendRoot is detached (preEval clone never attached after eval); target is in inner Rules under wrapper.
             const effectiveIsInner =
-              ep &&
-              isNode(ep, 'Ruleset') &&
-              ep.parent &&
-              isNode(ep.parent, 'Rules') &&
-              (ep.parent as Rules).value?.length === 1;
-            if (!extendRoot.parent && effectiveIsInner) return true;
+              ep
+              && isNode(ep, 'Ruleset')
+              && ep.parent
+              && isNode(ep.parent, 'Rules')
+              && (ep.parent as Rules).value?.length === 1;
+            if (!extendRoot.parent && effectiveIsInner) {
+              return true;
+            }
             // Target's root has no parent (detached inner Rules); allow. Exclude document root.
-            if (!effectiveRoot.parent && effectiveRoot !== context.root) return true;
+            if (!effectiveRoot.parent && effectiveRoot !== context.root) {
+              return true;
+            }
             // Target ruleset's direct parent (inner Rules) not in allRoots; getEffectiveExtendRoot walked to doc root.
             const targetInner = rs.parent;
             const targetWrapper =
-              targetInner?.parent?.parent &&
-              isNode(targetInner.parent, 'Ruleset') &&
-              isNode(targetInner.parent.parent, 'Rules')
+              targetInner?.parent?.parent
+              && isNode(targetInner.parent, 'Ruleset')
+              && isNode(targetInner.parent.parent, 'Rules')
                 ? (targetInner.parent.parent as Rules)
                 : undefined;
             const extendWrapper =
               xp?.parent && isNode(xp.parent, 'Rules') ? (xp.parent as Rules) : undefined;
             if (
-              targetWrapper &&
-              extendWrapper &&
-              targetWrapper === extendWrapper &&
-              targetInner &&
-              isNode(targetInner, 'Rules') &&
-              !allRoots.has(targetInner)
+              targetWrapper
+              && extendWrapper
+              && targetWrapper === extendWrapper
+              && targetInner
+              && isNode(targetInner, 'Rules')
+              && !allRoots.has(targetInner)
             ) {
               return true;
             }
             // effectiveRoot === context.root but target is nested; extendRoot is nested. Only when target's parent Rules is not in allRoots (collapseNesting inner clone).
             if (
-              effectiveRoot === context.root &&
-              rs.parent !== context.root &&
-              extendRoot.parent?.parent != null &&
-              rs.parent &&
-              isNode(rs.parent, 'Rules') &&
-              !allRoots.has(rs.parent)
+              effectiveRoot === context.root
+              && rs.parent !== context.root
+              && extendRoot.parent?.parent != null
+              && rs.parent
+              && isNode(rs.parent, 'Rules')
+              && !allRoots.has(rs.parent)
             ) {
               return true;
             }
+            if (traceMd) {
+              const effInAll = allRoots.has(effectiveRoot);
+              const extInAll = allRoots.has(extendRoot);
+              filterRejectsTrace.push({
+                sel: typeof rs.selector?.valueOf === 'function' ? rs.selector.valueOf() : '',
+                reason: `fallthrough effInAll=${effInAll} extInAll=${extInAll} effLen=${effectiveRoot.value?.length} extLen=${extendRoot.value?.length} rsParentLen=${(rs.parent as Rules)?.value?.length}`
+              });
+            }
             return false;
           });
+          if (traceMd) {
+            syncLog({
+              trace: 'filter_result',
+              runId: getExtendTraceRunId(context),
+              foundCount: found.length,
+              sameOrDescendantRootCount: sameOrDescendantRoot.length,
+              filterRejects: filterRejectsTrace
+            });
+          }
           if (sameOrDescendantRoot.length > 0) {
             if (rulesetSet) {
               rulesetSet.push(...sameOrDescendantRoot);
@@ -1086,6 +1312,13 @@ export function processExtends(context: Context): void {
             }
           }
         }
+      }
+      if (traceMd) {
+        syncLog({
+          trace: 'after_search',
+          runId: getExtendTraceRunId(context),
+          rulesetSetLength: rulesetSet?.length ?? 0
+        });
       }
       // Handle warnings for Less compatibility (only on first processing)
 
@@ -1136,6 +1369,14 @@ export function processExtends(context: Context): void {
       if (rulesetSet) {
         rulesetSet.forEach((ruleset) => {
           if (shouldSkipRuleset(ruleset, extendNode)) {
+            if (traceMd) {
+              syncLog({
+                trace: 'apply_skip',
+                runId: getExtendTraceRunId(context),
+                reason: 'shouldSkipRuleset',
+                rulesetSel: typeof ruleset.selector?.valueOf === 'function' ? ruleset.selector.valueOf() : ''
+              });
+            }
             return; // Skip this ruleset - it's the source of the extend
           }
 
@@ -1150,13 +1391,30 @@ export function processExtends(context: Context): void {
 
           // Skip if this extend has already transformed this ruleset
           if (transformsForRuleset.has(extendKey)) {
+            if (traceMd) {
+              syncLog({
+                trace: 'apply_skip',
+                runId: getExtendTraceRunId(context),
+                reason: 'alreadyTransformed',
+                rulesetSel: typeof ruleset.selector?.valueOf === 'function' ? ruleset.selector.valueOf() : ''
+              });
+            }
             return; // This extend already transformed this ruleset - skip
           }
 
           // Track object identity and structure to detect transformations
 
           let result = tryExtendSelector(originalSelector, singleTarget, selectorWithExtend, partial);
-
+          if (traceMd) {
+            syncLog({
+              trace: 'tryExtend',
+              runId: getExtendTraceRunId(context),
+              rulesetSel: typeof ruleset.selector?.valueOf === 'function' ? ruleset.selector.valueOf() : '',
+              hasResult: !!result,
+              error: result?.error ?? null,
+              changed: result && !result.error ? result.value.valueOf() !== originalSelector.valueOf() : null
+            });
+          }
 
           if (result && !result.error) {
             const extendedSelector = result.value;
@@ -1243,8 +1501,6 @@ export function processExtends(context: Context): void {
   while (rulesetsToCheck.size > 0 && iteration < maxIterations) {
     iteration++;
 
-
-
     const nextIteration = new Set<Ruleset>();
 
     // Initialize seen states for new rulesets
@@ -1255,7 +1511,6 @@ export function processExtends(context: Context): void {
     }
 
     for (const ruleset of rulesetsToCheck) {
-
       const currentSelector = ruleset.selector as Selector;
       const currentSelectorValue = currentSelector.valueOf();
       const seenStates = seenSelectorStates.get(ruleset)!;
@@ -1266,7 +1521,7 @@ export function processExtends(context: Context): void {
       let phase2TryExtendSelector = 0;
       let phase2SelectorChanged = 0;
 
-    // Check if we've seen this selector state before (infinite loop detection)
+      // Check if we've seen this selector state before (infinite loop detection)
       if (seenStates.has(currentSelectorValue)) {
         continue; // Infinite loop detected - skip this ruleset
       }
@@ -1319,7 +1574,9 @@ export function processExtends(context: Context): void {
           attemptedPhase2ExtendKeys.add(phase2ExtendKey);
           phase2ConsideredTargets++;
 
-          // Check if ruleset is accessible for this extend and in same/child root (not ancestor)
+          // Check if ruleset is accessible for this extend and in same/child root (not ancestor).
+          // Prefer finding via registry; if the ruleset was extended in Phase 1 its keySet may have changed
+          // so find(singleTarget.keySet) may not return it (e.g. .ma,.mb ruleset not found when searching for .mb).
           const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
           let foundRuleset = false;
 
@@ -1331,6 +1588,13 @@ export function processExtends(context: Context): void {
                 foundRuleset = true;
               }
               break;
+            }
+          }
+          // Phase 2: we already have the ruleset; if keySetOverlaps and it's in an accessible root, allow apply.
+          if (!foundRuleset) {
+            const effectiveRoot = getEffectiveExtendRoot(ruleset);
+            if (effectiveRoot && context.extendRoots.isSameOrDescendantRoot(effectiveRoot, extendRoot)) {
+              foundRuleset = true;
             }
           }
 

@@ -608,6 +608,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       context.depth++;
       let rules = this.maybeClone(context);
+      // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
+      // inner rulesets register to the same object we push and register as extend root.
+      const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
+      const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
+      const isNestableAtRuleBody =
+        parentAtRule &&
+        nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
+      const first = rules.value?.[0];
+      const isWrapper =
+        isNestableAtRuleBody &&
+        rules.value?.length === 1 &&
+        isNode(first, 'Ruleset') &&
+        isNode((first as Ruleset).value?.selector, 'Ampersand');
+      if (isWrapper) {
+        rules = this;
+      }
       rules.preEvaluated = true;
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
@@ -648,15 +664,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.extendRoots.pushExtendRoot(rules);
       }
 
-      // When this Rules is the body of a nestable at-rule (@media, etc.) and we cloned,
-      // push the clone so rulesets register to it. Otherwise they register to the original
-      // and the clone's registry is empty, so processExtends cannot find targets.
-      const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
-      const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
-      const isNestableAtRuleBody =
-        this !== rules &&
-        parentAtRule &&
-        nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
+      // Always push nestable at-rule body so inner rulesets register to it (not document root).
+      // Needed for both: wrapper (collapseNesting) and direct body (collapseNesting: false).
       if (isNestableAtRuleBody) {
         context.extendRoots.pushExtendRoot(rules);
       }

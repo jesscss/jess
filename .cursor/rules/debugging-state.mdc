@@ -1,0 +1,32 @@
+---
+description: "Read and update project state when debugging; keep sessions short and log what was tried"
+alwaysApply: true
+---
+
+# Debugging State and Session Discipline
+
+## State files (project memory)
+
+Cursor has no memory between sessions. These files are the project's memory. **Use them.**
+
+| File | When to read | When to update |
+|-----|--------------|----------------|
+| `.cursor/PROJECT_STATE.md` | Start of any debugging or build-related task | After meaningful progress or at end of session (especially section 4) |
+| Area-specific plan (e.g. `.cursor/EXTEND_DEBUG_PLAN.md`) | When working on that area | When baseline or next step changes for that area |
+| `.cursor/changes.md` | To see recent work | End of day / after significant fix (per main rules) |
+
+**Before starting a debugging task:** Read the relevant state file(s) so you know current baseline, last thing tried, and next step.
+
+**After trying a fix or at end of session:** Update the state files. In PROJECT_STATE.md section 4 (and any area-specific plan file, e.g. EXTEND_DEBUG_PLAN for extend) write: what you tried, the result (pass/fail, error), and the next recommended step. This prevents the next session (or a new agent) from repeating the same failed attempts.
+
+## Session discipline
+
+- **Short sessions:** Prefer 30–45 minutes of focused debugging, then update state and stop or start a new chat with "Continue from .cursor/PROJECT_STATE.md."
+- **One hypothesis at a time:** Make one small change, run the test, observe. Then update hypothesis or state. Do not batch multiple unrelated changes.
+- **Log what was tried:** In state files, record "Tried X; result Y; next Z." So we never rely on conversation history alone.
+
+## Commands to use (generic for any debugging area)
+
+- `/start-debugging` — Load state and any relevant plan file; run the baseline for the current area (extend, core, jess, etc.); follow systematic methodology. Use when starting any debugging session.
+- `/run-baseline` — Run the test baseline for the current focus (area from user or PROJECT_STATE §4) and report pass/fail. No code changes.
+- `/update-debug-state` — Reminder to update PROJECT_STATE.md section 4 and any area-specific plan file with current status.
