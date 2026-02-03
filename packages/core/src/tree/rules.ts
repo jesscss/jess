@@ -22,7 +22,6 @@ import type { Condition } from './condition.js';
 import type { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { syncLog } from './util/__tests__/debug-log.js';
 import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -32,65 +31,6 @@ import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 
 const { isArray } = Array;
-
-// #region agent log
-let __agentRulesLogCount = 0;
-function agentRulesLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
-  if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
-    return;
-  }
-  if (__agentRulesLogCount++ > 80) {
-    return;
-  }
-  // `context.treeContext.file` is not always stable across multi-file runs; don't filter by it.
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-    hypothesisId: 'H6',
-    location,
-    message,
-    data,
-    timestamp: Date.now()
-  });
-}
-// #endregion
-
-// #region agent log
-let __agentBootLogCount = 0;
-function agentBootLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
-  if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
-    return;
-  }
-  if (__agentBootLogCount++ > 200) {
-    return;
-  }
-  const filePath = context.treeContext?.file?.fullPath
-    || (context.treeContext?.file?.path && context.treeContext?.file?.name
-      ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
-      : context.treeContext?.file?.path)
-    || '';
-  if (typeof filePath !== 'string' || !filePath.includes('tests-unit/extend-selector')) {
-    return;
-  }
-  const currentRuleset = context.rulesetFrames.at(-1);
-  const currentSel = currentRuleset && 'value' in currentRuleset && (currentRuleset as any).value?.selector
-    ? String((currentRuleset as any).value.selector.valueOf?.() ?? '')
-    : '';
-  // Only log for the suspected hang ruleset to keep noise down.
-  if (!currentSel.includes('.attributes')) {
-    return;
-  }
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-    hypothesisId: 'H9',
-    location,
-    message,
-    data: { ...data, currentSel },
-    timestamp: Date.now()
-  });
-}
-// #endregion
 
 export const enum Priority {
   None = 0,
@@ -285,25 +225,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
     }
-    // #region agent log
-    try {
-      const filePath = (this as any)?.treeContext?.file?.fullPath ?? '';
-      if (typeof filePath === 'string' && filePath.includes('detached-rulesets')) {
-        const bound = (registry as any).rules;
-        if (bound && bound !== this) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H21',
-            location: 'rules.ts:getRegistry',
-            message: 'registry-bound-to-different-rules',
-            data: { type, boundType: String((bound as any).type ?? ''), boundIdx: (bound as any).index },
-            timestamp: Date.now()
-          });
-        }
-      }
-    } catch {}
-    // #endregion
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     }
@@ -600,39 +521,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * declaration and inserts a new declaration at the same rules level as the
        * found variable, but before the current nested node.
        */
-      // #region agent log
-      try {
-        const filePath = (context as any)?.treeContext?.file?.fullPath
-          || (this as any)?.treeContext?.file?.fullPath
-          || (node as any)?.treeContext?.file?.fullPath
-          || '';
-        if (isNode(node, 'VarDeclaration')) {
-          const nm: any = (node as any).value?.name;
-          const keyStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
-          if (keyStr === 'ruleset' && typeof filePath === 'string' && filePath.includes('detached-rulesets')) {
-            const vv: any = (node as any).value?.value;
-            const vvType = vv?.type ? String(vv.type) : '';
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID ?? 'run',
-              hypothesisId: 'H20',
-              location: 'rules.ts:registerNode',
-              message: 'register-vardecl-ruleset',
-              data: {
-                key: keyStr,
-                valueType: vvType,
-                paramVar: !!(node as any).options?.paramVar,
-                nodeParentType: String((node as any).parent?.type ?? ''),
-                inRulesIsMixinOutput: !!(this as any).options?.isMixinOutput,
-                nodeIndex: (node as any).index,
-                inValueArray: Array.isArray((this as any).value) ? (this as any).value.includes(node as any) : false
-              },
-              timestamp: Date.now()
-            });
-          }
-        }
-      } catch {}
-      // #endregion
       if (node.options?.setDefined) {
         // Skip setDefined logic if we're currently indexing to avoid recursive calls
         if (this._indexing) {
@@ -693,48 +581,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Register to 'mixin' for mixin calls
       // Always register - guard filtering happens at call time in getFunctionFromMixins
       // Note: 'ruleset' registration for extends now happens in Ruleset.preEval to the extend root's registry
-      // #region agent log
-      try {
-        const key = String((node as any).value?.selector?.valueOf?.() ?? '');
-        if (key.includes('.mixin')) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H4',
-            location: 'rules.ts:registerNode',
-            message: 'registered-ruleset-mixin',
-            data: {
-              key,
-              parentIdx: (this as any).index,
-              parentIsMixinOutput: !!(this as any).options?.isMixinOutput
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       this.register('mixin', node);
     } else if (isNode(node, 'Mixin')) {
-      // #region agent log
-      try {
-        const key = String((node as any).value?.name?.valueOf?.() ?? '');
-        if (key.includes('.mixin')) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H4',
-            location: 'rules.ts:registerNode',
-            message: 'registered-mixin',
-            data: {
-              key,
-              parentIdx: (this as any).index,
-              parentIsMixinOutput: !!(this as any).options?.isMixinOutput
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       this.register('mixin', node);
     } else if (isNode(node, 'Func')) {
       this.register('function', node);
@@ -758,12 +606,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   override preEval(context: Context) {
     if (!this.preEvaluated) {
-      // #region agent log
-      agentBootLog(context, 'rules.ts:preEval', 'rules-preEval-enter', {
-        len: Array.isArray(this.value) ? this.value.length : null,
-        preEvaluated: !!this.preEvaluated
-      });
-      // #endregion
       context.depth++;
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
@@ -793,6 +635,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!context.root) {
         context.root = rules;
       }
+      // When getTree() set context.root to the original Rules but we're processing a clone,
+      // use the clone as context.root so registerRoot/pushExtendRoot run and rulesets register to the clone (extend fix).
+      if (context.root === this && this !== rules) {
+        context.root = rules;
+      }
 
       // Register main root as extend root if this is the root (needed for extends in preEval)
       // Check rules === context.root at registration time (not using stale isMainRoot)
@@ -801,18 +648,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.extendRoots.pushExtendRoot(rules);
       }
 
-      // Multi-pass registration system for handling interpolated names
-      // #region agent log
-      agentBootLog(context, 'rules.ts:preEval', 'rules-preEval-before-multipass', {
-        len: Array.isArray(rules.value) ? rules.value.length : null
-      });
-      // #endregion
-      const mp = this._multiPassPreEval(rules, context, saved);
-      // #region agent log
-      if (!isThenable(mp)) {
-        agentBootLog(context, 'rules.ts:preEval', 'rules-preEval-exit-sync', {});
+      // When this Rules is the body of a nestable at-rule (@media, etc.) and we cloned,
+      // push the clone so rulesets register to it. Otherwise they register to the original
+      // and the clone's registry is empty, so processExtends cannot find targets.
+      const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
+      const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
+      const isNestableAtRuleBody =
+        this !== rules &&
+        parentAtRule &&
+        nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
+      if (isNestableAtRuleBody) {
+        context.extendRoots.pushExtendRoot(rules);
       }
-      // #endregion
+
+      // Multi-pass registration system for handling interpolated names
+      const mp = this._multiPassPreEval(rules, context, saved);
+      const popNestableBody = () => {
+        if (isNestableAtRuleBody) {
+          context.extendRoots.popExtendRoot();
+        }
+      };
+      if (isThenable(mp)) {
+        return (mp as Promise<this>).then((result) => {
+          popNestableBody();
+          return result;
+        });
+      }
+      popNestableBody();
       return mp;
     }
     return this;
@@ -825,21 +687,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // First pass: Only register nodes with static names
     const staticNodes: Node[] = [];
     const dynamicNodes: Node[] = [];
-    // #region agent log
-    agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-enter', {
-      total: Array.isArray(rules.value) ? rules.value.length : null
-    });
-    // #endregion
 
     // Process each node with static name, handling both sync and async preEval
     const processResult = serialForEach(rules.value, (node, index) => {
-      // #region agent log
-      agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node', {
-        index,
-        type: node.type,
-        hasStaticName: this._hasStaticName(node)
-      });
-      // #endregion
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
@@ -849,12 +699,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (this._hasStaticName(node)) {
         // Pre-evaluate nodes with static names before registration
         // This ensures selectors are evaluated and keySets are available for rulesets
-        // #region agent log
-        agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node-preEval-enter', {
-          index,
-          type: node.type
-        });
-        // #endregion
         const preEvald = node.preEval(context);
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
@@ -866,21 +710,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             } else {
               dynamicNodes.push(preEvaldNode);
             }
-            // #region agent log
-            agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node-preEval-exit-async', {
-              index,
-              type: preEvaldNode.type,
-              hasStaticName: this._hasStaticName(preEvaldNode)
-            });
-            // #endregion
           });
         }
-        // #region agent log
-        agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node-preEval-exit', {
-          index,
-          type: (preEvald as Node).type
-        });
-        // #endregion
         rules.value[index] = preEvald as Node;
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
@@ -891,11 +722,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
 
     const finish = () => {
-      // #region agent log
-      agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-finish', {
-        dynamicCount: dynamicNodes.length
-      });
-      // #endregion
       // If no dynamic nodes, we're done
       if (dynamicNodes.length === 0) {
         // Restore context after preEval is complete
@@ -992,13 +818,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const attemptResolution = (): MaybePromise<this> => {
       resolutionAttempts++;
-      // #region agent log
-      agentBootLog(context, 'rules.ts:_resolveDynamicNodes', 'dynamic-attempt', {
-        attempt: resolutionAttempts,
-        unresolved: unresolvedNodes.length,
-        resolved: resolvedNodes.length
-      });
-      // #endregion
       if (resolutionAttempts > MAX_RESOLUTION_ATTEMPTS) {
         throw new Error(`Could not resolve node.`);
       }
@@ -1204,33 +1023,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let queue = evalQueue.get(priority) ?? [];
       queue.push(item as [number, Node]);
       evalQueue.set(priority, queue);
-      // #region agent log
-      try {
-        const filePath = rules.treeContext?.file?.fullPath
-          || (rules.treeContext?.file?.path && rules.treeContext?.file?.name
-            ? `${rules.treeContext.file.path}/${rules.treeContext.file.name}`
-            : rules.treeContext?.file?.path)
-          || '';
-        if (typeof filePath === 'string' && filePath.includes('tests-unit/detached-rulesets/')) {
-          if (isNode(rule, 'Expression')) {
-            const inner = (rule as any).value;
-            if (isNode(inner, 'Call') && isNode((inner as any).value?.name, 'Reference')) {
-              const raw = (inner as any).value.name.value?.key;
-              const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-                hypothesisId: 'H15',
-                location: 'rules.ts:_buildEvalQueue',
-                message: 'queue-expression-call',
-                data: { idx, priority, keyStr },
-                timestamp: Date.now()
-              });
-            }
-          }
-        }
-      } catch {}
-      // #endregion
     }
     return evalQueue;
   }
@@ -1241,83 +1033,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Track nodes that have been retried to avoid infinite loops
     const retriedNodes = new Set<Node>();
 
-    // #region agent log
-    let __agentQueueLogCount = 0;
-    const agentQueueLog = (message: string, data: Record<string, unknown>) => {
-      if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
-        return;
-      }
-      if (__agentQueueLogCount++ > 250) {
-        return;
-      }
-      const filePath = context.treeContext?.file?.fullPath
-        || (context.treeContext?.file?.path && context.treeContext?.file?.name
-          ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
-          : context.treeContext?.file?.path)
-        || '';
-      if (
-        typeof filePath === 'string'
-        && !filePath.includes('tests-unit/extend-selector')
-        && !filePath.includes('tests-unit/detached-rulesets')
-      ) {
-        return;
-      }
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-        hypothesisId: 'H7',
-        location: 'rules.ts:_evaluateQueue',
-        message,
-        data,
-        timestamp: Date.now()
-      });
-    };
-    // #endregion
-
     const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
     const phaseRun = serialForEach(priorities, (p: Priority) => {
       const queue = evalQueue.get(p);
       if (!queue) {
         return;
       }
-      // #region agent log
-      agentRulesLog(context, 'rules.ts:_evaluateQueue', 'priority-start', {
-        priority: p,
-        queueLen: queue.length,
-        retriedCount: retriedNodes.size
-      });
-      // #endregion
-      // #region agent log
-      agentQueueLog('priority-start', {
-        priority: p,
-        queueLen: queue.length,
-        retriedCount: retriedNodes.size
-      });
-      // #endregion
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
       const innerResultPromise = serialForEach(entries, ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
         const [idx, rule] = item;
-        // #region agent log
-        const filePath = context.treeContext?.file?.fullPath ?? '';
-        if (typeof filePath === 'string' && filePath.includes('extend-media') && (rule.type === 'AtRule' || rule.type === 'Ruleset')) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H45',
-            location: 'rules.ts:_evaluateQueue',
-            message: 'evaluating-node',
-            data: {
-              priority: p,
-              idx,
-              type: rule.type,
-              name: rule.type === 'AtRule' ? (rule as any).value?.name?.value ?? '' : '',
-              selector: rule.type === 'Ruleset' ? ((rule as any).value?.selector?.valueOf?.() ?? '') : '',
-              extendsCountBefore: context.extends.length
-            },
-            timestamp: Date.now()
-          });
-        }
-        // #endregion
 
         /**
          * Var declarations have late evaluation, so they are skipped.
@@ -1333,43 +1057,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (retriedNodes.has(rule) && p > Priority.None) {
           return;
         }
-
-        // #region agent log
-        agentRulesLog(context, 'rules.ts:_evaluateQueue', 'node-eval-enter', {
-          priority: p,
-          idx,
-          q,
-          type: rule.type,
-          retried: retriedNodes.has(rule)
-        });
-        // #endregion
-        // #region agent log
-        const t0 = Date.now();
-        agentQueueLog('node-eval-enter', {
-          priority: p,
-          idx,
-          q,
-          type: rule.type,
-          ctor: (rule as any)?.constructor?.name ?? null,
-          retried: retriedNodes.has(rule),
-          key: (() => {
-            try {
-              if (!isNode(rule, 'Call')) return '';
-              const nm: any = (rule as any).value?.name;
-              if (typeof nm === 'string') return nm;
-              if (isNode(nm, 'Reference')) {
-                const raw = (nm as any).value?.key;
-                return Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-              }
-              if (isNode(nm)) return nm.type;
-              return '';
-            } catch {
-              return '';
-            }
-          })()
-        });
-        // #endregion
-
         const tryStepResult: () => MaybePromise<Node> =
         tryStep(() => rule.eval(context), {
           onError(error) {
@@ -1419,123 +1106,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   rulesVisibility: result.options.rulesVisibility,
                   readonly: result.options.readonly
                 }, context);
-                // #region agent log
-                try {
-                  // Special-case "unlocking mixins": register mixin definitions from a detached-ruleset variable call.
-                  if (context.leakyRules && isNode(rule, 'Expression')) {
-                    const inner = (rule as any).value;
-                    if (isNode(inner, 'Call') && isNode((inner as any).value?.name, 'Reference')) {
-                      const ref = (inner as any).value.name;
-                      const refType = String(ref?.options?.type ?? '');
-                      const raw = ref?.value?.key;
-                      const keyStr2 = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-                      const decl = rules.find('declaration', keyStr2, 'VarDeclaration') as any;
-                      const val = decl?.value?.value;
-                      const shouldUnlock =
-                        refType === 'variable'
-                        && isNode(val, 'Mixin')
-                        && Array.isArray(val.value?.rules?.value)
-                        && val.value.rules.value.some((n: any) => n?.type === 'Mixin');
-                      if (shouldUnlock && Array.isArray((result as any).value)) {
-                        let unlocked = 0;
-                        for (const child of (result as any).value) {
-                          if (isNode(child, 'Mixin')) {
-                            rules.register('mixin', child);
-                            unlocked++;
-                          }
-                        }
-                        if (unlocked > 0) {
-                          syncLog({
-                            sessionId: 'debug-session',
-                            runId: process.env.DEBUG_RUN_ID ?? 'run',
-                            hypothesisId: 'H19',
-                            location: 'rules.ts:_evaluateQueue',
-                            message: 'unlocked-mixins-from-varcall',
-                            data: { idx, key: keyStr2, unlocked },
-                            timestamp: Date.now()
-                          });
-                        }
-                      }
-                    }
-                  }
-                } catch {}
-                // #endregion
-                // #region agent log
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID ?? 'run',
-                  hypothesisId: 'H1',
-                  location: 'rules.ts:1230',
-                  message: 'registered-rules-result',
-                  data: {
-                    parentRulesType: rules.type,
-                    ruleType: rule.type,
-                    idx,
-                    resultLen: Array.isArray(result.value) ? result.value.length : -1,
-                    resultIsMixinOutput: !!(result as any).options?.isMixinOutput
-                  },
-                  timestamp: Date.now()
-                });
-                // #region agent log
-                try {
-                  let keyStr = '';
-                  if (isNode(rule, 'Call') && isNode((rule as any).value?.name, 'Reference')) {
-                    const rawKey = (rule as any).value.name.value?.key;
-                    keyStr = Array.isArray(rawKey) ? rawKey.join('') : String(rawKey?.valueOf?.() ?? rawKey ?? '');
-                  } else if (isNode(rule, 'Expression')) {
-                    const inner = (rule as any).value;
-                    if (isNode(inner, 'Call') && isNode((inner as any).value?.name, 'Reference')) {
-                      const rawKey = (inner as any).value.name.value?.key;
-                      keyStr = Array.isArray(rawKey) ? rawKey.join('') : String(rawKey?.valueOf?.() ?? rawKey ?? '');
-                    }
-                  }
-                  if (keyStr.includes('my-mixins')) {
-                    const mixinReg = (result as any).getRegistry?.('mixin');
-                    if (mixinReg) {
-                      mixinReg.indexPendingItems();
-                    }
-                    const hasDotMixin = mixinReg?.index?.has?.('.mixin') ?? false;
-                    syncLog({
-                      sessionId: 'debug-session',
-                      runId: process.env.DEBUG_RUN_ID ?? 'run',
-                      hypothesisId: 'H8',
-                      location: 'rules.ts:1230',
-                      message: 'registered-my-mixins-result',
-                      data: {
-                        keyStr,
-                        ruleType: rule.type,
-                        resultLen: Array.isArray((result as any).value) ? (result as any).value.length : -1,
-                        resultIsMixinOutput: !!(result as any).options?.isMixinOutput,
-                        hasDotMixin
-                      },
-                      timestamp: Date.now()
-                    });
-                  }
-                } catch {}
-                // #endregion
-                // #region agent log
-                try {
-                  const hasMixin = Array.isArray((result as any).value)
-                    ? (result as any).value.some((n: any) => n?.type === 'Mixin' && String(n?.value?.name?.valueOf?.() ?? '').includes('.mixin'))
-                    : false;
-                  if (hasMixin) {
-                    syncLog({
-                      sessionId: 'debug-session',
-                      runId: process.env.DEBUG_RUN_ID ?? 'run',
-                      hypothesisId: 'H7',
-                      location: 'rules.ts:1230',
-                      message: 'registered-rules-result-contains-dotmixin',
-                      data: {
-                        idx,
-                        resultIsMixinOutput: !!(result as any).options?.isMixinOutput,
-                        parentRulesType: rules.type
-                      },
-                      timestamp: Date.now()
-                    });
-                  }
-                } catch {}
-                // #endregion
-                // #endregion
               } else {
                 // For non-Rules results, adopt them to set up parent chain
                 rules.adopt(result);
@@ -1544,33 +1114,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (result.hoistToRoot) {
               rulesToHoist = true;
             }
-            // #region agent log
-            agentQueueLog('node-eval-exit', {
-              priority: p,
-              idx,
-              q,
-              type: rule.type,
-              durationMs: Date.now() - t0
-            });
-            // #endregion
             return;
           }
         );
-        // #region agent log
-        if (isThenable(stepResult)) {
-          return (stepResult as Promise<unknown>).catch((error) => {
-            agentQueueLog('node-eval-error', {
-              priority: p,
-              idx,
-              q,
-              type: rule.type,
-              durationMs: Date.now() - t0,
-              err: error ? String((error as any).message ?? error) : 'unknown'
-            });
-            throw error;
-          }) as any;
-        }
-        // #endregion
         // If stepResult is a thenable, propagate any errors
         if (isThenable(stepResult)) {
           return stepResult;
@@ -1591,44 +1137,60 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return rulesToHoist;
   }
 
+  /**
+   * After preEval: ensure root on extend stack, build eval queue, run evaluation.
+   * Used by evalNode so that when eval() is called without preEval (e.g. jess compile()),
+   * we still have all rulesets registered and root set for extend lookups.
+   */
+  private _afterPreEvalStep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+    const isMainRoot = rules === context.root;
+    if (isMainRoot && context.extendRoots.extendRootStack.length === 0) {
+      if (!context.extendRoots.root) {
+        context.extendRoots.registerRoot(rules);
+      }
+      context.extendRoots.pushExtendRoot(rules);
+    }
+    if (rules.evaluated) {
+      return { rules, rulesToHoist: false };
+    }
+    const evalQueue = this._buildEvalQueue(rules);
+    const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
+    if (isThenable(maybeHoist)) {
+      return (maybeHoist as Promise<boolean>).then((rulesToHoist) => ({
+        rules,
+        rulesToHoist
+      }));
+    }
+    return { rules, rulesToHoist: maybeHoist as boolean };
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(this.sourceNode as Rules);
     const pipeResult = pipe(
       () => {
         this._setupContextForRules(context, this);
-        // Extend root should already be registered in preEval, but ensure it's on the stack
-        // (it might have been popped if this is a nested Rules evaluation)
-        const isMainRoot = this === context.root;
-        if (isMainRoot && context.extendRoots.extendRootStack.length === 0) {
-          context.extendRoots.pushExtendRoot(this);
+        // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
+        // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
+        const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
+          if (rules.preEvaluated) {
+            return rules;
+          }
+          const result = rules.preEval(context);
+          return isThenable(result) ? (result as Promise<Rules>) : result;
+        };
+        const rulesAfterPreEval = runPreEvalIfNeeded(this);
+        const afterPreEval = (rules: Rules) => {
+          // When we're the outermost Rules, use the tree we're evaling as root (may differ from context.root set in getTree, or be preEval's clone).
+          if (context.rulesEvalStack.length === 1) {
+            context.root = rules;
+          }
+          return this._afterPreEvalStep(rules, context);
+        };
+        if (isThenable(rulesAfterPreEval)) {
+          return (rulesAfterPreEval as Promise<Rules>).then(afterPreEval);
         }
-        // Synchronous preEval
-        const rules = this;
-        if (rules.evaluated) {
-          return { rules, rulesToHoist: false };
-        }
-        const evalQueue = this._buildEvalQueue(rules);
-        // #region agent log
-        const qSizes: Record<string, number> = {};
-        for (const [p, q] of evalQueue.entries()) {
-          qSizes[String(p)] = q.length;
-        }
-        agentRulesLog(context, 'rules.ts:evalNode', 'queue-built', {
-          evaluated: !!rules.evaluated,
-          total: rules.value.length,
-          qSizes
-        });
-        // #endregion
-        const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
-        if (isThenable(maybeHoist)) {
-          return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
-            return { rules, rulesToHoist };
-          }).catch((error) => {
-            throw error;
-          });
-        }
-        return { rules, rulesToHoist: maybeHoist as boolean };
+        return afterPreEval(rulesAfterPreEval as Rules);
       },
       ({ rules }: { rules: Rules; rulesToHoist: boolean }) => {
         // Note: Rulesets from imported Rules are already registered to their own treeRoot
@@ -1690,20 +1252,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               return false;
             }
           });
-          // #region agent log
-          agentRulesLog(context, 'rules.ts:eval', 'processExtends-enter', {
-            extendsCount: context.extends.length,
-            hasReplaceReplaceExtend,
-            hasRepAceExtend
-          });
-          // #endregion
           // Process all registered extends using the extend roots registry system
           processExtends(context);
-          // #region agent log
-          agentRulesLog(context, 'rules.ts:eval', 'processExtends-exit', {
-            extendsCount: context.extends.length
-          });
-          // #endregion
         }
         /** Restore contexts */
         context.rulesContext = saved.rulesContext;
@@ -1876,39 +1426,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         nodeArgs.push(cast(arg));
       }
     }
-    // #region agent log
-    try {
-      const callerName = caller?.value?.name;
-      const callerKey = isNode(callerName, 'Reference')
-        ? String((callerName as any).value?.key?.valueOf?.() ?? (callerName as any).value?.key ?? '')
-        : (typeof callerName === 'string' ? callerName : '');
-      if (callerKey === '.wrap-mixin') {
-        const a0: any = nodeArgs[0];
-        let a0Type = a0?.type ? String(a0.type) : '';
-        let a0Len = -1;
-        let a0First = '';
-        if (a0Type === 'Collection') {
-          a0Len = Array.isArray(a0.value) ? a0.value.length : -1;
-          const first: any = Array.isArray(a0.value) ? a0.value[0] : undefined;
-          if (first?.type === 'Declaration') {
-            const nm = first.value?.name;
-            const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
-            const valStr = String(first.value?.value?.valueOf?.() ?? '');
-            a0First = `${nameStr}=${valStr}`;
-          }
-        }
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID ?? 'run',
-          hypothesisId: 'H18',
-          location: 'rules.ts:getFunctionFromMixins',
-          message: 'wrap-mixin-call-args',
-          data: { a0Type, a0Len, a0First },
-          timestamp: Date.now()
-        });
-      }
-    } catch {}
-    // #endregion
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.

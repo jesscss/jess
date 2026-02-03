@@ -1,8 +1,33 @@
-import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node.js';
+import { Node, defineType, F_VISIBLE, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
+
+/**
+ * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
+ * the real rulesets (.ma, .md, etc.) registered to the inner Rules (the wrapper
+ * Ruleset's rules). Register that inner Rules as a child extend root so
+ * processExtends can find them. Extend behavior must not depend on collapseNesting.
+ */
+function registerInnerExtendRootIfHoisted(
+  wrapperRules: Rules,
+  context: Context,
+  layerName?: string
+): void {
+  if (wrapperRules.value.length !== 1) {
+    return;
+  }
+  const first = wrapperRules.value[0];
+  if (!isNode(first, 'Ruleset')) {
+    return;
+  }
+  const innerRules = first.value.rules;
+  if (!innerRules || !isNode(innerRules, 'Rules')) {
+    return;
+  }
+  context.extendRoots.registerRoot(innerRules, wrapperRules, { layerName });
+}
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { Ampersand } from './ampersand.js';
@@ -10,7 +35,6 @@ import { isNode } from './util/is-node.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
-import { syncLog } from './util/__tests__/debug-log.js';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -122,81 +146,39 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Depth-first: preEval child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     if (rules && !rules.preEvaluated) {
-      // For nestable at-rules (like @media), push extend root during preEval
-      // so extends registered inside have the correct extend root
+      // For nestable at-rules we do NOT push the original here. The body's Rules.preEval
+      // pushes the clone (the Rules that ends up in the tree) so rulesets register to it.
+      // Pushing the original would leave the clone's registry empty (extend + collapseNesting bug).
       let pushedExtendRootForPreEval = false;
-      if (node.isNestable()) {
+      if (!node.isNestable()) {
         context.extendRoots.pushExtendRoot(rules);
         pushedExtendRootForPreEval = true;
       }
-      // #region agent log
-      const filePath = context.treeContext?.file?.fullPath ?? '';
-      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
-        const nameV = node.value.name?.value ?? '';
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H44',
-          location: 'at-rule.ts:_preEvalPrelude',
-          message: 'atrule-preEval-calling-childRules-preEval',
-          data: {
-            name: nameV,
-            extendsCountBefore: context.extends.length,
-            pushedExtendRoot: pushedExtendRootForPreEval
-          },
-          timestamp: Date.now()
-        });
+      // Root-only at-rules (@keyframes, @font-face, etc.): do not let parent ruleset frames
+      // pierce into the body — clear rulesetFrames so 0%/100% etc. are not combined with .parent.
+      const savedRulesetFramesForPreEval = node.isRootOnly() ? context.rulesetFrames : undefined;
+      if (node.isRootOnly()) {
+        context.rulesetFrames = [];
       }
-      // #endregion
       const preEvaldRules = rules.preEval(context);
       if (isThenable(preEvaldRules)) {
         return (preEvaldRules as Promise<Rules>).then((evaldRules) => {
-          // Pop extend root after preEval completes
+          if (savedRulesetFramesForPreEval !== undefined) {
+            context.rulesetFrames = savedRulesetFramesForPreEval;
+          }
           if (pushedExtendRootForPreEval) {
             context.extendRoots.popExtendRoot();
           }
-          // #region agent log
-          if (typeof filePath === 'string' && filePath.includes('extend-media')) {
-            const nameV = node.value.name?.value ?? '';
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H44',
-              location: 'at-rule.ts:_preEvalPrelude',
-              message: 'atrule-preEval-childRules-preEval-complete-async',
-              data: {
-                name: nameV,
-                extendsCountAfter: context.extends.length
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
           node.value.rules = evaldRules;
           return node;
         });
       }
-      // Pop extend root after preEval completes
+      if (savedRulesetFramesForPreEval !== undefined) {
+        context.rulesetFrames = savedRulesetFramesForPreEval;
+      }
       if (pushedExtendRootForPreEval) {
         context.extendRoots.popExtendRoot();
       }
-      // #region agent log
-      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
-        const nameV = node.value.name?.value ?? '';
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H44',
-          location: 'at-rule.ts:_preEvalPrelude',
-          message: 'atrule-preEval-childRules-preEval-complete-sync',
-          data: {
-            name: nameV,
-            extendsCountAfter: context.extends.length
-          },
-          timestamp: Date.now()
-        });
-      }
-      // #endregion
       node.value.rules = preEvaldRules as Rules;
     }
     return node;
@@ -395,7 +377,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           // This ensures parent layers are already on the stack when we look for them
           this._extractAndStoreLayerName(node, context);
 
-          if (node.isNestable() && node.isHoisted(context.opts)) {
+          // Wrap in Ruleset(&) when hoisted for nestable at-rules only. Do NOT wrap @keyframes,
+          // @font-face, or other at-rules in ROOT_ONLY_AT_RULES — their children must not get
+          // a wrapper so keyframe percentages (0%, 100%) etc. are not combined with parent selectors.
+          // Required for serialization: rulesets inside @media need this wrapper to output
+          // e.g. ".parent { font-size: 14px; }" inside @media.
+          if (node.isNestable() && !node.isRootOnly() && node.isHoisted(context.opts)) {
             let existingRules = rules;
             rules = Rules.create([
               Ruleset.create({
@@ -440,17 +427,21 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               node.value.rules = finalRules;
               tryMergeNestedMedia();
 
-              // Register extend root AFTER evaluation using the final Rules instance
-              // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root
+              // Register extend root AFTER evaluation. Register wrapper and its inner Rules so
+              // processExtends finds rulesets; also register inner Rules from finalRules (the tree)
+              // when different so getEffectiveExtendRoot(.md) and extendRoot share the same parent.
               if (pushedExtendRoot && node.isNestable()) {
                 context.extendRoots.popExtendRoot(); // Pop the placeholder
-                // Retrieve layer name that was stored in evalNode (and delete it)
                 const layerName = context.extendRoots.takeLayerName(node);
-                // Use 'rules' as the extend root since that's where rulesets registered during evaluation
-                // 'finalRules' is stored in node.value.rules for the actual Rules node, but extend root uses 'rules'
                 if (rules) {
-                  context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+                  const parent = parentExtendRoot ?? context.root ?? undefined;
+                  context.extendRoots.registerRoot(rules, parent as Rules | undefined, { layerName });
+                  registerInnerExtendRootIfHoisted(rules, context, layerName);
+                  if (finalRules !== rules) {
+                    registerInnerExtendRootIfHoisted(finalRules, context, layerName);
+                  }
                   context.extendRoots.pushExtendRoot(rules);
+                  context.extendRoots.popExtendRoot();
                 }
               }
 
@@ -466,17 +457,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           node.value.rules = finalRules;
           tryMergeNestedMedia();
 
-          // Register extend root AFTER evaluation using the final Rules instance
-          // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root
+          // Register wrapper and inner Rules from finalRules when different (so same-block check works).
           if (pushedExtendRoot && node.isNestable()) {
-            context.extendRoots.popExtendRoot(); // Pop the placeholder
-            // Retrieve layer name that was stored in evalNode (and delete it)
+            context.extendRoots.popExtendRoot();
             const layerName = context.extendRoots.takeLayerName(node);
-            // Use 'rules' as the extend root since that's where rulesets registered during evaluation
-            // 'finalRules' is stored in node.value.rules for the actual Rules node, but extend root uses 'rules'
             if (rules) {
-              context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+              const parent = parentExtendRoot ?? context.root ?? undefined;
+              context.extendRoots.registerRoot(rules, parent as Rules | undefined, { layerName });
+              registerInnerExtendRootIfHoisted(rules, context, layerName);
+              if (finalRules !== rules) {
+                registerInnerExtendRootIfHoisted(finalRules, context, layerName);
+              }
               context.extendRoots.pushExtendRoot(rules);
+              context.extendRoots.popExtendRoot();
             }
           }
         }

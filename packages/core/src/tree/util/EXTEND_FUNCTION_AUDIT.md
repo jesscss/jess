@@ -159,7 +159,20 @@ The following functions were identified as unused through call graph analysis an
 - Normalizing: ✅ Yes (delegates)
 - Selector Type: SelectorList
 
-**Notes:** Thin wrapper, good abstraction.
+**Notes:** Thin wrapper, good abstraction. Order of selectors is whatever is passed in (from `extendSelectorList`: originals then new). Do not add reordering here; fix registration/traversal order if order is wrong.
+
+---
+
+### Selector list order – single place, no duplication
+
+**Where order is determined (do not duplicate or fragment):**
+
+1. **`extendSelectorList`** (extend.ts) – Builds the list as **original selectors first, then new** (append): `[...originalSelectors, ...newSelectors]`. Order is determined by registration/traversal; no reordering in createExtendedSelectorList.
+2. **`createExtendedSelectorList`** (extend.ts) – Uses the order of the passed-in selectors as-is. Calls `createProcessedSelector` for normalization (flatten, dedupe).
+
+**Normalization** (flatten `:is()`, dedupe) lives only in **`createProcessedSelector`**; it is invoked via `createExtendedSelectorList`. Do not add parallel order or normalization logic in extend-helpers, extend-roots, or find-extendable-locations.
+
+**Related docs:** `EXTEND_ARCHITECTURE_ANALYSIS.md` (responsibility boundaries), `EXTEND_REFACTORING_SUMMARY.md` (consolidation history), `__tests__/EXTEND_TEST_INDEX.md` (where to add tests).
 
 ---
 

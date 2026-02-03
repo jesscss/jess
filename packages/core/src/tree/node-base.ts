@@ -12,9 +12,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
-// #region agent log
 import { syncLog } from './util/__tests__/debug-log.js';
-// #endregion
 
 export type { TreeContext };
 
@@ -1015,8 +1013,10 @@ export abstract class Node<
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.sourceParent ??= node.sourceParent;
-    // Preserve the generated flag when inheriting
-    this.generated = node.generated;
+    // Preserve the generated flag when inheriting; never overwrite true with false
+    // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
+    // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)
+    this.generated = this.generated || node.generated;
     /**
      * If it's replacing a node that's evaluated, it should inherit the same index.
      * Otherwise, it should be settable after cloning / copying.

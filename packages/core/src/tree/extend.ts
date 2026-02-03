@@ -6,7 +6,6 @@ import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
-import { syncLog } from './util/__tests__/debug-log.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -46,37 +45,6 @@ export class Extend extends Node<ExtendValue> {
   shortType = 'extend' as const;
   override state = 0b0000;
 
-  // #region agent log
-  private static __agentLogCount = 0;
-  private static agentLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
-    if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
-      return;
-    }
-    if (Extend.__agentLogCount++ > 400) {
-      return;
-    }
-    const filePath = context.treeContext?.file?.fullPath
-      || (context.treeContext?.file?.path && context.treeContext?.file?.name
-        ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
-        : context.treeContext?.file?.path)
-      || '';
-    if (typeof filePath === 'string'
-      && !filePath.includes('tests-unit/extend-exact')
-    ) {
-      return;
-    }
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-      hypothesisId: 'H5',
-      location,
-      message,
-      data,
-      timestamp: Date.now()
-    });
-  }
-  // #endregion
-
   override valueOf() {
     return `$extend ${this.value.target.valueOf()}`;
   }
@@ -114,17 +82,6 @@ export class Extend extends Node<ExtendValue> {
 
     const currentFrame = context.rulesetFrames.at(-1);
 
-    // #region agent log
-    Extend.agentLog(context, 'extend.ts:evalNode', 'extend-eval-enter', {
-      hasSelector: !!selector,
-      target: target.valueOf(),
-      flag: flag ?? null,
-      extendsCountBefore: context.extends.length,
-      hasExtendRoot: !!context.extendRoots.getCurrentExtendRoot(),
-      hasRulesetFrame: !!currentFrame
-    });
-    // #endregion
-
     // If selector is undefined, convert it to ampersand so it resolves to the ruleset's selector
     // If selector is already set to a non-ampersand (e.g., from a bubbled extend), keep it as-is
     // The parser sets the selector correctly when bubbling extends, so we should preserve it
@@ -141,29 +98,6 @@ export class Extend extends Node<ExtendValue> {
     // Don't convert non-ampersand selectors to ampersand - they should be used as-is
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
-    // #region agent log
-    const filePathForH48 = context.treeContext?.file?.fullPath ?? '';
-    if (typeof filePathForH48 === 'string' && filePathForH48.includes('extend-media')) {
-      const targetV = target.valueOf();
-      if (targetV === '.ext1') {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H48',
-          location: 'extend.ts:evalNode',
-          message: 'extend-root-check',
-          data: {
-            target: String(targetV),
-            extendWith: selector ? String(selector.valueOf()) : 'ampersand',
-            extendRootId: extendRoot ? String(extendRoot).substring(0, 80) : null,
-            contextRootId: context.root ? String(context.root).substring(0, 80) : null,
-            extendRootStackLength: context.extendRoots.extendRootStack.length
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-    // #endregion
     if (!extendRoot) {
       /** Throw error? */
       return new Nil();
@@ -182,34 +116,6 @@ export class Extend extends Node<ExtendValue> {
         }
         // Register extend to context with extend root reference and Extend node for error reporting
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
-        // #region agent log
-        const filePath = context.treeContext?.file?.fullPath ?? '';
-        if (typeof filePath === 'string' && filePath.includes('extend-media')) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H41',
-            location: 'extend.ts:evalNode',
-            message: 'extend-registered-async',
-            data: {
-              target: target.valueOf(),
-              extendWith: resolvedSel.valueOf(),
-              partial: flag === ExtendFlag.All,
-              extendRootId: extendRoot ? String(extendRoot) : null,
-              currentExtendRoot: context.extendRoots.getCurrentExtendRoot() ? String(context.extendRoots.getCurrentExtendRoot()) : null,
-              extendsCountAfter: context.extends.length,
-              extendsIndex: context.extends.length - 1
-            },
-            timestamp: Date.now()
-          });
-        }
-        Extend.agentLog(context, 'extend.ts:evalNode', 'extend-registered', {
-          target: target.valueOf(),
-          resolvedSel: resolvedSel.valueOf(),
-          partial: flag === ExtendFlag.All,
-          extendsCountAfter: context.extends.length
-        });
-        // #endregion
         return new Nil();
       });
     }
@@ -226,34 +132,6 @@ export class Extend extends Node<ExtendValue> {
     }
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
-    // #region agent log
-    const filePath = context.treeContext?.file?.fullPath ?? '';
-    if (typeof filePath === 'string' && filePath.includes('extend-media')) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H41',
-        location: 'extend.ts:evalNode',
-        message: 'extend-registered-sync',
-        data: {
-          target: target.valueOf(),
-          extendWith: resolvedSel.valueOf(),
-          partial: flag === ExtendFlag.All,
-          extendRootId: extendRoot ? String(extendRoot) : null,
-          currentExtendRoot: context.extendRoots.getCurrentExtendRoot() ? String(context.extendRoots.getCurrentExtendRoot()) : null,
-          extendsCountAfter: context.extends.length,
-          extendsIndex: context.extends.length - 1
-        },
-        timestamp: Date.now()
-      });
-    }
-    Extend.agentLog(context, 'extend.ts:evalNode', 'extend-registered', {
-      target: target.valueOf(),
-      resolvedSel: resolvedSel.valueOf(),
-      partial: flag === ExtendFlag.All,
-      extendsCountAfter: context.extends.length
-    });
-    // #endregion
     return new Nil();
   }
 }

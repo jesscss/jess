@@ -8,8 +8,10 @@ export default defineConfig({
     circleDependency()
   ],
   resolve: {
-    // Prefer "source" so imports from @acme/* pull TS from src/
-    mainFields: ['source', 'module', 'exports', 'main']
+    // Use built output (import/main) so workspace packages pick up built lib/ after pnpm build.
+    // Run tests from each package directory (e.g. cd packages/jess && pnpm test) after building
+    // dependencies (e.g. pnpm --filter @jesscss/core build) so tests run against built code.
+    mainFields: ['import', 'module', 'exports', 'main']
   },
   test: {
     watch: false,

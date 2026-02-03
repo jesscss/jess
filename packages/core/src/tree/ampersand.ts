@@ -195,6 +195,13 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
         result = PseudoSelector.create({ name: ':is', arg: selector });
+        // When create() is invoked from this eval path, generated is not set on the instance
+        // (repro: process-leading-is test "unwraps evaled &[e] with frame * b"). Set explicitly.
+        result.generated = true;
+        if (process.env.DEBUG_LEADING_IS_GENERATED === 'true') {
+          const g = result.generated;
+          syncLog({ msg: 'ampersand-after-set', generated: g });
+        }
       } else {
         result = selector;
       }
@@ -216,21 +223,11 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     /**
      * Attach the current context selector if we need it later, for extends and such.
      * The frame is constant, so we can use the selector directly.
-     * BUT: If the ampersand already has a stored selector (from getImplicitSelector),
+     * If the ampersand already has a stored selector (from getImplicitSelector),
      * preserve it instead of overwriting with the frame selector.
      */
-    // DEBUG: Track ampersand evaluation for extend selectors
-    const hasStoredSelector = !!amp.value.selector;
-    const frameSelectorStr = frame?.selector?.toString();
-    const storedSelectorStr = amp.value.selector?.toString();
-    const originalStoredSelector = amp.value.selector;
-
-    // CRITICAL: Only set frame selector if there's no stored selector
-    // The stored selector (from getImplicitSelector) should ALWAYS take precedence
-    // This ensures extends inside nested rulesets get the correct parent selector
     if (!amp.value.selector && frame && frame.selector) {
       amp.value.selector = frame.selector;
-    } else if (amp.value.selector) {
     }
     return amp;
   }

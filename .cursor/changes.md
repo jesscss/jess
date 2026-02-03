@@ -4,6 +4,27 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Feb-01
+
+### extend-roots.test.ts baseline (pre-existing vs regressions)
+
+- **Check**: Whether the 6 failing extend-roots tests are older or caused by the processExtends filter (collapseNesting fixes).
+- **Committed baseline**: Reverting `extend-roots.ts` to HEAD fails all 20 extend-roots tests with `setExtendOrderMap is not a function` (refactor removed that call; committed file is out of sync).
+- **Minimal filter (no collapseNesting conditions)**: 8 failed, 12 passed.
+- **Full filter (with collapseNesting conditions)**: 6 failed, 14 passed.
+- **Conclusion**: The 6 failing extend-roots tests are **pre-existing** in the refactored code. Our filter additions **fix 2** of the previous 8 failures (@import / accessible-roots merges). The remaining 6 (compose boundaries, extendNotAccessible warnings, “only accessible selector”, anonymous layers, “children roots are accessible if mutable”) are due to other code (compose/warning/accessible-roots logic), not the processExtends filter.
+
+### @media extend (extend-chaining) – core registration fix
+
+- **Problem**: Extends inside `@media` (e.g. `.ma:extend(.a,.b,...)`) were not finding root-level targets; "Extend targets not found" and missing merged selectors in output.
+- **Root cause**: The document root `Rules` was not always pushed onto `extendRootStack` before root-level rulesets ran `preEval`, so `.a`, `.b`, etc. registered with no extend root and were invisible to extend processing.
+- **Fix (in `packages/core/src/tree/rules.ts`)**: Ensure the root is registered and pushed before `_multiPassPreEval`: set `context.root = rules` when we're top-level (`!rules.parent` and stack empty), when we're the eval root (only Rules on stack), and when getTree set root to original but we're processing a clone; register root if needed and push when stack is empty so children see the root during preEval.
+- **Core tests**: `extend-eval-integration.test.ts` passes (including @media extend and SelectorList target cases). Jess `extend-chaining.less` test may still fail depending on test runner resolving core from source vs built lib.
+
+### Building core before jess tests
+
+- Jess tests do **not** build core before running. Root vitest resolves `@jesscss/core` to `packages/core/lib/` (mainFields). After changing core, run `pnpm --filter @jesscss/core build` before running jess tests so they see updated code.
+
 ## 2026-Jan-21
 
 ### Language Service & Extension Development

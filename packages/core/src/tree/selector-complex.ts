@@ -13,8 +13,8 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { syncLog } from './util/__tests__/debug-log.js';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -258,27 +258,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           }
         }
         // #endregion
-        // Unwrap generated :is() PseudoSelectors that contain a single BasicSelector
-        // This handles cases where ampersands are replaced with :is(selector) during mixin evaluation
-        for (let i = 0; i < value.length; i++) {
-          const component = value[i];
-          if (
-            isNode(component, 'PseudoSelector')
-            && component.value.name === ':is'
-            && component.generated
-            && component.value.arg
-            && isNode(component.value.arg, 'BasicSelector')
-          ) {
-            // Unwrap :is(basicSelector) to just basicSelector
-            // Preserve hoist intent from the wrapper (e.g. `&-1` needs hoisting out of @media)
-            // by propagating `hoistToRoot` to both the ComplexSelector and the unwrapped arg.
-            if (component.hoistToRoot) {
-              selector.hoistToRoot = true;
-              (component.value.arg as any).hoistToRoot = true;
-            }
-            value[i] = component.value.arg as ComplexSelectorComponent;
-          }
-        }
         if (value.length === 1) {
           const only = value[0]!.inherit(selector);
           if (selector.hoistToRoot) {

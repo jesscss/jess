@@ -13,39 +13,8 @@ import { Ampersand } from '../ampersand.js';
 import { Nil } from '../nil.js';
 import type { Extend } from '../extend.js';
 import { tryExtendSelector, findChainedExtends, createProcessedSelector, setExtendOrderMap } from './extend.js';
+import { processLeadingIs } from './process-leading-is.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
-import { syncLog } from './__tests__/debug-log.js';
-
-// NOTE: extend tracing instrumentation removed (debug-only).
-
-function __agentTraceContextId(_context: object): number {
-  return 0;
-}
-
-function __agentExtendTrace(_location: string, _message: string, _data: Record<string, unknown>) {
-  // noop
-}
-
-// #region agent log
-let __agentRootSeq = 0;
-const __agentRootIds = new WeakMap<object, number>();
-function __agentRootId(root: object | undefined): number | null {
-  if (!root) {
-    return null;
-  }
-  let id = __agentRootIds.get(root);
-  if (id == null) {
-    id = ++__agentRootSeq;
-    __agentRootIds.set(root, id);
-  }
-  return id;
-}
-function __agentAccessLog(message: string, data: Record<string, unknown>) {
-  void message;
-  void data;
-  // (debug log removed)
-}
-// #endregion
 
 function maybeHoistMixedNestingSelectorList(
   ruleset: Ruleset,
@@ -157,73 +126,6 @@ function maybeHoistMixedNestingSelectorList(
     return selector;
   }
 
-  // #region agent log
-  try {
-    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
-      const selV = (selector as any)?.valueOf?.() ?? '';
-      if (typeof selV === 'string' && (selV.includes('rep_ace') || selV.includes('replace'))) {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H36',
-          location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
-          message: 'hoist-enter',
-          data: {
-            partial,
-            selectorV: selV,
-            selectorType: (selector as any)?.type ?? null,
-            listV: (list as any)?.valueOf?.() ?? null,
-            parentSelType: (parentSel as any)?.type ?? null,
-            parentSelV: (() => { try { return (parentSel as any)?.valueOf?.() ?? null; } catch { return null; } })(),
-            anyImplicit: items.some((s) => {
-              try {
-                if (isNode(s, 'ComplexSelector')) {
-                  const first = (s as ComplexSelector).value[0];
-                  return first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND);
-                }
-                return false;
-              } catch {
-                return false;
-              }
-            }),
-            hasSimple: items.some(s => !isNode(s, 'ComplexSelector')),
-            item0: (() => { try { return items[0]?.valueOf?.() ?? null; } catch { return null; } })(),
-            itemLast: (() => { try { return items[items.length - 1]?.valueOf?.() ?? null; } catch { return null; } })()
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-  } catch {}
-  // #endregion
-
-  // #region agent log
-  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
-    const selV = (() => {
-      try { return (selector as any)?.valueOf?.() ?? null; } catch { return null; }
-    })();
-    if (typeof selV === 'string' && (selV.includes('rep_ace') || selV.includes('replace'))) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-        hypothesisId: 'H9',
-        location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
-        message: 'hoist-check',
-        data: {
-          partial,
-          parentSelType: (parentSel as any)?.type ?? null,
-          parentSelV: (() => { try { return (parentSel as any)?.valueOf?.() ?? null; } catch { return null; } })(),
-          itemsV: items.slice(0, 6).map((s) => {
-            try { return (s as any)?.valueOf?.() ?? null; } catch { return null; }
-          }),
-          itemsType: items.slice(0, 6).map((s) => (s as any)?.type ?? null)
-        },
-        timestamp: Date.now()
-      });
-    }
-  }
-  // #endregion
-
   // Special-case: when the parent selector is a selector list, a nested selector list can become
   // "mixed" after extend (some items are relative via implicit `&`, some are absolute like `.rep_ace`).
   // If we serialize that nested, we would incorrectly apply the parent frame to the absolute items.
@@ -328,25 +230,6 @@ function maybeHoistMixedNestingSelectorList(
             // Hoist to root.
             listOut.hoistToRoot = true;
             ruleset.hoistToRoot = true;
-            // #region agent log
-            try {
-              if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'run',
-                  hypothesisId: 'H36',
-                  location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
-                  message: 'factorized-cartesian',
-                  data: {
-                    parentAlts,
-                    childCount: uniqLast.length,
-                    out: (listOut as any)?.valueOf?.() ?? null
-                  },
-                  timestamp: Date.now()
-                });
-              }
-            } catch {}
-            // #endregion
             if (wrapper) {
               wrapper.value.arg = listOut;
               wrapper.hoistToRoot = true;
@@ -394,23 +277,6 @@ function maybeHoistMixedNestingSelectorList(
     // - ComplexSelector with implicit ampersand + simple selector (relative + absolute)
     // - Simple selectors (which are relative in nested context) + ComplexSelector without implicit (relative + absolute)
     if (anyImplicit && (hasComplexWithoutImplicit || hasSimpleSelectors)) {
-      // #region agent log
-      if (process.env.DEBUG_EXTEND_BOOT === 'true') {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-          hypothesisId: 'H9',
-          location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
-          message: 'hoist-triggered',
-          data: {
-            anyImplicit,
-            hasComplexWithoutImplicit,
-            hasSimpleSelectors
-          },
-          timestamp: Date.now()
-        });
-      }
-      // #endregion
       const listOut = SelectorList.create(items.map(s => materializeImplicitAmpersand(s).clone(true)));
       if (partial) {
         if (!wrapper) {
@@ -455,11 +321,12 @@ function maybeHoistMixedNestingSelectorList(
   const anyAbsolute = items.some(hasDescendantCombinator);
   const anyRelative = items.some(s => !hasDescendantCombinator(s));
   const parentPrefix = `${parentSel.valueOf()} `;
+  // Use materialized form so relative selectors (e.g. .header-nav with implicit &) count as prefixed
   const anyPrefixedByParent = parentPrefix
-    ? items.some(s => String(s.valueOf()).startsWith(parentPrefix))
+    ? items.some(s => String(materializeImplicitAmpersand(s).valueOf()).startsWith(parentPrefix))
     : false;
   const anyNotPrefixedByParent = parentPrefix
-    ? items.some(s => !String(s.valueOf()).startsWith(parentPrefix))
+    ? items.some(s => !String(materializeImplicitAmpersand(s).valueOf()).startsWith(parentPrefix))
     : false;
   // If the selector list mixes selectors that are under the parent prefix and selectors that are not,
   // hoist to root so we don't serialize them inside the parent's frame (which would strip the prefix
@@ -521,14 +388,28 @@ function maybeHoistMixedNestingSelectorList(
 /**
  * Extend Roots Registry
  *
- * Manages extend root relationships and accessible roots computation.
+ * Manages extend root relationships and visibility (like ruleset .frames).
  * Uses Rules node object identity (no wrapper class needed).
+ *
+ * Data architecture (mirrors ruleset frames):
+ * - Tree: each extend root has a parent (except document root) and children.
+ *   parentRoot: Rules -> parent Rules, childrenRoots: Rules -> Set<Rules>.
+ * - Visible roots: for a given extend root, the set of roots that are VISIBLE to it —
+ *   i.e. where we can look up rulesets for extend targets. Same idea as context.frames
+ *   for rulesets: ancestors + self + descendants (stop at protected boundaries).
+ *   So when we're inside @media, document root IS visible; when at root, @media blocks
+ *   (children) are visible.
+ * - Mergeable roots: we may only MERGE (add selector) into rulesets whose root is
+ *   extendRoot or a descendant (isSameOrDescendantRoot). We must NOT merge into
+ *   ancestor roots. When target is found in a visible-but-ancestor root, we should
+ *   copy that target's declarations into the extending ruleset in extendRoot (Less
+ *   behavior); that step is not yet implemented.
  */
 export class ExtendRootRegistry {
-  // Map Rules -> parent Rules
+  // Map Rules -> parent Rules (tree)
   private parentRoot = new WeakMap<Rules, Rules>();
 
-  // Map Rules -> Set of child Rules
+  // Map Rules -> Set of child Rules (tree)
   private childrenRoots = new WeakMap<Rules, Set<Rules>>();
 
   // Map Rules -> layer name string
@@ -571,17 +452,6 @@ export class ExtendRootRegistry {
     parent?: Rules,
     options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean; namespace?: string }
   ): void {
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_ACCESS === 'true') {
-      __agentAccessLog('register-root', {
-        rulesId: __agentRootId(rules as unknown as object),
-        parentId: __agentRootId(parent as unknown as object),
-        isProtected: !!options?.isProtected,
-        isCompose: !!options?.isCompose,
-        layerName: options?.layerName ?? null
-      });
-    }
-    // #endregion
     // Set as root if this is the first root
     if (!this.root) {
       this.root = rules;
@@ -638,88 +508,46 @@ export class ExtendRootRegistry {
    */
   pushExtendRoot(rules: Rules): void {
     this.extendRootStack.push(rules);
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_BOOT === 'true') {
-      try {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H42',
-          location: 'extend-roots.ts:pushExtendRoot',
-          message: 'extend-root-pushed',
-          data: {
-            rulesId: String(rules),
-            stackDepth: this.extendRootStack.length,
-            previousRoot: this.extendRootStack.length > 1 ? String(this.extendRootStack[this.extendRootStack.length - 2]) : null
-          },
-          timestamp: Date.now()
-        });
-      } catch {}
-    }
-    // #endregion
   }
 
   /**
    * Pop extend root from stack
    */
   popExtendRoot(): void {
-    const popped = this.extendRootStack.pop();
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_BOOT === 'true') {
-      try {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H42',
-          location: 'extend-roots.ts:popExtendRoot',
-          message: 'extend-root-popped',
-          data: {
-            poppedId: popped ? String(popped) : null,
-            stackDepth: this.extendRootStack.length,
-            newCurrentRoot: this.extendRootStack.length > 0 ? String(this.extendRootStack[this.extendRootStack.length - 1]) : null
-          },
-          timestamp: Date.now()
-        });
-      } catch {}
-    }
-    // #endregion
+    this.extendRootStack.pop();
   }
 
   /**
-   * Get accessible roots for a given root
+   * Get roots visible to a given extend root (like ruleset .frames).
+   * Alias for getAccessibleRoots; use when you mean "visible to this root".
+   */
+  getVisibleRoots(root: Rules): Set<Rules> {
+    return this.getAccessibleRoots(root);
+  }
+
+  /**
+   * Get accessible (visible) roots for a given root.
    *
-   * Accessible roots include:
+   * Visible roots = where we can look up rulesets for extend targets:
    * - Self (the current root)
+   * - Ancestor roots (parent, grandparent, ... up to document root; stop at protected)
    * - Children roots (recursively, if not protected)
    * - Roots with same layer name (for @layer, if accessible)
    *
    * Excludes:
-   * - Parents/ancestors (compose boundary prevents extending up)
+   * - Roots behind protected boundaries (stop traversal at protected roots when going up or down)
    * - Siblings (other children of ancestors, unless same layer)
-   * - Roots behind protected boundaries (stop traversal at protected roots)
    *
    * Note: @import type uses parent's root, so extends inside @import
-   * can reach the parent. But @compose type creates its own root,
-   * so extends inside @compose cannot reach the parent.
+   * can reach the parent. @compose type creates its own root and may be protected.
    *
-   * IMPORTANT: Extends registered OUTSIDE media queries (in parent roots)
-   * should be able to extend selectors INSIDE media queries (in child roots).
-   * But extends registered INSIDE media queries should NOT extend selectors
-   * OUTSIDE (in parent roots).
-   * 
-   * NOTE: The ordering fix (extendOrderMap) only affects the order of selectors
-   * within :is() pseudo-classes, not which rulesets get extended.
+   * Less compatibility: Extends INSIDE @media must see rules OUTSIDE (ancestor roots),
+   * and extends OUTSIDE must see rules INSIDE (child roots). So we include both
+   * ancestors (when not protected) and descendants.
    */
   getAccessibleRoots(root: Rules): Set<Rules> {
     const accessible = new Set<Rules>();
     const visited = new Set<Rules>();
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_ACCESS === 'true') {
-      __agentAccessLog('accessible-enter', {
-        rootId: __agentRootId(root as unknown as object)
-      });
-    }
-    // #endregion
 
     // Helper to traverse children recursively (downward)
     const traverseChildren = (currentRoot: Rules): void => {
@@ -733,13 +561,6 @@ export class ExtendRootRegistry {
 
       // Check if this root is protected - if so, stop traversal into children
       if (this.isProtected.get(currentRoot)) {
-        // #region agent log
-        if (process.env.DEBUG_EXTEND_ACCESS === 'true') {
-          __agentAccessLog('stop-at-protected', {
-            currentId: __agentRootId(currentRoot as unknown as object)
-          });
-        }
-        // #endregion
         return;
       }
 
@@ -754,14 +575,6 @@ export class ExtendRootRegistry {
           // Skip protected children - they should not be accessible
           // This includes protected compose roots (mutable: false or default)
           if (this.isProtected.get(child)) {
-            // #region agent log
-            if (process.env.DEBUG_EXTEND_ACCESS === 'true') {
-              __agentAccessLog('skip-protected-child', {
-                parentId: __agentRootId(currentRoot as unknown as object),
-                childId: __agentRootId(child as unknown as object)
-              });
-            }
-            // #endregion
             continue;
           }
           // Non-protected compose roots (mutable: true) ARE accessible
@@ -790,10 +603,68 @@ export class ExtendRootRegistry {
       }
     };
 
-    // Traverse down from self to add children (compose boundary prevents going up)
+    // Traverse down from self to add self and descendants (extends OUTSIDE see rules INSIDE @media).
     traverseChildren(root);
 
+    // Add ancestor chain (parent, grandparent, ... up to document root; stop at protected).
+    // Required so extends inside nested @media can find targets in outer @media or document
+    // (each root's registry only contains rulesets that registered to that root).
+    let current: Rules | undefined = this.parentRoot.get(root);
+    while (current) {
+      if (visited.has(current)) break;
+      visited.add(current);
+      if (this.isProtected.get(current)) break;
+      accessible.add(current);
+      current = this.parentRoot.get(current);
+    }
+
+    // If the registry has a document root and it wasn't reached by the parent chain (e.g. jess
+    // flow where root wasn't pushed before nested at-rules), include it so extends inside
+    // @media can still find root-level rulesets.
+    if (this.root && !accessible.has(this.root)) {
+      accessible.add(this.root);
+    }
+
     return accessible;
+  }
+
+  /**
+   * True if rulesetRoot is extendRoot or any descendant of extendRoot.
+   * Used to only merge extend into rulesets in the same or a child root (not ancestor).
+   */
+  isSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
+    if (rulesetRoot === extendRoot) return true;
+    // Same-layer roots share extend scope (e.g. two @layer one { } blocks merge).
+    const layerA = this.layerName.get(rulesetRoot);
+    const layerB = this.layerName.get(extendRoot);
+    if (layerA && layerB && layerA === layerB) return true;
+    const children = this.childrenRoots.get(extendRoot);
+    if (!children) return false;
+    for (const child of children) {
+      if (this.isSameOrDescendantRoot(rulesetRoot, child)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * True if possibleAncestor is an ancestor of root (walking parentRoot up from root).
+   * Used to detect when a target ruleset is in an ancestor root so we copy its declarations
+   * into the extending ruleset (Less behavior) instead of merging.
+   */
+  isAncestorRoot(possibleAncestor: Rules, root: Rules): boolean {
+    let current: Rules | undefined = this.parentRoot.get(root);
+    while (current) {
+      if (current === possibleAncestor) return true;
+      current = this.parentRoot.get(current);
+    }
+    return false;
+  }
+
+  /**
+   * Get parent extend root (for same-block detection when collapseNesting creates two inner Rules refs).
+   */
+  getParentRoot(root: Rules): Rules | undefined {
+    return this.parentRoot.get(root);
   }
 
   /**
@@ -899,29 +770,6 @@ export class ExtendRootRegistry {
  * All extend processing logic is centralized here, not in rules.ts
  */
 export function processExtends(context: Context): void {
-  // #region agent log
-  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
-    const filePath = context.treeContext?.file?.fullPath
-      || (context.treeContext?.file?.path && context.treeContext?.file?.name
-        ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
-        : context.treeContext?.file?.path)
-      || '';
-    if (filePath.includes('extend-media')) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H46',
-        location: 'extend-roots.ts:processExtends',
-        message: 'processExtends-called',
-        data: {
-          filePath: String(filePath).substring(0, 150),
-          extendsCount: context.extends.length
-        },
-        timestamp: Date.now()
-      });
-    }
-  }
-  // #endregion
   const allExtends = [...context.extends]; // All original extends
   // NOTE: We must NOT globally de-dupe extends by (target, extendWith, partial).
   // The same extend relationship must be applied to *any* ruleset whose selector matches
@@ -929,7 +777,6 @@ export function processExtends(context: Context): void {
   // De-duping happens per-ruleset via `transformedByExtend`.
   const processedExtends = new Set<string>(); // Track in-flight recursion only (used as a stack guard)
   const extendedRulesets = new Set<Ruleset>(); // Track rulesets that were extended
-  
   // Track extend order for source-order preservation when merging into :is()
   // Maps extendWith selector -> extend index in allExtends (which should be source order with depth-first preEval)
   const extendOrderMap = new WeakMap<Selector, number>();
@@ -937,46 +784,24 @@ export function processExtends(context: Context): void {
     const [, selectorWithExtend] = allExtends[i]!;
     extendOrderMap.set(selectorWithExtend, i);
   }
-  
   // Set the extend order map in extend.ts module for use during merging
   setExtendOrderMap(extendOrderMap);
+  
   // Track which extends have already transformed which rulesets: Map<rulesetId, Set<extendKey>>
   // Each extend can only transform a particular ruleset's selector once
   const transformedByExtend = new Map<Ruleset, Set<string>>();
   const allRoots = context.extendRoots.getAlts();
   const allRootsArr = Array.isArray(allRoots) ? allRoots : [...allRoots];
-  const file = context.treeContext?.file;
-  const debugFilePath =
-    file?.fullPath
-    || (file?.path && file?.name ? `${file.path}/${file.name}` : '')
-    || file?.path
-    || '';
-  const debugThisFile = typeof debugFilePath === 'string'
-    && (
-      debugFilePath.includes('tests-unit/extend-selector/extend-selector.less')
-      || debugFilePath.includes('tests-unit/extend-selector')
-      || debugFilePath.includes('tests-unit/extend-exact/extend-exact.less')
-      || debugFilePath.includes('tests-unit/extend-media/extend-media.less')
-      || debugFilePath.includes('tests-unit/extend-chaining/extend-chaining.less')
-    );
-  // #region agent log
-  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-      hypothesisId: 'H8',
-      location: 'extend-roots.ts:processExtends',
-      message: 'processExtends-context',
-      data: {
-        debugFilePath: debugFilePath || null,
-        debugThisFile,
-        extendsCount: allExtends.length
-      },
-      timestamp: Date.now()
-    });
-  }
-  // #endregion
-
+  /** Walk up from a ruleset to the nearest Rules that is a registered extend root. */
+  const getEffectiveExtendRoot = (ruleset: Ruleset): Rules | undefined => {
+    let n: Node | undefined = ruleset;
+    while (n) {
+      const p: Node | undefined = n.parent;
+      if (p && isNode(p, 'Rules') && allRoots.has(p)) return p;
+      n = p;
+    }
+    return undefined;
+  };
   /**
    * Helper to re-index a ruleset's registry after selector update
    * Simply adds the ruleset back to the registry - it will be indexed automatically
@@ -1022,23 +847,6 @@ export function processExtends(context: Context): void {
           return false;
         };
         if (findNode(rules)) {
-          // #region agent log
-          if (process.env.DEBUG_EXTEND_SKIP === 'true' && debugThisFile) {
-            try {
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H25',
-                location: 'extend-roots.ts:shouldSkipRuleset',
-                message: 'skip-ruleset-extend-is-child',
-                data: {
-                  selector: (ruleset.selector as any)?.valueOf?.() ?? null
-                },
-                timestamp: Date.now()
-              });
-            } catch {}
-          }
-          // #endregion
           return true; // Extend is a child - skip this ruleset
         }
       }
@@ -1064,23 +872,6 @@ export function processExtends(context: Context): void {
 
           // If we find the extend node, it's prepended
           if (sibling === extendNode) {
-            // #region agent log
-            if (process.env.DEBUG_EXTEND_SKIP === 'true' && debugThisFile) {
-              try {
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'run',
-                  hypothesisId: 'H25',
-                  location: 'extend-roots.ts:shouldSkipRuleset',
-                  message: 'skip-ruleset-extend-is-prepended-sibling',
-                  data: {
-                    selector: (ruleset.selector as any)?.valueOf?.() ?? null
-                  },
-                  timestamp: Date.now()
-                });
-              } catch {}
-            }
-            // #endregion
             return true;
           }
 
@@ -1100,23 +891,6 @@ export function processExtends(context: Context): void {
               return false;
             };
             if (findInRules(sibling)) {
-              // #region agent log
-              if (process.env.DEBUG_EXTEND_SKIP === 'true' && debugThisFile) {
-                try {
-                  syncLog({
-                    sessionId: 'debug-session',
-                    runId: process.env.DEBUG_RUN_ID || 'run',
-                    hypothesisId: 'H25',
-                    location: 'extend-roots.ts:shouldSkipRuleset',
-                    message: 'skip-ruleset-extend-is-prepended-in-rules-sibling',
-                    data: {
-                      selector: (ruleset.selector as any)?.valueOf?.() ?? null
-                    },
-                    timestamp: Date.now()
-                  });
-                } catch {}
-              }
-              // #endregion
               return true; // Extend is prepended - skip this ruleset
             }
           }
@@ -1139,29 +913,6 @@ export function processExtends(context: Context): void {
     extendNode: Node,
     depth: number = 0
   ): void => {
-    // #region agent log
-    const targetV = String(target.valueOf());
-    if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetV.includes('ext')) {
-      try {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H47',
-          location: 'extend-roots.ts:processExtend',
-          message: 'processExtend-called',
-          data: {
-            target: targetV,
-            extendWith: String(selectorWithExtend.valueOf()),
-            partial: partial ? 'true' : 'false',
-            depth: String(depth)
-          },
-          timestamp: Date.now()
-        });
-      } catch (e) {
-        console.error('syncLog failed in processExtend:', e);
-      }
-    }
-    // #endregion
 
     const maxDepth = 100; // Prevent infinite loops
     if (depth >= maxDepth) {
@@ -1181,25 +932,6 @@ export function processExtends(context: Context): void {
     }
     processedExtends.add(extendKey);
 
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-        hypothesisId: 'H2',
-        location: 'extend-roots.ts:processExtend',
-        message: 'processExtend-enter',
-        data: {
-          depth,
-          partial,
-          target: target.valueOf(),
-          extendWith: selectorWithExtend.valueOf()
-        },
-        timestamp: Date.now()
-      });
-    }
-    // #endregion
-
     // Determine which roots to search for this extend.
     // - If extend specifies a namespace:
     //   - '*' searches all file roots
@@ -1208,9 +940,26 @@ export function processExtends(context: Context): void {
     const extendNamespace = (extendNode as Extend).type === 'Extend'
       ? (extendNode as Extend).value.namespace
       : undefined;
-    const accessibleRoots = extendNamespace
+    let accessibleRoots = extendNamespace
       ? (extendNamespace === '*' ? context.extendRoots.getAlts() : context.extendRoots.getByNamespace(extendNamespace))
       : context.extendRoots.getAccessibleRoots(extendRoot);
+    // When collapseNesting wraps at-rule rules in Ruleset(&), rulesets register to the inner Rules.
+    // Ensure we search those inner Rules: add them from any registered root with wrapper structure,
+    // so extend finds targets (e.g. .ma inside @media for .mb:extend(.ma)) even if the wrapper
+    // is not in accessibleRoots due to registration order.
+    const rootsToSearch = new Set(accessibleRoots);
+    for (const r of allRootsArr) {
+      if (!accessibleRoots.has(r)) {
+        continue;
+      }
+      if (r.value?.length === 1) {
+        const first = r.value[0];
+        if (isNode(first, 'Ruleset') && first.value.rules && isNode(first.value.rules, 'Rules')) {
+          rootsToSearch.add(first.value.rules);
+        }
+      }
+    }
+    accessibleRoots = rootsToSearch;
 
     // If target is a SelectorList (e.g., .aa, .bb), process each selector separately
     const targetSelectors: Selector[] = isNode(target, 'SelectorList')
@@ -1226,189 +975,119 @@ export function processExtends(context: Context): void {
       // Find rulesets matching this single target in accessible roots
       let rulesetSet: Ruleset[] | undefined;
 
-      // #region agent log
-      const targetV = singleTarget.valueOf();
-      const targetStr = String(targetV);
-      // Log ANY target that contains 'ext' to test logging
-      if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetStr.includes('ext')) {
-        try {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H47',
-            location: 'extend-roots.ts:processExtends',
-            message: 'processing-target-ext',
-            data: {
-              target: targetStr,
-              extendWith: String(selectorWithExtend.valueOf()),
-              partial: partial ? 'true' : 'false'
-            },
-            timestamp: Date.now()
-          });
-        } catch (e) {
-          // Log error if syncLog fails
-          console.error('syncLog failed:', e);
-        }
-      }
-      // #endregion
-
       for (const searchRoot of accessibleRoots) {
         const searchKeySet = singleTarget.keySet;
-        // #region agent log
-        if (targetStr.includes('ext1') && process.env.DEBUG_EXTEND_BOOT === 'true') {
-          // Check what rulesets are registered in this root
-          const registry = searchRoot.getRegistry('ruleset');
-          const allRulesets: any[] = [];
-          try {
-            // Try to get all registered rulesets to see what's available
-            if (registry && (registry as any).index) {
-              for (const rulesetSet of (registry as any).index.values()) {
-                if (rulesetSet && typeof rulesetSet.forEach === 'function') {
-                  rulesetSet.forEach((rs: any) => {
-                    try {
-                      const sel = rs?.value?.selector?.valueOf?.();
-                      if (sel && String(sel).includes('ext1')) {
-                        allRulesets.push(String(sel));
-                      }
-                    } catch {}
-                  });
-                }
-              }
+        let found = searchRoot.find('ruleset', searchKeySet);
+        // When collapseNesting wraps at-rule rules in Ruleset(&), rulesets register to the inner
+        // Rules; always search that too so extend finds them (e.g. .ma inside @media for .mb:extend(.ma)).
+        if (searchRoot.value?.length === 1) {
+          const first = searchRoot.value[0];
+          if (isNode(first, 'Ruleset') && first.value.rules && isNode(first.value.rules, 'Rules')) {
+            const innerFound = first.value.rules.find('ruleset', searchKeySet);
+            if (innerFound) {
+              found = found ? [...found, ...innerFound] : innerFound;
             }
-          } catch {}
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H47',
-            location: 'extend-roots.ts:processExtends',
-            message: 'before-search',
-            data: {
-              target: targetStr,
-              extendWith: String(selectorWithExtend.valueOf()),
-              rootId: String(searchRoot).substring(0, 80),
-              registeredExt1Rulesets: allRulesets.slice(0, 5),
-              searchKeySetType: typeof searchKeySet,
-              searchKeySetSize: searchKeySet instanceof Set ? searchKeySet.size : 'not-a-set'
-            },
-            timestamp: Date.now()
-          });
+          }
         }
-        // #endregion
-        const found = searchRoot.find('ruleset', searchKeySet);
-        // #region agent log
-        if (targetStr.includes('ext1') && process.env.DEBUG_EXTEND_BOOT === 'true') {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H47',
-            location: 'extend-roots.ts:processExtends',
-            message: 'search-root-result',
-            data: {
-              target: targetStr,
-              extendWith: String(selectorWithExtend.valueOf()),
-              rootId: String(searchRoot).substring(0, 80),
-              foundCount: found ? found.length : 0,
-              foundRulesets: found ? found.map((r: any) => {
-                try {
-                  return String((r as any).value?.selector?.valueOf?.() ?? 'unknown');
-                } catch {
-                  return 'unknown';
-                }
-              }).slice(0, 3) : []
-            },
-            timestamp: Date.now()
-          });
-        }
-        // #endregion
         if (found) {
-          if (rulesetSet) {
-            rulesetSet.push(...found);
-          } else {
-            rulesetSet = found;
+          // Only merge into rulesets in extendRoot or in a descendant root of extendRoot.
+          // Do NOT merge into rulesets in an ancestor root (e.g. .ma in @media extending .a at root
+          // must not add .ma to the root .a ruleset; .tv-lowres in @media must not add to root).
+          // Root .all:extend(.ext1) may add .all to .ext1 rulesets in root and in nested @media (descendants).
+          const sameOrDescendantRoot = found.filter((rs: Ruleset) => {
+            const effectiveRoot = getEffectiveExtendRoot(rs);
+            if (!effectiveRoot) return true;
+            if (
+              context.extendRoots.isAncestorRoot(effectiveRoot, extendRoot)
+              && effectiveRoot !== extendRoot
+            ) {
+              return false;
+            }
+            // Same or descendant: merge into rulesets in extendRoot or its descendants.
+            if (context.extendRoots.isSameOrDescendantRoot(effectiveRoot, extendRoot)) return true;
+            // When collapseNesting wraps at-rule body in a wrapper, rulesets can live in a clone that's
+            // not in allRoots, so getEffectiveExtendRoot walks up to the wrapper. Allow merge only when
+            // effectiveRoot is that wrapper (one child Ruleset with inner Rules), not any ancestor.
+            const isAncestor = context.extendRoots.isAncestorRoot(effectiveRoot, extendRoot);
+            const isDocRoot = effectiveRoot === context.root;
+            const effIsWrapper =
+              effectiveRoot.value?.length === 1 &&
+              effectiveRoot.value[0] != null &&
+              isNode(effectiveRoot.value[0], 'Ruleset') &&
+              (effectiveRoot.value[0] as Ruleset).value?.rules != null &&
+              isNode((effectiveRoot.value[0] as Ruleset).value!.rules, 'Rules');
+            if (isAncestor && !isDocRoot && effIsWrapper) return true;
+            const effectiveParent = context.extendRoots.getParentRoot(effectiveRoot);
+            const extendParent = context.extendRoots.getParentRoot(extendRoot);
+            if (effectiveParent && extendParent && effectiveParent === extendParent) return true;
+            // Same AST parent: two inner Rules (e.g. clone A vs clone B) under the same wrapper.
+            if (effectiveRoot.parent === extendRoot.parent) return true;
+            // Same wrapper (grandparent): inner Rules may have different Ruleset parents after eval.
+            const ep = effectiveRoot.parent;
+            const xp = extendRoot.parent;
+            if (
+              ep &&
+              xp &&
+              ep !== xp &&
+              isNode(ep, 'Ruleset') &&
+              isNode(xp, 'Ruleset') &&
+              ep.parent === xp.parent
+            ) {
+              return true;
+            }
+            // extendRoot is detached (preEval clone never attached after eval); target is in inner Rules under wrapper.
+            const effectiveIsInner =
+              ep &&
+              isNode(ep, 'Ruleset') &&
+              ep.parent &&
+              isNode(ep.parent, 'Rules') &&
+              (ep.parent as Rules).value?.length === 1;
+            if (!extendRoot.parent && effectiveIsInner) return true;
+            // Target's root has no parent (detached inner Rules); allow. Exclude document root.
+            if (!effectiveRoot.parent && effectiveRoot !== context.root) return true;
+            // Target ruleset's direct parent (inner Rules) not in allRoots; getEffectiveExtendRoot walked to doc root.
+            const targetInner = rs.parent;
+            const targetWrapper =
+              targetInner?.parent?.parent &&
+              isNode(targetInner.parent, 'Ruleset') &&
+              isNode(targetInner.parent.parent, 'Rules')
+                ? (targetInner.parent.parent as Rules)
+                : undefined;
+            const extendWrapper =
+              xp?.parent && isNode(xp.parent, 'Rules') ? (xp.parent as Rules) : undefined;
+            if (
+              targetWrapper &&
+              extendWrapper &&
+              targetWrapper === extendWrapper &&
+              targetInner &&
+              isNode(targetInner, 'Rules') &&
+              !allRoots.has(targetInner)
+            ) {
+              return true;
+            }
+            // effectiveRoot === context.root but target is nested; extendRoot is nested. Only when target's parent Rules is not in allRoots (collapseNesting inner clone).
+            if (
+              effectiveRoot === context.root &&
+              rs.parent !== context.root &&
+              extendRoot.parent?.parent != null &&
+              rs.parent &&
+              isNode(rs.parent, 'Rules') &&
+              !allRoots.has(rs.parent)
+            ) {
+              return true;
+            }
+            return false;
+          });
+          if (sameOrDescendantRoot.length > 0) {
+            if (rulesetSet) {
+              rulesetSet.push(...sameOrDescendantRoot);
+            } else {
+              rulesetSet = sameOrDescendantRoot;
+            }
           }
-          // #region agent log
-          if (targetV === '.ext1' && process.env.DEBUG_EXTEND_BOOT === 'true') {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H47',
-              location: 'extend-roots.ts:processExtends',
-              message: 'ruleset-added',
-              data: {
-                target: targetV,
-                extendWith: selectorWithExtend.valueOf(),
-                foundCount: found.length,
-                rulesetSetAfter: rulesetSet ? rulesetSet.length : 0,
-                rulesets: found.map((r: any) => {
-                  try {
-                    return String((r as any).value?.selector?.valueOf?.() ?? 'unknown');
-                  } catch {
-                    return 'unknown';
-                  }
-                })
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
         }
       }
-      if (process.env.DEBUG && debugThisFile) {
-        syncLog({
-          kind: 'extend:lookup',
-          target: singleTarget.valueOf(),
-          extendWith: selectorWithExtend.valueOf(),
-          partial,
-          foundCount: rulesetSet?.length ?? 0
-        });
-      }
-      // #region agent log
-      if (process.env.DEBUG_EXTEND_BOOT === 'true' && debugThisFile) {
-        try {
-          const t = singleTarget.valueOf();
-          if (t === '.ma' || t === '.mb' || t === '.mc' || t === '.x' || t === '.y' || t === '.z') {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H22',
-              location: 'extend-roots.ts:processExtends',
-              message: 'extend-chaining-target-lookup',
-              data: {
-                depth,
-                target: t,
-                extendWith: selectorWithExtend.valueOf(),
-                partial,
-                foundCount: rulesetSet?.length ?? 0,
-                accessibleRootsCount: accessibleRoots.size,
-                allRootsCount: allRootsArr.length
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-      }
-      // #endregion
-
       // Handle warnings for Less compatibility (only on first processing)
-      // #region agent log
-      if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetStr.includes('ext1')) {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H47',
-          location: 'extend-roots.ts:processExtends',
-          message: 'ext1-search-result',
-          data: {
-            target: targetStr,
-            extendWith: String(selectorWithExtend.valueOf()),
-            foundInAccessible: rulesetSet ? rulesetSet.length : 0,
-            accessibleRootsCount: accessibleRoots.size,
-            willCheckElsewhere: !rulesetSet || rulesetSet.length === 0
-          },
-          timestamp: Date.now()
-        });
-      }
-      // #endregion
 
       if (!rulesetSet || rulesetSet.length === 0) {
         // Check if target exists anywhere (not just in accessible roots)
@@ -1416,53 +1095,9 @@ export function processExtends(context: Context): void {
         let targetExistsElsewhere = false;
         let existsCount = 0;
 
-        // #region agent log
-        if (targetV === '.ext1' && process.env.DEBUG_EXTEND_BOOT === 'true') {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H47',
-            location: 'extend-roots.ts:processExtends',
-            message: 'ext1-not-found-in-accessible',
-            data: {
-              target: targetV,
-              extendWith: selectorWithExtend.valueOf(),
-              allRootsCount: allRootsForWarning.size,
-              checkingOtherRoots: true
-            },
-            timestamp: Date.now()
-          });
-        }
-        // #endregion
-
         for (const searchRoot of allRootsForWarning) {
           if (!accessibleRoots.has(searchRoot)) {
             const found = searchRoot.find('ruleset', singleTarget.keySet);
-            // #region agent log
-            if (targetV === '.ext1' && process.env.DEBUG_EXTEND_BOOT === 'true' && found && found.length > 0) {
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H46',
-                location: 'extend-roots.ts:processExtends',
-                message: 'ext1-found-in-inaccessible-root',
-                data: {
-                  target: targetV,
-                  extendWith: selectorWithExtend.valueOf(),
-                  foundCount: found.length,
-                  rootId: String(searchRoot).substring(0, 50),
-                  rulesets: found.map((r: any) => {
-                    try {
-                      return String((r as any).value?.selector?.valueOf?.() ?? 'unknown');
-                    } catch {
-                      return 'unknown';
-                    }
-                  })
-                },
-                timestamp: Date.now()
-              });
-            }
-            // #endregion
             if (found && found.length > 0) {
               targetExistsElsewhere = true;
               existsCount += found.length;
@@ -1474,24 +1109,6 @@ export function processExtends(context: Context): void {
         // Collect warnings (only on first processing)
         if (depth === 0) {
           if (targetExistsElsewhere) {
-            // #region agent log
-            if (process.env.DEBUG_EXTEND_BOOT === 'true' && debugThisFile) {
-              try {
-                const t = singleTarget.valueOf();
-                if (t === '.mb' || t === '.mc' || t === '.ma' || t === '.x' || t === '.y' || t === '.z') {
-                  syncLog({
-                    sessionId: 'debug-session',
-                    runId: process.env.DEBUG_RUN_ID || 'run',
-                    hypothesisId: 'H22',
-                    location: 'extend-roots.ts:processExtends',
-                    message: 'extend-target-exists-but-not-accessible',
-                    data: { target: t, existsCount },
-                    timestamp: Date.now()
-                  });
-                }
-              } catch {}
-            }
-            // #endregion
             const warning = WARN.extendNotAccessible({
               ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
               node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
@@ -1538,119 +1155,19 @@ export function processExtends(context: Context): void {
 
           // Track object identity and structure to detect transformations
 
-          // #region agent log
-          if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-              hypothesisId: 'H3',
-              location: 'extend-roots.ts:processExtend',
-              message: 'tryExtendSelector-enter',
-              data: {
-                partial,
-                singleTarget: singleTarget.valueOf(),
-                extendWith: selectorWithExtend.valueOf(),
-                selector: originalSelector.valueOf()
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
-
           let result = tryExtendSelector(originalSelector, singleTarget, selectorWithExtend, partial);
 
-          // #region agent log
-          if (
-            process.env.DEBUG_EXTEND_LOOP === 'true'
-            && debugThisFile
-            && (
-              singleTarget.valueOf().includes('replace.replace')
-              || singleTarget.valueOf() === '.replace'
-              || selectorWithExtend.valueOf().includes('rep_ace')
-            )
-          ) {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-              hypothesisId: 'H7',
-              location: 'extend-roots.ts:processExtend',
-              message: 'tryExtendSelector-focus',
-              data: {
-                partial,
-                target: singleTarget.valueOf(),
-                extendWith: selectorWithExtend.valueOf(),
-                from: originalSelector.valueOf(),
-                ok: !!result && !result.error,
-                errType: result?.error?.type || null,
-                out: result && !result.error ? result.value.valueOf() : null,
-                outType: result && !result.error ? (result.value as any).type ?? null : null,
-                outHoistToRoot: result && !result.error ? !!(result.value as any).hoistToRoot : null
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
-
-          // #region agent log
-          if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-              hypothesisId: 'H3',
-              location: 'extend-roots.ts:processExtend',
-              message: 'tryExtendSelector-exit',
-              data: {
-                ok: !!result && !result.error,
-                changed: !!result && !result.error && result.value.valueOf() !== originalSelector.valueOf(),
-                out: result && !result.error ? result.value.valueOf() : null,
-                errType: result?.error?.type || null
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
 
           if (result && !result.error) {
             const extendedSelector = result.value;
             // Only update if selector actually changed
             if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
-              // #region agent log
-              __agentExtendTrace('extend-roots.ts:processExtend', 'extend-selector-changed', {
-                ctxId: __agentTraceContextId(context as unknown as object),
-                partial,
-                target: singleTarget.valueOf(),
-                extendWith: selectorWithExtend.valueOf(),
-                from: originalSelector.valueOf(),
-                to: extendedSelector.valueOf(),
-                hoistToRoot: !!extendedSelector.hoistToRoot
-              });
-              // #endregion
-              if (debugThisFile) {
-                syncLog({
-                  kind: 'extend:apply',
-                  phase: 1,
-                  target: singleTarget.valueOf(),
-                  extendWith: selectorWithExtend.valueOf(),
-                  partial,
-                  from: originalSelector.valueOf(),
-                  to: extendedSelector.valueOf()
-                });
-              }
               // Mark that this extend has transformed this ruleset
               transformsForRuleset.add(extendKey);
 
               const shouldHoist = !!extendedSelector.hoistToRoot;
               // CRITICAL: Clone the selector to avoid object reference issues
               const clonedSelector = extendedSelector.clone(true);
-              // #region agent log
-              __agentExtendTrace('extend-roots.ts:processExtend', 'clone-selector', {
-                ctxId: __agentTraceContextId(context as unknown as object),
-                reason: 'phase1-ruleset-selector-update',
-                partial,
-                from: extendedSelector.valueOf(),
-                hoistToRoot: !!extendedSelector.hoistToRoot
-              });
-              // #endregion
               if (shouldHoist) {
                 // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
                 clonedSelector.hoistToRoot = true;
@@ -1665,42 +1182,12 @@ export function processExtends(context: Context): void {
                   const nextSource = sourceResult.value;
                   if (nextSource.valueOf() !== sourceSelector.valueOf()) {
                     clonedSelector.sourceNode = nextSource.clone(true);
-                    // #region agent log
-                    __agentExtendTrace('extend-roots.ts:processExtend', 'clone-selector', {
-                      ctxId: __agentTraceContextId(context as unknown as object),
-                      reason: 'phase1-ruleset-selector-sourceNode-update',
-                      partial,
-                      from: nextSource.valueOf(),
-                      hoistToRoot: !!nextSource.hoistToRoot
-                    });
-                    // #endregion
                   }
                 }
               }
 
               // Update the ruleset's selector directly
               const hoisted = maybeHoistMixedNestingSelectorList(ruleset, clonedSelector as Selector, partial);
-              if (debugThisFile) {
-                syncLog({
-                  kind: 'extend:selector-update',
-                  phase: 1,
-                  partial,
-                  before: (clonedSelector as Selector).valueOf(),
-                  after: hoisted.valueOf(),
-                  hoistToRoot: !!(hoisted as any).hoistToRoot,
-                  afterType: (hoisted as any).type ?? null
-                });
-              }
-              // #region agent log
-              __agentExtendTrace('extend-roots.ts:processExtend', 'after-maybeHoistMixedNestingSelectorList', {
-                ctxId: __agentTraceContextId(context as unknown as object),
-                partial,
-                before: (clonedSelector as Selector).valueOf(),
-                after: hoisted.valueOf(),
-                hoistToRoot: !!hoisted.hoistToRoot,
-                afterType: hoisted.type
-              });
-              // #endregion
               // Normalize selectors after extend so generated :is() wrappers can be unwrapped/merged
               // when they are the only simple selector in a selector-list item (Less expectations).
               const normalized = createProcessedSelector(hoisted, true);
@@ -1714,6 +1201,10 @@ export function processExtends(context: Context): void {
               if (hoisted.hoistToRoot) {
                 normalizedSelector.hoistToRoot = true;
               }
+              const leadingIsResult = processLeadingIs(normalizedSelector);
+              normalizedSelector = Array.isArray(leadingIsResult)
+                ? SelectorList.create(leadingIsResult.map(s => s.copy(true) as Selector)).inherit(normalizedSelector) as Selector
+                : leadingIsResult;
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();
               if (normalizedSelector.hoistToRoot) {
@@ -1739,55 +1230,7 @@ export function processExtends(context: Context): void {
   };
 
   // Phase 1: Process all original extends depth-first
-  // #region agent log
-  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
-    try {
-      const filePath = context.treeContext?.file?.fullPath ?? '';
-      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H43',
-          location: 'extend-roots.ts:processExtends',
-          message: 'allExtends-order',
-          data: {
-            count: allExtends.length,
-            extends: allExtends.map(([target, extendWith, partial, root], idx) => ({
-              index: idx,
-              target: target.valueOf(),
-              extendWith: extendWith.valueOf(),
-              partial,
-              rootId: root ? String(root) : null
-            }))
-          },
-          timestamp: Date.now()
-        });
-      }
-    } catch {}
-  }
-  // #endregion
   for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of allExtends) {
-    // #region agent log
-    const targetV = target.valueOf();
-    if (process.env.DEBUG_EXTEND_BOOT === 'true' && targetV.includes('ext1')) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H46',
-        location: 'extend-roots.ts:processExtends',
-        message: 'about-to-process-extend',
-        data: {
-          target: targetV,
-          extendWith: selectorWithExtend.valueOf(),
-          partial: partial ? 'true' : 'false',
-          allExtendsCount: allExtends.length,
-          debugThisFile: String(debugThisFile),
-          debugFilePath: String(debugFilePath).substring(0, 150)
-        },
-        timestamp: Date.now()
-      });
-    }
-    // #endregion
     processExtend(target, selectorWithExtend, partial, extendRoot, extendNode);
   }
 
@@ -1799,53 +1242,9 @@ export function processExtends(context: Context): void {
 
   while (rulesetsToCheck.size > 0 && iteration < maxIterations) {
     iteration++;
-    let __agentPhase2LogCount = 0;
-    let __agentPhase2DeepYzCount = 0;
-    let __agentPhase2RulesetLoopCount = 0;
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_PHASE2_RULESETS === 'true' && debugThisFile) {
-      try {
-        if (iteration <= 2) {
-          const selectors: (string | null)[] = [];
-          let i = 0;
-          for (const rs of rulesetsToCheck) {
-            if (i++ >= 50) break;
-            const sel: any = (rs as any).selector;
-            selectors.push(typeof sel?.valueOf === 'function' ? sel.valueOf() : null);
-          }
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H27',
-            location: 'extend-roots.ts:phase2',
-            message: 'phase2-rulesetsToCheck-snapshot',
-            data: { iteration, size: rulesetsToCheck.size, selectors },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-    }
-    // #endregion
-    // #region agent log
-    __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-iteration-start', {
-      ctxId: __agentTraceContextId(context as unknown as object),
-      iteration,
-      rulesetsToCheck: rulesetsToCheck.size
-    });
-    // #endregion
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-        hypothesisId: 'H4',
-        location: 'extend-roots.ts:processExtends',
-        message: 'phase2-iteration-start',
-        data: { iteration, rulesetsToCheck: rulesetsToCheck.size },
-        timestamp: Date.now()
-      });
-    }
-    // #endregion
+
+
+
     const nextIteration = new Set<Ruleset>();
 
     // Initialize seen states for new rulesets
@@ -1856,7 +1255,7 @@ export function processExtends(context: Context): void {
     }
 
     for (const ruleset of rulesetsToCheck) {
-      __agentPhase2RulesetLoopCount++;
+
       const currentSelector = ruleset.selector as Selector;
       const currentSelectorValue = currentSelector.valueOf();
       const seenStates = seenSelectorStates.get(ruleset)!;
@@ -1866,57 +1265,9 @@ export function processExtends(context: Context): void {
       let phase2SkipAlreadyTransformed = 0;
       let phase2TryExtendSelector = 0;
       let phase2SelectorChanged = 0;
-      // #region agent log
-      if (process.env.DEBUG_EXTEND_PHASE2_RULESETS === 'true' && debugThisFile) {
-        try {
-          const cap = 60;
-          if (__agentPhase2LogCount < cap) {
-            __agentPhase2LogCount++;
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H26',
-              location: 'extend-roots.ts:phase2',
-              message: 'phase2-ruleset-candidate',
-              data: { iteration, selector: currentSelectorValue },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-      }
-      // #endregion
-      // #region agent log
-      __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-ruleset-check', {
-        ctxId: __agentTraceContextId(context as unknown as object),
-        iteration,
-        selector: currentSelectorValue,
-        hoistToRoot: !!(currentSelector as any).hoistToRoot,
-        location: (ruleset as any).location ?? null
-      });
-      // #endregion
 
-      // Check if we've seen this selector state before (infinite loop detection)
+    // Check if we've seen this selector state before (infinite loop detection)
       if (seenStates.has(currentSelectorValue)) {
-        // #region agent log
-        __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-seen-selector-state', {
-          ctxId: __agentTraceContextId(context as unknown as object),
-          iteration,
-          selector: currentSelectorValue
-        });
-        // #endregion
-        // #region agent log
-        if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-            hypothesisId: 'H4',
-            location: 'extend-roots.ts:processExtends',
-            message: 'phase2-skip-seen-state',
-            data: { iteration, selector: currentSelectorValue },
-            timestamp: Date.now()
-          });
-        }
-        // #endregion
         continue; // Infinite loop detected - skip this ruleset
       }
       seenStates.add(currentSelectorValue);
@@ -1946,36 +1297,7 @@ export function processExtends(context: Context): void {
 
         for (const singleTarget of targetSelectors) {
           const phase2ExtendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
-          // #region agent log
-          if (process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true' && debugThisFile) {
-            try {
-              if (iteration === 1 && currentSelectorValue === '.y,.z') {
-                if (__agentPhase2DeepYzCount < 12) {
-                  __agentPhase2DeepYzCount++;
-                  syncLog({
-                    sessionId: 'debug-session',
-                    runId: process.env.DEBUG_RUN_ID || 'run',
-                    hypothesisId: 'H29',
-                    location: 'extend-roots.ts:phase2',
-                    message: 'phase2-yz-consider',
-                    data: { iteration, from: currentSelectorValue, phase2ExtendKey },
-                    timestamp: Date.now()
-                  });
-                }
-              }
-            } catch {}
-          }
-          // #endregion
           if (attemptedPhase2ExtendKeys.has(phase2ExtendKey)) {
-            // #region agent log
-            __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-duplicate-attempt', {
-              ctxId: __agentTraceContextId(context as unknown as object),
-              iteration,
-              partial,
-              extendKey: phase2ExtendKey,
-              from: currentSelectorValue
-            });
-            // #endregion
             continue;
           }
 
@@ -1987,90 +1309,9 @@ export function processExtends(context: Context): void {
               ? targetKeySet.isSubsetOf(currentSelKeySet)
               : targetKeySet.size === currentSelKeySet.size && targetKeySet.isSubsetOf(currentSelKeySet);
           });
-          // #region agent log
-          if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
-            try {
-              if (phase2ExtendKey === '.z:.x:false') {
-                const selCount = currentSelectors.length;
-                let anyHasZ = false;
-                let minSize: number | null = null;
-                let maxSize: number | null = null;
-                for (const s of currentSelectors) {
-                  const ks = s.keySet;
-                  anyHasZ ||= ks.has('.z');
-                  const sz = ks.size;
-                  minSize = minSize === null ? sz : Math.min(minSize, sz);
-                  maxSize = maxSize === null ? sz : Math.max(maxSize, sz);
-                }
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'run',
-                  hypothesisId: 'H24',
-                  location: 'extend-roots.ts:phase2',
-                  message: 'phase2-keyset-overlaps-check',
-                  data: {
-                    iteration,
-                    from: currentSelectorValue,
-                    selCount,
-                    anyHasZ,
-                    minKeySetSize: minSize,
-                    maxKeySetSize: maxSize,
-                    keySetOverlaps
-                  },
-                  timestamp: Date.now()
-                });
-              }
-              if (
-                process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true'
-                && (currentSelectorValue === '.y,.z' || currentSelectorValue === '.md,.ma')
-                && (phase2ExtendKey === '.z:.x:false' || phase2ExtendKey === '.ma:.mb:false' || phase2ExtendKey === '.mb:.mc:false')
-              ) {
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'run',
-                  hypothesisId: 'H28',
-                  location: 'extend-roots.ts:phase2',
-                  message: 'phase2-gate-keyset',
-                  data: { iteration, from: currentSelectorValue, phase2ExtendKey, keySetOverlaps },
-                  timestamp: Date.now()
-                });
-              }
-            } catch {}
-          }
-          // #endregion
 
           if (!keySetOverlaps) {
             phase2SkipKeySet++;
-            // #region agent log
-            if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
-              try {
-                if (
-                  phase2ExtendKey.startsWith('.z:')
-                  || phase2ExtendKey.startsWith('.mb:')
-                  || phase2ExtendKey.startsWith('.ma:')
-                ) {
-                  syncLog({
-                    sessionId: 'debug-session',
-                    runId: process.env.DEBUG_RUN_ID || 'run',
-                    hypothesisId: 'H23',
-                    location: 'extend-roots.ts:phase2',
-                    message: 'phase2-skip-keyset',
-                    data: { iteration, from: currentSelectorValue, phase2ExtendKey },
-                    timestamp: Date.now()
-                  });
-                }
-              } catch {}
-            }
-            // #endregion
-            // #region agent log
-            __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-keyset', {
-              ctxId: __agentTraceContextId(context as unknown as object),
-              iteration,
-              partial,
-              extendKey: phase2ExtendKey,
-              from: currentSelectorValue
-            });
-            // #endregion
             continue; // Fast rejection - keys don't overlap
           }
 
@@ -2078,70 +1319,23 @@ export function processExtends(context: Context): void {
           attemptedPhase2ExtendKeys.add(phase2ExtendKey);
           phase2ConsideredTargets++;
 
-          // Check if ruleset is accessible for this extend
+          // Check if ruleset is accessible for this extend and in same/child root (not ancestor)
           const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
           let foundRuleset = false;
 
           for (const searchRoot of accessibleRoots) {
             const found = searchRoot.find('ruleset', singleTarget.keySet);
             if (found && found.includes(ruleset)) {
-              foundRuleset = true;
+              const effectiveRoot = getEffectiveExtendRoot(ruleset);
+              if (effectiveRoot && context.extendRoots.isSameOrDescendantRoot(effectiveRoot, extendRoot)) {
+                foundRuleset = true;
+              }
               break;
             }
           }
-          // #region agent log
-          if (
-            process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true'
-            && debugThisFile
-            && (currentSelectorValue === '.y,.z' || currentSelectorValue === '.md,.ma')
-            && (phase2ExtendKey === '.z:.x:false' || phase2ExtendKey === '.ma:.mb:false' || phase2ExtendKey === '.mb:.mc:false')
-          ) {
-            try {
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H28',
-                location: 'extend-roots.ts:phase2',
-                message: 'phase2-gate-accessible',
-                data: { iteration, from: currentSelectorValue, phase2ExtendKey, foundRuleset, accessibleRootsCount: accessibleRoots.size },
-                timestamp: Date.now()
-              });
-            } catch {}
-          }
-          // #endregion
 
           if (!foundRuleset) {
             phase2SkipInaccessible++;
-            // #region agent log
-            if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
-              try {
-                if (
-                  phase2ExtendKey.startsWith('.z:')
-                  || phase2ExtendKey.startsWith('.mb:')
-                  || phase2ExtendKey.startsWith('.ma:')
-                ) {
-                  syncLog({
-                    sessionId: 'debug-session',
-                    runId: process.env.DEBUG_RUN_ID || 'run',
-                    hypothesisId: 'H23',
-                    location: 'extend-roots.ts:phase2',
-                    message: 'phase2-skip-inaccessible',
-                    data: { iteration, from: currentSelectorValue, phase2ExtendKey },
-                    timestamp: Date.now()
-                  });
-                }
-              } catch {}
-            }
-            // #endregion
-            // #region agent log
-            __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-inaccessible', {
-              ctxId: __agentTraceContextId(context as unknown as object),
-              iteration,
-              partial,
-              extendKey: phase2ExtendKey,
-              from: currentSelectorValue
-            });
-            // #endregion
             continue; // Ruleset not accessible for this extend
           }
 
@@ -2155,108 +1349,13 @@ export function processExtends(context: Context): void {
           // Skip if this extend has already transformed this ruleset
           if (transformsForRuleset.has(extendKey)) {
             phase2SkipAlreadyTransformed++;
-            // #region agent log
-            __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-already-transformed', {
-              ctxId: __agentTraceContextId(context as unknown as object),
-              iteration,
-              partial,
-              extendKey: phase2ExtendKey,
-              from: currentSelectorValue
-            });
-            // #endregion
             continue; // This extend already transformed this ruleset - skip
           }
 
           // Try to extend - tryExtendSelector will check for actual matches (including combinators)
           // and return an error if there's no match
           phase2TryExtendSelector++;
-          // #region agent log
-          if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
-            try {
-              if (
-                phase2ExtendKey.startsWith('.z:')
-                || phase2ExtendKey.startsWith('.mb:')
-                || phase2ExtendKey.startsWith('.ma:')
-              ) {
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'run',
-                  hypothesisId: 'H23',
-                  location: 'extend-roots.ts:phase2',
-                  message: 'phase2-tryExtendSelector',
-                  data: { iteration, from: currentSelectorValue, phase2ExtendKey },
-                  timestamp: Date.now()
-                });
-              }
-            } catch {}
-          }
-          // #endregion
-          // #region agent log
-          __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-tryExtendSelector', {
-            ctxId: __agentTraceContextId(context as unknown as object),
-            iteration,
-            partial,
-            extendKey: phase2ExtendKey,
-            from: currentSelectorValue
-          });
-          // #endregion
           const result = tryExtendSelector(currentSelector, singleTarget, selectorWithExtend, partial);
-          // #region agent log
-          if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
-            try {
-              if (
-                phase2ExtendKey.startsWith('.z:')
-                || phase2ExtendKey.startsWith('.mb:')
-                || phase2ExtendKey.startsWith('.ma:')
-              ) {
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'run',
-                  hypothesisId: 'H23',
-                  location: 'extend-roots.ts:phase2',
-                  message: 'phase2-tryExtendSelector-result',
-                  data: {
-                    iteration,
-                    from: currentSelectorValue,
-                    phase2ExtendKey,
-                    ok: !!result && !result.error,
-                    changed: !!result && !result.error && result.value.valueOf() !== currentSelectorValue,
-                    errType: result?.error?.type ?? null
-                  },
-                  timestamp: Date.now()
-                });
-              }
-            } catch {}
-          }
-          // #endregion
-          // #region agent log
-          if (
-            process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true'
-            && debugThisFile
-            && (currentSelectorValue === '.y,.z' || currentSelectorValue === '.md,.ma')
-            && (phase2ExtendKey === '.z:.x:false' || phase2ExtendKey === '.ma:.mb:false' || phase2ExtendKey === '.mb:.mc:false')
-          ) {
-            try {
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H28',
-                location: 'extend-roots.ts:phase2',
-                message: 'phase2-result-deep',
-                data: {
-                  iteration,
-                  from: currentSelectorValue,
-                  phase2ExtendKey,
-                  ok: !!result && !result.error,
-                  changed: !!result && !result.error && result.value.valueOf() !== currentSelectorValue,
-                  errType: result?.error?.type ?? null,
-                  out: result && !result.error ? result.value.valueOf() : null
-                },
-                timestamp: Date.now()
-              });
-            } catch {}
-          }
-          // #endregion
 
           if (result && !result.error) {
             const extendedSelector = result.value;
@@ -2264,43 +1363,12 @@ export function processExtends(context: Context): void {
             // Only update if selector actually changed
             if (extendedSelector.valueOf() !== currentSelectorValue) {
               phase2SelectorChanged++;
-              // #region agent log
-              __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-extend-changed', {
-                ctxId: __agentTraceContextId(context as unknown as object),
-                iteration,
-                partial,
-                extendKey: phase2ExtendKey,
-                from: currentSelectorValue,
-                to: extendedSelector.valueOf(),
-                hoistToRoot: !!extendedSelector.hoistToRoot
-              });
-              // #endregion
-              if (debugThisFile) {
-                syncLog({
-                  kind: 'extend:apply',
-                  phase: 2,
-                  target: singleTarget.valueOf(),
-                  extendWith: selectorWithExtend.valueOf(),
-                  partial,
-                  from: currentSelectorValue,
-                  to: extendedSelector.valueOf()
-                });
-              }
               // Mark that this extend has transformed this ruleset
               transformsForRuleset.add(extendKey);
 
               const shouldHoist = !!extendedSelector.hoistToRoot;
               // CRITICAL: Clone the selector to avoid object reference issues
               const clonedSelector = extendedSelector.clone(true);
-              // #region agent log
-              __agentExtendTrace('extend-roots.ts:processExtends', 'clone-selector', {
-                ctxId: __agentTraceContextId(context as unknown as object),
-                reason: 'phase2-ruleset-selector-update',
-                partial,
-                from: extendedSelector.valueOf(),
-                hoistToRoot: !!extendedSelector.hoistToRoot
-              });
-              // #endregion
               if (shouldHoist) {
                 // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
                 clonedSelector.hoistToRoot = true;
@@ -2313,15 +1381,6 @@ export function processExtends(context: Context): void {
                   const nextSource = sourceResult.value;
                   if (nextSource.valueOf() !== sourceSelector.valueOf()) {
                     clonedSelector.sourceNode = nextSource.clone(true);
-                    // #region agent log
-                    __agentExtendTrace('extend-roots.ts:processExtends', 'clone-selector', {
-                      ctxId: __agentTraceContextId(context as unknown as object),
-                      reason: 'phase2-ruleset-selector-sourceNode-update',
-                      partial,
-                      from: nextSource.valueOf(),
-                      hoistToRoot: !!nextSource.hoistToRoot
-                    });
-                    // #endregion
                   }
                 }
               }
@@ -2352,49 +1411,13 @@ export function processExtends(context: Context): void {
       if (nextIteration.has(ruleset)) {
         continue;
       }
-
-      // #region agent log
-      __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-ruleset-summary', {
-        ctxId: __agentTraceContextId(context as unknown as object),
-        iteration,
-        selector: currentSelectorValue,
-        hoistToRoot: !!(currentSelector as any).hoistToRoot,
-        consideredTargets: phase2ConsideredTargets,
-        skipKeySet: phase2SkipKeySet,
-        skipInaccessible: phase2SkipInaccessible,
-        skipAlreadyTransformed: phase2SkipAlreadyTransformed,
-        tryExtendSelector: phase2TryExtendSelector,
-        selectorChanged: phase2SelectorChanged
-      });
-      // #endregion
     }
 
     rulesetsToCheck = nextIteration;
-    // #region agent log
-    if (process.env.DEBUG_EXTEND_PHASE2_RULESETS === 'true' && debugThisFile) {
-      try {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H30',
-          location: 'extend-roots.ts:phase2',
-          message: 'phase2-iteration-end',
-          data: {
-            iteration,
-            processedRulesets: __agentPhase2RulesetLoopCount,
-            nextIterationSize: nextIteration.size
-          },
-          timestamp: Date.now()
-        });
-      } catch {}
-    }
-    // #endregion
   }
 
   if (iteration >= maxIterations) {
     throw new Error(`Extend chaining exceeded maximum iterations (${maxIterations}). Possible infinite loop.`);
   }
-  
-  // Clear the extend order map after processing
   setExtendOrderMap(null);
 }

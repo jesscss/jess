@@ -95,7 +95,6 @@ describe('Can render Less files to CSS', () => {
             const testCompiler = new Compiler({
               ...baseCompiler.opts,
               ...testCase.config,
-              // Merge output options - testCase.config.output overrides baseCompiler defaults
               output: {
                 ...baseCompiler.opts.output,
                 ...(testCase.config.output || {})

@@ -1,0 +1,1462 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`extend integration (eval -> toString) > extend-chaining.less AST shape: same nodes and selector shapes as parsed (start through @media (tv)) 1`] = `
+"(Rules
+  [
+    (Comment '//very simple chaining')
+    (Ruleset
+      selector: 
+        (BasicSelector '.a')
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.b')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.a')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.c')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.b')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Comment '//very simple chaining, ordering not important')
+    (Ruleset
+      selector: 
+        (BasicSelector '.d')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.e')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.e')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.f')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.f')
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Comment '//extend with all')
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (BasicSelector '.g')
+            (BasicSelector '.h')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (BasicSelector '.i')
+            (BasicSelector '.j')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.g')
+              flag: 0
+            )
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'inherit')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.k')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.i')
+              flag: 0
+            )
+          ]
+        )
+    )
+    (Comment '//extend multi-chaining')
+    (Ruleset
+      selector: 
+        (BasicSelector '.l')
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.m')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.l')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.n')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.m')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.o')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.n')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.p')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.o')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.q')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.p')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.r')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.q')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.s')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.r')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.t')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.s')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Comment '// self referencing is ignored')
+    (Ruleset
+      selector: 
+        (BasicSelector '.u')
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (BasicSelector '.u')
+            (BasicSelector '.v')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.u')
+              flag: 0
+            )
+          ]
+        )
+    )
+    (Comment '// circular reference because the new extend product will match the existing extend')
+    (Ruleset
+      selector: 
+        (BasicSelector '.w')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.w')
+              flag: 1
+            )
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (BasicSelector '.w')
+            (BasicSelector '.v')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.w')
+              flag: 0
+            )
+          ]
+        )
+    )
+    (Comment '// classic circular references')
+    (Ruleset
+      selector: 
+        (BasicSelector '.x')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.z')
+              flag: 1
+            )
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'x')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.y')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.x')
+              flag: 1
+            )
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'y')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.z')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.y')
+              flag: 1
+            )
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'z')
+            )
+          ]
+        )
+    )
+    (Comment '//very simple chaining, but with the extend inside the ruleset')
+    (Ruleset
+      selector: 
+        (BasicSelector '.va')
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.vb')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.va')
+              flag: 1
+            )
+            (Nil '')
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'inherit')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.vc')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.vb')
+              flag: 1
+            )
+            (Nil '')
+          ]
+        )
+    )
+    (Comment '// media queries - don\\'t extend outside, do extend inside')
+    (AtRule
+      name: 
+        (Any '@media')
+      prelude: 
+        (Paren
+          (QueryCondition
+            [
+              (Keyword [role=keyword] 'tv')
+            ]
+          )
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.ma')
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (SelectorList
+                          [
+                            (BasicSelector '.a')
+                            (BasicSelector '.b')
+                            (BasicSelector '.c')
+                            (BasicSelector '.d')
+                            (BasicSelector '.e')
+                            (BasicSelector '.f')
+                            (BasicSelector '.g')
+                            (BasicSelector '.h')
+                            (BasicSelector '.i')
+                            (BasicSelector '.j')
+                            (BasicSelector '.k')
+                            (BasicSelector '.l')
+                            (BasicSelector '.m')
+                            (BasicSelector '.n')
+                            (BasicSelector '.o')
+                            (BasicSelector '.p')
+                            (BasicSelector '.q')
+                            (BasicSelector '.r')
+                            (BasicSelector '.s')
+                            (BasicSelector '.t')
+                            (BasicSelector '.u')
+                            (BasicSelector '.v')
+                            (BasicSelector '.w')
+                            (BasicSelector '.x')
+                            (BasicSelector '.y')
+                            (BasicSelector '.z')
+                            (BasicSelector '.md')
+                          ]
+                        )
+                      flag: 1
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'black'
+                          format: 0
+                          rgb:
+                            [0, 0, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+            (Ruleset
+              selector: 
+                (BasicSelector '.md')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Any 'inherit')
+                    )
+                  ]
+                )
+            )
+            (AtRule
+              name: 
+                (Any '@media')
+              prelude: 
+                (Paren
+                  (QueryCondition
+                    [
+                      (Keyword [role=keyword] 'plasma')
+                    ]
+                  )
+                )
+              rules: 
+                (Rules
+                  [
+                    (Rules
+                      [
+                        (Extend
+                          selector: 
+                            (SelectorList
+                              [
+                                (BasicSelector '.me')
+                                (BasicSelector '.mf')
+                              ]
+                            )
+                          target: 
+                            (SelectorList
+                              [
+                                (BasicSelector '.mb')
+                                (BasicSelector '.md')
+                              ]
+                            )
+                          flag: 1
+                        )
+                        (Ruleset
+                          selector: 
+                            (SelectorList
+                              [
+                                (BasicSelector '.me')
+                                (BasicSelector '.mf')
+                              ]
+                            )
+                          rules: 
+                            (Rules
+                              [
+                                (Nil '')
+                                (Declaration
+                                  name: 
+                                    (Any [role=property] 'background')
+                                  value: 
+                                    (Color
+                                      node: 'red'
+                                      format: 0
+                                      rgb:
+                                        [255, 0, 0]
+                                      alpha: 1
+                                    )
+                                )
+                              ]
+                            )
+                        )
+                      ]
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.mb')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.ma')
+              flag: 1
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.mc')
+      rules: 
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.mb')
+              flag: 1
+            )
+          ]
+        )
+    )
+  ]
+)"
+`;
+
+exports[`extend integration (eval -> toString) > extend-chaining.less AST shape: same nodes and selector shapes as parsed (start through @media (tv)) 2`] = `
+"(Rules
+  [
+    (Comment '//very simple chaining')
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.a')
+            (BasicSelector '.b')
+            (BasicSelector '.c')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.b')
+            (BasicSelector '.c')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.c')
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Comment '//very simple chaining, ordering not important')
+    (Ruleset
+      selector: 
+        (BasicSelector '.d')
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.e')
+            (BasicSelector '.d')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.f')
+            (BasicSelector '.e')
+            (BasicSelector '.d')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Comment '//extend with all')
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (PseudoSelector
+              name: ':is'
+              arg: 
+                (SelectorList
+                  [
+                    (BasicSelector '.g')
+                    (CompoundSelector
+                      [
+                        (PseudoSelector
+                          name: ':is'
+                          arg: 
+                            (SelectorList
+                              [
+                                (BasicSelector '.i')
+                                (BasicSelector '.k')
+                              ]
+                            )
+                        )
+                        (BasicSelector '.j')
+                      ]
+                    )
+                  ]
+                )
+            )
+            (BasicSelector '.h')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (PseudoSelector
+              name: ':is'
+              arg: 
+                (SelectorList
+                  [
+                    (BasicSelector '.i')
+                    (BasicSelector '.k')
+                  ]
+                )
+            )
+            (BasicSelector '.j')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'inherit')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.k')
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Comment '//extend multi-chaining')
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.l')
+            (BasicSelector '.m')
+            (BasicSelector '.n')
+            (BasicSelector '.o')
+            (BasicSelector '.p')
+            (BasicSelector '.q')
+            (BasicSelector '.r')
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.m')
+            (BasicSelector '.n')
+            (BasicSelector '.o')
+            (BasicSelector '.p')
+            (BasicSelector '.q')
+            (BasicSelector '.r')
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.n')
+            (BasicSelector '.o')
+            (BasicSelector '.p')
+            (BasicSelector '.q')
+            (BasicSelector '.r')
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.o')
+            (BasicSelector '.p')
+            (BasicSelector '.q')
+            (BasicSelector '.r')
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.p')
+            (BasicSelector '.q')
+            (BasicSelector '.r')
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.q')
+            (BasicSelector '.r')
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.r')
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.s')
+            (BasicSelector '.t')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.t')
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Comment '// self referencing is ignored')
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.u')
+            (CompoundSelector
+              [
+                (BasicSelector '.v')
+                (BasicSelector '.u')
+                (BasicSelector '.v')
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (PseudoSelector
+              name: ':is'
+              arg: 
+                (SelectorList
+                  [
+                    (BasicSelector '.u')
+                    (CompoundSelector
+                      [
+                        (BasicSelector '.v')
+                        (BasicSelector '.u')
+                        (BasicSelector '.v')
+                      ]
+                    )
+                  ]
+                )
+            )
+            (BasicSelector '.v')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Comment '// circular reference because the new extend product will match the existing extend')
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.w')
+            (CompoundSelector
+              [
+                (BasicSelector '.v')
+                (BasicSelector '.w')
+                (BasicSelector '.v')
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (PseudoSelector
+              name: ':is'
+              arg: 
+                (SelectorList
+                  [
+                    (BasicSelector '.w')
+                    (CompoundSelector
+                      [
+                        (BasicSelector '.v')
+                        (BasicSelector '.w')
+                        (BasicSelector '.v')
+                      ]
+                    )
+                  ]
+                )
+            )
+            (BasicSelector '.v')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Comment '// classic circular references')
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.x')
+            (BasicSelector '.y')
+            (BasicSelector '.z')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'x')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.y')
+            (BasicSelector '.z')
+            (BasicSelector '.x')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'y')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.z')
+            (BasicSelector '.x')
+            (BasicSelector '.y')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'z')
+            )
+          ]
+        )
+    )
+    (Comment '//very simple chaining, but with the extend inside the ruleset')
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.va')
+            (BasicSelector '.vb')
+            (BasicSelector '.vc')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                    [0, 0, 0]
+                  alpha: 1
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.vb')
+            (BasicSelector '.vc')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+            (Nil '')
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Any 'inherit')
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.vc')
+      rules: 
+        (Rules
+          [
+            (Nil '')
+            (Nil '')
+          ]
+        )
+    )
+    (Comment '// media queries - don\\'t extend outside, do extend inside')
+    (AtRule
+      name: 
+        (Any '@media')
+      prelude: 
+        (Paren
+          (Keyword [role=keyword] 'tv')
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.ma')
+                    (BasicSelector '.mb')
+                    (BasicSelector '.mc')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Nil '')
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'black'
+                          format: 0
+                          rgb:
+                            [0, 0, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.md')
+                    (BasicSelector '.ma')
+                    (BasicSelector '.mb')
+                    (BasicSelector '.mc')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Any 'inherit')
+                    )
+                  ]
+                )
+            )
+            (AtRule
+              name: 
+                (Any '@media')
+              prelude: 
+                (Paren
+                  (Keyword [role=keyword] 'plasma')
+                )
+              rules: 
+                (Rules
+                  [
+                    (Rules
+                      [
+                        (Nil '')
+                        (Ruleset
+                          selector: 
+                            (SelectorList
+                              [
+                                (BasicSelector '.me')
+                                (BasicSelector '.mf')
+                              ]
+                            )
+                          rules: 
+                            (Rules
+                              [
+                                (Nil '')
+                                (Declaration
+                                  name: 
+                                    (Any [role=property] 'background')
+                                  value: 
+                                    (Color
+                                      node: 'red'
+                                      format: 0
+                                      rgb:
+                                        [255, 0, 0]
+                                      alpha: 1
+                                    )
+                                )
+                              ]
+                            )
+                        )
+                      ]
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (SelectorList
+          [
+            (BasicSelector '.mb')
+            (BasicSelector '.mc')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.mc')
+      rules: 
+        (Rules
+          [
+            (Nil '')
+          ]
+        )
+    )
+  ]
+)"
+`;

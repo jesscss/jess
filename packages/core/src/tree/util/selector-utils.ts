@@ -6,9 +6,7 @@ import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
-// #region agent log
-import { syncLog } from '../util/__tests__/debug-log.js';
-// #endregion
+import { syncLog } from './__tests__/debug-log.js';
 
 // Some build targets for core do not include Node typings; keep debug gating type-safe.
 declare const process: { env: Record<string, string | undefined> };
@@ -73,9 +71,7 @@ export function addImplicitAmpersand(
     // Wrapping as `:is(...)` allows normalization to expand the OR branches during matching.
     const parentCopy = parentSelector.copy(true);
     if (!collapseNesting && isNode(parentCopy, 'SelectorList')) {
-      const isWrapper = PseudoSelector.create({ name: ':is', arg: parentCopy });
-      isWrapper.generated = true;
-      amp.value.selector = isWrapper;
+      amp.value.selector = PseudoSelector.create({ name: ':is', arg: parentCopy });
       // #region agent log
       if ((process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug' && __agentImplicitIsCount++ < 25) {
         syncLog({

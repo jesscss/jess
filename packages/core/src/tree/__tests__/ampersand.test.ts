@@ -1,5 +1,5 @@
 import {
-  amp, rules, sel, el, spaced, any, sellist, ruleset, decl, attr,
+  amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
   type SimpleSelector, type Combinator, type Selector
 } from '..';
@@ -77,11 +77,10 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
+    // Generated :is(.one.two) is unwrapped to .one.two; same selector as outer so one block
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
-      }
-      .one.two {
         inner: one two;
       }`
     );
@@ -95,13 +94,11 @@ describe('Ampersand', () => {
     let evald = await node.eval(context);
 
     const css = evald.toString({ collapseNesting: true });
+    // Generated :is(.one,.two) is unwrapped to .one,.two; same selector as outer so one block
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
-      }
-      .one,
-      .two {
         inner: one two;
       }`
     );
@@ -127,11 +124,10 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
+    // Generated :is(.one.two) unwraps to .one.two; same selector so one block
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
-      }
-      .one.two {
         inner: one two;
       }`
     );
@@ -142,13 +138,11 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
+    // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
-      }
-      .one,
-      .two {
         inner: one two;
       }`
     );
@@ -191,12 +185,14 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
+    // First item is generated :is(.one,.two) and unwraps to .one,.two; second stays :is(.one,.two) .three
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
       }
-      :is(.one, .two),
+      .one,
+      .two,
       :is(.one, .two) .three {
         inner: one two;
       }`
@@ -213,6 +209,32 @@ describe('Ampersand', () => {
         inner: one two;
       }`
     );
+  });
+
+  /**
+   * Real ampersand path: * b { &[e] { f: 'g' } } (css-3 nesting case).
+   * Built AST matches what the Less/CSS parser produces:
+   * - Outer: complexSelector → [BasicSelector(*), Combinator(' '), BasicSelector(b)] (compoundSelector returns single node for * and b).
+   * - Inner: compoundSelector → [Ampersand(undefined), AttributeSelector({ name: 'e' })] for &[e].
+   * Same node types and structure as parser output so eval path is identical.
+   */
+  it('unwraps :is(* b)[e] to * b[e] when ampersand is flattened (css-3 nesting case)', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('*'), co(' '), el('b')]),
+        rules: rules([
+          ruleset({
+            selector: compound([amp(), attr({ name: 'e' })]),
+            rules: rules([decl({ name: 'f', value: any('g') })])
+          })
+        ])
+      })
+    ]);
+    context = new Context({ collapseNesting: true });
+    const evald = await node.eval(context);
+    const css = evald.toString({ context, collapseNesting: true });
+    expect(css).toContain('* b[e]');
+    expect(css).not.toContain(':is(* b)[e]');
   });
 
   it('should throw if the parent selector is not basic', async () => {

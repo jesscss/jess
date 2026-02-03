@@ -541,16 +541,23 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      // Should not throw - extendNotAccessible is now a warning
+      // Should not throw (extend from inside @media cannot reach root; we skip merge, optionally warn).
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      // Should have collected a warning
-      expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
-      expect(warning).toBeDefined();
-      expect(warning?.message).toContain('Extend target');
-      expect(warning?.message).toContain('not accessible');
+      // Root .base must stay unchanged (no .child merged at root). We copy .base decls into .child in media (Less behavior).
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+          color: red;
+        }
+        @media (min-width: 600px) {
+          .child {
+            color: red;
+            background-color: blue;
+          }
+        }
+      `);
     });
 
     /**
@@ -581,16 +588,22 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      // Should not throw - extendNotAccessible is now a warning
+      // Should not throw (extend from inside @container cannot reach root; we copy .base decls into .child).
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      // Should have collected a warning
-      expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
-      expect(warning).toBeDefined();
-      expect(warning?.message).toContain('Extend target');
-      expect(warning?.message).toContain('not accessible');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+          color: red;
+        }
+        @container (min-width: 600px) {
+          .child {
+            color: red;
+            background-color: blue;
+          }
+        }
+      `);
     });
 
     /**
@@ -621,16 +634,22 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      // Should not throw - extendNotAccessible is now a warning
+      // Should not throw (extend from inside @supports cannot reach root; we copy .base decls into .child).
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      // Should have collected a warning
-      expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
-      expect(warning).toBeDefined();
-      expect(warning?.message).toContain('Extend target');
-      expect(warning?.message).toContain('not accessible');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+          color: red;
+        }
+        @supports (display: grid) {
+          .child {
+            color: red;
+            background-color: blue;
+          }
+        }
+      `);
     });
 
     /**

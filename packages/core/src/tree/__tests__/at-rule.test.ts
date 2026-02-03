@@ -1887,7 +1887,7 @@ describe('AtRule', () => {
         }
         @media (min-width: 768px) {
           @media (min-width: 480px) {
-            .menu .menu .menu .menu > li {
+            :is(.menu .menu) .menu .menu > li {
               display: table-cell;
             }
           }

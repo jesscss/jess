@@ -897,20 +897,21 @@ function tryFastPathExtendMatch(
       }
     }
 
-    // Post-process locations to detect partial matches at position 0
-    if (locations.length > 0) {
-      // Found matches - check if any are at position 0 with remainders
+    // Post-process: when find matches one component of a multi-component complex selector,
+    // that is always a partial match (full mode should reject it). Mark ALL such component
+    // matches as partial, not just position 0.
+    if (locations.length > 0 && target.value.length > 1) {
       for (const location of locations) {
-        if (location.path[location.path.length - 1] === 0 && target.value.length > 1) {
-          // This is a match at position 0 of a complex selector
-          // Mark it as partial and calculate remainders
+        const lastSeg = location.path[location.path.length - 1];
+        if (typeof lastSeg === 'number') {
+          // Match is inside a component of this complex selector
           location.isPartialMatch = true;
-
-          // Get the remaining components after position 0
-          const remainingComponents = target.value.slice(1);
-          location.remainders = remainingComponents.length === 1 && !isNode(remainingComponents[0], 'Combinator')
-            ? [remainingComponents[0] as Selector]
-            : [new ComplexSelector(remainingComponents).inherit(target)];
+          if (lastSeg === 0) {
+            const remainingComponents = target.value.slice(1);
+            location.remainders = remainingComponents.length === 1 && !isNode(remainingComponents[0], 'Combinator')
+              ? [remainingComponents[0] as Selector]
+              : [new ComplexSelector(remainingComponents).inherit(target)];
+          }
         }
       }
     }
@@ -1252,23 +1253,24 @@ function searchWithinComplexSelector(
     }
   });
 
-  // Post-process any matches found at position 0 to mark as partial if there are remainders
+  // Post-process: when find matches one component of a multi-component complex selector,
+  // that is always a partial match (full mode should reject it). Mark ALL such component
+  // matches as partial, not just position 0.
   if (locations.length > initialLocationCount && complex.value.length > 1) {
-    // Check newly added locations
     for (let i = initialLocationCount; i < locations.length; i++) {
       const location = locations[i]!;
       const lastPathSegment = location.path[location.path.length - 1];
 
-      if (lastPathSegment === 0) {
-        // This is a match at position 0 of the complex selector
+      if (typeof lastPathSegment === 'number') {
+        // Match is inside a component of this complex selector
         location.isPartialMatch = true;
-
-        // Calculate remainders - everything after position 0
-        const remainingComponents = complex.value.slice(1);
-        if (remainingComponents.length === 1 && !isNode(remainingComponents[0], 'Combinator')) {
-          location.remainders = [remainingComponents[0] as Selector];
-        } else if (remainingComponents.length > 0) {
-          location.remainders = [new ComplexSelector(remainingComponents).inherit(complex)];
+        if (lastPathSegment === 0) {
+          const remainingComponents = complex.value.slice(1);
+          if (remainingComponents.length === 1 && !isNode(remainingComponents[0], 'Combinator')) {
+            location.remainders = [remainingComponents[0] as Selector];
+          } else if (remainingComponents.length > 0) {
+            location.remainders = [new ComplexSelector(remainingComponents).inherit(complex)];
+          }
         }
       }
     }

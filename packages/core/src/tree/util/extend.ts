@@ -105,10 +105,15 @@ import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { normalizeSelectorForExtend } from './find-extendable-locations.js';
-import { syncLog } from './__tests__/debug-log.js';
 import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { syncLog } from './__tests__/debug-log.js';
 
 const { isArray } = Array;
+let extendOrderMap: WeakMap<Selector, number> | null = null;
+
+export function setExtendOrderMap(map: WeakMap<Selector, number> | null): void {
+  extendOrderMap = map;
+}
 
 // NOTE: extend finalize tracing removed; keep call sites as no-ops.
 function __agentExtendLog(_location: string, _message: string, _data: Record<string, unknown>) {
@@ -568,14 +573,6 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
  * @param inheritFrom - Optional selector to inherit from
  * @returns A new SelectorList with deduplicated and flattened selectors
  */
-// Module-level WeakMap to track extend order for source-order preservation
-// Set during processExtends and used when merging selectors into :is()
-let extendOrderMap: WeakMap<Selector, number> | null = null;
-
-export function setExtendOrderMap(map: WeakMap<Selector, number> | null): void {
-  extendOrderMap = map;
-}
-
 function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selector): SelectorList {
   // #region agent log
   {
@@ -594,15 +591,10 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
     extractedSelectors.push(...extractSelectorsFromIs(selector));
   }
 
-  // Sort by extend order if available (preserves source order when merging into :is())
-  // Only sort selectors that have extend order (extendWith selectors); maintain relative order for others
-  // This ensures that when multiple extends target the same selector, their extending selectors
-  // are merged into :is() in source order (based on when they were registered during preEval)
   if (extendOrderMap && extractedSelectors.length > 1) {
-    // Separate selectors with order (extendWith) from those without (original selectors)
     const withOrder: Array<{ selector: Selector; order: number }> = [];
     const withoutOrder: Selector[] = [];
-    
+
     for (const selector of extractedSelectors) {
       const order = extendOrderMap.get(selector);
       if (order !== undefined) {
@@ -611,13 +603,11 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
         withoutOrder.push(selector);
       }
     }
-    
-    // Sort extendWith selectors by their order
+
     withOrder.sort((a, b) => a.order - b.order);
-    
-    // Reconstruct: original selectors first (maintain their order), then sorted extendWith selectors
+
     extractedSelectors.length = 0;
-    extractedSelectors.push(...withoutOrder, ...withOrder.map(item => item.selector));
+    extractedSelectors.push(...withoutOrder, ...withOrder.map((item) => item.selector));
   }
 
   // createProcessedSelector may return a single selector if only one item, so ensure it's an array
@@ -1594,31 +1584,20 @@ function extendSelectorList(
     return prefixed;
   };
 
-  // For SelectorLists, we need to extend each selector that contains the find target
-  // Keep original selectors in place, collect new selectors to append at the end
+  // For SelectorLists, extend each selector that contains the find target.
+  // Build list as [original selectors..., new selectors...]. Order is determined by
+  // registration/traversal order; no reordering is done in createExtendedSelectorList.
   const originalSelectors: Selector[] = [];
   const newSelectors: Selector[] = [];
 
   for (const selector of target.value) {
     const selectorSearchResult = findExtendableLocations(selector, find);
     if (selectorSearchResult.hasMatches) {
-      // This selector contains the find target - extend it
-      // If partial: false and it's only a partial match, extendSelector will return unchanged
       const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
 
-      // If the result is unchanged (same object reference), keep it as-is
-      // No need to clone if unchanged
       if (extended === selector) {
         originalSelectors.push(selector);
       } else if (isNode(extended, 'SelectorList')) {
-        // In partial mode, prefer wrapping a fully-matching selector in :is() rather than
-        // expanding the surrounding SelectorList with a new alternative.
-        //
-        // Example:
-        //   target list: `.replace, .c`
-        //   extend: `.rep_ace:extend(.replace all)`
-        // Desired:
-        //   `:is(.replace, .rep_ace), .c`
         if (
           partial
           && preferIsWrapperInPartialMode
@@ -1633,8 +1612,6 @@ function extendSelectorList(
             target,
             { target: selector, find, extendWith }
           );
-          // Mark as generated by extend. Root-level normalization can unwrap/merge the :is()
-          // when it's the whole selector-list item.
           isWrapper.generated = true;
           __agentExtendLog('extend.ts:extendSelectorList', 'prefer-wrapper-in-partial-mode', {
             partial: !!partial,
@@ -1647,16 +1624,10 @@ function extendSelectorList(
           continue;
         }
 
-        // First item is the original (possibly modified), rest are new
-        // CRITICAL: Clone selectors to avoid object reference issues
-        // Defensive check: ensure SelectorList has at least one item
         if (extended.value.length === 0) {
-          // Empty SelectorList - this shouldn't happen, but handle gracefully
-          // Keep original selector unchanged
           originalSelectors.push(selector);
         } else {
           originalSelectors.push(extended.value[0]!.clone(true));
-          // Ensure new alternatives preserve the nested implicit `&` when appropriate.
           const template = extended.value[0] ?? selector;
           newSelectors.push(
             ...extended.value
@@ -1666,18 +1637,13 @@ function extendSelectorList(
           );
         }
       } else {
-        // CRITICAL: Clone the extended selector
         originalSelectors.push(extended.clone(true));
       }
     } else {
-      // This selector doesn't contain the find target - keep it as-is
-      // No need to clone if unchanged
       originalSelectors.push(selector);
     }
   }
 
-  // Append new selectors at the end, preserving order extends were applied
-  // Flatten any nested :is() that were generated during extend
   const allSelectors = [...originalSelectors, ...newSelectors];
   if (partial) {
     // In partial mode we intentionally keep :is() wrappers as items (Less `all` behavior),
@@ -1975,7 +1941,13 @@ function isNonAllWholeSelectorItemMatch(target: Selector, findValue: string): bo
       });
     }
     if (arg && typeof arg === 'object' && typeof arg.valueOf === 'function') {
-      try { return arg.valueOf() === findValue; } catch { return false; }
+      try {
+        if (arg.valueOf() === findValue) return true;
+        // Nested :is() e.g. :is(:is(.foo)) - recurse into single arg
+        if (isNode(arg, 'Selector')) {
+          return isNonAllWholeSelectorItemMatch(arg, findValue);
+        }
+      } catch { return false; }
     }
   }
 

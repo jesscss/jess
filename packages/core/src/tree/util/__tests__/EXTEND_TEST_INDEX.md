@@ -2,6 +2,8 @@
 
 This doc exists to make **extend-related tests** easy to find (especially for LLM-assisted debugging).
 
+**Before changing extend logic:** See `../EXTEND_FUNCTION_AUDIT.md` for what each function does and where order/normalization live (so logic is not duplicated or fragmented). See also `../EXTEND_ARCHITECTURE_ANALYSIS.md` and `../EXTEND_REFACTORING_SUMMARY.md`.
+
 ## “Where are the extend tests?”
 
 There are two main clusters:
