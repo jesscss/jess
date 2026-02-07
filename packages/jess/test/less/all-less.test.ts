@@ -175,4 +175,29 @@ describe('Can render Less files to CSS', () => {
         });
       }
     });
+
+  // Same config as extend/extend.less fixture (collapseNesting: false) so this fails the same way as the full file test until extend is fixed
+  it('extend.less: .aa,.cc nested block has .dd, .ee, .ff with no :is() materialization', async () => {
+    const file = 'tests-unit/extend/extend.less';
+    const lessPath = path.join(testData, file);
+    const testCases = getTestCases(lessPath);
+    const testCase = testCases.find(t => path.basename(t.expectedFile) === 'extend.css') ?? testCases[0];
+    if (!testCase) return;
+    const compiler = new Compiler({
+      ...baseCompiler.opts,
+      ...testCase.config,
+      output: {
+        ...baseCompiler.opts.output,
+        ...(testCase.config.output || {})
+      }
+    });
+    const context = compiler.createContext(lessPath, { outputFile: testCase.expectedFile });
+    const { node } = await context.getTree(lessPath);
+    const evald = await node.eval(context);
+    const css = evald.toString({ context });
+    expect(css).toContain('.dd,');
+    expect(css).toContain('.ee,');
+    expect(css).toContain('.ff {');
+    expect(css).not.toMatch(/:is\(\.aa,\s*\.cc\s*\)\s+\.dd/);
+  });
 });

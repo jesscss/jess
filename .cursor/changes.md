@@ -4,6 +4,20 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Feb-01 (extend .aa .dd / .ff)
+
+### extend.less: .ff missing from `.dd, .ee` block (new bug, separate from inner .bb)
+
+- **Observed**: Expected `.dd, .ee, .ff { background: red; }` under `.aa,.cc`; actual `.dd, .ee { ... }` (missing `.ff`). So `.ff:extend(.dd,.bb all)` is not adding `.ff` to the ruleset that has selector `.aa .dd` (then `.dd,.ee` after partial extend).
+- **Trace added**: In `extend-roots.ts`, Phase 1 and Phase 2 logging when singleTarget `.dd` and selectorWithExtend `.ff` (e.g. `aa_dd_ff_phase1_apply_enter`, `phase1_skip`, `phase1_try_result`, `phase2_entry`, `phase2_skip`, `phase2_try_result`) to see if the ruleset is considered and why it might be skipped.
+- **extend.ts / extend-helpers.ts changes (for exact extend last-compound)**:
+  - **Exact extend on complex selector**: Allow when find matches the **last** compound (e.g. `.aa .dd` for find `.dd`) and reject only when same-nested (e.g. `.bb .bb`). Helpers: `isSameNestedExactSelector`, `complexSelectorLastCompoundEquals`; `isNonAllWholeSelectorItemMatch` now returns true for that case.
+  - **isPartialMatch exception**: When exact extend and last compound equals find and not same-nested, do not reject on `location.isPartialMatch`.
+  - **Complex exact reject**: Only reject when `!lastEquals || sameNested` (and find SimpleSelector or BasicSelector).
+  - **BasicSelector**: Treated like SimpleSelector in exact-extend checks and in extend-helpers fast path 2 (simple-to-simple match).
+  - **Last-component block**: When exact extend, `location.path.length === 1`, target ComplexSelector, last component equals find, return `createExtendedSelectorList([target, withExtend], target)` (SelectorList `.aa .dd`, `.aa .ff`) so full-mode list merge adds `.ff`.
+- **Status**: extend.less still fails (`.ff` still missing). Forced path and trace in extendSelectorList suggest we may not be calling tryExtendSelector for this ruleset when processing `.dd:.ff`, or findExtendableLocations returns no match for `.aa .dd` + `.dd`; root cause not yet pinned. Inner `.bb` fix (rejectedExactExtendByRuleset) is unchanged and debug-extend-bb-inner test passes.
+
 ## 2026-Feb-03
 
 ### Extend trace: parsed vs constructed (extend-chaining)

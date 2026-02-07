@@ -1,5 +1,7 @@
 # Extend Architecture Analysis - Self-Referencing and Responsibility Boundaries
 
+**See also:** `EXTEND_RULES.md` (concise rules), `EXTEND_REVIEW_AND_QUESTIONS.md` (open questions and doc plan).
+
 ## Current Architecture
 
 ### Responsibility Layers

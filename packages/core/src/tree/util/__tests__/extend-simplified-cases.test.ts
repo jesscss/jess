@@ -134,13 +134,13 @@ describe('Simplified Extend Test Cases', () => {
     });
 
     it('should extend with :is() selector in partial mode', () => {
-      // .foo .bar -> .bar, extend with :is(.ext3, .ext4) -> .foo :is(.bar, .ext3, .ext4)
+      // .foo .bar, find .bar, extend with authored :is(.ext3, .ext4) — we preserve nested :is()
       const selector = sel([el('.foo'), co(' '), el('.bar')]);
       const target = el('.bar');
       const extendWith = is(sellist([el('.ext3'), el('.ext4')]));
 
       const result = extendSelector(selector, target, extendWith, true);
-      expect(result.valueOf()).toBe('.foo :is(.bar,.ext3,.ext4)');
+      expect(result.valueOf()).toBe('.foo :is(.bar,:is(.ext3,.ext4))');
     });
   });
 

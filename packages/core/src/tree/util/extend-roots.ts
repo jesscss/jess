@@ -29,6 +29,32 @@ function rulesStructureSummary(r: Rules): Record<string, unknown> {
   return { valueLen: len, firstType, firstValueRulesType, firstValueRulesLen };
 }
 
+/** Preserve F_IMPLICIT_AMPERSAND on cloned selector(s) so createProcessedSelector keeps implicit ampersand (extend.less .dd,.ee,.ff). */
+function preserveImplicitAmpersandOnClone(extendedSelector: Selector, clonedSelector: Selector): void {
+  const preserveOne = (orig: Selector, clone: Selector) => {
+    if (!isNode(orig, 'ComplexSelector') || !isNode(clone, 'ComplexSelector')) return;
+    const origFirst = (orig as ComplexSelector).value[0];
+    const cloneFirst = (clone as ComplexSelector).value[0];
+    if (origFirst instanceof Ampersand && cloneFirst instanceof Ampersand && origFirst.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      (cloneFirst as Ampersand).addFlag(F_IMPLICIT_AMPERSAND);
+      (cloneFirst as Ampersand).removeFlag(F_VISIBLE);
+    }
+  };
+  if (isNode(clonedSelector, 'ComplexSelector') && isNode(extendedSelector, 'ComplexSelector')) {
+    preserveOne(extendedSelector, clonedSelector);
+  } else if (isNode(clonedSelector, 'SelectorList') && isNode(extendedSelector, 'SelectorList')) {
+    const origList = extendedSelector as SelectorList;
+    const cloneList = clonedSelector as SelectorList;
+    const origItems = origList.value;
+    const cloneItems = cloneList.value;
+    if (Array.isArray(origItems) && Array.isArray(cloneItems) && origItems.length === cloneItems.length) {
+      for (let i = 0; i < origItems.length; i++) {
+        preserveOne(origItems[i]!, cloneItems[i]!);
+      }
+    }
+  }
+}
+
 function maybeHoistMixedNestingSelectorList(
   ruleset: Ruleset,
   selector: Selector,
@@ -72,23 +98,24 @@ function maybeHoistMixedNestingSelectorList(
       const cs = s;
       const first = cs.value[0];
       const second = cs.value[1];
-      // For hoisted selector serialization we need leading components to be visible,
-      // otherwise `toString()` can drop the parent prefix.
-      if (first instanceof Node) {
-        first.addFlag(F_VISIBLE);
-      }
-      if (second instanceof Node) {
-        second.addFlag(F_VISIBLE);
-      }
       if (
         first instanceof Ampersand
         && first.hasFlag(F_IMPLICIT_AMPERSAND)
-        && first.value.selector
-        && !(first.value.selector instanceof Nil)
       ) {
+        const resolved = first.getResolvedSelector();
+        if (!resolved || resolved instanceof Nil) {
+          return s;
+        }
+        // Same context: ampersand resolves to this ruleset's parent selector. Keep implicit
+        // so nested output stays short (.dd, .ee not :is(.aa, .cc) .dd). Do not add F_VISIBLE.
+        const resolvedCanonical = canonicalSelectorValueOf(resolved);
+        const parentCanonical = canonicalSelectorValueOf(parentSel);
+        if (resolvedCanonical !== '' && parentCanonical !== '' && resolvedCanonical === parentCanonical) {
+          return s;
+        }
         // Replace implicit ampersand with its concrete parent selector so
         // serialization at root doesn't drop it.
-        let parentSelConcrete: Selector = first.value.selector.copy(true);
+        let parentSelConcrete: Selector = resolved.copy(true);
         if (parentSelConcrete instanceof Nil) {
           return s;
         }
@@ -105,6 +132,14 @@ function maybeHoistMixedNestingSelectorList(
           outSecond.addFlag(F_VISIBLE);
         }
         return out as unknown as Selector;
+      }
+      // For hoisted selector serialization we need leading components to be visible,
+      // otherwise `toString()` can drop the parent prefix.
+      if (first instanceof Node) {
+        first.addFlag(F_VISIBLE);
+      }
+      if (second instanceof Node) {
+        second.addFlag(F_VISIBLE);
       }
       return s;
     }
@@ -400,6 +435,218 @@ function maybeHoistMixedNestingSelectorList(
   listOut.hoistToRoot = true;
   ruleset.hoistToRoot = true;
   return listOut;
+}
+
+/** Normalize selector valueOf for comparison (whitespace and comma spacing can differ between clones). */
+function normalizedSelectorValueOf(sel: Selector | undefined): string {
+  if (sel == null || typeof (sel as Selector).valueOf !== 'function') return '';
+  const v = (sel as Selector).valueOf();
+  return String(v).replace(/\s+/g, '').trim();
+}
+
+/** Canonical form for same-context comparison: unwrap :is(...) so :is(.a,.b) and .a,.b compare equal. */
+function canonicalSelectorValueOf(sel: Selector | undefined): string {
+  if (sel == null) return '';
+  if (isNode(sel, 'PseudoSelector') && (sel as PseudoSelector).value?.name === ':is') {
+    const arg = (sel as PseudoSelector).value?.arg;
+    if (arg && typeof (arg as Selector).valueOf === 'function') {
+      return normalizedSelectorValueOf(arg as Selector);
+    }
+  }
+  return normalizedSelectorValueOf(sel);
+}
+
+/** Get the selector of the ruleset that contains this ruleset (parent context), or undefined if at root. */
+function getRulesetParentSelector(ruleset: Ruleset): Selector | undefined {
+  const parentRules = ruleset.parent;
+  const parentRuleset = parentRules?.parent;
+  if (!parentRuleset || !isNode(parentRuleset, 'Ruleset')) {
+    return undefined;
+  }
+  const sel = (parentRuleset as Ruleset).value?.selector;
+  return sel && !isNode(sel, 'Nil') ? (sel as Selector) : undefined;
+}
+
+/** Leading prefix of a ruleset's selector: canonical value of the first consecutive items that do NOT start with implicit ampersand. Used so nested items (& .dd) under a merged list (.aa, .cc, & .dd, ...) are not materialized when & resolves to that prefix. */
+function getRulesetSelectorLeadingPrefixNormalized(ruleset: Ruleset): string {
+  const sel = ruleset.value?.selector;
+  if (!sel || isNode(sel, 'Nil')) return '';
+  if (!isNode(sel, 'SelectorList')) return canonicalSelectorValueOf(sel as Selector);
+  const items = (sel as SelectorList).value;
+  if (!Array.isArray(items) || items.length === 0) return '';
+  const leading: Selector[] = [];
+  for (const s of items) {
+    if (isNode(s, 'Nil')) continue;
+    if (isNode(s, 'ComplexSelector')) {
+      const first = (s as ComplexSelector).value[0];
+      if (first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND)) break;
+    }
+    leading.push(s as Selector);
+  }
+  if (leading.length === 0) return '';
+  if (leading.length === 1) return canonicalSelectorValueOf(leading[0]);
+  return canonicalSelectorValueOf(SelectorList.create(leading.map(s => s.copy(true))).inherit(sel));
+}
+
+/**
+ * When createProcessedSelector has already resolved an implicit & to :is(ctx) + combinator + rest,
+ * convert it back to implicit ampersand when ctx matches the ruleset context so output stays short
+ * (.dd not :is(.aa, .cc) .dd).
+ */
+function dematerializeSameContextIsPrefix(
+  s: Selector,
+  rulesetParentSelector: Selector | undefined,
+  rulesetLeadingPrefixNormalized: string
+): Selector {
+  if (!isNode(s, 'ComplexSelector') || s.value.length < 2) {
+    return s;
+  }
+  const first = s.value[0];
+  const second = s.value[1];
+  if (
+    !isNode(first, 'PseudoSelector')
+    || (first as PseudoSelector).value?.name !== ':is'
+    || !(first as PseudoSelector).value?.arg
+    || !isNode(second, 'Combinator')
+  ) {
+    return s;
+  }
+  const isArg = (first as PseudoSelector).value!.arg as Selector;
+  const isArgCanonical = canonicalSelectorValueOf(isArg);
+  const ctxVal = rulesetParentSelector ? canonicalSelectorValueOf(rulesetParentSelector) : '';
+  const matchCtx = isArgCanonical !== '' && isArgCanonical === ctxVal;
+  const matchLeading = isArgCanonical !== '' && rulesetLeadingPrefixNormalized !== '' && isArgCanonical === rulesetLeadingPrefixNormalized;
+  if (isArgCanonical === '' || (!matchCtx && !matchLeading)) {
+    return s;
+  }
+  const amp = Ampersand.create({
+    selector: isArg.copy(true),
+    getResolvedSelector: () => isArg.copy(true)
+  }).inherit(first);
+  amp.addFlag(F_IMPLICIT_AMPERSAND);
+  amp.removeFlag(F_VISIBLE);
+  const comb = second.copy(true) as Combinator;
+  comb.removeFlag(F_VISIBLE);
+  const out = (s as ComplexSelector).copy(true) as ComplexSelector;
+  out.value[0] = amp;
+  out.value[1] = comb;
+  return out as unknown as Selector;
+}
+
+const DEBUG_AMPERSAND_EXTEND = process.env.DEBUG_AMPERSAND_EXTEND === '1';
+
+/**
+ * If the selector item starts with an implicit ampersand and that ampersand's context (getResolvedSelector)
+ * is different from the ruleset we're extending, materialize the ampersand so it serializes correctly
+ * (e.g. extendWith from another ruleset becomes ".issue-2586-somepage .content" not ".content").
+ * If same context (nested ruleset's own selector), keep implicit so output stays short (".a, .c").
+ * @param rulesetOwnSelectorNormalized - optional normalized valueOf of the ruleset's own selector (so we don't materialize when & resolves to same ruleset)
+ * @param rulesetLeadingPrefixNormalized - when ruleset has a mixed selector list (.aa, .cc, & .dd, ...), canonical of leading items (.aa, .cc) so we don't materialize when & resolves to that prefix
+ */
+function materializeImplicitAmpersandWhenDifferentContext(
+  s: Selector,
+  rulesetParentSelector: Selector | undefined,
+  rulesetOwnSelectorNormalized: string = '',
+  rulesetLeadingPrefixNormalized: string = ''
+): Selector {
+  if (!isNode(s, 'ComplexSelector') || s.value.length < 2) {
+    return s;
+  }
+  const first = s.value[0];
+  const second = s.value[1];
+  if (
+    !(first instanceof Ampersand)
+    || !first.hasFlag(F_IMPLICIT_AMPERSAND)
+    || !isNode(second, 'Combinator')
+  ) {
+    return s;
+  }
+  // Use live getter when present (extendWith from another ruleset); else snapshot (value.selector) after clone.
+  const ampResolved = first.getResolvedSelector() ?? (first.value?.selector as Selector | undefined);
+  const ampValRaw = ampResolved?.valueOf?.();
+  const ctxValRaw = rulesetParentSelector?.valueOf?.();
+  const ampVal = ampResolved && !isNode(ampResolved, 'Nil') ? canonicalSelectorValueOf(ampResolved as Selector) : '';
+  const ctxVal = rulesetParentSelector ? canonicalSelectorValueOf(rulesetParentSelector) : '';
+  // Same context when: (1) both undefined, (2) ampersand resolves to ruleset's parent, or
+  // (3) ampersand resolves to this ruleset's own selector, or (4) ruleset has mixed list (.aa, .cc, & .dd, ...) and & resolves to leading prefix (.aa,.cc).
+  const sameContext =
+    (ampValRaw === undefined && ctxValRaw === undefined)
+    || (ampVal !== '' && ctxVal !== '' && ampVal === ctxVal)
+    || (ampVal !== '' && rulesetOwnSelectorNormalized !== '' && ampVal === rulesetOwnSelectorNormalized)
+    || (ampVal !== '' && rulesetLeadingPrefixNormalized !== '' && ampVal === rulesetLeadingPrefixNormalized);
+  if (DEBUG_AMPERSAND_EXTEND) {
+    syncLog({
+      trace: 'materializeImplicit',
+      sVal: String((s as Selector).valueOf?.() ?? '').slice(0, 80),
+      ampVal: ampVal.slice(0, 80),
+      ctxVal: ctxVal.slice(0, 80),
+      sameContext,
+      willMaterialize: !sameContext && !!ampResolved && !isNode(ampResolved, 'Nil')
+    });
+  }
+  if (sameContext) {
+    return s;
+  }
+  if (!ampResolved || isNode(ampResolved, 'Nil')) {
+    return s;
+  }
+  let parentSelConcrete: Selector = ampResolved.copy(true);
+  if (isNode(parentSelConcrete, 'SelectorList')) {
+    parentSelConcrete = isSelectorPseudo(parentSelConcrete);
+  }
+  const out = (s as ComplexSelector).copy(true) as ComplexSelector;
+  out.value[0] = parentSelConcrete;
+  const outSecond = out.value[1];
+  if (outSecond instanceof Node) {
+    outSecond.addFlag(F_VISIBLE);
+  }
+  return out as unknown as Selector;
+}
+
+/**
+ * Apply materializeImplicitAmpersandWhenDifferentContext to each item in the normalized result
+ * so extendWith selectors (different context) are materialized and nested-own selectors (same context) stay implicit.
+ */
+function materializeNormalizedWhenDifferentContext(
+  normalized: Selector | Selector[],
+  ruleset: Ruleset
+): Selector | Selector[] {
+  const rulesetParentSelector = getRulesetParentSelector(ruleset);
+  const rulesetOwnSel = ruleset.value?.selector;
+  const rulesetOwnSelectorNormalized =
+    rulesetOwnSel && !isNode(rulesetOwnSel, 'Nil') ? canonicalSelectorValueOf(rulesetOwnSel as Selector) : '';
+  const rulesetLeadingPrefixNormalized = getRulesetSelectorLeadingPrefixNormalized(ruleset);
+  if (DEBUG_AMPERSAND_EXTEND) {
+    const ctxStr = rulesetParentSelector ? normalizedSelectorValueOf(rulesetParentSelector).slice(0, 80) : 'undefined';
+    const isList = isNode(normalized, 'SelectorList');
+    const items = isList ? (normalized as SelectorList).value : (Array.isArray(normalized) ? normalized : [normalized]);
+    const itemVals = items.slice(0, 5).map((sel: Selector) => String(sel.valueOf?.() ?? '').slice(0, 60));
+    syncLog({
+      trace: 'materializeNormalized',
+      ctxVal: ctxStr,
+      ownVal: rulesetOwnSelectorNormalized.slice(0, 80),
+      isSelectorList: isList,
+      itemCount: items.length,
+      itemVals
+    });
+  }
+  const mapOne = (s: Selector) => {
+    const cloned = s.clone(true);
+    const demat = dematerializeSameContextIsPrefix(cloned, rulesetParentSelector, rulesetLeadingPrefixNormalized);
+    return materializeImplicitAmpersandWhenDifferentContext(demat.clone(true), rulesetParentSelector, rulesetOwnSelectorNormalized, rulesetLeadingPrefixNormalized);
+  };
+  if (Array.isArray(normalized)) {
+    return normalized.map(mapOne);
+  }
+  // createProcessedSelector can return a SelectorList; materialize each item, not the list itself.
+  if (isNode(normalized, 'SelectorList')) {
+    const list = normalized as SelectorList;
+    const items = list.value;
+    if (Array.isArray(items) && items.length > 0) {
+      return SelectorList.create(items.map(mapOne)).inherit(list) as Selector;
+    }
+  }
+  return mapOne(normalized);
 }
 
 /**
@@ -863,6 +1110,9 @@ export function processExtends(context: Context): void {
   // Track which extends have already transformed which rulesets: Map<rulesetId, Set<extendKey>>
   // Each extend can only transform a particular ruleset's selector once
   const transformedByExtend = new Map<Ruleset, Set<string>>();
+  // Track exact extends that were rejected for a ruleset (e.g. .bb .bb rejected .bb:extend(.ee)).
+  // Phase 2 must not re-apply those to the same ruleset when its selector is later flattened to a list.
+  const rejectedExactExtendByRuleset = new Map<Ruleset, Set<string>>();
   const allRoots = context.extendRoots.getAlts();
   const allRootsArr = Array.isArray(allRoots) ? allRoots : [...allRoots];
   /** Walk up from a ruleset to the nearest Rules that is a registered extend root. */
@@ -1365,6 +1615,20 @@ export function processExtends(context: Context): void {
         }
       }
 
+      // Debug: for replace/rep_ace extend, log how many rulesets we found before applying
+      const isReplaceRepAceExtend =
+        typeof singleTarget?.valueOf === 'function' && String(singleTarget.valueOf()).includes('replace')
+        && typeof selectorWithExtend?.valueOf === 'function' && String(selectorWithExtend.valueOf()).includes('rep_ace');
+      if (isReplaceRepAceExtend && rulesetSet && rulesetSet.length > 0) {
+        const selectorSlices = rulesetSet.map((rs) => typeof rs.selector?.valueOf === 'function' ? String(rs.selector.valueOf()).slice(0, 90) : '');
+        syncLog({
+          trace: 'replace_rep_ace_found',
+          rulesetCount: rulesetSet.length,
+          selectorSlices,
+          anyLooksNested: selectorSlices.some((s) => s.includes('.replace') && s.includes('.c') && !s.includes('.rep_ace'))
+        });
+      }
+
       // Apply extends to rulesets directly
       if (rulesetSet) {
         rulesetSet.forEach((ruleset) => {
@@ -1381,6 +1645,24 @@ export function processExtends(context: Context): void {
           }
 
           const originalSelector = ruleset.selector as Selector;
+          const origStr = typeof originalSelector?.valueOf === 'function' ? originalSelector.valueOf() : '';
+
+          // Debug: nested replace/rep_ace extend (Less extend-selector replace case)
+          if (isReplaceRepAceExtend) {
+            const hasSource = originalSelector.sourceNode != null;
+            const sourceVal = hasSource && typeof (originalSelector.sourceNode as Selector).valueOf === 'function'
+              ? String((originalSelector.sourceNode as Selector).valueOf()).slice(0, 80)
+              : '';
+            const looksNested = origStr.includes('.replace') && origStr.includes('.c') && !origStr.includes('.rep_ace');
+            syncLog({
+              trace: 'replace_rep_ace_process',
+              rulesetSelectorSlice: origStr.slice(0, 100),
+              hasSourceNode: hasSource,
+              sourceNodeValueOf: sourceVal,
+              looksNestedSelector: looksNested,
+              collapseNesting: Boolean((context.opts as { collapseNesting?: boolean })?.collapseNesting)
+            });
+          }
 
           // Check if this extend has already transformed this ruleset's selector
           const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
@@ -1402,9 +1684,31 @@ export function processExtends(context: Context): void {
             return; // This extend already transformed this ruleset - skip
           }
 
+          // Skip if this exact extend was previously rejected for this ruleset (e.g. .bb .bb for .bb:extend(.ee)).
+          // Phase 2 would otherwise re-apply it when the selector is flattened to [.bb, .ff] and wrongly add .ee.
+          if (!partial && rejectedExactExtendByRuleset.get(ruleset)?.has(extendKey)) {
+            return;
+          }
+
           // Track object identity and structure to detect transformations
 
           let result = tryExtendSelector(originalSelector, singleTarget, selectorWithExtend, partial);
+          const changed = result && !result.error && result.value.valueOf() !== originalSelector.valueOf();
+          // Record exact extends we rejected only when the selector was "find find" (e.g. .bb .bb).
+          // Phase 2 must not re-apply those when the selector is later flattened to [.bb, .ff].
+          // Do not record for other complex selectors (e.g. .aa .dd) so .dd:extend(.ff) still applies there.
+          const findVal = singleTarget.valueOf();
+          const wasSameNestedSelector =
+            typeof findVal === 'string'
+            && origStr.includes(' ')
+            && isNode(originalSelector, 'ComplexSelector')
+            && origStr === `${findVal} ${findVal}`;
+          if (!partial && result && !result.error && !changed && wasSameNestedSelector) {
+            if (!rejectedExactExtendByRuleset.has(ruleset)) {
+              rejectedExactExtendByRuleset.set(ruleset, new Set());
+            }
+            rejectedExactExtendByRuleset.get(ruleset)!.add(extendKey);
+          }
           if (traceMd) {
             syncLog({
               trace: 'tryExtend',
@@ -1418,6 +1722,52 @@ export function processExtends(context: Context): void {
 
           if (result && !result.error) {
             const extendedSelector = result.value;
+            const origStr = typeof originalSelector?.valueOf === 'function' ? String(originalSelector.valueOf()) : '';
+            const extStr = typeof extendedSelector?.valueOf === 'function' ? String(extendedSelector.valueOf()) : '';
+            const traceDd = origStr.includes('dd') && (origStr.includes('aa') || origStr.includes('.dd'));
+            if (traceDd) {
+              const extItemCount = isNode(extendedSelector, 'SelectorList') ? (extendedSelector as SelectorList).value?.length : 1;
+              syncLog({
+                trace: 'phase1_extend_dd',
+                target: String(singleTarget.valueOf?.() ?? '').slice(0, 40),
+                origLen: origStr.length,
+                extLen: extStr.length,
+                extItemCount,
+                changed: extendedSelector.valueOf() !== originalSelector.valueOf()
+              });
+            }
+
+            // If this ruleset selector has a `sourceNode`, extend it so nested output matches Less expectations.
+            const sourceSelector = originalSelector.sourceNode;
+            let extendedSource: Selector | undefined;
+            if (sourceSelector instanceof Selector) {
+              const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
+              if (sourceResult && !sourceResult.error) {
+                const nextSource = sourceResult.value;
+                if (nextSource.valueOf() !== sourceSelector.valueOf()) {
+                  extendedSource = nextSource.clone(true);
+                }
+              }
+            }
+
+            // When only source changed (resolved unchanged), set sourceNode so nested header shows extended list.
+            if (extendedSource && extendedSelector.valueOf() === originalSelector.valueOf()) {
+              ruleset.value.selector.sourceNode = extendedSource;
+              ruleset.invalidateSelectorValueCache();
+              if (isReplaceRepAceExtend) {
+                const afterVal = typeof ruleset.value.selector.sourceNode?.valueOf === 'function'
+                  ? String(ruleset.value.selector.sourceNode.valueOf()).slice(0, 80)
+                  : '';
+                syncLog({
+                  trace: 'replace_rep_ace_source_only',
+                  setSourceNode: true,
+                  sourceNodeValueOfAfter: afterVal,
+                  hasRepAce: afterVal.includes('rep_ace')
+                });
+              }
+              return;
+            }
+
             // Only update if selector actually changed
             if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
               // Mark that this extend has transformed this ruleset
@@ -1426,34 +1776,56 @@ export function processExtends(context: Context): void {
               const shouldHoist = !!extendedSelector.hoistToRoot;
               // CRITICAL: Clone the selector to avoid object reference issues
               const clonedSelector = extendedSelector.clone(true);
+              preserveImplicitAmpersandOnClone(extendedSelector as Selector, clonedSelector as Selector);
               if (shouldHoist) {
                 // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
                 clonedSelector.hoistToRoot = true;
               }
-
-              // If this ruleset selector has a `sourceNode` used for re-serialization,
-              // extend that too so nested selector output matches Less expectations.
-              const sourceSelector = originalSelector.sourceNode;
-              if (sourceSelector instanceof Selector) {
-                const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
-                if (sourceResult && !sourceResult.error) {
-                  const nextSource = sourceResult.value;
-                  if (nextSource.valueOf() !== sourceSelector.valueOf()) {
-                    clonedSelector.sourceNode = nextSource.clone(true);
-                  }
-                }
+              if (extendedSource) {
+                clonedSelector.sourceNode = extendedSource;
               }
 
               // Update the ruleset's selector directly
               const hoisted = maybeHoistMixedNestingSelectorList(ruleset, clonedSelector as Selector, partial);
+              const hoistStr = typeof hoisted?.valueOf === 'function' ? String(hoisted.valueOf()) : '';
+              const traceDdPipeline = hoistStr.includes('dd') && (hoistStr.includes('aa') || hoistStr.includes('.dd'));
+              if (traceDdPipeline) {
+                const hoistItemCount = isNode(hoisted, 'SelectorList') ? (hoisted as SelectorList).value?.length : 1;
+                syncLog({
+                  trace: 'phase1_after_hoist_dd',
+                  hoistItemCount,
+                  hoistSlice: hoistStr.slice(0, 120)
+                });
+              }
               // Normalize selectors after extend so generated :is() wrappers can be unwrapped/merged
               // when they are the only simple selector in a selector-list item (Less expectations).
               const normalized = createProcessedSelector(hoisted, true);
+              if (traceDdPipeline) {
+                const normStr = typeof normalized?.valueOf === 'function' ? String(normalized.valueOf()) : '';
+                const normItemCount = isNode(normalized, 'SelectorList') ? (normalized as SelectorList).value?.length : Array.isArray(normalized) ? normalized.length : 1;
+                syncLog({
+                  trace: 'phase1_after_createProcessed_dd',
+                  normItemCount,
+                  normSlice: normStr.slice(0, 120)
+                });
+              }
+              // Materialize implicit ampersand in items from a different context (e.g. extendWith)
+              // so they serialize correctly; keep implicit when same context (nested .a, .c).
+              const materialized = materializeNormalizedWhenDifferentContext(normalized, ruleset);
+              if (traceDdPipeline) {
+                const matItemCount = Array.isArray(materialized) ? materialized.length : (isNode(materialized, 'SelectorList') ? (materialized as SelectorList).value?.length : 1);
+                const matStr = Array.isArray(materialized) ? materialized.map((s: Selector) => String(s.valueOf?.() ?? '')).join(' | ') : String((materialized as Selector).valueOf?.() ?? '');
+                syncLog({
+                  trace: 'phase1_after_materialize_dd',
+                  matItemCount,
+                  matSlice: matStr.slice(0, 160)
+                });
+              }
               let normalizedSelector: Selector;
-              if (Array.isArray(normalized)) {
-                normalizedSelector = SelectorList.create(normalized.map(s => s.clone(true))).inherit(hoisted);
+              if (Array.isArray(materialized)) {
+                normalizedSelector = SelectorList.create(materialized.map(s => s.clone(true))).inherit(hoisted);
               } else {
-                normalizedSelector = normalized as Selector;
+                normalizedSelector = materialized as Selector;
               }
               // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
               if (hoisted.hoistToRoot) {
@@ -1463,6 +1835,20 @@ export function processExtends(context: Context): void {
               normalizedSelector = Array.isArray(leadingIsResult)
                 ? SelectorList.create(leadingIsResult.map(s => s.copy(true) as Selector)).inherit(normalizedSelector) as Selector
                 : leadingIsResult;
+              if (clonedSelector.sourceNode) {
+                normalizedSelector.sourceNode = clonedSelector.sourceNode;
+              }
+              if (isReplaceRepAceExtend && normalizedSelector.sourceNode) {
+                const afterVal = typeof normalizedSelector.sourceNode?.valueOf === 'function'
+                  ? String(normalizedSelector.sourceNode.valueOf()).slice(0, 80)
+                  : '';
+                syncLog({
+                  trace: 'replace_rep_ace_resolved_changed',
+                  setSourceNodeOnNormalized: true,
+                  sourceNodeValueOfAfter: afterVal,
+                  hasRepAce: afterVal.includes('rep_ace')
+                });
+              }
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();
               if (normalizedSelector.hoistToRoot) {
@@ -1616,6 +2002,12 @@ export function processExtends(context: Context): void {
             continue; // This extend already transformed this ruleset - skip
           }
 
+          // Skip if this exact extend was rejected for this ruleset in Phase 1 (e.g. .bb .bb for .bb:extend(.ee)).
+          // The selector may now be flattened to [.bb, .ff]; re-applying would wrongly add .ee.
+          if (!partial && rejectedExactExtendByRuleset.get(ruleset)?.has(extendKey)) {
+            continue;
+          }
+
           // Try to extend - tryExtendSelector will check for actual matches (including combinators)
           // and return an error if there's no match
           phase2TryExtendSelector++;
@@ -1633,6 +2025,7 @@ export function processExtends(context: Context): void {
               const shouldHoist = !!extendedSelector.hoistToRoot;
               // CRITICAL: Clone the selector to avoid object reference issues
               const clonedSelector = extendedSelector.clone(true);
+              preserveImplicitAmpersandOnClone(extendedSelector as Selector, clonedSelector as Selector);
               if (shouldHoist) {
                 // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
                 clonedSelector.hoistToRoot = true;
@@ -1651,11 +2044,12 @@ export function processExtends(context: Context): void {
               // Normalize selectors after extend so generated :is() wrappers can be unwrapped/merged
               // when they are the only simple selector in a selector-list item (Less expectations).
               const normalized = createProcessedSelector(clonedSelector, true);
+              const materialized = materializeNormalizedWhenDifferentContext(normalized, ruleset);
               let normalizedSelector: Selector;
-              if (Array.isArray(normalized)) {
-                normalizedSelector = SelectorList.create(normalized.map(s => s.clone(true))).inherit(clonedSelector);
+              if (Array.isArray(materialized)) {
+                normalizedSelector = SelectorList.create(materialized.map(s => s.clone(true))).inherit(clonedSelector);
               } else {
-                normalizedSelector = normalized as Selector;
+                normalizedSelector = materialized as Selector;
               }
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();

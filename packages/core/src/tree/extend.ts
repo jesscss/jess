@@ -3,6 +3,8 @@ import { type Context } from '../context.js';
 import { Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import { Nil } from './nil.js';
+import { ComplexSelector } from './selector-complex.js';
+import { Combinator } from './combinator.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
@@ -109,10 +111,35 @@ export class Extend extends Node<ExtendValue> {
         if (sel instanceof Nil) {
           return new Nil();
         }
-        // Resolve ampersand to its stored selector if needed
+        // Resolve ampersand to its current parent selector if needed (live resolution for extend)
         let resolvedSel: Selector = sel;
-        if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
-          resolvedSel = sel.value.selector;
+        if (isNode(sel, 'Ampersand')) {
+          const ampResolved = (sel as import('./ampersand.js').Ampersand).getResolvedSelector();
+          if (ampResolved && !(ampResolved instanceof Nil)) {
+            resolvedSel = ampResolved;
+          }
+        }
+        // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
+        // selector (e.g. .issue-2586-somepage .content not just .content).
+        if (currentFrame && isNode(currentFrame, 'Ruleset')) {
+          const rs = currentFrame as import('./ruleset.js').Ruleset;
+          const fullSel = rs.value?.selector;
+          if (fullSel && !(fullSel instanceof Nil)) {
+            resolvedSel = fullSel as Selector;
+          } else {
+            // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
+            // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
+            if (isNode(currentFrame, 'Ruleset')) {
+              const parentSel = (currentFrame as import('./ruleset.js').Ruleset).value?.selector;
+              if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
+                resolvedSel = ComplexSelector.create([
+                  (parentSel as Selector).copy(true),
+                  Combinator.create(' '),
+                  resolvedSel.copy(true)
+                ]) as unknown as Selector;
+              }
+            }
+          }
         }
         // Register extend to context with extend root reference and Extend node for error reporting
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
@@ -123,12 +150,35 @@ export class Extend extends Node<ExtendValue> {
     if (sel instanceof Nil) {
       return new Nil();
     }
-    // Resolve ampersand to its stored selector if needed
+    // Resolve ampersand to its current parent selector if needed (live resolution for extend)
     let resolvedSel: Selector = sel;
-    const wasAmpersand = isNode(sel, 'Ampersand');
-    const ampersandStoredSelector = wasAmpersand ? sel.value.selector : undefined;
-    if (wasAmpersand && ampersandStoredSelector && !(ampersandStoredSelector instanceof Nil)) {
-      resolvedSel = ampersandStoredSelector;
+    if (isNode(sel, 'Ampersand')) {
+      const ampResolved = (sel as import('./ampersand.js').Ampersand).getResolvedSelector();
+      if (ampResolved && !(ampResolved instanceof Nil)) {
+        resolvedSel = ampResolved;
+      }
+    }
+    // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
+    // selector (e.g. .issue-2586-somepage .content not just .content).
+    if (currentFrame && isNode(currentFrame, 'Ruleset')) {
+      const rs = currentFrame as import('./ruleset.js').Ruleset;
+      const fullSel = rs.value?.selector;
+      if (fullSel && !(fullSel instanceof Nil)) {
+        resolvedSel = fullSel as Selector;
+      } else {
+        // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
+        // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
+        if (isNode(currentFrame, 'Ruleset')) {
+          const parentSel = (currentFrame as import('./ruleset.js').Ruleset).value?.selector;
+          if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
+            resolvedSel = ComplexSelector.create([
+              (parentSel as Selector).copy(true),
+              Combinator.create(' '),
+              resolvedSel.copy(true)
+            ]) as unknown as Selector;
+          }
+        }
+      }
     }
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);

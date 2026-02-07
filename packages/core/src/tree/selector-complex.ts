@@ -95,6 +95,17 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
+      /** Omit implicit ampersand in nested output so we emit .dd not .aa .dd */
+      if (isNode(component, 'Ampersand') && component.hasFlag(F_IMPLICIT_AMPERSAND)) {
+        continue;
+      }
+      /** Omit space combinator that follows implicit ampersand (avoid leading space before .dd) */
+      if (isNode(component, 'Combinator') && component.value === ' ') {
+        const prev = value[i - 1];
+        if (prev && isNode(prev, 'Ampersand') && prev.hasFlag(F_IMPLICIT_AMPERSAND)) {
+          continue;
+        }
+      }
       /** Add some combinator spacing */
       if (isNode(component, 'Combinator')) {
         /** Skip spacing if the previous node is a Nil */

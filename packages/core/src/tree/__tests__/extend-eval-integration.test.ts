@@ -251,6 +251,52 @@ describe('extend integration (eval -> toString)', () => {
     `);
   });
 
+  it('extend.less .ee:extend(.dd all,.bb) does NOT add .ee to inner .bb (only outer .bb)', async () => {
+    // Replicate extend.less: .bb { background: red; .bb { color: black; } } .ee:extend(.dd all,.bb) {}
+    // .bb in the extend has NO "all", so exact match only. Inner ruleset has selector .bb .bb (implicit &).
+    // So .ee must be added to outer .bb only; inner .bb must stay .bb (and only .ff gets added there via .bb all).
+    const innerBbRuleset = ruleset({
+      selector: el('.bb'),
+      rules: rules([decl({ name: 'color', value: any('black') })])
+    });
+    const root = rules([
+      ruleset({
+        selector: el('.bb'),
+        rules: rules([
+          decl({ name: 'background', value: any('red') }),
+          innerBbRuleset
+        ])
+      }),
+      ruleset({
+        selector: el('.ee'),
+        rules: rules([
+          extend({ target: el('.dd'), flag: ExtendFlag.All }),
+          extend({ target: el('.bb'), flag: ExtendFlag.Exact })
+        ])
+      })
+    ]);
+    const context = new Context({ collapseNesting: false });
+    const evald = await root.eval(context);
+    // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
+    const evaldRoot = evald as import('../rules.js').Rules;
+    const outerBb = evaldRoot.value.find(
+      (n: any) =>
+        n?.type === 'Ruleset'
+        && Array.isArray(n.value?.rules?.value)
+        && n.value.rules.value.some((r: any) => r?.type === 'Declaration' && (r.value?.name?.valueOf?.() ?? r.value?.name) === 'background')
+        && n.value.rules.value.some((r: any) => r?.type === 'Ruleset')
+    );
+    expect(outerBb).toBeTruthy();
+    const inner = (outerBb as any).value.rules.value.find(
+      (n: any) => n?.type === 'Ruleset' && n.value?.rules?.value?.some((d: any) => (d?.value?.name?.valueOf?.() ?? d?.value?.name) === 'color')
+    );
+    expect(inner).toBeTruthy();
+    const innerSelectorStr = typeof (inner as any).value?.selector?.valueOf === 'function' ? (inner as any).value.selector.valueOf() : '';
+    // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
+    expect(innerSelectorStr).toContain('.bb');
+    expect(innerSelectorStr).not.toContain('.ee');
+  });
+
   it('extend-media: .all:extend(.ext1 all) at root merges with .ext1 inside and outside @media (Less extend-media.less)', async () => {
     // .ext1 .ext2 { background: black }
     // @media (tv) { .ext1 .ext3 { color: inherit }, .tv-lowres :extend(.ext1 all) { background: blue },

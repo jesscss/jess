@@ -1594,6 +1594,31 @@ describe('extend cases', () => {
       `);
   });
 
+  test('extend with mixed all/exact per target: .ee:extend(.dd all,.bb) {}', () => {
+    // Less: .dd gets "all", .bb gets no "all" (exact only). Two separate Extend nodes.
+    const { tree, errors, lexerResult } = parser.parse('.ee:extend(.dd all,.bb) {}');
+    expect(errors.length).toBe(0);
+    expect(lexerResult.errors.length).toBe(0);
+    const sExpr = serializeTypes(tree);
+    // First Extend: target .dd, flag 0 (All)
+    expect(sExpr).toContainString(`
+                    (Extend
+                      target: 
+                        (BasicSelector '.dd')
+                      flag: 0
+                    )`);
+    // Second Extend: target .bb, flag 1 (Exact) - no "all", so must not match inner .bb .bb
+    expect(sExpr).toContainString(`
+                    (Extend
+                      target: 
+                        (BasicSelector '.bb')
+                      flag: 1
+                    )`);
+    // Exactly two Extend nodes
+    const extendMatches = sExpr.match(/\(Extend\s/g);
+    expect(extendMatches?.length).toBe(2);
+  });
+
   test('selector list with extend on one selector and all flag - extend should bubble', () => {
     const { tree, errors, lexerResult } = parser.parse(`
 .should-not-exist-in-output,

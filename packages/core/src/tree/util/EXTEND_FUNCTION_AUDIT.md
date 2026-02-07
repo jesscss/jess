@@ -3,6 +3,13 @@
 ## Analysis Date
 2025-01-XX
 
+## Current state (as of 2025-02)
+
+- **applyExtensionAtLocation / applyExtensionAtPath / applyExtension**: Live only in `extend.ts` (duplicates were removed from find-extendable-locations).
+- **findExtendableLocations**: Implemented in `extend-helpers.ts`, re-exported from `find-extendable-locations.ts` (avoids circular dependency).
+- **Full-mode / length-3 block**: In `extendSelectorList`, when `extended === selector`, a block adds extendWith when the selector is a ComplexSelector with length 3 and the last component equals find. This is a **shim to remove**, not a rule—selector length must not affect extend; see EXTEND_REVIEW_AND_QUESTIONS.md §2.1.
+- **Order and normalization**: Still as below—order in extendSelectorList; normalization only in createProcessedSelector via createExtendedSelectorList.
+
 ## Purpose
 Deep analysis of all functions in `extend.ts` and `find-extendable-locations.ts` to:
 1. Document each function's concerns and responsibilities

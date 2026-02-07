@@ -2,7 +2,7 @@
 
 This doc exists to make **extend-related tests** easy to find (especially for LLM-assisted debugging).
 
-**Before changing extend logic:** See `../EXTEND_FUNCTION_AUDIT.md` for what each function does and where order/normalization live (so logic is not duplicated or fragmented). See also `../EXTEND_ARCHITECTURE_ANALYSIS.md` and `../EXTEND_REFACTORING_SUMMARY.md`.
+**Before changing extend logic:** See `../EXTEND_RULES.md` for the single set of rules; `../EXTEND_FUNCTION_AUDIT.md` for what each function does and where order/normalization live; `../EXTEND_REVIEW_AND_QUESTIONS.md` for open questions and cautious-change guidance. See also `../EXTEND_ARCHITECTURE_ANALYSIS.md` and `../EXTEND_REFACTORING_SUMMARY.md`.
 
 ## “Where are the extend tests?”
 
@@ -18,6 +18,7 @@ Located in `src/tree/util/__tests__/`:
 
 - `extend-selector-algorithm.test.ts`
   - Core selector matching / replacement algorithm expectations.
+  - **Partial match wrap rule (EXTEND_RULES.md §3a):** "Partial match wrap rule" describe block — within-one-compound (wrap only matched part) vs spans-combinator (wrap full segment). Expectations document intended behavior.
 
 - `find-extendable-locations.test.ts`
   - Direct unit coverage for `findExtendableLocations()` (the core matching/search API).

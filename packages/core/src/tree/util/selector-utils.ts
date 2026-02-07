@@ -16,18 +16,26 @@ let __agentImplicitIsCount = 0;
 // #endregion
 
 /**
+ * Getter that returns the current parent selector (e.g. parent ruleset's selector).
+ * When provided, the ampersand uses this for valueOf/keySet so extend sees the live parent after mutations.
+ */
+export type GetResolvedSelector = () => import('../selector.js').Selector | import('../nil.js').Nil | undefined;
+
+/**
  * Adds an implicit ampersand to a selector if it doesn't already have one.
  * This is used by rulesets and extends to prepend the parent selector.
  *
  * @param selector - The selector to add the ampersand to
  * @param collapseNesting - Whether to collapse nesting (affects visibility flags)
- * @param parentSelector - Optional parent selector to set on the ampersand
+ * @param parentSelector - Optional parent selector to set on the ampersand (snapshot at creation)
+ * @param getResolvedSelector - Optional getter for live parent selector (used for extend matching)
  * @returns The selector with implicit ampersand added
  */
 export function addImplicitAmpersand(
   selector: Selector,
   collapseNesting: boolean = false,
-  parentSelector?: Selector
+  parentSelector?: Selector,
+  getResolvedSelector?: GetResolvedSelector
 ): Selector {
   if (selector.hasFlag(F_AMPERSAND)) {
     return selector;
@@ -94,6 +102,9 @@ export function addImplicitAmpersand(
     } else {
       amp.value.selector = parentCopy;
     }
+    if (getResolvedSelector) {
+      amp.value.getResolvedSelector = getResolvedSelector;
+    }
     // #region agent log
     if (process.env.DEBUG_IMPLICIT_SELECTOR === 'true') {
       const psParent = parentSelector.parent;
@@ -146,12 +157,14 @@ export function addImplicitAmpersand(
  * @param selector - The selector to add the implicit ampersand to
  * @param parentSelector - The parent selector to prepend
  * @param collapseNesting - Whether to collapse nesting (affects visibility flags)
+ * @param getResolvedSelector - Optional getter for live parent selector (for extend matching)
  * @returns The selector with implicit ampersand added
  */
 export function getImplicitSelector(
   selector: Selector,
   parentSelector: Selector,
-  collapseNesting: boolean = false
+  collapseNesting: boolean = false,
+  getResolvedSelector?: GetResolvedSelector
 ): Selector {
   if (isNode(selector, 'Nil')) {
     return selector;
@@ -161,7 +174,7 @@ export function getImplicitSelector(
     const value = selector.value;
     for (let i = 0; i < value.length; i++) {
       const sel = value[i]!;
-      const result = addImplicitAmpersand(sel, collapseNesting, parentSelector);
+      const result = addImplicitAmpersand(sel, collapseNesting, parentSelector, getResolvedSelector);
       if (result !== sel) {
         if (!mutated) {
           selector = selector.clone(true);
@@ -171,7 +184,7 @@ export function getImplicitSelector(
       }
     }
   } else {
-    selector = addImplicitAmpersand(selector, collapseNesting, parentSelector);
+    selector = addImplicitAmpersand(selector, collapseNesting, parentSelector, getResolvedSelector);
   }
   if (collapseNesting) {
     selector.hoistToRoot = true;

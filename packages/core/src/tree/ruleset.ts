@@ -103,7 +103,27 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
 
-    const renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    // For nested rulesets, use sourceNode when available so we show the extended "own" selector
+    // (e.g. .replace, .rep_ace, .c) rather than the resolved form with parent prefix.
+    const isNested = (options.depth ?? 0) > 0;
+    const effectiveSelector = isNested && selector.sourceNode ? (selector.sourceNode as Selector) : selector;
+    // Debug: nested replace/rep_ace - see what we're serializing for inner block
+    if (isNested) {
+      const mainSlice = String(selector.valueOf?.() ?? '').slice(0, 90);
+      const hasReplace = mainSlice.includes('replace');
+      if (hasReplace) {
+        syncLog({
+          trace: 'getHeaderString_nested',
+          depth: options.depth,
+          hasSourceNode: !!selector.sourceNode,
+          mainSelectorSlice: mainSlice,
+          sourceNodeSlice: selector.sourceNode && typeof (selector.sourceNode as Selector).valueOf === 'function'
+            ? String((selector.sourceNode as Selector).valueOf()).slice(0, 90)
+            : ''
+        });
+      }
+    }
+    const renderSelector = withoutComments ? (effectiveSelector.copy(true) as typeof selector) : effectiveSelector;
 
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
     let selOut = w.capture(() => renderSelector.toString(options));
@@ -148,9 +168,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
       }
 
-      let parentSelector = shouldInheritSelector ? context.rulesetFrames.at(-1)?.selector : undefined;
+      const parentSelector = parentRuleset?.selector;
       if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil)) {
-        selector = getImplicitSelectorUtil(selector, parentSelector, context.opts.collapseNesting);
+        const getResolvedSelector = parentRuleset
+          ? () => (parentRuleset as Ruleset).value?.selector
+          : undefined;
+        selector = getImplicitSelectorUtil(
+          selector,
+          parentSelector,
+          context.opts.collapseNesting,
+          getResolvedSelector
+        );
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins

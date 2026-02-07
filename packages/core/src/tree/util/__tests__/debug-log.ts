@@ -20,21 +20,23 @@ function findMonorepoRoot(start: string): string {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = findMonorepoRoot(__dirname);
-const LOG_DIR = process.env.DEBUG_LOG_DIR || join(ROOT, '.cursor');
-const LOG_PATH = process.env.DEBUG_LOG_PATH || join(LOG_DIR, 'debug.log');
 
-// Ensure directory exists
-try {
-  mkdirSync(LOG_DIR, { recursive: true });
-} catch {}
+function getLogPath(): string {
+  if (process.env.DEBUG_LOG_PATH) return process.env.DEBUG_LOG_PATH;
+  const logDir = process.env.DEBUG_LOG_DIR || join(ROOT, '.cursor');
+  return join(logDir, 'debug.log');
+}
 
 export function getDebugLogPath(): string {
-  return LOG_PATH;
+  return getLogPath();
 }
 
 export const syncLog = (data: object) => {
   try {
-    appendFileSync(LOG_PATH, JSON.stringify(data) + '\n');
+    const logPath = getLogPath();
+    const logDir = dirname(logPath);
+    mkdirSync(logDir, { recursive: true });
+    appendFileSync(logPath, JSON.stringify(data) + '\n');
   } catch {
     // Ignore errors
   }

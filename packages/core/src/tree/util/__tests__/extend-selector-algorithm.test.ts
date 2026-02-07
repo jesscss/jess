@@ -1,6 +1,7 @@
 import { el, sel, sellist, compound, is, co, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
 import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
 import { isNode } from '../is-node.js';
+import { getImplicitSelector } from '../selector-utils.js';
 
 describe('Extend Selector Tests', () => {
   describe('Extension validation', () => {
@@ -132,7 +133,7 @@ describe('Extend Selector Tests', () => {
 
     it('should extend complex partial match with compound boundaries - example 6', () => {
       // Selector: .a > .b.c > .d.e, Target: .c.b > .e.d (partial), Extend with: .f
-      // Result: .a > .b.c > .d.e, .a > .f
+      // Per §3a (match spans combinator): wrap full segment → .a>:is(.b.c>.d.e,.f)
       const selector = sel([
         el('.a'),
         co('>'),
@@ -144,7 +145,7 @@ describe('Extend Selector Tests', () => {
       const extendWith = el('.f');
 
       const result = extendSelector(selector, target, extendWith, true);
-      expect(result.valueOf()).toBe('.a>.b.c>.d.e,.a>.f');
+      expect(result.valueOf()).toBe('.a>:is(.b.c>.d.e,.f)');
     });
 
     it('should extend all duplicate components in compound selector (.foo.foo)', () => {
@@ -263,6 +264,105 @@ describe('Extend Selector Tests', () => {
 
       const result = extendSelector(selector, target, extendWith, false);
       expect(result.valueOf()).toBe('.a,.b>.c,.d');
+    });
+  });
+
+  describe('Partial match wrap rule (EXTEND_RULES.md §3a)', () => {
+    // These tests encode the rule: within-one-compound → wrap only matched part;
+    // spans-combinator → wrap full segment. Implementation may need updates to pass.
+    it('within one compound: wrap only the matched part (.a.b in .a.c.b + .q → :is(.a.b, .q).c)', () => {
+      // Match within a single compound: we wrap only the matched part; the rest stays outside.
+      const target = compound([el('.a'), el('.c'), el('.b')]); // .a.c.b
+      const find = compound([el('.a'), el('.b')]);              // .a.b
+      const extendWith = el('.q');
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result.valueOf()).toBe(':is(.a.b,.q).c');
+    });
+
+    it('spans combinator: wrap full segment from first to last matched compound (per §3a)', () => {
+      // When partial match spans a combinator, wrap the FULL segment (all compounds and combinators in range).
+      // Target: div + .a.c.b > .y.x, find: .a.b > .x, extendWith: .q
+      // Expected: div + :is(.a.c.b > .y.x, .q)
+      const target = sel([
+        el('div'),
+        co('+'),
+        compound([el('.a'), el('.c'), el('.b')]),
+        co('>'),
+        compound([el('.y'), el('.x')])
+      ]);
+      const find = sel([
+        compound([el('.a'), el('.b')]),
+        co('>'),
+        el('.x')
+      ]);
+      const extendWith = el('.q');
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result.valueOf()).toBe('div+:is(.a.c.b>.y.x,.q)');
+    });
+  });
+
+  /**
+   * Unified path (equivalency) tests: these would FAIL the old narrow-branch logic
+   * (which branched on target type/path length and only handled flat CompoundSelector/ComplexSelector)
+   * but should PASS the unified path, which uses keySet/equivalency and path-based wrap only.
+   * Some tests may still fail until path/location logic is fixed (e.g. compound-in-compound wrap,
+   * :is() list item wrap vs replace).
+   */
+  describe('Unified path (equivalency): tests that would fail narrow-branch logic', () => {
+    it('target :is(.a.b, .x): find .a partial → wrap .a inside first alternative only', () => {
+      // Narrow: might not handle target being :is() at all. Unified: find .a inside first list item, wrap to :is(.a,.q).b.
+      const target = is(sellist([compound([el('.a'), el('.b')]), el('.x')])); // :is(.a.b, .x)
+      const find = el('.a');
+      const extendWith = el('.q');
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result.valueOf()).toBe(':is(:is(.a,.q).b,.x)');
+    });
+
+    it('target .a.b.c, find .a.b partial → wrap only matched part to :is(.a.b, .q).c', () => {
+      // Narrow: might replace whole compound or use wrong path. Unified: path to .a.b within compound, wrap to :is(.a.b,.q).c.
+      const target = compound([el('.a'), el('.b'), el('.c')]); // .a.b.c
+      const find = compound([el('.a'), el('.b')]); // .a.b
+      const extendWith = el('.q');
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result.valueOf()).toBe(':is(.a.b,.q).c');
+    });
+
+    it('target .a:is(.b,.c).d, find .b partial → wrap then flatten generated :is()', () => {
+      // Narrow: might not look inside :is(). Unified: path into :is() arg, wrap .b in :is(.b,.q); generated :is() is flattened in valueOf.
+      const target = compound([
+        el('.a'),
+        is(sellist([el('.b'), el('.c')])),
+        el('.d')
+      ]); // .a:is(.b,.c).d
+      const find = el('.b');
+      const extendWith = el('.q');
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result.valueOf()).toBe('.a:is(.b,.q,.c).d');
+    });
+
+    it('target :is(.foo .bar, .baz), find .bar partial → wrap .bar in each alternative that has it', () => {
+      // Narrow: only one branch type. Unified: match .bar in first complex selector, wrap to .foo :is(.bar,.q); .baz unchanged.
+      const target = is(sellist([
+        sel([el('.foo'), co(' '), el('.bar')]),
+        el('.baz')
+      ])); // :is(.foo .bar, .baz)
+      const find = el('.bar');
+      const extendWith = el('.q');
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result.valueOf()).toBe(':is(.foo :is(.bar,.q),.baz)');
+    });
+
+    it('target compound with nested :is(): .outer:is(.a.b,.x).tail, find .a partial → wrap .a inside :is() option', () => {
+      // Equivalency: find .a matches inside first :is() alternative (.a.b). Narrow would not recurse into :is() for partial.
+      const target = compound([
+        el('.outer'),
+        is(sellist([compound([el('.a'), el('.b')]), el('.x')])),
+        el('.tail')
+      ]); // .outer:is(.a.b,.x).tail
+      const find = el('.a');
+      const extendWith = el('.q');
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result.valueOf()).toBe('.outer:is(:is(.a,.q).b,.x).tail');
     });
   });
 
@@ -575,6 +675,62 @@ describe('Extend Selector Tests', () => {
       // With partial: false, this should return unchanged because d is before the :is()
       const result = extendSelector(target, find, extendWith, false);
       expect(result.valueOf()).toBe(target.valueOf());
+    });
+  });
+
+  describe('Implicit ampersand and extend matching (extend.less .bb scenario)', () => {
+    it('getImplicitSelector with collapseNesting false attaches parent so nested selector becomes parent+child', () => {
+      // Nested .bb inside .bb should get implicit ampersand: result is [&(.bb), ' ', .bb] → valueOf ".bb .bb"
+      const childOnly = el('.bb');
+      const parentSelector = el('.bb');
+      const withImplicit = getImplicitSelector(childOnly, parentSelector, false);
+      expect(withImplicit.valueOf()).toBe('.bb .bb');
+    });
+
+    it('extend find .bb with partial: false rejects when target has implicit ampersand (first component is &)', () => {
+      // Same shape as nested .bb ruleset: [amp(.bb), ' ', .bb]. .ee:extend(.bb) must NOT match this.
+      const targetWithImplicitAmp = getImplicitSelector(el('.bb'), el('.bb'), false);
+      const result = extendSelector(targetWithImplicitAmp, el('.bb'), el('.ee'), false);
+      expect(result.valueOf()).toBe(targetWithImplicitAmp.valueOf());
+    });
+
+    /**
+     * Validation for extend.less inner .bb: the inner ruleset's selector must (a) have the
+     * invisible ampersand, (b) use it in valueOf() for the full selector, (c) ampersand keeps
+     * its stored selector reference, (d) full selector value is then NOT an exact match for .bb,
+     * so the extend utility rejects without any logic in extend-roots.
+     */
+    describe('(a)-(d) ampersand present, valueOf uses it, exact .bb does not match', () => {
+      it('(a) implicit ampersand is present on selector (first component is Ampersand with stored selector)', () => {
+        const withImplicit = getImplicitSelector(el('.bb'), el('.bb'), false);
+        expect(isNode(withImplicit, 'ComplexSelector')).toBe(true);
+        const first = (withImplicit as any).value?.[0];
+        expect(first?.type).toBe('Ampersand');
+        expect(first?.value?.selector).toBeDefined();
+      });
+
+      it('(b) valueOf() uses ampersand selector to produce full selector string', () => {
+        const withImplicit = getImplicitSelector(el('.bb'), el('.bb'), false);
+        // Full selector must be parent + " " + child = ".bb .bb", not ".bb" or "& .bb"
+        expect(withImplicit.valueOf()).toBe('.bb .bb');
+      });
+
+      it('(c) ampersand retains stored selector (copy of parent at build time)', () => {
+        const parent = el('.bb');
+        const withImplicit = getImplicitSelector(el('.bb'), parent, false);
+        const first = (withImplicit as any).value?.[0];
+        expect(first?.value?.selector).toBeDefined();
+        expect(first.value.selector.valueOf()).toBe('.bb');
+      });
+
+      it('(d) full selector value .bb .bb is not an exact match for .bb so extend utility rejects', () => {
+        const targetWithImplicitAmp = getImplicitSelector(el('.bb'), el('.bb'), false);
+        expect(targetWithImplicitAmp.valueOf()).toBe('.bb .bb');
+        const result = tryExtendSelector(targetWithImplicitAmp, el('.bb'), el('.ee'), false);
+        expect(result.error).toBeUndefined();
+        expect(result.value.valueOf()).toBe('.bb .bb');
+        expect(result.value.valueOf()).not.toBe('.bb,.ee');
+      });
     });
   });
 

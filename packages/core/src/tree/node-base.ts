@@ -1008,6 +1008,11 @@ export abstract class Node<
     if (!node.hasFlag(F_VISIBLE)) {
       this.removeFlag(F_VISIBLE);
     }
+    // Preserve F_IMPLICIT_AMPERSAND so cloned selectors (e.g. after extend) keep invisible-ampersand
+    // handling in createProcessedSelector and valueOf() remains correct for exact extend matching.
+    if (node.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      this.addFlag(F_IMPLICIT_AMPERSAND);
+    }
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre ||= node.pre;
     this.post ||= node.post;

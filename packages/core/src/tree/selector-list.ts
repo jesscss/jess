@@ -91,10 +91,11 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    // Keep valueOf consistent with toTrimmedString flattening
+    // Keep valueOf consistent with toTrimmedString flattening.
+    // Only flatten :is() when it is generated (extend-created); preserve structure when not.
     const out: string[] = [];
     for (const item of this.value) {
-      if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
+      if (isNode(item, 'PseudoSelector') && item.value.name === ':is' && (item as PseudoSelector).generated) {
         const arg = item.value.arg;
         if (arg && isNode(arg, 'SelectorList')) {
           out.push(...arg.value.map(v => v.valueOf()));
@@ -103,7 +104,7 @@ export class SelectorList extends Selector<Selector[]> {
       }
       if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
         const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+        if (isNode(only, 'PseudoSelector') && only.value.name === ':is' && (only as PseudoSelector).generated) {
           const arg = only.value.arg;
           if (arg && isNode(arg, 'SelectorList')) {
             out.push(...arg.value.map(v => v.valueOf()));
@@ -113,7 +114,7 @@ export class SelectorList extends Selector<Selector[]> {
       }
       if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
         const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+        if (isNode(only, 'PseudoSelector') && only.value.name === ':is' && (only as PseudoSelector).generated) {
           const arg = only.value.arg;
           if (arg && isNode(arg, 'SelectorList')) {
             out.push(...arg.value.map(v => v.valueOf()));
