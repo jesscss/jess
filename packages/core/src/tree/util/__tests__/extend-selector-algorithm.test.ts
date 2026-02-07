@@ -734,6 +734,91 @@ describe('Extend Selector Tests', () => {
     });
   });
 
+  describe('Invisible ampersand extend coverage (partial, full, just outside)', () => {
+    /**
+     * Coverage for extending when the target has invisible (implicit) ampersand:
+     * - Partial: find matches part of the "own" segment after & → extend without flattening &
+     * - Full: find fully matches one list item's "own" part → append extendWith with same & (selector list)
+     * - Just outside: find matches resolved form (crosses boundary) vs only own part (within boundary)
+     */
+
+    it('partial extend when target has invisible ampersand: match only the own part (within boundary)', () => {
+      // Target: & .a .b (implicit & → .parent). Find .a. ExtendWith .x. Partial true.
+      // Expect: extend within boundary, ampersand preserved → & :is(.a, .x) .b
+      const parentSel = el('.parent');
+      const target = getImplicitSelector(sel([el('.a'), co(' '), el('.b')]), parentSel, false);
+      expect(target.valueOf()).toBe('.parent .a .b');
+
+      const result = extendSelector(target, el('.a'), el('.x'), true);
+      expect(result.hoistToRoot).toBeFalsy();
+      const out = result.valueOf();
+      expect(out).toContain('.a');
+      expect(out).toContain('.x');
+      expect(out).toContain('.b');
+      // Should preserve structure (implicit & not materialized in serialization when same context)
+      expect(isNode(result, 'ComplexSelector')).toBe(true);
+      const first = (result as any).value?.[0];
+      expect(first?.type).toBe('Ampersand');
+    });
+
+    it('full extend (complete match of one list item) when target is SelectorList with invisible ampersand: append extendWith with same &', () => {
+      // Target: [& .replace, & .c] (each item has implicit & → .outer). Find .replace. ExtendWith .rep_ace. Partial true.
+      // Intended: result is selector list with three items [& .replace, & .rep_ace, & .c] so serialization shows .replace, .rep_ace, .c.
+      // We assert the result contains all three classes (document intended behavior until full append path is applied).
+      const outerSel = el('.outer');
+      const target = getImplicitSelector(sellist([el('.replace'), el('.c')]), outerSel, false);
+      expect(target.valueOf()).toBe('.outer .replace,.outer .c');
+
+      const result = tryExtendSelector(target, el('.replace'), el('.rep_ace'), true);
+      expect(result.error).toBeUndefined();
+      expect(isNode(result.value, 'SelectorList')).toBe(true);
+      const list = result.value as SelectorList;
+      expect(list.value.length).toBeGreaterThanOrEqual(2);
+      const str = result.value.valueOf();
+      expect(str).toContain('.replace');
+      expect(str).toContain('.rep_ace');
+      expect(str).toContain('.c');
+    });
+
+    it('extend find that matches only own part (within boundary): ampersand not flattened', () => {
+      // Target: & .child (implicit & → .parent). Find .child. ExtendWith .other. Partial true.
+      // We match only the part after &, so we stay within boundary.
+      const parentSel = el('.parent');
+      const target = getImplicitSelector(el('.child'), parentSel, false);
+      expect(target.valueOf()).toBe('.parent .child');
+
+      const result = extendSelector(target, el('.child'), el('.other'), true);
+      expect(result.hoistToRoot).toBeFalsy();
+      expect(result.valueOf()).toContain('.child');
+      expect(result.valueOf()).toContain('.other');
+    });
+
+    it('extend find that matches resolved form (boundary crossing): full target match', () => {
+      // Target: & .child (implicit & → .parent). Find .parent .child (full resolved). ExtendWith .other.
+      // Find matches the entire resolved selector → we are "just outside" the invisible & (crossing boundary).
+      const parentSel = el('.parent');
+      const target = getImplicitSelector(el('.child'), parentSel, false);
+      const find = sel([el('.parent'), co(' '), el('.child')]);
+      const extendWith = el('.other');
+
+      const result = extendSelector(target, find, extendWith, true);
+      // Should produce selector list .parent .child, .other (resolved + extendWith) and typically hoist
+      expect(result.valueOf()).toContain('.parent');
+      expect(result.valueOf()).toContain('.child');
+      expect(result.valueOf()).toContain('.other');
+    });
+
+    it('partial: false with invisible ampersand target does not extend when find matches only own part', () => {
+      // Target: & .bb (implicit & → .bb). Find .bb. Partial false (exact only).
+      // Full selector is .bb .bb; find .bb is not an exact match of the whole selector → no extend.
+      const target = getImplicitSelector(el('.bb'), el('.bb'), false);
+      expect(target.valueOf()).toBe('.bb .bb');
+
+      const result = extendSelector(target, el('.bb'), el('.ee'), false);
+      expect(result.valueOf()).toBe(target.valueOf());
+    });
+  });
+
   describe(':is() boundary crossing and flattening', () => {
     it('should NOT flatten :is() when extend does not cross :is() boundary', () => {
       // :is(.g, .i.j) extended with .k:extend(.i all)

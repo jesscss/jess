@@ -47,6 +47,16 @@ We add extendWith as one list item, so we get nested :is(). We only flatten **ge
 
 ## 4. Snapshot / eval / @media / circular — 4 tests
 
+### 4a. "extends selectors inside nested rulesets (Less extend-selector replace case)"
+
+**Test expectation (correct Less behavior):** Inner block should output `.replace, .rep_ace, .c` (three items). Step 1 expected CSS is from Less `tests-unit/extend-selector/extend-selector.css`.
+
+**Correct fix (no sourceNode):** Do **not** use sourceNode for nested header display. Do **not** flatten the ampersand in the **extend target**; **do** flatten the invisible ampersand in **extendWith** when applying only when it does **not** match the inherited (ruleset frame) ampersand. Removed all sourceNode-based extend logic from extend-roots and getHeaderString. In extend.ts, when a SelectorList item is a ComplexSelector starting with implicit ampersand and the "own" part (after `& `) matches find, treat as full match and append extendWith with the same & prefix.
+
+**Status:** Test still fails (inner block shows `.replace, .c`). Test expectation is **not** changed; code should be fixed to meet it.
+
+**Note (earlier hypothesis):** processExtends runs once per eval, after the full AST for that root is evaluated; we do not serialize until after eval returns. So we cannot be "serializing before processExtends" in a single run. The more likely cause of the failure is **object identity**: the ruleset we find and update in processExtends (the one in the extend-root registry) may not be the same object as the nested ruleset in the tree we serialize. If preEval clones only part of the tree (e.g. root and outer ruleset get replaced by clones, but the inner Rules or nested ruleset is not), then we register and update the clone’s nested ruleset but the serialized tree might still contain the original nested ruleset, which never gets its selector/sourceNode updated.
+
 - extend-eval-integration: "extends selectors inside nested rulesets (Less extend-selector replace case)"
 - extend-eval-integration: "extend-chaining.less AST shape" (snapshot)
 - extend-eval-integration: ".b:extend(.a) inside @media cannot reach out"

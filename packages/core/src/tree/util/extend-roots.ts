@@ -29,6 +29,50 @@ function rulesStructureSummary(r: Rules): Record<string, unknown> {
   return { valueLen: len, firstType, firstValueRulesType, firstValueRulesLen };
 }
 
+/**
+ * Recursively ensure all selector nodes have F_VISIBLE so they serialize.
+ * Extended selectors can include items from the original target that lacked F_VISIBLE
+ * (e.g. nested context), causing components to render as '' and produce wrong output (.c, .rep_ace).
+ */
+function ensureSelectorVisible(selector: Selector): void {
+  if (!selector || typeof (selector as Node).addFlag !== 'function') return;
+  const n = selector as Node;
+  if (!n.hasFlag(F_VISIBLE)) {
+    n.addFlag(F_VISIBLE);
+  }
+  if (isNode(selector, 'SelectorList')) {
+    const items = (selector as SelectorList).value;
+    if (Array.isArray(items)) {
+      for (const item of items) ensureSelectorVisible(item);
+    }
+    return;
+  }
+  if (isNode(selector, 'ComplexSelector')) {
+    const comps = (selector as ComplexSelector).value;
+    if (Array.isArray(comps)) {
+      for (const c of comps) {
+        if (c && typeof (c as Node).addFlag === 'function') ensureSelectorVisible(c as Selector);
+      }
+    }
+    return;
+  }
+  const selWithValue = selector as Selector & { value?: Selector[] };
+  if (Array.isArray(selWithValue.value)) {
+    for (const c of selWithValue.value) ensureSelectorVisible(c);
+  }
+}
+
+/** Ensure top-level items in a SelectorList (and their descendants) have F_VISIBLE so they serialize. */
+function ensureSelectorListItemsVisible(selector: Selector): void {
+  if (!isNode(selector, 'SelectorList')) return;
+  const list = selector as SelectorList;
+  const items = list.value;
+  if (!Array.isArray(items)) return;
+  for (const item of items) {
+    ensureSelectorVisible(item);
+  }
+}
+
 /** Preserve F_IMPLICIT_AMPERSAND on cloned selector(s) so createProcessedSelector keeps implicit ampersand (extend.less .dd,.ee,.ff). */
 function preserveImplicitAmpersandOnClone(extendedSelector: Selector, clonedSelector: Selector): void {
   const preserveOne = (orig: Selector, clone: Selector) => {
@@ -52,6 +96,36 @@ function preserveImplicitAmpersandOnClone(extendedSelector: Selector, clonedSele
         preserveOne(origItems[i]!, cloneItems[i]!);
       }
     }
+  }
+}
+
+/**
+ * Before updating a ruleset's selector, ensure any descendant rulesets that share
+ * this ruleset's value object get their own value so they keep their current
+ * selector when we assign ruleset.value.selector.
+ */
+function ensureDescendantRulesetsHaveOwnValue(ruleset: Ruleset, sharedValue: Ruleset['value']): void {
+  const rules = ruleset.value?.rules;
+  if (!rules || !isNode(rules, 'Rules')) {
+    return;
+  }
+  const children = (rules as Rules).value;
+  if (!Array.isArray(children)) {
+    return;
+  }
+  for (const child of children) {
+    if (!isNode(child, 'Ruleset')) {
+      continue;
+    }
+    const rs = child as Ruleset;
+    if (rs.value === sharedValue) {
+      rs.value = {
+        selector: rs.value.selector,
+        rules: rs.value.rules,
+        ...(rs.value.guard !== undefined && { guard: rs.value.guard })
+      };
+    }
+    ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
   }
 }
 
@@ -373,13 +447,27 @@ function maybeHoistMixedNestingSelectorList(
   const anyAbsolute = items.some(hasDescendantCombinator);
   const anyRelative = items.some(s => !hasDescendantCombinator(s));
   const parentPrefix = `${parentSel.valueOf()} `;
-  // Use materialized form so relative selectors (e.g. .header-nav with implicit &) count as prefixed
-  const anyPrefixedByParent = parentPrefix
-    ? items.some(s => String(materializeImplicitAmpersand(s).valueOf()).startsWith(parentPrefix))
-    : false;
-  const anyNotPrefixedByParent = parentPrefix
-    ? items.some(s => !String(materializeImplicitAmpersand(s).valueOf()).startsWith(parentPrefix))
-    : false;
+  const parentNorm = normalizedSelectorValueOf(parentSel);
+  const parentPrefixNorm = parentNorm ? parentNorm + ' ' : '';
+  // Use materialized form so relative selectors (e.g. .header-nav with implicit &) count as prefixed.
+  // Use normalized comparison so spacing differences don't prevent match (e.g. ".header  .header-nav").
+  const itemPrefixedByParent = (s: Selector): boolean => {
+    if (!parentPrefix && !parentPrefixNorm) {
+      return false;
+    }
+    const mat = materializeImplicitAmpersand(s);
+    const v = String(mat.valueOf()).replace(/\s+/g, ' ').trim();
+    const vNorm = v.replace(/\s+/g, '');
+    if (v.startsWith(parentPrefix)) {
+      return true;
+    }
+    if (parentPrefixNorm && vNorm.startsWith(parentPrefixNorm.replace(/\s+/g, ''))) {
+      return true;
+    }
+    return false;
+  };
+  const anyPrefixedByParent = items.some(itemPrefixedByParent);
+  const anyNotPrefixedByParent = items.some(s => !itemPrefixedByParent(s));
   // If the selector list mixes selectors that are under the parent prefix and selectors that are not,
   // hoist to root so we don't serialize them inside the parent's frame (which would strip the prefix
   // from the prefixed selectors, producing `.header-nav, .footer .footer-nav`).
@@ -842,21 +930,23 @@ export class ExtendRootRegistry {
       }
 
       // When collapseNesting wraps at-rule body in Ruleset(&), rulesets live in the inner Rules.
-      // Include that inner Rules so extends in the same at-rule (e.g. .ma:extend(.md) in @media) find same-root targets.
-      // When a root is a Rules with one child that is Rules (post-eval unwrapped), include that child so root extends find targets inside @media.
-      if (currentRoot.value?.length === 1) {
-        const first = currentRoot.value[0];
-        if (first && isNode(first, 'Ruleset') && first.value?.rules && isNode(first.value.rules, 'Rules')) {
-          const innerRules = first.value.rules as Rules;
-          if (!visited.has(innerRules)) {
-            accessible.add(innerRules);
-            traverseChildren(innerRules);
-          }
-        } else if (first && isNode(first, 'Rules')) {
-          const innerRules = first as Rules;
-          if (!visited.has(innerRules)) {
-            accessible.add(innerRules);
-            traverseChildren(innerRules);
+      // Include inner Rules of every child Ruleset so extends find nested rulesets (e.g. .rep_ace:extend(.replace all)
+      // must find the nested ruleset with selector .replace, .c and extend it to .replace, .rep_ace, .c).
+      // Also when a root has one child that is Rules (post-eval unwrapped), include that child.
+      if (currentRoot.value?.length) {
+        for (const node of currentRoot.value) {
+          if (node && isNode(node, 'Ruleset') && node.value?.rules && isNode(node.value.rules, 'Rules')) {
+            const innerRules = node.value.rules as Rules;
+            if (!visited.has(innerRules)) {
+              accessible.add(innerRules);
+              traverseChildren(innerRules);
+            }
+          } else if (node && isNode(node, 'Rules')) {
+            const innerRules = node as Rules;
+            if (!visited.has(innerRules)) {
+              accessible.add(innerRules);
+              traverseChildren(innerRules);
+            }
           }
         }
       }
@@ -1270,27 +1360,19 @@ export function processExtends(context: Context): void {
     // When collapseNesting wraps at-rule rules in Ruleset(&), rulesets register to the inner Rules.
     // Ensure we search those inner Rules so same-root extends (e.g. .ma:extend(.md) in @media) find targets.
     const rootsToSearch = new Set(accessibleRoots);
-    // Always add extendRoot's own inner Rules when it has wrapper structure (Ruleset(&) with .value.rules).
-    // Also when extendRoot is a Rules with one child that is Rules (post-eval unwrap), search that child.
-    if (extendRoot.value?.length === 1 && extendRoot.value[0] != null) {
-      const first = extendRoot.value[0];
-      if (isNode(first, 'Ruleset') && first.value?.rules && isNode(first.value.rules, 'Rules')) {
-        rootsToSearch.add(first.value.rules as Rules);
-      } else if (isNode(first, 'Rules')) {
-        rootsToSearch.add(first as Rules);
-      }
-    }
-    for (const r of allRootsArr) {
-      if (!accessibleRoots.has(r)) {
-        continue;
-      }
-      if (r.value?.length === 1) {
-        const first = r.value[0];
-        if (isNode(first, 'Ruleset') && first.value.rules && isNode(first.value.rules, 'Rules')) {
-          rootsToSearch.add(first.value.rules);
+    // Explicitly walk extendRoot's tree to add every descendant Rules (ruleset.value.rules) so we
+    // always find nested rulesets (e.g. .rep_ace:extend(.replace all) must extend the inner .replace, .c ruleset).
+    const walkRules = (rules: Rules, visited: Set<Rules>): void => {
+      if (visited.has(rules)) return;
+      visited.add(rules);
+      rootsToSearch.add(rules);
+      for (const node of rules.value) {
+        if (node && isNode(node, 'Ruleset') && node.value?.rules && isNode(node.value.rules, 'Rules')) {
+          walkRules(node.value.rules as Rules, visited);
         }
       }
-    }
+    };
+    walkRules(extendRoot, new Set());
     accessibleRoots = rootsToSearch;
 
     // If target is a SelectorList (e.g., .aa, .bb), process each selector separately
@@ -1334,55 +1416,75 @@ export function processExtends(context: Context): void {
       for (const searchRoot of accessibleRoots) {
         const searchKeySet = singleTarget.keySet;
         let found = searchRoot.find('ruleset', searchKeySet);
-        // When collapseNesting wraps at-rule rules in Ruleset(&), rulesets can register to the
-        // parent root during preEval (before the wrapper is pushed). So the wrapper's and inner
-        // Rules' registries may not have them. Scan the inner Rules' value array as fallback so
-        // same-root extends (e.g. .ma:extend(.md) in @media) find targets.
-        if (searchRoot.value?.length === 1) {
-          const first = searchRoot.value[0];
-          if (isNode(first, 'Ruleset') && first.value.rules && isNode(first.value.rules, 'Rules')) {
-            const innerRules = first.value.rules as Rules;
-            const innerFound = innerRules.find('ruleset', searchKeySet);
-            if (innerFound) {
-              found = found ? [...found, ...innerFound] : innerFound;
-            }
-            // Fallback: with collapseNesting, inner rulesets can register to parent during preEval,
-            // so registries may be empty; scan value array for matching rulesets.
-            if (innerRules.value?.length) {
-              const keySet = searchKeySet instanceof Set ? searchKeySet : new Set(searchKeySet);
-              const targetValue = singleTarget.valueOf();
-              for (const node of innerRules.value) {
-                if (!isNode(node, 'Ruleset')) {
-                  continue;
-                }
+        // Fallback: scan searchRoot (and all nested Rules) for matching rulesets so we find
+        // nested rulesets at any depth, even when the registry was built on a different Rules
+        // instance (e.g. after eval clone) or when collapseNesting wraps at-rule body in Ruleset(&).
+        // Always recurse into every Ruleset's rules and every direct Rules child—no special cases for root shape.
+        if (searchRoot.value?.length) {
+          const keySet = searchKeySet instanceof Set ? searchKeySet : new Set(searchKeySet);
+          const targetValue = singleTarget.valueOf();
+          const targetNormalized = normalizedSelectorValueOf(singleTarget as Selector);
+          const scanRules = (rules: Rules): void => {
+            for (const node of rules.value) {
+              if (isNode(node, 'Ruleset')) {
                 const rs = node as Ruleset;
                 const sel = rs.selector;
-                if (!sel || isNode(sel, 'Nil')) {
-                  continue;
-                }
-                let matches = false;
-                if ('keySet' in sel) {
-                  let isSubset = true;
-                  for (const k of keySet) {
-                    if (!(sel as Selector).keySet.has(k as string)) {
-                      isSubset = false;
-                      break;
+                if (sel && !isNode(sel, 'Nil')) {
+                  let matches = false;
+                  if ('keySet' in sel) {
+                    let isSubset = true;
+                    for (const k of keySet) {
+                      if (!(sel as Selector).keySet.has(k as string)) {
+                        isSubset = false;
+                        break;
+                      }
+                    }
+                    matches = isSubset;
+                  }
+                  if (!matches && typeof sel.valueOf === 'function') {
+                    const selNorm = normalizedSelectorValueOf(sel);
+                    const selCanon = canonicalSelectorValueOf(sel);
+                    const targetCanon = canonicalSelectorValueOf(singleTarget as Selector);
+                    if (
+                      sel.valueOf() === targetValue
+                      || (targetNormalized && (selNorm === targetNormalized || (targetCanon && selCanon === targetCanon)))
+                    ) {
+                      matches = true;
+                    }
+                    // Match when selector is ComplexSelector with leading Ampersand: resolve and compare (selector may not have valueOf resolved at scan time).
+                    if (!matches && isNode(sel, 'ComplexSelector')) {
+                      const cs = sel as ComplexSelector;
+                      const first = cs.value[0];
+                      if (first && typeof (first as Ampersand).getResolvedSelector === 'function') {
+                        const resolved = (first as Ampersand).getResolvedSelector();
+                        if (resolved && !isNode(resolved, 'Nil')) {
+                          const rest = cs.value.slice(1);
+                          const restStr = rest.map((c: Node) => (c as Selector).valueOf?.() ?? '').join(' ').trim();
+                          const resolvedStr = `${(resolved as Selector).valueOf?.() ?? ''} ${restStr}`.trim();
+                          const resolvedNorm = String(resolvedStr).replace(/\s+/g, '').trim();
+                          if (resolvedNorm && targetNormalized && resolvedNorm === targetNormalized) {
+                            matches = true;
+                          }
+                        }
+                      }
                     }
                   }
-                  matches = isSubset;
-                }
-                if (!matches && typeof sel.valueOf === 'function' && sel.valueOf() === targetValue) {
-                  matches = true;
-                }
-                if (matches) {
-                  const existing = found ?? [];
-                  if (!existing.includes(rs)) {
-                    found = existing.length ? [...existing, rs] : [rs];
+                  if (matches) {
+                    const existing = found ?? [];
+                    if (!existing.includes(rs)) {
+                      found = existing.length ? [...existing, rs] : [rs];
+                    }
                   }
                 }
+                if (rs.value?.rules && isNode(rs.value.rules, 'Rules')) {
+                  scanRules(rs.value.rules as Rules);
+                }
+              } else if (isNode(node, 'Rules')) {
+                scanRules(node as Rules);
               }
             }
-          }
+          };
+          scanRules(searchRoot);
         }
         if (traceMd) {
           syncLog({
@@ -1425,6 +1527,10 @@ export function processExtends(context: Context): void {
             }
             const effectiveRoot = getEffectiveExtendRoot(rs);
             if (!effectiveRoot) {
+              return true;
+            }
+            // Extend at document root can target any ruleset in the same root (e.g. .footer-nav:extend(.header .header-nav) finding nested .header-nav).
+            if (extendRoot === context.root && effectiveRoot === context.root) {
               return true;
             }
             if (
@@ -1615,18 +1721,17 @@ export function processExtends(context: Context): void {
         }
       }
 
-      // Debug: for replace/rep_ace extend, log how many rulesets we found before applying
-      const isReplaceRepAceExtend =
-        typeof singleTarget?.valueOf === 'function' && String(singleTarget.valueOf()).includes('replace')
-        && typeof selectorWithExtend?.valueOf === 'function' && String(selectorWithExtend.valueOf()).includes('rep_ace');
-      if (isReplaceRepAceExtend && rulesetSet && rulesetSet.length > 0) {
-        const selectorSlices = rulesetSet.map((rs) => typeof rs.selector?.valueOf === 'function' ? String(rs.selector.valueOf()).slice(0, 90) : '');
-        syncLog({
-          trace: 'replace_rep_ace_found',
-          rulesetCount: rulesetSet.length,
-          selectorSlices,
-          anyLooksNested: selectorSlices.some((s) => s.includes('.replace') && s.includes('.c') && !s.includes('.rep_ace'))
-        });
+      // Capture each ruleset's parent selector string before we update any (so we can detect
+      // nested rulesets whose selector equals parent's and use ownSelector for extend).
+      const parentSelectorAtStart = new Map<Ruleset, string>();
+      if (rulesetSet) {
+        for (const rs of rulesetSet) {
+          const pr = rs.parent?.parent;
+          if (pr && isNode(pr, 'Ruleset')) {
+            const sel = (pr as Ruleset).selector;
+            parentSelectorAtStart.set(rs, typeof sel?.valueOf === 'function' ? sel.valueOf() : '');
+          }
+        }
       }
 
       // Apply extends to rulesets directly
@@ -1644,25 +1749,28 @@ export function processExtends(context: Context): void {
             return; // Skip this ruleset - it's the source of the extend
           }
 
-          const originalSelector = ruleset.selector as Selector;
-          const origStr = typeof originalSelector?.valueOf === 'function' ? originalSelector.valueOf() : '';
-
-          // Debug: nested replace/rep_ace extend (Less extend-selector replace case)
-          if (isReplaceRepAceExtend) {
-            const hasSource = originalSelector.sourceNode != null;
-            const sourceVal = hasSource && typeof (originalSelector.sourceNode as Selector).valueOf === 'function'
-              ? String((originalSelector.sourceNode as Selector).valueOf()).slice(0, 80)
-              : '';
-            const looksNested = origStr.includes('.replace') && origStr.includes('.c') && !origStr.includes('.rep_ace');
-            syncLog({
-              trace: 'replace_rep_ace_process',
-              rulesetSelectorSlice: origStr.slice(0, 100),
-              hasSourceNode: hasSource,
-              sourceNodeValueOf: sourceVal,
-              looksNestedSelector: looksNested,
-              collapseNesting: Boolean((context.opts as { collapseNesting?: boolean })?.collapseNesting)
-            });
+          // When this ruleset's selector equals its parent's (at start), use own selector so we
+          // extend .replace,.c not the resolved form (rep_ace bug).
+          const rawSelector = ruleset.selector as Selector;
+          const ownSel = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
+          const rawStr = typeof rawSelector?.valueOf === 'function' ? rawSelector.valueOf() : '';
+          const parentSelAtStart = parentSelectorAtStart.get(ruleset) ?? '';
+          const ownStr = ownSel && typeof ownSel.valueOf === 'function' ? ownSel.valueOf() : '';
+          const sameAsParentAtStart = rawStr === parentSelAtStart && parentSelAtStart.length > 0;
+          // Nested ruleset's selector can be "resolved" (longer than own); use own so we extend
+          // .replace,.c not the resolved form (rep_ace bug). Only when we have a parent (in map).
+          const isNestedWithResolvedSelector =
+            parentSelAtStart.length > 0 && ownStr.length > 0 && rawStr.length > ownStr.length;
+          let useOwn = (sameAsParentAtStart || isNestedWithResolvedSelector) && !!ownSel;
+          // If extend target is the full resolved selector (e.g. .header .header-nav), we must pass
+          // the resolved selector to tryExtendSelector so the match succeeds; passing own (.header-nav) would not match.
+          const targetNorm = normalizedSelectorValueOf(singleTarget as Selector);
+          const rawNorm = normalizedSelectorValueOf(rawSelector);
+          if (useOwn && targetNorm && rawNorm === targetNorm) {
+            useOwn = false;
           }
+          const originalSelector = (useOwn ? ownSel : rawSelector) as Selector;
+          const origStr = typeof originalSelector?.valueOf === 'function' ? originalSelector.valueOf() : '';
 
           // Check if this extend has already transformed this ruleset's selector
           const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
@@ -1737,37 +1845,6 @@ export function processExtends(context: Context): void {
               });
             }
 
-            // If this ruleset selector has a `sourceNode`, extend it so nested output matches Less expectations.
-            const sourceSelector = originalSelector.sourceNode;
-            let extendedSource: Selector | undefined;
-            if (sourceSelector instanceof Selector) {
-              const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
-              if (sourceResult && !sourceResult.error) {
-                const nextSource = sourceResult.value;
-                if (nextSource.valueOf() !== sourceSelector.valueOf()) {
-                  extendedSource = nextSource.clone(true);
-                }
-              }
-            }
-
-            // When only source changed (resolved unchanged), set sourceNode so nested header shows extended list.
-            if (extendedSource && extendedSelector.valueOf() === originalSelector.valueOf()) {
-              ruleset.value.selector.sourceNode = extendedSource;
-              ruleset.invalidateSelectorValueCache();
-              if (isReplaceRepAceExtend) {
-                const afterVal = typeof ruleset.value.selector.sourceNode?.valueOf === 'function'
-                  ? String(ruleset.value.selector.sourceNode.valueOf()).slice(0, 80)
-                  : '';
-                syncLog({
-                  trace: 'replace_rep_ace_source_only',
-                  setSourceNode: true,
-                  sourceNodeValueOfAfter: afterVal,
-                  hasRepAce: afterVal.includes('rep_ace')
-                });
-              }
-              return;
-            }
-
             // Only update if selector actually changed
             if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
               // Mark that this extend has transformed this ruleset
@@ -1781,13 +1858,13 @@ export function processExtends(context: Context): void {
                 // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
                 clonedSelector.hoistToRoot = true;
               }
-              if (extendedSource) {
-                clonedSelector.sourceNode = extendedSource;
-              }
-
               // Update the ruleset's selector directly
+              const origStrForHoist = typeof originalSelector?.valueOf === 'function' ? String(originalSelector.valueOf()) : '';
+              const clonedStr = typeof clonedSelector?.valueOf === 'function' ? String(clonedSelector.valueOf()) : '';
               const hoisted = maybeHoistMixedNestingSelectorList(ruleset, clonedSelector as Selector, partial);
               const hoistStr = typeof hoisted?.valueOf === 'function' ? String(hoisted.valueOf()) : '';
+              const parentRules = ruleset.parent;
+              const parentLen = parentRules && isNode(parentRules, 'Rules') ? (parentRules as Rules).value?.length : 0;
               const traceDdPipeline = hoistStr.includes('dd') && (hoistStr.includes('aa') || hoistStr.includes('.dd'));
               if (traceDdPipeline) {
                 const hoistItemCount = isNode(hoisted, 'SelectorList') ? (hoisted as SelectorList).value?.length : 1;
@@ -1835,20 +1912,35 @@ export function processExtends(context: Context): void {
               normalizedSelector = Array.isArray(leadingIsResult)
                 ? SelectorList.create(leadingIsResult.map(s => s.copy(true) as Selector)).inherit(normalizedSelector) as Selector
                 : leadingIsResult;
-              if (clonedSelector.sourceNode) {
-                normalizedSelector.sourceNode = clonedSelector.sourceNode;
+              // Debug rep_ace: log when we update a ruleset that looks like the nested .replace,.c one
+              const origStr = typeof originalSelector?.valueOf === 'function' ? String(originalSelector.valueOf()) : '';
+              const normStr = typeof normalizedSelector?.valueOf === 'function' ? String(normalizedSelector.valueOf()) : '';
+              const parentRuleset =
+                ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
+                  ? (ruleset.parent.parent as Ruleset)
+                  : null;
+              let valueSharedWithAncestor = false;
+              for (let p: typeof ruleset.parent = ruleset.parent; p; p = p.parent) {
+                if (isNode(p, 'Ruleset') && (p as Ruleset).value === ruleset.value) {
+                  valueSharedWithAncestor = true;
+                  break;
+                }
               }
-              if (isReplaceRepAceExtend && normalizedSelector.sourceNode) {
-                const afterVal = typeof normalizedSelector.sourceNode?.valueOf === 'function'
-                  ? String(normalizedSelector.sourceNode.valueOf()).slice(0, 80)
-                  : '';
-                syncLog({
-                  trace: 'replace_rep_ace_resolved_changed',
-                  setSourceNodeOnNormalized: true,
-                  sourceNodeValueOfAfter: afterVal,
-                  hasRepAce: afterVal.includes('rep_ace')
-                });
+              const valueSharedWithParent = parentRuleset !== null && ruleset.value === parentRuleset.value;
+              // If this ruleset shares its value object with an ancestor ruleset, assigning
+              // value.selector would overwrite the ancestor's selector too. Give this ruleset
+              // its own value object so we only update this ruleset's selector.
+              if (valueSharedWithAncestor) {
+                ruleset.value = {
+                  selector: ruleset.value.selector,
+                  rules: ruleset.value.rules,
+                  ...(ruleset.value.guard !== undefined && { guard: ruleset.value.guard })
+                };
               }
+              // Before we overwrite this ruleset's selector, give any descendant rulesets that
+              // share this value their own value so they keep their current selector.
+              ensureDescendantRulesetsHaveOwnValue(ruleset, ruleset.value);
+              ensureSelectorListItemsVisible(normalizedSelector);
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();
               if (normalizedSelector.hoistToRoot) {
@@ -2030,17 +2122,6 @@ export function processExtends(context: Context): void {
                 // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
                 clonedSelector.hoistToRoot = true;
               }
-
-              const sourceSelector = currentSelector.sourceNode;
-              if (sourceSelector instanceof Selector) {
-                const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
-                if (sourceResult && !sourceResult.error) {
-                  const nextSource = sourceResult.value;
-                  if (nextSource.valueOf() !== sourceSelector.valueOf()) {
-                    clonedSelector.sourceNode = nextSource.clone(true);
-                  }
-                }
-              }
               // Normalize selectors after extend so generated :is() wrappers can be unwrapped/merged
               // when they are the only simple selector in a selector-list item (Less expectations).
               const normalized = createProcessedSelector(clonedSelector, true);
@@ -2051,6 +2132,7 @@ export function processExtends(context: Context): void {
               } else {
                 normalizedSelector = materialized as Selector;
               }
+              ensureSelectorListItemsVisible(normalizedSelector);
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();
               if (normalizedSelector.hoistToRoot) {

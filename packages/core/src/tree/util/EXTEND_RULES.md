@@ -58,9 +58,10 @@ In **partial** mode, what we wrap in `:is(..., extendWith)` depends on whether t
 
 ## 5. Ampersand
 
-- **Same context** (nested under same parent): Keep implicit ampersand (no materialization).
-- **Different context**: Materialize so serialization is correct.
+- **Extend target:** Do **not** flatten / make visible the ampersand in the ruleset selector we are extending. Keeping it implicit allows nested output to show only the "own" selector (e.g. `.replace, .rep_ace, .c`) without a parent prefix.
+- **ExtendWith:** **Do** flatten (materialize) the invisible ampersand in extendWith when applying **only when** it does **not** match the inherited (ruleset frame) ampersand. Same context ⇒ keep implicit; different context ⇒ materialize.
 - Cloning after extend must preserve implicit ampersand where needed (**preserveImplicitAmpersandOnClone**).
+- **No sourceNode for nested header:** Serialization must not use `selector.sourceNode` for the ruleset header; the correct behavior comes from the ampersand rule above, not from storing an "own" selector on the node.
 
 ## 6. Self-reference
 

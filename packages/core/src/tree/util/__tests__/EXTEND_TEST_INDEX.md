@@ -29,6 +29,12 @@ Located in `src/tree/util/__tests__/`:
 - `extend-ampersand-boundary.test.ts`
   - Ampersand boundary-crossing scenarios (nested selector vs parent prefix).
 
+- **Invisible (implicit) ampersand extend coverage** (in `extend-selector-algorithm.test.ts`, describe “Invisible ampersand extend coverage (partial, full, just outside)”):
+  - **Partial:** Target has invisible &; find matches only the “own” part → extend without flattening & (within boundary).
+  - **Full:** Target is SelectorList with invisible & on each item; find fully matches one item’s own part → intended: append extendWith with same & (three items).
+  - **Just outside:** Find matches only own part (within boundary, & not flattened) vs find matches resolved form (boundary crossing).
+  - **partial: false:** Invisible-ampersand target with find matching only own part → no extend (exact match required).
+
 - `extend-combinator-handling.test.ts`
   - Matching + extension behavior with combinators (` `, `>`, `+`, `~`, etc.).
 

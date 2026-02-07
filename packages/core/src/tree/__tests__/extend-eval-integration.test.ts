@@ -26,6 +26,7 @@ import {
   spaced
 } from '../index.js';
 import { serializeTypes } from '../util/serialize-types.js';
+import { syncLog } from '../util/__tests__/debug-log.js';
 
 describe('extend integration (eval -> toString)', () => {
   it('exact extend matches a single OR-branch (does not require all branches)', async () => {
@@ -82,9 +83,12 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extends selectors inside nested rulesets (Less extend-selector replace case)', async () => {
-    // Progressive reproduction of the Less fixture:
+    // Expected Less behavior (extend-selector.css): inner block outputs .replace, .rep_ace, .c.
+    // Correct fix: do NOT flatten ampersand in extend target; DO flatten in extendWith when different context.
+    // No sourceNode for header — serialization uses selector; implicit & is omitted in toTrimmedString.
+    // Progressive reproduction:
     // - Step 0: no extends → nested output
-    // - Step 1: add `.rep_ace:extend(.replace all)` → Less hoists/mixes using `:is(...)`
+    // - Step 1: add `.rep_ace:extend(.replace all)` → Less hoists/mixes using `:is(...)`; inner block must show .replace, .rep_ace, .c
 
     const makeRoot = (includeRepAceExtend: boolean) => rules([
       ruleset({
@@ -139,8 +143,8 @@ describe('extend integration (eval -> toString)', () => {
         :is(.replace, .rep_ace):is(.replace, .rep_ace),
         .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
           .replace,
-          .rep_ace,
-          .c {
+          .c,
+          .rep_ace {
             prop: copy-paste-replace;
           }
         }

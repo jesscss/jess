@@ -54,13 +54,14 @@ This document records a careful review of the extend feature: what the code and 
 ### 2.3 Ampersand and “implicit” vs “materialized”
 
 - **Implicit ampersand**: `F_IMPLICIT_AMPERSAND`; not serialized as `&` when context is the same (nested). Used to avoid output like `:is(.aa,.cc) .dd` when we want `.dd, .ee, .ff` under `.aa, .cc`.
+- **Extend target vs extendWith:** Do **not** flatten the ampersand in the extend target; **do** materialize in extendWith when context differs. See EXTEND_RULES.md §5. No sourceNode for nested header.
 - **Materialization**: When context differs, we replace implicit `&` with the concrete parent (e.g. `.aa,.cc`) so serialization is correct.
 - **preserveImplicitAmpersandOnClone**: After cloning an extended selector, we copy implicit-ampersand flag and clear F_VISIBLE so nested output stays compact.
 - **maybeHoistMixedNestingSelectorList**: When we have a mixed list (some with implicit `&`, some without), we may wrap in `:is(parent)` and hoist; same-context implicit ampersands are kept implicit (no F_VISIBLE).
 
 **Question**: Is there a single, written rule like “same context ⇒ keep implicit ampersand; different context ⇒ materialize”, and is that rule implemented in one place or scattered (dematerialize, materialize, hoist, createProcessedSelector)?
 
-**Recommendation**: Add a short “Ampersand and nesting” subsection to the main extend doc: same context = implicit (no `:is(parent)` in output); different context = materialize; cloning must preserve implicit flag for downstream normalization.
+**Recommendation**: Single rule in EXTEND_RULES.md §5: extend target = do not flatten; extendWith = materialize when different context; no sourceNode for header.
 
 ### 2.4 Functions that look narrow or duplicated
 

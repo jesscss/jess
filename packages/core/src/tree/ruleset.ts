@@ -34,6 +34,8 @@ export type RulesetValue = {
 
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
+  /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
+  ownSelector?: Selector | Nil;
 };
 
 /** @todo - Fix typing */
@@ -59,6 +61,39 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   get selector() {
     return this.value.selector;
+  }
+
+  /**
+   * If this ruleset shares its value object with a descendant ruleset, give those
+   * descendants their own value so mutating this ruleset's value.selector does not
+   * overwrite the descendant's selector (e.g. .rep_ace nested ruleset case).
+   */
+  static ensureDescendantRulesetsHaveOwnValue(
+    ruleset: Ruleset,
+    sharedValue: RulesetValue
+  ): void {
+    const rules = ruleset.value?.rules;
+    if (!rules || !isNode(rules, 'Rules')) {
+      return;
+    }
+    const children = (rules as Rules).value;
+    if (!Array.isArray(children)) {
+      return;
+    }
+    for (const child of children) {
+      if (!isNode(child, 'Ruleset')) {
+        continue;
+      }
+      const rs = child as Ruleset;
+      if (rs.value === sharedValue) {
+        rs.value = {
+          selector: rs.value.selector,
+          rules: rs.value.rules,
+          ...(rs.value.guard !== undefined && { guard: rs.value.guard })
+        };
+      }
+      Ruleset.ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
+    }
   }
 
   isHoisted(options: PrintOptions) {
@@ -92,6 +127,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * Render the opening of this ruleset (selector)
    * @todo - Efficiently serialize the selector with and without comments?
   */
+  /** Ensure every node in the selector has F_VISIBLE so toString() does not skip them (rep_ace bug). */
+  private static ensureSelectorVisible(sel: Selector | Nil): void {
+    if (!sel || sel instanceof Nil || typeof (sel as Node).addFlag !== 'function') return;
+    const n = sel as Node;
+    if (!n.hasFlag(F_VISIBLE)) n.addFlag(F_VISIBLE);
+    if (isNode(sel, 'SelectorList')) {
+      const list = sel as SelectorList;
+      if (Array.isArray(list.value)) for (const item of list.value) Ruleset.ensureSelectorVisible(item);
+      return;
+    }
+    if (isNode(sel, 'ComplexSelector')) {
+      const comps = (sel as ComplexSelector).value;
+      if (Array.isArray(comps)) for (const c of comps) Ruleset.ensureSelectorVisible(c as Selector);
+      return;
+    }
+    const v = (sel as Selector & { value?: Selector[] }).value;
+    if (Array.isArray(v)) for (const c of v) Ruleset.ensureSelectorVisible(c);
+  }
+
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
     const { selector } = this.value;
@@ -103,28 +157,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
 
-    // For nested rulesets, use sourceNode when available so we show the extended "own" selector
-    // (e.g. .replace, .rep_ace, .c) rather than the resolved form with parent prefix.
-    const isNested = (options.depth ?? 0) > 0;
-    const effectiveSelector = isNested && selector.sourceNode ? (selector.sourceNode as Selector) : selector;
-    // Debug: nested replace/rep_ace - see what we're serializing for inner block
-    if (isNested) {
-      const mainSlice = String(selector.valueOf?.() ?? '').slice(0, 90);
-      const hasReplace = mainSlice.includes('replace');
-      if (hasReplace) {
-        syncLog({
-          trace: 'getHeaderString_nested',
-          depth: options.depth,
-          hasSourceNode: !!selector.sourceNode,
-          mainSelectorSlice: mainSlice,
-          sourceNodeSlice: selector.sourceNode && typeof (selector.sourceNode as Selector).valueOf === 'function'
-            ? String((selector.sourceNode as Selector).valueOf()).slice(0, 90)
-            : ''
-        });
-      }
-    }
-    const renderSelector = withoutComments ? (effectiveSelector.copy(true) as typeof selector) : effectiveSelector;
-
+    const renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    Ruleset.ensureSelectorVisible(renderSelector);
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
     let selOut = w.capture(() => renderSelector.toString(options));
     /** Normalize single spacing */
@@ -169,6 +203,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
 
       const parentSelector = parentRuleset?.selector;
+      // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
+      if (node.options) {
+        (node.options as RulesetOptions).ownSelector = selector;
+      } else {
+        node.options = { ownSelector: selector } as RulesetOptions;
+      }
       if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil)) {
         const getResolvedSelector = parentRuleset
           ? () => (parentRuleset as Ruleset).value?.selector
@@ -186,6 +226,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return pipe(
         () => selector.eval(context),
         (sel) => {
+          // If this ruleset shares its value with a descendant ruleset, give descendants
+          // their own value before we overwrite value.selector so they keep their selector.
+          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, node.value);
           // Store the evaluated selector - this is what will be in the frame
           node.value.selector = sel as Selector | Nil;
           if (sel.hoistToRoot) {

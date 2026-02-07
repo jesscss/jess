@@ -4,6 +4,15 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Feb-01 (extend: correct fix — no sourceNode; ampersand rule)
+
+### Correct fix for nested ruleset extend output (Less extend-selector replace case)
+
+- **Wrong approach (removed):** Using `sourceNode` on the selector to store an "own" selector for nested header serialization. That was a workaround; serialization must not special-case nesting or use sourceNode for the header.
+- **Correct rule:** Do **not** flatten / make visible the ampersand in the **extend target** (the ruleset's selector). **Do** flatten the invisible ampersand in **extendWith** when applying only when it does **not** match the inherited (ruleset frame) ampersand.
+- **Changes made:** getHeaderString no longer uses sourceNode; extend-roots sourceNode logic removed; extend.ts appends extendWith with same & when list item has implicit ampersand and own part matches find.
+- **Test expectation:** "extends selectors inside nested rulesets" expects inner block `.replace, .rep_ace, .c` (Less). Test still fails until fix is fully applied. See EXTEND_FAILURES_ASK_OR_UPDATE.md §4a.
+
 ## 2026-Feb-01 (extend .aa .dd / .ff)
 
 ### extend.less: .ff missing from `.dd, .ee` block (new bug, separate from inner .bb)

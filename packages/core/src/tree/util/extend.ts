@@ -1666,9 +1666,8 @@ function extendSelectorList(
   };
 
   // For SelectorLists, extend each selector that contains the find target.
-  // Build list as [original selectors..., new selectors...]. Order is determined by
-  // registration/traversal order; no reordering is done in createExtendedSelectorList.
-  const originalSelectors: Selector[] = [];
+  // Build list as [original selectors..., new selectors...] so .replace, .c + extend → .replace, .c, .rep_ace.
+  const orderedSelectors: Selector[] = [];
   const newSelectors: Selector[] = [];
 
   for (const selector of target.value) {
@@ -1677,7 +1676,7 @@ function extendSelectorList(
       const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
 
       if (extended === selector) {
-        originalSelectors.push(selector);
+        orderedSelectors.push(selector);
       } else if (isNode(extended, 'SelectorList')) {
         if (
           partial
@@ -1701,14 +1700,18 @@ function extendSelectorList(
             wrapperArgType: (isWrapper.value.arg as any)?.type ?? null,
             wrapperArgValueOf: (isWrapper.value.arg as any)?.valueOf?.() ?? null
           });
-          originalSelectors.push(isWrapper);
+          orderedSelectors.push(isWrapper);
           continue;
         }
 
         if (extended.value.length === 0) {
-          originalSelectors.push(selector);
+          orderedSelectors.push(selector);
+        } else if (extended.value.length === 1 && extended.value[0]!.valueOf() === extendWith.valueOf()) {
+          // Single-item list that is just extendWith: keep original, append extendWith at end (Less: .replace, .c, .rep_ace).
+          orderedSelectors.push(selector);
+          newSelectors.push(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true)));
         } else {
-          originalSelectors.push(extended.value[0]!.clone(true));
+          orderedSelectors.push(extended.value[0]!.clone(true));
           const template = extended.value[0] ?? selector;
           newSelectors.push(
             ...extended.value
@@ -1718,23 +1721,40 @@ function extendSelectorList(
           );
         }
       } else {
-        // Full match of one list item: extendSelector returned replace (extendWith).
-        // Per §3 order: keep original selectors first, then new. So keep this selector and append extendWith.
-        const fullMatchOfListItem =
+        // Full match of one list item: extendSelector returned replace (extendWith). Keep original, append extendWith at end.
+        let fullMatchOfListItem =
           selector.valueOf() === find.valueOf() && extended.valueOf() === extendWith.valueOf();
+        if (!fullMatchOfListItem && isNode(selector, 'ComplexSelector')) {
+          const cs = selector as ComplexSelector;
+          const val = cs.value;
+          if (val.length >= 3 && val[0] instanceof Ampersand && val[0].hasFlag(F_IMPLICIT_AMPERSAND)) {
+            const ownPart = val[2] as Selector;
+            const ownVal = ownPart && typeof ownPart.valueOf === 'function' ? ownPart.valueOf() : '';
+            if (ownVal === find.valueOf()) {
+              if (extended.valueOf() === extendWith.valueOf()) {
+                fullMatchOfListItem = true;
+              } else if (isNode(extended, 'PseudoSelector') && extended.value.name === ':is') {
+                const isArgs = extractSelectorsFromIs(extended);
+                const hasFind = isArgs.some((s: Selector) => s.valueOf() === find.valueOf());
+                const hasExtendWith = isArgs.some((s: Selector) => s.valueOf() === extendWith.valueOf());
+                if (hasFind && hasExtendWith) fullMatchOfListItem = true;
+              }
+            }
+          }
+        }
         if (fullMatchOfListItem) {
-          originalSelectors.push(selector);
-          newSelectors.push(extendWith.clone(true));
+          orderedSelectors.push(selector);
+          newSelectors.push(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true)));
         } else {
-          originalSelectors.push(extended.clone(true));
+          orderedSelectors.push(extended.clone(true));
         }
       }
     } else {
-      originalSelectors.push(selector);
+      orderedSelectors.push(selector);
     }
   }
 
-  const allSelectors = [...originalSelectors, ...newSelectors];
+  const allSelectors = [...orderedSelectors, ...newSelectors];
   if (partial) {
     // In partial mode we intentionally keep :is() wrappers as items (Less `all` behavior),
     // rather than extracting them into comma-separated alternatives.
