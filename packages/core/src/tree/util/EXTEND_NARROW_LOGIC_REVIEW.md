@@ -4,7 +4,7 @@
 
 **Known failures (not from unified-path work):**
 - Selector order when multiple extends apply: extend-eval-integration (snapshot .d/.e and .x/.z/.y order), extend-rules (circular .x/.y/.z order).
-- @media direction: .b:extend(.a) inside @media — expected .b to get root .a decls, currently doesn’t.
+- @media direction: .b:extend(.a) inside @media — correct: .b does NOT get root .a decls (extend only alters selectors).
 - Validation (element/ID conflict): some paths may bypass validation; fix code so tryExtendSelector returns original + error.
 - Other: partial match example 6, .foo :is() partial mode — see §7 (update test vs expand rule vs fix code).
 

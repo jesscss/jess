@@ -13,6 +13,7 @@ import { Ampersand } from '../ampersand.js';
 import { Nil } from '../nil.js';
 import type { Extend } from '../extend.js';
 import { tryExtendSelector, findChainedExtends, createProcessedSelector, setExtendOrderMap } from './extend.js';
+import { findExtendableLocations } from './extend-helpers.js';
 import { processLeadingIs } from './process-leading-is.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
 import { syncLog } from './__tests__/debug-log.js';
@@ -217,9 +218,11 @@ function maybeHoistMixedNestingSelectorList(
       }
       return s;
     }
-    // For simple selectors in nested context with SelectorList parent, we need to prepend the parent
-    // and materialize it as :is(...) if it's a SelectorList
-    if (isNode(parentSel, 'SelectorList')) {
+    // Simple selector in nested context: always prepend parent so "prefixed by parent" is
+    // consistent for all selector types (e.g. [data="test"] under .attributes → .attributes [data="test"],
+    // same as .c under .replace). Previously we only did this when parent was a SelectorList, so
+    // single-selector parents (e.g. .attributes) left [data="test"] unprefixed and wrongly triggered hoist.
+    if (parentSel) {
       let parentSelConcrete: Selector = parentSel.copy(true);
       if (isNode(parentSelConcrete, 'SelectorList')) {
         parentSelConcrete = isSelectorPseudo(parentSelConcrete);
@@ -229,7 +232,6 @@ function maybeHoistMixedNestingSelectorList(
         Combinator.create(' '),
         s.copy(true)
       ]).inherit(s);
-      // Make components visible for serialization
       const outFirst = (out as ComplexSelector).value[0];
       const outSecond = (out as ComplexSelector).value[1];
       if (outFirst instanceof Node) {
@@ -440,17 +442,11 @@ function maybeHoistMixedNestingSelectorList(
     }
   }
 
-  // Heuristic: if we have a mix of "relative" selectors (no descendant combinator)
-  // and "absolute" selectors (has descendant combinator), hoist and materialize parent.
-  const hasDescendantCombinator = (s: Selector) =>
-    isNode(s, 'ComplexSelector') && (s as ComplexSelector).value.some(c => isNode(c, 'Combinator') && c.value === ' ');
-  const anyAbsolute = items.some(hasDescendantCombinator);
-  const anyRelative = items.some(s => !hasDescendantCombinator(s));
+  // Use materialized form so relative selectors (e.g. .header-nav with implicit &) count as prefixed.
+  // Use normalized comparison so spacing differences don't prevent match (e.g. ".header  .header-nav").
   const parentPrefix = `${parentSel.valueOf()} `;
   const parentNorm = normalizedSelectorValueOf(parentSel);
   const parentPrefixNorm = parentNorm ? parentNorm + ' ' : '';
-  // Use materialized form so relative selectors (e.g. .header-nav with implicit &) count as prefixed.
-  // Use normalized comparison so spacing differences don't prevent match (e.g. ".header  .header-nav").
   const itemPrefixedByParent = (s: Selector): boolean => {
     if (!parentPrefix && !parentPrefixNorm) {
       return false;
@@ -468,6 +464,13 @@ function maybeHoistMixedNestingSelectorList(
   };
   const anyPrefixedByParent = items.some(itemPrefixedByParent);
   const anyNotPrefixedByParent = items.some(s => !itemPrefixedByParent(s));
+  // Heuristic: if we have a mix of "relative" (no descendant combinator, and not prefixed by parent)
+  // and "absolute" (has descendant combinator), hoist and materialize parent. Only count as relative
+  // when not prefixed so same-parent simple selectors (e.g. [data="test"] under .attributes) don't trigger hoist.
+  const hasDescendantCombinator = (s: Selector) =>
+    isNode(s, 'ComplexSelector') && (s as ComplexSelector).value.some(c => isNode(c, 'Combinator') && c.value === ' ');
+  const anyAbsolute = items.some(hasDescendantCombinator);
+  const anyRelative = items.some(s => !hasDescendantCombinator(s) && !itemPrefixedByParent(s));
   // If the selector list mixes selectors that are under the parent prefix and selectors that are not,
   // hoist to root so we don't serialize them inside the parent's frame (which would strip the prefix
   // from the prefixed selectors, producing `.header-nav, .footer .footer-nav`).
@@ -530,6 +533,42 @@ function normalizedSelectorValueOf(sel: Selector | undefined): string {
   if (sel == null || typeof (sel as Selector).valueOf !== 'function') return '';
   const v = (sel as Selector).valueOf();
   return String(v).replace(/\s+/g, '').trim();
+}
+
+/** For exact extend: exclude rulesets whose selector is "target " + descendant (e.g. .bb .bb when target is .bb). */
+function selectorIsTargetWithDescendant(ruleset: Ruleset, target: Selector): boolean {
+  const targetVal = typeof target.valueOf === 'function' ? String(target.valueOf()).trim() : '';
+  if (!targetVal) return false;
+  const prefix = targetVal + ' ';
+  const checkSel = (s: Selector): boolean => {
+    let str: string;
+    if (isNode(s, 'ComplexSelector')) {
+      const first = (s as ComplexSelector).value[0];
+      if (first && typeof (first as Ampersand).getResolvedSelector === 'function') {
+        const resolved = (first as Ampersand).getResolvedSelector();
+        if (resolved && !isNode(resolved, 'Nil')) {
+          const rest = (s as ComplexSelector).value.slice(1);
+          str = `${(resolved as Selector).valueOf?.() ?? ''} ${rest.map((c: Node) => (c as Selector).valueOf?.() ?? '').join(' ')}`.trim();
+        } else {
+          str = typeof s.valueOf === 'function' ? String(s.valueOf()).trim() : '';
+        }
+      } else {
+        str = typeof s.valueOf === 'function' ? String(s.valueOf()).trim() : '';
+      }
+    } else {
+      str = typeof s.valueOf === 'function' ? String(s.valueOf()).trim() : '';
+    }
+    return str.startsWith(prefix);
+  };
+  const sel = ruleset.selector;
+  if (!sel) return false;
+  if (isNode(sel, 'SelectorList')) {
+    const items = (sel as SelectorList).value;
+    if (Array.isArray(items)) {
+      return items.every((item) => checkSel(item));
+    }
+  }
+  return checkSel(sel as Selector);
 }
 
 /** Canonical form for same-context comparison: unwrap :is(...) so :is(.a,.b) and .a,.b compare equal. */
@@ -1004,8 +1043,8 @@ export class ExtendRootRegistry {
 
   /**
    * True if possibleAncestor is an ancestor of root (walking parentRoot up from root).
-   * Used only to reject merging into rulesets in an ancestor root (we do not support
-   * ancestor targeting or copying declarations from ancestor targets).
+   * Used only to reject merging into rulesets in an ancestor root. Extend only alters
+   * selectors (e.g. adding to selector lists); it does not copy declarations between rulesets.
    */
   isAncestorRoot(possibleAncestor: Rules, root: Rules): boolean {
     let current: Rules | undefined = this.parentRoot.get(root);
@@ -1423,49 +1462,38 @@ export function processExtends(context: Context): void {
         if (searchRoot.value?.length) {
           const keySet = searchKeySet instanceof Set ? searchKeySet : new Set(searchKeySet);
           const targetValue = singleTarget.valueOf();
-          const targetNormalized = normalizedSelectorValueOf(singleTarget as Selector);
           const scanRules = (rules: Rules): void => {
             for (const node of rules.value) {
               if (isNode(node, 'Ruleset')) {
                 const rs = node as Ruleset;
                 const sel = rs.selector;
                 if (sel && !isNode(sel, 'Nil')) {
-                  let matches = false;
-                  if ('keySet' in sel) {
-                    let isSubset = true;
+                  // keySet: early rejection only. Reject when find is NOT in target's keySet:
+                  // i.e. when find's keySet is not a subset of target's (any find-key missing from target → reject).
+                  // KeySets do not have to be equivalent; only the subset check (find ⊆ target) is used.
+                  let rejectedByKeySet = false;
+                  if ('keySet' in sel && keySet.size > 0) {
                     for (const k of keySet) {
                       if (!(sel as Selector).keySet.has(k as string)) {
-                        isSubset = false;
+                        rejectedByKeySet = true;
                         break;
                       }
                     }
-                    matches = isSubset;
                   }
-                  if (!matches && typeof sel.valueOf === 'function') {
-                    const selNorm = normalizedSelectorValueOf(sel);
-                    const selCanon = canonicalSelectorValueOf(sel);
-                    const targetCanon = canonicalSelectorValueOf(singleTarget as Selector);
-                    if (
-                      sel.valueOf() === targetValue
-                      || (targetNormalized && (selNorm === targetNormalized || (targetCanon && selCanon === targetCanon)))
-                    ) {
+                  let matches = false;
+                  if (!rejectedByKeySet) {
+                    // valueOf(): early confirmation (is a match → use it).
+                    if (typeof sel.valueOf === 'function' && sel.valueOf() === targetValue) {
                       matches = true;
                     }
-                    // Match when selector is ComplexSelector with leading Ampersand: resolve and compare (selector may not have valueOf resolved at scan time).
-                    if (!matches && isNode(sel, 'ComplexSelector')) {
-                      const cs = sel as ComplexSelector;
-                      const first = cs.value[0];
-                      if (first && typeof (first as Ampersand).getResolvedSelector === 'function') {
-                        const resolved = (first as Ampersand).getResolvedSelector();
-                        if (resolved && !isNode(resolved, 'Nil')) {
-                          const rest = cs.value.slice(1);
-                          const restStr = rest.map((c: Node) => (c as Selector).valueOf?.() ?? '').join(' ').trim();
-                          const resolvedStr = `${(resolved as Selector).valueOf?.() ?? ''} ${restStr}`.trim();
-                          const resolvedNorm = String(resolvedStr).replace(/\s+/g, '').trim();
-                          if (resolvedNorm && targetNormalized && resolvedNorm === targetNormalized) {
-                            matches = true;
-                          }
-                        }
+                    // Otherwise: detailed selector equivalency logic (findExtendableLocations).
+                    if (!matches) {
+                      if (isNode(sel, 'SelectorList')) {
+                        matches = (sel as SelectorList).value.some((item: Selector) =>
+                          findExtendableLocations(item, singleTarget as Selector).hasMatches
+                        );
+                      } else {
+                        matches = findExtendableLocations(sel as Selector, singleTarget as Selector).hasMatches;
                       }
                     }
                   }
@@ -1494,6 +1522,9 @@ export function processExtends(context: Context): void {
             foundCount: found ? found.length : 0,
             foundSelectors: found ? found.map(rs => typeof rs.selector?.valueOf === 'function' ? rs.selector.valueOf() : '') : []
           });
+        }
+        if (found && !partial) {
+          found = found.filter((rs: Ruleset) => !selectorIsTargetWithDescendant(rs, singleTarget as Selector));
         }
         if (found) {
           // Only merge into rulesets in extendRoot or in a descendant root of extendRoot.

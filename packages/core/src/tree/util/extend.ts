@@ -649,22 +649,38 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   }
 
   if (extendOrderMap && extractedSelectors.length > 1) {
-    const withOrder: Array<{ selector: Selector; order: number }> = [];
-    const withoutOrder: Selector[] = [];
+    // Preserve ruleset-owner-first: when inheritFrom is the ruleset's selector (single-selector full match),
+    // keep it first so we get [.e, .d], [.z, .x, .y] etc. Otherwise extendOrderMap would sort all selectors
+    // by extend index and put .d before .e (wrong), because .e is also an extend source elsewhere.
+    const inheritVal = inheritFrom && typeof inheritFrom.valueOf === 'function' ? inheritFrom.valueOf() : undefined;
+    const ownerFirst =
+      inheritVal !== undefined &&
+      extractedSelectors.some((s) => (s.valueOf?.() ?? '') === inheritVal);
 
-    for (const selector of extractedSelectors) {
-      const order = extendOrderMap.get(selector);
-      if (order !== undefined) {
-        withOrder.push({ selector, order });
-      } else {
-        withoutOrder.push(selector);
+    if (ownerFirst && inheritVal !== undefined) {
+      const first = extractedSelectors.find((s) => (s.valueOf?.() ?? '') === inheritVal)!;
+      const rest = extractedSelectors.filter((s) => (s.valueOf?.() ?? '') !== inheritVal);
+      const restSorted = rest
+        .map((s) => ({ selector: s, order: extendOrderMap!.get(s) ?? 999999 }))
+        .sort((a, b) => a.order - b.order)
+        .map((x) => x.selector);
+      extractedSelectors.length = 0;
+      extractedSelectors.push(first, ...restSorted);
+    } else {
+      const withOrder: Array<{ selector: Selector; order: number }> = [];
+      const withoutOrder: Selector[] = [];
+      for (const selector of extractedSelectors) {
+        const order = extendOrderMap.get(selector);
+        if (order !== undefined) {
+          withOrder.push({ selector, order });
+        } else {
+          withoutOrder.push(selector);
+        }
       }
+      withOrder.sort((a, b) => a.order - b.order);
+      extractedSelectors.length = 0;
+      extractedSelectors.push(...withoutOrder, ...withOrder.map((item) => item.selector));
     }
-
-    withOrder.sort((a, b) => a.order - b.order);
-
-    extractedSelectors.length = 0;
-    extractedSelectors.push(...withoutOrder, ...withOrder.map((item) => item.selector));
   }
 
   // createProcessedSelector may return a single selector if only one item, so ensure it's an array
@@ -2179,12 +2195,13 @@ function handleFullExtend(
   // (Component-level matches are handled earlier in extendSelector, not here)
   // handleCompoundFullExtend is only for special cases like extending within :is() pseudo-selectors
   if (isNode(target, 'CompoundSelector')) {
-    // Default case: create a new selector list
+    // Order: target (ruleset owner) first, then extendWith. Same as SelectorList append and circular ref.
     const copyForInheritance = target.clone();
     return createExtendedSelectorList([target, extendWith], copyForInheritance);
   }
 
-  // Default case: create a new selector list
+  // Order: target (ruleset owner) first, then extendWith. So .e gets [.e, .d], .z gets [.z, .x], and
+  // when we later append (e.g. .y to [.z, .x]) we get [.z, .x, .y] — one consistent path.
   const copyForInheritance = target.clone();
   return createExtendedSelectorList([target, extendWith], copyForInheritance);
 }
@@ -2981,11 +2998,12 @@ export function applyExtensionAtLocation(
   location: ExtendLocation,
   extendWith: Selector
 ): Selector {
-  return applyExtensionAtPath(selector, location.path, location.matchedNode, extendWith, location.extensionType, location);
+  return applyExtensionAtPath(selector, location.path, location.matchedNode, extendWith, location.extensionType, location, undefined);
 }
 
 /**
- * Recursively applies an extension at a specific path
+ * Recursively applies an extension at a specific path.
+ * @param contextSelector - When wrapping inside a compound, the compound that will contain the :is(); used for element/ID conflict validation.
  */
 function applyExtensionAtPath(
   current: Selector,
@@ -2993,7 +3011,8 @@ function applyExtensionAtPath(
   matchedNode: Selector,
   extendWith: Selector,
   extensionType: 'replace' | 'append' | 'wrap',
-  location?: ExtendLocation
+  location?: ExtendLocation,
+  contextSelector?: Selector
 ): Selector {
   // When at root compound with a contiguous slice to wrap, replace that slice with :is(matched, extendWith)
   if (path.length === 0 && isNode(current, 'CompoundSelector') && location?.contiguousCompoundRange) {
@@ -3038,7 +3057,7 @@ function applyExtensionAtPath(
 
   if (path.length === 0) {
     // We've reached the target location
-    return applyExtension(current, matchedNode, extendWith, extensionType);
+    return applyExtension(current, matchedNode, extendWith, extensionType, contextSelector);
   }
 
   const [nextSegment, ...remainingPath] = path;
@@ -3053,7 +3072,7 @@ function applyExtensionAtPath(
       const item = current.value[index];
       if (extensionType === 'wrap' && item) {
         const newValue = [...current.value];
-        newValue[index] = applyExtension(item, matchedNode, extendWith, 'wrap');
+        newValue[index] = applyExtension(item, matchedNode, extendWith, 'wrap', undefined);
         return SelectorList.create(newValue).inherit(current);
       }
       // For extend operations (replace/append), add to the list rather than replace the matched item
@@ -3084,7 +3103,7 @@ function applyExtensionAtPath(
       const index = nextSegment as number;
       const newValue = [...current.value];
       newValue[index] = applyExtensionAtPath(
-        newValue[index]!, remainingPath, matchedNode, extendWith, extensionType, undefined
+        newValue[index]!, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined
       );
       return SelectorList.create(newValue).inherit(current);
     }
@@ -3093,8 +3112,10 @@ function applyExtensionAtPath(
   if (isNode(current, 'CompoundSelector')) {
     const index = nextSegment as number;
     const newValue = [...current.value];
+    // When we recurse into a component that will be wrapped, pass this compound as context for element/ID validation.
+    const childContext = remainingPath.length === 0 && extensionType === 'wrap' ? current : undefined;
     newValue[index] = applyExtensionAtPath(
-      newValue[index]!, remainingPath, matchedNode, extendWith, extensionType, undefined
+      newValue[index]!, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext
     ) as SimpleSelector;
     return CompoundSelector.create(newValue).inherit(current);
   }
@@ -3103,7 +3124,7 @@ function applyExtensionAtPath(
     const index = nextSegment as number;
     const newValue = [...current.value];
     newValue[index] = applyExtensionAtPath(
-      newValue[index] as Selector, remainingPath, matchedNode, extendWith, extensionType, undefined
+      newValue[index] as Selector, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined
     ) as any;
     return ComplexSelector.create(newValue).inherit(current);
   }
@@ -3128,7 +3149,7 @@ function applyExtensionAtPath(
       }).inherit(current);
     } else {
       // Navigate deeper into the argument
-      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined);
+      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined);
       return PseudoSelector.create({
         name: current.value.name,
         arg: newArg
@@ -3140,13 +3161,15 @@ function applyExtensionAtPath(
 }
 
 /**
- * Applies the actual extension based on the extension type
+ * Applies the actual extension based on the extension type.
+ * @param contextSelector - When wrapping inside a compound, the compound that will contain the :is(); used for element/ID conflict validation.
  */
 function applyExtension(
   current: Selector,
   matchedNode: Selector,
   extendWith: Selector,
-  extensionType: 'replace' | 'append' | 'wrap'
+  extensionType: 'replace' | 'append' | 'wrap',
+  contextSelector?: Selector
 ): Selector {
   switch (extensionType) {
     case 'replace':
@@ -3164,11 +3187,12 @@ function applyExtension(
 
     case 'wrap':
       // For wrap, create an :is() wrapper to preserve compound selector structure; validate to reject element/ID conflicts.
-      // Example: .i.j with .i extended by .k should become :is(.i, .k).j
+      // Example: .i.j with .i extended by .k should become :is(.i, .k).j. When contextSelector is the parent compound
+      // (e.g. a.info), validation can reject a:is(.info, div.foo) due to duplicate element types.
       return createValidatedIsWrapperWithErrors(
         [current, extendWith],
         current,
-        undefined,
+        contextSelector,
         undefined
       );
 

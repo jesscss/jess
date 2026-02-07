@@ -545,7 +545,7 @@ describe('Extend Roots Registry', () => {
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      // Root .base must stay unchanged (no .child merged at root). Decl copy from ancestor not implemented; .child only has its own decls.
+      // Root .base unchanged (no merge across @media). Extend only alters selectors; .child keeps only its own decls.
       const css = evald.toString();
       expect(css).toBeString(`
         .base {
@@ -587,7 +587,7 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      // Should not throw (extend from inside @container cannot reach root; we copy .base decls into .child).
+      // Should not throw (extend from inside @container cannot reach root; extend does not copy decls, .child keeps only its own).
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
@@ -632,7 +632,7 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      // Should not throw (extend from inside @supports cannot reach root; we copy .base decls into .child).
+      // Should not throw (extend from inside @supports cannot reach root; extend does not copy decls, .child keeps only its own).
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 

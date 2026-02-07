@@ -798,9 +798,9 @@ describe('extend integration (eval -> toString)', () => {
   describe('extend and @media: direction and scope (Less semantics)', () => {
     /**
      * A: .b:extend(.a) inside @media cannot reach OUT to root .a.
-     * Root .a stays unchanged; .b inside @media gets its own ruleset with .a's declarations (Less copies decls into child root).
+     * Root .a stays unchanged; .b inside @media does NOT get .a's declarations (extend from inside @media does not copy decls from root).
      */
-    it('A: .b:extend(.a) inside @media cannot reach out - root .a unchanged, .b in media gets .a decls', async () => {
+    it('A: .b:extend(.a) inside @media cannot reach out - root .a unchanged, .b in media does not get .a decls', async () => {
       const root = rules([
         ruleset({
           selector: el('.a'),
@@ -823,14 +823,13 @@ describe('extend integration (eval -> toString)', () => {
       const context = new Context({ collapseNesting: false });
       const evald = await root.eval(context);
       const css = evald.toString({ context });
-      // Less: .a is NOT merged with .b at root. .b inside @media gets .a's declarations.
+      // Less: .b:extend(.a) inside @media does NOT copy .a's declarations into .b. Root .a unchanged; .b has only its own decls.
       expect(css).toBeString(`
         .a {
           color: red;
         }
         @media screen {
           .b {
-            color: red;
             background: blue;
           }
         }
