@@ -589,6 +589,8 @@ export interface ExtendLocation {
 export interface ExtendSearchResult {
   locations: ExtendLocation[];
   hasMatches: boolean;
+  /** True when the entire target selector is equivalent to find (whole match, not a segment). */
+  hasWholeMatch: boolean;
   /** Performance metrics for debugging */
   metrics?: {
     fastRejections: number;
@@ -641,7 +643,7 @@ export function findExtendableLocations(
   if (target.valueOf() === find.valueOf()) {
     const cached = EXACT_MATCH_CACHE.get(target);
     if (cached) {
-      const result = { locations: cached, hasMatches: cached.length > 0, metrics };
+      const result = { locations: cached, hasMatches: cached.length > 0, hasWholeMatch: true, metrics };
       targetCache.set(find, result);
       return result;
     }
@@ -653,7 +655,7 @@ export function findExtendableLocations(
       extensionType: 'replace'
     };
     EXACT_MATCH_CACHE.set(target, [exactLocation]);
-    const result = { locations: [exactLocation], hasMatches: true, metrics };
+    const result = { locations: [exactLocation], hasMatches: true, hasWholeMatch: true, metrics };
     targetCache.set(find, result);
     return result;
   }
@@ -675,7 +677,7 @@ export function findExtendableLocations(
         timestamp: Date.now()
       });
     }
-    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, metrics };
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
     return result;
   }
@@ -696,7 +698,7 @@ export function findExtendableLocations(
         timestamp: Date.now()
       });
     }
-    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, metrics };
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
     return result;
   }
@@ -713,7 +715,7 @@ export function findExtendableLocations(
         return result;
       }
     }
-    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, metrics };
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
     return result;
   }
@@ -722,7 +724,8 @@ export function findExtendableLocations(
     const fastPathResult = tryFastPathExtendMatch(target, find, []);
     if (fastPathResult && fastPathResult.length > 0) {
       metrics.fastPathHits++;
-      const result = { locations: fastPathResult, hasMatches: true, metrics };
+      const hasWholeMatch = fastPathResult.some(loc => loc.path.length === 0 && loc.matchedNode === target);
+      const result = { locations: fastPathResult, hasMatches: true, hasWholeMatch, metrics };
       targetCache.set(find, result);
       return result;
     }
@@ -751,13 +754,43 @@ export function findExtendableLocations(
   }
   searchWithinSelector(target, find, [], locations);
 
+  const hasWholeMatch = locations.some(loc => loc.path.length === 0 && loc.matchedNode === target);
   const result = {
     locations,
     hasMatches: locations.length > 0,
+    hasWholeMatch,
     metrics
   };
   targetCache.set(find, result);
   return result;
+}
+
+/**
+ * Whether a ruleset's selector matches an extend target. Encapsulates all extend matching
+ * semantics (keySet subset, valueOf early exit, partial vs exact). Extend-roots should
+ * only decide which rulesets are visible; they hand off to this to determine matches.
+ */
+export function selectorMatchesExtendTarget(
+  selector: Selector,
+  target: Selector,
+  partial: boolean
+): boolean {
+  const keySet = target.keySet instanceof Set ? target.keySet : (target.keySet ? new Set(target.keySet) : undefined);
+  if (keySet?.size && 'keySet' in selector && selector.keySet) {
+    for (const k of keySet) {
+      if (!selector.keySet.has(k as string)) return false;
+    }
+  }
+  const targetValue = target.valueOf();
+  if (typeof selector.valueOf === 'function' && selector.valueOf() === targetValue) return true;
+  if (isNode(selector, 'SelectorList')) {
+    return (selector as SelectorList).value.some((item: Selector) => {
+      const r = findExtendableLocations(item, target);
+      return partial ? r.hasMatches : r.hasWholeMatch;
+    });
+  }
+  const r = findExtendableLocations(selector, target);
+  return partial ? r.hasMatches : r.hasWholeMatch;
 }
 
 /**

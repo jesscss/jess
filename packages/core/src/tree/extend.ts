@@ -2,12 +2,14 @@ import { defineType, Node, F_VISIBLE } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
+import type { Ruleset } from './ruleset.js';
 import { Nil } from './nil.js';
 import { ComplexSelector } from './selector-complex.js';
 import { Combinator } from './combinator.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -114,7 +116,7 @@ export class Extend extends Node<ExtendValue> {
         // Resolve ampersand to its current parent selector if needed (live resolution for extend)
         let resolvedSel: Selector = sel;
         if (isNode(sel, 'Ampersand')) {
-          const ampResolved = (sel as import('./ampersand.js').Ampersand).getResolvedSelector();
+          const ampResolved = sel.getResolvedSelector();
           if (ampResolved && !(ampResolved instanceof Nil)) {
             resolvedSel = ampResolved;
           }
@@ -122,7 +124,7 @@ export class Extend extends Node<ExtendValue> {
         // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
         // selector (e.g. .issue-2586-somepage .content not just .content).
         if (currentFrame && isNode(currentFrame, 'Ruleset')) {
-          const rs = currentFrame as import('./ruleset.js').Ruleset;
+          const rs = currentFrame as Ruleset;
           const fullSel = rs.value?.selector;
           if (fullSel && !(fullSel instanceof Nil)) {
             resolvedSel = fullSel as Selector;
@@ -130,7 +132,7 @@ export class Extend extends Node<ExtendValue> {
             // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
             // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
             if (isNode(currentFrame, 'Ruleset')) {
-              const parentSel = (currentFrame as import('./ruleset.js').Ruleset).value?.selector;
+              const parentSel = (currentFrame as Ruleset).value?.selector;
               if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
                 resolvedSel = ComplexSelector.create([
                   (parentSel as Selector).copy(true),
@@ -141,8 +143,11 @@ export class Extend extends Node<ExtendValue> {
             }
           }
         }
-        // Register extend to context with extend root reference and Extend node for error reporting
-        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
+        const rs = currentFrame as Ruleset;
+        const docOrder = getDocumentOrderForExtend(rs, context);
+        const selStr = typeof resolvedSel?.valueOf === 'function' ? String(resolvedSel.valueOf()) : '';
+        syncLog({ tag: 'extend_push', docOrder, selector: selStr });
+        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder]);
         return new Nil();
       });
     }
@@ -153,7 +158,7 @@ export class Extend extends Node<ExtendValue> {
     // Resolve ampersand to its current parent selector if needed (live resolution for extend)
     let resolvedSel: Selector = sel;
     if (isNode(sel, 'Ampersand')) {
-      const ampResolved = (sel as import('./ampersand.js').Ampersand).getResolvedSelector();
+      const ampResolved = sel.getResolvedSelector();
       if (ampResolved && !(ampResolved instanceof Nil)) {
         resolvedSel = ampResolved;
       }
@@ -161,7 +166,7 @@ export class Extend extends Node<ExtendValue> {
     // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
     // selector (e.g. .issue-2586-somepage .content not just .content).
     if (currentFrame && isNode(currentFrame, 'Ruleset')) {
-      const rs = currentFrame as import('./ruleset.js').Ruleset;
+      const rs = currentFrame as Ruleset;
       const fullSel = rs.value?.selector;
       if (fullSel && !(fullSel instanceof Nil)) {
         resolvedSel = fullSel as Selector;
@@ -169,7 +174,7 @@ export class Extend extends Node<ExtendValue> {
         // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
         // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
         if (isNode(currentFrame, 'Ruleset')) {
-          const parentSel = (currentFrame as import('./ruleset.js').Ruleset).value?.selector;
+          const parentSel = (currentFrame as Ruleset).value?.selector;
           if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
             resolvedSel = ComplexSelector.create([
               (parentSel as Selector).copy(true),
@@ -180,9 +185,22 @@ export class Extend extends Node<ExtendValue> {
         }
       }
     }
-    // Register extend to context with extend root reference and Extend node for error reporting
-    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
+    const rs = currentFrame as Ruleset;
+    const docOrder = getDocumentOrderForExtend(rs, context);
+    const selStr = typeof resolvedSel?.valueOf === 'function' ? String(resolvedSel.valueOf()) : '';
+    syncLog({ tag: 'extend_push', docOrder, selector: selStr });
+    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder]);
     return new Nil();
   }
+}
+
+/** Document order for extend: prefer parse location startOffset (source order), else assigned map, else push order (length). */
+function getDocumentOrderForExtend(rs: Ruleset, context: Context): number {
+  const loc = (rs as Node).location;
+  const fromLoc = Array.isArray(loc) && loc.length >= 1 && typeof loc[0] === 'number' ? loc[0] : undefined;
+  if (fromLoc !== undefined) return fromLoc;
+  const fromMap = context.documentOrderByRuleset?.get(rs);
+  if (fromMap !== undefined) return fromMap;
+  return context.extends.length;
 }
 export const extend = defineType(Extend, 'Extend');

@@ -30,6 +30,13 @@ export type RulesetValue = {
    */
   rules: Rules;
   guard?: Condition | Nil;
+  /**
+   * When this ruleset is extended, we store its selector before the first extend.
+   * Nested rulesets' implicit & (getResolvedSelector) use this when set, so they
+   * do not "see" the extended form (EXTEND_RULES §5: do not materialize ampersands
+   * that were not matched and extended).
+   */
+  selectorBeforeExtend?: Selector | Nil;
 };
 
 type RulesetOptions = NodeOptions & {
@@ -127,10 +134,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * Render the opening of this ruleset (selector)
    * @todo - Efficiently serialize the selector with and without comments?
   */
-  /** Ensure every node in the selector has F_VISIBLE so toString() does not skip them (rep_ace bug). */
+  /** Ensure every node in the selector has F_VISIBLE so toString() does not skip them (rep_ace bug).
+   * Do NOT add F_VISIBLE to implicit ampersands: they must stay invisible so nested output stays short. */
   private static ensureSelectorVisible(sel: Selector | Nil): void {
     if (!sel || sel instanceof Nil || typeof (sel as Node).addFlag !== 'function') return;
     const n = sel as Node;
+    if (isNode(sel, 'Ampersand') && n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      return;
+    }
     if (!n.hasFlag(F_VISIBLE)) n.addFlag(F_VISIBLE);
     if (isNode(sel, 'SelectorList')) {
       const list = sel as SelectorList;
@@ -211,7 +222,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil)) {
         const getResolvedSelector = parentRuleset
-          ? () => (parentRuleset as Ruleset).value?.selector
+          ? () => {
+              const v = (parentRuleset as Ruleset).value;
+              return v?.selectorBeforeExtend ?? v?.selector;
+            }
           : undefined;
         selector = getImplicitSelectorUtil(
           selector,

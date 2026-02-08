@@ -712,6 +712,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules.value[index] = preEvaldNode;
+            (preEvaldNode as Node).index = index;
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
               staticNodes.push(preEvaldNode);
@@ -722,6 +723,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
         }
         rules.value[index] = preEvald as Node;
+        (preEvald as Node).index = index;
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
         this._registerNodeIfEligible(rules, nodeToRegister, context);
@@ -998,6 +1000,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context.rulesContext = rules;
   }
 
+  /** Assign depth-first document order to every Ruleset under the given Rules (single walk, source order). */
+  private _assignDocumentOrderDepthFirst(rules: Rules, map: WeakMap<Ruleset, number>, counter: { value: number }): void {
+    const value = rules.value;
+    if (!isArray(value)) return;
+    for (const node of value) {
+      if (isNode(node, 'Ruleset')) {
+        map.set(node as Ruleset, counter.value);
+        counter.value++;
+      }
+      const innerRules = (node as Node & { value?: { rules?: unknown } }).value?.rules;
+      if (innerRules && isNode(innerRules, 'Rules')) {
+        this._assignDocumentOrderDepthFirst(innerRules as Rules, map, counter);
+      }
+    }
+  }
+
   /** Build the evaluation queue partitioned by priority */
   private _buildEvalQueue(rules: Rules): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
@@ -1161,6 +1179,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     if (rules.evaluated) {
       return { rules, rulesToHoist: false };
+    }
+    if (rules === context.root) {
+      const map = new WeakMap<Ruleset, number>();
+      context.documentOrderByRuleset = map;
+      this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
     }
     const evalQueue = this._buildEvalQueue(rules);
     const maybeHoist = this._evaluateQueue(rules, evalQueue, context);

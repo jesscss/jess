@@ -4,6 +4,14 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Feb-01 (implicit ampersand serialization + nested extend skip)
+
+### Implicit ampersands must stay invisible
+- **ensureSelectorVisible** (extend-roots.ts and ruleset.ts): Do **not** add `F_VISIBLE` to nodes that have `F_IMPLICIT_AMPERSAND`, and do **not** recurse into them. So serialization never surfaces the ampersand’s stored `:is(...)` and nested output stays short (`.a, .c` not `:is(.b, .a) .a`).
+- **Extend-roots skip logic**: When the extend target is a selector list (e.g. `.a, .b, .c`), skip updating a ruleset if it has an ancestor that is also in the match set (so nested `.a, .c` under `.c,.a,.effected` is not replaced with a materialized `:is()` form). Implemented as `hasAncestorInSet()`: walk up `ruleset.parent` and treat as “in set” when `rs === anc` or when selector `valueOf()` matches (to handle clone vs original). Also: only apply “skip prepended sibling” when `ruleset !== extendOwner` so the ruleset that contains the extend is still updated.
+- **Helpers**: `rulesetContainsExtend`, `extendOwnerFromNode`, `isDescendantOf`, `selectorIsNestedWithImplicitAmpersand` (used in skip conditions).
+- **Status**: extend-less-fixtures test 2 (extend-exact) still fails: output is `:is(.b, .a) .a, :is(.b, .a) .c` instead of `.a, .c`. So either the skip is not firing (e.g. parent chain or set membership differs at processExtends time) or the wrong ruleset is being updated/serialized. Tests 4 and 5 still fail (extend-selector, extend.less); test 5 shows extra `.cc` in inner block.
+
 ## 2026-Feb-01 (extend: correct fix — no sourceNode; ampersand rule)
 
 ### Correct fix for nested ruleset extend output (Less extend-selector replace case)

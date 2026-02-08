@@ -71,11 +71,14 @@ export type AmpersandValue = {
    */
   /** Set to an empty string to hoist to root */
   appendValue?: string;
-  /** The evaluated selector (snapshot at creation; use getResolvedSelector() for live resolution) */
+  /**
+   * Snapshot at creation; only used when getResolvedSelector is not set.
+   * Ampersand resolution should be a "pointer" (getResolvedSelector) so parent extend/mutation is visible.
+   */
   selector?: Selector | Nil;
   /**
-   * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector.
-   * Used so extend sees the parent after it has been mutated (e.g. by extend), not the initial snapshot.
+   * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector ("pointer").
+   * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
   getResolvedSelector?: () => Selector | Nil | undefined;
 };
@@ -130,13 +133,22 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     return this._keySet!;
   }
 
-  /** Returns the selector to use for extend matching: live parent when available, else stored snapshot. */
+  /** Returns the selector to use for extend matching: live "pointer" when available, else stored snapshot. */
   getResolvedSelector(): Selector | Nil | undefined {
     const resolved = this.value.getResolvedSelector?.();
     if (resolved !== undefined) {
       return resolved;
     }
     return this.value.selector;
+  }
+
+  /** Preserve the getResolvedSelector "pointer" on copy so clones still resolve to the live parent. */
+  override copy(deep?: boolean, cloneFn?: (n: import('./node.js').Node) => import('./node.js').Node): this {
+    const newNode = super.copy(deep, cloneFn) as this;
+    if (this.value.getResolvedSelector) {
+      (newNode.value as AmpersandValue).getResolvedSelector = this.value.getResolvedSelector;
+    }
+    return newNode;
   }
 
   /** The keys of an ampersand are the keys of the selector it contains */

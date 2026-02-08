@@ -58,6 +58,8 @@ In **partial** mode, what we wrap in `:is(..., extendWith)` depends on whether t
 
 ## 5. Ampersand
 
+- **Matching: tree position is irrelevant.** We evaluate selector matches on an individual basis, regardless of context or tree position. The selector’s *value* is what we compare: implicit ampersands have a resolved selector reference (`getResolvedSelector`); `valueOf()` already uses it. **Use that value during comparison.** Do not branch on “parent”, “nested”, or “depth”. Do not materialize or mutate for comparison — just use the selector’s value.
+- **Do not materialize invisible ampersands which were not matched & extended.** If there is no full match, reject (do not mutate); return as-is. No caveats (nesting, selector type, etc.).
 - **Extend target:** Do **not** flatten / make visible the ampersand in the ruleset selector we are extending. Keeping it implicit allows nested output to show only the "own" selector (e.g. `.replace, .rep_ace, .c`) without a parent prefix.
 - **ExtendWith:** **Do** flatten (materialize) the invisible ampersand in extendWith when applying **only when** it does **not** match the inherited (ruleset frame) ampersand. Same context ⇒ keep implicit; different context ⇒ materialize.
 - Cloning after extend must preserve implicit ampersand where needed (**preserveImplicitAmpersandOnClone**).

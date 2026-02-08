@@ -13,7 +13,7 @@ import { Ampersand } from '../ampersand.js';
 import { Nil } from '../nil.js';
 import type { Extend } from '../extend.js';
 import { tryExtendSelector, findChainedExtends, createProcessedSelector, setExtendOrderMap } from './extend.js';
-import { findExtendableLocations } from './extend-helpers.js';
+import { selectorMatchesExtendTarget } from './extend-helpers.js';
 import { processLeadingIs } from './process-leading-is.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
 import { syncLog } from './__tests__/debug-log.js';
@@ -34,17 +34,22 @@ function rulesStructureSummary(r: Rules): Record<string, unknown> {
  * Recursively ensure all selector nodes have F_VISIBLE so they serialize.
  * Extended selectors can include items from the original target that lacked F_VISIBLE
  * (e.g. nested context), causing components to render as '' and produce wrong output (.c, .rep_ace).
+ * Do NOT add F_VISIBLE to implicit ampersands (F_IMPLICIT_AMPERSAND): they must stay invisible
+ * so nested output stays short (.a, .c not :is(.b, .a) .a). Do not recurse into them.
  */
 function ensureSelectorVisible(selector: Selector): void {
-  if (!selector || typeof (selector as Node).addFlag !== 'function') return;
+  if (!selector || typeof (selector as Node).addFlag !== 'function') {return;}
   const n = selector as Node;
+  if (selector instanceof Ampersand && n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+    return;
+  }
   if (!n.hasFlag(F_VISIBLE)) {
     n.addFlag(F_VISIBLE);
   }
   if (isNode(selector, 'SelectorList')) {
     const items = (selector as SelectorList).value;
     if (Array.isArray(items)) {
-      for (const item of items) ensureSelectorVisible(item);
+      for (const item of items) {ensureSelectorVisible(item);}
     }
     return;
   }
@@ -52,23 +57,23 @@ function ensureSelectorVisible(selector: Selector): void {
     const comps = (selector as ComplexSelector).value;
     if (Array.isArray(comps)) {
       for (const c of comps) {
-        if (c && typeof (c as Node).addFlag === 'function') ensureSelectorVisible(c as Selector);
+        if (c && typeof (c as Node).addFlag === 'function') {ensureSelectorVisible(c as Selector);}
       }
     }
     return;
   }
   const selWithValue = selector as Selector & { value?: Selector[] };
   if (Array.isArray(selWithValue.value)) {
-    for (const c of selWithValue.value) ensureSelectorVisible(c);
+    for (const c of selWithValue.value) {ensureSelectorVisible(c);}
   }
 }
 
 /** Ensure top-level items in a SelectorList (and their descendants) have F_VISIBLE so they serialize. */
 function ensureSelectorListItemsVisible(selector: Selector): void {
-  if (!isNode(selector, 'SelectorList')) return;
+  if (!isNode(selector, 'SelectorList')) {return;}
   const list = selector as SelectorList;
   const items = list.value;
-  if (!Array.isArray(items)) return;
+  if (!Array.isArray(items)) {return;}
   for (const item of items) {
     ensureSelectorVisible(item);
   }
@@ -77,7 +82,7 @@ function ensureSelectorListItemsVisible(selector: Selector): void {
 /** Preserve F_IMPLICIT_AMPERSAND on cloned selector(s) so createProcessedSelector keeps implicit ampersand (extend.less .dd,.ee,.ff). */
 function preserveImplicitAmpersandOnClone(extendedSelector: Selector, clonedSelector: Selector): void {
   const preserveOne = (orig: Selector, clone: Selector) => {
-    if (!isNode(orig, 'ComplexSelector') || !isNode(clone, 'ComplexSelector')) return;
+    if (!isNode(orig, 'ComplexSelector') || !isNode(clone, 'ComplexSelector')) {return;}
     const origFirst = (orig as ComplexSelector).value[0];
     const cloneFirst = (clone as ComplexSelector).value[0];
     if (origFirst instanceof Ampersand && cloneFirst instanceof Ampersand && origFirst.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -255,6 +260,55 @@ function maybeHoistMixedNestingSelectorList(
   // If we serialize that nested, we would incorrectly apply the parent frame to the absolute items.
   // Hoist to root and materialize the implicit parent as `:is(parentSelectors)`.
   if (isNode(parentSel, 'SelectorList')) {
+    // Group into :is() when all items have the same invisible ampersand + space (e.g. & .a, & .b, & .c → & :is(.a, .b, .c)).
+    const allHaveImplicitAmpersandSpace = (): boolean => {
+      if (items.length < 2) {
+        return false;
+      }
+      for (const s of items) {
+        if (!isNode(s, 'ComplexSelector')) {
+          return false;
+        }
+        const cs = s as ComplexSelector;
+        const first = cs.value[0];
+        const second = cs.value[1];
+        if (
+          !(first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND))
+          || !isNode(second, 'Combinator')
+          || (second as Combinator).value !== ' '
+        ) {
+          return false;
+        }
+      }
+      return true;
+    };
+    if (allHaveImplicitAmpersandSpace()) {
+      const firstCs = items[0] as ComplexSelector;
+      const amp = firstCs.value[0]!.copy(true);
+      const spaceComb = firstCs.value[1]!.copy(true) as Combinator;
+      const suffixSelectors: Selector[] = [];
+      for (const s of items) {
+        const cs = s as ComplexSelector;
+        const rest = cs.value.slice(2);
+        if (rest.length === 0) {
+          continue;
+        }
+        const suffixSel =
+          rest.length === 1
+            ? (rest[0] as Selector).copy(true)
+            : ComplexSelector.create(rest.map(c => c.copy(true))).inherit(cs);
+        suffixSelectors.push(suffixSel);
+      }
+      if (suffixSelectors.length >= 2) {
+        const childIs = new PseudoSelector({
+          name: ':is',
+          arg: SelectorList.create(suffixSelectors).inherit(list)
+        }).inherit(list);
+        const combined = ComplexSelector.create([amp, spaceComb, childIs]).inherit(list);
+        return SelectorList.create([combined]).inherit(list);
+      }
+    }
+
     const startsWithImplicitParent = (s: Selector): boolean => {
       if (isNode(s, 'ComplexSelector')) {
         const first = (s as ComplexSelector).value[0];
@@ -530,15 +584,42 @@ function maybeHoistMixedNestingSelectorList(
 
 /** Normalize selector valueOf for comparison (whitespace and comma spacing can differ between clones). */
 function normalizedSelectorValueOf(sel: Selector | undefined): string {
-  if (sel == null || typeof (sel as Selector).valueOf !== 'function') return '';
+  if (sel == null || typeof (sel as Selector).valueOf !== 'function') {return '';}
   const v = (sel as Selector).valueOf();
   return String(v).replace(/\s+/g, '').trim();
+}
+
+/**
+ * Build the resolved selector for a nested ruleset: parent selector list × own (child) selector list,
+ * so that tryExtendSelector can match a complex find (e.g. .replace.replace .replace) and add extendWith.
+ * Returns undefined if the ruleset has no parent ruleset or we can't build the product.
+ */
+function buildResolvedSelectorForNested(ruleset: Ruleset, ownSel: Selector): Selector | undefined {
+  const parentRuleset = ruleset.parent?.parent;
+  if (!parentRuleset || !isNode(parentRuleset, 'Ruleset')) {return undefined;}
+  const parentSelector = (parentRuleset as Ruleset).selector;
+  if (!parentSelector || parentSelector instanceof Nil) {return undefined;}
+  const parentItems: Selector[] = isNode(parentSelector, 'SelectorList')
+    ? (parentSelector as SelectorList).value
+    : [parentSelector as Selector];
+  const childItems: Selector[] = isNode(ownSel, 'SelectorList')
+    ? (ownSel as SelectorList).value
+    : [ownSel];
+  const product: Selector[] = [];
+  for (const p of parentItems) {
+    for (const c of childItems) {
+      product.push(
+        ComplexSelector.create([p.copy(true), Combinator.create(' '), c.copy(true)]).inherit(ownSel)
+      );
+    }
+  }
+  return SelectorList.create(product).inherit(ownSel);
 }
 
 /** For exact extend: exclude rulesets whose selector is "target " + descendant (e.g. .bb .bb when target is .bb). */
 function selectorIsTargetWithDescendant(ruleset: Ruleset, target: Selector): boolean {
   const targetVal = typeof target.valueOf === 'function' ? String(target.valueOf()).trim() : '';
-  if (!targetVal) return false;
+  if (!targetVal) {return false;}
   const prefix = targetVal + ' ';
   const checkSel = (s: Selector): boolean => {
     let str: string;
@@ -561,11 +642,11 @@ function selectorIsTargetWithDescendant(ruleset: Ruleset, target: Selector): boo
     return str.startsWith(prefix);
   };
   const sel = ruleset.selector;
-  if (!sel) return false;
+  if (!sel) {return false;}
   if (isNode(sel, 'SelectorList')) {
     const items = (sel as SelectorList).value;
     if (Array.isArray(items)) {
-      return items.every((item) => checkSel(item));
+      return items.every(item => checkSel(item));
     }
   }
   return checkSel(sel as Selector);
@@ -573,7 +654,7 @@ function selectorIsTargetWithDescendant(ruleset: Ruleset, target: Selector): boo
 
 /** Canonical form for same-context comparison: unwrap :is(...) so :is(.a,.b) and .a,.b compare equal. */
 function canonicalSelectorValueOf(sel: Selector | undefined): string {
-  if (sel == null) return '';
+  if (sel == null) {return '';}
   if (isNode(sel, 'PseudoSelector') && (sel as PseudoSelector).value?.name === ':is') {
     const arg = (sel as PseudoSelector).value?.arg;
     if (arg && typeof (arg as Selector).valueOf === 'function') {
@@ -583,35 +664,59 @@ function canonicalSelectorValueOf(sel: Selector | undefined): string {
   return normalizedSelectorValueOf(sel);
 }
 
-/** Get the selector of the ruleset that contains this ruleset (parent context), or undefined if at root. */
+/** Recursively unwrap :is() in list items so :is(.x) .a,:is(.x) .b matches .x .a,.x .b for dematerialize. */
+function fullyCanonicalSelectorValueOf(sel: Selector | undefined): string {
+  if (sel == null) {return '';}
+  if (isNode(sel, 'PseudoSelector') && (sel as PseudoSelector).value?.name === ':is') {
+    const arg = (sel as PseudoSelector).value?.arg;
+    return arg ? fullyCanonicalSelectorValueOf(arg as Selector) : normalizedSelectorValueOf(sel);
+  }
+  if (isNode(sel, 'SelectorList')) {
+    const items = (sel as SelectorList).value;
+    if (!Array.isArray(items)) {return normalizedSelectorValueOf(sel);}
+    return items.map((s: Selector) => fullyCanonicalSelectorValueOf(s)).join(',');
+  }
+  if (isNode(sel, 'ComplexSelector')) {
+    const comps = (sel as ComplexSelector).value;
+    if (!Array.isArray(comps)) {return normalizedSelectorValueOf(sel);}
+    return comps.map((c: Selector) => fullyCanonicalSelectorValueOf(c)).join(' ');
+  }
+  return normalizedSelectorValueOf(sel);
+}
+
+/** Get the selector of the ruleset that contains this ruleset (parent context), or undefined if at root.
+ * Uses the parent's selectorBeforeExtend when set so "same context" comparison doesn't materialize
+ * a nested ruleset's & just because the parent was extended (ampersand that references extended parent
+ * should still be treated as same context for serialization). */
 function getRulesetParentSelector(ruleset: Ruleset): Selector | undefined {
   const parentRules = ruleset.parent;
   const parentRuleset = parentRules?.parent;
   if (!parentRuleset || !isNode(parentRuleset, 'Ruleset')) {
     return undefined;
   }
-  const sel = (parentRuleset as Ruleset).value?.selector;
+  const val = (parentRuleset as Ruleset).value;
+  const sel = val?.selectorBeforeExtend ?? val?.selector;
   return sel && !isNode(sel, 'Nil') ? (sel as Selector) : undefined;
 }
 
 /** Leading prefix of a ruleset's selector: canonical value of the first consecutive items that do NOT start with implicit ampersand. Used so nested items (& .dd) under a merged list (.aa, .cc, & .dd, ...) are not materialized when & resolves to that prefix. */
 function getRulesetSelectorLeadingPrefixNormalized(ruleset: Ruleset): string {
   const sel = ruleset.value?.selector;
-  if (!sel || isNode(sel, 'Nil')) return '';
-  if (!isNode(sel, 'SelectorList')) return canonicalSelectorValueOf(sel as Selector);
+  if (!sel || isNode(sel, 'Nil')) {return '';}
+  if (!isNode(sel, 'SelectorList')) {return canonicalSelectorValueOf(sel as Selector);}
   const items = (sel as SelectorList).value;
-  if (!Array.isArray(items) || items.length === 0) return '';
+  if (!Array.isArray(items) || items.length === 0) {return '';}
   const leading: Selector[] = [];
   for (const s of items) {
-    if (isNode(s, 'Nil')) continue;
+    if (isNode(s, 'Nil')) {continue;}
     if (isNode(s, 'ComplexSelector')) {
       const first = (s as ComplexSelector).value[0];
-      if (first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND)) break;
+      if (first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND)) {break;}
     }
     leading.push(s as Selector);
   }
-  if (leading.length === 0) return '';
-  if (leading.length === 1) return canonicalSelectorValueOf(leading[0]);
+  if (leading.length === 0) {return '';}
+  if (leading.length === 1) {return canonicalSelectorValueOf(leading[0]);}
   return canonicalSelectorValueOf(SelectorList.create(leading.map(s => s.copy(true))).inherit(sel));
 }
 
@@ -639,9 +744,9 @@ function dematerializeSameContextIsPrefix(
     return s;
   }
   const isArg = (first as PseudoSelector).value!.arg as Selector;
-  const isArgCanonical = canonicalSelectorValueOf(isArg);
-  const ctxVal = rulesetParentSelector ? canonicalSelectorValueOf(rulesetParentSelector) : '';
-  const matchCtx = isArgCanonical !== '' && isArgCanonical === ctxVal;
+  const isArgCanonical = fullyCanonicalSelectorValueOf(isArg);
+  const ctxVal = rulesetParentSelector ? fullyCanonicalSelectorValueOf(rulesetParentSelector) : '';
+  const matchCtx = isArgCanonical !== '' && ctxVal !== '' && isArgCanonical === ctxVal;
   const matchLeading = isArgCanonical !== '' && rulesetLeadingPrefixNormalized !== '' && isArgCanonical === rulesetLeadingPrefixNormalized;
   if (isArgCanonical === '' || (!matchCtx && !matchLeading)) {
     return s;
@@ -757,9 +862,36 @@ function materializeNormalizedWhenDifferentContext(
       itemVals
     });
   }
+  // When ruleset is hoisted and the selector is our factorized form (:is(parent) :is(children) + simple),
+  // we output at root so there is no parent frame; do not dematerialize :is(parent) to implicit &
+  // or the prefix would be lost (e.g. extend-exact .rep_ace). Only skip for this shape, not all hoisted.
+  const isFactorizedHoistedForm = (): boolean => {
+    if (!(ruleset as Ruleset & { hoistToRoot?: boolean }).hoistToRoot) {
+      return false;
+    }
+    const list = normalized && isNode(normalized, 'SelectorList') ? (normalized as SelectorList).value : null;
+    if (!list?.length) {
+      return false;
+    }
+    const first = list[0];
+    if (!isNode(first, 'ComplexSelector') || (first as ComplexSelector).value.length < 3) {
+      return false;
+    }
+    const [a, b, c] = (first as ComplexSelector).value;
+    return (
+      isNode(a, 'PseudoSelector') && (a as PseudoSelector).value?.name === ':is' && (a as PseudoSelector).value?.arg
+      && isNode(b, 'Combinator') && (b as Combinator).value === ' '
+      && isNode(c, 'PseudoSelector') && (c as PseudoSelector).value?.name === ':is'
+      && rulesetParentSelector
+      && canonicalSelectorValueOf((a as PseudoSelector).value!.arg as Selector) === canonicalSelectorValueOf(rulesetParentSelector)
+    );
+  };
+  const skipDematerialize = isFactorizedHoistedForm();
   const mapOne = (s: Selector) => {
     const cloned = s.clone(true);
-    const demat = dematerializeSameContextIsPrefix(cloned, rulesetParentSelector, rulesetLeadingPrefixNormalized);
+    const demat = skipDematerialize
+      ? cloned
+      : dematerializeSameContextIsPrefix(cloned, rulesetParentSelector, rulesetLeadingPrefixNormalized);
     return materializeImplicitAmpersandWhenDifferentContext(demat.clone(true), rulesetParentSelector, rulesetOwnSelectorNormalized, rulesetLeadingPrefixNormalized);
   };
   if (Array.isArray(normalized)) {
@@ -1167,7 +1299,12 @@ export class ExtendRootRegistry {
  * All extend processing logic is centralized here, not in rules.ts
  */
 export function processExtends(context: Context): void {
-  const allExtends = [...context.extends]; // All original extends
+  const allExtends = [...context.extends]
+    .sort((a, b) => (a[5] ?? 0) - (b[5] ?? 0)); // Process in depth-first document order
+  if (allExtends.length >= 2) {
+    const orderStr = allExtends.map((e, i) => `${i}:${e[5] ?? 'u'}=${typeof e[1]?.valueOf === 'function' ? String(e[1].valueOf()) : ''}`).join(' ');
+    syncLog({ tag: 'processExtends_afterSort', orderStr });
+  }
   const trace = shouldTraceExtend(context);
   const runId = getExtendTraceRunId(context);
   if (trace) {
@@ -1227,14 +1364,16 @@ export function processExtends(context: Context): void {
   const processedExtends = new Set<string>(); // Track in-flight recursion only (used as a stack guard)
   const extendedRulesets = new Set<Ruleset>(); // Track rulesets that were extended
   // Track extend order for source-order preservation when merging into :is()
-  // Maps extendWith selector -> extend index in allExtends (which should be source order with depth-first preEval)
+  // WeakMap by selector object; clones (e.g. inside :is()) use orderByValueOf fallback.
   const extendOrderMap = new WeakMap<Selector, number>();
+  const extendOrderByValueOf = new Map<string, number>();
   for (let i = 0; i < allExtends.length; i++) {
     const [, selectorWithExtend] = allExtends[i]!;
     extendOrderMap.set(selectorWithExtend, i);
+    const v = (typeof selectorWithExtend.valueOf === 'function' ? String(selectorWithExtend.valueOf()) : '').trim();
+    if (v) {extendOrderByValueOf.set(v, i);}
   }
-  // Set the extend order map in extend.ts module for use during merging
-  setExtendOrderMap(extendOrderMap);
+  setExtendOrderMap(extendOrderMap, extendOrderByValueOf);
 
   // Track which extends have already transformed which rulesets: Map<rulesetId, Set<extendKey>>
   // Each extend can only transform a particular ruleset's selector once
@@ -1277,6 +1416,57 @@ export function processExtends(context: Context): void {
     }
   };
 
+  /** True when node is a strict descendant of ancestor (child, grandchild, etc.). */
+  const isDescendantOf = (node: Node, ancestor: Node): boolean => {
+    for (let p = node.parent; p; p = p.parent) {
+      if (p === ancestor) {return true;}
+    }
+    return false;
+  };
+
+  /** True when some ancestor ruleset's selector matches the single target (for skip-nested-under-match). */
+  const hasAncestorMatchingTarget = (ruleset: Ruleset, singleTarget: Selector, partial: boolean): boolean => {
+    for (let p = ruleset.parent; p; p = p.parent) {
+      if (!isNode(p, 'Ruleset')) {continue;}
+      const rs = p as Ruleset;
+      const sel = rs.selector;
+      if (!sel || isNode(sel, 'Nil')) {continue;}
+      if (selectorMatchesExtendTarget(sel as Selector, singleTarget, partial)) return true;
+    }
+    return false;
+  };
+
+  /** True when the ruleset's selector is entirely in nested form (every list item starts with implicit &). */
+  const selectorIsNestedWithImplicitAmpersand = (sel: Selector | Nil): boolean => {
+    if (!sel || isNode(sel, 'Nil')) {return false;}
+    if (!isNode(sel, 'SelectorList')) {return false;}
+    const list = sel as SelectorList;
+    if (!list.value?.length) {return false;}
+    for (const item of list.value) {
+      if (!isNode(item, 'ComplexSelector')) {return false;}
+      const first = (item as ComplexSelector).value[0];
+      if (!(first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND))) {return false;}
+    }
+    return true;
+  };
+
+  /** True when the extend node is a direct or nested child of the ruleset's rules. */
+  const rulesetContainsExtend = (ruleset: Ruleset, extendNode: Node): boolean => {
+    if (!ruleset.value.rules || !('value' in ruleset.value.rules)) {return false;}
+    const rules = ruleset.value.rules.value;
+    if (!Array.isArray(rules)) {return false;}
+    const findNode = (nodes: Node[]): boolean => {
+      for (const node of nodes) {
+        if (node === extendNode) {return true;}
+        if ('value' in node && Array.isArray(node.value)) {
+          if (findNode(node.value)) {return true;}
+        }
+      }
+      return false;
+    };
+    return findNode(rules);
+  };
+
   /**
    * Logical exclusion rule: A ruleset should not be extended if the extend is associated with that ruleset
    * (either as a child or as a prepended sibling). This prevents self-modification.
@@ -1284,26 +1474,8 @@ export function processExtends(context: Context): void {
    */
   const shouldSkipRuleset = (ruleset: Ruleset, extendNode: Node): boolean => {
     // Check 1: Is extend a child of the ruleset?
-    if (ruleset.value.rules && 'value' in ruleset.value.rules) {
-      const rules = ruleset.value.rules.value;
-      if (Array.isArray(rules)) {
-        const findNode = (nodes: Node[]): boolean => {
-          for (const node of nodes) {
-            if (node === extendNode) {
-              return true;
-            }
-            if ('value' in node && Array.isArray(node.value)) {
-              if (findNode(node.value)) {
-                return true;
-              }
-            }
-          }
-          return false;
-        };
-        if (findNode(rules)) {
-          return true; // Extend is a child - skip this ruleset
-        }
-      }
+    if (rulesetContainsExtend(ruleset, extendNode)) {
+      return true; // Extend is a child - skip this ruleset
     }
 
     // Check 2: Is extend a sibling that precedes this ruleset in a Rules parent?
@@ -1402,7 +1574,7 @@ export function processExtends(context: Context): void {
     // Explicitly walk extendRoot's tree to add every descendant Rules (ruleset.value.rules) so we
     // always find nested rulesets (e.g. .rep_ace:extend(.replace all) must extend the inner .replace, .c ruleset).
     const walkRules = (rules: Rules, visited: Set<Rules>): void => {
-      if (visited.has(rules)) return;
+      if (visited.has(rules)) {return;}
       visited.add(rules);
       rootsToSearch.add(rules);
       for (const node of rules.value) {
@@ -1460,48 +1632,15 @@ export function processExtends(context: Context): void {
         // instance (e.g. after eval clone) or when collapseNesting wraps at-rule body in Ruleset(&).
         // Always recurse into every Ruleset's rules and every direct Rules child—no special cases for root shape.
         if (searchRoot.value?.length) {
-          const keySet = searchKeySet instanceof Set ? searchKeySet : new Set(searchKeySet);
-          const targetValue = singleTarget.valueOf();
           const scanRules = (rules: Rules): void => {
             for (const node of rules.value) {
               if (isNode(node, 'Ruleset')) {
                 const rs = node as Ruleset;
                 const sel = rs.selector;
-                if (sel && !isNode(sel, 'Nil')) {
-                  // keySet: early rejection only. Reject when find is NOT in target's keySet:
-                  // i.e. when find's keySet is not a subset of target's (any find-key missing from target → reject).
-                  // KeySets do not have to be equivalent; only the subset check (find ⊆ target) is used.
-                  let rejectedByKeySet = false;
-                  if ('keySet' in sel && keySet.size > 0) {
-                    for (const k of keySet) {
-                      if (!(sel as Selector).keySet.has(k as string)) {
-                        rejectedByKeySet = true;
-                        break;
-                      }
-                    }
-                  }
-                  let matches = false;
-                  if (!rejectedByKeySet) {
-                    // valueOf(): early confirmation (is a match → use it).
-                    if (typeof sel.valueOf === 'function' && sel.valueOf() === targetValue) {
-                      matches = true;
-                    }
-                    // Otherwise: detailed selector equivalency logic (findExtendableLocations).
-                    if (!matches) {
-                      if (isNode(sel, 'SelectorList')) {
-                        matches = (sel as SelectorList).value.some((item: Selector) =>
-                          findExtendableLocations(item, singleTarget as Selector).hasMatches
-                        );
-                      } else {
-                        matches = findExtendableLocations(sel as Selector, singleTarget as Selector).hasMatches;
-                      }
-                    }
-                  }
-                  if (matches) {
-                    const existing = found ?? [];
-                    if (!existing.includes(rs)) {
-                      found = existing.length ? [...existing, rs] : [rs];
-                    }
+                if (sel && !isNode(sel, 'Nil') && selectorMatchesExtendTarget(sel as Selector, singleTarget as Selector, partial)) {
+                  const existing = found ?? [];
+                  if (!existing.includes(rs)) {
+                    found = existing.length ? [...existing, rs] : [rs];
                   }
                 }
                 if (rs.value?.rules && isNode(rs.value.rules, 'Rules')) {
@@ -1765,10 +1904,51 @@ export function processExtends(context: Context): void {
         }
       }
 
-      // Apply extends to rulesets directly
+      // Find the ruleset that contains this extend (the "extend owner"). We will skip updating
+      // any matching ruleset that is a strict descendant of the extend owner, so nested blocks
+      // (e.g. .a, .c inside .b, .a inside .c,.a,.effected) keep their implicit ampersand and
+      // are not replaced with materialized :is() form. We still update the extend owner and any
+      // matching ruleset that is not nested under it (e.g. .aa, .cc elsewhere).
+      const extendOwnerFromNode =
+        extendNode.parent && isNode(extendNode.parent, 'Rules')
+          ? (extendNode.parent as Node).parent
+          : undefined;
+      const extendOwner =
+        rulesetSet?.find(rs => rulesetContainsExtend(rs, extendNode))
+        ?? (extendOwnerFromNode && isNode(extendOwnerFromNode, 'Ruleset') ? extendOwnerFromNode as Ruleset : undefined);
       if (rulesetSet) {
         rulesetSet.forEach((ruleset) => {
-          if (shouldSkipRuleset(ruleset, extendNode)) {
+          const targetIsSelectorList = isNode(target, 'SelectorList') && (target as SelectorList).value?.length > 1;
+          const rawSelector = ruleset.selector as Selector;
+          const ownSel = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
+          const rawStr = typeof rawSelector?.valueOf === 'function' ? rawSelector.valueOf() : '';
+          const ownStr = ownSel && typeof ownSel.valueOf === 'function' ? ownSel.valueOf() : '';
+          // Do not replace a ruleset that is a strict descendant of another ruleset in this match set when target is a list.
+          // Use ancestor selector valueOf to compare (clone vs original can differ by identity but match by selector).
+          const hasAncestorInSet = (): boolean => {
+            for (let p = ruleset.parent; p; p = p.parent) {
+              if (!isNode(p, 'Ruleset')) {continue;}
+              const anc = p as Ruleset;
+              if (rulesetSet!.some(rs => rs !== ruleset && (rs === anc || String((rs.selector as Selector)?.valueOf?.() ?? '').trim() === String(anc.selector?.valueOf?.() ?? '').trim()))) {
+                return true;
+              }
+            }
+            return false;
+          };
+          const isNestedUnderAnotherMatch = targetIsSelectorList && hasAncestorInSet();
+          if (isNestedUnderAnotherMatch) {
+            if (traceMd) {
+              syncLog({
+                trace: 'apply_skip',
+                runId: getExtendTraceRunId(context),
+                reason: 'nestedUnderAnotherMatch',
+                rulesetSel: typeof ruleset.selector?.valueOf === 'function' ? ruleset.selector.valueOf() : ''
+              });
+            }
+            return; // Do not replace nested ruleset's selector with materialized form
+          }
+          // Skip prepended-sibling case only; do NOT skip the extend owner (we need to update it).
+          if (ruleset !== extendOwner && shouldSkipRuleset(ruleset, extendNode)) {
             if (traceMd) {
               syncLog({
                 trace: 'apply_skip',
@@ -1777,22 +1957,23 @@ export function processExtends(context: Context): void {
                 rulesetSel: typeof ruleset.selector?.valueOf === 'function' ? ruleset.selector.valueOf() : ''
               });
             }
-            return; // Skip this ruleset - it's the source of the extend
+            return;
           }
 
           // When this ruleset's selector equals its parent's (at start), use own selector so we
           // extend .replace,.c not the resolved form (rep_ace bug).
-          const rawSelector = ruleset.selector as Selector;
-          const ownSel = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
-          const rawStr = typeof rawSelector?.valueOf === 'function' ? rawSelector.valueOf() : '';
           const parentSelAtStart = parentSelectorAtStart.get(ruleset) ?? '';
-          const ownStr = ownSel && typeof ownSel.valueOf === 'function' ? ownSel.valueOf() : '';
           const sameAsParentAtStart = rawStr === parentSelAtStart && parentSelAtStart.length > 0;
           // Nested ruleset's selector can be "resolved" (longer than own); use own so we extend
           // .replace,.c not the resolved form (rep_ace bug). Only when we have a parent (in map).
           const isNestedWithResolvedSelector =
             parentSelAtStart.length > 0 && ownStr.length > 0 && rawStr.length > ownStr.length;
           let useOwn = (sameAsParentAtStart || isNestedWithResolvedSelector) && !!ownSel;
+          // Exact extend: match against the ruleset's actual selector value in context. A nested
+          // selector .b has implicit & and space, so its value is .a .b — not an exact match for find .b.
+          if (!partial) {
+            useOwn = false;
+          }
           // If extend target is the full resolved selector (e.g. .header .header-nav), we must pass
           // the resolved selector to tryExtendSelector so the match succeeds; passing own (.header-nav) would not match.
           const targetNorm = normalizedSelectorValueOf(singleTarget as Selector);
@@ -1800,7 +1981,22 @@ export function processExtends(context: Context): void {
           if (useOwn && targetNorm && rawNorm === targetNorm) {
             useOwn = false;
           }
-          const originalSelector = (useOwn ? ownSel : rawSelector) as Selector;
+          // If this ruleset was already transformed by a previous extend (e.g. .clearfix:after -> :is(.clearfix,.foo):after),
+          // we must extend the current selector so the next extender adds to the :is(); using ownSelector would pass
+          // the original &:after and overwrite with :is(.clearfix,.bar):after, dropping .foo.
+          const alreadyTransformed = transformedByExtend.get(ruleset)?.size > 0;
+          if (useOwn && alreadyTransformed) {
+            useOwn = false;
+          }
+          let originalSelector = (useOwn ? ownSel : rawSelector) as Selector;
+          // When find is complex (e.g. .replace.replace .replace), we need the ruleset's selector in
+          // explicit form (parent × child) so tryExtendSelector can match; rawSelector may be & .replace, & .c.
+          const findIsComplex =
+            typeof singleTarget.valueOf === 'function' && String(singleTarget.valueOf()).trim().includes(' ');
+          if (findIsComplex && ownSel && parentSelAtStart.length > 0) {
+            const resolved = buildResolvedSelectorForNested(ruleset, ownSel);
+            if (resolved) {originalSelector = resolved;}
+          }
           const origStr = typeof originalSelector?.valueOf === 'function' ? originalSelector.valueOf() : '';
 
           // Check if this extend has already transformed this ruleset's selector
@@ -1943,9 +2139,6 @@ export function processExtends(context: Context): void {
               normalizedSelector = Array.isArray(leadingIsResult)
                 ? SelectorList.create(leadingIsResult.map(s => s.copy(true) as Selector)).inherit(normalizedSelector) as Selector
                 : leadingIsResult;
-              // Debug rep_ace: log when we update a ruleset that looks like the nested .replace,.c one
-              const origStr = typeof originalSelector?.valueOf === 'function' ? String(originalSelector.valueOf()) : '';
-              const normStr = typeof normalizedSelector?.valueOf === 'function' ? String(normalizedSelector.valueOf()) : '';
               const parentRuleset =
                 ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
                   ? (ruleset.parent.parent as Ruleset)
@@ -1972,6 +2165,9 @@ export function processExtends(context: Context): void {
               // share this value their own value so they keep their current selector.
               ensureDescendantRulesetsHaveOwnValue(ruleset, ruleset.value);
               ensureSelectorListItemsVisible(normalizedSelector);
+              if (!ruleset.value.selectorBeforeExtend) {
+                ruleset.value.selectorBeforeExtend = ruleset.value.selector;
+              }
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();
               if (normalizedSelector.hoistToRoot) {
@@ -2164,6 +2360,9 @@ export function processExtends(context: Context): void {
                 normalizedSelector = materialized as Selector;
               }
               ensureSelectorListItemsVisible(normalizedSelector);
+              if (!ruleset.value.selectorBeforeExtend) {
+                ruleset.value.selectorBeforeExtend = ruleset.value.selector;
+              }
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();
               if (normalizedSelector.hoistToRoot) {

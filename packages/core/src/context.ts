@@ -247,10 +247,16 @@ export class Context {
   extendRoots!: ExtendRootRegistry;
 
   /**
-   * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode]
+   * Depth-first document order of each Ruleset (assigned once per root before eval).
+   * Used so processExtends can apply extends in true source order.
    */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node]> = [];
+  documentOrderByRuleset?: WeakMap<Ruleset, number>;
+
+  /**
+   * Registered extends with their extend root context
+   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
+   */
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number]> = [];
 
   /**
    * When doing any kind of lookup, the current node and resolved

@@ -25,7 +25,7 @@ function findExtendableLocationsNoExactCache(target: Selector, find: Selector): 
       extensionType: 'replace'
     });
 
-    return { locations, hasMatches: true, metrics };
+    return { locations, hasMatches: true, hasWholeMatch: true, metrics };
   }
 
   return originalMethod(target, find);

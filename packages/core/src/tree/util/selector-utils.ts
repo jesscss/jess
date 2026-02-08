@@ -66,10 +66,9 @@ export function addImplicitAmpersand(
       });
     }
     // #endregion
-    // IMPORTANT: do NOT attach the live parent selector into the ampersand value tree.
-    // The Node proxy will "adopt" it, reparenting the existing selector and potentially
-    // creating circular/self-parent chains when we later call .inherit() on newly created selectors.
-    // Always store a copy instead.
+    // Ampersand resolution is a "pointer": getResolvedSelector (when set) returns the live parent selector.
+    // We do NOT attach the live parent into the ampersand value tree (Node would adopt it, risking circular refs).
+    // We store a copy in value.selector only as fallback; callers should use getResolvedSelector() for current value.
     // If the parent is a SelectorList and we are NOT collapsing nesting, store it as `:is(parentList)`
     // so later extend matching can expand it into concrete branches.
     //
