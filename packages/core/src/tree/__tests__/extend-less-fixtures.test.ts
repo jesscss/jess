@@ -6,7 +6,7 @@
  *
  * Status (as of 2025-02):
  * 1. extend-clearfix.less – FIXED. Document order in :is() now :is(.clearfix, .foo, .bar):after.
- * 2. extend-exact.less – FAILING. :is() form and .effected merging with .a, .b, .c (output structure differs).
+ * 2. extend-exact.less – FIXED. Same-context uses fullyCanonical so :is() unwraps and inner .a, .c stays short.
  * 3. extend-nest.less – FAILING. :is(.sidebar,...) .box and .submit:hover merged (we output .sidebar .box; .submit vs .submit:hover).
  * 4. extend-selector.less – FAILING. [data="test3"], .attribute-test both extend attributes2 (nesting/selector list shape).
  * 5. extend.less – FAILING. .aa,.cc { .dd,.ee,.ff } and .bb,.cc,.ee,.ff { .bb,.ff } (nested structure vs flat).
@@ -39,14 +39,13 @@ const collapseNesting = false;
 
 describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   /**
-   * 1. extend-clearfix.less
+   * 1. extend-clearfix.less – returns a fresh AST each call (eval mutates, so do not share).
    * .clearfix { *zoom: 1; &:after { content:''; ... } }
    * .foo { &:extend(.clearfix all); color: red; }
    * .bar { &:extend(.clearfix all); color: blue; }
-   * Expected (collapseNesting false): nested &:after inside .clearfix,.foo,.bar block
    */
-  it('1. extend-clearfix.less – all extenders appear in :after rule', async () => {
-    const root = rules([
+  function createExtendClearfixAst() {
+    return rules([
       ruleset({
         selector: el('.clearfix'),
         rules: rules([
@@ -77,8 +76,11 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         ])
       })
     ]);
-    const context = new Context({ collapseNesting });
-    const evald = await root.eval(context);
+  }
+
+  it('1a. extend-clearfix with nesting – nested &:after inside block', async () => {
+    const context = new Context({ collapseNesting: false });
+    const evald = await createExtendClearfixAst().eval(context);
     const css = evald.toString({ context });
     expect(css.trim()).toBeString(
       `.clearfix,
@@ -91,6 +93,31 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     clear: both;
     height: 0;
   }
+}
+.foo {
+  color: red;
+}
+.bar {
+  color: blue;
+}`.trim()
+    );
+  });
+
+  it('1b. extend-clearfix without nesting – flat :is(...):after (Less-style)', async () => {
+    const context = new Context({ collapseNesting: true });
+    const evald = await createExtendClearfixAst().eval(context);
+    const css = evald.toString({ context });
+    expect(css.trim()).toBeString(
+      `.clearfix,
+.foo,
+.bar {
+  *zoom: 1;
+}
+:is(.clearfix, .foo, .bar):after {
+  content: "";
+  display: block;
+  clear: both;
+  height: 0;
 }
 .foo {
   color: red;
@@ -278,6 +305,8 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
    * Expected: :is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box and .button:hover, .submit:hover
    */
   it('3. extend-nest.less – :is(...) .box and .submit:hover merged', async () => {
+    // collapseNesting: true so output matches Less (flat :is() rules)
+    const context = new Context({ collapseNesting: true });
     const root = rules([
       ruleset({
         selector: el('.sidebar'),
@@ -351,7 +380,6 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         rules: rules([decl({ name: 'notnested', value: any('black') })])
       })
     ]);
-    const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
     expect(css).toBeString(`

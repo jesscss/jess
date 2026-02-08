@@ -586,7 +586,7 @@ The following functions were identified as unused through call graph analysis an
 
 **Calls:**
 - `selector.copy()` - copy selector
-- `ampersand.value.selector.copy()` - copy resolved selector
+- `ampersand.getResolvedSelector()?.copy()` - copy resolved selector (from selectorContainer)
 - `selectorCopy.nodes()` - traverse
 - `findParentOfNode()` - find parent
 - `replaceNodeInParent()` - replace node

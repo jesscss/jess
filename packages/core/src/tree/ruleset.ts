@@ -32,7 +32,7 @@ export type RulesetValue = {
   guard?: Condition | Nil;
   /**
    * When this ruleset is extended, we store its selector before the first extend.
-   * Nested rulesets' implicit & (getResolvedSelector) use this when set, so they
+   * Nested rulesets' implicit & (selectorContainer → parent value) use this when set, so they
    * do not "see" the extended form (EXTEND_RULES §5: do not materialize ampersands
    * that were not matched and extended).
    */
@@ -220,19 +220,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       } else {
         node.options = { ownSelector: selector } as RulesetOptions;
       }
-      if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil)) {
-        const getResolvedSelector = parentRuleset
-          ? () => {
-              const v = (parentRuleset as Ruleset).value;
-              return v?.selectorBeforeExtend ?? v?.selector;
-            }
-          : undefined;
-        selector = getImplicitSelectorUtil(
-          selector,
-          parentSelector,
-          context.opts.collapseNesting,
-          getResolvedSelector
-        );
+      if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil) && parentRuleset) {
+        selector = getImplicitSelectorUtil(selector, parentRuleset as Ruleset, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins

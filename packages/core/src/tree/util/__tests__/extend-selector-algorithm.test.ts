@@ -1,4 +1,4 @@
-import { el, sel, sellist, compound, is, co, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
 import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
 import { isNode } from '../is-node.js';
 import { getImplicitSelector } from '../selector-utils.js';
@@ -264,6 +264,35 @@ describe('Extend Selector Tests', () => {
 
       const result = extendSelector(selector, target, extendWith, false);
       expect(result.valueOf()).toBe('.a,.b>.c,.d');
+    });
+  });
+
+  describe('Match only within ampersand (partial extend)', () => {
+    it('tryExtendSelector returns NOT_FOUND when partial match exists only within & (e.g. &:after, target .clearfix)', () => {
+      // Selector is &:after with & resolving to .clearfix. Match to .clearfix is entirely inside &.
+      const parentSel = el('.clearfix');
+      const selectorWithAmp = getImplicitSelector(pseudo(':after'), parentSel, false);
+      const result = tryExtendSelector(selectorWithAmp, el('.clearfix'), el('.foo'), true);
+      expect(result.error).toBeDefined();
+      expect(result.error!.type).toBe(ExtendErrorType.NOT_FOUND);
+    });
+
+    it('tryExtendSelector extends when partial match is not only within & (e.g. .clearfix .bar, target .clearfix)', () => {
+      // Selector has explicit .clearfix, so match is not only within ampersand.
+      const selector = sel([el('.clearfix'), co(' '), el('.bar')]);
+      const result = tryExtendSelector(selector, el('.clearfix'), el('.foo'), true);
+      expect(result.error).toBeUndefined();
+      expect(result.value.valueOf()).toContain('.foo');
+    });
+
+    it('tryExtendSelector returns NOT_FOUND when match path goes through ampersand (parent already extended)', () => {
+      // Parent was already extended; child &:after has ampersand resolving to .clearfix,.foo,.bar.
+      // NOT_FOUND is determined by path (match goes through &), not by comparing resolved to find.
+      const extendedParentSel = sellist([el('.clearfix'), el('.foo'), el('.bar')]);
+      const selectorWithAmp = getImplicitSelector(pseudo(':after'), extendedParentSel, false);
+      const result = tryExtendSelector(selectorWithAmp, el('.clearfix'), el('.foo'), true);
+      expect(result.error).toBeDefined();
+      expect(result.error!.type).toBe(ExtendErrorType.NOT_FOUND);
     });
   });
 
@@ -706,7 +735,7 @@ describe('Extend Selector Tests', () => {
         expect(isNode(withImplicit, 'ComplexSelector')).toBe(true);
         const first = (withImplicit as any).value?.[0];
         expect(first?.type).toBe('Ampersand');
-        expect(first?.value?.selector).toBeDefined();
+        expect(first?.getResolvedSelector?.()).toBeDefined();
       });
 
       it('(b) valueOf() uses ampersand selector to produce full selector string', () => {
@@ -719,8 +748,8 @@ describe('Extend Selector Tests', () => {
         const parent = el('.bb');
         const withImplicit = getImplicitSelector(el('.bb'), parent, false);
         const first = (withImplicit as any).value?.[0];
-        expect(first?.value?.selector).toBeDefined();
-        expect(first.value.selector.valueOf()).toBe('.bb');
+        expect(first?.getResolvedSelector?.()).toBeDefined();
+        expect(first.getResolvedSelector?.()?.valueOf()).toBe('.bb');
       });
 
       it('(d) full selector value .bb .bb is not an exact match for .bb so extend utility rejects', () => {

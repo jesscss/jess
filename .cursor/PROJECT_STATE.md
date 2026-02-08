@@ -85,6 +85,15 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 
 **Example (extend):** Area = extend. Plan = `.cursor/EXTEND_DEBUG_PLAN.md`. Core extend: 9 files, 4 failing tests (see that file). Next step: e.g. "Narrow to extend-eval-integration 'nested & extend all' with .only and trace."
 
+**Extend – implicit ampersand / extend-exact (2025-02-07):**
+
+- **Area:** extend (ampersand boundary; nested rulesets serializing `:is(parent)` instead of staying implicit).
+- **Fix in place:** In `extend.ts`, `checkAmpersandCrossingDuringExtension` has an early block: when the selector is a **SelectorList with length > 1** and **selectorIsEntirelyImplicitAmpersandLeading** (every item is ComplexSelector starting with implicit Ampersand + combinator), we get the first ampersand, replace with resolved, and if find matches we return `crossed: true` so the parent carries the extend. This fixes the **second level** (`.b, .a` under `.c, .a, .effected` no longer becomes `:is(.c, .a, .effected) .b, .a`). Clearfix 1a/1b pass.
+- **Still failing:** extend-less-fixtures test 2 (extend-exact): the **innermost** block (`.a, .c`) still outputs `:is(.b, .a) .a, :is(.b, .a) .c` instead of `.a, .c`.
+- **Trace (DEBUG_AMPERSAND_CROSSING=1, .cursor/debug.log):** For find `.a`, middle and innermost get `selectorIsEntirelyImplicitAmpersandLeading: true` and we early-return crossed (so we throw and do not extend). For find `.b`, middle and innermost get `selectorIsEntirelyImplicitAmpersandLeading: false` — so when we check with `.b`, the selector’s first component is **not** an Ampersand (likely already `:is(...)` from a prior extend). So the iteration order or which ruleset gets extended first is such that by the time we check with `.b`, the selector has already been extended; treating leading `:is()` as “implicit” was tried but made output worse (nested `:is(:is(...))`).
+- **Trace done (2025-02-07):** Added earlyReturn_crossed and extend_applied_phase1. Log: for find=.b we apply to middle and innermost; tryExtendSelector matches .b in the **middle** segment of full path → we replace with extended parent. **Root cause:** we apply when target matches anywhere (incl. ancestor). Less: only extend when match is in ruleset own (leaf) segment.
+- **Next step:** Only apply when match is in ruleset own segment (e.g. tryExtendSelector reports match location, or restrict to rightmost segment).
+
 ---
 
 ## 5. Session discipline (for Cursor/agent)

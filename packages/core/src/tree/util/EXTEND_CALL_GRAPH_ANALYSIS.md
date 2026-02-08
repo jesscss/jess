@@ -88,7 +88,7 @@ Tracing all function calls from exported entry points through the entire call gr
 
 ### From `replaceAmpersandWithItsValue`
 - `selector.copy()` ✅ (method)
-- `ampersand.value.selector.copy()` ✅ (method)
+- `ampersand.getResolvedSelector()?.copy()` ✅ (method)
 - `selectorCopy.nodes()` ✅ (method)
 - `findParentOfNode()` ✅
 - `replaceNodeInParent()` ✅

@@ -1,22 +1,14 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, type Node } from './node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { type Selector } from './selector.js';
-import { SelectorList } from './selector-list.js';
-import { ComplexSelector } from './selector-complex.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { F_VISIBLE } from './node.js';
 import { syncLog } from './util/__tests__/debug-log.js';
-
-/** Cache keySet by resolved selector valueOf so we stay live but avoid recomputing every access (stable order). */
-const keySetCacheByResolvedValueOf = new WeakMap<
-  Ampersand,
-  { valueOf: string; keySet: Set<string>; canFastReject: boolean }
->();
 
 export type AmpersandValue = {
   /**
@@ -71,24 +63,23 @@ export type AmpersandValue = {
    */
   /** Set to an empty string to hoist to root */
   appendValue?: string;
-  /**
-   * Snapshot at creation; only used when getResolvedSelector is not set.
-   * Ampersand resolution should be a "pointer" (getResolvedSelector) so parent extend/mutation is visible.
-   */
-  selector?: Selector | Nil;
+
   /**
    * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector ("pointer").
    * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
-  getResolvedSelector?: () => Selector | Nil | undefined;
+  selectorContainer?: { selector?: Selector | Nil | undefined };
 };
 
 /**
  * The '&' selector element
  */
-export class Ampersand extends SimpleSelector<AmpersandValue> {
+export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   override type = 'Ampersand' as const;
   shortType = 'amp' as const;
+
+  private _storedSelector: Selector | Nil | undefined;
+  private _selectorContainer: { selector?: Selector | Nil | undefined } | undefined;
 
   constructor(
     value?: AmpersandValue | string,
@@ -96,64 +87,41 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    const finalValue: AmpersandValue = {};
+    let finalValue: AmpersandValue = {};
     if (typeof value === 'string') {
       finalValue.appendValue = value;
-    } else if (value) {
-      finalValue.appendValue = value.appendValue;
-      finalValue.selector = value.selector;
-      finalValue.getResolvedSelector = value.getResolvedSelector;
+      super(finalValue, options, location, treeContext);
+    } else {
+      finalValue = value ? { appendValue: value.appendValue } : {};
+      super(finalValue, options, location, treeContext);
+      const selectorContainer = value?.selectorContainer;
+      if (selectorContainer) {
+        this._selectorContainer = selectorContainer;
+        this._storedSelector = selectorContainer?.selector;
+      }
     }
-    super(finalValue, options, location, treeContext);
+
     // Set the F_AMPERSAND flag so it bubbles up to parent selectors
     this.addFlag(F_AMPERSAND);
   }
 
   override get keySet() {
-    if (this.value.getResolvedSelector) {
-      const resolved = this.getResolvedSelector();
-      const v = resolved?.valueOf?.() ?? '';
-      const cached = keySetCacheByResolvedValueOf.get(this);
-      if (cached && cached.valueOf === v) {
-        this._keySet = cached.keySet;
-        this._canFastReject = cached.canFastReject;
-        return this._keySet!;
-      }
+    const stored = this._storedSelector;
+    const current = this._selectorContainer?.selector;
+    if (!current || isNode(current, 'Nil')) {
+      return new Set(['&']);
+    }
+    let keySet = this._keySet;
+    if (!keySet || stored !== current) {
       this._computeKeySetAndFastReject();
-      keySetCacheByResolvedValueOf.set(this, {
-        valueOf: v,
-        keySet: this._keySet!,
-        canFastReject: this._canFastReject ?? false
-      });
       return this._keySet!;
     }
-    if (this._keySet === undefined) {
-      this._computeKeySetAndFastReject();
-    }
-    return this._keySet!;
-  }
-
-  /** Returns the selector to use for extend matching: live "pointer" when available, else stored snapshot. */
-  getResolvedSelector(): Selector | Nil | undefined {
-    const resolved = this.value.getResolvedSelector?.();
-    if (resolved !== undefined) {
-      return resolved;
-    }
-    return this.value.selector;
-  }
-
-  /** Preserve the getResolvedSelector "pointer" on copy so clones still resolve to the live parent. */
-  override copy(deep?: boolean, cloneFn?: (n: import('./node.js').Node) => import('./node.js').Node): this {
-    const newNode = super.copy(deep, cloneFn) as this;
-    if (this.value.getResolvedSelector) {
-      (newNode.value as AmpersandValue).getResolvedSelector = this.value.getResolvedSelector;
-    }
-    return newNode;
+    return keySet;
   }
 
   /** The keys of an ampersand are the keys of the selector it contains */
   protected override _computeKeySetAndFastReject(): void {
-    const selector = this.getResolvedSelector();
+    const selector = this._selectorContainer?.selector;
     if (selector && 'keySet' in selector) {
       this._keySet = selector.keySet;
       // For visibleKeySet, if this ampersand has a selector value, it's an implicit ampersand
@@ -173,8 +141,16 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     this._visibleKeySet = new Set();
   }
 
+  /**
+   * Returns the current selector from the selector container (live when container is ruleset value).
+   * Used by extend, serialization, and matching so nested rules see the parent after extend.
+   */
+  getResolvedSelector(): Selector | Nil | undefined {
+    return this._selectorContainer?.selector;
+  }
+
   override valueOf() {
-    const selector = this.getResolvedSelector();
+    const selector = this._selectorContainer?.selector;
     if (selector) {
       return selector.valueOf();
     }
@@ -200,7 +176,9 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
 
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
-    const { appendValue, selector: storedSelector } = this.value;
+    const { appendValue } = this.value;
+    const selectorContainer = this._selectorContainer;
+    const storedSelector = selectorContainer?.selector;
     // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
     if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
@@ -276,10 +254,18 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
      * If the ampersand already has a stored selector (from getImplicitSelector),
      * preserve it instead of overwriting with the frame selector.
      */
-    if (!amp.value.selector && frame && frame.selector) {
-      amp.value.selector = frame.selector;
+    if (!amp._selectorContainer && frame && frame.selector) {
+      amp._selectorContainer = frame;
     }
     return amp;
+  }
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    const newNode = super.clone(deep, cloneFn) as this;
+    if (this._selectorContainer) {
+      newNode._selectorContainer = this._selectorContainer;
+    }
+    return newNode;
   }
 
   /** @todo - move to ToModuleVisitor */

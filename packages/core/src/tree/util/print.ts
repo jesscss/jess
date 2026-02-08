@@ -49,6 +49,10 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   options = options ?? {};
   options.depth ??= 0;
   options.writer ??= new OutputWriter();
+  // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
+  if (options.collapseNesting === undefined && options.context?.opts?.collapseNesting !== undefined) {
+    options.collapseNesting = Boolean(options.context.opts.collapseNesting);
+  }
   // Always ensure frameState exists - nodes should not need to check for it
   options.inFrames ??= [];
   options.frameHeaders ??= [];

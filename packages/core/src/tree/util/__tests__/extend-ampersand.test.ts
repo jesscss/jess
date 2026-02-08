@@ -2,11 +2,9 @@ import { el, sel, sellist, compound, is, co, comment, amp } from '../../index.js
 import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../extend.js';
 
-// Helper to create ampersand with resolved selector
+// Helper to create ampersand with resolved selector (snapshot container for tests)
 function ampWithSelector(selector: any): Ampersand {
-  const ampersand = new Ampersand();
-  ampersand.value.selector = selector;
-  return ampersand;
+  return Ampersand.create({ selectorContainer: { selector } }) as Ampersand;
 }
 
 describe('Extend Ampersand Handling Tests', () => {

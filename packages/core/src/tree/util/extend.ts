@@ -565,19 +565,20 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
             const omitCombinator = outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
             if (retainInvisibleAmpersandAndCombinator) {
               // Copy invisible ampersand + combinator onto each item so selector list items have
-              // correct valueOf() for extend (e.g. .bb .bb, .aa .dd). Use live getResolvedSelector when present.
+              // correct valueOf() for extend (e.g. .bb .bb, .aa .dd). Preserve selectorContainer when present so & stays live.
               const origAmp = originalFirst as Ampersand;
-              const resolved = origAmp.getResolvedSelector?.();
-              const parentSel = resolved ?? (origAmp.value?.selector);
+              const resolved = origAmp.getResolvedSelector();
+              const parentSel = resolved ?? undefined;
               if (process.env.DEBUG_AMPERSAND_EXTEND === '1') {
                 const resolvedVal = resolved && typeof (resolved as Selector).valueOf === 'function' ? String((resolved as Selector).valueOf()).slice(0, 60) : '';
                 const innerVal = typeof innerSel.valueOf === 'function' ? String(innerSel.valueOf()).slice(0, 60) : '';
-                syncLog({ trace: 'createProcessedSelector_retainInvisible', hasGetter: !!origAmp.value?.getResolvedSelector, resolvedVal, innerVal });
+                syncLog({ trace: 'createProcessedSelector_retainInvisible', hasContainer: !!origAmp.value?.selectorContainer, resolvedVal, innerVal });
               }
-              const amp = Ampersand.create({
-                selector: parentSel ? parentSel.copy(true) : undefined,
-                getResolvedSelector: origAmp.value?.getResolvedSelector
-              });
+              const amp = Ampersand.create(
+                origAmp.value.selectorContainer
+                  ? { selectorContainer: origAmp.value.selectorContainer }
+                  : parentSel ? { selectorContainer: { selector: parentSel.copy(true) } } : {}
+              );
               amp.addFlag(F_IMPLICIT_AMPERSAND);
               amp.removeFlag(F_VISIBLE);
               const combCopy = maybeCombinator.copy(true) as any;
@@ -605,14 +606,18 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       // happen when we hoist (e.g. in maybeHoistMixedNestingSelectorList).
       if (el.hasFlag(F_IMPLICIT_AMPERSAND)) {
         if (process.env.DEBUG_AMPERSAND_EXTEND === '1') {
-          const resolved = (el as Ampersand).getResolvedSelector?.();
+          const resolved = (el as Ampersand).getResolvedSelector();
           const v = resolved && typeof (resolved as Selector).valueOf === 'function' ? String((resolved as Selector).valueOf()).slice(0, 60) : '';
           syncLog({ trace: 'createProcessedSelector_keepImplicitAmp', resolvedVal: v });
         }
         push(el);
       } else if (el.generated) {
-        const sel = (el as Ampersand).getResolvedSelector() ?? el.value.selector!;
-        push(createProcessedSelector(sel as Selector) as Selector);
+        const sel = (el as Ampersand).getResolvedSelector();
+        if (sel && !isNode(sel, 'Nil')) {
+          push(createProcessedSelector(sel as Selector) as Selector);
+        } else {
+          push(el);
+        }
       } else {
         push(el);
       }
@@ -991,7 +996,7 @@ export function tryExtendSelector(
   skipAmpersandCheck: boolean = false
 ): ExtendResult {
   try {
-    const result = extendSelector(target, find, extendWith, partial, skipAmpersandCheck);
+    const result = extendSelector(target, find, extendWith, partial, skipAmpersandCheck, false);
     return createSuccessResult(result);
   } catch (error) {
     if (error instanceof ExtendError) {
@@ -1011,6 +1016,7 @@ export function tryExtendSelector(
  * @param extendWith - The selector to extend with
  * @param partial - Whether to use partial matching (true) or full matching (false)
  * @param skipAmpersandCheck - Whether to skip ampersand boundary checking (used in recursive calls)
+ * @param hasMoreAfterIs - Internal
  * @returns The extended selector
  * @throws ExtendError if extension fails
  */
@@ -1084,31 +1090,16 @@ export function extendSelector(
     );
   }
 
-  // Check for ampersand boundary crossing during extension (unless skipped)
-  // For non-SelectorList targets, check after findExtendableLocations
+  // Check for ampersand boundary: "target only matches when ampersand is resolved" = match only
+  // within ampersand. One state: do not extend here; parent selector should carry the extend.
   if (!skipAmpersandCheck) {
-    // Ampersand crossing should be checked against the original selector shape.
     const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(originalTarget, originalFind);
-
     if (ampersandCrossingInfo.crossed) {
-      // Convert ExtendLocation to MatchResult for compatibility with ampersand handling
-      const location = searchResult.locations[0]!;
-      const fallbackMatchResult = {
-        hasMatch: true,
-        hasFullMatch: !location.isPartialMatch,
-        hasPartialMatch: !!location.isPartialMatch,
-        matched: [find],
-        remainders: location.remainders || []
-      };
-      const result = handleAmpersandBoundaryCrossing(
-        target,
-        find,
-        extendWith,
-        ampersandCrossingInfo.ampersandNode!,
-        fallbackMatchResult
+      throw new ExtendError(
+        'NOT_FOUND',
+        'Match found only within ampersand; parent selector should carry the extend',
+        { target: originalTarget, find: originalFind, extendWith }
       );
-
-      return result;
     }
   }
 
@@ -1150,31 +1141,6 @@ export function extendSelector(
     }
   } catch {}
   // #endregion
-
-  // General rule: if the only reason `find` matches `target` is because we treat an ampersand
-  // as its resolved selector (i.e. the match is "inside ampersand"), then do NOT extend here.
-  // The parent selector/ruleset should carry the extend; this selector should remain authored
-  // (e.g. `&:before` should stay `&:before`).
-  //
-  // This is intentionally selector-shape agnostic: we do not special-case Compound vs Complex.
-  for (const { ampersand } of findAmpersandsInSelector(target)) {
-    const resolved = ampersand.getResolvedSelector();
-    if (!resolved || isNode(resolved, 'Nil')) {
-      continue;
-    }
-    if (resolved.valueOf() !== find.valueOf()) {
-      continue;
-    }
-    const selectorWithoutAmpersand = replaceAmpersandWithEmpty(target, ampersand);
-    const nonAmpersandSearchResult = findExtendableLocations(selectorWithoutAmpersand, find);
-    if (!nonAmpersandSearchResult.hasMatches) {
-      throw new ExtendError(
-        'NOT_FOUND',
-        'Match found only within ampersand; parent selector should carry the extend',
-        { target, find, extendWith }
-      );
-    }
-  }
 
   // If the match is entirely inside an ampersand node (e.g. `&:before` matching `.header .header-nav`),
   // do NOT extend here. The parent selector/ruleset should carry the extension.
@@ -1427,7 +1393,7 @@ export function extendSelector(
               // (including "wrap all occurrences" for `.replace.replace`).
               const extendedArg = isNode(arg, 'SelectorList')
                 ? extendSelectorList(arg, find, extendWith, true, true, false)
-                : extendSelector(arg as Selector, find, extendWith, true, true);
+                : extendSelector(arg as Selector, find, extendWith, true, true, false);
               if (component.generated) {
                 component.value.arg = extendedArg as any;
               } else {
@@ -1774,7 +1740,7 @@ function extendSelectorList(
   for (const selector of target.value) {
     const selectorSearchResult = findExtendableLocations(selector, find);
     if (selectorSearchResult.hasMatches) {
-      const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
+      const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck, false);
 
       if (extended === selector) {
         orderedSelectors.push(selector);
@@ -2534,11 +2500,70 @@ function validateIsWrapper(
  * @param target - The target selector being extended
  * @returns Information about ampersand boundary crossing
  */
+/**
+ * True when the selector is entirely "implicit & + rest" (every list item is a complex selector
+ * that starts with implicit ampersand + combinator), or a single ComplexSelector that starts
+ * that way. In that case, any match of the find in the resolved form is "only within ampersand".
+ */
+function selectorIsEntirelyImplicitAmpersandLeading(selector: Selector): boolean {
+  const checkItem = (item: Selector): boolean => {
+    if (!isNode(item, 'ComplexSelector') || item.value.length < 2) {
+      return false;
+    }
+    const [first, second] = item.value;
+    return (
+      isNode(first, 'Ampersand') &&
+      (first as Ampersand).hasFlag(F_IMPLICIT_AMPERSAND) &&
+      isNode(second, 'Combinator')
+    );
+  };
+  if (isNode(selector, 'SelectorList')) {
+    const list = (selector as SelectorList).value;
+    if (!Array.isArray(list) || list.length === 0) {
+      return false;
+    }
+    return list.every((item) => checkItem(item));
+  }
+  return checkItem(selector);
+}
+
 function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selector): {
   crossed: boolean;
   ampersandNode?: Ampersand;
 } {
-  // Find ampersands in the selector
+  // When the selector is entirely "implicit & + rest" *and* it's a SelectorList with more than
+  // one item (e.g. "& .b, & .a" or "& .a, & .c"), any match in the resolved form is "only within
+  // ampersand" — the parent should carry the extend. Single-item "& .a" is handled by the loop
+  // below (replaceAmpersandWithEmpty leaves ".a" which matches, so we don't return crossed).
+  if (
+    isNode(selector, 'SelectorList') &&
+    (selector as SelectorList).value.length > 1 &&
+    selectorIsEntirelyImplicitAmpersandLeading(selector)
+  ) {
+    const list = (selector as SelectorList).value;
+    const firstItem = list[0];
+    if (firstItem && isNode(firstItem, 'ComplexSelector') && firstItem.value.length > 0) {
+      const firstComp = firstItem.value[0];
+      if (isNode(firstComp, 'Ampersand')) {
+        const amp = firstComp as Ampersand;
+        const resolved = amp.getResolvedSelector();
+        if (resolved && !isNode(resolved, 'Nil')) {
+          const resolvedSelector = replaceAmpersandWithItsValue(selector, amp);
+          const resolvedSearchResult = findExtendableLocations(resolvedSelector, target);
+          if (resolvedSearchResult.hasMatches) {
+            if (process.env.DEBUG_AMPERSAND_CROSSING === '1') {
+              const selVal = typeof selector.valueOf === 'function' ? String(selector.valueOf()).slice(0, 80) : '';
+              const findVal = typeof target.valueOf === 'function' ? String(target.valueOf()).slice(0, 40) : '';
+              syncLog({ trace: 'earlyReturn_crossed', find: findVal, selVal });
+            }
+            return { crossed: true, ampersandNode: amp };
+          }
+        }
+      }
+    }
+  }
+
+  // Find ampersands in the selector (reaches into compound/complex; SelectorList handled above)
   const ampersandNodes = findAmpersandsInSelector(selector);
 
   for (const { ampersand } of ampersandNodes) {
@@ -2547,34 +2572,24 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
     if (!resolved || isNode(resolved, 'Nil')) {
       continue;
     }
-    // If the selector is something like `&:before` and the target matches entirely within the ampersand's
-    // resolved selector, we should NOT treat this as a boundary crossing for extend purposes.
-    // The parent selector/ruleset should carry the extension; this selector should remain `&:before`.
-    if (
-      isNode(selector, 'CompoundSelector')
-      && selector.value.length > 1
-      && resolved.valueOf() === target.valueOf()
-    ) {
-      continue;
-    }
-    // Same as above, but for the ComplexSelector form (e.g. `&:before` is often ComplexSelector).
-    // If the target matches entirely within the ampersand's resolved selector, do not treat this
-    // as boundary crossing; the parent ruleset should carry the extend.
-    if (
-      isNode(selector, 'ComplexSelector')
-      && selector.value.length > 1
-      && isNode(selector.value[0], 'Ampersand')
-      && selector.value[0] === ampersand
-      && resolved.valueOf() === target.valueOf()
-    ) {
-      continue;
-    }
 
     // Create resolved version by replacing ampersand with its resolved selector
     const resolvedSelector = replaceAmpersandWithItsValue(selector, ampersand);
 
     // Check if target matches the resolved version
     const resolvedSearchResult = findExtendableLocations(resolvedSelector, target);
+
+    // When the selector is entirely "implicit & + rest" (e.g. "& .b, & .a"), any match in the
+    // resolved form is "only within ampersand": the parent should carry the extend. We must not
+    // rely on replaceAmpersandWithEmpty + nonAmpersandSearchResult because removing & leaves
+    // ".b", ".a" which still matches find .a, so we would incorrectly allow the extend and
+    // then serialize the ampersand's resolved value (e.g. :is(.c, .a, .effected) .b).
+    if (resolvedSearchResult.hasMatches && selectorIsEntirelyImplicitAmpersandLeading(selector)) {
+      return {
+        crossed: true,
+        ampersandNode: ampersand
+      };
+    }
 
     // Also check if target matches the selector without this ampersand
     const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, ampersand);
@@ -2820,7 +2835,7 @@ function handleAmpersandBoundaryCrossing(
     ]).inherit(selector);
 
     // Step 2: Extend the combined selector (skip ampersand check to prevent recursion)
-    const extendedSelector = extendSelector(combined, target, extendWith, false, true);
+    const extendedSelector = extendSelector(combined, target, extendWith, false, true, false);
 
     // Step 3: Mark for hoisting to root
     const hoisted = markSelectorForHoisting(extendedSelector);
@@ -2832,7 +2847,7 @@ function handleAmpersandBoundaryCrossing(
   const resolvedSelector = replaceAmpersandWithItsValue(selector, ampersandNode);
 
   // Step 2: Extend the resolved selector (skip ampersand check to prevent recursion)
-  const extendedSelector = extendSelector(resolvedSelector, target, extendWith, false, true);
+  const extendedSelector = extendSelector(resolvedSelector, target, extendWith, false, true, false);
 
   // Step 3: Mark for hoisting to root
   return markSelectorForHoisting(extendedSelector);
