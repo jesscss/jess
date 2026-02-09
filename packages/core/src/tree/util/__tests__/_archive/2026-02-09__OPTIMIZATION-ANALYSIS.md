@@ -1,4 +1,9 @@
-# Optimization ideas
+# ExtendLocation API Optimization Analysis (archived)
 
-When a mixin is evaluated for the first time, figure out if (when in a Less context) it tries to reach to the caller context to evaluate a mixin or variable. If not, cache the mixin output.
+This file used to exist in `__tests__/` as a long-form analysis.
+
+It duplicated the package-root analysis, so it was archived once at:
+
+- `packages/core/_archive/2026-02-09__OPTIMIZATION-ANALYSIS.md`
+
 

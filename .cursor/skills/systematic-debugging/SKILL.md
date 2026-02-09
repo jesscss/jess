@@ -13,14 +13,13 @@ Use this skill when debugging failing tests, runtime errors, or unexpected behav
 - A test or build is failing and the user wants help finding the cause.
 - The task involves "extend", "core tests", or "all-less" and may span multiple packages.
 
-## Steps (do not skip)
+## Core phases (do not skip)
 
-1. **Observe** — What exactly is happening vs what should happen? (Output, error message, assertion failure.) Write it down or confirm with the user.
-2. **Hypothesize** — One concrete hypothesis about root cause (e.g. "selector X is not registered because …"). One hypothesis at a time.
-3. **Trace** — Follow the real execution path in code: which functions run, what values variables have. Use `syncLog()` with primitive values only (no `console.log`, no `JSON.stringify` on nodes). See project rules for instrumentation limits.
-4. **Verify** — Run the minimal test that would confirm or refute the hypothesis (e.g. add `it.only()` to one test, run it). If the result doesn't match the hypothesis, revise the hypothesis and repeat from step 2.
-5. **Fix** — Make the smallest change that addresses the root cause. Run the test again. Then run the full relevant suite to check for regressions.
-6. **Update state** — Update `.cursor/PROJECT_STATE.md` section 4 (and any area-specific plan file, e.g. EXTEND_DEBUG_PLAN for extend) with: what you tried, result, next step. Remove any `.only` before committing.
+1. **Phase 1 (Root cause investigation)** — Reproduce the problem, gather evidence, inspect recent diffs, and log what is actually happening vs what should happen.
+2. **Phase 2 (Pattern analysis)** — Find similar working code; compare differences, dependencies, and assumptions before touching code.
+3. **Phase 3 (Hypothesis + test)** — Form a single, testable hypothesis and verify it with the **smallest** possible change. If it fails, revise and repeat.
+4. **Phase 4 (Implementation)** — Fix only the confirmed root cause, create/keep a failing test, re-run the focused test, and then run the broader suite.
+5. **Update state** — Record progress (`.cursor/PROJECT_STATE.md` §4 or area plan), remove `.only` filters, and document next steps.
 
 ## Anti-patterns (do not do)
 

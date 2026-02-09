@@ -10,6 +10,10 @@ This file is updated daily with the most recent changes and improvements made to
 - `packages/jess-plugin-less-compat/`: kept `README.md`, added `DESIGN.md`, and moved historical analysis/plan markdowns into `packages/jess-plugin-less-compat/_archive/` (dated snapshots).
 - `/docs` (non-Docusaurus): archived obviously-stale notes (`container.md`, `nesting.md`, `theme.md`) into `docs/_archive/` (dated snapshots). Kept extend-related architecture docs in place.
 - `packages/fns/src/sass/`: added `SASS_DOCS.md` as a lightweight index to the existing Sass-porting docs.
+- Additional cleanup:
+  - `docs/`: archived legacy brainstorming/docs (`ideas*`, `mixins.md`, `variables.md`, `migrating-to-jess.md`, `language-service.md`, etc.) and replaced `docs/README.md`/`docs/NOTES.md` with short pointers.
+  - `packages/parser/`: moved parser debugging analyses into `packages/parser/_archive/` and added `PARSER_DOCS.md`.
+  - `packages/core/`: moved one-off analyses into `packages/core/_archive/` and removed a duplicate copy under `src/tree/util/__tests__/`.
 
 ## 2026-Feb-01 (implicit ampersand serialization + nested extend skip)
 
@@ -101,7 +105,7 @@ This file is updated daily with the most recent changes and improvements made to
 
 ### Jess language service pivot (LSP + extension)
 
-- **Pivoted tracking from `vscode-css-languageservice` fork into this monorepo**: added `docs/language-service.md` and a new project tracker at `packages/language-service/TRACKER.md`.
+- **Pivoted tracking from `vscode-css-languageservice` fork into this monorepo**: added package-local docs and a project tracker at `packages/language-service/TRACKER.md`.
 - **Created initial package placeholders** for the new architecture:
   - `packages/language-service/` (engine + thin LSP wrapper)
   - `packages/extension/` (VS Code/Cursor extension)
