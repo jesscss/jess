@@ -1,9 +1,12 @@
 ---
-description: "Rules for debugging tests using isolation techniques"
-alwaysApply: true
+description: "Legacy test-debugging rules (scoped to .cursor maintenance); see 30-tests.mdc"
+globs:
+  - ".cursor/**"
 ---
 
 # Test Debugging Rule
+
+> Legacy note: this file previously applied repo-wide. It is now scoped to `.cursor/**` to avoid duplicating `.cursor/rules/30-tests.mdc`.
 
 When debugging failing tests, always isolate to a single test or single test case using `.only`:
 

@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/fns (Less/Sass-like function library)"
+globs:
+  - "packages/fns/**"
+---
+
+# `@jesscss/fns`
+
+- **Role**: Standard library functions (Less + Sass compatibility surfaces).
+- **Build**: `cd packages/fns && pnpm build`
+- **Tests**: `cd packages/fns && pnpm test`
+

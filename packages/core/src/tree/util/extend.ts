@@ -101,7 +101,8 @@
  * - Result: `:is(.a, .x):is(.b, .y).c`
  * - Each match is independent and gets its own :is() wrapper
  *
- * For a concise "rules of extend" checklist and open questions, see EXTEND_REVIEW_AND_QUESTIONS.md.
+ * For a concise "rules of extend" checklist, see `EXTEND_RULES.md`.
+ * For "where are the tests / where to add coverage", see `__tests__/EXTEND_TEST_INDEX.md`.
  *
  * CORE PRINCIPLE: All extend matching (finding + full-match decision) is by selector equivalency
  * only — never by exact AST or exact serialization. See EXTEND_RULES.md §0.

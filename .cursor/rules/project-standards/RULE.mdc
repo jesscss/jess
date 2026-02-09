@@ -1,9 +1,12 @@
 ---
-description: "Core project standards for development workflow, AST structure, testing, node properties, and debugging"
-alwaysApply: true
+description: "Legacy project standards (scoped to .cursor maintenance); see 20-quality-bar.mdc and 30-tests.mdc"
+globs:
+  - ".cursor/**"
 ---
 
 # Project Rules
+
+> Legacy note: this file previously applied repo-wide. It is now scoped to `.cursor/**` to avoid duplicating `.cursor/rules/20-quality-bar.mdc` and `.cursor/rules/30-tests.mdc`.
 
 ## Development Workflow
 

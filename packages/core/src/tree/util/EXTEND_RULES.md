@@ -1,6 +1,6 @@
 # Extend: Rules (single reference)
 
-Short, authoritative list of extend rules. Details and edge cases are in the extend.ts file header and in EXTEND_REVIEW_AND_QUESTIONS.md.
+Short, authoritative list of extend rules. Details and edge cases should live in the `extend.ts` header and in the extend test index (`__tests__/EXTEND_TEST_INDEX.md`).
 
 ## 0. Foundational: all extend matching is equivalency-based
 
@@ -18,7 +18,7 @@ This applies to **every** step of extend: **Finding** (where does `find` appear 
 - `.a.b > .c.d` ≡ `.b.a > .d.c` ≡ `:is(.a.b > .d).c` ≡ `:is(.b:is(.a)) > :is(.c):is(.d, .q)`
 - Compounds match in any order; we join in and out of `:is()` blocks; combinators must match left-to-right. For a full complex match we need a match that **starts at the beginning** and reaches **a selector in the last position**; the last position can be any or-alternative (e.g. `.d` or `.q` sharing that position).
 
-**Implementation gap:** Current code still uses `valueOf()` / string comparison and structure-based logic in places (e.g. `findExtendableLocations`, `isNonAllWholeSelectorItemMatch`). There is also a **shim** in `extendSelectorList` that checks selector length (e.g. complex length 3) and adds extendWith when `extended === selector`; that shim is **wrong** — extend must be one generalized path every time (equivalency, keySet subset, re-check the extended selector against other extends). Selector length has no place in the rule. The shim should be removed when equivalency-based matching is in place. See EXTEND_REVIEW_AND_QUESTIONS.md §2.1 and §6 (todos).
+**Implementation gap:** Current code still uses `valueOf()` / string comparison and structure-based logic in places (e.g. `findExtendableLocations`, `isNonAllWholeSelectorItemMatch`). There is also a **shim** in `extendSelectorList` that checks selector length (e.g. complex length 3) and adds extendWith when `extended === selector`; that shim is **wrong** — extend must be one generalized path every time (equivalency, keySet subset, re-check the extended selector against other extends). Selector length has no place in the rule. The shim should be removed when equivalency-based matching is in place.
 
 **Early exit (optimization):** While matching is by equivalency only, we can use cues to exit early. The most useful: if the **target** keySet does **not** include all keys of the **find** keySet, we can exit early — no match is possible. (Target and find do not need fully *matching* keysets, because of or-paths; but if target is missing any key that find has, we can skip.) Use Set prototype extensions for this (e.g. `find.keySet.isSubsetOf(target.keySet)`; if false, exit). Existing use: extend-helpers.ts (e.g. fast rejection when find.keySet is not a subset of target.keySet). We **can** use `valueOf()` for an **early-exit TRUE** (if serializations match, treat as match). We **cannot** use `valueOf()` to early-exit as "no match" — when `valueOf()` differs we must still run equivalency; equivalent selectors can have different serialization.
 

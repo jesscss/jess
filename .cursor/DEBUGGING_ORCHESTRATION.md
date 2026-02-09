@@ -57,7 +57,7 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 ### 2.3 State and memory
 
 - **Externalize state** — Write "current bug", "last passing baseline", "what we tried" to files that persist across sessions.
-- **Single source of truth** — e.g. `.cursor/PROJECT_STATE.md` and `.cursor/EXTEND_DEBUG_PLAN.md` so any new session (or new agent) can read and continue.
+- **Single source of truth** — e.g. `.cursor/PROJECT_STATE.md` plus (when necessary) a small area note that stays current. For extend, prefer the Cursor-native pointers in `.cursor/rules/subtrees/core__extend.mdc` and the canonical core docs in `packages/core/src/tree/util/EXTEND_RULES.md` and `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`.
 - **Update state at end of session** — So the next session doesn’t start from zero.
 
 ---
@@ -70,8 +70,9 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 |------|---------|
 | `.cursor/changes.md` | Daily log of what was done; recent first. Already in use. |
 | `.cursor/PROJECT_STATE.md` | Package dependency graph, build order, "who depends on whom", key test commands (§3), and **current debugging focus** (§4) for any area (extend, mixins, parser, etc.). |
-| `.cursor/EXTEND_DEBUG_PLAN.md` | **Existing.** Step-by-step extend debug workflow; which tests fail; order of attack. Example of an area-specific plan. |
-| `.cursor/extend-roots-plan.md` | **Existing.** Extend roots design and implementation checklist. |
+| `packages/core/src/tree/util/EXTEND_RULES.md` | Canonical “single set of extend rules” (keep current). |
+| `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md` | Canonical “where are the extend tests / where to add coverage” map. |
+| `.cursor/rules/subtrees/core__extend.mdc` | Cursor-native, auto-loaded extend hotspot pointers + baseline commands. |
 
 **Rule:** Before starting a debugging task, the agent must **read** the relevant state files. After a meaningful debugging step or at end of session, the agent must **update** them (e.g. "Tried X; result Y; next Z").
 
@@ -119,7 +120,7 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 
 ### 4.3 When Cursor gets stuck
 
-- **Hand off via state:** Update PROJECT_STATE.md section 4 (and the area’s plan file if any) with "Stuck on X; tried A, B, C; hypothesis was Y." Start a new chat: "Read .cursor/PROJECT_STATE.md and [plan file if extend] and continue debugging."
+- **Hand off via state:** Update PROJECT_STATE.md section 4 with "Stuck on X; tried A, B, C; hypothesis was Y." Start a new chat: "Read .cursor/PROJECT_STATE.md and continue debugging." (For extend, also consult `.cursor/rules/subtrees/core__extend.mdc` and the canonical core docs listed above.)
 - **Subagent:** "Run the debug verifier: run [the baseline you need, e.g. core extend tests] and report results." Use the report to decide next step without re-running in the main thread.
 
 ---
@@ -144,4 +145,4 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 - [x] `.cursor/skills/systematic-debugging/SKILL.md`
 - [x] `.cursor/agents/debug-verifier.md` (generic: parent specifies what to run)
 
-**Other .cursor docs** (existing, unchanged): `EXTEND_DEBUG_PLAN.md`, `extend-roots-plan.md`, `plan.md`, `UNCOMMITTED_AUDIT.md`, `changes.md`. They stay as-is; PROJECT_STATE and the generic commands point to them when relevant (e.g. extend work uses EXTEND_DEBUG_PLAN).
+**Archived docs:** Older, time-specific extend notes and one-off plans live under `.cursor/archive/`. Prefer keeping the root `.cursor/` directory small and canonical.

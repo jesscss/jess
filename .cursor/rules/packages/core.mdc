@@ -1,0 +1,13 @@
+---
+description: "Package: @jesscss/core (AST + evaluation)"
+globs:
+  - "packages/core/**"
+---
+
+# `@jesscss/core`
+
+- **Role**: AST + evaluation engine used by parsers, plugins, CLI.
+- **Build**: `cd packages/core && pnpm build` (outputs `lib/`)
+- **Tests**: `cd packages/core && pnpm test`
+- **Hot areas**: `packages/core/src/tree/**` (especially extend)
+

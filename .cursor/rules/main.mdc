@@ -1,9 +1,12 @@
 ---
-description: "Main project rules for development workflow, debugging methodology, package scripts, and code quality"
-alwaysApply: true
+description: "Legacy always-apply rules (scoped to .cursor maintenance); see 00-global/20-quality-bar/30-tests"
+globs:
+  - ".cursor/**"
 ---
 
 # Cursor Rules
+
+> Legacy note: this file previously applied repo-wide. It is now scoped to `.cursor/**` to avoid duplicating newer glob-scoped rules.\n+> Source-of-truth for day-to-day work is now primarily in `.cursor/rules/00-global.mdc`, `20-quality-bar.mdc`, and `30-tests.mdc` plus domain/package/subtree rules.
 
 ## Change Tracking
 

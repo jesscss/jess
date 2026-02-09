@@ -35,6 +35,17 @@ There is **no ancestor targeting**. So:
 
 Implementation: **accessible roots = self + descendants**. `getAccessibleRoots(root)` returns that set. No ancestors are included.
 
+## 3a. Non-goal: Less “child extends ancestor” declaration copying
+
+Less has a behavior where an extend inside a child scope (e.g. inside `@media`) that targets an ancestor selector does **not** merge selectors in the ancestor scope. Instead, it creates a ruleset in the child scope that **copies** the ancestor’s declarations.
+
+Jess does **not** implement this behavior (we do not support “inside → ancestor” targeting; see §3).
+
+Reference minimal example files:
+
+- `docs/extend-ancestor-minimal-example.less`
+- `docs/extend-ancestor-minimal-expected.css`
+
 ## 4. Boundaries: compose vs import
 
 **Compose** creates a **file boundary**:

@@ -6,13 +6,13 @@ Remind the user and yourself to update project state so the next session (or a n
 
 1. **`.cursor/PROJECT_STATE.md`** — Section 4 (Current debugging focus):
    - **Area** (if it changed): e.g. extend, mixins, parser.
-   - **Relevant plan file** (if any): e.g. EXTEND_DEBUG_PLAN.md for extend.
+   - **Relevant plan file** (if any): keep this minimal; prefer Cursor-native rules + canonical package docs.
    - **Last passing baseline** (if known).
    - **Last thing we tried:** hypothesis, change, result (pass/fail or error).
    - **Next step:** concrete next action so the next session can continue.
 
 2. **Area-specific plan file** (if one exists and you changed status or priorities):
-   - For extend: `.cursor/EXTEND_DEBUG_PLAN.md` — failing tests table, order of attack.
+   - For extend, prefer updating PROJECT_STATE §4 plus keeping the canonical pointers current:\n+     - `.cursor/rules/subtrees/core__extend.mdc`\n+     - `packages/core/src/tree/util/EXTEND_RULES.md`\n+     - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
    - For other areas: create or update a plan file in `.cursor/` if the project starts tracking that area the same way.
 
 3. **`.cursor/changes.md`** (if there was a significant fix or discovery):

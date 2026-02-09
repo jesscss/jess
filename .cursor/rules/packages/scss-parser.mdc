@@ -1,0 +1,13 @@
+---
+description: "Package: @jesscss/scss-parser (SCSS parser; sass-spec integration)"
+globs:
+  - "packages/scss-parser/**"
+---
+
+# `@jesscss/scss-parser`
+
+- **Role**: SCSS parsing (private workspace package).
+- **Build**: `cd packages/scss-parser && pnpm build`
+- **Tests**: `cd packages/scss-parser && pnpm test`
+- **Extra**: has sass-spec cache materialization scripts in-package.
+

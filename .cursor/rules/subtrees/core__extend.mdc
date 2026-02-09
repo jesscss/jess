@@ -1,0 +1,35 @@
+---
+description: "Extend hotspot: selector matching/merging logic and its tests"
+globs:
+  - "packages/core/src/tree/util/extend*.ts"
+  - "packages/core/src/tree/util/**/extend-*.test.ts"
+  - "packages/core/src/tree/__tests__/extend-*.test.ts"
+  - "packages/core/src/tree/util/EXTEND_RULES.md"
+  - "packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md"
+---
+
+# Extend hotspot
+
+## Files
+
+- Implementation: `packages/core/src/tree/util/extend.ts`
+- Related helpers: `packages/core/src/tree/util/extend-helpers.ts`
+- Canonical docs (keep these small and current):
+  - `packages/core/src/tree/util/EXTEND_RULES.md`
+  - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
+- Tests:
+  - `packages/core/src/tree/util/__tests__/extend-*.test.ts`
+  - `packages/core/src/tree/__tests__/extend-*.test.ts`
+
+## Debugging expectations
+
+- Narrow to one failing case with `.only`.
+- Trace with `syncLog()` using **primitive** values only.
+
+## Useful commands
+
+- Core extend baseline:
+  - `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend`
+- If validating via jess Less fixtures after changing core:
+  - `pnpm --filter @jesscss/core build` then `pnpm run test:less:test-data`
+

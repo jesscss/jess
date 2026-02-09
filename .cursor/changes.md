@@ -4,6 +4,13 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Feb-09 (doc hygiene pass)
+
+### Canonicalize + archive dev docs
+- `packages/jess-plugin-less-compat/`: kept `README.md`, added `DESIGN.md`, and moved historical analysis/plan markdowns into `packages/jess-plugin-less-compat/_archive/` (dated snapshots).
+- `/docs` (non-Docusaurus): archived obviously-stale notes (`container.md`, `nesting.md`, `theme.md`) into `docs/_archive/` (dated snapshots). Kept extend-related architecture docs in place.
+- `packages/fns/src/sass/`: added `SASS_DOCS.md` as a lightweight index to the existing Sass-porting docs.
+
 ## 2026-Feb-01 (implicit ampersand serialization + nested extend skip)
 
 ### Implicit ampersands must stay invisible

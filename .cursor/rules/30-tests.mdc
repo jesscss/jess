@@ -1,0 +1,23 @@
+---
+description: "Tests & scripts: vitest-first, isolate failures, monorepo execution rules"
+alwaysApply: true
+---
+
+# Tests & scripts (Jess monorepo)
+
+## Test runner
+
+- Prefer **Vitest** workflows (`pnpm test`, package `pnpm test`, or `pnpm --filter ... test`).
+- When debugging failures, isolate to **one** suite/case using `describe.only()` / `it.only()`. Remove `.only` afterward.
+
+## Debug output in tests
+
+- Use `syncLog()` for debugging output.
+- Do not use `console.log()` (often suppressed in Vitest output).
+- Log primitives only; avoid `JSON.stringify` and node stringification (see `20-quality-bar.mdc`).
+
+## Monorepo script execution (critical)
+
+- Run scripts from the **package directory** or via `pnpm --filter <pkg>`.
+- If tests in package **B** depend on package **A** changes, **build A first** so B sees updated `lib/` outputs.
+

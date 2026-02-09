@@ -1,9 +1,12 @@
 ---
-description: "Rules for running scripts in monorepo packages"
-alwaysApply: true
+description: "Legacy rules for running scripts (scoped to .cursor maintenance); see 30-tests.mdc"
+globs:
+  - ".cursor/**"
 ---
 
 # Package Script Execution Rules
+
+> Legacy note: this file previously applied repo-wide. It is now scoped to `.cursor/**` to avoid duplicating `.cursor/rules/30-tests.mdc`.
 
 ## Running Scripts in Monorepo Packages
 

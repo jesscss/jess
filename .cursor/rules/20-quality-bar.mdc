@@ -1,0 +1,26 @@
+---
+description: "Quality bar: AST invariants, type safety, safe instrumentation"
+alwaysApply: true
+---
+
+# Quality bar (Jess)
+
+## AST structure invariants (must never be violated)
+
+- **No self-parenting**: `node.parent === node` is forbidden.
+- **No circular parent chains**: traversing `node.parent` must never loop back to the node.
+- **No node in its own children**: e.g. a Rules node cannot contain itself.
+- Fix violations **at the source** (creation/manipulation), not by filtering during traversal.
+
+## Type safety / node safety
+
+- Do not use `as any` to work around types.
+- Do not attach ad-hoc properties to nodes (e.g. `(node as any).foo = ...`).
+- If data must flow between phases, use established registries/context patterns; prefer `WeakMap`s keyed by node where appropriate.
+
+## Instrumentation safety (tests/debugging)
+
+- Do **not** `JSON.stringify(...)` AST/parser objects (circular refs).
+- Do **not** stringify nodes via `.toString()` / `.toTrimmedString()` for debugging (can affect frame state).
+- Log **primitive values only** when tracing.
+

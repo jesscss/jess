@@ -1,0 +1,27 @@
+---
+description: "Parsing stack (css/less/scss/jess): tokens → productions → CST/AST; Chevrotain-based"
+globs:
+  - "packages/css-parser/**"
+  - "packages/less-parser/**"
+  - "packages/scss-parser/**"
+  - "packages/parser/**"
+---
+
+# Parsers
+
+## Packages
+
+- `packages/css-parser`: base CSS parsing
+- `packages/less-parser`: LESS parsing
+- `packages/scss-parser`: SCSS parsing (includes sass-spec cache scripts)
+- `packages/parser`: Jess CST parser/orchestrator
+
+## Typical hotspots
+
+- `src/*Tokens*`, `src/*Parser*`, `src/productions.ts`
+- Tests under `test/**/*.test.ts` (package-dependent)
+
+## Debugging guardrails
+
+- Treat Chevrotain parser objects as potentially circular; avoid `JSON.stringify` on parser/AST objects.
+

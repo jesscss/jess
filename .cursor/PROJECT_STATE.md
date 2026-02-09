@@ -78,12 +78,12 @@ Use these for `/run-baseline` and `/start-debugging`; add rows as you add new ar
 Use this section for **any** debugging area (extend, mixins, parser, language-service, etc.). Update it so the next session knows where we are.
 
 - **Area:** (e.g. extend, mixins, parser, fns, language-service)
-- **Relevant plan file (if any):** (e.g. `.cursor/EXTEND_DEBUG_PLAN.md` for extend; add others as needed)
+- **Relevant plan file (if any):** Keep this minimal. Prefer Cursor-native pointers (e.g. `.cursor/rules/subtrees/core__extend.mdc`) and canonical package docs.
 - **Last passing baseline:** (What was green before we started? e.g. "All core extend tests passed except …" or "N/A")
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
-**Example (extend):** Area = extend. Plan = `.cursor/EXTEND_DEBUG_PLAN.md`. Core extend: 9 files, 4 failing tests (see that file). Next step: e.g. "Narrow to extend-eval-integration 'nested & extend all' with .only and trace."
+**Example (extend):** Area = extend. Pointers: `.cursor/rules/subtrees/core__extend.mdc`, `packages/core/src/tree/util/EXTEND_RULES.md`, `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`. Core extend: 9 files, 4 failing tests. Next step: e.g. "Narrow to extend-eval-integration 'nested & extend all' with .only and trace."
 
 **Extend – implicit ampersand / extend-exact (2025-02-07):**
 

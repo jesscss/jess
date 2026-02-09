@@ -5,7 +5,7 @@ You are starting a focused debugging session. Follow these steps. The **area** (
 ## 1. Load state (do not skip)
 
 - Read `.cursor/PROJECT_STATE.md` (package deps, build order, test commands, and **section 4 – current debugging focus**).
-- If section 4 or the user mentions a **relevant plan file** (e.g. `.cursor/EXTEND_DEBUG_PLAN.md` for extend), read that too so you know baseline and order of attack.
+- If section 4 or the user mentions a **relevant plan file**, read that too so you know baseline and order of attack.\n+\n+  For **extend**, prefer the canonical pointers:\n+  - `.cursor/rules/subtrees/core__extend.mdc`\n+  - `packages/core/src/tree/util/EXTEND_RULES.md`\n+  - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
 
 ## 2. Run the right baseline
 

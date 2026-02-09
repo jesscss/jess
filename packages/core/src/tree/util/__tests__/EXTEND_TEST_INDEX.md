@@ -2,7 +2,7 @@
 
 This doc exists to make **extend-related tests** easy to find (especially for LLM-assisted debugging).
 
-**Before changing extend logic:** See `../EXTEND_RULES.md` for the single set of rules; `../EXTEND_FUNCTION_AUDIT.md` for what each function does and where order/normalization live; `../EXTEND_REVIEW_AND_QUESTIONS.md` for open questions and cautious-change guidance. See also `../EXTEND_ARCHITECTURE_ANALYSIS.md` and `../EXTEND_REFACTORING_SUMMARY.md`.
+**Before changing extend logic:** See `../EXTEND_RULES.md` for the single set of rules and the header comments in `../extend.ts` for implementation context. Keep operational “what to run / where to look” guidance in Cursor-native files (e.g. `.cursor/rules/subtrees/core__extend.mdc`).\n+\n+Historical deep-dive audits and refactoring notes were archived/removed from this directory to reduce noise; use git history if you need them.
 
 ## “Where are the extend tests?”
 
