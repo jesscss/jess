@@ -20,6 +20,7 @@ import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-
 import { processLeadingIs } from './util/process-leading-is.js';
 import { syncLog } from './util/__tests__/debug-log.js';
 import { shouldTraceExtend, getExtendTraceRunId } from './util/extend-trace-debug.js';
+import { registerRulesetWithRoot } from './util/extend-roots.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -237,10 +238,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           if (sel.hoistToRoot) {
             node.hoistToRoot = true;
           }
-          // Register to extend root's registry for extend lookups
-          const extendRoot = context.extendRoots.getCurrentExtendRoot();
-          if (extendRoot) {
-            extendRoot.getRegistry('ruleset').add(node as Ruleset);
+  // Register to extend root's registry for extend lookups
+  const extendRoot = context.extendRoots.getCurrentExtendRoot();
+  if (extendRoot) {
+    extendRoot.getRegistry('ruleset').add(node as Ruleset);
+    // Keep a per-root registry list for visibility processing
+    registerRulesetWithRoot(extendRoot, node as Ruleset);
             if (Boolean(context.opts?.collapseNesting)) {
               const selVal = typeof (node as Ruleset).value?.selector?.valueOf === 'function' ? (node as Ruleset).value!.selector!.valueOf() : '';
               const isRelevant = selVal === '.ma' || selVal === '.md' || selVal === '';

@@ -107,6 +107,7 @@
  * only — never by exact AST or exact serialization. See EXTEND_RULES.md §0.
  */
 
+import type { Rules } from '../rules.js';
 import { type Selector } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
@@ -193,6 +194,39 @@ export class ExtendError extends Error {
 export interface ExtendResult {
   value: Selector;
   error?: ExtendError;
+}
+
+export interface ExtendInstruction {
+  target: Selector;
+  extendWith: Selector;
+  partial: boolean;
+  extendRoot?: Rules;
+}
+
+export function applyExtendsToSelector(
+  initialSelector: Selector,
+  extendsList: ExtendInstruction[]
+): Selector {
+  let selector = initialSelector;
+  const instructions = extendsList.slice();
+
+  let changed = true;
+
+  while (changed && instructions.length > 0) {
+    changed = false;
+    for (let i = 0; i < instructions.length; i += 1) {
+      const { target, extendWith, partial } = instructions[i];
+      const result = tryExtendSelector(selector, target, extendWith, partial);
+      if (result && !result.error && result.value !== selector) {
+        selector = result.value;
+        instructions.splice(i, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return selector;
 }
 
 /**
