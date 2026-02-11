@@ -123,6 +123,8 @@ import { findExtendableLocations, type ExtendLocation } from './extend-helpers.j
 import { normalizeSelectorForExtend } from './find-extendable-locations.js';
 import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { syncLog } from './__tests__/debug-log.js';
+import { selectorCompare } from './selector-compare.js';
+import { selectorCompare, type SelectorComparisonResult } from './selector-compare.js';
 
 const { isArray } = Array;
 let extendOrderMap: WeakMap<Selector, number> | null = null;
@@ -900,9 +902,9 @@ function detectAndHandleBoundaryCrossing(
       continue;
     }
 
-    // Check if firstPart matches inside the :is()
-    const firstPartSearch = findExtendableLocations(arg, firstPart);
-    if (!firstPartSearch.hasMatches) {
+    const firstPartComparison = selectorCompare(arg, firstPart);
+    const firstPartMatches = firstPartComparison.hasWholeMatch || firstPartComparison.hasPartialMatch;
+    if (!firstPartMatches) {
       continue;
     }
 
@@ -916,20 +918,9 @@ function detectAndHandleBoundaryCrossing(
       : CompoundSelector.create(afterIs);
 
     let restMatches = false;
-    // Handle compound selector after :is()
-    if (isNode(afterIsCompound, 'CompoundSelector')) {
-      const restSearch = findExtendableLocations(afterIsCompound, restCompound);
-      if (restSearch.hasMatches) {
-        restMatches = true;
-      }
-    } else if (afterIs.length === 1) {
-      // Single component after :is()
-      const afterIsComponent = afterIs[0]!;
-      const restSearch = findExtendableLocations(afterIsComponent, restCompound);
-      if (restSearch.hasMatches) {
-        restMatches = true;
-      }
-    }
+    const targetAfter = isNode(afterIsCompound, 'CompoundSelector') ? afterIsCompound : afterIs[0]!;
+    const restComparison = selectorCompare(targetAfter, restCompound);
+    restMatches = restComparison.hasWholeMatch || restComparison.hasPartialMatch;
 
     if (restMatches) {
       // We have a boundary-crossing match. Check if we've consumed the ENTIRE target selector.
@@ -1083,6 +1074,8 @@ export function extendSelector(
     }
   }
 
+  const comparison = selectorCompare(target, find, searchResult);
+
   if (!searchResult.hasMatches) {
     // #region agent log
     // Debug: see if :is()-normalization would have found a match (extend-exact focus)
@@ -1130,10 +1123,12 @@ export function extendSelector(
   if (!skipAmpersandCheck) {
     const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(originalTarget, originalFind);
     if (ampersandCrossingInfo.crossed) {
-      throw new ExtendError(
-        'NOT_FOUND',
-        'Match found only within ampersand; parent selector should carry the extend',
-        { target: originalTarget, find: originalFind, extendWith }
+      return handleAmpersandBoundaryCrossing(
+        originalTarget,
+        originalFind,
+        extendWith,
+        ampersandCrossingInfo.ampersandNode!,
+        searchResult
       );
     }
   }
@@ -1144,7 +1139,7 @@ export function extendSelector(
   }
 
   // Select the best location from search results
-  const location = selectBestLocation(searchResult, target, find, partial, hasMoreAfterIs, extendWith);
+  const location = selectBestLocation(searchResult, comparison, target, find, partial, hasMoreAfterIs, extendWith);
   // #region agent log
   try {
     if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
@@ -1773,8 +1768,15 @@ function extendSelectorList(
   const newSelectors: Selector[] = [];
 
   for (const selector of target.value) {
-    const selectorSearchResult = findExtendableLocations(selector, find);
-    if (selectorSearchResult.hasMatches) {
+    const comparison = selectorCompare(selector, find);
+    if (!comparison.locations.length) {
+      orderedSelectors.push(selector);
+      continue;
+    }
+    if (!comparison.hasWholeMatch && !comparison.hasPartialMatch) {
+      orderedSelectors.push(selector);
+      continue;
+    }
       const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck, false);
 
       if (extended === selector) {
@@ -1851,9 +1853,6 @@ function extendSelectorList(
           orderedSelectors.push(extended.clone(true));
         }
       }
-    } else {
-      orderedSelectors.push(selector);
-    }
   }
 
   const allSelectors = [...orderedSelectors, ...newSelectors];
@@ -1959,13 +1958,14 @@ function extendSelectorList(
  * @returns The selected location
  */
 function selectBestLocation(
-  searchResult: any,
+  searchResult: ExtendSearchResult,
+  comparison: SelectorComparisonResult,
   target: Selector,
   find: Selector,
   partial: boolean,
   hasMoreAfterIs: boolean,
   extendWith: Selector
-): any {
+): ExtendLocation {
   // For partial extends, prefer actual matches over "append to :is() list" extension points
   // The "append to list" locations have paths ending in 'arg', while actual matches have
   // more specific paths like [index, 'arg', altIndex]
@@ -1978,7 +1978,15 @@ function selectBestLocation(
   // - a real `.c` match inside the child :is() arg (replace/wrap)
   // - an "append" location for the parent :is() arg
   // In full mode we should extend the `.c` occurrence, not mutate the parent list.
-  const locations: any[] = Array.isArray(searchResult.locations) ? searchResult.locations : [];
+  const originalLocations: ExtendLocation[] = Array.isArray(searchResult.locations)
+    ? searchResult.locations
+    : [];
+  const locations: ExtendLocation[] = originalLocations.length > 0
+    ? originalLocations
+    : comparison.locations;
+  if (locations.length > 0) {
+    searchResult.locations = locations;
+  }
   const findV = find.valueOf();
 
   // In partial mode, prefer wrapping a specific list item over appending to the :is() list.
@@ -2584,8 +2592,8 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
         const resolved = amp.getResolvedSelector();
         if (resolved && !isNode(resolved, 'Nil')) {
           const resolvedSelector = replaceAmpersandWithItsValue(selector, amp);
-          const resolvedSearchResult = findExtendableLocations(resolvedSelector, target);
-          if (resolvedSearchResult.hasMatches) {
+          const resolvedComparison = selectorCompare(resolvedSelector, target);
+          if (resolvedComparison.locations.length > 0) {
             if (process.env.DEBUG_AMPERSAND_CROSSING === '1') {
               const selVal = typeof selector.valueOf === 'function' ? String(selector.valueOf()).slice(0, 80) : '';
               const findVal = typeof target.valueOf === 'function' ? String(target.valueOf()).slice(0, 40) : '';
@@ -2610,16 +2618,14 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
 
     // Create resolved version by replacing ampersand with its resolved selector
     const resolvedSelector = replaceAmpersandWithItsValue(selector, ampersand);
-
-    // Check if target matches the resolved version
-    const resolvedSearchResult = findExtendableLocations(resolvedSelector, target);
+    const resolvedComparison = selectorCompare(resolvedSelector, target);
 
     // When the selector is entirely "implicit & + rest" (e.g. "& .b, & .a"), any match in the
     // resolved form is "only within ampersand": the parent should carry the extend. We must not
     // rely on replaceAmpersandWithEmpty + nonAmpersandSearchResult because removing & leaves
     // ".b", ".a" which still matches find .a, so we would incorrectly allow the extend and
     // then serialize the ampersand's resolved value (e.g. :is(.c, .a, .effected) .b).
-    if (resolvedSearchResult.hasMatches && selectorIsEntirelyImplicitAmpersandLeading(selector)) {
+    if (resolvedComparison.locations.length > 0 && selectorIsEntirelyImplicitAmpersandLeading(selector)) {
       return {
         crossed: true,
         ampersandNode: ampersand
@@ -2628,9 +2634,9 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
 
     // Also check if target matches the selector without this ampersand
     const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, ampersand);
-    const nonAmpersandSearchResult = findExtendableLocations(selectorWithoutAmpersand, target);
+    const nonAmpersandComparison = selectorCompare(selectorWithoutAmpersand, target);
 
-    if (resolvedSearchResult.hasMatches && !nonAmpersandSearchResult.hasMatches) {
+    if (resolvedComparison.locations.length > 0 && nonAmpersandComparison.locations.length === 0) {
       // Target only matches when ampersand is resolved = boundary crossing
       return {
         crossed: true,

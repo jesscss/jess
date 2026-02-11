@@ -76,7 +76,7 @@ export * from './rest.js';
 export * from './url.js';
 
 // Patch Selector.compare after all exports to avoid circular dependency
-import { matchSelectors } from './util/find-extendable-locations.js';
+import { selectorCompare } from './util/compare.js';
 
 /** Patch Selector to avoid circularity */
 Selector.prototype.compare = function(other: Node) {
@@ -84,17 +84,16 @@ Selector.prototype.compare = function(other: Node) {
   // if the same file is loaded via different specifiers.
   if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
     const otherSelector = other as unknown as Selector;
-    let result = matchSelectors(this, otherSelector);
-    if (result.hasMatch) {
+    const forward = selectorCompare(this, otherSelector);
+    if (forward.isEquivalent) {
       return 0;
-    } else if (result.hasPartialMatch) {
+    }
+    if (forward.hasPartialMatch) {
       return -1;
-    } else {
-      /** Try for a reverse match to see if this is a partial of other */
-      result = matchSelectors(otherSelector, this);
-      if (result.hasPartialMatch) {
-        return 1;
-      }
+    }
+    const backward = selectorCompare(otherSelector, this);
+    if (backward.hasPartialMatch) {
+      return 1;
     }
   }
   return compare(this.valueOf(), other?.valueOf?.());

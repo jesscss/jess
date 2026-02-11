@@ -96,3 +96,5 @@ export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {
   }
   return output;
 }
+
+export { selectorCompare } from './selector-compare.js';

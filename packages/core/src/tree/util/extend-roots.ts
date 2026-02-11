@@ -59,6 +59,9 @@ export function processExtends(context: Context): void {
       const newSelector = applyExtendsToSelector(selector, visibleExtends);
       if (newSelector !== selector) {
         ruleset.value.selector = newSelector;
+        if (newSelector.hoistToRoot) {
+          ruleset.hoistToRoot = true;
+        }
       }
     }
   }

@@ -178,4 +178,17 @@ describe('Extend Ampersand Handling Tests', () => {
       expect(output).toBe('&&:is(.suffix, .extended)');
     });
   });
+
+  it('does not insert a second implicit ampersand when a visible ampersand already exists', () => {
+    const parentSelector = el('.parent');
+    const selector = compound([amp({ selector: parentSelector }), el('.keep')]);
+    const target = el('.keep');
+    const extendWith = el('.extra');
+
+    const result = extendSelector(selector, target, extendWith, true);
+    const output = result.toTrimmedString();
+
+    expect(output).toContain('&');
+    expect(output).not.toContain('&&');
+  });
 });
