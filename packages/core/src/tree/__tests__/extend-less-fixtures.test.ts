@@ -351,20 +351,19 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
       }),
       ruleset({
         selector: el('.button'),
-        rules: rules([
-          decl({ name: 'color', value: any('black') }),
-          ruleset({
-            selector: compound([el('.button'), pseudo({ name: ':hover' })]),
-            rules: rules([decl({ name: 'color', value: any('inherit') })])
-          })
-        ])
+        rules: rules([decl({ name: 'color', value: any('black') })])
+      }),
+      ruleset({
+        selector: compound([el('.button'), pseudo({ name: ':hover' })]),
+        rules: rules([decl({ name: 'color', value: any('inherit') })])
       }),
       ruleset({
         selector: el('.submit'),
-        rules: rules([
-          extend({ target: el('.button') }),
-          extend({ target: compound([el('.button'), pseudo({ name: ':hover' })]) })
-        ])
+        rules: rules([extend({ target: el('.button') })])
+      }),
+      ruleset({
+        selector: compound([el('.submit'), pseudo({ name: ':hover' })]),
+        rules: rules([extend({ target: compound([el('.button'), pseudo({ name: ':hover' })]) })])
       }),
       ruleset({
         selector: el('.button2'),
@@ -382,7 +381,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     ]);
     const evald = await root.eval(context);
     const css = evald.toString({ context });
-    expect(css).toBeString(`
+    expect(css.trim()).toBeString(`
 .sidebar,
 .sidebar2,
 .type1 .sidebar3,
@@ -417,8 +416,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }
 .button2 :hover {
   notnested: black;
-}
-`);
+}`.trim());
   });
 
   /**
@@ -448,14 +446,14 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
-    expect(css).toBeString(`
+    expect(css.trim()).toBeString(`
 .attributes {
   [data="test3"],
   .attribute-test {
     extend: attributes2;
   }
 }
-`);
+`.trim());
   });
 
   /**

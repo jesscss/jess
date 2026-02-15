@@ -21,6 +21,7 @@ import { processLeadingIs } from './util/process-leading-is.js';
 import { syncLog } from './util/__tests__/debug-log.js';
 import { shouldTraceExtend, getExtendTraceRunId } from './util/extend-trace-debug.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
+import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -138,24 +139,24 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   /** Ensure every node in the selector has F_VISIBLE so toString() does not skip them (rep_ace bug).
    * Do NOT add F_VISIBLE to implicit ampersands: they must stay invisible so nested output stays short. */
   private static ensureSelectorVisible(sel: Selector | Nil): void {
-    if (!sel || sel instanceof Nil || typeof (sel as Node).addFlag !== 'function') return;
+    if (!sel || sel instanceof Nil || typeof (sel as Node).addFlag !== 'function') {return;}
     const n = sel as Node;
     if (isNode(sel, 'Ampersand') && n.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return;
     }
-    if (!n.hasFlag(F_VISIBLE)) n.addFlag(F_VISIBLE);
+    if (!n.hasFlag(F_VISIBLE)) {n.addFlag(F_VISIBLE);}
     if (isNode(sel, 'SelectorList')) {
       const list = sel as SelectorList;
-      if (Array.isArray(list.value)) for (const item of list.value) Ruleset.ensureSelectorVisible(item);
+      if (Array.isArray(list.value)) {for (const item of list.value) Ruleset.ensureSelectorVisible(item);}
       return;
     }
     if (isNode(sel, 'ComplexSelector')) {
       const comps = (sel as ComplexSelector).value;
-      if (Array.isArray(comps)) for (const c of comps) Ruleset.ensureSelectorVisible(c as Selector);
+      if (Array.isArray(comps)) {for (const c of comps) Ruleset.ensureSelectorVisible(c as Selector);}
       return;
     }
     const v = (sel as Selector & { value?: Selector[] }).value;
-    if (Array.isArray(v)) for (const c of v) Ruleset.ensureSelectorVisible(c);
+    if (Array.isArray(v)) {for (const c of v) Ruleset.ensureSelectorVisible(c);}
   }
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
@@ -171,6 +172,29 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     const renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
     Ruleset.ensureSelectorVisible(renderSelector);
+    const rulesetId = ensureRulesetTraceId(this);
+    if (process.env.DEBUG_FIXTURE_2A) {
+    const sourceNode = this.sourceNode;
+    const sourceNodeId = sourceNode && isNode(sourceNode, 'Ruleset')
+      ? getOptionalRulesetTraceId(sourceNode as Ruleset)
+      : undefined;
+    syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'extend-trace',
+        hypothesisId: 'H-serialization',
+        location: 'ruleset.ts:getHeaderString',
+        message: 'header-string',
+        data: {
+          depth: options.depth,
+          selector: renderSelector.valueOf(),
+          withoutComments: Boolean(withoutComments),
+          rulesetId
+        ,
+        sourceNodeId
+        },
+        timestamp: Date.now()
+      });
+    }
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
     let selOut = w.capture(() => renderSelector.toString(options));
     /** Normalize single spacing */
@@ -225,6 +249,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         selector = getImplicitSelectorUtil(selector, parentRuleset as Ruleset, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
+      syncLog({
+        runId: 'pre',
+        hypothesisId: 'ruleset-registry',
+        location: 'ruleset.ts:preEval',
+        message: 'preEval-node-info',
+        data: {
+          rulesetId: ensureRulesetTraceId(node as Ruleset),
+          parentId: parentRuleset ? ensureRulesetTraceId(parentRuleset as Ruleset) : null,
+          isClone: node !== this,
+          selector: selector?.valueOf?.() ?? '',
+          collapseNesting: Boolean(context.opts?.collapseNesting)
+        },
+        timestamp: Date.now()
+      });
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
       return pipe(
@@ -238,12 +276,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           if (sel.hoistToRoot) {
             node.hoistToRoot = true;
           }
-  // Register to extend root's registry for extend lookups
-  const extendRoot = context.extendRoots.getCurrentExtendRoot();
-  if (extendRoot) {
-    extendRoot.getRegistry('ruleset').add(node as Ruleset);
-    // Keep a per-root registry list for visibility processing
-    registerRulesetWithRoot(extendRoot, node as Ruleset);
+          // Register to extend root's registry for extend lookups
+          const extendRoot = context.extendRoots.getCurrentExtendRoot();
+          if (extendRoot) {
+            extendRoot.getRegistry('ruleset').add(node as Ruleset);
+            // Keep a per-root registry list for visibility processing
+            registerRulesetWithRoot(extendRoot, node as Ruleset);
             if (Boolean(context.opts?.collapseNesting)) {
               const selVal = typeof (node as Ruleset).value?.selector?.valueOf === 'function' ? (node as Ruleset).value!.selector!.valueOf() : '';
               const isRelevant = selVal === '.ma' || selVal === '.md' || selVal === '';

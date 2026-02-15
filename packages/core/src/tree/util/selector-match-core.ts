@@ -380,10 +380,13 @@ export function expandComplexSelectorWithIs(complexSelector: ComplexSelector): S
   alternatives.forEach((alternative) => {
     const newComponents = [...complexSelector.value];
     if (isFromAmpersandSelector) {
-      const oldAmp = newComponents[isIndex] as Ampersand;
-      // Create a new implicit ampersand whose resolved selector is the alternative branch.
-      const nextAmp = new Ampersand({ appendValue: oldAmp.value.appendValue, selector: alternative }).inherit(oldAmp);
-      newComponents[isIndex] = nextAmp as any;
+      // Inline the resolved alternative directly so we do not reintroduce synthetic
+      // ampersand nodes while expanding match candidates.
+      if (isNode(alternative, 'ComplexSelector')) {
+        newComponents.splice(isIndex, 1, ...alternative.value);
+      } else {
+        newComponents[isIndex] = alternative as any;
+      }
     } else if (isFromBareIsCompound) {
       // The original `:is(...)` lived inside a CompoundSelector position. Replace that slot with the
       // alternative selector's components where possible.
@@ -581,6 +584,24 @@ export interface ExtendLocation {
    * Enables div + :is(.a.c.b > .y.x, .q) for target "div + .a.c.b > .y.x" and find ".a.b > .x".
    */
   complexMatchRange?: [number, number];
+  /** Semantic scope of the match */
+  matchScope?: MatchScope;
+}
+
+export type MatchScope = 'root' | 'selectorList' | 'isArgument';
+
+function inferMatchScope(path: Array<string | number>, matchedNode: Selector): MatchScope {
+  if (path.includes('arg')) return 'isArgument';
+  if (isNode(matchedNode, 'SelectorList')) return 'selectorList';
+  return 'root';
+}
+
+function withMatchScope(location: ExtendLocation): ExtendLocation {
+  if (location.matchScope) {
+    return location;
+  }
+  location.matchScope = inferMatchScope(location.path, location.matchedNode);
+  return location;
 }
 
 /**
@@ -649,11 +670,11 @@ export function findExtendableLocations(
     }
 
     // Cache the exact match result
-    const exactLocation: ExtendLocation = {
+    const exactLocation: ExtendLocation = withMatchScope({
       path: [],
       matchedNode: target,
       extensionType: 'replace'
-    };
+    });
     EXACT_MATCH_CACHE.set(target, [exactLocation]);
     const result = { locations: [exactLocation], hasMatches: true, hasWholeMatch: true, metrics };
     targetCache.set(find, result);
@@ -806,11 +827,11 @@ function tryFastPathExtendMatch(
 
   // Fast path 1: Exact match (most common case)
   if (target.valueOf() === find.valueOf()) {
-    return [{
+    return [withMatchScope({
       path: [...basePath],
       matchedNode: target,
       extensionType: determineExtensionType(target, basePath)
-    }];
+    })];
   }
 
   // Fast path 2: Simple selector to simple selector (.foo === .foo)
@@ -822,21 +843,21 @@ function tryFastPathExtendMatch(
       && find.value.arg && isSelector(find.value.arg)) {
       // Same pseudo-selector name with selector args - check if args are equivalent
       if (areSelectorArgumentsEquivalent(target.value.arg as Selector, find.value.arg as Selector)) {
-        return [{
+        return [withMatchScope({
           path: [...basePath],
           matchedNode: target,
           extensionType: determineExtensionType(target, basePath)
-        }];
+        })];
       }
       return [];
     }
 
     if (target.valueOf() === find.valueOf()) {
-      return [{
+      return [withMatchScope({
         path: [...basePath],
         matchedNode: target,
         extensionType: determineExtensionType(target, basePath)
-      }];
+      })];
     }
     return [];
   }
@@ -861,13 +882,13 @@ function tryFastPathExtendMatch(
             ? [remainderComponents[0]!]
             : [new CompoundSelector(remainderComponents).inherit(target)];
 
-        locations.push({
+        locations.push(withMatchScope({
           path: [...basePath, i],
           matchedNode: target,
           extensionType: determineExtensionType(target, basePath),
           isPartialMatch: remainders.length > 0,
           remainders
-        });
+        }));
       }
     }
 
@@ -928,11 +949,11 @@ function tryFastPathExtendMatch(
         });
       }
       if (eq) {
-        return [{
+        return [withMatchScope({
           path: [...basePath],
           matchedNode: target,
           extensionType: determineExtensionType(target, basePath)
-        }];
+        })];
       }
     }
 
@@ -1084,7 +1105,7 @@ function tryPartialComplexMatch(
       if (remainders.length > 0) {
         loc.complexMatchRange = [startPos, startPos + findComponents.length];
       }
-      return [loc];
+      return [withMatchScope(loc)];
     }
   }
 
@@ -1101,11 +1122,11 @@ function trySmallCompoundExtendMatch(
 ): ExtendLocation[] | null {
   // Check for exact equivalence (order-independent)
   if (areCompoundSelectorsEquivalent(target, find)) {
-    return [{
+    return [withMatchScope({
       path: [...basePath],
       matchedNode: target,
       extensionType: determineExtensionType(target, basePath)
-    }];
+    })];
   }
 
   // Check for subset matching (find is subset of target)
@@ -1193,7 +1214,7 @@ function trySmallCompoundExtendMatch(
           loc.extensionType = 'wrap';
         }
       }
-      return [loc];
+      return [withMatchScope(loc)];
     }
   }
 
@@ -1215,11 +1236,11 @@ function searchWithinSelector(
 ): void {
   // OPTIMIZATION 1: Check for exact match
   if (current.valueOf() === target.valueOf()) {
-    locations.push({
+    locations.push(withMatchScope({
       path: [...currentPath],
       matchedNode: current,
       extensionType: determineExtensionType(current, currentPath)
-    });
+    }));
   }
 
   // OPTIMIZATION 2: Enhanced recursive search with specialized handlers for each selector type
@@ -1264,11 +1285,11 @@ function searchWithinCompoundSelector(
     // Look for matching pseudo-selectors within the compound
     compound.value.forEach((component, index) => {
       if (isNode(component, 'PseudoSelector') && arePseudoSelectorsEquivalent(component, target)) {
-        locations.push({
+        locations.push(withMatchScope({
           path: [...currentPath, index],
           matchedNode: component,
           extensionType: 'replace'
-        });
+        }));
       }
     });
   }
@@ -1294,13 +1315,13 @@ function searchWithinCompoundSelector(
             ? [remainderComponents[0]!]
             : [new CompoundSelector(remainderComponents).inherit(compound)];
 
-        locations.push({
+        locations.push(withMatchScope({
           path: [...currentPath, i],
           matchedNode: compound.value[i]!,
           extensionType: 'replace',
           isPartialMatch: remainders.length > 0,
           remainders
-        });
+        }));
       }
     }
   }
@@ -1331,13 +1352,13 @@ function searchWithinCompoundSelector(
           ? [remainderComponents[0]!]
           : [new CompoundSelector(remainderComponents).inherit(compound)];
 
-      locations.push({
+      locations.push(withMatchScope({
         path: [...currentPath],
         matchedNode: target,
         extensionType: 'replace',
         isPartialMatch: remainders.length > 0,
         remainders
-      });
+      }));
     }
   }
 }
@@ -1372,11 +1393,11 @@ function searchWithinComplexSelector(
       });
     }
     if (eq) {
-      locations.push({
+      locations.push(withMatchScope({
         path: [...currentPath],
         matchedNode: complex,
         extensionType: determineExtensionType(complex, currentPath)
-      });
+      }));
     }
   }
 
@@ -1515,13 +1536,13 @@ function tryComplexSelectorPatternMatch(
         }
       }
 
-      locations.push({
+      locations.push(withMatchScope({
         path: [...currentPath],
         matchedNode: target,
         extensionType: determineExtensionType(complex, currentPath),
         isPartialMatch: remainders.length > 0,
         remainders: remainders.length > 0 ? remainders : undefined
-      });
+      }));
 
       // Only find the first match to avoid duplicates
       return;
@@ -1740,7 +1761,7 @@ function tryBacktrackingComplexMatch(
                       isPartialMatch: true,
                       remainders: [] // Calculate proper remainders if needed
                     };
-                    return [location];
+                    return [withMatchScope(location)];
                   }
                 }
               }
@@ -1779,11 +1800,11 @@ function searchWithinPseudoSelector(
         const itemPath = [...currentPath, 'arg', altIndex];
         // Direct structural match: use determineExtensionType so we get 'wrap' when inside a compound (not just 'append')
         if (isStructurallyEqual(alternative, target)) {
-          locations.push({
+          locations.push(withMatchScope({
             path: itemPath,
             matchedNode: alternative,
             extensionType: determineExtensionType(alternative, itemPath)
-          });
+          }));
         }
 
         // Recursive search within each alternative
@@ -1815,22 +1836,22 @@ function searchWithinPseudoSelector(
           });
         }
         // #endregion
-        locations.push({
+        locations.push(withMatchScope({
           path: [...currentPath, 'arg'],
           matchedNode: argSelector,
           extensionType: 'append', // Append new alternative to :is() list
           isPartialMatch: false
-        });
+        }));
       }
     } else {
       // Single argument in :is() - check for direct match
       if (isStructurallyEqual(argSelector, target)) {
-        locations.push({
+        locations.push(withMatchScope({
           path: [...currentPath, 'arg'],
           matchedNode: argSelector,
           extensionType: 'append', // Will convert single arg to SelectorList and append
           isPartialMatch: false
-        });
+        }));
         // Don't do recursive search since we found the direct match
         return;
       }

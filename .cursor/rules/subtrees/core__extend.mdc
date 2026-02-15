@@ -25,11 +25,23 @@ globs:
 
 - Narrow to one failing case with `.only`.
 - Trace with `syncLog()` using **primitive** values only.
+- After any isolated fix (single test / `.only`), immediately rerun the full extend matrix before claiming progress.
+- Record the failure delta for every run in `.cursor/EXTEND_SUCCESS_STATE.md` (before/after counts + changed files + hypothesis).
+- If total extend failures increase, treat as regression: revert unproven changes first, then continue with new hypotheses.
+- Do not invent new extend semantics/features that are not in `EXTEND_RULES.md` or fixture docs.
+- Before proposing any behavior-changing hypothesis, map it to documented extend semantics; if it is not documented, stop and ask for human clarification.
+- If a failing test appears to require undocumented behavior, present input/expected/current and request user guidance before code changes.
 
 ## Useful commands
 
 - Core extend baseline:
   - `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend`
+- Suggested strict workflow:
+  1) Run one focused failing case with `.only` or `-t`.
+  2) Apply smallest fix.
+  3) Rerun focused case.
+  4) Rerun full extend baseline.
+  5) Update `.cursor/EXTEND_SUCCESS_STATE.md` with pass/fail delta.
 - If validating via jess Less fixtures after changing core:
   - `pnpm --filter @jesscss/core build` then `pnpm run test:less:test-data`
 

@@ -152,6 +152,28 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       let s = frameHeaders[i];
       let f = inFrames[i]!;
       lastRenderedFrames.push(f);
+      // #region agent log
+      try {
+        if (isNode(f, 'Ruleset')) {
+          const rulesetSelector = (f as Ruleset).value?.selector?.valueOf?.() ?? '';
+          if (rulesetSelector.includes('.replace') || rulesetSelector.includes('rep_ace')) {
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID ?? 'run',
+              hypothesisId: 'H-SERIALIZE-FRAME-HEADERS',
+              location: 'serialize-helper.ts:serializeRulesContainer',
+              message: 'frame-header-before-emit',
+              data: {
+                depth: i,
+                rulesetSelector,
+                headerCached: s !== undefined,
+                cachedHeader: s ?? null
+              },
+              timestamp: Date.now()
+            });
+          }
+        }
+      } catch {}
+      // #endregion
       if (s === undefined) {
         s = inFrames[i]!.getHeaderString({ ...options, depth: i });
         frameHeaders[i] = s;
@@ -159,6 +181,27 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         s = inFrames[i]!.getHeaderString({ ...options, depth: i }, true);
         frameHeaders[i] = s;
       }
+      // #region agent log
+      try {
+        if (isNode(f, 'Ruleset')) {
+          const rulesetSelector = (f as Ruleset).value?.selector?.valueOf?.() ?? '';
+          if (rulesetSelector.includes('.replace') || rulesetSelector.includes('rep_ace')) {
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID ?? 'run',
+              hypothesisId: 'H-SERIALIZE-FRAME-HEADERS',
+              location: 'serialize-helper.ts:serializeRulesContainer',
+              message: 'frame-header-after-emit',
+              data: {
+                depth: i,
+                rulesetSelector,
+                emittedHeader: s ?? null
+              },
+              timestamp: Date.now()
+            });
+          }
+        }
+      } catch {}
+      // #endregion
       options.depth = i;
       w.add(s!);
     }

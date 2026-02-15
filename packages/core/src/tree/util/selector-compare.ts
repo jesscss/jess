@@ -1,4 +1,5 @@
 export {
   selectorCompare,
-  type SelectorComparisonResult
+  type SelectorComparisonResult,
+  type MatchScope
 } from './selector-match-core.js';

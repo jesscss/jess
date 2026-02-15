@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -146,7 +146,29 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
   getResolvedSelector(): Selector | Nil | undefined {
-    return this._selectorContainer?.selector;
+    const selector = this._selectorContainer?.selector;
+    if (selector && isNode(selector, 'SelectorList') && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
+      wrapped.generated = true;
+      if (process.env.DEBUG_FIXTURE_2A === '1') {
+        // #region agent log
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
+          hypothesisId: 'H-implicit-amp',
+          location: 'ampersand.ts:getResolvedSelector',
+          message: 'wrap-selectorlist-for-implicit-amp',
+          data: {
+            selector: selector.valueOf(),
+            wrapped: wrapped.valueOf()
+          },
+          timestamp: Date.now()
+        });
+        // #endregion
+      }
+      return wrapped;
+    }
+    return selector;
   }
 
   override valueOf() {
@@ -218,8 +240,31 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
 
       let result: Selector | Nil;
+      const isImplicitAmp = this.hasFlag(F_IMPLICIT_AMPERSAND);
       const shouldWrapSelectorList = isNode(selector, 'SelectorList') && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
       const shouldWrapComplexSelector = isNode(selector, 'ComplexSelector');
+      if (process.env.DEBUG_FIXTURE_2A === '1' && isNode(selector, 'SelectorList')) {
+        // #region agent log
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
+          hypothesisId: 'H-implicit-amp',
+          location: 'ampersand.ts:evalNode',
+          message: 'implicit-amp-selectorlist-wrap-decision',
+          data: {
+            selector: selector.valueOf(),
+            isImplicitAmp,
+            hasImplicitFlag: this.hasFlag(F_IMPLICIT_AMPERSAND),
+            collapseNesting: Boolean(context.opts.collapseNesting),
+            hoistToRoot: Boolean(this.hoistToRoot),
+            hasAppendValue: appendValue !== undefined,
+            shouldWrapSelectorList,
+            shouldWrapComplexSelector
+          },
+          timestamp: Date.now()
+        });
+        // #endregion
+      }
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
         result = PseudoSelector.create({ name: ':is', arg: selector });

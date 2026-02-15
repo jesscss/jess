@@ -139,6 +139,38 @@ export function getImplicitSelector(
   const parentSource: ParentSource | undefined = isNode(parent, 'Ruleset')
     ? (parent as Ruleset)
     : snapshotParentSource(parent as Selector, collapseNesting);
+  // #region agent log
+  try {
+    if (!collapseNesting && isNode(selector, 'SelectorList')) {
+      const parentSelectorValue = parentSource?.value?.selector as Selector | Nil | undefined;
+      if (parentSelectorValue && isNode(parentSelectorValue, 'SelectorList')) {
+        const currentItemwise = selector.value
+          .map(sel => addImplicitAmpersand(sel.copy(true), collapseNesting, parentSource).valueOf())
+          .join(',');
+        const altWhole = addImplicitAmpersand(selector.copy(true) as Selector, collapseNesting, parentSource).valueOf();
+        const altIsWrapped = addImplicitAmpersand(
+          PseudoSelector.create({ name: ':is', arg: selector.copy(true) }),
+          collapseNesting,
+          parentSource
+        ).valueOf();
+        syncLog({
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H-DISTRIBUTION-ORIGIN',
+          location: 'selector-utils.ts:getImplicitSelector',
+          message: 'selector-list-implicit-strategy-compare',
+          data: {
+            parentSelector: parentSelectorValue.valueOf(),
+            childSelector: selector.valueOf(),
+            currentItemwise,
+            altWhole,
+            altIsWrapped
+          },
+          timestamp: Date.now()
+        });
+      }
+    }
+  } catch {}
+  // #endregion
   if (isNode(selector, 'SelectorList')) {
     let mutated = false;
     const value = selector.value;

@@ -6,6 +6,7 @@ import {
   el,
   sellist,
   extend,
+  ExtendFlag,
   style,
   quoted,
   any,
@@ -62,6 +63,35 @@ describe('Extend Roots Registry', () => {
           background-color: blue;
         }
       `);
+    });
+
+    it('invalidates ruleset cache so valueOf reflects new selector after extend', async () => {
+      const targetRuleset = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([any('red')]) })
+        ])
+      });
+
+      const node = rules([
+        targetRuleset,
+        ruleset({
+          selector: sellist([sel([el('.ext')])]),
+          rules: rules([
+            extend({
+              target: el('.base'),
+              flag: ExtendFlag.Exact
+            })
+          ])
+        })
+      ]);
+
+      // Cache the initial selector string before extend runs
+      expect(targetRuleset.valueOf()).toBe('.base');
+
+      await node.eval(context);
+
+      expect(targetRuleset.valueOf()).toBe('.base,.ext');
     });
   });
 
