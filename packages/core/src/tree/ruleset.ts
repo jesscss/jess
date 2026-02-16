@@ -172,7 +172,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     const renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
     Ruleset.ensureSelectorVisible(renderSelector);
-    const rulesetId = ensureRulesetTraceId(this);
+    const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
     if (process.env.DEBUG_FIXTURE_2A) {
     const sourceNode = this.sourceNode;
     const sourceNodeId = sourceNode && isNode(sourceNode, 'Ruleset')

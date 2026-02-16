@@ -298,26 +298,51 @@ export function applyExtendsToSelector(
       } catch {}
       // #endregion
       const result = tryExtendSelector(selector, target, extendWith, partial);
-      if (result && !result.error && result.value !== selector) {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-          hypothesisId: 'H-extend-selector',
-          location: 'extend.ts:applyExtendsToSelector',
-          message: 'selector-updated-v2',
-          data: {
-            before: selector.valueOf(),
-            after: result.value.valueOf(),
-            target: target.valueOf(),
-            extendWith: extendWith.valueOf(),
-            partial
-          },
-          timestamp: Date.now()
-        });
-        selector = result.value;
-        instructions.splice(i, 1);
-        changed = true;
-        break;
+      if (result && !result.error) {
+        const beforeValue = selector.valueOf();
+        const afterValue = result.value.valueOf();
+        if (afterValue !== beforeValue) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'extend-trace',
+            hypothesisId: 'H-extend-selector',
+            location: 'extend.ts:applyExtendsToSelector',
+            message: 'selector-updated-v2',
+            data: {
+              before: selector.valueOf(),
+              after: result.value.valueOf(),
+              target: target.valueOf(),
+              extendWith: extendWith.valueOf(),
+              partial
+            },
+            timestamp: Date.now()
+          });
+          selector = result.value;
+          instructions.splice(i, 1);
+          changed = true;
+          break;
+        }
+        // #region agent log
+        try {
+          if (result.value !== selector) {
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H-REF-ONLY-CHANGE',
+              location: 'extend.ts:applyExtendsToSelector',
+              message: 'ref-only-selector-change-ignored',
+              data: {
+                instructionIndex: i,
+                partial,
+                target: target.valueOf(),
+                extendWith: extendWith.valueOf(),
+                before: beforeValue,
+                after: afterValue
+              },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+        // #endregion
       }
     }
   }
@@ -1421,6 +1446,9 @@ export function extendSelector(
         find: originalFind.valueOf(),
         crossed: ampersandCrossingInfo.crossed,
         hasAmpNode: Boolean(ampersandCrossingInfo.ampersandNode),
+        reason: ampersandCrossingInfo.reason ?? null,
+        resolvedMatches: ampersandCrossingInfo.resolvedMatches ?? null,
+        nonAmpMatches: ampersandCrossingInfo.nonAmpMatches ?? null,
         skipAmpersandCheck
       },
       timestamp: Date.now()
@@ -2628,6 +2656,31 @@ function extendSelectorList(
     }
   } catch {}
 
+  // #region agent log
+  try {
+    if (
+      !partial
+      && find.valueOf() === '.replace.replace .replace'
+      && target.valueOf().includes('.c.replace+.replace .replace')
+    ) {
+      syncLog({
+        runId: process.env.DEBUG_RUN_ID || 'run',
+        hypothesisId: 'H-FULL-LIST-SHAPE',
+        location: 'extend.ts:extendSelectorList',
+        message: 'full-mode-selector-list-shape-before-finalize',
+        data: {
+          target: target.valueOf(),
+          find: find.valueOf(),
+          extendWith: extendWith.valueOf(),
+          allSelectors: allSelectors.map(s => s.valueOf()),
+          finalSelectors: finalSelectors.map(s => s.valueOf())
+        },
+        timestamp: Date.now()
+      });
+    }
+  } catch {}
+  // #endregion
+
   return createExtendedSelectorList(finalSelectors, target);
 }
 
@@ -3467,6 +3520,9 @@ function selectorIsEntirelyImplicitAmpersandLeading(selector: Selector): boolean
 function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selector): {
   crossed: boolean;
   ampersandNode?: Ampersand;
+  reason?: 'selectorlist-implicit-leading' | 'resolved-only';
+  resolvedMatches?: number;
+  nonAmpMatches?: number;
 } {
   // When the selector is entirely "implicit & + rest" *and* it's a SelectorList with more than
   // one item (e.g. "& .b, & .a" or "& .a, & .c"), any match in the resolved form is "only within
@@ -3516,7 +3572,13 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
               const findVal = typeof target.valueOf === 'function' ? String(target.valueOf()).slice(0, 40) : '';
               syncLog({ trace: 'earlyReturn_crossed', find: findVal, selVal });
             }
-            return { crossed: true, ampersandNode: amp };
+            return {
+              crossed: true,
+              ampersandNode: amp,
+              reason: 'selectorlist-implicit-leading',
+              resolvedMatches: resolvedComparison.locations.length,
+              nonAmpMatches: nonAmpersandComparison.locations.length
+            };
           }
         }
       }
@@ -3566,7 +3628,10 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
       // #endregion
       return {
         crossed: true,
-        ampersandNode: ampersand
+        ampersandNode: ampersand,
+        reason: 'resolved-only',
+        resolvedMatches: resolvedComparison.locations.length,
+        nonAmpMatches: nonAmpersandComparison.locations.length
       };
     }
   }

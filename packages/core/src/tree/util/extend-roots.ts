@@ -195,6 +195,26 @@ export function processExtends(context: Context): void {
         ) {
           const ownResult = applyExtendsToSelector(ownSelector, visibleExtends);
           const fullResult = applyExtendsToSelector(selector, visibleExtends);
+          const fullHasAmpersand = (() => {
+            try {
+              for (const n of selector.nodes()) {
+                if (isNode(n, 'Ampersand')) {
+                  return true;
+                }
+              }
+            } catch {}
+            return false;
+          })();
+          const ownHasAmpersand = (() => {
+            try {
+              for (const n of ownSelector.nodes()) {
+                if (isNode(n, 'Ampersand')) {
+                  return true;
+                }
+              }
+            } catch {}
+            return false;
+          })();
           syncLog({
             runId: process.env.DEBUG_RUN_ID || 'run',
             hypothesisId: 'H-OWN-VS-FULL',
@@ -213,6 +233,8 @@ export function processExtends(context: Context): void {
               ownAfter: ownResult.valueOf(),
               fullChanged: fullResult.valueOf() !== selector.valueOf(),
               ownChanged: ownResult.valueOf() !== ownSelector.valueOf(),
+              fullHasAmpersand,
+              ownHasAmpersand,
               hasResolvedNestedSelector,
               hasPartialExtends: visibleExtends.some(instruction => instruction.partial)
             },
@@ -253,6 +275,29 @@ export function processExtends(context: Context): void {
       if (newSelector !== selector) {
         const beforeValue = selector.valueOf();
         const afterValue = newSelector.valueOf();
+        // #region agent log
+        try {
+          if (beforeValue.includes('.replace') || afterValue.includes('.replace') || afterValue.includes('rep_ace')) {
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H-HOIST-DECISION',
+              location: 'extend-roots.ts:processExtends',
+              message: 'pre-assignment-hoist-state',
+              data: {
+                rulesetId: ensureRulesetTraceId(ruleset),
+                before: beforeValue,
+                after: afterValue,
+                hasResolvedNestedSelector,
+                hasOnlyPartialExtends,
+                selectorHoistToRoot: Boolean(selector.hoistToRoot),
+                newSelectorHoistToRoot: Boolean(newSelector.hoistToRoot),
+                rulesetHoistToRoot: Boolean(ruleset.hoistToRoot)
+              },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+        // #endregion
         if (beforeValue === afterValue) {
           // #region agent log
           try {

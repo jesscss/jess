@@ -146,6 +146,26 @@ export class Extend extends Node<ExtendValue> {
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
         const selStr = typeof resolvedSel?.valueOf === 'function' ? String(resolvedSel.valueOf()) : '';
+        // #region agent log
+        try {
+          const targetStr = typeof target?.valueOf === 'function' ? String(target.valueOf()) : '';
+          if (selStr.includes('rep_ace') || targetStr.includes('replace')) {
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H-EXTEND-PUSH-SHAPE',
+              location: 'extend.ts:eval',
+              message: 'register-extend-instruction',
+              data: {
+                target: targetStr,
+                extendWith: selStr,
+                partial: flag === ExtendFlag.All,
+                docOrder
+              },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+        // #endregion
         syncLog({ tag: 'extend_push', docOrder, selector: selStr });
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder]);
         return new Nil();
@@ -188,6 +208,26 @@ export class Extend extends Node<ExtendValue> {
     const rs = currentFrame as Ruleset;
     const docOrder = getDocumentOrderForExtend(rs, context);
     const selStr = typeof resolvedSel?.valueOf === 'function' ? String(resolvedSel.valueOf()) : '';
+    // #region agent log
+    try {
+      const targetStr = typeof target?.valueOf === 'function' ? String(target.valueOf()) : '';
+      if (selStr.includes('rep_ace') || targetStr.includes('replace')) {
+        syncLog({
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H-EXTEND-PUSH-SHAPE',
+          location: 'extend.ts:eval',
+          message: 'register-extend-instruction',
+          data: {
+            target: targetStr,
+            extendWith: selStr,
+            partial: flag === ExtendFlag.All,
+            docOrder
+          },
+          timestamp: Date.now()
+        });
+      }
+    } catch {}
+    // #endregion
     syncLog({ tag: 'extend_push', docOrder, selector: selStr });
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder]);
     return new Nil();

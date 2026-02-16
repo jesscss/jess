@@ -190,8 +190,8 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         selector: el('.rep_ace'),
         rules: rules([
           extend({
-            target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
-            flag: ExtendFlag.Exact
+            target: el('.replace'),
+            flag: ExtendFlag.All
           })
         ])
       }),
@@ -261,9 +261,13 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const evald = await root.eval(context);
     const css = evald.toString({ context });
     expect(css.trim()).toBeString(`
-:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
-.rep_ace {
-  prop: copy-paste-replace;
+:is(.replace, .rep_ace):is(.replace, .rep_ace),
+.c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
+  .replace,
+  .c,
+  .rep_ace {
+    prop: copy-paste-replace;
+  }
 }
 .a .b .c {
   prop: not_effected;
@@ -271,23 +275,15 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 .a,
 .effected {
   prop: is_effected;
-  .b {
-    prop: not_effected;
-  }
-  .b.c {
-    prop: not_effected;
-  }
 }
-.c,
-.a,
-.effected {
-  .b,
-  .a {
-    .a,
-    .c {
-      prop: not_effected;
-    }
-  }
+:is(.a, .effected) .b {
+  prop: not_effected;
+}
+:is(.a, .effected) .b.c {
+  prop: not_effected;
+}
+:is(.c, .a, .effected) :is(.b, .a) :is(.a, .c) {
+  prop: not_effected;
 }
 .e.e,
 .dbl {

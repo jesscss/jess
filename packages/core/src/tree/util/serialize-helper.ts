@@ -166,7 +166,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
                 depth: i,
                 rulesetSelector,
                 headerCached: s !== undefined,
-                cachedHeader: s ?? null
+                cachedHeader: s ?? null,
+                rulesetHoistToRoot: Boolean((f as Ruleset).hoistToRoot),
+                selectorHoistToRoot: Boolean((f as Ruleset).value?.selector?.hoistToRoot)
               },
               timestamp: Date.now()
             });
@@ -194,7 +196,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
               data: {
                 depth: i,
                 rulesetSelector,
-                emittedHeader: s ?? null
+                emittedHeader: s ?? null,
+                rulesetHoistToRoot: Boolean((f as Ruleset).hoistToRoot),
+                selectorHoistToRoot: Boolean((f as Ruleset).value?.selector?.hoistToRoot)
               },
               timestamp: Date.now()
             });
