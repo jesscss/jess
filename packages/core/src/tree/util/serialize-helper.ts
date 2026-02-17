@@ -156,7 +156,12 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       try {
         if (isNode(f, 'Ruleset')) {
           const rulesetSelector = (f as Ruleset).value?.selector?.valueOf?.() ?? '';
-          if (rulesetSelector.includes('.replace') || rulesetSelector.includes('rep_ace')) {
+          if (
+            rulesetSelector.includes('.replace')
+            || rulesetSelector.includes('rep_ace')
+            || rulesetSelector.includes('.header-nav')
+            || rulesetSelector.includes('.footer-nav')
+          ) {
             syncLog({
               runId: process.env.DEBUG_RUN_ID ?? 'run',
               hypothesisId: 'H-SERIALIZE-FRAME-HEADERS',
@@ -187,7 +192,12 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       try {
         if (isNode(f, 'Ruleset')) {
           const rulesetSelector = (f as Ruleset).value?.selector?.valueOf?.() ?? '';
-          if (rulesetSelector.includes('.replace') || rulesetSelector.includes('rep_ace')) {
+          if (
+            rulesetSelector.includes('.replace')
+            || rulesetSelector.includes('rep_ace')
+            || rulesetSelector.includes('.header-nav')
+            || rulesetSelector.includes('.footer-nav')
+          ) {
             syncLog({
               runId: process.env.DEBUG_RUN_ID ?? 'run',
               hypothesisId: 'H-SERIALIZE-FRAME-HEADERS',
@@ -217,6 +227,37 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     /** normalize pre spacing */
     let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
     if (isNode(n, 'Declaration')) {
+      // #region agent log
+      try {
+        const runId = process.env.DEBUG_RUN_ID ?? 'run';
+        if (runId.startsWith('integration-regressions')) {
+          const name = (n as unknown as { value?: { name?: { valueOf?: () => string } } }).value?.name?.valueOf?.() ?? '';
+          if (name === 'background' || name === 'prop') {
+            syncLog({
+              runId,
+              hypothesisId: 'H-DECL-EMIT-FRAMES',
+              location: 'serialize-helper.ts:serializeRulesContainer',
+              message: 'declaration-emitted-with-frames',
+              data: {
+                name,
+                depth: options.depth + 1,
+                inFrames: inFrames.map(f => {
+                  if (!isNode(f, 'Ruleset')) {
+                    return { type: f.type };
+                  }
+                  return {
+                    type: f.type,
+                    selector: (f as Ruleset).value?.selector?.valueOf?.() ?? null,
+                    hoistToRoot: Boolean((f as Ruleset).hoistToRoot)
+                  };
+                })
+              },
+              timestamp: Date.now()
+            });
+          }
+        }
+      } catch {}
+      // #endregion
       pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
       if (n.value.name.valueOf().startsWith('--')) {
         w.add(idt);

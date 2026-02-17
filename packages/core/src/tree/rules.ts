@@ -29,6 +29,7 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 const { isArray } = Array;
 
@@ -1270,6 +1271,84 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const isOutermost = rules === context.root;
 
         if (isOutermost) {
+          const hasGeneratedLeadingIs = (selector: Selector | undefined): boolean => {
+            if (!selector) return false;
+            if (isNode(selector, 'PseudoSelector')) {
+              return selector.value.name === ':is' && Boolean(selector.generated);
+            }
+            if (isNode(selector, 'CompoundSelector')) {
+              const first = selector.value[0];
+              return Boolean(
+                first
+                && isNode(first, 'PseudoSelector')
+                && first.value.name === ':is'
+                && Boolean(first.generated)
+              );
+            }
+            if (isNode(selector, 'ComplexSelector')) {
+              const firstVisual = selector.value.find(c => !isNode(c, 'Combinator')) as Selector | undefined;
+              return Boolean(
+                firstVisual
+                && isNode(firstVisual, 'PseudoSelector')
+                && firstVisual.value.name === ':is'
+                && Boolean(firstVisual.generated)
+              );
+            }
+            return false;
+          };
+          const collectGeneratedLeadingIs = (): Array<{
+            selector: string;
+            ownSelector: string | null;
+            selectorGeneratedLeadingIs: boolean;
+            ownGeneratedLeadingIs: boolean;
+          }> => {
+            const out: Array<{
+              selector: string;
+              ownSelector: string | null;
+              selectorGeneratedLeadingIs: boolean;
+              ownGeneratedLeadingIs: boolean;
+            }> = [];
+            const visitRules = (r: Rules): void => {
+              for (const node of r.value) {
+                if (!node || !isNode(node, 'Ruleset')) continue;
+                const rs = node as Ruleset;
+                const rsSelector = rs.value?.selector as Selector | undefined;
+                const ownSelector = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+                const selectorGeneratedLeadingIs = hasGeneratedLeadingIs(rsSelector);
+                const ownGeneratedLeadingIs = hasGeneratedLeadingIs(ownSelector);
+                if (selectorGeneratedLeadingIs || ownGeneratedLeadingIs) {
+                  out.push({
+                    selector: rsSelector?.valueOf?.() ?? '',
+                    ownSelector: ownSelector?.valueOf?.() ?? null,
+                    selectorGeneratedLeadingIs,
+                    ownGeneratedLeadingIs
+                  });
+                }
+                const childRules = rs.value?.rules;
+                if (childRules && isNode(childRules, 'Rules')) {
+                  visitRules(childRules as Rules);
+                }
+              }
+            };
+            visitRules(rules);
+            return out;
+          };
+          // #region agent log
+          try {
+            const beforeCandidates = collectGeneratedLeadingIs();
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H1-ruleset-wrap-candidates-exist-pre-extend',
+              location: 'rules.ts:evalNode:isOutermost',
+              message: 'generated-leading-is-before-process-extends',
+              data: {
+                count: beforeCandidates.length,
+                sample: beforeCandidates.slice(0, 12)
+              },
+              timestamp: Date.now()
+            });
+          } catch {}
+          // #endregion
           const hasReplaceReplaceExtend = context.extends.some(([target]) => {
             try {
               return target.valueOf().includes('replace.replace');
@@ -1286,6 +1365,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
           // Process all registered extends using the extend roots registry system
           processExtends(context);
+          // #region agent log
+          try {
+            const afterCandidates = collectGeneratedLeadingIs();
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H2-ruleset-wrap-candidates-remain-post-extend',
+              location: 'rules.ts:evalNode:isOutermost',
+              message: 'generated-leading-is-after-process-extends',
+              data: {
+                count: afterCandidates.length,
+                sample: afterCandidates.slice(0, 12)
+              },
+              timestamp: Date.now()
+            });
+          } catch {}
+          // #endregion
         }
         /** Restore contexts */
         context.rulesContext = saved.rulesContext;

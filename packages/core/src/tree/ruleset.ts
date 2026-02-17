@@ -159,6 +159,61 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (Array.isArray(v)) {for (const c of v) Ruleset.ensureSelectorVisible(c);}
   }
 
+  private static materializeHoistedImplicitAmpersands(sel: Selector | Nil): Selector | Nil {
+    if (!sel || sel instanceof Nil) {
+      return sel;
+    }
+    const materialize = (node: Selector): Selector => {
+      if (isNode(node, 'Ampersand')) {
+        const amp = node as Ampersand;
+        const n = amp as unknown as Node;
+        if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+          const resolved = amp.getResolvedSelector();
+          if (resolved && !(resolved instanceof Nil)) {
+            return (resolved.copy(true) as Selector);
+          }
+        }
+        return node.copy(true) as Selector;
+      }
+      if (isNode(node, 'SelectorList')) {
+        const list = node as SelectorList;
+        return SelectorList.create(list.value.map(item => materialize(item as Selector))).inherit(node) as Selector;
+      }
+      if (isNode(node, 'ComplexSelector')) {
+        const complex = node as ComplexSelector;
+        const parts: ComplexSelectorComponent[] = [];
+        for (const part of complex.value) {
+          if (isNode(part, 'Ampersand')) {
+            const amp = part as Ampersand;
+            const n = amp as unknown as Node;
+            if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+              const resolved = amp.getResolvedSelector();
+              if (resolved && !(resolved instanceof Nil)) {
+                const repl = materialize(resolved as Selector);
+                if (isNode(repl, 'ComplexSelector')) {
+                  parts.push(...(repl as ComplexSelector).value.map(c => c.copy(true) as ComplexSelectorComponent));
+                } else {
+                  parts.push(repl as ComplexSelectorComponent);
+                }
+                continue;
+              }
+            }
+          }
+          parts.push(materialize(part as Selector) as ComplexSelectorComponent);
+        }
+        return ComplexSelector.create(parts).inherit(node) as Selector;
+      }
+      const arr = (node as Selector & { value?: Selector[] }).value;
+      if (Array.isArray(arr)) {
+        const cloned = node.copy(true) as Selector & { value?: Selector[] };
+        cloned.value = arr.map(item => materialize(item as Selector));
+        return cloned as Selector;
+      }
+      return node.copy(true) as Selector;
+    };
+    return materialize(sel as Selector);
+  }
+
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
     const { selector } = this.value;
@@ -170,7 +225,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
 
-    const renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
+      renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
+    }
     Ruleset.ensureSelectorVisible(renderSelector);
     const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
     if (process.env.DEBUG_FIXTURE_2A) {
@@ -246,7 +304,33 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         node.options = { ownSelector: selector } as RulesetOptions;
       }
       if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil) && parentRuleset) {
-        selector = getImplicitSelectorUtil(selector, parentRuleset as Ruleset, context.opts.collapseNesting);
+        let selectorForImplicit = selector;
+        const shouldCanonicalizeSelectorList = (
+          !context.opts.collapseNesting
+          && isNode(selector, 'SelectorList')
+          && (selector as SelectorList).value.some(item => isNode(item, 'ComplexSelector'))
+        );
+        if (shouldCanonicalizeSelectorList) {
+          const synthetic = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
+          synthetic.generated = true;
+          selectorForImplicit = synthetic;
+          // #region agent log
+          syncLog({
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H-PREEVAL-CANONICALIZE',
+            location: 'ruleset.ts:preEval',
+            message: 'selectorlist-canonicalized-before-implicit-parent',
+            data: {
+              rulesetId: ensureRulesetTraceId(node as Ruleset),
+              parentSelector: parentSelector.valueOf?.() ?? null,
+              ownSelector: selector.valueOf?.() ?? null,
+              canonicalized: selectorForImplicit.valueOf?.() ?? null
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
+        selector = getImplicitSelectorUtil(selectorForImplicit, parentRuleset as Ruleset, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
       syncLog({
@@ -413,9 +497,106 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
         const leadingIsResult = processLeadingIs(selector);
+        // #region agent log
+        try {
+          const runId = process.env.DEBUG_RUN_ID || 'run';
+          if (runId.startsWith('integration-regressions')) {
+            const beforeVal = selector.valueOf?.() ?? '';
+            const isTarget =
+              beforeVal.includes('.replace')
+              || beforeVal.includes('.header-nav')
+              || beforeVal.includes('.footer-nav')
+              || beforeVal.includes('.effected')
+              || beforeVal.includes(':is(:is(');
+            if (isTarget) {
+              const inspectLeading = (sel: Selector): Record<string, unknown> => {
+                if (isNode(sel, 'SelectorList')) {
+                  const first = (sel as SelectorList).value[0];
+                  return {
+                    type: 'SelectorList',
+                    firstType: first?.type ?? null,
+                    firstValue: first?.valueOf?.() ?? null
+                  };
+                }
+                if (isNode(sel, 'ComplexSelector')) {
+                  const complex = sel as ComplexSelector;
+                  const first = complex.value.find(x => !isNode(x, 'Combinator')) as Selector | undefined;
+                  return {
+                    type: 'ComplexSelector',
+                    firstType: first?.type ?? null,
+                    firstValue: first?.valueOf?.() ?? null,
+                    firstIsGeneratedPseudo: Boolean(
+                      first
+                      && isNode(first, 'PseudoSelector')
+                      && (first as PseudoSelector).value.name === ':is'
+                      && Boolean((first as PseudoSelector).generated)
+                    )
+                  };
+                }
+                if (isNode(sel, 'CompoundSelector')) {
+                  const first = (sel as CompoundSelector).value[0];
+                  return {
+                    type: 'CompoundSelector',
+                    firstType: first?.type ?? null,
+                    firstValue: first?.valueOf?.() ?? null,
+                    firstIsGeneratedPseudo: Boolean(
+                      first
+                      && isNode(first, 'PseudoSelector')
+                      && (first as PseudoSelector).value.name === ':is'
+                      && Boolean((first as PseudoSelector).generated)
+                    )
+                  };
+                }
+                return {
+                  type: (sel as Node).type ?? null
+                };
+              };
+              syncLog({
+                runId,
+                hypothesisId: 'H-RULESET-LEADING-IS',
+                location: 'ruleset.ts:eval',
+                message: 'before-process-leading-is',
+                data: {
+                  rulesetId: ensureRulesetTraceId(this as Ruleset),
+                  selector: beforeVal,
+                  inspect: inspectLeading(selector)
+                },
+                timestamp: Date.now()
+              });
+            }
+          }
+        } catch {}
+        // #endregion
         selector = Array.isArray(leadingIsResult)
           ? SelectorList.create(leadingIsResult.map(s => s.copy(true) as Selector)).inherit(selector) as Selector
           : leadingIsResult;
+        // #region agent log
+        try {
+          const runId = process.env.DEBUG_RUN_ID || 'run';
+          if (runId.startsWith('integration-regressions')) {
+            const afterVal = selector.valueOf?.() ?? '';
+            const isTarget =
+              afterVal.includes('.replace')
+              || afterVal.includes('.header-nav')
+              || afterVal.includes('.footer-nav')
+              || afterVal.includes('.effected')
+              || afterVal.includes(':is(:is(');
+            if (isTarget) {
+              syncLog({
+                runId,
+                hypothesisId: 'H-RULESET-LEADING-IS',
+                location: 'ruleset.ts:eval',
+                message: 'after-process-leading-is',
+                data: {
+                  rulesetId: ensureRulesetTraceId(this as Ruleset),
+                  selector: afterVal
+                },
+                timestamp: Date.now()
+              });
+            }
+          }
+        } catch {}
+        // #endregion
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
         this.value.selector = selector;

@@ -1,4 +1,4 @@
-import { defineType, Node, F_VISIBLE } from './node.js';
+import { defineType, Node, F_VISIBLE, F_IMPLICIT_AMPERSAND } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
@@ -6,6 +6,7 @@ import type { Ruleset } from './ruleset.js';
 import { Nil } from './nil.js';
 import { ComplexSelector } from './selector-complex.js';
 import { Combinator } from './combinator.js';
+import { PseudoSelector } from './selector-pseudo.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
@@ -126,23 +127,112 @@ export class Extend extends Node<ExtendValue> {
         if (currentFrame && isNode(currentFrame, 'Ruleset')) {
           const rs = currentFrame as Ruleset;
           const fullSel = rs.value?.selector;
-          if (fullSel && !(fullSel instanceof Nil)) {
-            resolvedSel = fullSel as Selector;
-          } else {
-            // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
-            // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-            if (isNode(currentFrame, 'Ruleset')) {
-              const parentSel = (currentFrame as Ruleset).value?.selector;
-              if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
-                resolvedSel = ComplexSelector.create([
-                  (parentSel as Selector).copy(true),
-                  Combinator.create(' '),
-                  resolvedSel.copy(true)
-                ]) as unknown as Selector;
+          let usedParentListComposition = false;
+          if (!this.value.selector) {
+            const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+            const parentFrame = context.rulesetFrames.at(-2);
+            const parentSel = (
+              parentFrame && isNode(parentFrame, 'Ruleset')
+                ? (parentFrame as Ruleset).value?.selector
+                : undefined
+            );
+            if (
+              ownSel
+              && parentSel
+              && !(parentSel instanceof Nil)
+              && isNode(parentSel, 'SelectorList')
+            ) {
+              const parentIs = PseudoSelector.create({
+                name: ':is',
+                arg: (parentSel as Selector).copy(true)
+              });
+              parentIs.generated = true;
+              resolvedSel = ComplexSelector.create([
+                parentIs,
+                Combinator.create(' '),
+                ownSel.copy(true)
+              ]) as unknown as Selector;
+              usedParentListComposition = true;
+              // #region agent log
+              syncLog({
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H-EXTEND-RESOLVED-SELECTOR',
+                location: 'extend.ts:evalNode:promise:nested-list-parent-shape',
+                message: 'selectorless-extend-parent-list-composed',
+                data: {
+                  target: target.valueOf(),
+                  parentSelector: (parentSel as Selector).valueOf(),
+                  ownSelector: ownSel.valueOf(),
+                  composed: resolvedSel.valueOf()
+                },
+                timestamp: Date.now()
+              });
+              // #endregion
+            }
+          }
+          // #region agent log
+          try {
+            const targetStr = typeof target?.valueOf === 'function' ? String(target.valueOf()) : '';
+            if (targetStr.includes('.ext') || targetStr.includes('[data') || targetStr.includes('issue-2586')) {
+              syncLog({
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H-EXTEND-RESOLVED-SELECTOR',
+                location: 'extend.ts:evalNode:promise:before-full-override',
+                message: 'extend-resolved-selector-shape',
+                data: {
+                  target: targetStr,
+                  selectorInput: this.value.selector?.valueOf?.() ?? null,
+                  selectorInputType: (this.value.selector as any)?.type ?? null,
+                  evaluatedSelector: sel.valueOf(),
+                  evaluatedSelectorType: (sel as any)?.type ?? null,
+                  resolvedBeforeOverride: resolvedSel.valueOf(),
+                  fullSelector: fullSel?.valueOf?.() ?? null
+                },
+                timestamp: Date.now()
+              });
+            }
+          } catch {}
+          // #endregion
+          if (!this.value.selector && !usedParentListComposition) {
+            if (fullSel && !(fullSel instanceof Nil)) {
+              resolvedSel = fullSel as Selector;
+            } else {
+              // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
+              // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
+              if (isNode(currentFrame, 'Ruleset')) {
+                const parentSel = (currentFrame as Ruleset).value?.selector;
+                if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
+                  resolvedSel = ComplexSelector.create([
+                    (parentSel as Selector).copy(true),
+                    Combinator.create(' '),
+                    resolvedSel.copy(true)
+                  ]) as unknown as Selector;
+                }
               }
             }
           }
         }
+        const beforeMaterialize = resolvedSel.valueOf();
+        resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
+        // #region agent log
+        try {
+          const targetStr = typeof target?.valueOf === 'function' ? String(target.valueOf()) : '';
+          if (targetStr.includes('.ext') || targetStr.includes('[data') || targetStr.includes('issue-2586')) {
+            syncLog({
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H-EXTEND-RESOLVED-SELECTOR',
+              location: 'extend.ts:evalNode:promise:after-materialize',
+              message: 'extend-selector-materialized',
+              data: {
+                target: targetStr,
+                beforeMaterialize,
+                afterMaterialize: resolvedSel.valueOf()
+              },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+        // #endregion
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
         const selStr = typeof resolvedSel?.valueOf === 'function' ? String(resolvedSel.valueOf()) : '';
@@ -188,24 +278,141 @@ export class Extend extends Node<ExtendValue> {
     if (currentFrame && isNode(currentFrame, 'Ruleset')) {
       const rs = currentFrame as Ruleset;
       const fullSel = rs.value?.selector;
-      if (fullSel && !(fullSel instanceof Nil)) {
-        resolvedSel = fullSel as Selector;
-      } else {
-        // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
-        // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-        if (isNode(currentFrame, 'Ruleset')) {
-          const parentSel = (currentFrame as Ruleset).value?.selector;
-          if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
-            resolvedSel = ComplexSelector.create([
-              (parentSel as Selector).copy(true),
-              Combinator.create(' '),
-              resolvedSel.copy(true)
-            ]) as unknown as Selector;
+      let usedParentListComposition = false;
+      if (!this.value.selector) {
+        const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+        const parentFrame = context.rulesetFrames.at(-2);
+        const parentSel = (
+          parentFrame && isNode(parentFrame, 'Ruleset')
+            ? (parentFrame as Ruleset).value?.selector
+            : undefined
+        );
+        if (
+          ownSel
+          && parentSel
+          && !(parentSel instanceof Nil)
+          && isNode(parentSel, 'SelectorList')
+        ) {
+          const parentIs = PseudoSelector.create({
+            name: ':is',
+            arg: (parentSel as Selector).copy(true)
+          });
+          parentIs.generated = true;
+          resolvedSel = ComplexSelector.create([
+            parentIs,
+            Combinator.create(' '),
+            ownSel.copy(true)
+          ]) as unknown as Selector;
+          usedParentListComposition = true;
+          // #region agent log
+          syncLog({
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H-EXTEND-RESOLVED-SELECTOR',
+            location: 'extend.ts:evalNode:sync:nested-list-parent-shape',
+            message: 'selectorless-extend-parent-list-composed',
+            data: {
+              target: target.valueOf(),
+              parentSelector: (parentSel as Selector).valueOf(),
+              ownSelector: ownSel.valueOf(),
+              composed: resolvedSel.valueOf()
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
+      }
+      // #region agent log
+      try {
+        const targetStr = typeof target?.valueOf === 'function' ? String(target.valueOf()) : '';
+        if (targetStr.includes('.ext') || targetStr.includes('[data') || targetStr.includes('issue-2586')) {
+          syncLog({
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H-EXTEND-RESOLVED-SELECTOR',
+            location: 'extend.ts:evalNode:sync:before-full-override',
+            message: 'extend-resolved-selector-shape',
+            data: {
+              target: targetStr,
+              selectorInput: this.value.selector?.valueOf?.() ?? null,
+              selectorInputType: (this.value.selector as any)?.type ?? null,
+              evaluatedSelector: sel.valueOf(),
+              evaluatedSelectorType: (sel as any)?.type ?? null,
+              resolvedBeforeOverride: resolvedSel.valueOf(),
+              fullSelector: fullSel?.valueOf?.() ?? null
+            },
+            timestamp: Date.now()
+          });
+        }
+      } catch {}
+      // #endregion
+      if (!this.value.selector && !usedParentListComposition) {
+        if (fullSel && !(fullSel instanceof Nil)) {
+          resolvedSel = fullSel as Selector;
+        } else {
+          // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
+          // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
+          if (isNode(currentFrame, 'Ruleset')) {
+            const parentSel = (currentFrame as Ruleset).value?.selector;
+            if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
+              resolvedSel = ComplexSelector.create([
+                (parentSel as Selector).copy(true),
+                Combinator.create(' '),
+                resolvedSel.copy(true)
+              ]) as unknown as Selector;
+            }
           }
         }
       }
     }
-    const rs = currentFrame as Ruleset;
+    // #region agent log
+    syncLog({
+      runId: process.env.DEBUG_RUN_ID || 'extend-location-crash',
+      hypothesisId: 'H1-frame-not-ruleset',
+      location: 'extend.ts:Extend.evalNode:before-getDocumentOrder',
+      message: 'extend-frame-shape',
+      data: {
+        currentFrameType: (currentFrame as any)?.type ?? null,
+        rulesetFramesDepth: context.rulesetFrames.length,
+        hasResolvedSelector: Boolean(resolvedSel),
+        resolvedSelectorType: (resolvedSel as any)?.type ?? null
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+    const beforeMaterialize = resolvedSel.valueOf();
+    resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
+    // #region agent log
+    try {
+      const targetStr = typeof target?.valueOf === 'function' ? String(target.valueOf()) : '';
+      if (targetStr.includes('.ext') || targetStr.includes('[data') || targetStr.includes('issue-2586')) {
+        syncLog({
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H-EXTEND-RESOLVED-SELECTOR',
+          location: 'extend.ts:evalNode:sync:after-materialize',
+          message: 'extend-selector-materialized',
+          data: {
+            target: targetStr,
+            beforeMaterialize,
+            afterMaterialize: resolvedSel.valueOf()
+          },
+          timestamp: Date.now()
+        });
+      }
+    } catch {}
+    // #endregion
+    const rs = currentFrame && isNode(currentFrame, 'Ruleset') ? currentFrame as Ruleset : undefined;
+    // #region agent log
+    syncLog({
+      runId: process.env.DEBUG_RUN_ID || 'extend-location-crash',
+      hypothesisId: 'H2-ruleset-location-missing',
+      location: 'extend.ts:Extend.evalNode:call-getDocumentOrder',
+      message: 'ruleset-cast-shape',
+      data: {
+        rsType: (rs as any)?.type ?? null,
+        hasNodeLocation: Object.prototype.hasOwnProperty.call((rs as any) ?? {}, 'location')
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
     const docOrder = getDocumentOrderForExtend(rs, context);
     const selStr = typeof resolvedSel?.valueOf === 'function' ? String(resolvedSel.valueOf()) : '';
     // #region agent log
@@ -234,8 +441,103 @@ export class Extend extends Node<ExtendValue> {
   }
 }
 
+function materializeImplicitAmpersands(
+  selector: Selector,
+  includeNonListImplicit: boolean
+): Selector {
+  const materialize = (node: Selector): Selector => {
+    if (isNode(node, 'Ampersand')) {
+      const amp = node as Ampersand;
+      const n = amp as unknown as Node;
+      if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+        const resolved = amp.getResolvedSelector();
+        if (
+          resolved
+          && !(resolved instanceof Nil)
+          && (includeNonListImplicit || isNode(resolved, 'SelectorList'))
+        ) {
+          return materialize(resolved.copy(true) as Selector);
+        }
+      }
+      return node.copy(true) as Selector;
+    }
+
+    if (isNode(node, 'ComplexSelector')) {
+      const complex = node as ComplexSelector;
+      const parts: Selector[] = [];
+      for (const part of complex.value as unknown as Selector[]) {
+        if (isNode(part, 'Ampersand')) {
+          const amp = part as Ampersand;
+          const n = amp as unknown as Node;
+          if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+            const resolved = amp.getResolvedSelector();
+            if (
+              resolved
+              && !(resolved instanceof Nil)
+              && (includeNonListImplicit || isNode(resolved, 'SelectorList'))
+            ) {
+              const repl = materialize(resolved.copy(true) as Selector);
+              if (isNode(repl, 'ComplexSelector')) {
+                parts.push(...((repl as ComplexSelector).value as unknown as Selector[]).map(x => x.copy(true) as Selector));
+              } else {
+                parts.push(repl);
+              }
+              continue;
+            }
+          }
+        }
+        const repl = materialize(part);
+        parts.push(repl);
+      }
+      return ComplexSelector.create(parts as any).inherit(node) as Selector;
+    }
+
+    const value = (node as Selector & { value?: Selector[] }).value;
+    if (Array.isArray(value)) {
+      const cloned = node.copy(true) as Selector & { value?: Selector[] };
+      cloned.value = value.map(item => materialize(item as Selector));
+      return cloned as Selector;
+    }
+
+    return node.copy(true) as Selector;
+  };
+
+  return materialize(selector);
+}
+
 /** Document order for extend: prefer parse location startOffset (source order), else assigned map, else push order (length). */
-function getDocumentOrderForExtend(rs: Ruleset, context: Context): number {
+function getDocumentOrderForExtend(rs: Ruleset | undefined, context: Context): number {
+  // #region agent log
+  syncLog({
+    runId: process.env.DEBUG_RUN_ID || 'extend-location-crash',
+    hypothesisId: 'H3-invalid-ruleset-object',
+    location: 'extend.ts:getDocumentOrderForExtend:entry',
+    message: 'document-order-entry-shape',
+    data: {
+      rsType: (rs as any)?.type ?? null,
+      rsDefined: Boolean(rs),
+      hasLocationProp: Object.prototype.hasOwnProperty.call((rs as any) ?? {}, 'location')
+    },
+    timestamp: Date.now()
+  });
+  // #endregion
+  if (!rs) {
+    // #region agent log
+    syncLog({
+      runId: process.env.DEBUG_RUN_ID || 'extend-location-crash',
+      hypothesisId: 'H3-invalid-ruleset-object',
+      location: 'extend.ts:getDocumentOrderForExtend',
+      message: 'missing-ruleset-frame-fallback-doc-order',
+      data: {
+        fallback: context.extends.length,
+        rulesetFramesDepth: context.rulesetFrames.length,
+        topFrameType: (context.rulesetFrames.at(-1) as any)?.type ?? null
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+    return context.extends.length;
+  }
   const loc = (rs as Node).location;
   const fromLoc = Array.isArray(loc) && loc.length >= 1 && typeof loc[0] === 'number' ? loc[0] : undefined;
   if (fromLoc !== undefined) return fromLoc;

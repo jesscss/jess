@@ -31,12 +31,17 @@ export function getDebugLogPath(): string {
   return getLogPath();
 }
 
-export const syncLog = (data: object) => {
+export const syncLog = (data: Record<string, unknown>) => {
   try {
     const logPath = getLogPath();
     const logDir = dirname(logPath);
     mkdirSync(logDir, { recursive: true });
-    appendFileSync(logPath, JSON.stringify(data) + '\n');
+    // Session ID is optional per debug run; omit it unless explicitly configured.
+    const payload = { ...data };
+    if (!process.env.DEBUG_SESSION_ID) {
+      delete payload.sessionId;
+    }
+    appendFileSync(logPath, JSON.stringify(payload) + '\n');
   } catch {
     // Ignore errors
   }

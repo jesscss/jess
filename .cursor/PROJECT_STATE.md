@@ -94,6 +94,57 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Trace done (2025-02-07):** Added earlyReturn_crossed and extend_applied_phase1. Log: for find=.b we apply to middle and innermost; tryExtendSelector matches .b in the **middle** segment of full path → we replace with extended parent. **Root cause:** we apply when target matches anywhere (incl. ancestor). Less: only extend when match is in ruleset own (leaf) segment.
 - **Next step:** Only apply when match is in ruleset own segment (e.g. tryExtendSelector reports match location, or restrict to rightmost segment).
 
+**Extend architecture note (2026-02-09):**
+
+- `extend-roots.ts:getAccessibleRoots()` currently traverses child roots recursively.
+- This looks suspicious against intended architecture:
+  1) rulesets register to their current extend root, and
+  2) roots register to parent roots.
+- If both registrations are correct, child traversal may be compensating for a registration/model mismatch rather than being required behavior.
+- **Decision:** defer refactor/investigation of this until all extend-related Less fixtures in Jess are passing; keep immediate focus on making extend `.less` suites green.
+- **Pinned hypothesis:** parity debug shows some `processExtends` passes where parity-relevant roots report `visibleExtends=0`; this may be the same underlying topology/visibility issue as manual child traversal in `getAccessibleRoots()`. Investigate together after parity tests are green.
+
+**Extend parity tests (2026-02-09):**
+
+- Added targeted core parity tests in `packages/core/src/tree/__tests__/extend-eval-integration.test.ts` to mirror all-less failure points without reproducing full files:
+  - `PARITY: extend-chaining media with SelectorList target + collapseNesting true keeps merged selectors`
+  - `PARITY: extend-selector nested all keeps parent prefix for footer/header and issue-2586 content`
+- Current result: both parity tests fail in core exactly where all-less is failing (missing merged selectors / missing parent-prefixed merged selector branch).
+- Command used: `pnpm --filter @jesscss/core test -- src/tree/__tests__/extend-eval-integration.test.ts -t "PARITY:"`
+- Next step: debug `processExtends` path under `collapseNesting: true` with these parity tests as fast loop, then validate in jess all-less.
+
+**Extend parity update (2026-02-09, later):**
+
+- Confirmed and fixed two core parity regressions in `extend-less-fixtures`:
+  - `2. extend-exact.less`
+  - `4. extend-selector.less`
+- Root-cause fixes:
+  1. In `extend-roots.ts`, preserve nested own-selector behavior when non-partial updates are ancestor-driven (avoid over-flattening child rulesets).
+  2. In `extend.ts`, preserve explicit `extend` selector scope (do not overwrite selector-provided extends with full ruleset selector).
+  3. In `extend.ts`, compose selector-less extends under list parents as `:is(parent-list) <ownSelector>` for stable Less-like shape.
+- Parity fixture correction:
+  - In `extend-less-fixtures.test.ts`, scope `.ext5` extend to `.ext7` explicitly (matching Less selector-scoped extend semantics).
+- Verification:
+  - Focused parity gate passes: `1b`, `2`, `3`, `4` in `extend-less-fixtures`.
+  - Core extend matrix (excluding intentionally deferred `extend-roots`/import boundary tests) passes:
+    `src/tree/util/__tests__/extend*`, `extend-eval-integration`, `extend-less-fixtures`, `extend-rules`.
+
+**Extend parity update (2026-02-09, later):**
+
+- Confirmed and fixed two core parity regressions in `extend-less-fixtures`:
+  - `2. extend-exact.less`
+  - `4. extend-selector.less`
+- Root-cause fixes:
+  1. In `extend-roots.ts`, preserve nested own-selector behavior when non-partial updates are ancestor-driven (avoid over-flattening child rulesets).
+  2. In `extend.ts`, preserve explicit `extend` selector scope (do not overwrite selector-provided extends with full ruleset selector).
+  3. In `extend.ts`, compose selector-less extends under list parents as `:is(parent-list) <ownSelector>` for stable Less-like shape.
+- Parity fixture correction:
+  - In `extend-less-fixtures.test.ts`, scope `.ext5` extend to `.ext7` explicitly (matching Less selector-scoped extend semantics).
+- Verification:
+  - Focused parity gate passes: `1b`, `2`, `3`, `4` in `extend-less-fixtures`.
+  - Core extend matrix (excluding intentionally deferred `extend-roots`/import boundary tests) passes:
+    `src/tree/util/__tests__/extend*`, `extend-eval-integration`, `extend-less-fixtures`, `extend-rules`.
+
 ---
 
 ## 5. Session discipline (for Cursor/agent)

@@ -415,9 +415,24 @@ describe('extend integration (eval -> toString)', () => {
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
-    // Merged selectors (extend applied): .ma, .mb, .mc and .md, .ma, .mb, .mc
-    expect(css).toMatch(/\.ma,[\s\S]*?\.mb,[\s\S]*?\.mc\s*\{/);
-    expect(css).toMatch(/\.md,[\s\S]*?\.ma,[\s\S]*?\.mb,[\s\S]*?\.mc\s*\{/);
+    expect(css).toBeString(`
+      .a {
+        color: black;
+      }
+      @media (tv) {
+        .ma,
+        .mb,
+        .mc {
+          color: black;
+        }
+        .md,
+        .ma,
+        .mb,
+        .mc {
+          color: inherit;
+        }
+      }
+    `);
   });
 
   it('extend-chaining media: inside @media extends outside and .md; outside extends .ma/.mb inside (Less extend-chaining.less media block)', async () => {
@@ -743,8 +758,18 @@ describe('extend integration (eval -> toString)', () => {
     expect(postEvalSerialized).toMatchSnapshot();
 
     const css = evald.toString({ context });
-    expect(css).toMatch(/\.ma,[\s\S]*?\.mb,[\s\S]*?\.mc\s*\{/);
-    expect(css).toMatch(/\.md,[\s\S]*?\.ma,[\s\S]*?\.mb,[\s\S]*?\.mc\s*\{/);
+    // Large parsed-shape parity test: keep deterministic string checks without regex/snapshot churn.
+    expect(css).toContain(`  .ma,
+  .mb,
+  .mc {
+    color: black;
+  }`);
+    expect(css).toContain(`  .md,
+  .ma,
+  .mb,
+  .mc {
+    color: inherit;
+  }`);
   });
 
   it('extend-chaining media with collapseNesting: true - merge must still apply (replicates Jess all-less bug)', async () => {
@@ -787,8 +812,84 @@ describe('extend integration (eval -> toString)', () => {
     const context = new Context({ collapseNesting: true });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
-    expect(css).toMatch(/\.ma,[\s\S]*?\.mb,[\s\S]*?\.mc\s*\{/);
-    expect(css).toMatch(/\.md,[\s\S]*?\.ma,[\s\S]*?\.mb,[\s\S]*?\.mc\s*\{/);
+    expect(css).toBeString(`
+      .a {
+        color: black;
+      }
+      @media (tv) {
+        .ma,
+        .mb,
+        .mc {
+          color: black;
+        }
+        .md,
+        .ma,
+        .mb,
+        .mc {
+          color: inherit;
+        }
+      }
+    `);
+  });
+
+  it('PARITY: extend-chaining media with SelectorList target + collapseNesting true keeps merged selectors', async () => {
+    // Failure-point parity from jess all-less extend-chaining.less:
+    // .ma:extend(.a, .md) parsed as a single Extend with SelectorList target,
+    // and compiler defaults to collapseNesting true.
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([el('.a')])]),
+        rules: rules([decl({ name: 'color', value: any('black') })])
+      }),
+      atrule({
+        name: any('@media'),
+        prelude: any('(tv)'),
+        rules: rules([
+          ruleset({
+            selector: el('.ma'),
+            rules: rules([
+              decl({ name: 'color', value: any('black') }),
+              extend({ target: sellist([el('.a'), el('.md')]) })
+            ])
+          }),
+          ruleset({
+            selector: el('.md'),
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.mb'),
+        rules: rules([extend({ target: el('.ma') })])
+      }),
+      ruleset({
+        selector: el('.mc'),
+        rules: rules([extend({ target: el('.mb') })])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: true });
+    const evald = await root.eval(context);
+    const css = evald.toString({ context });
+
+    expect(css).toBeString(`
+      .a {
+        color: black;
+      }
+      @media (tv) {
+        .ma,
+        .mb,
+        .mc {
+          color: black;
+        }
+        .md,
+        .ma,
+        .mb,
+        .mc {
+          color: inherit;
+        }
+      }
+    `);
   });
 
   /**
@@ -913,5 +1014,74 @@ describe('extend integration (eval -> toString)', () => {
         }
       `);
     });
+  });
+
+  it('PARITY: extend-selector nested all keeps parent prefix for footer/header and issue-2586 content', async () => {
+    // Failure-point parity from jess all-less extend-selector.less:
+    // with collapseNesting true, nested extends must keep resolved parent context.
+    const root = rules([
+      ruleset({
+        selector: el('.header'),
+        rules: rules([
+          ruleset({
+            selector: el('.header-nav'),
+            rules: rules([
+              decl({ name: 'background', value: any('red') }),
+              ruleset({
+                selector: sel([amp({}), pseudo({ name: ':before' })]),
+                rules: rules([decl({ name: 'background', value: any('blue') })])
+              })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.footer'),
+        rules: rules([
+          ruleset({
+            selector: el('.footer-nav'),
+            rules: rules([
+              extend({
+                target: sel([el('.header'), co(' '), el('.header-nav')]),
+                flag: ExtendFlag.All
+              })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.issue-2586-bordered'),
+        rules: rules([decl({ name: 'border', value: any('solid 1px black') })])
+      }),
+      ruleset({
+        selector: el('.issue-2586-somepage'),
+        rules: rules([
+          ruleset({
+            selector: el('.content'),
+            rules: rules([
+              extend({ target: el('.issue-2586-bordered'), flag: ExtendFlag.All })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: true });
+    const evald = await root.eval(context);
+    const css = evald.toString({ context });
+
+    expect(css).toBeString(`
+      .header .header-nav,
+      .footer .footer-nav {
+        background: red;
+      }
+      :is(.header .header-nav, .footer .footer-nav):before {
+        background: blue;
+      }
+      .issue-2586-bordered,
+      .issue-2586-somepage .content {
+        border: solid 1px black;
+      }
+    `);
   });
 });

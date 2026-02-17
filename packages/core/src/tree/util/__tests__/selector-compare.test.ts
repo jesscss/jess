@@ -78,6 +78,20 @@ describe('selectorCompare', () => {
     const result = selectorCompare(complexA, complexB);
     expect(result.hasPartialMatch).toBe(true);
   });
+
+  it('matches authored multi-hop :is() branch path', () => {
+    const target = sel([
+      is(sellist([el('.a'), el('.x')])),
+      co('>'),
+      is(sellist([el('.b'), el('.y')])),
+      co('>'),
+      is(sellist([el('.c'), el('.z')]))
+    ]);
+    const find = sel([el('.a'), co('>'), el('.b'), co('>'), el('.z')]);
+    const result = selectorCompare(target, find);
+    expect(result.hasWholeMatch || result.hasPartialMatch).toBe(true);
+    expect(result.locations.length).toBeGreaterThan(0);
+  });
 });
 
 describe('selectorCompare parity with matchSelectors', () => {
@@ -115,6 +129,17 @@ describe('selectorCompare parity with matchSelectors', () => {
         )
       ]),
       find: sel([el('.foo'), co(' '), el('.bar')])
+    },
+    {
+      desc: 'authored multi-hop :is() branch pick',
+      target: sel([
+        is(sellist([el('.a'), el('.x')])),
+        co('>'),
+        is(sellist([el('.b'), el('.y')])),
+        co('>'),
+        is(sellist([el('.c'), el('.z')]))
+      ]),
+      find: sel([el('.a'), co('>'), el('.b'), co('>'), el('.z')])
     }
   ];
 

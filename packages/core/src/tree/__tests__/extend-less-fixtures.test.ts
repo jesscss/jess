@@ -275,15 +275,23 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 .a,
 .effected {
   prop: is_effected;
+  .b {
+    prop: not_effected;
+  }
+  .b.c {
+    prop: not_effected;
+  }
 }
-:is(.a, .effected) .b {
-  prop: not_effected;
-}
-:is(.a, .effected) .b.c {
-  prop: not_effected;
-}
-:is(.c, .a, .effected) :is(.b, .a) :is(.a, .c) {
-  prop: not_effected;
+.c,
+.a,
+.effected {
+  .b,
+  .a {
+    .a,
+    .c {
+      prop: not_effected;
+    }
+  }
 }
 .e.e,
 .dbl {
@@ -362,6 +370,17 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         rules: rules([extend({ target: compound([el('.button'), pseudo({ name: ':hover' })]) })])
       }),
       ruleset({
+        selector: el('.nomatch'),
+        rules: rules([
+          ruleset({
+            selector: el(':hover'),
+            rules: rules([
+              extend({ target: sel([el('.button'), co(' '), el(':hover')]) })
+            ])
+          })
+        ])
+      }),
+      ruleset({
         selector: el('.button2'),
         rules: rules([
           ruleset({
@@ -373,6 +392,38 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
       ruleset({
         selector: sel([el('.button2'), co(' '), el(':hover')]),
         rules: rules([decl({ name: 'notnested', value: any('black') })])
+      }),
+      ruleset({
+        selector: el('.nomatch'),
+        rules: rules([
+          extend({ target: compound([el('.button2'), pseudo({ name: ':hover' })]) })
+        ])
+      }),
+      ruleset({
+        selector: sellist([el('.amp-test-a'), el('.amp-test-b')]),
+        rules: rules([
+          ruleset({
+            selector: sel([
+              el('.amp-test-c'),
+              co(' '),
+              compound([amp(), el('.amp-test-d'), amp(), el('.amp-test-e')])
+            ]),
+            rules: rules([
+              ruleset({
+                selector: sel([
+                  compound([el('.amp-test-f'), amp()]),
+                  co('+'),
+                  compound([amp(), el('.amp-test-g')])
+                ]),
+                rules: rules([extend({ target: el('.amp-test-h') })])
+              })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.amp-test-h'),
+        rules: rules([decl({ name: 'test', value: any('extended by masses of selectors') })])
       })
     ]);
     const evald = await root.eval(context);
@@ -412,41 +463,220 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }
 .button2 :hover {
   notnested: black;
+}
+.amp-test-h,
+.amp-test-f:is(.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e) + :is(.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e).amp-test-g {
+  test: extended by masses of selectors;
 }`.trim());
   });
 
   /**
-   * 4. extend-selector.less – .attributes { [data="test3"] { extend: attributes2; } .attribute-test { &:extend([data="test3"] all); } }
-   * Expected: [data="test3"], .attribute-test { extend: attributes2; }
-   * Current: only [data="test3"] (missing .attribute-test)
+   * 4. extend-selector.less – full fixture parity for all-less failing shape.
    */
-  it('4. extend-selector.less – [data="test3"] and .attribute-test both extend attributes2', async () => {
+  it('4. extend-selector.less – full selector extend parity (ext/attributes/footer/issue-2586)', async () => {
+    const dataTest = attr({ name: 'data', op: '=', value: quoted('test') });
+    const dataAny = attr({ name: 'data' });
     const dataTest3 = attr({ name: 'data', op: '=', value: quoted('test3') });
     const root = rules([
       ruleset({
+        selector: sellist([
+          sel([el('.foo'), co(' '), el('.bar')]),
+          sel([el('.foo'), co(' '), el('.baz')])
+        ]),
+        rules: rules([decl({ name: 'display', value: any('none') })])
+      }),
+      ruleset({
+        selector: sel([el('.ext1'), co(' '), el('.ext2')]),
+        rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+      }),
+      ruleset({
+        selector: sellist([el('.ext3'), el('.ext4')]),
+        rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+      }),
+      ruleset({
+        selector: sellist([compound([el('div'), el('.ext5')]), sel([el('.ext6'), co('>'), el('.ext5')])]),
+        rules: rules([decl({ name: 'width', value: any('100px') })])
+      }),
+      ruleset({
+        selector: sellist([el('.should-not-exist-in-output'), el('.ext7')]),
+        rules: rules([extend({ selector: el('.ext7'), target: el('.ext5'), flag: ExtendFlag.All })])
+      }),
+      ruleset({
+        selector: el('.ext'),
+        rules: rules([decl({ name: 'test', value: any('1') })])
+      }),
+      ruleset({
+        selector: sellist([el('.a'), el('.b')]),
+        rules: rules([
+          decl({ name: 'test', value: any('2') }),
+          ruleset({
+            selector: el('.c'),
+            rules: rules([
+              extend({ target: el('.ext'), flag: ExtendFlag.All }),
+              decl({ name: 'test', value: any('3') }),
+              ruleset({
+                selector: el('.d'),
+                rules: rules([decl({ name: 'test', value: any('4') })])
+              })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: sellist([
+          compound([el('.replace'), el('.replace')]),
+          sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+        ]),
+        rules: rules([
+          ruleset({
+            selector: sellist([el('.replace'), el('.c')]),
+            rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.rep_ace'),
+        rules: rules([extend({ target: el('.replace'), flag: ExtendFlag.All })])
+      }),
+      ruleset({
         selector: el('.attributes'),
         rules: rules([
+          ruleset({
+            selector: dataTest,
+            rules: rules([decl({ name: 'extend', value: any('attributes') })])
+          }),
+          ruleset({
+            selector: el('.attribute-test'),
+            rules: rules([extend({ target: dataTest, flag: ExtendFlag.All })])
+          }),
+          ruleset({
+            selector: dataAny,
+            rules: rules([decl({ name: 'extend', value: any('attributes2') })])
+          }),
+          ruleset({
+            selector: el('.attribute-test2'),
+            rules: rules([extend({ target: dataAny, flag: ExtendFlag.All })])
+          }),
           ruleset({
             selector: dataTest3,
             rules: rules([decl({ name: 'extend', value: any('attributes2') })])
           }),
           ruleset({
             selector: el('.attribute-test'),
+            rules: rules([extend({ target: dataTest3, flag: ExtendFlag.All })])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.header'),
+        rules: rules([
+          ruleset({
+            selector: el('.header-nav'),
             rules: rules([
-              extend({ target: dataTest3, flag: ExtendFlag.All })
+              decl({ name: 'background', value: any('red') }),
+              ruleset({
+                selector: compound([amp(), pseudo({ name: ':before' })]),
+                rules: rules([decl({ name: 'background', value: any('blue') })])
+              })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.footer'),
+        rules: rules([
+          ruleset({
+            selector: el('.footer-nav'),
+            rules: rules([
+              extend({ target: sel([el('.header'), co(' '), el('.header-nav')]), flag: ExtendFlag.All })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.issue-2586-bordered'),
+        rules: rules([decl({ name: 'border', value: any('solid 1px black') })])
+      }),
+      ruleset({
+        selector: el('.issue-2586-somepage'),
+        rules: rules([
+          ruleset({
+            selector: el('.content'),
+            rules: rules([
+              extend({ target: el('.issue-2586-bordered') }),
+              ruleset({
+                selector: sel([amp(), co('>'), el('span')]),
+                rules: rules([decl({ name: 'margin-bottom', value: any('10px') })])
+              })
             ])
           })
         ])
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
     expect(css.trim()).toBeString(`
+:is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
+:is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {
+  display: none;
+}
+div:is(.ext5, .ext7),
+.ext6 > :is(.ext5, .ext7) {
+  width: 100px;
+}
+.ext,
+:is(.a, .b) .c {
+  test: 1;
+}
+.a,
+.b {
+  test: 2;
+  .c {
+    test: 3;
+    .d {
+      test: 4;
+    }
+  }
+}
+:is(.replace, .rep_ace):is(.replace, .rep_ace),
+.c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
+  .replace,
+  .c,
+  .rep_ace {
+    prop: copy-paste-replace;
+  }
+}
 .attributes {
+  [data="test"],
+  .attribute-test {
+    extend: attributes;
+  }
+  [data],
+  .attribute-test2 {
+    extend: attributes2;
+  }
   [data="test3"],
   .attribute-test {
     extend: attributes2;
+  }
+}
+.header .header-nav,
+.footer .footer-nav {
+  background: red;
+  &:before {
+    background: blue;
+  }
+}
+.issue-2586-bordered,
+.issue-2586-somepage .content {
+  border: solid 1px black;
+}
+.issue-2586-somepage {
+  .content {
+    & > span {
+      margin-bottom: 10px;
+    }
   }
 }
 `.trim());
@@ -504,7 +734,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
-    expect(css).toBeString(`
+    expect(css.trim()).toBeString(`
 .aa,
 .cc {
   color: black;
@@ -524,7 +754,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     color: black;
   }
 }
-`);
+`.trim());
   });
 
   /**
