@@ -12,7 +12,6 @@ import { ComplexSelector, type ComplexSelectorComponent } from '../selector-comp
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { isNode } from './is-node.js';
-import { syncLog } from './__tests__/debug-log.js';
 
 export type ProcessLeadingIsOptions = {
   /** When true, unwrapping a generated :is(SelectorList) merges its items into the outer list (return array). */
@@ -84,10 +83,6 @@ export function processLeadingIs(
     const value = compound.value;
     if (value.length === 0) return selector;
     const first = value[0];
-    if (process.env.DEBUG_LEADING_IS_GENERATED === 'true' && isNode(first, 'PseudoSelector') && (first as PseudoSelector).value.name === ':is') {
-      const g = (first as PseudoSelector).generated;
-      syncLog({ msg: 'processLeadingIs-compound-first', generated: g });
-    }
     if (
       !isNode(first, 'PseudoSelector') ||
       (first as PseudoSelector).value.name !== ':is' ||

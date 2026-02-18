@@ -9,14 +9,8 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
-import { syncLog } from './__tests__/debug-log.js';
-
 // Some build targets for core do not include Node typings; keep debug gating type-safe.
 declare const process: { env: Record<string, string | undefined> };
-
-// #region agent log
-let __agentImplicitIsCount = 0;
-// #endregion
 
 /** Container object whose .selector is read by the ampersand (e.g. ruleset value for live connection). */
 export type SelectorContainer = AmpersandValue['selectorContainer'];
@@ -47,24 +41,6 @@ export function addImplicitAmpersand(
     ampInit.selectorContainer = selectorContainer;
   }
   let amp = Ampersand.create(ampInit);
-  if (parentSource && process.env.DEBUG_IMPLICIT_SELECTOR === 'true') {
-    const parentSel = parentSource.value?.selector;
-    const psParent = parentSel && typeof (parentSel as Selector).parent !== 'undefined' ? (parentSel as Selector).parent : null;
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-      hypothesisId: 'H15',
-      location: 'selector-utils.ts:addImplicitAmpersand',
-      message: 'implicit-amp-set-parentSelector-exit',
-      data: {
-        parentSelectorIsSelfParent: psParent === parentSel,
-        parentSelectorParentType: psParent?.type ?? null,
-        parentSelectorParentLoc: psParent?.location ?? null,
-        parentSelectorParentIsAmp: psParent === amp
-      },
-      timestamp: Date.now()
-    });
-  }
   // Mark as implicit so it can be excluded from visibleKeySet for indexing
   amp.addFlag(F_IMPLICIT_AMPERSAND);
   if (!collapseNesting) {
@@ -99,23 +75,6 @@ function snapshotParentSource(parentSelector: Selector, collapseNesting: boolean
     ? PseudoSelector.create({ name: ':is', arg: parentCopy })
     : parentCopy;
   const container: SelectorContainer = { selector: sel };
-  if ((process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug' && __agentImplicitIsCount++ < 25) {
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'H16',
-      location: 'selector-utils.ts:snapshotParentSource',
-      message: 'wrapped-parent-selectorlist-into-is',
-      data: {
-        collapseNesting,
-        storedType: sel?.type,
-        storedValue: (sel as Selector)?.valueOf?.(),
-        parentType: parentCopy.type,
-        parentValue: parentCopy.valueOf()
-      },
-      timestamp: Date.now()
-    });
-  }
   return { value: container };
 }
 
@@ -139,38 +98,6 @@ export function getImplicitSelector(
   const parentSource: ParentSource | undefined = isNode(parent, 'Ruleset')
     ? (parent as Ruleset)
     : snapshotParentSource(parent as Selector, collapseNesting);
-  // #region agent log
-  try {
-    if (!collapseNesting && isNode(selector, 'SelectorList')) {
-      const parentSelectorValue = parentSource?.value?.selector as Selector | Nil | undefined;
-      if (parentSelectorValue && isNode(parentSelectorValue, 'SelectorList')) {
-        const currentItemwise = selector.value
-          .map(sel => addImplicitAmpersand(sel.copy(true), collapseNesting, parentSource).valueOf())
-          .join(',');
-        const altWhole = addImplicitAmpersand(selector.copy(true) as Selector, collapseNesting, parentSource).valueOf();
-        const altIsWrapped = addImplicitAmpersand(
-          PseudoSelector.create({ name: ':is', arg: selector.copy(true) }),
-          collapseNesting,
-          parentSource
-        ).valueOf();
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-DISTRIBUTION-ORIGIN',
-          location: 'selector-utils.ts:getImplicitSelector',
-          message: 'selector-list-implicit-strategy-compare',
-          data: {
-            parentSelector: parentSelectorValue.valueOf(),
-            childSelector: selector.valueOf(),
-            currentItemwise,
-            altWhole,
-            altIsWrapped
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-  } catch {}
-  // #endregion
   if (isNode(selector, 'SelectorList')) {
     let mutated = false;
     const value = selector.value;

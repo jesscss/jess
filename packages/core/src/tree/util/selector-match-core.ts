@@ -7,16 +7,10 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
-import { syncLog } from './__tests__/debug-log.js';
-
 /**
  * Helper functions for extend operations that eliminate genuine code duplication
  * These preserve all original logic while extracting commonly repeated patterns
  */
-
-// #region agent log
-let __agentIsAppendLogCount = 0;
-// #endregion
 
 /**
  * Determines the extension type based on selector type and location context
@@ -302,26 +296,6 @@ export function expandComplexSelectorWithIs(complexSelector: ComplexSelector): S
   let isArg: Selector | null = null;
   let isFromBareIsCompound = false;
   let isFromAmpersandSelector = false;
-
-  // #region agent log
-  try {
-    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
-      const s = complexSelector.valueOf();
-      if (s.includes(':is(') && (s.includes('.replace') || s.includes('.rep_ace'))) {
-        const types = complexSelector.value.map((c) => (c as any)?.type ?? typeof c).slice(0, 12);
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H32',
-          location: 'extend-helpers.ts:expandComplexSelectorWithIs',
-          message: 'expandComplexSelectorWithIs-enter',
-          data: { selector: s, componentTypes: types },
-          timestamp: Date.now()
-        });
-      }
-    }
-  } catch {}
-  // #endregion
 
   for (let i = 0; i < complexSelector.value.length; i++) {
     const component = complexSelector.value[i];
@@ -625,7 +599,6 @@ const EXACT_MATCH_CACHE = new WeakMap<Selector, ExtendLocation[]>();
 // General search result cache: WeakMap<target, Map<find, ExtendSearchResult>>
 const SEARCH_RESULT_CACHE = new WeakMap<Selector, Map<Selector, ExtendSearchResult>>();
 const EMPTY_LOCATIONS: ExtendLocation[] = [];
-let __agentIsMatchRejectCount = 0;
 
 /**
  * Enhanced selector matching with 7-layer optimization system from matchSelectors
@@ -640,11 +613,6 @@ export function findExtendableLocations(
   target: Selector,
   find: Selector
 ): ExtendSearchResult {
-  const __agentShouldLogIsMatch = (process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug'
-    && __agentIsMatchRejectCount < 10
-    && target.valueOf().includes(':is(.replace.replace')
-    && find.valueOf() === '.replace.replace .replace';
-
   // Check general search result cache first
   let targetCache = SEARCH_RESULT_CACHE.get(target);
   if (targetCache) {
@@ -686,18 +654,6 @@ export function findExtendableLocations(
     && target.keySet.isDisjointFrom(find.keySet)
     && target.canFastReject && find.canFastReject) {
     metrics.fastRejections++;
-    if (__agentShouldLogIsMatch) {
-      __agentIsMatchRejectCount++;
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-        hypothesisId: 'H17',
-        location: 'extend-helpers.ts:findExtendableLocations:fast-reject-disjoint',
-        message: 'KeySet disjoint fast reject',
-        data: { target: target.valueOf(), find: find.valueOf() },
-        timestamp: Date.now()
-      });
-    }
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
     return result;
@@ -707,18 +663,6 @@ export function findExtendableLocations(
   if (find.canFastReject && target.keySet && find.keySet
     && !find.keySet.isSubsetOf(target.keySet)) {
     metrics.fastRejections++;
-    if (__agentShouldLogIsMatch) {
-      __agentIsMatchRejectCount++;
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-        hypothesisId: 'H17',
-        location: 'extend-helpers.ts:findExtendableLocations:fast-reject-not-subset',
-        message: 'KeySet subset fast reject',
-        data: { target: target.valueOf(), find: find.valueOf() },
-        timestamp: Date.now()
-      });
-    }
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
     return result;
@@ -754,25 +698,6 @@ export function findExtendableLocations(
 
   // Full recursive search with optimizations - only when fast path fails
   metrics.fullSearches++;
-  if (__agentShouldLogIsMatch) {
-    __agentIsMatchRejectCount++;
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'H19',
-      location: 'extend-helpers.ts:findExtendableLocations:slow-path',
-      message: 'Entering slow recursive search',
-      data: {
-        target: target.valueOf(),
-        find: find.valueOf(),
-        targetType: (target as any).type,
-        findType: (find as any).type,
-        targetCanFastReject: !!(target as any).canFastReject,
-        findCanFastReject: !!(find as any).canFastReject
-      },
-      timestamp: Date.now()
-    });
-  }
   searchWithinSelector(target, find, [], locations);
 
   const hasWholeMatch = locations.some(loc => loc.path.length === 0 && loc.matchedNode === target);
@@ -932,22 +857,7 @@ function tryFastPathExtendMatch(
   if (isNode(target, 'ComplexSelector') && target.value.length <= 7) {
     // First check for exact complex selector matches
     if (isNode(find, 'ComplexSelector')) {
-      const __agentIsCase = (process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug'
-        && target.valueOf().includes(':is(.replace.replace')
-        && find.valueOf() === '.replace.replace .replace';
       const eq = areComplexSelectorsEquivalent(target, find);
-      if (__agentIsCase && __agentIsMatchRejectCount < 10) {
-        __agentIsMatchRejectCount++;
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-          hypothesisId: 'H18',
-          location: 'extend-helpers.ts:tryFastPathExtendMatch:complex-eq',
-          message: 'Complex selector equivalence check',
-          data: { target: target.valueOf(), find: find.valueOf(), eq },
-          timestamp: Date.now()
-        });
-      }
       if (eq) {
         return [withMatchScope({
           path: [...basePath],
@@ -1377,21 +1287,6 @@ function searchWithinComplexSelector(
   // If we're searching for a ComplexSelector target, allow full structural equivalence (including `:is(...)`).
   if (isNode(target, 'ComplexSelector')) {
     const eq = areComplexSelectorsEquivalent(complex, target);
-    if ((process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug'
-      && complex.valueOf().includes(':is(.replace.replace')
-      && target.valueOf() === '.replace.replace .replace'
-      && __agentIsMatchRejectCount < 10) {
-      __agentIsMatchRejectCount++;
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-        hypothesisId: 'H20',
-        location: 'extend-helpers.ts:searchWithinComplexSelector:eq-check',
-        message: 'Slow-path complex equivalence check',
-        data: { current: complex.valueOf(), target: target.valueOf(), eq },
-        timestamp: Date.now()
-      });
-    }
     if (eq) {
       locations.push(withMatchScope({
         path: [...currentPath],
@@ -1815,27 +1710,6 @@ function searchWithinPseudoSelector(
       // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
       const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(alt, target));
       if (canExtendAsList) {
-        // #region agent log
-        if (process.env.DEBUG_EXTEND_IS_APPEND === 'true' && __agentIsAppendLogCount < 20) {
-          __agentIsAppendLogCount++;
-          // IMPORTANT: log only primitives (no nodes) to avoid circular refs.
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-            hypothesisId: 'H1',
-            location: 'extend-helpers.ts:searchWithinPseudoSelector',
-            message: 'is-append-location',
-            data: {
-              pseudoName: pseudo.value.name,
-              argType: 'SelectorList',
-              argLen: argSelector.value.length,
-              target: target.valueOf(),
-              pathLen: currentPath.length
-            },
-            timestamp: Date.now()
-          });
-        }
-        // #endregion
         locations.push(withMatchScope({
           path: [...currentPath, 'arg'],
           matchedNode: argSelector,

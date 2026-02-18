@@ -11,7 +11,6 @@ import type { Declaration } from '../declaration.js';
 import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
-import { syncLog } from './__tests__/debug-log.js';
 
 const { isArray } = Array;
 
@@ -111,28 +110,6 @@ export abstract class Registry<
         const visibility = entryVisibility ?? nodeVisibility;
 
         const isMixinOutput = n.node.options?.isMixinOutput === true;
-        // #region agent log
-        try {
-          if (filterType === 'Mixin' && key === '.mixin') {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID ?? 'run',
-              hypothesisId: 'H11',
-              location: 'registry-utils.ts:_searchRulesChildren',
-              message: 'ruleset-entry-visibility-check',
-              data: {
-                entryMixinVis: String(n.rulesVisibility?.Mixin ?? ''),
-                nodeMixinVis: String((n.node as any)?.options?.rulesVisibility?.Mixin ?? ''),
-                isMixinOutput,
-                leakyRules: !!context?.leakyRules,
-                hasTarget: !!options?.hasTarget,
-                nodeValueLen: Array.isArray((n.node as any)?.value) ? (n.node as any).value.length : -1
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
         // Mixin output Rules should never participate in untargeted lookups.
         // They are only searchable when the lookup has an explicit target.
         // (This prevents mixin-call frame variables—including parameter bindings—from leaking.)
@@ -496,19 +473,18 @@ export class MixinRegistry extends Registry<
     const index = this.index;
 
     if (keySet?.size) {
-      // Check if the selector contains any non-indexable selectors
-      // Universal selectors (*) and pseudo-selectors (:hover, :before, etc.) should not be indexed
-      // If the selector contains ANY non-indexable selector, the entire mixin/ruleset should not be registered
-      const hasNonIndexableKeys = Array.from(keySet).some((key) => {
-        return typeof key === 'string' && (key.startsWith('*') || key.startsWith(':'));
-      });
+      // Index by the first *indexable* key so guarded rulesets are findable by selector name
+      // even when the selector keySet includes guard-related keys (e.g. :when).
+      // Universal (*) and pseudo (:) keys are not used as index keys but do not prevent indexing
+      // when there is at least one indexable key.
+      const indexableKeys = Array.from(keySet).filter(
+        (key) => typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
+      );
 
-      if (hasNonIndexableKeys) {
-        return; // Don't register mixins/rulesets with non-indexable selectors
+      if (indexableKeys.length === 0) {
+        return; // Only skip when there is no indexable key (e.g. :hover-only selector)
       }
 
-      // All keys are indexable, so proceed with indexing
-      const indexableKeys = Array.from(keySet);
       const [startKey, ...rest] = indexableKeys;
       const existing = index.get(startKey!);
       if (existing) {
@@ -529,16 +505,41 @@ export class MixinRegistry extends Registry<
         if (isNode(selector, 'Nil')) {
           continue;
         }
+        // `&` rulesets are structural nesting selectors, not callable mixins.
+        // Determine callability from ownSelector (before implicit selector resolution) when available.
+        const ownSelector = (mixin.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+        const callableSelector = ownSelector && !isNode(ownSelector, 'Nil') ? ownSelector : selector;
+        if (isNode(callableSelector, 'Ampersand')) {
+          continue;
+        }
         // Use sourceNode if available - it has the original selector with implicit ampersand
         // Use visibleKeySet to get only the visible selectors (ignoring invisible ampersands)
         const selectorToIndex = (selector.sourceNode || selector) as Selector;
+        let keySetToUse: Set<string> | undefined;
         if (isNode(selectorToIndex, 'SelectorList')) {
           /** Selector list's selectors are individually registered */
           for (const sel of selectorToIndex.value) {
             this._indexSelectorStart(mixin, sel.visibleKeySet);
           }
+          keySetToUse = undefined; // already indexed above
         } else {
-          this._indexSelectorStart(mixin, selectorToIndex.visibleKeySet);
+          keySetToUse = selectorToIndex.visibleKeySet;
+        }
+        // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
+        // would not index. Use the ruleset's ownSelector (set in preEval before getImplicitSelector)
+        // to index by the callable selector that was explicitly authored.
+        if (keySetToUse !== undefined) {
+          if (
+            keySetToUse.size === 0 &&
+            ownSelector &&
+            !isNode(ownSelector, 'Nil')
+          ) {
+            const ownKeySet = (ownSelector as Selector).visibleKeySet;
+            if (ownKeySet?.size) {
+              keySetToUse = ownKeySet;
+            }
+          }
+          this._indexSelectorStart(mixin, keySetToUse);
         }
       } else {
         this._indexSelectorStart(mixin, mixin.keySet);

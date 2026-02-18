@@ -15,7 +15,6 @@ import { getFunctionFromMixins } from './rules.js';
 import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
-import { syncLog } from './util/__tests__/debug-log.js';
 
 /**
  * The type is determined by syntax
@@ -456,25 +455,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 cursor = cursor.parent;
                 continue;
               }
-              // #region agent log
-              try {
-                if (type === 'mixin-ruleset' && (Array.isArray(valueKey) ? valueKey.join('') : String(valueKey)) === '.mixin') {
-                  syncLog({
-                    sessionId: 'debug-session',
-                    runId: process.env.DEBUG_RUN_ID ?? 'run',
-                    hypothesisId: 'H10',
-                    location: 'reference.ts:parent-walk',
-                    message: 'mixin-parent-walk-check',
-                    data: {
-                      depth,
-                      cursorIndex: (cursor as any)?.index,
-                      cursorRulesSetLen: Array.isArray((cursor as any)?.rulesSet) ? (cursor as any).rulesSet.length : -1
-                    },
-                    timestamp: Date.now()
-                  });
-                }
-              } catch {}
-              // #endregion
               returnVal = performLookup(cursor);
               if (returnVal !== undefined) {
                 break;
@@ -492,122 +472,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
         }
 
-        // #region agent log
-        try {
-          if (type === 'variable') {
-            const keyStr = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
-            if (keyStr === 'ruleset' || keyStr.includes('mixins')) {
-              let foundNodeType = '';
-              let valueType = '';
-              let collLen = -1;
-              let firstDecl = '';
-              try {
-                if (returnVal && typeof returnVal === 'object' && 'type' in (returnVal as any)) {
-                  foundNodeType = String((returnVal as any).type ?? '');
-                  const vv = (returnVal as any).value?.value;
-                  if (vv && typeof vv === 'object' && 'type' in vv) {
-                    valueType = String((vv as any).type ?? '');
-                    if (valueType === 'Collection') {
-                      collLen = Array.isArray((vv as any).value) ? (vv as any).value.length : -1;
-                      const first: any = Array.isArray((vv as any).value) ? (vv as any).value[0] : undefined;
-                      if (first?.type === 'Declaration') {
-                        const nm = first.value?.name;
-                        const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
-                        const valStr = String(first.value?.value?.valueOf?.() ?? '');
-                        firstDecl = `${nameStr}=${valStr}`;
-                      }
-                    } else if (valueType === 'Mixin') {
-                      // For detached ruleset-as-mixin, grab first declaration from its rules body if present.
-                      const body: any = (vv as any).value?.rules;
-                      const arr: any[] | undefined = Array.isArray(body?.value) ? body.value : undefined;
-                      const first: any = arr ? arr[0] : undefined;
-                      if (first?.type === 'Declaration') {
-                        const nm = first.value?.name;
-                        const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
-                        const valStr = String(first.value?.value?.valueOf?.() ?? '');
-                        firstDecl = `${nameStr}=${valStr}`;
-                      }
-                    }
-                  }
-                }
-              } catch {}
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID ?? 'run',
-                hypothesisId: 'H16',
-                location: 'reference.ts:lookup',
-                message: 'variable-lookup-result',
-                data: {
-                  key: keyStr,
-                  foundNodeType,
-                  valueType,
-                  collLen,
-                  firstDecl
-                },
-                timestamp: Date.now()
-              });
-            }
-          }
-        } catch {}
-        // #endregion
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
-          // #region agent log
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H3',
-            location: 'reference.ts:489',
-            message: 'lookup-miss',
-            data: {
-              type,
-              key: valueKeyStr2,
-              hasTarget: !!this.value.target,
-              leakyRules: !!context.leakyRules,
-              rulesParentType: (this.rulesParent as any)?.type,
-              sourceRulesParentType: (this.sourceRulesParent as any)?.type,
-              resolvedTargetType: (resolvedTarget as any)?.type,
-              resolvedTargetIndex: (resolvedTarget as any)?.index,
-              resolvedTargetValueLen: Array.isArray((resolvedTarget as any)?.value) ? (resolvedTarget as any).value.length : -1,
-              resolvedTargetRulesSetLen: Array.isArray((resolvedTarget as any)?.rulesSet) ? (resolvedTarget as any).rulesSet.length : -1,
-              resolvedTargetChild0: (() => {
-                try {
-                  const first: any = Array.isArray((resolvedTarget as any)?.value) ? (resolvedTarget as any).value[0] : undefined;
-                  if (!first) {return '';}
-                  if (first.type === 'Ruleset') {return `Ruleset:${String(first.value?.selector?.valueOf?.() ?? '')}`;}
-                  if (first.type === 'Mixin') {return `Mixin:${String(first.value?.name?.valueOf?.() ?? '')}`;}
-                  if (first.type === 'Declaration' || first.type === 'VarDeclaration') {
-                    const nm = first.value?.name;
-                    return `${first.type}:${typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '')}`;
-                  }
-                  return String(first.type ?? '');
-                } catch {
-                  return '';
-                }
-              })(),
-              ancestorRulesSetLens: (() => {
-                try {
-                  const lens: number[] = [];
-                  let cur: any = (resolvedTarget as any)?.parent;
-                  let depth = 0;
-                  while (cur && depth++ < 6) {
-                    if (isNode(cur, 'Rules')) {
-                      lens.push(Array.isArray(cur.rulesSet) ? cur.rulesSet.length : -1);
-                    }
-                    cur = cur.parent;
-                  }
-                  return lens.join(',');
-                } catch {
-                  return '';
-                }
-              })()
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
           if (!fallbackValue) {
             switch (type) {
               case 'mixin':

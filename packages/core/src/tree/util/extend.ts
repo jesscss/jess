@@ -122,7 +122,6 @@ import { isNode } from './is-node.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { normalizeSelectorForExtend, type ExtendSearchResult } from './find-extendable-locations.js';
 import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
-import { syncLog } from './__tests__/debug-log.js';
 import {
   selectorCompare,
   type SelectorComparisonResult,
@@ -273,111 +272,19 @@ export function applyExtendsToSelector(
         continue;
       }
       const { target, extendWith, partial } = instruction;
-      // #region agent log
-      try {
-        const t = target.valueOf();
-        const e = extendWith.valueOf();
-        const s = selector.valueOf();
-        if (t === '.replace' && e === '.rep_ace') {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-LOOP-REENTRY',
-            location: 'extend.ts:applyExtendsToSelector',
-            message: 'loop-attempt',
-            data: {
-              instructionIndex: i,
-              remainingInstructions: instructions.length,
-              partial,
-              currentSelector: s,
-              target: t,
-              extendWith: e
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       const result = tryExtendSelector(selector, target, extendWith, partial);
       if (result && !result.error) {
         const beforeValue = selector.valueOf();
         const afterValue = result.value.valueOf();
         if (afterValue !== beforeValue) {
-          // #region agent log
-          try {
-            if (afterValue.includes(':is([data=\"test3\"]')) {
-              const v: any = result.value as any;
-              syncLog({
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H-GENERATED-FLAG-LIFECYCLE',
-                location: 'extend.ts:applyExtendsToSelector',
-                message: 'after-extend-result-shape',
-                data: {
-                  before: beforeValue,
-                  after: afterValue,
-                  resultType: v?.type ?? null,
-                  resultGenerated: v?.generated ?? null
-                },
-                timestamp: Date.now()
-              });
-            }
-          } catch {}
-          // #endregion
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-            hypothesisId: 'H-extend-selector',
-            location: 'extend.ts:applyExtendsToSelector',
-            message: 'selector-updated-v2',
-            data: {
-              before: selector.valueOf(),
-              after: result.value.valueOf(),
-              target: target.valueOf(),
-              extendWith: extendWith.valueOf(),
-              partial
-            },
-            timestamp: Date.now()
-          });
           selector = result.value;
           instructions.splice(i, 1);
           changed = true;
           break;
         }
-        // #region agent log
-        try {
-          if (result.value !== selector) {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-REF-ONLY-CHANGE',
-              location: 'extend.ts:applyExtendsToSelector',
-              message: 'ref-only-selector-change-ignored',
-              data: {
-                instructionIndex: i,
-                partial,
-                target: target.valueOf(),
-                extendWith: extendWith.valueOf(),
-                before: beforeValue,
-                after: afterValue
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
-      }
+        }
     }
   }
-
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-    hypothesisId: 'H-extend-selector',
-    location: 'extend.ts:applyExtendsToSelector',
-    message: 'selector-final',
-    data: {
-      result: selector.valueOf()
-    },
-    timestamp: Date.now()
-  });
 
   return selector;
 }
@@ -431,20 +338,6 @@ function wrapMatchInIs(
   extendWithSelectors?: Selector[]
 ): PseudoSelector {
   const computed = extendWithSelectors ?? extractSelectorsFromIs(extendWith);
-  // #region agent log
-  {
-    const matchedV = matched.valueOf();
-    const computedV = computed.map(s => s.valueOf());
-    const combinedV = [matchedV, ...computedV];
-    if (__agentIsOrderInteresting(combinedV)) {
-      __agentExtendDbg('extend.ts:wrapMatchInIs', 'wrapMatchInIs inputs', {
-        matched: matchedV,
-        computed: computedV,
-        contextSelector: contextSelector?.valueOf?.() ?? null
-      });
-    }
-  }
-  // #endregion
   return createValidatedIsWrapperWithErrors(
     [matched, ...computed],
     inheritFrom,
@@ -497,45 +390,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     if (needsCopy) {
       el = el.copy() as Selector;
     }
-    // #region agent log
-    try {
-      if (isNode(originalEl, 'PseudoSelector') && originalEl.value.name === ':is') {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H1-generated-flag-lost-on-copy',
-          location: 'extend.ts:createProcessedSelector',
-          message: 'is-copy-generated-state',
-          data: {
-            root: Boolean(root),
-            originalGenerated: Boolean((originalEl as any).generated),
-            copiedGenerated: Boolean((el as any)?.generated),
-            originalArgType: ((originalEl as any).value?.arg as any)?.type ?? null,
-            copiedArgType: ((el as any).value?.arg as any)?.type ?? null
-          },
-          timestamp: Date.now()
-        });
-      }
-    } catch {}
-    // #endregion
     if (isNode(el, 'PseudoSelector')) {
-      // #region agent log
-      try {
-        if (el.value.name === ':is' && el.valueOf().includes('[data=\"test3\"]')) {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-GENERATED-FLAG-LIFECYCLE',
-            location: 'extend.ts:createProcessedSelector',
-            message: 'root-is-flag-check',
-            data: {
-              value: el.valueOf(),
-              generated: Boolean((el as any).generated),
-              argType: (el.value.arg as any)?.type ?? null
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       if (root && el.value.name === ':is' && el.generated) {
         __agentExtendLog('extend.ts:createProcessedSelector', 'unwrap-generated-is-root', {
           root: !!root,
@@ -544,22 +399,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           argType: (el.value.arg as any)?.type ?? null,
           argValueOf: (el.value.arg as any)?.valueOf?.() ?? null
         });
-        // #region agent log
-        if (process.env.DEBUG_EXTEND_IS_ORDER === 'true') {
-          const arg = el.value.arg as any;
-          const argList: string[] =
-            arg && isNode(arg, 'SelectorList')
-              ? (arg.value as any[]).map(s => String((s as any)?.valueOf?.() ?? ''))
-              : [String(arg?.valueOf?.() ?? '')];
-          const combined = ['' + el.valueOf(), ...argList];
-          if (__agentIsOrderInteresting(combined)) {
-            __agentExtendDbg('extend.ts:createProcessedSelector', 'unwrap generated :is() at root', {
-              wrapper: String(el.valueOf?.() ?? ''),
-              argList
-            });
-          }
-        }
-        // #endregion
         let result = createProcessedSelector(el.value.arg as Selector) as Selector;
         /**
          * Result will be a single selector, which we want to bubble
@@ -573,24 +412,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           push(result);
         }
       } else {
-        // #region agent log
-        try {
-          if (el.value.name === ':is') {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H2-root-gate-not-entered',
-              location: 'extend.ts:createProcessedSelector',
-              message: 'is-not-unwrapped-at-entry',
-              data: {
-                root: Boolean(root),
-                generated: Boolean((el as any).generated),
-                argType: (el.value.arg as any)?.type ?? null
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
         if (root && el.value.name === ':is' && !el.generated) {
           __agentExtendLog('extend.ts:createProcessedSelector', 'keep-non-generated-is-root', {
             root: !!root,
@@ -630,25 +451,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
             }
           }
         }
-        // #region agent log
-        try {
-          if (el.value.name === ':is') {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H3-non-generated-is-preserved',
-              location: 'extend.ts:createProcessedSelector',
-              message: 'is-preserved-after-arg-processing',
-              data: {
-                root: Boolean(root),
-                generated: Boolean((el as any).generated),
-                argTypeAfter: (el.value.arg as any)?.type ?? null,
-                valueAfter: el.valueOf()
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
         push(el);
       }
     } else if (isNode(el, 'SelectorList')) {
@@ -672,23 +474,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       if (extendOrderMap && flattened.length >= 2 && extendOrderByValueOf) {
         const orderMap = extendOrderMap;
         const orderByValue = extendOrderByValueOf;
-        // #region agent log
-        try {
-          const vals = flattened.map((s) => s.valueOf());
-          if (vals.includes('.b') && vals.includes('.c') && vals.includes('.q')) {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-IS-ORDER-SORT',
-              location: 'extend.ts:createProcessedSelector',
-              message: 'before-selectorlist-order-sort',
-              data: {
-                flattenedBeforeSort: vals
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
         const orderFor = (s: Selector): number => {
           const fromMap = orderMap.get(s);
           if (fromMap !== undefined) return fromMap;
@@ -711,33 +496,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
             if (ob === NO_ORDER) return 1;
             return oa - ob;
           });
-          // #region agent log
-          try {
-            const vals = flattened.map((s) => s.valueOf());
-            if (vals.includes('.b') && vals.includes('.c') && vals.includes('.q')) {
-              syncLog({
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H-IS-ORDER-SORT',
-                location: 'extend.ts:createProcessedSelector',
-                message: 'after-selectorlist-order-sort',
-                data: {
-                  flattenedAfterSort: vals,
-                  orderByValue: vals.map((v) => ({
-                    value: v,
-                    order: (() => {
-                      const direct = orderByValue.get(v);
-                      if (direct !== undefined) return direct;
-                      const lastPart = v.split(/\s+/).pop();
-                      return lastPart ? (orderByValue.get(lastPart) ?? 999999) : 999999;
-                    })()
-                  }))
-                },
-                timestamp: Date.now()
-              });
-            }
-          } catch {}
-          // #endregion
-        }
+          }
       }
       el.value = flattened;
       push(el);
@@ -749,24 +508,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     } else if (isNode(el, 'ComplexSelector')) {
       let components = el.value;
       let result = createProcessedSelector(components) as Selector[];
-      // #region agent log
-      try {
-        if (result.some((s) => isNode(s, 'PseudoSelector') && s.value.name === ':is')) {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H4-is-stays-inside-complex-selector',
-            location: 'extend.ts:createProcessedSelector',
-            message: 'complex-after-component-processing',
-            data: {
-              resultCount: result.length,
-              hasGeneratedIs: result.some((s) => isNode(s, 'PseudoSelector') && s.value.name === ':is' && (s as any).generated),
-              hasNonGeneratedIs: result.some((s) => isNode(s, 'PseudoSelector') && s.value.name === ':is' && !(s as any).generated)
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       el.value = result;
       let [first, second] = components;
       /** Remove invisibility on combinator if it's a generated */
@@ -839,37 +580,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               && (originalSecond as any).type === 'Combinator'
               && !(originalSecond as any).hasFlag?.(F_VISIBLE));
 
-          // #region agent log
-          try {
-            const maybeIsText = maybeIs.valueOf();
-            if (maybeIsText.includes('[data=\"test3\"]') || maybeIsText.includes('@{attr-data}')) {
-              syncLog({
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H-FLATTEN-GATE',
-                location: 'extend.ts:createProcessedSelector',
-                message: 'flatten-gate-decision',
-                data: {
-                  current: el.valueOf(),
-                  maybeIs: maybeIsText,
-                  maybeCombinator: maybeCombinator.valueOf(),
-                  maybeCombinatorVisible: maybeCombinator.hasFlag(F_VISIBLE),
-                  canFlattenViaImplicitNesting,
-                  prefix: prefix.map((p: any) => p?.valueOf?.() ?? p?.type ?? null),
-                  firstType: (first as any)?.type ?? null,
-                  firstValue: (first as any)?.valueOf?.() ?? null,
-                  firstGenerated: (first as any)?.generated ?? null,
-                  firstVisible: (first as any)?.hasFlag?.(F_VISIBLE) ?? null,
-                  originalFirstType: (originalFirst as any)?.type ?? null,
-                  originalFirstValue: (originalFirst as any)?.valueOf?.() ?? null,
-                  originalSecondType: (originalSecond as any)?.type ?? null,
-                  originalSecondValue: (originalSecond as any)?.valueOf?.() ?? null
-                },
-                timestamp: Date.now()
-              });
-            }
-          } catch {}
-          // #endregion
-
           // Only flatten when we know this is the implicit `& ` nesting case.
           // Do NOT flatten other combinators (e.g. `.ext6 > :is(...)`) — Less expects
           // those to remain as :is() wrappers.
@@ -882,24 +592,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           const argList: Selector[] = isNode(argSel, 'SelectorList') ? (argSel.value as Selector[]) : [argSel as Selector];
           if (DEBUG_FIXTURE_2A_ENABLED && debugFlatten2aCount < 40) {
             debugFlatten2aCount += 1;
-            // #region agent log
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-              hypothesisId: 'H-flatten',
-              location: 'extend.ts:createProcessedSelector',
-              message: 'flatten-is-arg-candidates',
-              data: {
-                current: el.valueOf(),
-                maybeIs: maybeIs.valueOf(),
-                argList: argList.map((a) => a.valueOf()),
-                prefix: prefix.map((p) => (p as Selector).valueOf?.() ?? String((p as any)?.type ?? 'unknown')),
-                maybeCombinator: maybeCombinator.valueOf()
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
-          }
+            }
           // If this came from implicit `& ` nesting (both ampersand and the space are invisible),
           // then the prefix is already represented by the parent ruleset context and must not be
           // duplicated in nested output. In that case we drop the prefix entirely.
@@ -953,11 +646,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               const resolved = origAmp.getResolvedSelector();
               const parentSel = resolved ?? undefined;
               const origAmpValue = origAmp.value as AmpersandValue;
-              if (process.env.DEBUG_AMPERSAND_EXTEND === '1') {
-                const resolvedVal = resolved && typeof (resolved as Selector).valueOf === 'function' ? String((resolved as Selector).valueOf()).slice(0, 60) : '';
-                const innerVal = typeof innerSel.valueOf === 'function' ? String(innerSel.valueOf()).slice(0, 60) : '';
-                syncLog({ trace: 'createProcessedSelector_retainInvisible', hasContainer: !!origAmpValue.selectorContainer, resolvedVal, innerVal });
-              }
               const amp = Ampersand.create(
                 origAmpValue.selectorContainer
                   ? { selectorContainer: origAmpValue.selectorContainer }
@@ -980,22 +668,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
             }
             if (DEBUG_FIXTURE_2A_ENABLED && debugFlatten2aCount < 40) {
               debugFlatten2aCount += 1;
-              // #region agent log
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-                hypothesisId: 'H-flatten',
-                location: 'extend.ts:createProcessedSelector',
-                message: 'flatten-is-arg-emitted',
-                data: {
-                  current: el.valueOf(),
-                  inner: inner.valueOf(),
-                  emitted: out[out.length - 1]?.valueOf?.() ?? null
-                },
-                timestamp: Date.now()
-              });
-              // #endregion
-            }
+              }
           }
           continue;
         }
@@ -1007,11 +680,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       // Resolving & to the parent selector here would make the prefix visible; that should only
       // happen when we hoist (e.g. in maybeHoistMixedNestingSelectorList).
       if (el.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        if (process.env.DEBUG_AMPERSAND_EXTEND === '1') {
-          const resolved = (el as Ampersand).getResolvedSelector();
-          const v = resolved && typeof (resolved as Selector).valueOf === 'function' ? String((resolved as Selector).valueOf()).slice(0, 60) : '';
-          syncLog({ trace: 'createProcessedSelector_keepImplicitAmp', resolvedVal: v });
-        }
         push(el);
       } else if (el.generated) {
         const sel = (el as Ampersand).getResolvedSelector();
@@ -1079,17 +747,6 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
     selectors: debugSelectorInfo(selectors),
     inheritFrom: inheritFrom?.valueOf?.() ?? null
   });
-  // #region agent log
-  {
-    const before = selectors.map(s => s.valueOf());
-    if (__agentIsOrderInteresting(before)) {
-      __agentExtendDbg('extend.ts:createExtendedSelectorList', 'input selectors', {
-        before,
-        inheritFrom: inheritFrom?.valueOf?.() ?? null
-      });
-    }
-  }
-  // #endregion
   // Extract selectors from any :is() wrappers in the array
   const extractedSelectors: Selector[] = [];
   for (const selector of selectors) {
@@ -1204,19 +861,6 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
       generated: isNode(s, 'PseudoSelector') ? !!(s as any).generated : null
     }))
   });
-  // #region agent log
-  {
-    const extractedV = extractedSelectors.map(s => s.valueOf());
-    const processedV = processedArray.map(s => (s as any)?.valueOf?.() ?? '');
-    if (__agentIsOrderInteresting([...new Set([...extractedV, ...processedV])])) {
-      __agentExtendDbg('extend.ts:createExtendedSelectorList', 'after createProcessedSelector', {
-        extracted: extractedV,
-        processed: processedV
-      });
-    }
-  }
-  // #endregion
-
   // IMPORTANT: Avoid self-parenting cycles:
   // If `inheritFrom` is also included as an item in the selector list, the constructor will adopt it,
   // reparenting `inheritFrom` to the new SelectorList, and then `.inherit(inheritFrom)` will read
@@ -1227,16 +871,6 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
     : processedArray;
 
   const result = SelectorList.create(safeArray);
-  // #region agent log
-  {
-    const safeV = safeArray.map(s => (s as any)?.valueOf?.() ?? '');
-    if (__agentIsOrderInteresting(safeV)) {
-      __agentExtendDbg('extend.ts:createExtendedSelectorList', 'final list items', {
-        safe: safeV
-      });
-    }
-  }
-  // #endregion
   return inheritFrom ? result.inherit(inheritFrom) : result;
 }
 
@@ -1405,49 +1039,9 @@ export function tryExtendSelector(
 ): ExtendResult {
   try {
     const result = extendSelector(target, find, extendWith, partial, skipAmpersandCheck, false);
-    if (DEBUG_FIXTURE_2A_ENABLED) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-        hypothesisId: 'H-extend-selector',
-        location: 'extend.ts:tryExtendSelector',
-        message: 'try-extend-result',
-        data: {
-          target: getSelectorValue(target),
-          find: getSelectorValue(find),
-          extendWith: getSelectorValue(extendWith),
-          result: getSelectorValue(result),
-          partial,
-          skipAmpersandCheck
-        },
-        timestamp: Date.now()
-      });
-    }
     return createSuccessResult(result);
   } catch (error) {
     if (error instanceof ExtendError) {
-      if (DEBUG_FIXTURE_2A_ENABLED) {
-        // #region agent log
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-          hypothesisId: 'H-extend-selector',
-          location: 'extend.ts:tryExtendSelector',
-          message: 'try-extend-error',
-          data: {
-            target: getSelectorValue(target),
-            find: getSelectorValue(find),
-            extendWith: getSelectorValue(extendWith),
-            partial,
-            skipAmpersandCheck,
-            errorName: error.name,
-            errorTarget: error.context?.target?.valueOf?.() ?? null,
-            errorFind: error.context?.find?.valueOf?.() ?? null
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
       return createErrorResult(target, error);
     }
     // Re-throw unexpected errors
@@ -1505,118 +1099,14 @@ export function extendSelector(
 
   const comparison = selectorCompare(target, find, searchResult);
   if (DEBUG_FIXTURE_2A_ENABLED && target.valueOf().includes('.replace.replace')) {
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-      hypothesisId: 'H-extend-selector',
-      location: 'extend.ts:extendSelector',
-      message: 'comparison-locations',
-      data: {
-        target: target.valueOf(),
-        find: find.valueOf(),
-        hasWholeMatch: comparison.hasWholeMatch,
-        hasPartialMatch: comparison.hasPartialMatch,
-        locations: comparison.locations.map((loc) => ({
-          path: loc.path,
-          extensionType: loc.extensionType,
-          matchedNode: loc.matchedNode?.valueOf?.() ?? null,
-          remainders: (loc.remainders ?? []).map((r) => r.valueOf())
-        }))
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-  }
+    }
 
   if (!searchResult.hasMatches) {
-    // #region agent log
-    try {
-      if (process.env.DEBUG_FIXTURE_2A === '1') {
-        const tv = target.valueOf();
-        const fv = find.valueOf();
-        if (tv === '&:hover' && fv === '.button:hover') {
-          const crossing = checkAmpersandCrossingDuringExtension(originalTarget, originalFind);
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-            hypothesisId: 'H2-amp-cross-check',
-            location: 'extend.ts:extendSelector',
-            message: 'no-match-ampersand-crossing-check',
-            data: {
-              target: tv,
-              find: fv,
-              targetType: (originalTarget as any)?.type ?? null,
-              crossed: crossing.crossed,
-              hasAmpersandNode: !!crossing.ampersandNode,
-              componentTypes: isNode(originalTarget, 'CompoundSelector')
-                ? originalTarget.value.map((c) => c.type)
-                : null
-            },
-            timestamp: Date.now()
-          });
-        }
-      }
-    } catch {}
-    // #endregion
-
     if (DEBUG_FIXTURE_2A_ENABLED) {
       const normalizedTarget = normalizeSelectorForExtend(target);
       const normalizedFind = normalizeSelectorForExtend(find);
       const normalizedSearch = findExtendableLocations(normalizedTarget, normalizedFind);
-      // #region agent log
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-        hypothesisId: 'H-extend-selector',
-        location: 'extend.ts:extendSelector',
-        message: 'extend-no-match',
-        data: {
-          partial,
-          target: target.valueOf(),
-          find: find.valueOf(),
-          normalizedTarget: normalizedTarget.valueOf(),
-          normalizedFind: normalizedFind.valueOf(),
-          normalizedHasMatches: normalizedSearch.hasMatches
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
-    // #region agent log
-    // Debug: see if :is()-normalization would have found a match (extend-exact focus)
-    try {
-      const t = target.valueOf();
-      const f = find.valueOf();
-      if (
-        (process.env.DEBUG_EXTEND_LOOP === 'true' || process.env.DEBUG_EXTEND_BOOT === 'true')
-        && (
-          f.includes('.replace.replace')
-          || t.includes(':is(')
-        )
-      ) {
-        const nt = normalizeSelectorForExtend(target);
-        const nf = normalizeSelectorForExtend(find);
-        const normalizedSearch = findExtendableLocations(nt, nf);
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H31',
-          location: 'extend.ts:extendSelector',
-          message: 'extend-not-found-normalization-check',
-          data: {
-            partial,
-            rawTarget: t,
-            rawFind: f,
-            normTarget: nt.valueOf(),
-            normFind: nf.valueOf(),
-            normHasMatches: normalizedSearch.hasMatches
-          },
-          timestamp: Date.now()
-        });
       }
-    } catch {}
-    // #endregion
     throw new ExtendError(
       'NOT_FOUND',
       'No match found for target selector',
@@ -1628,69 +1118,6 @@ export function extendSelector(
   // within ampersand. One state: do not extend here; parent selector should carry the extend.
   if (!skipAmpersandCheck) {
     const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(originalTarget, originalFind);
-    // #region agent log
-    syncLog({
-      runId: process.env.DEBUG_RUN_ID || 'run',
-      hypothesisId: 'H-AMP-CROSSING',
-      location: 'extend.ts:extendSelector',
-      message: 'ampersand-crossing-check',
-      data: {
-        target: originalTarget.valueOf(),
-        find: originalFind.valueOf(),
-        crossed: ampersandCrossingInfo.crossed,
-        hasAmpNode: Boolean(ampersandCrossingInfo.ampersandNode),
-        reason: ampersandCrossingInfo.reason ?? null,
-        resolvedMatches: ampersandCrossingInfo.resolvedMatches ?? null,
-        nonAmpMatches: ampersandCrossingInfo.nonAmpMatches ?? null,
-        skipAmpersandCheck
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-    // #region agent log
-    try {
-      if (originalFind.valueOf() === '.clearfix' && originalTarget.valueOf().includes(':after')) {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-AMP-PARTIAL-BOUNDARY',
-          location: 'extend.ts:extendSelector',
-          message: 'clearfix-after-boundary-decision',
-          data: {
-            target: originalTarget.valueOf(),
-            find: originalFind.valueOf(),
-            crossed: ampersandCrossingInfo.crossed,
-            reason: ampersandCrossingInfo.reason ?? null,
-            resolvedMatches: ampersandCrossingInfo.resolvedMatches ?? null,
-            nonAmpMatches: ampersandCrossingInfo.nonAmpMatches ?? null,
-            skipAmpersandCheck
-          },
-          timestamp: Date.now()
-        });
-      }
-      if (originalFind.valueOf() === '.clearfix' || originalFind.valueOf() === '.parent .child') {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-AMP-CROSS-PATH',
-          location: 'extend.ts:extendSelector',
-          message: 'amp-cross-search-path-shape',
-          data: {
-            target: originalTarget.valueOf(),
-            find: originalFind.valueOf(),
-            crossed: ampersandCrossingInfo.crossed,
-            reason: ampersandCrossingInfo.reason ?? null,
-            locations: searchResult.locations.slice(0, 8).map((loc: any) => ({
-              path: loc?.path ?? null,
-              extensionType: loc?.extensionType ?? null,
-              isPartialMatch: Boolean(loc?.isPartialMatch),
-              matchedNode: loc?.matchedNode?.valueOf?.() ?? null,
-              parentNode: loc?.parentNode?.valueOf?.() ?? null
-            }))
-          },
-          timestamp: Date.now()
-        });
-      }
-    } catch {}
-    // #endregion
     if (ampersandCrossingInfo.crossed) {
       const shouldSkipResolvedOnlySimpleBoundary = Boolean(
         !partial
@@ -1700,22 +1127,7 @@ export function extendSelector(
       if (shouldSkipResolvedOnlySimpleBoundary) {
         // Keep exact simple-selector extends on nested rules in normal flow.
         // Forcing amp-boundary hoisting here flattens authored nesting unexpectedly.
-        // #region agent log
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-AMP-CROSSING',
-          location: 'extend.ts:extendSelector',
-          message: 'skip-resolved-only-simple-boundary-hoist',
-          data: {
-            target: originalTarget.valueOf(),
-            find: originalFind.valueOf(),
-            reason: ampersandCrossingInfo.reason,
-            partial
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      } else {
+        } else {
       const hasWholeSelectorLocation = searchResult.locations.some((loc: any) =>
         !loc?.isPartialMatch
         && Array.isArray(loc?.path)
@@ -1724,26 +1136,6 @@ export function extendSelector(
       // If a partial extend only matches through a resolved ampersand boundary (no whole-selector hit),
       // the current selector should not consume it; parent-level selector processing handles it.
       if (partial && !hasWholeSelectorLocation) {
-        // #region agent log
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-AMP-PARTIAL-NOT-FOUND',
-          location: 'extend.ts:extendSelector',
-          message: 'ampersand-crossing-partial-rejected',
-          data: {
-            target: originalTarget.valueOf(),
-            find: originalFind.valueOf(),
-            partial,
-            hasWholeSelectorLocation,
-            locations: searchResult.locations.slice(0, 8).map((loc: any) => ({
-              path: loc?.path ?? null,
-              isPartialMatch: Boolean(loc?.isPartialMatch),
-              matchedNode: loc?.matchedNode?.valueOf?.() ?? null
-            }))
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
         throw new ExtendError(
           'NOT_FOUND',
           'No match found for target selector',
@@ -1766,109 +1158,8 @@ export function extendSelector(
     return extendSelectorList(target, find, extendWith, partial, skipAmpersandCheck);
   }
 
-  // #region agent log
-  try {
-    if (!partial && isNode(find, 'SimpleSelector') && isNode(target, 'ComplexSelector')) {
-      const fv = find.valueOf();
-      if (fv === '.a' || fv === '.b' || fv === '.c') {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-EXACT-COMPLEX-SIMPLE-CANDIDATE',
-          location: 'extend.ts:extendSelector',
-          message: 'full-mode-complex-target-simple-find-entry',
-          data: {
-            target: target.valueOf(),
-            find: fv,
-            extendWith: extendWith.valueOf(),
-            skipAmpersandCheck
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-  } catch {}
-
-  // #endregion
-  // #region agent log
-  try {
-    const f = find.valueOf();
-    const ew = extendWith.valueOf();
-    if (ew === '.rep_ace' && f.includes('.replace.replace')) {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-EXACT-SEARCH-RESULT',
-        location: 'extend.ts:extendSelector',
-        message: 'search-result-before-selection',
-        data: {
-          partial,
-          target: target.valueOf(),
-          find: f,
-          hasMatches: searchResult.hasMatches,
-          hasWholeMatch: searchResult.hasWholeMatch,
-          locationCount: searchResult.locations.length,
-          locations: searchResult.locations.slice(0, 8).map((loc: any) => ({
-            path: loc?.path,
-            extensionType: loc?.extensionType,
-            isPartialMatch: Boolean(loc?.isPartialMatch),
-            matchedNode: loc?.matchedNode?.valueOf?.() ?? null,
-            parentNode: loc?.parentNode?.valueOf?.() ?? null
-          }))
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
-
   // Select the best location from search results
   const location = selectBestLocation(searchResult, comparison, target, find, partial, hasMoreAfterIs, extendWith);
-  // #region agent log
-  syncLog({
-    runId: process.env.DEBUG_RUN_ID || 'run',
-    hypothesisId: 'H-FLOW-BREADCRUMB',
-    location: 'extend.ts:extendSelector',
-    message: 'after-selectBestLocation',
-    data: {
-      partial,
-      target: target.valueOf(),
-      find: find.valueOf(),
-      extendWith: extendWith.valueOf()
-    },
-    timestamp: Date.now()
-  });
-  // #endregion
-  // #region agent log
-  try {
-    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
-      const t = target.valueOf();
-      const f = find.valueOf();
-      if (f.includes('.replace.replace') || t.includes('.replace.replace')) {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H33',
-          location: 'extend.ts:extendSelector',
-          message: 'selectBestLocation',
-          data: {
-            partial,
-            target: t,
-            find: f,
-            extensionType: (location as any).extensionType ?? null,
-            matchedNodeType: (location as any).matchedNode?.type ?? null,
-            parentNodeType: (location as any).parentNode?.type ?? null,
-            path: Array.isArray((location as any).path) ? (location as any).path.slice(0, 12) : null,
-            remaindersCount: Array.isArray((location as any).remainders) ? (location as any).remainders.length : null,
-            remainder0: Array.isArray((location as any).remainders) && (location as any).remainders[0]
-              ? ((location as any).remainders[0] as any).valueOf?.() ?? null
-              : null
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-  } catch {}
-  // #endregion
-
   // If the match is entirely inside an ampersand node (e.g. `&:before` matching `.header .header-nav`),
   // do NOT extend here. The parent selector/ruleset should carry the extension.
   if (
@@ -1923,69 +1214,6 @@ export function extendSelector(
 
   // Handle partial vs full matching modes
   if (partial) {
-    // #region agent log
-    syncLog({
-      runId: process.env.DEBUG_RUN_ID || 'run',
-      hypothesisId: 'H-FLOW-BREADCRUMB',
-      location: 'extend.ts:extendSelector',
-      message: 'entered-partial-branch',
-      data: {
-        target: target.valueOf(),
-        find: find.valueOf(),
-        extendWith: extendWith.valueOf()
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-    // #region agent log
-    try {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-PARTIAL-DISPATCH',
-        location: 'extend.ts:extendSelector',
-        message: 'partial-dispatch-entry',
-        data: {
-          target: target.valueOf(),
-          find: find.valueOf(),
-          extendWith: extendWith.valueOf(),
-          selectedPath: Array.isArray(location?.path) ? location.path : null,
-          selectedType: location?.extensionType ?? null,
-          totalLocations: Array.isArray(searchResult?.locations) ? searchResult.locations.length : null
-        },
-        timestamp: Date.now()
-      });
-    } catch {}
-    // #endregion
-
-    // #region agent log
-    try {
-      if (process.env.DEBUG_FIXTURE_2A === '1') {
-        const tv = target.valueOf();
-        const fv = find.valueOf();
-        if (
-          (tv.includes('[data="test3"]') && fv.includes('[data="test3"]'))
-          || (tv.includes('.aa') && (fv === '.dd' || fv === '.bb' || fv === '.aa'))
-        ) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-            hypothesisId: 'H4-partial-branch-entry',
-            location: 'extend.ts:extendSelector',
-            message: 'partial-branch-entry',
-            data: {
-              target: tv,
-              find: fv,
-              locationPath: Array.isArray(location?.path) ? location.path : null,
-              locationType: location?.extensionType ?? null,
-              totalLocations: Array.isArray(searchResult?.locations) ? searchResult.locations.length : null
-            },
-            timestamp: Date.now()
-          });
-        }
-      }
-    } catch {}
-    // #endregion
-
     // PARTIAL MATCHING MODE: Create :is() wrappers for component-level matches
 
     // If it's a root-level match in partial mode, handle remainders
@@ -2080,23 +1308,6 @@ export function extendSelector(
       }
 
       const rootFallback = createExtendedSelectorList([target, extendWith], target);
-      // #region agent log
-      try {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-PARTIAL-DISPATCH',
-          location: 'extend.ts:extendSelector',
-          message: 'partial-root-fallback-return',
-          data: {
-            target: target.valueOf(),
-            find: find.valueOf(),
-            extendWith: extendWith.valueOf(),
-            result: rootFallback.valueOf()
-          },
-          timestamp: Date.now()
-        });
-      } catch {}
-      // #endregion
       return rootFallback;
     }
 
@@ -2174,30 +1385,6 @@ export function extendSelector(
 
         const complexMatches = [...componentMatches, ...compoundInnerMatches];
 
-        // #region agent log
-        try {
-          const tv = target.valueOf();
-          const fv = find.valueOf();
-          if (tv.includes('[data=') || tv.includes('data=')) {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-COMPLEX-PARTIAL-BRANCH',
-              location: 'extend.ts:partial-complex-branch',
-              message: 'complex-partial-branch-state',
-              data: {
-                target: tv,
-                find: fv,
-                totalLocations: searchResult.locations.length,
-                componentMatches: componentMatches.map((l) => ({ path: l.path, type: l.extensionType })),
-                compoundInnerMatches: compoundInnerMatches.map((l) => ({ path: l.path, type: l.extensionType })),
-                argMatches: argMatches.map((l) => ({ path: l.path, type: l.extensionType }))
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
-
         if (complexMatches.length > 1 || argMatches.length > 0) {
           const newComponents = [...target.value];
           const extendWithSelectors = extractSelectorsFromIs(extendWith);
@@ -2222,45 +1409,14 @@ export function extendSelector(
                 continue;
               }
               if (DEBUG_FIXTURE_2A_ENABLED) {
-                // #region agent log
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-                  hypothesisId: 'H-arg-rewrite',
-                  location: 'extend.ts:partial-complex-arg',
-                  message: 'arg-before-recursive-extend',
-                  data: {
-                    target: target.valueOf(),
-                    find: find.valueOf(),
-                    component: component.valueOf(),
-                    arg: (arg as Selector).valueOf?.() ?? null
-                  },
-                  timestamp: Date.now()
-                });
-                // #endregion
-              }
+                }
               // Extend the arg selector itself; this reuses existing SelectorList/Compound logic
               // (including "wrap all occurrences" for `.replace.replace`).
               const extendedArg = isNode(arg, 'SelectorList')
                 ? extendSelectorList(arg, find, extendWith, true, true, false)
                 : extendSelector(arg as Selector, find, extendWith, true, true, false);
               if (DEBUG_FIXTURE_2A_ENABLED) {
-                // #region agent log
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-                  hypothesisId: 'H-arg-rewrite',
-                  location: 'extend.ts:partial-complex-arg',
-                  message: 'arg-after-recursive-extend',
-                  data: {
-                    target: target.valueOf(),
-                    component: component.valueOf(),
-                    extendedArg: (extendedArg as Selector).valueOf?.() ?? null
-                  },
-                  timestamp: Date.now()
-                });
-                // #endregion
-              }
+                }
               if (component.generated) {
                 component.value.arg = extendedArg as any;
               } else {
@@ -2316,53 +1472,7 @@ export function extendSelector(
         }
       }
 
-      // #region agent log
-      try {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-PARTIAL-CALLSITE',
-          location: 'extend.ts:extendSelector',
-          message: 'about-to-call-handlePartialModeExtension',
-          data: {
-            target: target.valueOf(),
-            find: find.valueOf(),
-            extendWith: extendWith.valueOf(),
-            locationPath: Array.isArray(location?.path) ? location.path : null,
-            locationType: location?.extensionType ?? null
-          },
-          timestamp: Date.now()
-        });
-      } catch {}
-      // #endregion
       const partialResult = handlePartialModeExtension(target, location, extendWith);
-      // #region agent log
-      try {
-        const tv = target.valueOf();
-        const fv = find.valueOf();
-        const ev = extendWith.valueOf();
-        if (
-          ((tv.includes('[data=') || tv.includes('data=')) && fv.includes('[data='))
-          || (tv.includes('.aa') && (fv === '.dd' || fv === '.bb' || fv === '.aa'))
-          || (tv.includes('.replace.replace') && fv.includes('.replace.replace'))
-        ) {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-PARTIAL-RESULT',
-            location: 'extend.ts:extendSelector',
-            message: 'partial-branch-result',
-            data: {
-              target: tv,
-              find: fv,
-              extendWith: ev,
-              selectedPath: Array.isArray(location?.path) ? location.path : null,
-              selectedType: location?.extensionType ?? null,
-              result: partialResult.valueOf()
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       return partialResult;
     }
 
@@ -2386,55 +1496,7 @@ export function extendSelector(
     if (!partial && isNode(find, 'SimpleSelector')) {
       const findV = find.valueOf();
       const wholeSelectorItemMatch = isNonAllWholeSelectorItemMatch(target, findV);
-      // #region agent log
-      try {
-        if (
-          findV === '.a'
-          || findV === '.b'
-          || findV === '.c'
-          || findV === '.replace'
-          || findV === '.replace.replace .replace'
-        ) {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-EXACT-WHOLE-MATCH-GUARD',
-            location: 'extend.ts:extendSelector',
-            message: 'full-mode-whole-selector-item-guard',
-            data: {
-              target: target.valueOf(),
-              find: findV,
-              guardResult: wholeSelectorItemMatch,
-              locationType: location.extensionType,
-              locationPath: Array.isArray(location.path) ? location.path : null,
-              isPartialMatch: Boolean(location.isPartialMatch)
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       if (!wholeSelectorItemMatch) {
-        // #region agent log
-        try {
-          if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H37',
-              location: 'extend.ts:extendSelector',
-              message: 'full-mode-simple-selector-reject-non-whole-selector',
-              data: {
-                target: target.valueOf(),
-                find: findV,
-                extensionType: (location as any)?.extensionType ?? null,
-                isPartialMatch: !!(location as any)?.isPartialMatch,
-                path: Array.isArray((location as any)?.path) ? (location as any).path.slice(0, 12) : null
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
         return target;
       }
     }
@@ -2596,26 +1658,6 @@ export function extendSelector(
         const newComponents = [...target.value];
         // If extendWith is a :is() selector, extract its selectors to avoid nesting
         const extendWithSelectors = extractSelectorsFromIs(extendWith);
-        // #region agent log
-        {
-          const payload = {
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'extend-is-order',
-            hypothesisId: 'H-order',
-            location: 'extend.ts:fullmode-compound-component',
-            message: 'about to create :is() for compound component',
-            data: {
-              target: target.valueOf(),
-              find: find.valueOf(),
-              extendWith: extendWith.valueOf(),
-              matchedComponent: (matchedComponent as any).valueOf?.() ?? null,
-              extendWithSelectors: extendWithSelectors.map(s => s.valueOf())
-            },
-            timestamp: Date.now()
-          };
-          // (debug log removed)
-        }
-        // #endregion
         const isWrapper = createValidatedIsWrapperWithErrors([matchedComponent, ...extendWithSelectors], matchedComponent, target, { target, find, extendWith });
 
         newComponents[componentIndex] = isWrapper as any;
@@ -2691,72 +1733,9 @@ function extendSelectorList(
       (process.env.DEBUG_FIXTURE_2A === '1')
       && (target.valueOf().includes('.replace.replace') || target.valueOf().includes('[data='))
     ) {
-      // #region agent log
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-        hypothesisId: 'H-extend-selector',
-        location: 'extend.ts:extendSelectorList',
-        message: 'selector-list-item-before',
-        data: {
-          itemType: selector.type,
-          item: selector.valueOf()
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+      }
     const comparison = selectorCompare(selector, find);
-    // #region agent log
-    try {
-      if (
-        process.env.DEBUG_FIXTURE_2A === '1'
-        && (target.valueOf().includes('[data=') || target.valueOf().includes('.replace.replace'))
-      ) {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-SELECTORLIST-ITEM',
-          location: 'extend.ts:extendSelectorList',
-          message: 'selector-list-item-comparison',
-          data: {
-            listTarget: target.valueOf(),
-            item: selector.valueOf(),
-            find: find.valueOf(),
-            locations: comparison.locations.map((loc) => ({
-              path: loc.path,
-              type: loc.extensionType,
-              matchedNode: loc.matchedNode?.valueOf?.() ?? null
-            })),
-            hasWholeMatch: comparison.hasWholeMatch,
-            hasPartialMatch: comparison.hasPartialMatch
-          },
-          timestamp: Date.now()
-        });
-      }
-    } catch {}
-    // #endregion
     if (!comparison.locations.length || (!comparison.hasWholeMatch && !comparison.hasPartialMatch)) {
-      // #region agent log
-      if (
-        process.env.DEBUG_FIXTURE_2A === '1'
-        && target.valueOf().includes('.replace.replace')
-      ) {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-SELECTORLIST-ITEM',
-          location: 'extend.ts:extendSelectorList',
-          message: 'selector-list-item-no-match',
-          data: {
-            item: selector.valueOf(),
-            find: find.valueOf(),
-            hasLocations: comparison.locations.length > 0,
-            hasWholeMatch: comparison.hasWholeMatch,
-            hasPartialMatch: comparison.hasPartialMatch
-          },
-          timestamp: Date.now()
-        });
-      }
-      // #endregion
       orderedSelectors.push(selector);
       orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
       continue;
@@ -2767,44 +1746,10 @@ function extendSelectorList(
       (process.env.DEBUG_FIXTURE_2A === '1')
       && (target.valueOf().includes('.replace.replace') || target.valueOf().includes('[data='))
     ) {
-      // #region agent log
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-        hypothesisId: 'H-extend-selector',
-        location: 'extend.ts:extendSelectorList',
-        message: 'selector-list-item-after',
-        data: {
-          itemType: selector.type,
-          before: selector.valueOf(),
-          afterType: extended.type,
-          after: extended.valueOf()
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+      }
     let appendedVariant = false;
 
     if (extended === selector) {
-      // #region agent log
-      try {
-        if (process.env.DEBUG_FIXTURE_2A === '1' && target.valueOf().includes('[data=')) {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-SELECTORLIST-ITEM',
-            location: 'extend.ts:extendSelectorList',
-            message: 'selector-list-item-nochange-identity',
-            data: {
-              item: selector.valueOf(),
-              find: find.valueOf(),
-              extendWith: extendWith.valueOf()
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       orderedSelectors.push(selector);
       orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
       continue;
@@ -2989,45 +1934,8 @@ function extendSelectorList(
       }
       if (mutationCount > 0) {
         fullModeSelectors = next;
-        // #region agent log
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-OR-PROPAGATION',
-          location: 'extend.ts:extendSelectorList',
-          message: 'applied-or-parent-is-propagation',
-          data: {
-            target: target.valueOf(),
-            find: find.valueOf(),
-            extendWith: extendWith.valueOf(),
-            mutationCount,
-            finalSelectors: fullModeSelectors.map(s => s.valueOf())
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      } else if (process.env.DEBUG_FIXTURE_2A === '1') {
-        // #region agent log
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-OR-PROPAGATION',
-          location: 'extend.ts:extendSelectorList',
-          message: 'or-parent-is-noop',
-          data: {
-            target: target.valueOf(),
-            find: find.valueOf(),
-            extendWith: extendWith.valueOf(),
-            candidateCount: candidates.length,
-            candidates: candidates.map(c => ({
-              idx: c.idx,
-              selector: c.selector.valueOf(),
-              hasSelectorMatch: c.hasSelectorMatch,
-              groupKey: c.groupKey
-            }))
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
+        } else if (process.env.DEBUG_FIXTURE_2A === '1') {
+        }
     }
   }
   // In full mode, try to factorize common `:is(parent) <child>` expansions back into
@@ -3085,27 +1993,7 @@ function extendSelectorList(
       }
       finalSelectors = filtered;
 
-      // #region agent log
-      if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
-        try {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H34',
-            location: 'extend.ts:extendSelectorList',
-            message: 'factorized-implicit-parent-child-is',
-            data: {
-              parent: sharedParent,
-              combinator: sharedCombinator,
-              count: candidates.length,
-              combined: combined.valueOf()
-            },
-            timestamp: Date.now()
-          });
-        } catch {}
       }
-      // #endregion
-    }
 
     // Exact-mode de-distribution:
     // Collapse explicit cartesian-product expansions
@@ -3220,69 +2108,10 @@ function extendSelectorList(
         }
         finalSelectors = rebuilt;
 
-        // #region agent log
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-CROSS-PRODUCT-FACTOR',
-          location: 'extend.ts:extendSelectorList',
-          message: 'factorized-explicit-cross-product',
-          data: {
-            combinator: template.combinator.valueOf(),
-            leftCount: leftOrder.length,
-            rightCount: rightOrder.length,
-            beforeCount: group.length,
-            combined: combined.valueOf()
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
         break;
       }
     }
   } catch {}
-
-  // #region agent log
-  try {
-    if (
-      !partial
-      && find.valueOf() === '.replace.replace .replace'
-      && extendWith.valueOf() === '.rep_ace'
-    ) {
-      const parent = (target as unknown as { parent?: unknown }).parent;
-      const parentRuleset = isNode(parent as unknown as Selector, 'Ruleset') ? (parent as unknown as any) : null;
-      const topItems = isNode(target, 'SelectorList') ? target.value : [];
-      const topIsGenerated = topItems.map((s) => {
-        if (!isNode(s, 'ComplexSelector')) return null;
-        const first = s.value[0];
-        if (!isNode(first, 'PseudoSelector')) return null;
-        return {
-          head: first.valueOf(),
-          name: first.value.name,
-          generated: !!first.generated
-        };
-      });
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-FULL-LIST-SHAPE',
-        location: 'extend.ts:extendSelectorList',
-        message: 'full-mode-selector-list-shape-before-finalize',
-        data: {
-          target: target.valueOf(),
-          find: find.valueOf(),
-          extendWith: extendWith.valueOf(),
-          targetParentType: (parent as any)?.type ?? null,
-          parentRulesetSelector: parentRuleset?.selector?.valueOf?.() ?? null,
-          parentRulesetOwnSelector: parentRuleset?.options?.ownSelector?.valueOf?.() ?? null,
-          parentRulesetParentSelector: parentRuleset?.parentRuleset?.selector?.valueOf?.() ?? null,
-          topIsGenerated,
-          allSelectors: allSelectors.map(s => s.valueOf()),
-          finalSelectors: finalSelectors.map(s => s.valueOf())
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
 
   return createExtendedSelectorList(finalSelectors, target);
 }
@@ -3481,44 +2310,6 @@ function selectBestLocation(
     }
   }
 
-  // #region agent log
-  try {
-    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
-      const t = target.valueOf();
-      const f = find.valueOf();
-      if (
-        (t.includes(':is(.replace.replace') && (f === '.c' || f === '.b' || f === '.a'))
-        || (f.includes('.replace.replace') && t.includes(':is(.replace.replace'))
-      ) {
-        const locs = Array.isArray(searchResult.locations) ? searchResult.locations.slice(0, 8) : [];
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H35',
-          location: 'extend.ts:selectBestLocation',
-          message: 'candidate-locations',
-          data: {
-            partial,
-            hasMoreAfterIs,
-            target: t,
-            find: f,
-            extendWith: extendWith.valueOf(),
-            candidates: locs.map((l: any) => ({
-              extensionType: l?.extensionType ?? null,
-              isPartialMatch: !!l?.isPartialMatch,
-              matchedNodeType: l?.matchedNode?.type ?? null,
-              matchedNodeValue: (() => { try { return l?.matchedNode?.valueOf?.() ?? null; } catch { return null; } })(),
-              parentNodeType: l?.parentNode?.type ?? null,
-              path: Array.isArray(l?.path) ? l.path.slice(0, 12) : null
-            }))
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-  } catch {}
-  // #endregion
-
   // Exception: When partial: false and we're inside an :is() with more components after it,
   // even if we've matched the entire find (full match of item in :is()), it's still a partial match
   // of the entire selector because there are components after the :is()
@@ -3596,34 +2387,6 @@ function selectBestLocation(
       matchedNode: location?.matchedNode?.valueOf?.()
     });
   }
-  // #region agent log
-  try {
-    const f = find.valueOf();
-    const ew = extendWith.valueOf();
-    if (ew === '.rep_ace' && (f === '.replace' || f.includes('.replace.replace'))) {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-LOCATION-SELECTION',
-        location: 'extend.ts:selectBestLocation',
-        message: 'location-selected',
-        data: {
-          target: target.valueOf(),
-          partial,
-          selectedPath: Array.isArray(location?.path) ? location.path : null,
-          selectedType: location?.extensionType ?? null,
-          selectedMatchedNode: location?.matchedNode?.valueOf?.() ?? null,
-          candidateCount: locations.length,
-          candidatePreview: locations.slice(0, 8).map((l: any) => ({
-            path: l?.path,
-            type: l?.extensionType,
-            matchedNode: l?.matchedNode?.valueOf?.() ?? null
-          }))
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
   return location;
 }
 
@@ -3681,104 +2444,10 @@ function handlePartialModeExtension(
   // Unified path: use path + match result only. For partial mode, component-level matches get :is(matched, extendWith).
   // Force extensionType to 'wrap' when path points to a component (path.length >= 1) so applyExtensionAtPath
   // wraps the node at path instead of replacing. Works for any target shape (SelectorList, :is(complex), etc.).
-  // #region agent log
-  try {
-    if (process.env.DEBUG_FIXTURE_2A === '1') {
-      const tv = target.valueOf();
-      const ev = extendWith.valueOf();
-      if (
-        (tv.includes('.attributes [data="test3"]') && ev.includes('.attribute-test'))
-        || (tv.includes('.aa .dd') && (ev === '.ee' || ev === '.ff'))
-      ) {
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-          hypothesisId: 'H3-partial-force-wrap',
-          location: 'extend.ts:handlePartialModeExtension',
-          message: 'partial-mode-extension-type-choice',
-          data: {
-            target: tv,
-            locationPath: Array.isArray(location?.path) ? location.path : null,
-            matcherType: location?.extensionType ?? null,
-            forcedType: (location?.path && location.path.length >= 1) ? 'wrap' : (location?.extensionType ?? 'replace'),
-            extendWith: ev
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-  } catch {}
-  // #endregion
-  // #region agent log
-  try {
-    const tv = target.valueOf();
-    const ev = extendWith.valueOf();
-    if (
-      ((tv.includes('[data=') || tv.includes('data=')) && ev.includes('.attribute-test'))
-      || (tv.includes('.aa') && (ev === '.ee' || ev === '.ff'))
-      || (tv.includes('.replace.replace') && ev.includes('.rep_ace'))
-    ) {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-PARTIAL-FORCE-WRAP',
-        location: 'extend.ts:handlePartialModeExtension',
-        message: 'partial-mode-extension-type-choice',
-        data: {
-          target: tv,
-          locationPath: Array.isArray(location?.path) ? location.path : null,
-          matcherType: location?.extensionType ?? null,
-          forcedType: (location?.path && location.path.length >= 1) ? 'wrap' : (location?.extensionType ?? 'replace'),
-          extendWith: ev
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
   const extensionType =
     location.path && location.path.length >= 1 ? ('wrap' as const) : (location.extensionType ?? 'replace');
   const wrapLocation = { ...location, extensionType };
   const result = applyExtensionAtLocation(target, wrapLocation, extendWith);
-  // #region agent log
-  try {
-    if (target.valueOf() === '.foo .bar' && extendWith.valueOf() === ':is(.ext3,.ext4)') {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-PARTIAL-IS-FORM',
-        location: 'extend.ts:handlePartialModeExtension',
-        message: 'partial-is-shape-result',
-        data: {
-          target: target.valueOf(),
-          extendWith: extendWith.valueOf(),
-          extensionType,
-          path: Array.isArray(location?.path) ? location.path : null,
-          result: result.valueOf()
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
-  // #region agent log
-  try {
-    if (target.valueOf() === '.a:is(.b,.c).d' && extendWith.valueOf() === '.q') {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-IS-ORDER',
-        location: 'extend.ts:handlePartialModeExtension',
-        message: 'is-order-check',
-        data: {
-          target: target.valueOf(),
-          extendWith: extendWith.valueOf(),
-          result: result.valueOf(),
-          extensionType,
-          path: Array.isArray(location?.path) ? location.path : null
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
   return result;
 }
 
@@ -3914,46 +2583,6 @@ function createValidatedIsWrapperWithErrors(
     extendWith?: Selector;
   }
 ): PseudoSelector {
-  // #region agent log
-  {
-    const sels = selectors.map(s => s.valueOf());
-    // Always capture clearfix ordering traces (even if env var wasn't set),
-    // but keep it extremely narrow to avoid log spam.
-    if (sels.join('|').includes('.clearfix')) {
-      const payload = {
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-is-order',
-        hypothesisId: 'H-order',
-        location: 'extend.ts:createValidatedIsWrapperWithErrors',
-        message: 'create :is() wrapper from selectors',
-        data: {
-          selectors: sels,
-          inheritFrom: inheritFrom.valueOf(),
-          target: context?.target?.valueOf?.() ?? null,
-          find: context?.find?.valueOf?.() ?? null,
-          extendWith: context?.extendWith?.valueOf?.() ?? null
-        },
-        timestamp: Date.now()
-      };
-      try {
-        // (debug log removed)
-      } catch {
-        // ignore
-      }
-    }
-    if (process.env.DEBUG_EXTEND_IS_ORDER === 'true') {
-      if (__agentIsOrderInteresting(sels)) {
-        __agentExtendDbg('extend.ts:createValidatedIsWrapperWithErrors', 'create :is() wrapper from selectors', {
-          selectors: sels,
-          inheritFrom: inheritFrom.valueOf(),
-          target: context?.target?.valueOf?.() ?? null,
-          find: context?.find?.valueOf?.() ?? null,
-          extendWith: context?.extendWith?.valueOf?.() ?? null
-        });
-      }
-    }
-  }
-  // #endregion
   const validation = validateIsWrapper(selectors, contextSelector);
   if (!validation.isValid) {
     throw new ExtendError(
@@ -4160,32 +2789,6 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
           const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, amp);
           const nonAmpersandComparison = selectorCompare(selectorWithoutAmpersand, target);
           if (resolvedComparison.locations.length > 0 && nonAmpersandComparison.locations.length === 0) {
-            // #region agent log
-            try {
-              if (target.valueOf() === '.replace') {
-                syncLog({
-                  runId: process.env.DEBUG_RUN_ID || 'run',
-                  hypothesisId: 'H-CROSSING-REASON',
-                  location: 'extend.ts:checkAmpersandCrossingDuringExtension',
-                  message: 'crossing-detected-selectorlist-implicit-leading',
-                  data: {
-                    selector: selector.valueOf(),
-                    target: target.valueOf(),
-                    resolvedSelector: resolvedSelector.valueOf(),
-                    selectorWithoutAmpersand: selectorWithoutAmpersand.valueOf(),
-                    resolvedMatches: resolvedComparison.locations.length,
-                    nonAmpMatches: nonAmpersandComparison.locations.length
-                  },
-                  timestamp: Date.now()
-                });
-              }
-            } catch {}
-            // #endregion
-            if (process.env.DEBUG_AMPERSAND_CROSSING === '1') {
-              const selVal = typeof selector.valueOf === 'function' ? String(selector.valueOf()).slice(0, 80) : '';
-              const findVal = typeof target.valueOf === 'function' ? String(target.valueOf()).slice(0, 40) : '';
-              syncLog({ trace: 'earlyReturn_crossed', find: findVal, selVal });
-            }
             return {
               crossed: true,
               ampersandNode: amp,
@@ -4219,27 +2822,6 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
 
     if (resolvedComparison.locations.length > 0 && nonAmpersandComparison.locations.length === 0) {
       // Target only matches when ampersand is resolved = boundary crossing
-      // #region agent log
-      try {
-        if (target.valueOf() === '.replace') {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-CROSSING-REASON',
-            location: 'extend.ts:checkAmpersandCrossingDuringExtension',
-            message: 'crossing-detected-resolved-only',
-            data: {
-              selector: selector.valueOf(),
-              target: target.valueOf(),
-              resolvedSelector: resolvedSelector.valueOf(),
-              selectorWithoutAmpersand: selectorWithoutAmpersand.valueOf(),
-              resolvedMatches: resolvedComparison.locations.length,
-              nonAmpMatches: nonAmpersandComparison.locations.length
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       return {
         crossed: true,
         ampersandNode: ampersand,
@@ -4418,22 +3000,7 @@ function handleAmpersandBoundaryCrossing(
       nestedItems = selector.value.map(item => item.copy());
     }
     if (DEBUG_FIXTURE_2A_ENABLED) {
-      // #region agent log
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-        hypothesisId: 'H-amp-boundary',
-        location: 'extend.ts:handleAmpersandBoundaryCrossing',
-        message: 'boundary-nested-items',
-        data: {
-          selector: selector.valueOf(),
-          target: target.valueOf(),
-          nestedItems: nestedItems.map((s) => s.valueOf())
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+      }
 
     // Wrap the inner SelectorList in :is() to match Less expectations
     const innerList = SelectorList.create(nestedItems);
@@ -4712,79 +3279,7 @@ export function applyExtensionAtLocation(
   location: ExtendLocation,
   extendWith: Selector
 ): Selector {
-  // #region agent log
-  try {
-    const sv = selector.valueOf();
-    const ev = extendWith.valueOf();
-    if (
-      ((sv.includes('[data=') || sv.includes('data=')) && ev.includes('.attribute-test'))
-      || (sv.includes('.aa') && (ev === '.ee' || ev === '.ff'))
-      || (sv.includes('.replace.replace') && ev.includes('.rep_ace'))
-    ) {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-APPLY-PATH-RESULT',
-        location: 'extend.ts:applyExtensionAtLocation',
-        message: 'apply-location-before',
-        data: {
-          selector: sv,
-          path: Array.isArray(location?.path) ? location.path : null,
-          extensionType: location?.extensionType ?? null,
-          matchedNode: location?.matchedNode?.valueOf?.() ?? null,
-          extendWith: ev
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
   const result = applyExtensionAtPath(selector, location.path, location.matchedNode, extendWith, location.extensionType, location, undefined);
-  // #region agent log
-  try {
-    const sv = selector.valueOf();
-    const ev = extendWith.valueOf();
-    if (sv === '.a:is(.b,.c).d' && ev === '.q') {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-IS-PATH-SHAPE',
-        location: 'extend.ts:applyExtensionAtLocation',
-        message: 'is-path-shape',
-        data: {
-          path: Array.isArray(location?.path) ? location.path : null,
-          extensionType: location?.extensionType ?? null,
-          matchedNode: location?.matchedNode?.valueOf?.() ?? null,
-          result: result.valueOf()
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
-  // #region agent log
-  try {
-    const sv = selector.valueOf();
-    const ev = extendWith.valueOf();
-    if (
-      ((sv.includes('[data=') || sv.includes('data=')) && ev.includes('.attribute-test'))
-      || (sv.includes('.aa') && (ev === '.ee' || ev === '.ff'))
-      || (sv.includes('.replace.replace') && ev.includes('.rep_ace'))
-    ) {
-      syncLog({
-        runId: process.env.DEBUG_RUN_ID || 'run',
-        hypothesisId: 'H-APPLY-PATH-RESULT',
-        location: 'extend.ts:applyExtensionAtLocation',
-        message: 'apply-location-after',
-        data: {
-          before: sv,
-          after: result.valueOf(),
-          path: Array.isArray(location?.path) ? location.path : null,
-          extensionType: location?.extensionType ?? null
-        },
-        timestamp: Date.now()
-      });
-    }
-  } catch {}
-  // #endregion
   if (DEBUG_APPEND_ARG && Array.isArray(location.path) && location.path.includes('arg')) {
     console.log('EXTEND_LOCATION_APPLIED', {
       path: location.path,
@@ -4907,27 +3402,6 @@ function applyExtensionAtPath(
       if (extensionType === 'wrap' && item) {
         const newValue = [...current.value];
         const wrapped = applyExtension(item, matchedNode, extendWith, 'wrap', undefined);
-        // #region agent log
-        try {
-          if (current.valueOf() === '.b,.c' && matchedNode.valueOf() === '.b' && extendWith.valueOf() === '.q') {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-IS-WRAP-PATH',
-              location: 'extend.ts:applyExtensionAtPath',
-              message: 'selectorlist-wrap-branch',
-              data: {
-                current: current.valueOf(),
-                path,
-                index,
-                item: item.valueOf(),
-                wrapped: wrapped.valueOf(),
-                extensionType
-              },
-              timestamp: Date.now()
-            });
-          }
-        } catch {}
-        // #endregion
         newValue[index] = wrapped;
         return SelectorList.create(newValue).inherit(current);
       }
@@ -4991,28 +3465,6 @@ function applyExtensionAtPath(
 
   if (isNode(current, 'PseudoSelector') && nextSegment === 'arg') {
     const arg = current.value.arg as Selector;
-    // #region agent log
-    try {
-      if (current.valueOf() === ':is(.b,.c)' && extendWith.valueOf() === '.q') {
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-IS-PATH-SHAPE',
-          location: 'extend.ts:applyExtensionAtPath',
-          message: 'pseudo-arg-entry',
-          data: {
-            current: current.valueOf(),
-            arg: arg?.valueOf?.() ?? null,
-            path,
-            remainingPath,
-            extensionType,
-            matchedNode: matchedNode.valueOf()
-          },
-          timestamp: Date.now()
-        });
-      }
-    } catch {}
-    // #endregion
-
     // Special handling for pseudo-selector arguments
     if (remainingPath.length === 0) {
       // Direct match in the argument - create a list or extend existing list
@@ -5028,24 +3480,6 @@ function applyExtensionAtPath(
         name: current.value.name,
         arg: newArg
       }).inherit(current);
-      // #region agent log
-      try {
-        if (current.valueOf() === ':is(.b,.c)' && extendWith.valueOf() === '.q') {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-IS-PATH-SHAPE',
-            location: 'extend.ts:applyExtensionAtPath',
-            message: 'pseudo-arg-direct-append-result',
-            data: {
-              current: current.valueOf(),
-              newArg: newArg.valueOf(),
-              result: result.valueOf()
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       if (extensionType === 'append' && isArgMatch) {
         logAppendArg('pseudo-arg-append', path, current, matchedNode, extendWith, result);
       }
@@ -5053,24 +3487,6 @@ function applyExtensionAtPath(
     } else {
       // Navigate deeper into the argument
       const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined);
-      // #region agent log
-      try {
-        if (current.valueOf() === ':is(.b,.c)' && extendWith.valueOf() === '.q') {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-IS-PATH-SHAPE',
-            location: 'extend.ts:applyExtensionAtPath',
-            message: 'pseudo-arg-recursive-result',
-            data: {
-              current: current.valueOf(),
-              newArg: newArg.valueOf(),
-              remainingPath
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       return PseudoSelector.create({
         name: current.value.name,
         arg: newArg
@@ -5130,25 +3546,6 @@ function applyExtension(
       const wrapExisting = extractSelectorsFromIs(current);
       const wrapOrdered = createExtendedSelectorList([...wrapExisting, extendWith], current);
       const wrapSelectors = wrapOrdered.value;
-      // #region agent log
-      try {
-        if (current.valueOf() === '.b' && extendWith.valueOf() === '.q') {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-IS-WRAP-PATH',
-            location: 'extend.ts:applyExtension',
-            message: 'wrap-simple-to-generated-is',
-            data: {
-              current: current.valueOf(),
-              extendWith: extendWith.valueOf(),
-              wrapExisting: wrapExisting.map(s => s.valueOf()),
-              wrapOrdered: wrapSelectors.map(s => s.valueOf())
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       return createValidatedIsWrapperWithErrors(
         wrapSelectors,
         current,

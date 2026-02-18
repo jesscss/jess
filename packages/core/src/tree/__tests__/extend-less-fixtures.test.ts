@@ -6,7 +6,9 @@
  *
  * Status (as of 2025-02):
  * 1. extend-clearfix.less – FIXED. Document order in :is() now :is(.clearfix, .foo, .bar):after.
- * 2. extend-exact.less – FIXED. Same-context uses fullyCanonical so :is() unwraps and inner .a, .c stays short.
+ * 2. extend-exact.less – Test 2a is the canonical case (replace + rep_ace, exact extend) but currently FAILS (:is() not emitted).
+ *    Test 2 (full) used ExtendFlag.All for rep_ace, so it passed while asserting wrong behavior; real Less uses exact extend.
+ *    &:extend(.c) without "all" must NOT merge .effected into the first rule (no exact .c there). 2a includes .effected to assert that.
  * 3. extend-nest.less – FAILING. :is(.sidebar,...) .box and .submit:hover merged (we output .sidebar .box; .submit vs .submit:hover).
  * 4. extend-selector.less – FAILING. [data="test3"], .attribute-test both extend attributes2 (nesting/selector list shape).
  * 5. extend.less – FAILING. .aa,.cc { .dd,.ee,.ff } and .bb,.cc,.ee,.ff { .bb,.ff } (nested structure vs flat).
@@ -129,12 +131,12 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   });
 
   /**
-   * ISOLATED: First rule of extend-exact only (replace + rep_ace, no .effected / .a/.b/.c / .e/.dbl).
-   * Input: .replace.replace, .c.replace + .replace { .replace, .c { prop: copy-paste-replace } } and .rep_ace:extend(.replace.replace .replace)
-   * Expected: :is(.replace.replace, .c.replace + .replace) :is(.replace, .c), .rep_ace { prop: copy-paste-replace; }
-   * Actual (current): to be observed – likely wrong selectors and/or missing :is(), missing .rep_ace, or wrong visibility when hoisting.
+   * ISOLATED: First rule of extend-exact (replace + rep_ace, exact extend). Plus .effected { &:extend(.c) } to assert
+   * that exact extend does NOT merge .effected into this rule (there is no bare .c here; only .replace.replace, .c.replace + .replace, .replace, .c).
+   * Input: .replace.replace, .c.replace + .replace { .replace, .c { prop: copy-paste-replace } }; .rep_ace:extend(.replace.replace .replace) {}; .effected { &:extend(.c); }
+   * Expected: First rule :is(.replace.replace, .c.replace + .replace) :is(.replace, .c), .rep_ace { ... }; .effected must NOT appear in that rule.
    */
-  it('2a. extend-exact ISOLATED – replace + rep_ace only (first rule)', async () => {
+  it('2a. extend-exact ISOLATED – replace + rep_ace only (first rule); .effected &:extend(.c) must not apply', async () => {
     const root = rules([
       ruleset({
         selector: sellist([
@@ -156,6 +158,10 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
             flag: ExtendFlag.Exact
           })
         ])
+      }),
+      ruleset({
+        selector: el('.effected'),
+        rules: rules([extend({ target: el('.c') })])
       })
     ]);
     const context = new Context({ collapseNesting });
@@ -164,8 +170,14 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
 .rep_ace {
   prop: copy-paste-replace;
+}
+.effected {
 }`;
     expect(css.trim()).toBe(expected);
+    // Exact extend(.c) must not merge .effected into the first rule (no bare .c there).
+    const firstRuleEnd = css.indexOf('.rep_ace {');
+    const firstBlock = firstRuleEnd !== -1 ? css.slice(0, css.indexOf('}', firstRuleEnd) + 1) : css.slice(0, 200);
+    expect(firstBlock).not.toContain('.effected');
   });
 
   /**

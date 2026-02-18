@@ -3,7 +3,6 @@ import type { Ruleset } from '../ruleset.js';
 import type { FinalPrintOptions } from './print.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
-import { syncLog } from './__tests__/debug-log.js';
 
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -94,40 +93,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       continue;
     }
 
-    // #region agent log
-    try {
-      const filePath = (node as any)?.treeContext?.file?.fullPath
-        || ((node as any)?.treeContext?.file?.path && (node as any)?.treeContext?.file?.name
-          ? `${(node as any).treeContext.file.path}/${(node as any).treeContext.file.name}`
-          : (node as any)?.treeContext?.file?.path)
-        || '';
-      if (typeof filePath === 'string' && filePath.includes('tests-unit/detached-rulesets/')) {
-        if (isNode(n, 'Call')) {
-          const nm = (n as any).value?.name;
-          const key = typeof nm === 'string'
-            ? nm
-            : (isNode(nm, 'Reference') ? String((nm as any).value?.key?.valueOf?.() ?? (nm as any).value?.key ?? '') : (isNode(nm) ? nm.type : 'unknown'));
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H17',
-            location: 'serialize-helper.ts:serializeRulesContainer',
-            message: 'serializing-call-node',
-            data: {
-              key,
-              callEvaluated: !!(n as any).evaluated,
-              callPreEvaluated: !!(n as any).preEvaluated,
-              parentType: String((n as any).parent?.type ?? ''),
-              parentPreEvaluated: !!(n as any).parent?.preEvaluated,
-              parentEvaluated: !!(n as any).parent?.evaluated
-            },
-            timestamp: Date.now()
-          });
-        }
-      }
-    } catch {}
-    // #endregion
-
     if (isNode(n, ['Ruleset', 'AtRule'])) {
       n.toTrimmedString(options);
       continue;
@@ -152,35 +117,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       let s = frameHeaders[i];
       let f = inFrames[i]!;
       lastRenderedFrames.push(f);
-      // #region agent log
-      try {
-        if (isNode(f, 'Ruleset')) {
-          const rulesetSelector = (f as Ruleset).value?.selector?.valueOf?.() ?? '';
-          if (
-            rulesetSelector.includes('.replace')
-            || rulesetSelector.includes('rep_ace')
-            || rulesetSelector.includes('.header-nav')
-            || rulesetSelector.includes('.footer-nav')
-          ) {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID ?? 'run',
-              hypothesisId: 'H-SERIALIZE-FRAME-HEADERS',
-              location: 'serialize-helper.ts:serializeRulesContainer',
-              message: 'frame-header-before-emit',
-              data: {
-                depth: i,
-                rulesetSelector,
-                headerCached: s !== undefined,
-                cachedHeader: s ?? null,
-                rulesetHoistToRoot: Boolean((f as Ruleset).hoistToRoot),
-                selectorHoistToRoot: Boolean((f as Ruleset).value?.selector?.hoistToRoot)
-              },
-              timestamp: Date.now()
-            });
-          }
-        }
-      } catch {}
-      // #endregion
       if (s === undefined) {
         s = inFrames[i]!.getHeaderString({ ...options, depth: i });
         frameHeaders[i] = s;
@@ -188,34 +124,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         s = inFrames[i]!.getHeaderString({ ...options, depth: i }, true);
         frameHeaders[i] = s;
       }
-      // #region agent log
-      try {
-        if (isNode(f, 'Ruleset')) {
-          const rulesetSelector = (f as Ruleset).value?.selector?.valueOf?.() ?? '';
-          if (
-            rulesetSelector.includes('.replace')
-            || rulesetSelector.includes('rep_ace')
-            || rulesetSelector.includes('.header-nav')
-            || rulesetSelector.includes('.footer-nav')
-          ) {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID ?? 'run',
-              hypothesisId: 'H-SERIALIZE-FRAME-HEADERS',
-              location: 'serialize-helper.ts:serializeRulesContainer',
-              message: 'frame-header-after-emit',
-              data: {
-                depth: i,
-                rulesetSelector,
-                emittedHeader: s ?? null,
-                rulesetHoistToRoot: Boolean((f as Ruleset).hoistToRoot),
-                selectorHoistToRoot: Boolean((f as Ruleset).value?.selector?.hoistToRoot)
-              },
-              timestamp: Date.now()
-            });
-          }
-        }
-      } catch {}
-      // #endregion
       options.depth = i;
       w.add(s!);
     }
@@ -227,37 +135,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     /** normalize pre spacing */
     let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
     if (isNode(n, 'Declaration')) {
-      // #region agent log
-      try {
-        const runId = process.env.DEBUG_RUN_ID ?? 'run';
-        if (runId.startsWith('integration-regressions')) {
-          const name = (n as unknown as { value?: { name?: { valueOf?: () => string } } }).value?.name?.valueOf?.() ?? '';
-          if (name === 'background' || name === 'prop') {
-            syncLog({
-              runId,
-              hypothesisId: 'H-DECL-EMIT-FRAMES',
-              location: 'serialize-helper.ts:serializeRulesContainer',
-              message: 'declaration-emitted-with-frames',
-              data: {
-                name,
-                depth: options.depth + 1,
-                inFrames: inFrames.map(f => {
-                  if (!isNode(f, 'Ruleset')) {
-                    return { type: f.type };
-                  }
-                  return {
-                    type: f.type,
-                    selector: (f as Ruleset).value?.selector?.valueOf?.() ?? null,
-                    hoistToRoot: Boolean((f as Ruleset).hoistToRoot)
-                  };
-                })
-              },
-              timestamp: Date.now()
-            });
-          }
-        }
-      } catch {}
-      // #endregion
       pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
       if (n.value.name.valueOf().startsWith('--')) {
         w.add(idt);

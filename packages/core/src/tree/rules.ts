@@ -29,7 +29,6 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
-import { syncLog } from './util/__tests__/debug-log.js';
 
 const { isArray } = Array;
 
@@ -1333,22 +1332,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             visitRules(rules);
             return out;
           };
-          // #region agent log
-          try {
-            const beforeCandidates = collectGeneratedLeadingIs();
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H1-ruleset-wrap-candidates-exist-pre-extend',
-              location: 'rules.ts:evalNode:isOutermost',
-              message: 'generated-leading-is-before-process-extends',
-              data: {
-                count: beforeCandidates.length,
-                sample: beforeCandidates.slice(0, 12)
-              },
-              timestamp: Date.now()
-            });
-          } catch {}
-          // #endregion
           const hasReplaceReplaceExtend = context.extends.some(([target]) => {
             try {
               return target.valueOf().includes('replace.replace');
@@ -1365,22 +1348,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
           // Process all registered extends using the extend roots registry system
           processExtends(context);
-          // #region agent log
-          try {
-            const afterCandidates = collectGeneratedLeadingIs();
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H2-ruleset-wrap-candidates-remain-post-extend',
-              location: 'rules.ts:evalNode:isOutermost',
-              message: 'generated-leading-is-after-process-extends',
-              data: {
-                count: afterCandidates.length,
-                sample: afterCandidates.slice(0, 12)
-              },
-              timestamp: Date.now()
-            });
-          } catch {}
-          // #endregion
         }
         /** Restore contexts */
         context.rulesContext = saved.rulesContext;

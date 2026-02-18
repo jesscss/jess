@@ -26,7 +26,6 @@ import {
   spaced
 } from '../index.js';
 import { serializeTypes } from '../util/serialize-types.js';
-import { syncLog } from '../util/__tests__/debug-log.js';
 
 describe('extend integration (eval -> toString)', () => {
   it('exact extend matches a single OR-branch (does not require all branches)', async () => {

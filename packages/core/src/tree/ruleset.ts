@@ -18,8 +18,6 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { processLeadingIs } from './util/process-leading-is.js';
-import { syncLog } from './util/__tests__/debug-log.js';
-import { shouldTraceExtend, getExtendTraceRunId } from './util/extend-trace-debug.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
@@ -321,28 +319,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     renderSelector = Ruleset.unwrapGeneratedIsForImplicitAmpHeader(renderSelector as Selector) as typeof selector;
     Ruleset.ensureSelectorVisible(renderSelector);
     const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
-    if (process.env.DEBUG_FIXTURE_2A) {
-    const sourceNode = this.sourceNode;
-    const sourceNodeId = sourceNode && isNode(sourceNode, 'Ruleset')
-      ? getOptionalRulesetTraceId(sourceNode as Ruleset)
-      : undefined;
-    syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-        hypothesisId: 'H-serialization',
-        location: 'ruleset.ts:getHeaderString',
-        message: 'header-string',
-        data: {
-          depth: options.depth,
-          selector: renderSelector.valueOf(),
-          withoutComments: Boolean(withoutComments),
-          rulesetId
-        ,
-        sourceNodeId
-        },
-        timestamp: Date.now()
-      });
-    }
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
     let selOut = w.capture(() => renderSelector.toString(options));
     /** Normalize single spacing */
@@ -404,39 +380,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           const synthetic = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
           synthetic.generated = true;
           selectorForImplicit = synthetic;
-          // #region agent log
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-PREEVAL-CANONICALIZE',
-            location: 'ruleset.ts:preEval',
-            message: 'selectorlist-canonicalized-before-implicit-parent',
-            data: {
-              rulesetId: ensureRulesetTraceId(node as Ruleset),
-              parentSelector: parentSelector.valueOf?.() ?? null,
-              ownSelector: selector.valueOf?.() ?? null,
-              canonicalized: selectorForImplicit.valueOf?.() ?? null
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
         }
         selector = getImplicitSelectorUtil(selectorForImplicit, parentRuleset as Ruleset, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
-      syncLog({
-        runId: 'pre',
-        hypothesisId: 'ruleset-registry',
-        location: 'ruleset.ts:preEval',
-        message: 'preEval-node-info',
-        data: {
-          rulesetId: ensureRulesetTraceId(node as Ruleset),
-          parentId: parentRuleset ? ensureRulesetTraceId(parentRuleset as Ruleset) : null,
-          isClone: node !== this,
-          selector: selector?.valueOf?.() ?? '',
-          collapseNesting: Boolean(context.opts?.collapseNesting)
-        },
-        timestamp: Date.now()
-      });
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
       return pipe(
@@ -456,25 +403,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             extendRoot.getRegistry('ruleset').add(node as Ruleset);
             // Keep a per-root registry list for visibility processing
             registerRulesetWithRoot(extendRoot, node as Ruleset);
-            if (Boolean(context.opts?.collapseNesting)) {
-              const selVal = typeof (node as Ruleset).value?.selector?.valueOf === 'function' ? (node as Ruleset).value!.selector!.valueOf() : '';
-              const isRelevant = selVal === '.ma' || selVal === '.md' || selVal === '';
-              if (isRelevant) {
-                const valueLen = extendRoot.value?.length ?? 0;
-                const first = extendRoot.value?.[0];
-                const firstType = first != null && typeof (first as { type?: string }).type === 'string' ? (first as { type: string }).type : undefined;
-                const firstRules = first != null && (first as { value?: { rules?: unknown } }).value?.rules;
-                const firstValueRulesType = firstRules != null && typeof (firstRules as { type?: string }).type === 'string' ? (firstRules as { type: string }).type : undefined;
-                const firstValueRulesLen = firstRules != null && Array.isArray((firstRules as { value?: unknown[] }).value) ? (firstRules as { value: unknown[] }).value.length : undefined;
-                syncLog({
-                  trace: 'ruleset_register',
-                  runId: getExtendTraceRunId(context),
-                  collapseNesting: Boolean(context.opts?.collapseNesting),
-                  selector: selVal,
-                  extendRoot: { valueLen, firstType, firstValueRulesType, firstValueRulesLen }
-                });
-              }
-            }
           }
           // Depth-first: preEval child rules immediately so all nested rulesets/extends
           // are registered in source order before we process extends.
@@ -587,106 +515,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
         const leadingIsResult = processLeadingIs(selector);
-        // #region agent log
-        try {
-          const runId = process.env.DEBUG_RUN_ID || 'run';
-          if (runId.startsWith('integration-regressions')) {
-            const beforeVal = selector.valueOf?.() ?? '';
-            const isTarget =
-              beforeVal.includes('.replace')
-              || beforeVal.includes('.header-nav')
-              || beforeVal.includes('.footer-nav')
-              || beforeVal.includes('.effected')
-              || beforeVal.includes(':is(:is(');
-            if (isTarget) {
-              const inspectLeading = (sel: Selector): Record<string, unknown> => {
-                if (isNode(sel, 'SelectorList')) {
-                  const first = (sel as SelectorList).value[0];
-                  return {
-                    type: 'SelectorList',
-                    firstType: first?.type ?? null,
-                    firstValue: first?.valueOf?.() ?? null
-                  };
-                }
-                if (isNode(sel, 'ComplexSelector')) {
-                  const complex = sel as ComplexSelector;
-                  const first = complex.value.find(x => !isNode(x, 'Combinator')) as Selector | undefined;
-                  return {
-                    type: 'ComplexSelector',
-                    firstType: first?.type ?? null,
-                    firstValue: first?.valueOf?.() ?? null,
-                    firstIsGeneratedPseudo: Boolean(
-                      first
-                      && isNode(first, 'PseudoSelector')
-                      && (first as PseudoSelector).value.name === ':is'
-                      && Boolean((first as PseudoSelector).generated)
-                    )
-                  };
-                }
-                if (isNode(sel, 'CompoundSelector')) {
-                  const first = (sel as CompoundSelector).value[0];
-                  return {
-                    type: 'CompoundSelector',
-                    firstType: first?.type ?? null,
-                    firstValue: first?.valueOf?.() ?? null,
-                    firstIsGeneratedPseudo: Boolean(
-                      first
-                      && isNode(first, 'PseudoSelector')
-                      && (first as PseudoSelector).value.name === ':is'
-                      && Boolean((first as PseudoSelector).generated)
-                    )
-                  };
-                }
-                return {
-                  type: (sel as Node).type ?? null
-                };
-              };
-              syncLog({
-                runId,
-                hypothesisId: 'H-RULESET-LEADING-IS',
-                location: 'ruleset.ts:eval',
-                message: 'before-process-leading-is',
-                data: {
-                  rulesetId: ensureRulesetTraceId(this as Ruleset),
-                  selector: beforeVal,
-                  inspect: inspectLeading(selector)
-                },
-                timestamp: Date.now()
-              });
-            }
-          }
-        } catch {}
-        // #endregion
         selector = Array.isArray(leadingIsResult)
           ? SelectorList.create(leadingIsResult.map(s => s.copy(true) as Selector)).inherit(selector) as Selector
           : leadingIsResult;
-        // #region agent log
-        try {
-          const runId = process.env.DEBUG_RUN_ID || 'run';
-          if (runId.startsWith('integration-regressions')) {
-            const afterVal = selector.valueOf?.() ?? '';
-            const isTarget =
-              afterVal.includes('.replace')
-              || afterVal.includes('.header-nav')
-              || afterVal.includes('.footer-nav')
-              || afterVal.includes('.effected')
-              || afterVal.includes(':is(:is(');
-            if (isTarget) {
-              syncLog({
-                runId,
-                hypothesisId: 'H-RULESET-LEADING-IS',
-                location: 'ruleset.ts:eval',
-                message: 'after-process-leading-is',
-                data: {
-                  rulesetId: ensureRulesetTraceId(this as Ruleset),
-                  selector: afterVal
-                },
-                timestamp: Date.now()
-              });
-            }
-          }
-        } catch {}
-        // #endregion
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
         this.value.selector = selector;

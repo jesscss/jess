@@ -11,8 +11,6 @@ import { getFunctionFromMixins, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { createRequire } from 'node:module';
-import { syncLog } from './util/__tests__/debug-log.js';
-
 const require = createRequire(import.meta.url);
 
 // Lazy getter for Rules to break circular dependency:
@@ -20,20 +18,6 @@ const require = createRequire(import.meta.url);
 function getRules() {
   return require('./rules.js').Rules;
 }
-
-// #region agent log
-function __agentDbgPost(location: string, message: string, data: Record<string, any>) {
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID ?? 'run',
-    hypothesisId: 'H1',
-    location,
-    message,
-    data,
-    timestamp: Date.now()
-  });
-}
-// #endregion
 
 export type CallValue = {
   /**
@@ -147,59 +131,7 @@ export class Call extends Node<CallValue, CallOptions> {
     context.callStack.push(this);
     context.parenFrames.push(false);
 
-    // #region agent log
-    try {
-      if (isNode(name, 'Reference')) {
-        const raw = (name as any).value?.key;
-        const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-        if (keyStr.includes('my-mixins')) {
-          __agentDbgPost('call.ts:evalNode', 'enter-my-mixins-call', { keyStr });
-        }
-      }
-    } catch {}
-    // #endregion
-
     let n = typeof name === 'string' ? name : await name.eval(context);
-    // #region agent log
-    try {
-      let key = '';
-      let rawStr = '';
-      let rawValOfStr = '';
-      if (isNode(name, 'Reference')) {
-        const raw = (name as any).value?.key;
-        rawStr = String(raw ?? '');
-        rawValOfStr = raw && typeof raw === 'object' && typeof (raw as any).valueOf === 'function'
-          ? String((raw as any).valueOf())
-          : '';
-        if (Array.isArray(raw)) {
-          key = raw.join('');
-        } else if (raw && typeof raw === 'object' && typeof (raw as any).valueOf === 'function') {
-          key = String((raw as any).valueOf());
-        } else {
-          key = String(raw ?? '');
-        }
-      } else if (typeof name === 'string') {
-        key = name;
-      }
-      const resolvedType = typeof n === 'string' ? 'string' : String((n as any)?.type ?? typeof n);
-      if (
-        key.includes('mix')
-        || resolvedType === 'Mixin'
-        || resolvedType === 'Collection'
-        || resolvedType === 'Rules'
-        || (isNode(name, 'Reference') && ((rawStr?.includes?.('mix') ?? false) || (rawValOfStr?.includes?.('mix') ?? false)))
-      ) {
-        __agentDbgPost('call.ts:evalNode', 'call-name-resolved', {
-          key,
-          rawStr: isNode(name, 'Reference') ? rawStr : undefined,
-          rawValOfStr: isNode(name, 'Reference') ? rawValOfStr : undefined,
-          resolvedType,
-          leakyRules: !!context.leakyRules
-        });
-      }
-    } catch {}
-    // #endregion
-
     // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
     // by parsers that support them. We intentionally avoid implicit string→function lookup here
     // to prevent surprising behavior for plain CSS function-like calls.
@@ -241,44 +173,11 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       const Rules = getRules();
       let rules = Rules.create(n.value, n.options);
-      // #region agent log
-      __agentDbgPost('call.ts:CollectionCall', 'collection-call-create-rules', {
-        hasArgs: !!args && args.value.length > 0,
-        collLen: Array.isArray(n.value) ? n.value.length : -1,
-        rulesLen: Array.isArray(rules.value) ? rules.value.length : -1,
-        collHasRulesVisibility: !!(n as any)?.options?.rulesVisibility,
-        collChildTypes: Array.isArray(n.value)
-          ? n.value.slice(0, 3).map((x: any) => String(x?.type ?? '')).join(',')
-          : '',
-        collChild0Key: (() => {
-          try {
-            const first: any = Array.isArray(n.value) ? n.value[0] : undefined;
-            if (!first) return '';
-            if (first.type === 'Ruleset') return String(first.value?.selector?.valueOf?.() ?? '');
-            if (first.type === 'Mixin') return String(first.value?.name?.valueOf?.() ?? '');
-            if (first.type === 'Declaration') {
-              const name = first.value?.name;
-              return typeof name === 'string' ? name : String(name?.valueOf?.() ?? '');
-            }
-            return '';
-          } catch {
-            return '';
-          }
-        })()
-      });
-      // #endregion
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
       rules.inherit(n);
       rules = await rules.eval(context);
-      // #region agent log
-      __agentDbgPost('call.ts:CollectionCall', 'collection-call-eval-rules-done', {
-        evaldRulesLen: Array.isArray(rules.value) ? rules.value.length : -1,
-        evaldRulesSetLen: (rules as any).rulesSet ? (rules as any).rulesSet.length : -1,
-        evaldIsMixinOutput: !!(rules as any).options?.isMixinOutput
-      });
-      // #endregion
       context.callStack.pop();
       context.parenFrames.pop();
       // Apply markImportant if needed
@@ -329,23 +228,6 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return castResult;
       } catch (e) {
-        // #region agent log
-        try {
-          const key = typeof name === 'string'
-            ? name
-            : (isNode(name, 'Reference')
-              ? String((name as any).value?.key?.valueOf?.() ?? (name as any).value?.key ?? '')
-              : (isNode(name) ? name.type : 'unknown'));
-          if (key.includes('wrap') || key.includes('ruleset') || key.includes('mixin')) {
-            __agentDbgPost('call.ts:evalNode', 'call-exception', {
-              key,
-              silentFail: !!this.options?.silentFail,
-              markImportant: !!this.options?.markImportant,
-              err: e ? String((e as any).message ?? e) : 'unknown'
-            });
-          }
-        } catch {}
-        // #endregion
         if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
           console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
         }
@@ -365,20 +247,6 @@ export class Call extends Node<CallValue, CallOptions> {
           ? String(name.value.key)
           : String(n.valueOf());
         newCall.value.args = await args?.eval(context);
-        // #region agent log
-        try {
-          const key = typeof name === 'string'
-            ? name
-            : (isNode(name, 'Reference')
-              ? String((name as any).value?.key?.valueOf?.() ?? (name as any).value?.key ?? '')
-              : (isNode(name) ? name.type : 'unknown'));
-          __agentDbgPost('call.ts:evalNode', 'call-silentFail-return-callnode', {
-            key,
-            newName: String(newCall.value.name),
-            hasArgs: !!newCall.value.args && (newCall.value.args as any).value?.length != null
-          });
-        } catch {}
-        // #endregion
         context.callStack.pop();
         context.parenFrames.pop();
         return newCall;

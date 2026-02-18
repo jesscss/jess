@@ -11,7 +11,6 @@ import { applyExtendsToSelector } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
-import { syncLog } from './__tests__/debug-log.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './ruleset-trace.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
 
@@ -210,64 +209,9 @@ export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
   }
   set.add(ruleset);
   const sourceNode = ruleset.sourceNode;
-  const sourceNodeId = sourceNode && isNode(sourceNode, 'Ruleset')
-    ? getOptionalRulesetTraceId(sourceNode as Ruleset) ?? null
-    : null;
-  syncLog({
-    runId: 'pre',
-    hypothesisId: 'ruleset-registry',
-    location: 'extend-roots.ts:registerRulesetWithRoot',
-    message: 'registering-ruleset-duplicate-check',
-    data: {
-      rulesetId: ensureRulesetTraceId(ruleset),
-      selector: root.valueOf?.() ?? '',
-      parentType: ruleset.parent?.type ?? null,
-      setSize: set.size,
-      sourceNodeId
-    },
-    timestamp: Date.now()
-  });
-  syncLog({
-    runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-    hypothesisId: 'H-extend-roots',
-    location: 'extend-roots.ts:registerRulesetWithRoot',
-    message: 'ruleset-registered',
-    data: {
-      rulesetId: ensureRulesetTraceId(ruleset),
-      root: root.valueOf?.() ?? null
-    },
-    timestamp: Date.now()
-  });
 }
 
 export function processExtends(context: Context): void {
-  const debugRunId = process.env.DEBUG_RUN_ID || 'run';
-  const debugParity = debugRunId.startsWith('parity-');
-  const sendParityLog = (
-    hypothesisId: string,
-    location: string,
-    message: string,
-    data: Record<string, unknown>
-  ): void => {
-    syncLog({
-      runId: debugRunId,
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now()
-    });
-  };
-  const isParitySelector = (value: string): boolean => (
-    value.includes('.ma')
-    || value.includes('.mb')
-    || value.includes('.mc')
-    || value.includes('.md')
-    || value.includes('.header-nav')
-    || value.includes('.footer-nav')
-    || value.includes('.issue-2586')
-    || value.includes('.content')
-  );
   const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot]) => ({
     target,
     extendWith: selectorWithExtend,
@@ -296,76 +240,6 @@ export function processExtends(context: Context): void {
       const visibleRoots = context.extendRoots.getVisibleRoots(instruction.extendRoot);
       return visibleRoots.has(rootRules);
     });
-    if (debugParity) {
-      // #region agent log
-      sendParityLog(
-        'H1-root-visibility',
-        'extend-roots.ts:processExtends:root-loop',
-        'visible-extends-per-root',
-        {
-          root: rootRules?.valueOf?.() ?? null,
-          visibleCount: visibleExtends.length,
-          sampleVisible: visibleExtends.slice(0, 6).map(x => ({
-            target: x.target?.valueOf?.() ?? null,
-            extendWith: x.extendWith?.valueOf?.() ?? null,
-            partial: Boolean(x.partial),
-            sameRoot: Boolean(x.extendRoot === rootRules)
-          }))
-        }
-      );
-      // #endregion
-      // #region agent log
-      const rootSetSample = Array.from(rulesetSet).slice(0, 8).map(r =>
-        (r.value?.selector as Selector | undefined)?.valueOf?.() ?? null
-      );
-      if (visibleExtends.length === 0) {
-        sendParityLog(
-          'H5-zero-visible-diagnostics',
-          'extend-roots.ts:processExtends:zero-visible',
-          'parity-root-has-rulesets-but-no-visible-instructions',
-          {
-            root: rootRules?.valueOf?.() ?? null,
-            rulesetCount: rulesetSet.size,
-            rootSetSample,
-            instructionChecks: instructions.slice(0, 8).map(ins => ({
-              target: ins.target?.valueOf?.() ?? null,
-              extendWith: ins.extendWith?.valueOf?.() ?? null,
-              extendRoot: ins.extendRoot?.valueOf?.() ?? null,
-              sameRoot: ins.extendRoot === rootRules,
-              isDescendantCheck: ins.extendRoot
-                ? context.extendRoots.isSameOrDescendantRoot(rootRules, ins.extendRoot)
-                : false,
-              visibleByAccessibleRef: (() => {
-                if (!ins.extendRoot) {
-                  return false;
-                }
-                try {
-                  return context.extendRoots.getVisibleRoots(ins.extendRoot).has(rootRules);
-                } catch {
-                  return false;
-                }
-              })(),
-              visibleByAccessibleValue: (() => {
-                if (!ins.extendRoot) {
-                  return false;
-                }
-                try {
-                  const roots = context.extendRoots.getVisibleRoots(ins.extendRoot);
-                  const current = rootRules.valueOf?.() ?? '';
-                  for (const r of roots) {
-                    if ((r.valueOf?.() ?? '') === current) {
-                      return true;
-                    }
-                  }
-                } catch {}
-                return false;
-              })()
-            }))
-          }
-        );
-      }
-      // #endregion
-    }
     if (!visibleExtends.length) {
       continue;
     }
@@ -374,218 +248,12 @@ export function processExtends(context: Context): void {
       if (!selector || isNode(selector, 'Nil')) {
         continue;
       }
-      // #region agent log
-      try {
-        const runId = process.env.DEBUG_RUN_ID || 'run';
-        if (runId.startsWith('integration-regressions')) {
-          const selectorStr = selector.valueOf();
-          if (
-            selectorStr.includes('.header-nav')
-            || selectorStr.includes('.footer-nav')
-            || selectorStr.includes('.replace')
-          ) {
-            const rulesArr = (ruleset.value.rules as unknown as { value?: unknown[] })?.value ?? [];
-            const ruleKinds = Array.isArray(rulesArr)
-              ? rulesArr.slice(0, 8).map(x => (x as { type?: string })?.type ?? null)
-              : [];
-            let declNames: Array<string | null> = [];
-            if (Array.isArray(rulesArr)) {
-              declNames = rulesArr
-                .filter(x => (x as { type?: string })?.type === 'Declaration')
-                .slice(0, 8)
-                .map(x => (x as { value?: { name?: { valueOf?: () => string } } }).value?.name?.valueOf?.() ?? null);
-            }
-            syncLog({
-              runId,
-              hypothesisId: 'H-RULESET-RULE-OWNERSHIP',
-              location: 'extend-roots.ts:processExtends',
-              message: 'ruleset-before-apply',
-              data: {
-                rulesetId: ensureRulesetTraceId(ruleset),
-                selector: selectorStr,
-                ownSelector: (ruleset.options as { ownSelector?: Selector })?.ownSelector?.valueOf?.() ?? null,
-                parentSelector: (
-                  ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-                    ? (((ruleset.parent.parent as Ruleset).value.selector as Selector | Nil | undefined)?.valueOf?.() ?? null)
-                    : null
-                ),
-                rulesCount: Array.isArray(rulesArr) ? rulesArr.length : null,
-                ruleKinds,
-                declNames
-              },
-              timestamp: Date.now()
-            });
-          }
-        }
-      } catch {}
-      // #endregion
-      if (debugParity) {
-        const selectorStr = selector.valueOf();
-        if (isParitySelector(selectorStr)) {
-          // #region agent log
-          sendParityLog(
-            'H2-ruleset-sees-instructions',
-            'extend-roots.ts:processExtends:ruleset-loop',
-            'parity-ruleset-input',
-            {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              selector: selectorStr,
-              root: rootRules?.valueOf?.() ?? null,
-              visibleCount: visibleExtends.length,
-              visibleTargets: visibleExtends.slice(0, 8).map(x => x.target?.valueOf?.() ?? null),
-              visibleExtenders: visibleExtends.slice(0, 8).map(x => x.extendWith?.valueOf?.() ?? null)
-            }
-          );
-          // #endregion
-        }
-      }
       const ownSelector = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
       const hasResolvedNestedSelector = Boolean(
         ownSelector
         && ownSelector.valueOf() !== selector.valueOf()
       );
       const hasOnlyPartialExtends = visibleExtends.length > 0 && visibleExtends.every(instruction => instruction.partial);
-      // #region agent log
-      try {
-        if (
-          hasResolvedNestedSelector
-          && ownSelector
-          && selector.valueOf().includes('.replace')
-          && visibleExtends.length > 0
-          && visibleExtends.length <= 8
-        ) {
-          const parentSelectorNode = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-              ? ((ruleset.parent.parent as Ruleset).value.selector as Selector | Nil | undefined)
-              : undefined
-          );
-          const implicitExpandedSelector = (
-            parentSelectorNode && !(parentSelectorNode instanceof Nil)
-              ? getImplicitSelectorUtil(
-                  ownSelector.copy(true) as Selector,
-                  parentSelectorNode as Selector,
-                  false
-                )
-              : null
-          );
-          const implicitCollapsedSelector = (
-            parentSelectorNode && !(parentSelectorNode instanceof Nil)
-              ? getImplicitSelectorUtil(
-                  ownSelector.copy(true) as Selector,
-                  parentSelectorNode as Selector,
-                  true
-                )
-              : null
-          );
-          const instructionAudit = visibleExtends.map((instruction, idx) => {
-            const fullSingle = applyExtendsToSelector(selector, [instruction]);
-            const ownSingle = applyExtendsToSelector(ownSelector, [instruction]);
-            const implicitExpandedSingle = implicitExpandedSelector
-              ? applyExtendsToSelector(implicitExpandedSelector.copy(true) as Selector, [instruction])
-              : null;
-            const implicitCollapsedSingle = implicitCollapsedSelector
-              ? applyExtendsToSelector(implicitCollapsedSelector.copy(true) as Selector, [instruction])
-              : null;
-            const targetValue = instruction.target?.valueOf?.() ?? '';
-            const extendWithValue = instruction.extendWith?.valueOf?.() ?? '';
-            return {
-              index: idx,
-              partial: instruction.partial,
-              target: targetValue,
-              extendWith: extendWithValue,
-              fullChanged: fullSingle.valueOf() !== selector.valueOf(),
-              ownChanged: ownSingle.valueOf() !== ownSelector.valueOf(),
-              implicitExpandedChanged: implicitExpandedSingle
-                ? implicitExpandedSingle.valueOf() !== implicitExpandedSelector!.valueOf()
-                : false,
-              implicitCollapsedChanged: implicitCollapsedSingle
-                ? implicitCollapsedSingle.valueOf() !== implicitCollapsedSelector!.valueOf()
-                : false,
-              fullAfter: fullSingle.valueOf(),
-              ownAfter: ownSingle.valueOf(),
-              implicitExpandedAfter: implicitExpandedSingle?.valueOf() ?? null,
-              implicitCollapsedAfter: implicitCollapsedSingle?.valueOf() ?? null
-            };
-          });
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-INSTRUCTION-SCOPE-AUDIT',
-            location: 'extend-roots.ts:processExtends',
-            message: 'nested-instruction-audit',
-            data: {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              fullBefore: selector.valueOf(),
-              ownBefore: ownSelector.valueOf(),
-              parentSelector: (
-                ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-                  ? ((ruleset.parent.parent as Ruleset).value.selector as Selector | Nil | undefined)?.valueOf?.() ?? null
-                  : null
-              ),
-              implicitExpanded: implicitExpandedSelector?.valueOf() ?? null,
-              implicitCollapsed: implicitCollapsedSelector?.valueOf() ?? null,
-              instructionAudit
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
-      // #region agent log
-      try {
-        if (
-          ownSelector
-          && hasResolvedNestedSelector
-        ) {
-          const ownResult = applyExtendsToSelector(ownSelector, visibleExtends);
-          const fullResult = applyExtendsToSelector(selector, visibleExtends);
-          const fullHasAmpersand = (() => {
-            try {
-              for (const n of selector.nodes()) {
-                if (isNode(n, 'Ampersand')) {
-                  return true;
-                }
-              }
-            } catch {}
-            return false;
-          })();
-          const ownHasAmpersand = (() => {
-            try {
-              for (const n of ownSelector.nodes()) {
-                if (isNode(n, 'Ampersand')) {
-                  return true;
-                }
-              }
-            } catch {}
-            return false;
-          })();
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-OWN-VS-FULL',
-            location: 'extend-roots.ts:processExtends',
-            message: 'own-vs-full-extend-preview',
-            data: {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              parentRulesetId: (
-                ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-                  ? ensureRulesetTraceId(ruleset.parent.parent as Ruleset)
-                  : null
-              ),
-              fullBefore: selector.valueOf(),
-              fullAfter: fullResult.valueOf(),
-              ownBefore: ownSelector.valueOf(),
-              ownAfter: ownResult.valueOf(),
-              fullChanged: fullResult.valueOf() !== selector.valueOf(),
-              ownChanged: ownResult.valueOf() !== ownSelector.valueOf(),
-              fullHasAmpersand,
-              ownHasAmpersand,
-              hasResolvedNestedSelector,
-              hasPartialExtends: visibleExtends.some(instruction => instruction.partial)
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       if (ownSelector && hasResolvedNestedSelector && hasOnlyPartialExtends) {
         const ownNewSelector = applyExtendsToSelector(ownSelector, visibleExtends);
         const fullNewSelector = applyExtendsToSelector(selector, visibleExtends);
@@ -593,22 +261,6 @@ export function processExtends(context: Context): void {
         const ownAfter = ownNewSelector.valueOf();
         const fullBefore = selector.valueOf();
         const fullAfter = fullNewSelector.valueOf();
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'run',
-          hypothesisId: 'H-OWN-ASSIGN-PATH',
-          location: 'extend-roots.ts:processExtends',
-          message: 'using-own-selector-for-nested-partial-extend',
-          data: {
-            rulesetId: ensureRulesetTraceId(ruleset),
-            ownBefore,
-            ownAfter,
-            fullBefore,
-            fullAfter,
-            ownChanged: ownAfter !== ownBefore,
-            fullChanged: fullAfter !== fullBefore
-          },
-          timestamp: Date.now()
-        });
         if (ownNewSelector !== ownSelector && ownAfter !== ownBefore) {
           ruleset.value.selector = ownNewSelector;
           (ruleset.options as { ownSelector?: Selector }).ownSelector = ownNewSelector;
@@ -630,31 +282,6 @@ export function processExtends(context: Context): void {
           const fullAfterPartialOnly = applyExtendsToSelector(selector, partialOnly);
           const ownChangedByPartialOnly = ownAfterPartialOnly.valueOf() !== ownSelector.valueOf();
           const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
-          // #region agent log
-          if (
-            ownSelector.valueOf().includes('[data')
-            || ownSelector.valueOf().includes('@{attr-data}')
-            || selector.valueOf().includes('[data')
-          ) {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-PARTIAL-OWN-SHAPE',
-              location: 'extend-roots.ts:processExtends',
-              message: 'partial-only-own-full-shape',
-              data: {
-                rulesetId: ensureRulesetTraceId(ruleset),
-                ownBefore: ownSelector.valueOf(),
-                ownAfterPartialOnly: ownAfterPartialOnly.valueOf(),
-                fullBefore: selector.valueOf(),
-                fullAfterPartialOnly: fullAfterPartialOnly.valueOf(),
-                ownChangedByPartialOnly,
-                fullChangedByPartialOnly,
-                fullAfterType: (fullAfterPartialOnly as any)?.type ?? null
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
           const parentSelector = (
             ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
               ? (ruleset.parent.parent as Ruleset).value.selector
@@ -670,32 +297,6 @@ export function processExtends(context: Context): void {
           if (canDeriveOwnFromGeneratedIs) {
             const complex = fullAfterPartialOnly as ComplexSelector;
             const last = complex.value.at(-1);
-            // #region agent log
-            if (
-              ownSelector.valueOf().includes('[data')
-              || ownSelector.valueOf().includes('@{attr-data}')
-              || selector.valueOf().includes('[data')
-            ) {
-              syncLog({
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H-PARTIAL-OWN-SHAPE',
-                location: 'extend-roots.ts:processExtends',
-                message: 'partial-only-tail-shape',
-                data: {
-                  rulesetId: ensureRulesetTraceId(ruleset),
-                  canDeriveOwnFromGeneratedIs,
-                  lastType: (last as any)?.type ?? null,
-                  lastValue: (last as any)?.valueOf?.() ?? null,
-                  isPseudoIs: Boolean(last && isNode(last, 'PseudoSelector') && (last as PseudoSelector).value.name === ':is'),
-                  hasArg: Boolean(last && isNode(last, 'PseudoSelector') && (last as PseudoSelector).value.arg),
-                  argType: last && isNode(last, 'PseudoSelector')
-                    ? ((last as PseudoSelector).value.arg as any)?.type ?? null
-                    : null
-                },
-                timestamp: Date.now()
-              });
-            }
-            // #endregion
             if (
               last
               && isNode(last, 'PseudoSelector')
@@ -704,22 +305,6 @@ export function processExtends(context: Context): void {
               && isNode((last as PseudoSelector).value.arg!, 'SelectorList')
             ) {
               const derivedOwn = ((last as PseudoSelector).value.arg as SelectorList).copy(true) as Selector;
-              // #region agent log
-              syncLog({
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H-PARTIAL-OWN-FALLBACK',
-                location: 'extend-roots.ts:processExtends',
-                message: 'derived-own-from-generated-is-tail',
-                data: {
-                  rulesetId: ensureRulesetTraceId(ruleset),
-                  ownBefore: ownSelector.valueOf(),
-                  fullBefore: selector.valueOf(),
-                  fullAfterPartialOnly: fullAfterPartialOnly.valueOf(),
-                  derivedOwn: derivedOwn.valueOf()
-                },
-                timestamp: Date.now()
-              });
-              // #endregion
               ruleset.value.selector = derivedOwn;
               (ruleset.options as { ownSelector?: Selector }).ownSelector = derivedOwn;
               ruleset.invalidateSelectorValueCache();
@@ -776,31 +361,6 @@ export function processExtends(context: Context): void {
             && d.fullChangedSingle
             && d.parentHasTargetMatch
           );
-          // #region agent log
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-NONPARTIAL-OWN-FULL-SPLIT',
-            location: 'extend-roots.ts:processExtends',
-            message: 'nonpartial-only-own-full-decision',
-            data: {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              ownBefore: ownSelector.valueOf(),
-              ownAfterOwnOnly: ownAfterOwnOnly.valueOf(),
-              fullBefore: selector.valueOf(),
-              hasAncestorDrivenNonPartial,
-              nonPartialOwnOnlyCount: nonPartialOwnOnly.length,
-              nonPartialDiagnostics: nonPartialWithInclusion.map(d => ({
-                target: d.instruction.target.valueOf(),
-                extendWith: d.instruction.extendWith.valueOf(),
-                ownChangedSingle: d.ownChangedSingle,
-                fullChangedSingle: d.fullChangedSingle,
-                parentHasTargetMatch: d.parentHasTargetMatch,
-                includeOwnOnly: d.includeOwnOnly
-              }))
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
           if (hasAncestorDrivenNonPartial) {
             // Parent already carries this non-partial effect; keep nested selector local.
             ruleset.value.selector = ownAfterOwnOnly;
@@ -874,44 +434,20 @@ export function processExtends(context: Context): void {
             && nonPartialOwnOnly.length === 0
             && hasAncestorDrivenNonPartial
           );
-          // #region agent log
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-MIXED-OWN-FULL-SPLIT',
-            location: 'extend-roots.ts:processExtends',
-            message: 'mixed-own-full-decision',
-            data: {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              ownBefore: ownSelector.valueOf(),
-              ownAfterPartial: ownAfterPartial.valueOf(),
-              ownAfterPartialAndOwnOnlyNonPartial: ownAfterPartialAndOwnOnlyNonPartial.valueOf(),
-              ownAfterNonPartial: ownAfterNonPartial.valueOf(),
-              ownAfterAll: ownAfterAll.valueOf(),
-              fullBefore: selector.valueOf(),
-              fullAfterNonPartial: fullAfterNonPartial.valueOf(),
-              ownChangedByPartial,
-              ownChangedByNonPartial,
-              fullChangedByNonPartial,
-              nonPartialOwnOnlyCount: nonPartialOwnOnly.length,
-              nonPartialOwnOnly: nonPartialOwnOnly.map(instruction => ({
-                target: instruction.target.valueOf(),
-                extendWith: instruction.extendWith.valueOf()
-              })),
-              hasAncestorDrivenNonPartial,
-              shouldDeferToParentForNonPartial,
-              nonPartialDiagnostics: nonPartialWithInclusion.map(d => ({
-                target: d.instruction.target.valueOf(),
-                extendWith: d.instruction.extendWith.valueOf(),
-                ownChangedSingle: d.ownChangedSingle,
-                fullChangedSingle: d.fullChangedSingle,
-                parentHasTargetMatch: d.parentHasTargetMatch,
-                includeOwnOnly: d.includeOwnOnly
-              })),
-              nonPartialBoundaryOnly
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
+          // When non-partial extends match only the full (cross-product) selector and not
+          // the own selector, and partial extends would incorrectly alter the own selector,
+          // the non-partial extend takes precedence. Applying partial extends to the own
+          // selector here blocks cross-product de-distribution (`:is(parent) :is(own), .rep_ace`).
+          if (nonPartialBoundaryOnly && (ownChangedByPartial || nonPartialOwnOnly.length > 0)) {
+            const newSel = applyExtendsToSelector(selector, nonPartialOnly);
+            if (newSel.valueOf() !== selector.valueOf()) {
+              newSel.hoistToRoot = true;
+              ruleset.value.selector = newSel;
+              ruleset.invalidateSelectorValueCache();
+              ruleset.hoistToRoot = true;
+            }
+            continue;
+          }
           // For nested rulesets, apply partial (`all`) updates to own selector, but do not
           // fold non-partial changes into own selector. Non-partial changes are handled
           // through full-selector assignment path below when needed.
@@ -932,84 +468,7 @@ export function processExtends(context: Context): void {
           }
         }
       }
-      // #region agent log
-      try {
-        if (ownSelector && hasResolvedNestedSelector) {
-          const partialOnly = visibleExtends.filter(instruction => instruction.partial);
-          const nonPartialOnly = visibleExtends.filter(instruction => !instruction.partial);
-          if (partialOnly.length > 0 && nonPartialOnly.length > 0) {
-            const ownPartialOnly = applyExtendsToSelector(ownSelector, partialOnly);
-            const fullNonPartialOnly = applyExtendsToSelector(selector, nonPartialOnly);
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-MIXED-OWN-FULL-SPLIT',
-              location: 'extend-roots.ts:processExtends',
-              message: 'mixed-own-full-split-preview',
-              data: {
-                rulesetId: ensureRulesetTraceId(ruleset),
-                ownBefore: ownSelector.valueOf(),
-                ownAfterPartialOnly: ownPartialOnly.valueOf(),
-                fullBefore: selector.valueOf(),
-                fullAfterNonPartialOnly: fullNonPartialOnly.valueOf(),
-                ownChangedByPartial: ownPartialOnly.valueOf() !== ownSelector.valueOf(),
-                fullChangedByNonPartial: fullNonPartialOnly.valueOf() !== selector.valueOf(),
-                partialCount: partialOnly.length,
-                nonPartialCount: nonPartialOnly.length
-              },
-              timestamp: Date.now()
-            });
-          }
-        }
-      } catch {}
-      // #endregion
       let newSelector = applyExtendsToSelector(selector, visibleExtends);
-      if (debugParity) {
-        const selectorStr = selector.valueOf();
-        if (isParitySelector(selectorStr)) {
-          // #region agent log
-          sendParityLog(
-            'H3-apply-extends-result',
-            'extend-roots.ts:processExtends:post-apply',
-            'parity-ruleset-apply-result',
-            {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              before: selectorStr,
-              after: newSelector?.valueOf?.() ?? null,
-              changedByValue: (newSelector?.valueOf?.() ?? '') !== selectorStr,
-              changedByRef: newSelector !== selector
-            }
-          );
-          // #endregion
-        }
-      }
-      // #region agent log
-      try {
-        if (
-          selector.valueOf() === '.replace.replace,.c.replace+.replace'
-          && visibleExtends.some(instruction => instruction.extendWith?.valueOf?.() === '.rep_ace')
-        ) {
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'run',
-            hypothesisId: 'H-SERIALIZED-TARGET-ROOT',
-            location: 'extend-roots.ts:processExtends',
-            message: 'root-ruleset-extend-check',
-            data: {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              before: selector.valueOf(),
-              after: newSelector.valueOf(),
-              changedByRef: newSelector !== selector,
-              changedByValue: newSelector.valueOf() !== selector.valueOf(),
-              visibleExtends: visibleExtends.map(x => ({
-                target: x.target.valueOf(),
-                extendWith: x.extendWith.valueOf(),
-                partial: x.partial
-              }))
-            },
-            timestamp: Date.now()
-          });
-        }
-      } catch {}
-      // #endregion
       if (newSelector !== selector) {
         const beforeValue = selector.valueOf();
         const ownRelevantExtends = (ownSelector && hasResolvedNestedSelector)
@@ -1089,22 +548,7 @@ export function processExtends(context: Context): void {
                     ownIs
                   ]).inherit(newSelector) as Selector;
                   newSelector.hoistToRoot = true;
-                  // #region agent log
-                  syncLog({
-                    runId: process.env.DEBUG_RUN_ID || 'run',
-                    hypothesisId: 'H-HOIST-DECISION',
-                    location: 'extend-roots.ts:processExtends',
-                    message: 'parent-hoisted-boundary-composed',
-                    data: {
-                      rulesetId: ensureRulesetTraceId(ruleset),
-                      parentSelector: parentSelector.valueOf(),
-                      ownSelector: ownSelectorNode.valueOf(),
-                      afterPreview: newSelector.valueOf()
-                    },
-                    timestamp: Date.now()
-                  });
-                  // #endregion
-                }
+                  }
               }
             }
           }
@@ -1124,146 +568,13 @@ export function processExtends(context: Context): void {
         );
         if (boundaryOnlyNestedExactChange) {
           newSelector.hoistToRoot = true;
-          // #region agent log
-          try {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-HOIST-DECISION',
-              location: 'extend-roots.ts:processExtends',
-              message: 'boundary-hoist-applied',
-              data: {
-                rulesetId: ensureRulesetTraceId(ruleset),
-                before: beforeValue,
-                afterPreview: newSelector.valueOf(),
-                ownBefore: ownSelector?.valueOf?.() ?? null,
-                ownAfter: ownAfterRelevant?.valueOf?.() ?? null,
-                parentHasCombinatorContext,
-                hasResolvedNestedSelector,
-                hasOnlyPartialExtends
-              },
-              timestamp: Date.now()
-            });
-          } catch {}
-          // #endregion
-        }
-        const afterValue = newSelector.valueOf();
-        // #region agent log
-        try {
-          if (beforeValue.includes('.replace') || afterValue.includes('.replace') || afterValue.includes('rep_ace')) {
-            syncLog({
-              runId: process.env.DEBUG_RUN_ID || 'run',
-              hypothesisId: 'H-HOIST-DECISION',
-              location: 'extend-roots.ts:processExtends',
-              message: 'pre-assignment-hoist-state',
-              data: {
-                rulesetId: ensureRulesetTraceId(ruleset),
-                before: beforeValue,
-                after: afterValue,
-                hasResolvedNestedSelector,
-                hasOnlyPartialExtends,
-                selectorHoistToRoot: Boolean(selector.hoistToRoot),
-                newSelectorHoistToRoot: Boolean(newSelector.hoistToRoot),
-                rulesetHoistToRoot: Boolean(ruleset.hoistToRoot)
-              },
-              timestamp: Date.now()
-            });
           }
-        } catch {}
-        // #endregion
+        const afterValue = newSelector.valueOf();
         if (beforeValue === afterValue) {
-          // #region agent log
-          try {
-            if (beforeValue.includes('[data="test3"]') || beforeValue.includes('.aa') || beforeValue.includes('.replace.replace')) {
-              syncLog({
-                runId: process.env.DEBUG_RUN_ID || 'run',
-                hypothesisId: 'H-NOOP-ASSIGNMENT',
-                location: 'extend-roots.ts:processExtends',
-                message: 'skip-noop-selector-assignment',
-                data: {
-                  rulesetId: ensureRulesetTraceId(ruleset),
-                  before: beforeValue,
-                  after: afterValue,
-                  requestedHoist: Boolean(newSelector.hoistToRoot)
-                },
-                timestamp: Date.now()
-              });
-            }
-          } catch {}
-          // #endregion
-          syncLog({
-            runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-            hypothesisId: 'H-hoist-noop-assignment',
-            location: 'extend-roots.ts:processExtends',
-            message: 'skip-noop-selector-assignment',
-            data: {
-              rulesetId: ensureRulesetTraceId(ruleset),
-              before: beforeValue,
-              after: afterValue,
-              requestedHoist: Boolean(newSelector.hoistToRoot)
-            },
-            timestamp: Date.now()
-          });
           continue;
         }
         ruleset.value.selector = newSelector;
         ruleset.invalidateSelectorValueCache();
-        if (debugParity) {
-          const afterValue = newSelector.valueOf();
-          if (isParitySelector(beforeValue) || isParitySelector(afterValue)) {
-            // #region agent log
-            sendParityLog(
-              'H4-assignment-path',
-              'extend-roots.ts:processExtends:assigned',
-              'parity-ruleset-assigned',
-              {
-                rulesetId: ensureRulesetTraceId(ruleset),
-                before: beforeValue,
-                after: afterValue,
-                hoist: Boolean(newSelector.hoistToRoot)
-              }
-            );
-            // #endregion
-          }
-        }
-        syncLog({
-          runId: 'pre',
-          hypothesisId: 'extend-assignment',
-          location: 'extend-roots.ts:processExtends',
-          message: 'ruleset-extended',
-          data: {
-            rulesetId: ensureRulesetTraceId(ruleset),
-            before: beforeValue,
-            after: afterValue,
-            partialCount: visibleExtends.length
-          },
-          timestamp: Date.now()
-        });
-        syncLog({
-          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-          hypothesisId: 'H-extend-assign',
-          location: 'extend-roots.ts:processExtends',
-          message: 'ruleset-selector-assigned',
-          data: {
-            before: beforeValue,
-            after: afterValue,
-            visibleExtends: visibleExtends.length,
-            rulesetId: ensureRulesetTraceId(ruleset),
-            sourceNodeId: getSourceNodeTraceId(ruleset),
-            hoistToRoot: Boolean(newSelector.hoistToRoot),
-            parentRulesetId: (
-              ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-                ? ensureRulesetTraceId(ruleset.parent.parent as Ruleset)
-                : null
-            ),
-            ownSelector: (ruleset.options as { ownSelector?: Selector })?.ownSelector?.valueOf?.() ?? null,
-            parentSelector: (
-              ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-                ? ((ruleset.parent.parent as Ruleset).value.selector as Selector | Nil | undefined)?.valueOf?.() ?? null
-                : null
-            )
-          },
-          timestamp: Date.now()
-        });
         if (newSelector.hoistToRoot) {
           ruleset.hoistToRoot = true;
         }

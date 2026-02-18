@@ -8,7 +8,6 @@ import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { F_VISIBLE } from './node.js';
-import { syncLog } from './util/__tests__/debug-log.js';
 
 export type AmpersandValue = {
   /**
@@ -151,21 +150,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
       wrapped.generated = true;
       if (process.env.DEBUG_FIXTURE_2A === '1') {
-        // #region agent log
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-          hypothesisId: 'H-implicit-amp',
-          location: 'ampersand.ts:getResolvedSelector',
-          message: 'wrap-selectorlist-for-implicit-amp',
-          data: {
-            selector: selector.valueOf(),
-            wrapped: wrapped.valueOf()
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
+        }
       return wrapped;
     }
     return selector;
@@ -244,37 +229,13 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const shouldWrapSelectorList = isNode(selector, 'SelectorList') && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
       const shouldWrapComplexSelector = isNode(selector, 'ComplexSelector');
       if (process.env.DEBUG_FIXTURE_2A === '1' && isNode(selector, 'SelectorList')) {
-        // #region agent log
-        syncLog({
-          sessionId: 'debug-session',
-          runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-          hypothesisId: 'H-implicit-amp',
-          location: 'ampersand.ts:evalNode',
-          message: 'implicit-amp-selectorlist-wrap-decision',
-          data: {
-            selector: selector.valueOf(),
-            isImplicitAmp,
-            hasImplicitFlag: this.hasFlag(F_IMPLICIT_AMPERSAND),
-            collapseNesting: Boolean(context.opts.collapseNesting),
-            hoistToRoot: Boolean(this.hoistToRoot),
-            hasAppendValue: appendValue !== undefined,
-            shouldWrapSelectorList,
-            shouldWrapComplexSelector
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
+        }
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
         result = PseudoSelector.create({ name: ':is', arg: selector });
         // When create() is invoked from this eval path, generated is not set on the instance
         // (repro: process-leading-is test "unwraps evaled &[e] with frame * b"). Set explicitly.
         result.generated = true;
-        if (process.env.DEBUG_LEADING_IS_GENERATED === 'true') {
-          const g = result.generated;
-          syncLog({ msg: 'ampersand-after-set', generated: g });
-        }
       } else {
         result = selector;
       }

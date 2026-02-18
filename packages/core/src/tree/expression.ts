@@ -3,7 +3,6 @@ import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
-import { syncLog } from './util/__tests__/debug-log.js';
 
 export type ExpressionOptions = {
   parens?: boolean;
@@ -26,25 +25,6 @@ export class Expression extends Node<Node, ExpressionOptions> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     const { value } = this;
-    // #region agent log
-    try {
-      if (isNode(value, 'Call') && isNode((value as any).value?.name, 'Reference')) {
-        const raw = (value as any).value.name.value?.key;
-        const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-        if (keyStr.includes('my-mixins') || keyStr === 'ruleset') {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H13',
-            location: 'expression.ts:evalNode',
-            message: 'eval-expression-call',
-            data: { keyStr },
-            timestamp: Date.now()
-          });
-        }
-      }
-    } catch {}
-    // #endregion
     const out = value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
