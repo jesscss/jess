@@ -569,8 +569,8 @@ export function processExtends(context: Context): void {
         if (boundaryOnlyNestedExactChange) {
           newSelector.hoistToRoot = true;
           }
-        const afterValue = newSelector.valueOf();
-        if (beforeValue === afterValue) {
+        const finalAfterValue = newSelector.valueOf();
+        if (beforeValue === finalAfterValue) {
           continue;
         }
         ruleset.value.selector = newSelector;

@@ -1495,7 +1495,7 @@ export function extendSelector(
     // component match.
     if (!partial && isNode(find, 'SimpleSelector')) {
       const findV = find.valueOf();
-      const wholeSelectorItemMatch = isNonAllWholeSelectorItemMatch(target, findV);
+      const wholeSelectorItemMatch = isNonAllWholeSelectorItemMatch(originalTarget, findV);
       if (!wholeSelectorItemMatch) {
         return target;
       }
@@ -2082,7 +2082,9 @@ function extendSelectorList(
           const list = SelectorList.create(
             keys.map(k => (map.get(k) as Selector).copy(true) as Selector)
           ).inherit(inheritFrom);
-          return PseudoSelector.create({ name: ':is', arg: list }).inherit(inheritFrom);
+          const pseudo = PseudoSelector.create({ name: ':is', arg: list }).inherit(inheritFrom);
+          pseudo.generated = false;
+          return pseudo;
         };
 
         const insertIdx = Math.min(...group.map(c => c.idx));
@@ -2893,7 +2895,7 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
 
   // Replace all matching ampersands
   for (const { node, parent } of nodesToReplace) {
-    replaceNodeInParent(parent, node, resolvedSelector.inherit(ampersand));
+    replaceNodeInParent(parent, node, resolvedSelector.copy());
   }
 
   return selectorCopy;
