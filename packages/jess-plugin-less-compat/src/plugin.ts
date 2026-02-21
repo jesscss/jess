@@ -9,18 +9,6 @@ import { filterPlugins } from './plugin-utils.js';
 import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures.js';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
-// Debug logging helper (only in debug mode)
-// Check DEBUG each time, not just at module load
-const syncLog = (data: object) => {
-  if (process.env.DEBUG) {
-    try {
-      console.log('[LessCompatPlugin]', JSON.stringify(data, null, 2));
-    } catch {
-      // Ignore errors
-    }
-  }
-};
-
 const isThenable = (v: any): v is PromiseLike<any> =>
   !!v && (typeof v === 'object' || typeof v === 'function') && typeof (v as any).then === 'function';
 
@@ -88,34 +76,12 @@ export class LessCompatPlugin extends AbstractPlugin {
    * - addPostProcessor() - these will run during postEval (after evaluation)
    */
   get preEvalVisitor() {
-    syncLog({
-      location: 'LessCompatPlugin.preEvalVisitor',
-      action: 'preEvalVisitor getter called',
-      hasCachedVisitor: !!this._cachedVisitor
-    });
     // Cache the visitor instance so it's reused across multiple calls
     // This ensures that visitors added via @plugin are available for subsequent nodes
     if (!this._cachedVisitor) {
-      syncLog({
-        location: 'LessCompatPlugin.preEvalVisitor',
-        action: 'Creating new cached visitor'
-      });
       this._cachedVisitor = this.visitor;
-    } else {
-      syncLog({
-        location: 'LessCompatPlugin.preEvalVisitor',
-        action: 'Using cached visitor'
-      });
     }
-    const cached = this._cachedVisitor;
-    syncLog({
-      location: 'LessCompatPlugin.preEvalVisitor',
-      action: 'Returning visitor',
-      hasAtRule: !Array.isArray(cached) && !!cached?.atRule,
-      hasVisit: !Array.isArray(cached) && !!cached?.visit,
-      isArray: Array.isArray(cached)
-    });
-    return cached;
+    return this._cachedVisitor;
   }
 
   /**
@@ -260,7 +226,7 @@ export class LessCompatPlugin extends AbstractPlugin {
 
                 const maybeNeedsAwait = maybeEvaldArgs.some(isThenable);
                 const result = maybeNeedsAwait
-                  ? Promise.all(maybeEvaldArgs.map((a) => isThenable(a) ? a : Promise.resolve(a))).then(call)
+                  ? Promise.all(maybeEvaldArgs.map(a => isThenable(a) ? a : Promise.resolve(a))).then(call)
                   : call(maybeEvaldArgs);
 
                 // Avoid core's cast() path (which uses createRequire) by returning Nodes directly
@@ -308,14 +274,14 @@ export class LessCompatPlugin extends AbstractPlugin {
                           const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
                             ? val.value
                             : String(val);
-                        const decl = new Declaration({
+                          const decl = new Declaration({
                             name: new Any(prop, { role: 'property' as any }),
                             value: new Any(String(valueStr))
-                        });
-                        // Avoid carrying any incidental whitespace into serialization.
-                        decl.pre = 0;
-                        decl.post = 0;
-                        nodes.push(decl);
+                          });
+                          // Avoid carrying any incidental whitespace into serialization.
+                          decl.pre = 0;
+                          decl.post = 0;
+                          nodes.push(decl);
                         }
                       }
                       return new Collection(nodes);
@@ -671,13 +637,6 @@ export class LessCompatPlugin extends AbstractPlugin {
       // In Less.js, @plugin is processed in preEval phase before the tree is evaluated
       // This ensures plugins loaded via @plugin have their visitors available for subsequent nodes
       atRule: (node: any, _ctx?: any): any => {
-        syncLog({
-          location: 'LessCompatPlugin.visitor.atRule',
-          action: 'atRule called',
-          nodeType: node?.type,
-          hasValue: !!node?.value,
-          valueName: (node?.value as any)?.name
-        });
         // Check if this is a @plugin directive
         // In Less.js, @plugin syntax is: @plugin "plugin-name";
         // Handle both AtRule (modern) and Directive (v2) node types
@@ -699,25 +658,12 @@ export class LessCompatPlugin extends AbstractPlugin {
           // Less.js uses '@plugin' but we should handle both
           const isPlugin = nameValue === 'plugin' || nameValue === '@plugin';
 
-          syncLog({
-            location: 'LessCompatPlugin.visitor.atRule',
-            action: 'Checking if @plugin',
-            nameValue,
-            isPlugin,
-            nodeType: node?.type
-          });
-
           if (isPlugin) {
             const pluginDirectiveNode = (getJessNodeFromProxy(node) || node) as object;
             if (processedPluginDirectives.has(pluginDirectiveNode)) {
               return node;
             }
             processedPluginDirectives.add(pluginDirectiveNode);
-            syncLog({
-              location: 'LessCompatPlugin.visitor.atRule',
-              action: '@plugin directive detected!',
-              pluginPath: 'checking...'
-            });
             const baseDir = this._currentFilePath ? path.dirname(this._currentFilePath) : undefined;
             // Extract plugin path/name and options from prelude
             // Handle both AtRule (value.prelude) and Directive (value.value) structures
@@ -939,20 +885,6 @@ export class LessCompatPlugin extends AbstractPlugin {
                     const { module: pluginModule, registered } = requirePluginFile(resolvedLocalPluginFile);
                     const PluginClass = pluginModule.default || pluginModule;
                     pluginInstance = registered || PluginClass;
-                    if (process.env.DEBUG) {
-                      try {
-                        const hasPi = typeof currentRealRegistry?.get === 'function' ? Boolean(currentRealRegistry.get('pi')) : null;
-                        syncLog({
-                          location: 'LessCompatPlugin.visitor.atRule',
-                          action: 'Loaded local @plugin',
-                          pluginPath,
-                          resolvedLocalPluginFile,
-                          hasPi
-                        });
-                      } catch {
-                        // ignore
-                      }
-                    }
                   } else if (!isLocalPath && this.opts.autoLoadPlugins !== false) {
                     // Auto-load plugins from npm/node_modules (Less.js behavior)
                     // Expand plugin name to try multiple variations (e.g., "clean-css" -> ["clean-css", "less-plugin-clean-css"])
@@ -975,25 +907,8 @@ export class LessCompatPlugin extends AbstractPlugin {
                             pluginInstance = registered || PluginClass;
 
                             loaded = true;
-                            syncLog({
-                              location: 'LessCompatPlugin.visitor.atRule',
-                              action: 'Auto-loaded plugin via node-modules plugin',
-                              pluginPath,
-                              resolvedName: packageName,
-                              resolvedPath,
-                              hasInstall: typeof pluginInstance?.install === 'function'
-                            });
                             break;
-                          } catch (e: any) {
-                            syncLog({
-                              location: 'LessCompatPlugin.visitor.atRule',
-                              action: 'Error loading resolved plugin',
-                              pluginPath,
-                              resolvedName: packageName,
-                              resolvedPath,
-                              error: e.message
-                            });
-                          }
+                          } catch {}
                         }
                       }
                     }
@@ -1013,38 +928,15 @@ export class LessCompatPlugin extends AbstractPlugin {
                             pluginInstance = registered || PluginClass;
 
                             loaded = true;
-                            syncLog({
-                              location: 'LessCompatPlugin.visitor.atRule',
-                              action: 'Auto-loaded plugin from npm (direct require)',
-                              pluginPath,
-                              resolvedName: fullName,
-                              hasInstall: typeof pluginInstance?.install === 'function'
-                            });
                             break;
                           }
                         } catch (e: any) {
                           // Module not found - try next name
                           if (e.code !== 'MODULE_NOT_FOUND') {
-                            // Some other error - log it
-                            syncLog({
-                              location: 'LessCompatPlugin.visitor.atRule',
-                              action: 'Error loading plugin',
-                              pluginPath,
-                              attemptedName: fullName,
-                              error: e.message
-                            });
+                            // Some other error - continue trying alternative names.
                           }
                         }
                       }
-                    }
-
-                    if (!loaded) {
-                      syncLog({
-                        location: 'LessCompatPlugin.visitor.atRule',
-                        action: 'Plugin not found in npm',
-                        pluginPath,
-                        triedNames: packageNamesToTry
-                      });
                     }
                   } else {
                     // Auto-loading disabled - skip
@@ -1071,24 +963,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                     if (pluginOptions && typeof pluginInstance.setOptions === 'function') {
                       try {
                         pluginInstance.setOptions(pluginOptions);
-                      } catch (e: any) {
-                        syncLog({
-                          location: 'LessCompatPlugin.visitor.atRule',
-                          action: 'Error setting plugin options (before register)',
-                          pluginPath,
-                          options: pluginOptions,
-                          error: e.message
-                        });
-                      }
+                      } catch {}
                     }
 
-                    syncLog({
-                      location: 'LessCompatPlugin.visitor.atRule',
-                      action: 'Registering plugin',
-                      pluginPath,
-                      hasInstall: typeof pluginInstance.install === 'function',
-                      hasOptions: !!pluginOptions
-                    });
                     const visitorsBefore = pluginManagerRef.visitors.length;
                     pluginManagerRef.registerPlugin(pluginInstance);
 
@@ -1096,25 +973,8 @@ export class LessCompatPlugin extends AbstractPlugin {
                     if (pluginOptions && typeof pluginInstance.setOptions === 'function') {
                       try {
                         pluginInstance.setOptions(pluginOptions);
-                      } catch (e: any) {
-                        syncLog({
-                          location: 'LessCompatPlugin.visitor.atRule',
-                          action: 'Error setting plugin options (after register)',
-                          pluginPath,
-                          options: pluginOptions,
-                          error: e.message
-                        });
-                      }
+                      } catch {}
                     }
-
-                    syncLog({
-                      location: 'LessCompatPlugin.visitor.atRule',
-                      action: 'Plugin registered',
-                      pluginPath,
-                      visitorsBefore,
-                      visitorsAfter: pluginManagerRef.visitors.length,
-                      newVisitors: pluginManagerRef.visitors.length - visitorsBefore
-                    });
 
                     // Collect any new visitors added by this plugin
                     // These will be automatically included in the iterator via .next() calls
@@ -1146,20 +1006,6 @@ export class LessCompatPlugin extends AbstractPlugin {
             const jessNode = getJessNodeFromProxy(node) || node;
             if (jessNode && typeof (jessNode as any).removeFlag === 'function') {
               (jessNode as any).removeFlag(F_VISIBLE);
-              syncLog({
-                location: 'LessCompatPlugin.visitor.atRule',
-                action: 'Marked @plugin as invisible',
-                pluginPath: pluginPath || 'unknown',
-                hasRemoveFlag: typeof (jessNode as any).removeFlag === 'function'
-              });
-            } else {
-              syncLog({
-                location: 'LessCompatPlugin.visitor.atRule',
-                action: 'Could not mark @plugin as invisible',
-                pluginPath: pluginPath || 'unknown',
-                hasRemoveFlag: jessNode && typeof (jessNode as any).removeFlag === 'function',
-                nodeType: jessNode?.type
-              });
             }
           }
         }
@@ -1169,17 +1015,6 @@ export class LessCompatPlugin extends AbstractPlugin {
       },
 
       visit: (node: Node): Node => {
-        syncLog({
-          location: 'LessCompatPlugin.visitor.visit',
-          action: 'visit() called',
-          nodeType: node?.type,
-          hasValue: !!node?.value,
-          valueName: (node?.value as any)?.name,
-          insideLessTraversal
-        });
-        // #region agent log
-        syncLog({ location: 'plugin.ts:603', message: 'Plugin visitor.visit() entry', data: { nodeType: node?.type, insideLessTraversal }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
-        // #endregion
         if (!node) {
           return node;
         }
@@ -1192,11 +1027,6 @@ export class LessCompatPlugin extends AbstractPlugin {
         // before running Less visitors. Since our visitor is a plain object (not a class extending Visitor),
         // visit() doesn't automatically call atRule() via _visit(). We need to call it manually.
         if ((node.type === 'AtRule' || node.type === 'Directive') && visitor.atRule) {
-          syncLog({
-            location: 'LessCompatPlugin.visitor.visit',
-            action: 'AtRule/Directive detected, calling visitor.atRule()',
-            nodeType: node.type
-          });
           // Call atRule() to process @plugin directives and add visitors
           // This must happen before we run Less visitors, so that newly added visitors
           // are available for subsequent nodes
@@ -1216,18 +1046,12 @@ export class LessCompatPlugin extends AbstractPlugin {
         // If we're already inside a Less visitor traversal, don't process again
         // This prevents infinite loops when visitArray calls visit() on child nodes
         if (insideLessTraversal) {
-          // #region agent log
-          syncLog({ location: 'plugin.ts:614', message: 'Skipping - insideLessTraversal=true', data: { nodeType: node?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' });
-          // #endregion
           return node;
         }
 
         // Prevent recursion - if we're already processing this node, skip
         // This prevents infinite loops when visitArray calls visit() on nodes that are already being processed
         if (processing.has(jessNode)) {
-          // #region agent log
-          syncLog({ location: 'plugin.ts:620', message: 'Skipping - already processing', data: { nodeType: node?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' });
-          // #endregion
           return node;
         }
 
@@ -1262,21 +1086,15 @@ export class LessCompatPlugin extends AbstractPlugin {
             // into the visitor chain and processed on subsequent nodes
             // Only run visitors if we have any (including those added via @plugin)
             if (lessVisitorInstances.length > 0) {
-              // #region agent log
-              syncLog({ location: 'plugin.ts:645', message: 'Starting Less visitor iteration', data: { visitorCount: lessVisitorInstances.length, nodeType: lessNode?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' });
-              // #endregion
               const visitorIterator = createVisitorIterator();
               let iteratorResult = visitorIterator.next();
               let iterationCount = 0;
 
               while (!iteratorResult.done) {
                 iterationCount++;
-                // #region agent log
                 if (iterationCount > 100) {
-                  syncLog({ location: 'plugin.ts:649', message: 'POSSIBLE INFINITE LOOP - iteration count > 100', data: { iterationCount, nodeType: lessNode?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' });
                   break;
                 }
-                // #endregion
                 const lessVisitor = iteratorResult.value;
 
                 // Less Visitor.visit() calls the appropriate visit* method
@@ -1287,13 +1105,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                 //
                 // Handle Less.js v2 "Directive" nodes - if node is Directive type,
                 // LessVisitor.visit() will route to visitDirective() which maps to visitAtRule()
-                // #region agent log
-                syncLog({ location: 'plugin.ts:660', message: 'Calling lessVisitor.visit()', data: { iterationCount, nodeType: result?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' });
-                // #endregion
                 result = lessVisitor.visit(result);
-                // #region agent log
-                syncLog({ location: 'plugin.ts:661', message: 'After lessVisitor.visit()', data: { iterationCount, nodeType: result?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' });
-                // #endregion
 
                 // If result is undefined, a replacing visitor wants to remove this node
                 // (Non-replacing visitors can't return undefined - Less.js ignores their return value)

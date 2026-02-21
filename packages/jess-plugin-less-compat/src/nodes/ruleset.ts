@@ -4,16 +4,6 @@ import { toLessNode } from '../transform/to-less.js';
 import { mapJessTypeToLessType } from '../transform/type-map.js';
 import type { LessNode } from '../types.js';
 
-// Debug logging helper (only in debug mode)
-const syncLog = process.env.DEBUG ? (data: object) => {
-  try {
-    // eslint-disable-next-line no-console
-    console.log('[Ruleset]', JSON.stringify(data, null, 2));
-  } catch {
-    // Ignore errors
-  }
-} : () => {};
-
 /**
  * Transform a Jess Ruleset to a Less-compatible Ruleset
  */
@@ -61,9 +51,6 @@ export function transformRulesetToLess(
     // The accept method should traverse children, NOT call visitor.visit again
     if (prop === 'accept') {
       return function(visitor: any) {
-        // #region agent log
-        syncLog({location:'ruleset.ts:53',message:'Ruleset accept() called',data:{visitorType:visitor?.constructor?.name,hasVisitArray:!!visitor?.visitArray},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
-        // #endregion
         // CRITICAL: The visitor passed here is the Less visitor, not the plugin visitor
         // Less's Ruleset.accept() traverses selectors and rules
         // Use visitArray which handles the traversal correctly
@@ -81,9 +68,6 @@ export function transformRulesetToLess(
               return lessSel;
             });
             if (visitor.visitArray) {
-              // #region agent log
-              syncLog({location:'ruleset.ts:71',message:'Calling visitor.visitArray(selectors)',data:{selectorCount:lessSelectors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
-              // #endregion
               visitor.visitArray(lessSelectors);
             } else {
               // Fallback: call accept on each selector if visitArray not available
@@ -116,9 +100,6 @@ export function transformRulesetToLess(
             return lessRule;
           });
           if (visitor.visitArray) {
-            // #region agent log
-            syncLog({location:'ruleset.ts:103',message:'Calling visitor.visitArray(rules)',data:{ruleCount:lessRules.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
-            // #endregion
             visitor.visitArray(lessRules);
           } else {
             // Fallback: call accept on each rule if visitArray not available
