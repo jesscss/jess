@@ -19,6 +19,10 @@ export { default as e } from './e.js';
 
 /** Misc */
 export { default as unit } from './unit.js';
+export { default as length } from './length.js';
+export { default as extract } from './extract.js';
+export { default as isdefined } from './isdefined.js';
+export { default as isruleset } from './isruleset.js';
 
 /** Color blending */
 export { default as multiply } from './multiply.js';

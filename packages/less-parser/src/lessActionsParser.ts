@@ -139,6 +139,11 @@ export type RuleContext = CssRuleContext & {
    * Parse-time equivalent of `Context.calcFrames`.
    */
   calcFrames?: number;
+  /**
+   * Tracks where a detached ruleset literal is parsed from so we can
+   * disambiguate Collection vs anonymous mixin semantics.
+   */
+  detachedRulesetUsage?: 'function-arg' | 'mixin-arg' | 'default-param';
 };
 /**
  * Unlike the historical Less parser, this parser
@@ -155,7 +160,7 @@ export class LessActionsParser extends CssActionsParser {
   expressionProduct!: Rule;
   expressionValue!: Rule;
   functionValueList!: Rule;
-  ifFunction!: Rule;
+  declare ifFunction: Rule;
   booleanFunction!: Rule;
 
   wrappedDeclarationList!: Rule;

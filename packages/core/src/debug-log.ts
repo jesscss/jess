@@ -1,29 +1,27 @@
-import type { Node } from './tree/node.js';
+import { appendFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
-const SYNC_LOG_PATH = '/Users/matthew/git/oss/jess/.cursor/debug-sync.log';
-
-/**
- * Get a node identifier using location info (startOffset-endOffset) if available,
- * otherwise fall back to type#index
- */
-export function getNodeId(node: Node): string {
-  const loc = node.location;
-  if (loc && loc.length >= 4) {
-    return `${node.type}@${loc[0]}-${loc[3]}`;
+function findMonorepoRoot(start: string): string {
+  let dir = start;
+  while (dir !== '/') {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) {
+      return dir;
+    }
+    dir = dirname(dir);
   }
-  return `${node.type}#${node.index ?? '?'}`;
+  return process.cwd();
 }
 
-/**
- * Synchronously log a message to the debug-sync log file
- */
-export function debugLog(message: string, node?: Node, data?: Record<string, any>): void {
+function getSyncLogPath(): string {
+  if (process.env.DEBUG_LOG_PATH) return process.env.DEBUG_LOG_PATH;
+  const root = findMonorepoRoot(process.cwd());
+  return join(root, '.cursor', 'debug.log');
+}
+
+export function syncLog(data: Record<string, unknown>): void {
   try {
-    const nodeId = node ? getNodeId(node) : '';
-    const dataStr = data ? `, ${JSON.stringify(data)}` : '';
-    const logLine = `${message}${nodeId ? `: ${nodeId}` : ''}${dataStr}\n`;
-    require('fs').writeFileSync(SYNC_LOG_PATH, logLine, { flag: 'a' });
+    appendFileSync(getSyncLogPath(), `${JSON.stringify(data)}\n`);
   } catch {
-    // Ignore errors
+    // Ignore logging failures in debug mode.
   }
 }

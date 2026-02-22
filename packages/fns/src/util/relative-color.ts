@@ -132,10 +132,10 @@ function substituteChannelVariables(
     const cloned = node.clone();
     // Recursively substitute in arguments
     if (cloned.value.args) {
-      const substitutedArgs = node.value.args.value.map(arg => 
+      const substitutedArgs = node.value.args.map(arg =>
         substituteChannelVariables(arg, channelValues, format)
       );
-      cloned.value.args.value = substitutedArgs;
+      cloned.value.args = substitutedArgs;
     }
     return cloned;
   }

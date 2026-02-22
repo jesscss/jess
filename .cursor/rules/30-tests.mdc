@@ -15,6 +15,7 @@ alwaysApply: true
 - Use `syncLog()` for debugging output.
 - Do not use `console.log()` (often suppressed in Vitest output).
 - Log primitives only; avoid `JSON.stringify` and node stringification (see `20-quality-bar.mdc`).
+- Repo-wide logging standard is defined in `00-global.mdc`; this section is test-specific emphasis.
 
 ## Monorepo script execution (critical)
 

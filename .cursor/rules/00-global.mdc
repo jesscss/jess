@@ -20,3 +20,26 @@ alwaysApply: true
 - For debugging/build sessions, treat `.cursor/PROJECT_STATE.md` as the shared memory.
 - If you make meaningful progress during debugging, update state files (see `.cursor/rules/debugging-state.mdc`).
 
+## Debug logging standard (repo-wide)
+
+- Use `syncLog()` for debugging output across the codebase.
+- Do not use Cursor/debug-session `fetch(...)` instrumentation for runtime debugging in this repo.
+- Do not use `console.log()` for debugging output in tests (Vitest may suppress it).
+
+## Debug session context protocol (always-on)
+
+- Before starting any debugging work, re-load this context set:
+  - `.cursor/PROJECT_STATE.md`
+  - `.cursor/rules/00-global.mdc`
+  - `.cursor/rules/20-quality-bar.mdc`
+  - `.cursor/rules/30-tests.mdc`
+  - Relevant package/subtree rule files for touched paths
+- Treat the above set as required debug context, even if other debug-mode prompts are present.
+
+## Rule-miss recovery loop
+
+- If the user says a change ignored project rules, pause implementation immediately.
+- Identify the missed/ambiguous rule and confirm intent with the user if needed.
+- Strengthen the rule text right away (clear precedence + concrete do/don't language).
+- Then continue the original task from where it was interrupted.
+

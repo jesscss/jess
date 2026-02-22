@@ -40,7 +40,7 @@ const hsla = defineFunction(
 
       result.value.node = new Call({
         name: 'hsla',
-        args: await this.rawArgs.eval(context)
+        args: (await this.rawArgs.eval(context)).value
       });
       context.treeContext = treeContext;
     }

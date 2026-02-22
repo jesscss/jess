@@ -37,6 +37,8 @@ describe('MyFeature', () => {
 - **NEVER use `console.log()`** - Vitest will absorb/suppress console output, making your debug messages invisible
 - **NEVER use async `fetch()`** for debugging - use synchronous `syncLog()` instead
 
+`syncLog()` is the debugging logger standard in this repo; do not use async `fetch()` instrumentation for debugging.
+
 Example:
 ```typescript
 it('should parse correctly', () => {

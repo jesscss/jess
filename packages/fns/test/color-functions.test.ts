@@ -502,12 +502,12 @@ describe('Color Functions', () => {
         const rValue = new Any('r', { role: 'ident' });
         const plus40 = new Dimension({ number: 40, unit: '' });
         const calcRExpr = new Operation([rValue, '+', plus40]);
-        const calcR = new Call({ name: 'calc', args: new List([calcRExpr]) });
+        const calcR = new Call({ name: 'calc', args: [calcRExpr] });
         
         // Create calc(g + 40)
         const gValue = new Any('g', { role: 'ident' });
         const calcGExpr = new Operation([gValue, '+', plus40]);
-        const calcG = new Call({ name: 'calc', args: new List([calcGExpr]) });
+        const calcG = new Call({ name: 'calc', args: [calcGExpr] });
         
         // Create sequence: from #123456 calc(r + 40) calc(g + 40) b
         const channelSequence = new Sequence([fromKeyword, originColor, calcR, calcG, bChannel]);
@@ -551,7 +551,7 @@ describe('Color Functions', () => {
         const bValue = new Any('b', { role: 'ident' });
         const plus200 = new Dimension({ number: 200, unit: '' });
         const calcBExpr = new Operation([bValue, '+', plus200]);
-        const calcB = new Call({ name: 'calc', args: new List([calcBExpr]) });
+        const calcB = new Call({ name: 'calc', args: [calcBExpr] });
         
         // Create sequence: from hwbColor r g calc(b + 200)
         const channelSequence = new Sequence([fromKeyword, hwbColor, rChannel, gChannel, calcB]);
@@ -616,7 +616,7 @@ describe('Color Functions', () => {
         const lValue = new Any('l', { role: 'ident' });
         const plus20 = new Dimension({ number: 20, unit: '%' });
         const calcLExpr = new Operation([lValue, '+', plus20]);
-        const calcL = new Call({ name: 'calc', args: new List([calcLExpr]) });
+        const calcL = new Call({ name: 'calc', args: [calcLExpr] });
         
         const channelSequence = new Sequence([fromKeyword, originColor, hChannel, sChannel, calcL]);
         const argsList = new List([channelSequence]);
@@ -651,13 +651,13 @@ describe('Color Functions', () => {
         const hValue = new Any('h', { role: 'ident' });
         const plus30deg = new Dimension({ number: 30, unit: 'deg' });
         const calcHExpr = new Operation([hValue, '+', plus30deg]);
-        const calcH = new Call({ name: 'calc', args: new List([calcHExpr]) });
+        const calcH = new Call({ name: 'calc', args: [calcHExpr] });
         
         // Create calc(l + 30)
         const lValue = new Any('l', { role: 'ident' });
         const plus30pct = new Dimension({ number: 30, unit: '%' });
         const calcLExpr = new Operation([lValue, '+', plus30pct]);
-        const calcL = new Call({ name: 'calc', args: new List([calcLExpr]) });
+        const calcL = new Call({ name: 'calc', args: [calcLExpr] });
         
         const channelSequence = new Sequence([fromKeyword, originColor, calcH, sChannel, calcL]);
         const argsList = new List([channelSequence]);

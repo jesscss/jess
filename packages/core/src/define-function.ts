@@ -6,6 +6,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Sequence, Operation, Num, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
+import { syncLog } from './debug-log.js';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
@@ -309,6 +310,7 @@ export function defineFunction<
 
 /** This will be called internally by Jess to functions created with defineFunction */
 export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
+  const fnName = (fn as any)?.name;
   // Only reject record-based calls (plain objects) when there's no params metadata
   // Collections are allowed as positional arguments even without params metadata
   // (e.g., detached rulesets passed to mixins)
@@ -318,13 +320,67 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
 
   let originalArgsList: List;
 
-  /** Use List arguments */
-  if (args[0] && isNode(args[0], 'List')) {
-    originalArgsList = args[0];
-    args = args[0].value;
-  } else {
-    /** Normalize into a List node for tracking original arguments */
-    originalArgsList = new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
+  /** Normalize positional args into a List node for tracking original arguments */
+  originalArgsList = new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
+
+  if (fnName === 'length' || fnName === 'extract') {
+    const first = originalArgsList.value[0];
+    // #region agent log
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'pre-fix-call-shape',
+      hypothesisId: 'H15_H16',
+      location: 'packages/core/src/define-function.ts:callWithContext:normalizedArgs',
+      message: 'callWithContext normalized function args',
+      data: {
+        fn: fnName,
+        originalArgsListLength: originalArgsList.length,
+        firstOriginalArgType: isNode(first) ? first.type : typeof first,
+        firstOriginalArgInnerType: isNode(first, 'List') && first.value[0] && isNode(first.value[0]) ? first.value[0].type : undefined,
+        positionalArgsLength: args.length,
+        firstPositionalArgType: args[0] && isNode(args[0]) ? args[0].type : typeof args[0],
+        secondPositionalArgType: args[1] && isNode(args[1]) ? args[1].type : typeof args[1],
+        secondPositionalArgNumber: args[1] instanceof Dimension ? args[1].value.number : undefined
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+    // #region agent log
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'arg-contract-pre-fix',
+      hypothesisId: 'H1_H4',
+      location: 'packages/core/src/define-function.ts:callWithContext:entryShape',
+      message: 'defineFunction positional args shape for less builtins',
+      data: {
+        fn: fnName,
+        argsLength: args.length,
+        argTypes: args.map((arg) => isNode(arg) ? arg.type : typeof arg),
+        firstIsList: isNode(args[0], 'List'),
+        secondArgNumber: args[1] instanceof Dimension ? args[1].value.number : undefined
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+  }
+  if (fnName === 'each') {
+    // #region agent log
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'interpolated-recursion',
+      hypothesisId: 'H27',
+      location: 'packages/core/src/define-function.ts:callWithContext:eachArgs',
+      message: 'each() callWithContext arg snapshot',
+      data: {
+        argsLength: args.length,
+        argTypes: args.map((arg) => isNode(arg) ? arg.type : typeof arg),
+        firstArgType: isNode(args[0]) ? args[0].type : typeof args[0],
+        firstArgIsList: isNode(args[0], 'List'),
+        secondArgType: isNode(args[1]) ? args[1].type : typeof args[1]
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
   }
 
   const hasParams = !!(fn as any)?.options?.params;
@@ -423,6 +479,26 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
 
   // Re-parse with the matched signature to ensure correct record structure
   record = parseCallWithContextArgs(args, matchedParams);
+  if (fnName === 'length' || fnName === 'extract') {
+    // #region agent log
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'arg-contract-pre-fix',
+      hypothesisId: 'H4',
+      location: 'packages/core/src/define-function.ts:callWithContext:recordBinding',
+      message: 'defineFunction record binding for less builtins',
+      data: {
+        fn: fnName,
+        recordKeys: Object.keys(record),
+        boundValueType: isNode(record.value) ? record.value.type : typeof record.value,
+        boundIndexType: isNode(record.index) ? record.index.type : typeof record.index,
+        boundIndexValue: typeof record.index === 'number' ? record.index : undefined,
+        boundIndexDimensionNumber: record.index instanceof Dimension ? record.index.value.number : undefined
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+  }
 
   /**
    * Create FunctionThis proxy for function execution context.
@@ -727,24 +803,40 @@ async function buildCallWithContextPositionalArgs(
       } else {
         let processedValue: any = (isNode(v) && !v.evaluated) ? (v as any).eval(context) : v;
 
-        // Handle async evaluation
+        // Handle async evaluation without truncating remaining parameters.
         if (isThenable(processedValue)) {
-          return (processedValue as Promise<any>).then(async (resolvedValue) => {
-            // Validate AFTER evaluation but BEFORE conversion
-            validateArgumentIfNeeded(resolvedValue, def, 'Argument');
-
-            // Apply conversion plugins if defined
-            if (def.convert && resolvedValue instanceof Dimension) {
-              resolvedValue = applyConversionPlugins(resolvedValue, def.convert);
-            }
-            positionalArgs.push(resolvedValue);
-            return positionalArgs;
-          });
+          processedValue = await processedValue;
         }
 
         // Validate AFTER evaluation but BEFORE conversion
         validateArgumentIfNeeded(processedValue, def, 'Argument');
 
+        const callerName = context.caller && isNode(context.caller, 'Call')
+          ? (typeof context.caller.value.name === 'string'
+            ? context.caller.value.name
+            : (isNode(context.caller.value.name, 'Reference')
+              ? String(context.caller.value.name.value.key?.valueOf?.() ?? '')
+              : ''))
+          : '';
+        if ((callerName === 'extract' || callerName === 'length') && def.name === 'value' && isNode(processedValue, 'Sequence')) {
+          // #region agent log
+          syncLog({
+            sessionId: process.env.DEBUG_SESSION_ID,
+            runId: 'post-throw-shape',
+            hypothesisId: 'H20_H21',
+            location: 'packages/core/src/define-function.ts:buildCallWithContextPositionalArgs:evaluatedValueShape',
+            message: 'Evaluated builtin value argument shape',
+            data: {
+              fn: callerName,
+              valueType: processedValue.type,
+              sequenceLen: processedValue.value.length,
+              childTypes: processedValue.value.map((n: any) => n.type),
+              childPre: processedValue.value.map((n: any) => n.pre ?? null)
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         // Apply conversion plugins if defined
         if (def.convert && processedValue instanceof Dimension) {
           processedValue = applyConversionPlugins(processedValue, def.convert);

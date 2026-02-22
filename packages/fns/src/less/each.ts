@@ -11,6 +11,9 @@ import {
   Declaration,
   VarDeclaration
 } from '@jesscss/core';
+import { syncLog } from '@jesscss/core/debug-log';
+
+let eachInjectionProbeCount = 0;
 
 /**
  * This is a 1-based iterator. Meaning,
@@ -74,6 +77,32 @@ const each = defineFunction(
         name: new Any('value', { role: 'property' }),
         value: await value.eval(this.context)
       }));
+      if (eachInjectionProbeCount < 20) {
+        eachInjectionProbeCount++;
+        const firstThree = clone.value.slice(0, 3).map((n) => {
+          if (n instanceof VarDeclaration) {
+            return n.value.name.toTrimmedString();
+          }
+          return n.type;
+        });
+        // #region agent log
+        syncLog({
+          sessionId: process.env.DEBUG_SESSION_ID,
+          runId: 'interpolated-recursion',
+          hypothesisId: 'H41',
+          location: 'packages/fns/src/less/each.ts:each',
+          message: 'each() injected iteration bindings',
+          data: {
+            indexValue: index - 1,
+            keyType: key instanceof Node ? key.type : typeof key,
+            keyStrType: keyStr instanceof Node ? keyStr.type : typeof keyStr,
+            valueType: value instanceof Node ? value.type : typeof value,
+            firstThree
+          },
+          timestamp: Date.now()
+        });
+        // #endregion
+      }
       let result = await clone.eval(this.context);
       if (result instanceof Rules) {
         accumulatedNodes.push(...result.value);

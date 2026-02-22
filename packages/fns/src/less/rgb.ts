@@ -119,7 +119,7 @@ const rgb = defineFunction(
         
         color.value.node = new Call({
           name: 'rgb',
-          args: await this.rawArgs.eval(this.context)
+          args: (await this.rawArgs.eval(this.context)).value
         });
         this.context.treeContext = treeContext;
         
@@ -152,7 +152,7 @@ const rgb = defineFunction(
 
         color.value.node = new Call({
           name: 'rgb',
-          args: await this.rawArgs.eval(context)
+          args: (await this.rawArgs.eval(context)).value
         });
         context.treeContext = treeContext;
       }

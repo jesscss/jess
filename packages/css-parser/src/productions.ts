@@ -1419,6 +1419,56 @@ export function knownFunctions(this: C, T: TokenMap, alt?: AltContext) {
   return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
+export function ifFunctionArgs(this: C, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let branches: Node[];
+    if (!RECORDING_PHASE) {
+      branches = [];
+    }
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Semi,
+      DEF: () => {
+        const condition = $.SUBRULE($.valueSequence, { ARGS: [{ ...ctx, inner: true }] });
+        $.CONSUME(T.Assign);
+        const value = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] });
+        if (!RECORDING_PHASE) {
+          const sep = $.wrap(new Any(':', { role: 'operator' }, undefined, this.context), true);
+          const loc = $.getLocationFromNodes([condition, value]);
+          branches!.push(new Sequence([$.wrap(condition, true), sep, $.wrap(value, true)], undefined, loc, this.context));
+        }
+      }
+    });
+    $.OPTION(() => $.CONSUME2(T.Semi));
+    if (!RECORDING_PHASE) {
+      const location = $.endRule();
+      if (branches!.length === 1) {
+        return branches![0]!;
+      }
+      return new List(branches!, { sep: ';' }, location, this.context);
+    }
+  };
+}
+
+export function ifFunction(this: C, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    const start = $.CONSUME(T.FunctionStart);
+    const args = $.SUBRULE($.ifFunctionArgs, { ARGS: [{ ...ctx, inner: true }] }) as Node;
+    $.CONSUME(T.RParen);
+    if (!$.RECORDING_PHASE) {
+      const location = $.endRule();
+      return new Call({
+        name: start.image.slice(0, -1),
+        args: [args]
+      }, undefined, location, this.context);
+    }
+  };
+}
+
 export function varFunction(this: C, T: TokenMap) {
   const $ = this;
 
@@ -1447,7 +1497,7 @@ export function varFunction(this: C, T: TokenMap) {
       }
       return new Call({
         name: 'var',
-        args
+        args: args.value
       }, undefined, location, this.context);
     }
   };
@@ -1467,7 +1517,7 @@ export function calcFunction(this: C, T: TokenMap) {
       let location = $.endRule();
       return new Call({
         name: 'calc',
-        args: new List([args]).inherit(args)
+        args: [args]
       }, undefined, location, this.context);
     }
   };
@@ -2548,7 +2598,7 @@ export function containerQuery(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             const call = new Call({
               name: funcName,
-              args: args!.length > 0 ? new List(args!, undefined, $.getLocationFromNodes(args!), this.context) : undefined
+              args: args!.length > 0 ? args! : undefined
             }, undefined, $.getLocationFromNodes([funcStart]), this.context);
             nodes!.push(call);
           }
@@ -2748,7 +2798,7 @@ export function containerAnd(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             node = new Call({
               name: funcName,
-              args: args!.length > 0 ? new List(args!, undefined, $.getLocationFromNodes(args!), this.context) : undefined
+              args: args!.length > 0 ? args! : undefined
             }, undefined, $.getLocationFromNodes([funcStart]), this.context);
           }
         }
@@ -2853,7 +2903,7 @@ export function containerOr(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             node = new Call({
               name: funcName,
-              args: args!.length > 0 ? new List(args!, undefined, $.getLocationFromNodes(args!), this.context) : undefined
+              args: args!.length > 0 ? args! : undefined
             }, undefined, $.getLocationFromNodes([funcStart]), this.context);
           }
         }
@@ -3201,7 +3251,7 @@ export function supportsInParens(this: C, T: TokenMap) {
           let location = $.endRule();
           return new Call({
             name: name.image,
-            args
+            args: args?.value
           }, undefined, location, this.context);
         }
       }
@@ -3244,7 +3294,6 @@ export function functionCallLike(this: C, T: TokenMap) {
     const name = $.CONSUME(T.FunctionStart);
     let args: Node[] = !RECORDING_PHASE ? [] : undefined as unknown as Node[];
     let seq: Sequence | undefined;
-    let list: List | undefined;
     $.MANY({
       GATE: () => {
         let tt = $.LA(1).tokenType;
@@ -3262,7 +3311,6 @@ export function functionCallLike(this: C, T: TokenMap) {
       if (args.length) {
         seq = new Sequence(args, undefined, location, this.context);
       }
-      list = $.wrap(new List(seq ? [seq] : [], undefined, location, this.context), true);
     }
     $.OR([
       { ALT: () => $.CONSUME(T.RParen) },
@@ -3270,7 +3318,7 @@ export function functionCallLike(this: C, T: TokenMap) {
     ]);
     if (!RECORDING_PHASE) {
       const location = $.endRule();
-      return $.wrap(new Call({ name: name.image.slice(0, -1), args: list }, undefined, location, this.context));
+      return $.wrap(new Call({ name: name.image.slice(0, -1), args: seq ? [seq] : [] }, undefined, location, this.context));
     }
   };
 }
@@ -3279,6 +3327,10 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
   alt ??= (ctx: RuleContext = {}) => [
+    {
+      GATE: () => tokenMatcher($.LA(1), T.FunctionStart) && $.LA(1).image.slice(0, -1).toLowerCase() === 'if',
+      ALT: () => $.SUBRULE($.ifFunction, { ARGS: [ctx] })
+    },
     {
       // Disambiguate known functions by their dedicated tokens
       GATE: () => {
@@ -3300,7 +3352,7 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
         $.startRule();
 
         let name = $.CONSUME(T.FunctionStart);
-        let args: List | undefined;
+        let args: Node[] | undefined;
 
         $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }));
         $.CONSUME(T.RParen);
@@ -3386,10 +3438,8 @@ export function functionCallArgs(this: C, T: TokenMap) {
     });
 
     if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      let nodes = isSemiList ? semiNodes! : commaNodes!;
-      let sep: ';' | ',' = isSemiList ? ';' : ',';
-      return $.wrap(new List(nodes, { sep }, location, this.context), 'both');
+      $.endRule();
+      return isSemiList ? semiNodes! : commaNodes!;
     }
   };
 }
@@ -3470,7 +3520,7 @@ export function importPostlude(this: C, T: TokenMap) {
           $.wrap(
             new Call({
               name: 'layer',
-              args: new List([value], undefined, value._location as LocationInfo, this.context)
+              args: [value]
             }, undefined, location, this.context)
           )
         );
@@ -3493,7 +3543,7 @@ export function importPostlude(this: C, T: TokenMap) {
           $.wrap(
             new Call({
               name: 'supports',
-              args: $.wrap(value, 'both')
+              args: [$.wrap(value, 'both')]
             }, undefined, location, this.context)
           )
         );

@@ -40,7 +40,7 @@ const rgba = defineFunction(
 
       result.value.node = new Call({
         name: 'rgba',
-        args: await this.rawArgs.eval(context)
+        args: (await this.rawArgs.eval(context)).value
       });
       context.treeContext = treeContext;
     }

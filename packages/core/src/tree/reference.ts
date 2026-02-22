@@ -15,6 +15,7 @@ import { getFunctionFromMixins } from './rules.js';
 import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
+import { syncLog } from '../debug-log.js';
 
 /**
  * The type is determined by syntax
@@ -72,6 +73,23 @@ export type ReferenceOptions = {
   role?: AnyRole;
 };
 const { isArray } = Array;
+let nestedReferenceProbeCount = 0;
+let mixinRulesetRedirectProbeCount = 0;
+let undefinedValueProbeCount = 0;
+let lessFunctionLookupProbeCount = 0;
+const debugFunctionNames = new Set([
+  'if',
+  'boolean',
+  'replace',
+  '%',
+  'iscolor',
+  'iskeyword',
+  'isnumber',
+  'isstring',
+  'isunit',
+  'get-unit',
+  'getunit'
+]);
 
 /**
  * This is a variable or property reference,
@@ -170,6 +188,31 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
+    if (nestedReferenceProbeCount < 60 && this.parent?.type === 'Reference') {
+      nestedReferenceProbeCount++;
+      // #region agent log
+      syncLog({
+        sessionId: process.env.DEBUG_SESSION_ID,
+        runId: 'interpolated-recursion',
+        hypothesisId: 'H39',
+        location: 'packages/core/src/tree/reference.ts:evalNode',
+        message: 'Evaluating nested Reference',
+        data: {
+          nodeLine: this.location?.[1] ?? null,
+          parentLine: this.parent?.location?.[1] ?? null,
+          keyIsNode: isNode(this.value.key),
+          keyType: isNode(this.value.key) ? this.value.key.type : typeof this.value.key,
+          targetIsNode: isNode(this.value.target),
+          targetType: isNode(this.value.target) ? this.value.target.type : typeof this.value.target,
+          keyIsSelf: this.value.key === this,
+          targetIsSelf: this.value.target === this,
+          keyIsParent: this.value.key === this.parent,
+          targetIsParent: this.value.target === this.parent
+        },
+        timestamp: Date.now()
+      });
+      // #endregion
+    }
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
@@ -227,9 +270,27 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * (We have to do this for Less.)
          */
         if (resolvedTarget instanceof Node) {
-          let type = resolvedTarget.type;
-          if (type !== 'Rules' && type !== 'JsFunction' && type !== 'Mixin') {
+          if (!isNode(resolvedTarget, ['Rules', 'JsFunction', 'Mixin'])) {
             let targetKey = isNode(resolvedTarget, 'Color') ? String(resolvedTarget.value.node) : resolvedTarget.valueOf();
+            if (mixinRulesetRedirectProbeCount < 80) {
+              mixinRulesetRedirectProbeCount++;
+              // #region agent log
+              syncLog({
+                sessionId: process.env.DEBUG_SESSION_ID,
+                runId: 'interpolated-recursion',
+                hypothesisId: 'H40',
+                location: 'packages/core/src/tree/reference.ts:evalNode',
+                message: 'Redirecting non-rules target to mixin-ruleset reference',
+                data: {
+                  resolvedTargetType: resolvedTarget.type,
+                  targetKeyType: typeof targetKey,
+                  targetKeyPreview: typeof targetKey === 'string' ? targetKey.slice(0, 40) : null,
+                  currentRefType: this.options.type ?? 'variable'
+                },
+                timestamp: Date.now()
+              });
+              // #endregion
+            }
             if (typeof targetKey === 'string') {
               let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
               this.adopt(ref);
@@ -477,7 +538,129 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+          if (
+            lessFunctionLookupProbeCount < 80
+            && type === 'function'
+            && debugFunctionNames.has(valueKeyStr2)
+          ) {
+            lessFunctionLookupProbeCount++;
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'less-function-lookup',
+              hypothesisId: 'H48',
+              location: 'packages/core/src/tree/reference.ts:evalNode:undefinedFunctionGeneral',
+              message: 'Less function lookup unresolved',
+              data: {
+                fn: valueKeyStr2,
+                rulesContextType: context.rulesContext?.type ?? null,
+                rulesParentType: this.rulesParent?.type ?? null
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Debug-Session-Id': '34ceef'
+              },
+              body: JSON.stringify({
+                sessionId: '34ceef',
+                runId: 'function-resolution',
+                hypothesisId: 'H1',
+                location: 'packages/core/src/tree/reference.ts:evalNode:undefinedFunctionGeneral',
+                message: 'Function lookup unresolved',
+                data: {
+                  fn: valueKeyStr2,
+                  refType: type ?? null,
+                  rulesContextType: context.rulesContext?.type ?? null,
+                  rulesParentType: this.rulesParent?.type ?? null
+                },
+                timestamp: Date.now()
+              })
+            }).catch(() => {});
+            // #endregion
+          }
+          if (undefinedValueProbeCount < 60 && valueKeyStr2 === 'value') {
+            undefinedValueProbeCount++;
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'interpolated-recursion',
+              hypothesisId: 'H42',
+              location: 'packages/core/src/tree/reference.ts:evalNode:undefinedValue',
+              message: 'Reference lookup undefined for value',
+              data: {
+                refType: type ?? 'variable',
+                resolution: this.options.resolution ?? 'scope',
+                parentType: this.parent?.type ?? null,
+                rulesParentType: this.rulesParent?.type ?? null,
+                rulesContextType: context.rulesContext?.type ?? null,
+                refIndex: this.index ?? null
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if (type === 'function' && (valueKeyStr2 === 'length' || valueKeyStr2 === 'extract')) {
+            const rulesCtx = context.rulesContext;
+            const ctxHasFn = !!rulesCtx?.find?.('function', valueKeyStr2);
+            const localHasFn = !!rulesCtx?.functionRegistry?.index?.get?.(valueKeyStr2);
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'pre-fix-length-extract',
+              hypothesisId: 'H6_H7_H8',
+              location: 'packages/core/src/tree/reference.ts:evalNode:undefinedFunction',
+              message: 'Function lookup unresolved for less builtin',
+              data: {
+                fn: valueKeyStr2,
+                rulesContextType: rulesCtx?.type ?? 'undefined',
+                rulesContextHasFunctionViaFind: ctxHasFn,
+                rulesContextHasLocalFunctionIndex: localHasFn,
+                selfRulesParentType: this.rulesParent?.type ?? 'undefined'
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if (type === 'variable' && valueKeyStr2 === 'arguments') {
+            // #region agent log
+            syncLog({ sessionId: process.env.DEBUG_SESSION_ID, runId: 'pre-fix', hypothesisId: 'H3_H5', location: 'packages/core/src/tree/reference.ts:evalNode:undefinedArguments', message: '@arguments variable lookup failed', data: { rulesContextType: context.rulesContext?.type ?? 'undefined', selfRulesParentType: this.rulesParent?.type ?? 'undefined', sourceRulesParentType: this.sourceRulesParent?.type ?? 'undefined', leakyRules: !!context.leakyRules }, timestamp: Date.now() });
+            // #endregion
+          }
           if (!fallbackValue) {
+            if (valueKeyStr2 === 'foo') {
+              const callerName = context.caller
+                ? (typeof context.caller.value.name === 'string'
+                  ? context.caller.value.name
+                  : (isNode(context.caller.value.name, 'Reference')
+                    ? String(context.caller.value.name.value.key?.valueOf?.() ?? '')
+                    : context.caller.value.name?.valueOf?.() ?? 'unknown'))
+                : 'none';
+              // #region agent log
+              syncLog({
+                sessionId: process.env.DEBUG_SESSION_ID,
+                runId: 'foo-undefined-trace',
+                hypothesisId: 'H46',
+                location: 'packages/core/src/tree/reference.ts:evalNode:undefinedFoo',
+                message: 'Undefined foo reference',
+                data: {
+                  refType: type ?? 'variable',
+                  nodeLine: this.location?.[1] ?? null,
+                  parentType: this.parent?.type ?? null,
+                  rulesParentType: this.rulesParent?.type ?? null,
+                  rulesContextType: context.rulesContext?.type ?? null,
+                  callerName,
+                  keyNodeType: isNode(this.value.key) ? this.value.key.type : typeof this.value.key,
+                  targetNodeType: isNode(this.value.target) ? this.value.target.type : typeof this.value.target
+                },
+                timestamp: Date.now()
+              });
+              // #endregion
+            }
             switch (type) {
               case 'mixin':
                 throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
@@ -499,6 +682,66 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             return (out as Promise<Node>).then(node => node);
           }
           return out;
+        }
+        if (type === 'function') {
+          const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+          if (
+            lessFunctionLookupProbeCount < 80
+            && debugFunctionNames.has(valueKeyStr2)
+          ) {
+            lessFunctionLookupProbeCount++;
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'less-function-lookup',
+              hypothesisId: 'H48',
+              location: 'packages/core/src/tree/reference.ts:evalNode:resolvedFunctionGeneral',
+              message: 'Less function lookup resolved',
+              data: {
+                fn: valueKeyStr2,
+                resolvedNodeType: isNode(returnVal) ? returnVal.type : typeof returnVal
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Debug-Session-Id': '34ceef'
+              },
+              body: JSON.stringify({
+                sessionId: '34ceef',
+                runId: 'function-resolution',
+                hypothesisId: 'H1',
+                location: 'packages/core/src/tree/reference.ts:evalNode:resolvedFunctionGeneral',
+                message: 'Function lookup resolved',
+                data: {
+                  fn: valueKeyStr2,
+                  resolvedNodeType: isNode(returnVal) ? returnVal.type : typeof returnVal
+                },
+                timestamp: Date.now()
+              })
+            }).catch(() => {});
+            // #endregion
+          }
+          if ((valueKeyStr2 === 'length' || valueKeyStr2 === 'extract') && returnVal !== undefined) {
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'pre-fix-length-extract',
+              hypothesisId: 'H7_H8',
+              location: 'packages/core/src/tree/reference.ts:evalNode:resolvedFunction',
+              message: 'Function lookup resolved for less builtin',
+              data: {
+                fn: valueKeyStr2,
+                resolvedNodeType: isNode(returnVal) ? returnVal.type : typeof returnVal
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
         }
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);

@@ -5,7 +5,6 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { Call } from './call.js';
-import { List } from './list.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -68,9 +67,7 @@ export class Operation extends Node<OperationValue> {
               // Mark child nodes as evaluated too
               l.evaluated = true;
               r.evaluated = true;
-              // Re-parent operation to List (List will adopt it when we set value)
-              const args = new List([n], { sep: ',' });
-              const calcCall = new Call({ name: 'calc', args });
+              const calcCall = new Call({ name: 'calc', args: [n] });
               calcCall.pre = left.pre;
               calcCall.post = right.post;
               return calcCall;

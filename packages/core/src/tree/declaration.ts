@@ -14,6 +14,15 @@ import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { syncLog } from '../debug-log.js';
+
+function postDebugLog(payload: Record<string, unknown>) {
+  syncLog({
+    sessionId: process.env.DEBUG_SESSION_ID,
+    ...payload,
+    timestamp: Date.now()
+  });
+}
 
 export const enum AssignmentType {
   Default = ':',
@@ -108,7 +117,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       options.inCustom = false;
     } else {
       // Capture value output to normalize spacing after ':'
-      const valOut = w.capture(() => value.toString(options));
+      let valOut = '';
+      try {
+        valOut = w.capture(() => value.toString(options));
+      } catch (error: unknown) {
+        // #region agent log
+        postDebugLog({
+          runId: 'interpolated-recursion',
+          hypothesisId: 'H16',
+          location: 'packages/core/src/tree/declaration.ts:declTrimmedString',
+          message: 'value.toString threw while serializing declaration',
+          data: {
+            name: String(name),
+            nameLine: name.location?.[1] ?? null,
+            valueType: value.type,
+            valueLine: value.location?.[1] ?? null,
+            errorName: error instanceof Error ? error.name : 'Unknown',
+            errorMessage: error instanceof Error ? error.message : String(error)
+          }
+        });
+        // #endregion
+        throw error;
+      }
       // Remove leading / trailing whitespace
       const normalizedValue = valOut.replace(/^[ \t]+|\s+$/g, '');
       // Ensure exactly one space after ':' by adding one space
@@ -235,7 +265,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         const { name, value } = node.value;
         if (value instanceof Node) {
-          if (name.valueOf().startsWith('--')) {
+          const isCustomProperty = name.valueOf().startsWith('--');
+          if (isCustomProperty) {
+            const hasInterpolation =
+              value.type === 'Interpolated'
+              || [...value.children(true)].some((child) => child.type === 'Interpolated');
+            if (!hasInterpolation) {
+              return node;
+            }
             context.inCustom = true;
           }
           const maybeNewValue = value.eval(context);

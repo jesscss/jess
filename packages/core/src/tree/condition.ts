@@ -49,7 +49,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     left.toString(options);
     if (op && right) {
       w.add(' ');
-      w.add(op);
+      w.add(String(op));
       w.add(' ');
       right.toString(options);
     }

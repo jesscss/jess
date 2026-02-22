@@ -239,8 +239,7 @@ describe('@container - container query type functions', () => {
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value[0].type).toBe('Call');
     expect(queryNode.value[0].value.name).toBe('scroll-state');
-    expect(queryNode.value[0].value.args.type).toBe('List');
-    const argList = queryNode.value[0].value.args.value;
+    const argList = queryNode.value[0].value.args;
     expect(argList.length).toBe(1);
     expect(argList[0].type).toBe('QueryCondition');
     expect(argList[0].value.length).toBe(3); // Paren, Any('and'), Paren

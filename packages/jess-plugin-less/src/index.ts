@@ -73,9 +73,34 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   private _registerFunctions(tree: Rules) {
+    const registeredNames: string[] = [];
     for (const [key, value] of Object.entries(lessFunctions)) {
       tree.register('function', new JsFunction({ name: key, fn: value }));
+      registeredNames.push(key);
     }
+    const expected = ['replace', '%', 'iscolor', 'iskeyword', 'isnumber', 'isstring', 'isunit', 'get-unit'];
+    const missingExpected = expected.filter(name => !registeredNames.includes(name));
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': '34ceef'
+      },
+      body: JSON.stringify({
+        sessionId: '34ceef',
+        runId: 'function-resolution',
+        hypothesisId: 'H2',
+        location: 'packages/jess-plugin-less/src/index.ts:_registerFunctions',
+        message: 'Registered Less function names',
+        data: {
+          total: registeredNames.length,
+          missingExpected
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
   }
 
   expandImport(importPath: string, currentDir: string) {

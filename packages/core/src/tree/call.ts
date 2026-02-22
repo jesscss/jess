@@ -1,5 +1,4 @@
 import { Node, defineType, type LocationInfo, type TreeContext, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
-import { type List } from './list.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { cast } from './util/cast.js';
@@ -11,6 +10,7 @@ import { getFunctionFromMixins, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { createRequire } from 'node:module';
+import { syncLog } from '../debug-log.js';
 const require = createRequire(import.meta.url);
 
 // Lazy getter for Rules to break circular dependency:
@@ -25,7 +25,7 @@ export type CallValue = {
    *   e.g. $|#mixin|.class() is -> [Call name: [Ref (#mixin.class)], args: []]
    */
   name: string | Node;
-  args?: List;
+  args?: Node[];
   /**
    * Optional content node, used for passing blocks to mixins/functions.
    * This is how Jess represents "call with content block" forms like:
@@ -93,7 +93,13 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      args.toString(options);
+      const last = args.length - 1;
+      for (let i = 0; i <= last; i++) {
+        args[i]!.toString(options);
+        if (i < last) {
+          w.add(',');
+        }
+      }
     }
     w.add(')');
     if (this.options?.markImportant) {
@@ -127,6 +133,22 @@ export class Call extends Node<CallValue, CallOptions> {
   override async evalNode(context: Context): Promise<Node> {
     let { name, args } = this.value;
     let { markImportant } = this.options;
+    const adoptCallWhitespace = <T extends Node>(node: T): T => {
+      node.pre = this.pre;
+      node.post = this.post;
+      node.sourceParent = this;
+      return node;
+    };
+    const evalArgNodes = async (nodes?: Node[]) => {
+      if (!nodes) {
+        return undefined;
+      }
+      const out: Node[] = [];
+      for (const node of nodes) {
+        out.push(await node.eval(context) as Node);
+      }
+      return out;
+    };
 
     context.callStack.push(this);
     context.parenFrames.push(false);
@@ -155,8 +177,7 @@ export class Call extends Node<CallValue, CallOptions> {
     } else if (isNode(n, 'Func')) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       try {
-        const evaluatedArgs = args ? await args.eval(context) : undefined;
-        const argNodes = evaluatedArgs ? (evaluatedArgs as List).value as unknown as Node[] : [];
+        const argNodes = await evalArgNodes(args) ?? [];
         const result = await (n as any).evalCall(context, argNodes);
         context.callStack.pop();
         context.parenFrames.pop();
@@ -166,7 +187,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.value.length > 0) {
+      if (args && args.length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
@@ -196,14 +217,17 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         /** Freeze args */
         if (args) {
-          args = args.copy(true, freezeChildren);
-          args.frozen = true;
+          args = args.map((node) => {
+            const copied = node.copy(true, freezeChildren);
+            copied.frozen = true;
+            return copied;
+          });
         }
         let originalCaller = context.caller;
         context.caller = this;
         const result = await (
           args
-            ? callWithContext(context, fn, args)
+            ? callWithContext(context, fn, ...args)
             : callWithContext(context, fn)
         );
         context.caller = originalCaller;
@@ -215,19 +239,38 @@ export class Call extends Node<CallValue, CallOptions> {
             if (markImportant && isNode(evald, 'Rules')) {
               this.makeImportant(evald);
             }
-            return evald;
+            return adoptCallWhitespace(evald);
           }
           if (markImportant && isNode(evald, 'Rules')) {
             this.makeImportant(evald);
           }
-          return evald;
+          return adoptCallWhitespace(evald);
         }
         let castResult = cast(result);
         if (isNode(castResult, 'Rules') && castResult.value.length === 1) {
-          return castResult.value[0]!;
+          return adoptCallWhitespace(castResult.value[0]!);
         }
-        return castResult;
+        return adoptCallWhitespace(castResult);
       } catch (e) {
+        const fnNameForLog = typeof name === 'string'
+          ? name
+          : (isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : '');
+        if ((fnNameForLog === 'length' || fnNameForLog === 'extract') && this.options?.silentFail) {
+          // #region agent log
+          syncLog({
+            sessionId: process.env.DEBUG_SESSION_ID,
+            runId: 'pre-fix-length-extract',
+            hypothesisId: 'H9',
+            location: 'packages/core/src/tree/call.ts:evalNode:silentFailCatch',
+            message: 'Builtin function call threw and fell back to silent call output',
+            data: {
+              fn: fnNameForLog,
+              errorMessage: e instanceof Error ? e.message : String(e)
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
           console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
         }
@@ -246,16 +289,55 @@ export class Call extends Node<CallValue, CallOptions> {
         newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
           ? String(name.value.key)
           : String(n.valueOf());
-        newCall.value.args = await args?.eval(context);
+        newCall.value.args = await evalArgNodes(args);
+        newCall.value.args?.forEach((arg, argIndex) => {
+          // Normalize fallback-call arg spacing to Less-style call serialization.
+          arg.pre = argIndex === 0 ? 0 : 1;
+          if (isNode(arg, 'Sequence')) {
+            arg.value.forEach((child, childIndex) => {
+              child.pre = childIndex === 0 ? 0 : 1;
+            });
+          } else if (isNode(arg, 'List')) {
+            arg.value.forEach((child) => {
+              if (isNode(child, 'Sequence')) {
+                child.value.forEach((nested, nestedIndex) => {
+                  nested.pre = nestedIndex === 0 ? 0 : 1;
+                });
+              }
+            });
+          }
+        });
+        if ((fnNameForLog === 'extract' || fnNameForLog === 'length') && newCall.value.args) {
+          // #region agent log
+          syncLog({
+            sessionId: process.env.DEBUG_SESSION_ID,
+            runId: 'post-throw-shape',
+            hypothesisId: 'H20_H22',
+            location: 'packages/core/src/tree/call.ts:evalNode:fallbackArgsShape',
+            message: 'Fallback call argument shape after error',
+            data: {
+              fn: fnNameForLog,
+              argTypes: newCall.value.args.map((arg) => arg.type),
+              argPre: newCall.value.args.map((arg) => arg.pre ?? null),
+              firstArgValue: newCall.value.args[0]?.valueOf?.(),
+              firstArgSeqLen: isNode(newCall.value.args[0], 'Sequence') ? newCall.value.args[0].value.length : undefined,
+              firstArgSeqChildPre: isNode(newCall.value.args[0], 'Sequence')
+                ? newCall.value.args[0].value.map((n) => n.pre ?? null)
+                : undefined
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         context.callStack.pop();
         context.parenFrames.pop();
-        return newCall;
+        return adoptCallWhitespace(newCall);
       }
     } else {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      args = await args?.eval(context);
+      const evaluatedArgs = await evalArgNodes(args);
 
       if (n === 'calc') {
         context.calcFrames--;
@@ -265,17 +347,17 @@ export class Call extends Node<CallValue, CallOptions> {
       const node = this.clone();
       node.options.silentFail = false;
       if (
-        n === 'calc' && args
+        n === 'calc' && evaluatedArgs
       ) {
-        if (isNode((args as List).value[0], 'Dimension')) {
-          return args.value[0]!;
+        if (isNode(evaluatedArgs[0], 'Dimension')) {
+          return evaluatedArgs[0]!;
         } else if (context.calcFrames !== 0) {
-          return new Paren(args.value[0]);
+          return new Paren(evaluatedArgs[0]!);
         }
       }
       node.value.name = n;
-      node.value.args = args;
-      return node;
+      node.value.args = evaluatedArgs;
+      return adoptCallWhitespace(node);
     };
   }
 }

@@ -35,8 +35,7 @@ export function transformCallToLess(
     if (prop === 'args') {
       const args = call.value.args;
       if (args) {
-        // args is a List node
-        return args.value.map((arg: any) => {
+        return args.map((arg: any) => {
           if (arg instanceof Node) {
             return toLessNode(arg, { cache });
           }
@@ -63,8 +62,8 @@ export function transformCallToLess(
         // The visitor's visit() method will handle traversal
         // If args exist, we should traverse them using visitArray
         const args = call.value.args;
-        if (args && args.value && args.value.length > 0) {
-          const lessArgs = args.value
+        if (args && args.length > 0) {
+          const lessArgs = args
             .map((arg: any) => {
               if (arg instanceof Node) {
                 return toLessNode(arg, { cache });

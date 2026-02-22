@@ -109,6 +109,8 @@ export class CssActionsParser extends AdvancedActionsParser {
   functionCall!: Rule;
   functionCallLike!: Rule;
   functionCallArgs!: Rule;
+  ifFunction!: Rule;
+  ifFunctionArgs!: Rule;
   knownFunctions!: Rule;
   varFunction!: Rule;
   calcFunction!: Rule;

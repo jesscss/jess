@@ -107,7 +107,7 @@ const hsl = defineFunction(
         
         color.value.node = new Call({
           name: 'hsl',
-          args: await this.rawArgs.eval(this.context)
+          args: (await this.rawArgs.eval(this.context)).value
         });
         this.context.treeContext = treeContext;
         
@@ -141,7 +141,7 @@ const hsl = defineFunction(
 
         color.value.node = new Call({
           name: 'hsl',
-          args: await this.rawArgs.eval(context)
+          args: (await this.rawArgs.eval(context)).value
         });
         context.treeContext = treeContext;
       }

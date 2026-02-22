@@ -1,17 +1,19 @@
 import {
   Any,
   Dimension,
+  Quoted,
   defineFunction
 } from '@jesscss/core';
 
 export default defineFunction(
   'unit',
-  function(dimension: Dimension, unit?: Any<'keyword'>) {
+  function(dimension: Dimension, unit?: Any<'keyword'> | Quoted) {
+    const resolvedUnit = unit?.valueOf();
     return new Dimension(
-      unit
+      resolvedUnit
         ? {
             number: dimension.value.number,
-            unit: unit.value
+            unit: resolvedUnit
           }
         : { number: dimension.value.number }
     );
@@ -22,7 +24,7 @@ export default defineFunction(
       type: Dimension
     }, {
       name: 'unit',
-      type: Any,
+      type: [Any, Quoted],
       optional: true
     }]
   }

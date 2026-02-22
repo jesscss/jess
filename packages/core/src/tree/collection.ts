@@ -3,6 +3,9 @@ import { defineType, type Node } from './node.js';
 import { Rules } from './rules.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
+import { syncLog } from '../debug-log.js';
+
+let collectionPreEvalProbeCount = 0;
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -29,6 +32,32 @@ export class Collection extends Rules {
    */
   override evalNode(context: Context): MaybePromise<this> {
     return this;
+  }
+
+  override preEval(context: Context): this | Promise<this> {
+    if (collectionPreEvalProbeCount < 40) {
+      collectionPreEvalProbeCount++;
+      // #region agent log
+      syncLog({
+        sessionId: process.env.DEBUG_SESSION_ID,
+        runId: 'interpolated-recursion',
+        hypothesisId: 'H43',
+        location: 'packages/core/src/tree/collection.ts:preEval',
+        message: 'Collection preEval invoked',
+        data: {
+          parentType: this.parent?.type ?? null,
+          rulesLen: this.value.length
+        },
+        timestamp: Date.now()
+      });
+      // #endregion
+    }
+    if (this.preEvaluated) {
+      return this;
+    }
+    const node = this.maybeClone(context) as this;
+    node.preEvaluated = true;
+    return node;
   }
 }
 

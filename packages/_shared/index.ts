@@ -63,8 +63,8 @@ export const invalidLess: string[] = [
 
   // 'tests-unit/css-guards/css-guards.less',
   // Currently failing parsing; treat as invalid until less-parser supports them fully.
-  'tests-unit/extract-and-length/extract-and-length.less',
-  'tests-unit/functions/functions.less',
+  // 'tests-unit/extract-and-length/extract-and-length.less',
+  // 'tests-unit/functions/functions.less',
   // 'tests-unit/mixins-interpolated/mixins-interpolated.less',
 
   /** @todo */
@@ -88,7 +88,7 @@ export const invalidLess: string[] = [
 
   // Currently failing parsing; treat as invalid until less-parser supports them fully.
   'tests-unit/functions-each/functions-each.less',
-  'tests-unit/operations/operations.less',
+  'tests-unit/operations/operations.less'
 
   // /** Has an unsupported token - `alpha(opacity=@var)` */
   // 'tests-unit/variables/variables.less'

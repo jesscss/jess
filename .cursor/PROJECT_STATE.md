@@ -83,6 +83,16 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Less fixture: extract-and-length (2026-02-21):**
+
+- **Area:** less functions / call argument shape
+- **Last passing baseline:** `packages/less-parser/test/functions.test.ts` passes including new parser-shape assertions.
+- **Observed runtime shape:** parser produces `Call.args` as `List`; space-delimited inner values are `Sequence` items. In `callWithContext`, logs show `length`/`extract` receive original positional entries as `Expression` nodes first, then function-level evaluation yields scalar/list-like nodes.
+- **What was rejected:** speculative `jess-plugin-less` fallback registration path (logs never hit that path); removed.
+- **What was added:** parser tests in `packages/less-parser/test/functions.test.ts` to lock shape; core test in `packages/core/src/__tests__/define-function-split-sequence.test.ts` to mimic `List([Sequence])` call shape.
+- **Current failing fixture symptoms:** `extract-and-length.less` still mismatches in variadic `@arguments`/`@tail` and selector chaining output; scalar/list simple cases mostly improved.
+- **Next step:** instrument `getFunctionFromMixins` argument materialization (`@arguments`, `@values...`, `@tail...`) and compare node types passed into `length`/`extract` for each mixin overload case before changing semantics again.
+
 **Example (extend):** Area = extend. Pointers: `.cursor/rules/subtrees/core__extend.mdc`, `packages/core/src/tree/util/EXTEND_RULES.md`, `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`. Core extend: 9 files, 4 failing tests. Next step: e.g. "Narrow to extend-eval-integration 'nested & extend all' with .only and trace."
 
 **Extend – implicit ampersand / extend-exact (2025-02-07):**
