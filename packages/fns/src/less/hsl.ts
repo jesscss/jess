@@ -1,5 +1,5 @@
 import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call, TreeContext, Any } from '@jesscss/core';
-import { normalizeHue, percentOf, toNumber, splitSequence } from '@jesscss/core';
+import { percentOf, toNumber, splitSequence } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateHSLChannelReference } from '../util/relative-color.js';
 
 const hsl = defineFunction(
@@ -122,29 +122,38 @@ const hsl = defineFunction(
       let s: number = args[1] as number;
       let l: number = args[2] as number;
       let alpha: number = args[3] !== undefined ? (args[3] as number) : 1;
+      // #region agent log
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': '34ceef'
+        },
+        body: JSON.stringify({
+          sessionId: '34ceef',
+          runId: 'hsl-clamp-focus',
+          hypothesisId: 'H_hsl_1',
+          location: 'packages/fns/src/less/hsl.ts:hsl:dimension-signature',
+          message: 'hsl dimension signature values',
+          data: {
+            h,
+            s,
+            l,
+            alpha
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
 
-      // Create a color with HSL format and store the original function call
       const color = new Color({
         format: ColorFormat.HSL,
         hsl: [h, s, l],
         alpha
       });
 
-      // Store the original function call
-      if (this?.context) {
-        let context = this.context;
-        let treeContext = context.treeContext;
-        /** Make sure we preserve a slash in the argument */
-        context.treeContext = new TreeContext({
-          mathMode: 'parens-division'
-        });
-
-        color.value.node = new Call({
-          name: 'hsl',
-          args: (await this.rawArgs.eval(context)).value
-        });
-        context.treeContext = treeContext;
-      }
+      // Preserve raw channel values here; clamping happens at Color output/getters.
+      color.value.node = undefined;
 
       return color;
     } else if (args.length === 1 && args[0] instanceof Color) {
@@ -178,7 +187,7 @@ const hsl = defineFunction(
       [{
         name: 'h',
         type: Dimension,
-        convert: [normalizeHue(), toNumber()]
+        convert: [toNumber()]
       }, {
         name: 's',
         type: Dimension,

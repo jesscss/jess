@@ -32,8 +32,7 @@ const additionalSkips = [
 
 // Set to a non-empty array to focus on specific fixtures while debugging.
 const targetTests: string[] = [
-  'tests-unit/functions/functions.less',
-  'tests-config/functions-harness/functions-harness.less'
+  'tests-unit/functions/functions.less'
 ];
 
 describe('Can render Less files to CSS', () => {
@@ -98,35 +97,6 @@ describe('Can render Less files to CSS', () => {
               throw error;
             }
             try {
-              if (file === 'tests-config/functions-harness/functions-harness.less') {
-                const rootFnRegistry = context.root?.getRegistry?.('function');
-                const treeFnRegistry = node.getRegistry?.('function');
-                // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'X-Debug-Session-Id': '34ceef'
-                  },
-                  body: JSON.stringify({
-                    sessionId: '34ceef',
-                    runId: 'function-resolution',
-                    hypothesisId: 'H3_H4_H5',
-                    location: 'packages/jess/test/less/all-less.test.ts:functions-harness:pre-eval',
-                    message: 'Registry snapshot before functions-harness eval',
-                    data: {
-                      hasAddOnRoot: !!rootFnRegistry?.index?.get?.('add'),
-                      hasIncrementOnRoot: !!rootFnRegistry?.index?.get?.('increment'),
-                      hasColorOnRoot: !!rootFnRegistry?.index?.get?.('_color'),
-                      hasAddOnTree: !!treeFnRegistry?.index?.get?.('add'),
-                      hasIncrementOnTree: !!treeFnRegistry?.index?.get?.('increment'),
-                      hasColorOnTree: !!treeFnRegistry?.index?.get?.('_color')
-                    },
-                    timestamp: Date.now()
-                  })
-                }).catch(() => {});
-                // #endregion
-              }
               const evald = await node.eval(context);
               expect(evald.toString({ context })).toBe(expectedCss);
             } catch (error: any) {

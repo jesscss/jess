@@ -5,7 +5,7 @@ import {
   Dimension,
   defineFunction
 } from '@jesscss/core';
-import { toNumber } from '@jesscss/core';
+import { percentOf, toNumber } from '@jesscss/core';
 import { syncLog } from '@jesscss/core/debug-log';
 import { getLuma } from '../util/get-luma.js';
 
@@ -82,7 +82,7 @@ const contrast = defineFunction(
     }, {
       name: 'threshold',
       type: Dimension,
-      convert: [toNumber()],
+      convert: [percentOf(1), toNumber()],
       optional: true
     }]
   }

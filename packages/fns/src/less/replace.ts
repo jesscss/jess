@@ -4,12 +4,48 @@ function nodeToString(value: Node, context: any): string {
   if (value instanceof Quoted || value instanceof Any) {
     return value.valueOf();
   }
-  return value.toString({ context });
+  return value.toTrimmedString({ context });
 }
 
 const replace = defineFunction(
   'replace',
   function(this: any, input: Node, pattern: Node, replacement: Node, flags?: Node) {
+    const serialize = (n: Node) => {
+      const trimmed = n.toTrimmedString?.({ context: this.context }) ?? n.valueOf();
+      const full = n.toString?.({ context: this.context }) ?? n.valueOf();
+      return {
+        type: n.type,
+        pre: (n as any).pre ?? null,
+        post: (n as any).post ?? null,
+        valueOf: n.valueOf(),
+        trimmed,
+        full
+      };
+    };
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': '34ceef'
+      },
+      body: JSON.stringify({
+        sessionId: '34ceef',
+        runId: 'replace-spacing-focus',
+        hypothesisId: 'H_rep_1_H_rep_2_H_rep_3',
+        location: 'packages/fns/src/less/replace.ts:replace:before',
+        message: 'replace input serialization snapshot',
+        data: {
+          input: serialize(input),
+          pattern: serialize(pattern),
+          replacement: serialize(replacement),
+          flags: flags ? serialize(flags) : null
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+
     const source = nodeToString(input, this.context);
     const patternValue = nodeToString(pattern, this.context);
     const replacementValue = replacement instanceof Quoted
@@ -17,6 +53,32 @@ const replace = defineFunction(
       : nodeToString(replacement, this.context);
     const flagValue = flags ? nodeToString(flags, this.context) : '';
     const result = source.replace(new RegExp(patternValue, flagValue), replacementValue);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': '34ceef'
+      },
+      body: JSON.stringify({
+        sessionId: '34ceef',
+        runId: 'replace-spacing-focus',
+        hypothesisId: 'H_rep_4',
+        location: 'packages/fns/src/less/replace.ts:replace:after',
+        message: 'replace output snapshot',
+        data: {
+          source,
+          patternValue,
+          replacementValue,
+          flagValue,
+          result,
+          returnType: input instanceof Quoted && !input.options.escaped ? 'Quoted' : 'Any'
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
 
     if (input instanceof Quoted && !input.options.escaped) {
       return new Quoted(result, { quote: input.options.quote, escaped: false });

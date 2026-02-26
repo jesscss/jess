@@ -2,9 +2,11 @@ import { type Color } from '@jesscss/core';
 
 // Adapted from http://mjijackson.com/2008/02/rgb-to-hsl-and-rgb-to-hsv-color-model-conversion-algorithms-in-javascript
 export function toHSV(color: Color) {
-  const r = color.rgb[0] / 255;
-  const g = color.rgb[1] / 255;
-  const b = color.rgb[2] / 255;
+  const rgb = color.rgb;
+  const rawRgb = color._rgb;
+  const r = rgb[0] / 255;
+  const g = rgb[1] / 255;
+  const b = rgb[2] / 255;
   const a = color.alpha;
 
   const max = Math.max(r, g, b);
@@ -33,5 +35,59 @@ export function toHSV(color: Color) {
     }
     h! /= 6;
   }
-  return { h: h! * 360, s, v, a };
+  const roundedResult = { h: h! * 360, s, v, a };
+
+  const rr = rawRgb[0] / 255;
+  const rg = rawRgb[1] / 255;
+  const rb = rawRgb[2] / 255;
+  const rawMax = Math.max(rr, rg, rb);
+  const rawMin = Math.min(rr, rg, rb);
+  const rawD = rawMax - rawMin;
+  let rawH: number;
+  let rawS: number;
+  if (rawMax === 0) {
+    rawS = 0;
+  } else {
+    rawS = rawD / rawMax;
+  }
+  if (rawMax === rawMin) {
+    rawH = 0;
+  } else {
+    switch (rawMax) {
+      case rr: rawH = (rg - rb) / rawD + (rg < rb ? 6 : 0);
+        break;
+      case rg: rawH = (rb - rr) / rawD + 2;
+        break;
+      case rb: rawH = (rr - rg) / rawD + 4;
+        break;
+    }
+    rawH! /= 6;
+  }
+  const rawResult = { h: rawH! * 360, s: rawS, v: rawMax, a };
+
+  // #region agent log
+  fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Debug-Session-Id': '34ceef'
+    },
+    body: JSON.stringify({
+      sessionId: '34ceef',
+      runId: 'hsv-extract-focus',
+      hypothesisId: 'H_hsv_1',
+      location: 'packages/fns/src/util/to-hsv.ts:toHSV',
+      message: 'Rounded vs raw HSV conversion',
+      data: {
+        rgb,
+        rawRgb,
+        roundedResult,
+        rawResult
+      },
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
+
+  return rawResult;
 }

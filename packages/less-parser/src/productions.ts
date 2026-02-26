@@ -3343,15 +3343,6 @@ export function guardInner(this: P, T: TokenMap) {
     $.OR([
       { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) },
       {
-        GATE: () => {
-          let tokenType = $.LA(1).tokenType;
-          return tokenType !== T.Not
-            && tokenType !== T.DefaultGuardFunc
-            && tokenType !== T.DefaultGuardIdent;
-        },
-        ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
-      },
-      {
         ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] })
       }
     ]);
@@ -4024,11 +4015,9 @@ export function mixinArgList(this: P, T: TokenMap) {
  */
 export function varName(this: P, T: TokenMap) {
   const $ = this;
-  let nameAlt = [
-    { ALT: () => $.CONSUME(T.AtName) },
-    { ALT: () => $.CONSUME(T.AtKeywordLessExtension) }
-  ];
-  return () => $.OR(nameAlt);
+  // AtKeywordLessExtension is categorized as AtName in lessTokens.ts, so consuming
+  // AtName alone preserves behavior while avoiding OR ambiguity warnings.
+  return () => $.CONSUME(T.AtName);
 }
 
 /**
