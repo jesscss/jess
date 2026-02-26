@@ -25,7 +25,7 @@ describe('serializeTypes coverage', () => {
                     name: 
                       (Any [role=property] 'b')
                     value: 
-                      (Any 'c')
+                      (Any [role=ident] 'c')
                   )
                 ]
               )

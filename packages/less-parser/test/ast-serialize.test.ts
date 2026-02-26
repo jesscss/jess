@@ -39,18 +39,16 @@ describe('serializeTypes coverage', () => {
                           key:
                             ['#ns', '.breakpoint']
                         )
-                      args: 
-                        (List
-                          [
-                            (Reference
-                              target: 
-                                (Reference [role=name]
-                                  key: '.valToGet'
-                                )
-                              key: -1
-                            )
-                          ]
-                        )
+                      args:
+                        [
+                          (Reference
+                            target: 
+                              (Reference [role=name]
+                                key: '.valToGet'
+                              )
+                            key: -1
+                          )
+                        ]
                     )
                   key: 'max'
                 )
@@ -70,7 +68,6 @@ describe('serializeTypes coverage', () => {
         value: 
           (Color
             node: 'red'
-            format: 0
             rgb:
             [255, 0, 0]
             alpha: 1
@@ -139,18 +136,15 @@ describe('serializeTypes coverage', () => {
             key: 
               (BasicSelector '.mixin')
           )
-        args: 
-          (List
-            [
-              (Color
-                node: 'red'
-                format: 0
-                rgb:
-                [255, 0, 0]
-                alpha: 1
-              )
-            ]
-          )
+        args:
+          [
+            (Color
+              node: 'red'
+              rgb:
+              [255, 0, 0]
+              alpha: 1
+            )
+          ]
       )
     `);
   });
@@ -183,7 +177,6 @@ describe('serializeTypes coverage', () => {
                     value: 
                       (Color
                         node: 'red'
-                        format: 0
                         rgb:
                         [255, 0, 0]
                         alpha: 1
@@ -293,7 +286,6 @@ test('rest parameter in mixin', () => {
                 value: 
                   (Color
                     node: 'red'
-                    format: 0
                     rgb:
                     [255, 0, 0]
                     alpha: 1
@@ -338,15 +330,21 @@ test('operation', () => {
     `);
 });
 
-test('static rgb() creates Color node', () => {
+test('static rgb() is preserved as Call node', () => {
   const { errors, tree } = parser.parse('.test { color: rgb(255, 0, 0); }');
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
-      (Color
-        format: 0
-        rgb:
-        [255, 0, 0]
-        alpha: 1
+      (Call
+        name: 
+          (Reference
+            key: 'rgb'
+          )
+        args:
+          [
+            (Number 255)
+            (Number 0)
+            (Number 0)
+          ]
       )
     `);
 });
@@ -360,29 +358,41 @@ test('rgb() with variable creates Call node', () => {
           (Reference
             key: 'rgb'
           )
-        args: 
-          (List
-            [
+        args:
+          [
+            (Expression
               (Reference
                 key: 'r'
               )
-              (Number 0)
-              (Number 0)
-            ]
-          )
+            )
+            (Number 0)
+            (Number 0)
+          ]
       )
     `);
 });
 
-test('static hsl() creates Color node', () => {
+test('static hsl() is preserved as Call node', () => {
   const { errors, tree } = parser.parse('.test { color: hsl(120, 50%, 50%); }');
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
-      (Color
-        format: 1
-        hsl:
-        [120, 0.5, 0.5]
-        alpha: 1
+      (Call
+        name: 
+          (Reference
+            key: 'hsl'
+          )
+        args:
+          [
+            (Number 120)
+            (Dimension
+              number: 50
+              unit: '%'
+            )
+            (Dimension
+              number: 50
+              unit: '%'
+            )
+          ]
       )
     `);
 });
@@ -548,7 +558,7 @@ test('parse known at-rule as variable declaration', () => {
         name: 
           (Any [role=ident] 'property')
         value: 
-          (Any 'foo')
+          (Any [role=ident] 'foo')
       )
     `);
 });
@@ -562,7 +572,7 @@ test('parse known at-rule as variable declaration', () => {
         name: 
           (Any [role=ident] 'property')
         value: 
-          (Any 'foo')
+          (Any [role=ident] 'foo')
       )
     `);
 });
@@ -823,17 +833,15 @@ test('chained mixin calls - with arguments', () => {
                         (Reference [role=name]
                           key: '.mixin1'
                         )
-                      args: 
-                        (List
-                          [
-                            (VarDeclaration
-                              name: 
-                                (Any [role=property] 'foo')
-                              value: 
-                                (Any 'bar')
-                            )
-                          ]
-                        )
+                      args:
+                        [
+                          (VarDeclaration
+                            name: 
+                              (Any [role=property] 'foo')
+                            value: 
+                              (Any [role=ident] 'bar')
+                          )
+                        ]
                     )
                   key: '.mixin2'
                 )
@@ -870,17 +878,15 @@ test('chained mixin calls - complex chain with accessors', () => {
                                         (Reference [role=name]
                                           key: '.mixin1'
                                         )
-                                      args: 
-                                        (List
-                                          [
-                                            (VarDeclaration
-                                              name: 
-                                                (Any [role=property] 'foo')
-                                              value: 
-                                                (Any 'bar')
-                                            )
-                                          ]
-                                        )
+                                      args:
+                                        [
+                                          (VarDeclaration
+                                            name: 
+                                              (Any [role=property] 'foo')
+                                            value: 
+                                              (Any [role=ident] 'bar')
+                                          )
+                                        ]
                                     )
                                   key: '.mixin2'
                                 )
@@ -964,7 +970,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1006,7 +1011,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1060,7 +1064,6 @@ describe('extend cases', () => {
                           value: 
                             (Color
                               node: 'blue'
-                              format: 0
                               rgb:
                               [0, 0, 255]
                               alpha: 1
@@ -1108,7 +1111,6 @@ describe('extend cases', () => {
                           value: 
                             (Color
                               node: 'blue'
-                              format: 0
                               rgb:
                               [0, 0, 255]
                               alpha: 1
@@ -1216,7 +1218,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1291,7 +1292,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1333,7 +1333,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1376,7 +1375,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1420,7 +1418,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1463,7 +1460,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1580,7 +1576,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1

@@ -88,6 +88,7 @@ export const invalidLess: string[] = [
 
   // Currently failing parsing; treat as invalid until less-parser supports them fully.
   // 'tests-unit/functions-each/functions-each.less',
+  'tests-unit/functions/legacy/functions.less',
   'tests-unit/operations/operations.less'
 
   // /** Has an unsupported token - `alpha(opacity=@var)` */

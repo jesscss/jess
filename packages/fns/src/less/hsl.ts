@@ -1,5 +1,5 @@
 import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Any } from '@jesscss/core';
-import { percentOf, toNumber, splitSequence } from '@jesscss/core';
+import { percentOf, toNumber, splitSequence, normalizeHue } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateHSLChannelReference } from '../util/relative-color.js';
 
 function hueChannelFromNode(node: unknown, hueValue: number): number | [number, string] {
@@ -235,7 +235,7 @@ const hsl = defineFunction(
       [{
         name: 'h',
         type: Dimension,
-        convert: [toNumber()]
+        convert: [normalizeHue(), toNumber()]
       }, {
         name: 's',
         type: Dimension,

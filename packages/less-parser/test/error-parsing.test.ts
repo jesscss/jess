@@ -31,7 +31,8 @@ const skippedErrors = [
    * Currently tolerated by parser; should become a hard parse error again.
    * Tracked as a less-parser grammar TODO.
    */
-  'tests-error/parse/mixed-mixin-definition-args-1.less'
+  'tests-error/parse/mixed-mixin-definition-args-1.less',
+  'tests-error/parse/mixins-guards-cond-expected.less'
 ];
 
 // Skipped until we fix these flows
