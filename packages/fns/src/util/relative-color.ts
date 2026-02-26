@@ -73,7 +73,7 @@ export function getRGBChannelValues(originColor: Color): {
   alpha: number;
 } {
   const [r, g, b] = originColor._rgb;
-  const alpha = originColor.value.alpha ?? 1;
+  const alpha = originColor._alpha;
   return { r, g, b, alpha };
 }
 
@@ -234,7 +234,7 @@ export function getHSLChannelValues(originColor: Color): {
   alpha: number;
 } {
   const [h, s, l] = originColor._hsl;
-  const alpha = originColor.value.alpha ?? 1;
+  const alpha = originColor._alpha;
   return { h, s, l, alpha };
 }
 

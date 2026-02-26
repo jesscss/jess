@@ -6,7 +6,6 @@ import { Node, defineType } from './node.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { syncLog } from '../debug-log.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -61,19 +60,6 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           context.parenFrames.pop();
         }
         if (this.options?.escaped && value instanceof Node) {
-          // #region agent log
-          syncLog({
-            sessionId: process.env.DEBUG_SESSION_ID,
-            runId: 'escaped-paren-eval',
-            hypothesisId: 'H_paren_1',
-            location: 'packages/core/src/tree/paren.ts:evalNode:escapedUnwrap',
-            message: 'Escaped paren unwrapped to inner node',
-            data: {
-              innerType: value.type
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
           return value;
         }
         /**

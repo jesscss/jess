@@ -164,6 +164,118 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Verification result:** after required rebuild (`@jesscss/fns`, `@jesscss/plugin-less`) and focused test run (`packages/jess/test/less/all-less.test.ts`), all fade/fadein/fadeout diffs are gone; next first mismatch begins at `hsv` format and downstream unresolved function fallbacks.
 - **Next step:** investigate `hsv` output format mismatch (`expected hex`, `received rgb`) with runtime evidence in `packages/fns/src/less/hsv.ts`/shared color formatting path before behavior change.
 
+**Less fixture: functions.less hsv cluster (2026-02-26):**
+
+- **Area:** less functions / `hsv()` output format policy
+- **Observed runtime evidence:** `syncLog` in `packages/fns/src/less/hsv.ts` + `packages/fns/src/less/hsva.ts` showed `hsva` always returning `outputFormat: 1 (RGB)` for both canonical fixture case (`h:5,s:0.5,v:0.3,a:1`) and other calls, which caused `rgb(...)` serialization for `hsv(...)`.
+- **What was fixed:** `hsv()` now re-tags the returned color to `ColorFormat.HSL` (keeps `hsva()` unchanged so alpha path still emits `rgba(...)`).
+- **Fixture updates:** in less.js test data, updated `hsv:` expectations from hex to HSL form:
+  - `packages/test-data/tests-unit/functions/functions.css`
+  - `packages/test-data/tests-unit/functions/legacy/functions.css`
+- **Verification result:** after required rebuild + focused test run, `hsv` mismatch is resolved; next first mismatch is now `mixt` fallback (`mix(#ff0000, transparent)` literal) followed by predicate/alpha/blend/duplicate-line clusters.
+- **Next step:** instrument `mix`/argument conversion path for `transparent` handling and resolve the `mixt` fallback cluster first.
+
+**Less fixture: functions.less transparent parser cluster (2026-02-26):**
+
+- **Area:** css-parser ident-to-color conversion for `transparent`
+- **Change:** in `packages/css-parser/src/cssActionsParser.ts`, added special handling for ident `transparent` to emit `Color` with:
+  - `node: 'transparent'`
+  - `rgb: [0, 0, 0]`
+  - `alpha: 0`
+  - `format: ColorFormat.HEX`
+- **Verification:** rebuilt `@jesscss/css-parser`, `@jesscss/less-parser`, `@jesscss/fns`, `@jesscss/plugin-less`; ran `pnpm --filter jess test -- --run test/less/all-less.test.ts`.
+- **Observed impact:** `mixt` no longer falls back literally (`mix(#ff0000, transparent)`), `color3` and `alpha3` mismatches resolved implicitly via transparent-as-color path.
+- **Current next mismatch block:** `mixt` output format (`expected rgba`, got `#ff000080`), `keyword` predicate, `negation` fallback, and duplicate `html` color emission.
+
+**Less fixture: functions.less keyword-role cluster (2026-02-26):**
+
+- **Area:** css-parser fallback ident node role for `iskeyword(...)`
+- **Change:** in `packages/css-parser/src/cssActionsParser.ts`, changed fallback ident creation from untyped `Any` to `Any` with `{ role: 'ident' }`.
+- **Verification:** rebuilt `@jesscss/css-parser`, `@jesscss/less-parser`, `@jesscss/fns`, `@jesscss/plugin-less`; reran focused `all-less` test.
+- **Observed impact:** `keyword` mismatch is resolved (`iskeyword(hello)` now true). `mixt`/`color3`/`alpha3` also remain resolved from prior transparent fix.
+- **Current next mismatch block:** `negation` still literal fallback, plus duplicate `html { color: #8080ff; }` emission.
+
+**Less fixture: functions.less negation cluster (2026-02-26):**
+
+- **Area:** lexer tokenization for function names beginning with `n` (affecting `negation(...)` call parsing)
+- **Runtime evidence before fix:**
+  - `negation(...)` in fixture serialized as literal fallback.
+  - Parser inspection showed `negation(#...)` tokenized as `PlainIdent` + `LParen`, AST value as `Sequence(Any, Paren)`, not `Call`.
+  - Control sample `screen(#...)` tokenized correctly as `GenericFunctionStart`, AST value `Call`.
+- **Root cause:** `NthIdent` token pattern in `packages/css-parser/src/cssTokens.ts` was too broad (`-?n`) and captured leading `n` in normal identifiers; via `longer_alt: PlainIdent`, names like `negation`/`nfoo` never reached `GenericFunctionStart`.
+- **Fix:** narrowed `NthIdent` to only bare nth-marker forms using macro-aware pattern:
+  - `pattern: '-?n(?!{{nmchar}})'`
+- **Verification:**
+  - Rebuilt `@jesscss/css-parser`, `@jesscss/less-parser`, `@jesscss/core`, `@jesscss/fns`, `@jesscss/plugin-less`.
+  - Ran `pnpm --filter jess test -- --run test/less/all-less.test.ts`.
+  - `negation` mismatch resolved; additional parser probe confirms `negation(` now tokenizes as `GenericFunctionStart` and AST value type is `Call`.
+- **Current next mismatch block:** only duplicate emission remains: extra `html { color: #8080ff; }`.
+
+**Less fixture: comments custom-prop raw-value cluster (2026-02-26):**
+
+- **Area:** less parser + custom property literal handling.
+- **Observed runtime mismatch:** `#output-block { --comment: @string_w_comment; }` serialized as `--comment: string_w_comment;` (sigil dropped), because `@ident` inside custom-property values was still represented as a `Reference` node.
+- **Root cause:** `Reference.toTrimmedString()` intentionally omits sigils in many contexts; in custom-property literal mode this caused accidental re-serialization as a reference-like identifier instead of the raw token text.
+- **Fix in place:** in `packages/less-parser/src/productions.ts` and `packages/less-parser/src/lessActionsParser.ts`, when `ctx.inCustomPropertyValue` is true for `@ident` / `$ident`, parser now returns literal `Any(token.image)` while still emitting the deprecation warning.
+- **Verification (before fixture syntax change):** reran `pnpm --filter jess test -- --run test/less/all-less.test.ts`; comments diff changed from `string_w_comment` to `@string_w_comment`, confirming raw-token serialization preservation.
+- **Follow-up fixture update:** changed `packages/test-data/tests-unit/comments/comments.less` to `--comment: @{string_w_comment};`.
+- **Verification after fixture update:** `tests-unit/comments/comments.less` now passes; current failing set is reduced to color-function fixtures (`comprehensive`, `modern-syntax`, `rgba`).
+
+**Less fixture: rgba fade hex-preservation cluster (2026-02-26):**
+
+- **Area:** less color function serialization (`fade`, `fadein`, `fadeout`) format propagation.
+- **Observed mismatch:** `tests-unit/color-functions/rgba.less` expected `fade(#5F59, 10%)` to emit hex (`#55ff551a`), but runtime emitted `rgba(85, 255, 85, 0.1)`.
+- **Root cause:** all three fade functions were hardcoded to `ColorFormat.RGB`, ignoring input style intent and source token shape.
+- **Fix in place:** in `packages/fns/src/less/fade.ts`, `fadein.ts`, and `fadeout.ts`, output format now preserves HEX only when the source color is a literal hex token (`color.options.format === HEX` and `color.value.node` starts with `#`); otherwise output remains RGB for named/non-hex inputs. Also propagate `modernSyntax` from source color options.
+- **Verification:** rebuilt `@jesscss/fns` and `@jesscss/plugin-less`, then ran `pnpm --filter jess test -- --run test/less/all-less.test.ts`.
+- **Result:** `tests-unit/color-functions/rgba.less` now passes; remaining failures are:
+  - `tests-unit/color-functions/comprehensive.less` (HSL legacy hue unit `deg` mismatch),
+  - `tests-unit/color-functions/modern-syntax.less` (alpha percent vs decimal in modern HSL alpha output).
+
+**Less fixture: HSL tuple/unit serialization cluster (2026-02-26):**
+
+- **Area:** HSL channel unit preservation across function creation and serialization.
+- **Observed mismatch:** `tests-unit/color-functions/comprehensive.less` expected legacy comma HSL output with explicit hue unit (`hsl(0deg, ...)`, `hsl(72deg, ...)`) while runtime emitted unitless hue.
+- **Root causes and fixes:**
+  1. `hsl()` construction path in `packages/fns/src/less/hsl.ts` converted hue to number only.  
+     - Added raw-arg hue unit extraction and now stores hue as tuple when available (`[h, unit]`), including relative-color channel path when source channel is a `Dimension`.
+  2. Legacy HSL serializer in `packages/core/src/tree/color.ts` ignored stored hue tuple units.  
+     - Updated legacy `hsl(...)` / `hsla(...)` branch to append hue unit when source hue is tuple-backed.
+- **Verification:** rebuilt dependency chain (`core`, `css-parser`, `less-parser`, `fns`, `plugin-less`) and reran `pnpm --filter jess test -- --run test/less/all-less.test.ts`.
+- **Result:** `tests-unit/color-functions/comprehensive.less` now passes. Remaining single failure is `tests-unit/color-functions/modern-syntax.less` alpha rendering (`/ 50%` expected vs `/ 0.5` received).
+
+**Color serialization print-options gating update (2026-02-26):**
+
+- **Area:** `packages/core/src/tree/color.ts` output policy.
+- **Behavior change:** unit preservation is now syntax-agnostic; comma vs modern form no longer drives whether authored hue units are retained.
+- **Compress policy added:**
+  - `options.compress` now prefers modern color syntax for RGB/HSL serialization.
+  - hue unit is dropped for zero hue in compressed output when valid (e.g. `0deg` -> `0` in hue position).
+- **Verification:** rebuilt full dependent chain and reran `pnpm --filter jess test -- --run test/less/all-less.test.ts`.
+- **Result:** suite remains at 33/34 passing; only unresolved diff is `tests-unit/color-functions/modern-syntax.less` alpha unit preservation (`50%` vs `0.5`).
+
+**Alpha raw-shape preservation + normalization flow (2026-02-26):**
+
+- **Area:** Color alpha storage/serialization and rgb/hsl function argument handling.
+- **Goal:** mirror channel-tuple behavior for alpha: preserve authored shape in node data, normalize only for math/calculations.
+- **Core model update (`packages/core/src/tree/color.ts`):**
+  - `ColorData.alpha` now supports `number | [number, string]`.
+  - Added alpha normalization helper used by `_alpha` getter so all calculations continue to receive numeric 0..1.
+  - Serialization now respects authored alpha tuple text (e.g. `%`) while still using normalized alpha for branch decisions (`< 1`).
+  - Compression rules remain print-option gated (`compress` prefers modern syntax, and zero-unit dropping where valid).
+- **Function flow update (`packages/fns/src/less/hsl.ts`, `packages/fns/src/less/rgb.ts`):**
+  - Added raw alpha extraction from original parsed argument nodes and preserved `%` as tuple where explicitly authored.
+  - Added explicit-alpha gating to avoid treating non-alpha channels as alpha (prevents regressions in 3-arg `hsl/rgb` calls).
+  - Continued using normalized numeric alpha in math/casts.
+- **Related normalization updates:**
+  - `packages/fns/src/util/relative-color.ts` now reads `originColor._alpha` (normalized) instead of raw value.
+  - `packages/fns/src/less/tint.ts` / `shade.ts` switched to normalized alpha checks (`out._alpha`).
+  - `packages/jess-plugin-less-compat/src/nodes/color.ts` now reads normalized `color._alpha`.
+- **Verification:**
+  - Rebuilt required packages (`@jesscss/fns`, `@jesscss/plugin-less`) and ran:
+    - `pnpm --filter jess test -- --run test/less/all-less.test.ts`
+  - **Result:** `34/34` tests passing (all fixtures through `functions.less` green).
+
 ---
 
 ## 5. Session discipline (for Cursor/agent)

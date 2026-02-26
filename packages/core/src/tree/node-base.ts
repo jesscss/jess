@@ -12,13 +12,9 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
-import { syncLog } from '../debug-log.js';
 export type { TreeContext };
 
 const { isArray } = Array;
-let parentCycleProbeCount = 0;
-let referenceChainProbeCount = 0;
-
 type AllNodeOptions = {
   /**
    * This seems harder to implement. For now, for anything that needs
@@ -365,43 +361,6 @@ export abstract class Node<
   }
 
   adopt(node: Node) {
-    if (referenceChainProbeCount < 80 && this.type === 'Reference' && node.type === 'Reference') {
-      referenceChainProbeCount++;
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'interpolated-recursion',
-        hypothesisId: 'H36',
-        location: 'packages/core/src/tree/node-base.ts:adopt',
-        message: 'Reference adopted Reference',
-        data: {
-          parentLine: this.location?.[1] ?? null,
-          childLine: node.location?.[1] ?? null,
-          childParentTypeBefore: node.parent?.type ?? null
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
-    if (parentCycleProbeCount < 80 && (node === this || this.parent === node)) {
-      parentCycleProbeCount++;
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'interpolated-recursion',
-        hypothesisId: 'H33',
-        location: 'packages/core/src/tree/node-base.ts:adopt',
-        message: 'Potential parent cycle during adopt',
-        data: {
-          parentType: this.type,
-          childType: node.type,
-          childIsParent: node === this,
-          parentAlreadyChild: this.parent === node
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
     /** The only place we should do this */
     if (!node.frozen) {
       (node as any).parent = this;
@@ -787,26 +746,6 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
-    if (referenceChainProbeCount < 80 && this.type === 'Reference' && this.parent?.type === 'Reference') {
-      referenceChainProbeCount++;
-      const val = this.value as { key?: unknown; target?: unknown };
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'interpolated-recursion',
-        hypothesisId: 'H37',
-        location: 'packages/core/src/tree/node-base.ts:preEval',
-        message: 'Reference preEval with Reference parent',
-        data: {
-          nodeLine: this.location?.[1] ?? null,
-          parentLine: this.parent?.location?.[1] ?? null,
-          keyType: val.key instanceof Node ? val.key.type : typeof val.key,
-          targetType: val.target instanceof Node ? val.target.type : typeof val.target
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
       node.preEvaluated = true;
@@ -817,49 +756,11 @@ export abstract class Node<
       try {
         out = node.forEachNode(n => n.preEval(context));
       } catch (error: unknown) {
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'interpolated-recursion',
-          hypothesisId: 'H30',
-          location: 'packages/core/src/tree/node-base.ts:preEval',
-          message: 'preEval forEachNode threw',
-          data: {
-            nodeType: node.type,
-            nodeShortType: node.shortType,
-            nodeLine: node.location?.[1] ?? null,
-            nodeColumn: node.location?.[2] ?? null,
-            parentType: node.parent?.type ?? null,
-            errorName: error instanceof Error ? error.name : 'Unknown',
-            errorMessage: error instanceof Error ? error.message : String(error)
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-        throw error;
+throw error;
       }
       if (isThenable(out)) {
         return (out as Promise<void>).then(() => node).catch((error: unknown) => {
-          // #region agent log
-          syncLog({
-            sessionId: process.env.DEBUG_SESSION_ID,
-            runId: 'interpolated-recursion',
-            hypothesisId: 'H35',
-            location: 'packages/core/src/tree/node-base.ts:preEval',
-            message: 'preEval forEachNode async rejection',
-            data: {
-              nodeType: node.type,
-              nodeShortType: node.shortType,
-              nodeLine: node.location?.[1] ?? null,
-              nodeColumn: node.location?.[2] ?? null,
-              parentType: node.parent?.type ?? null,
-              errorName: error instanceof Error ? error.name : 'Unknown',
-              errorMessage: error instanceof Error ? error.message : String(error)
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
-          throw error;
+throw error;
         });
       }
       return node;
@@ -931,24 +832,6 @@ export abstract class Node<
    * This is used when a Node will replace another node.
    */
   inherit(node: Node) {
-    if (parentCycleProbeCount < 80 && node.parent === this) {
-      parentCycleProbeCount++;
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'interpolated-recursion',
-        hypothesisId: 'H34',
-        location: 'packages/core/src/tree/node-base.ts:inherit',
-        message: 'Potential self-parent assignment via inherit',
-        data: {
-          thisType: this.type,
-          sourceType: node.type,
-          sourceParentType: node.parent?.type ?? null
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
     /**
      * Frozen nodes inherit the parent only if they don't have a parent yet.
      */

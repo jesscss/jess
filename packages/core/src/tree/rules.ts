@@ -29,8 +29,6 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
-import { syncLog } from '../debug-log.js';
-
 const { isArray } = Array;
 
 export const enum Priority {
@@ -1610,22 +1608,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               name: new Any(param.value ? `${param.value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
               value: new Sequence(rest)
             });
-            // #region agent log
-            syncLog({
-              sessionId: process.env.DEBUG_SESSION_ID,
-              runId: 'arg-contract-pre-fix',
-              hypothesisId: 'H3',
-              location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:restBinding',
-              message: 'Mixin rest parameter binding shape',
-              data: {
-                argPos,
-                restLength: rest.length,
-                restTypes: rest.map((n) => n.type),
-                restParamName: typeof param.value === 'string' ? param.value : undefined
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
             /** Check a pattern-matching node */
           } else {
             if (param.compare(argValue) !== 0) {
@@ -1651,24 +1633,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         if (match) {
           const mixinName = String((mixin as Mixin).value.name?.valueOf?.() ?? (mixin as Mixin).value.name ?? '');
           if (mixinName === '.mixin-args') {
-            // #region agent log
-            syncLog({
-              sessionId: process.env.DEBUG_SESSION_ID,
-              runId: 'arg-contract-pre-fix',
-              hypothesisId: 'H15_MATCH',
-              location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:mixinArgsMatch',
-              message: 'mixin-args candidate matched',
-              data: {
-                nodeArgCount: nodeArgs.length,
-                nodeArgTypes: nodeArgs.map((n) => n.type),
-                paramTypes: params.value.map((p) => p.type),
-                paramCount: params.value.length,
-                requiredPositions,
-                finalArgPos: argPos
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
           }
           /** Make a shallow copy to attach our resolved params (w/ args) */
           let originalMixin = mixin;
@@ -1727,23 +1691,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     if (evalCandidates.length === 0) {
       throw new ReferenceError('No matching mixins found.');
     }
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'arg-contract-pre-fix',
-      hypothesisId: 'H7',
-      location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:candidateSelection',
-      message: 'Mixin candidate selection summary',
-      data: {
-        nodeArgCount: nodeArgs.length,
-        nodeArgTypes: nodeArgs.map((n) => n.type),
-        mixinCandidatesLength: mixinCandidates.length,
-        evalCandidatesLength: evalCandidates.length,
-        hasDefault
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
 
     /**
      * Now we have a set of mixins that can return rulesets,
@@ -1882,9 +1829,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }, { readonly: true, paramVar: true });
         argumentsDecl.removeFlag(F_VISIBLE);
         outerRules.push(argumentsDecl);
-        // #region agent log
-        syncLog({ sessionId: process.env.DEBUG_SESSION_ID, runId: 'pre-fix', hypothesisId: 'H1_H2_H5', location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:registerArguments', message: 'Registered @arguments declaration for mixin call', data: { hasOuterRules: !!outerRules, paramsCount: params.value.length, rulesHasArguments: !!rules.find('declaration', 'arguments', 'VarDeclaration'), outerRulesHasArguments: !!outerRules?.find('declaration', 'arguments', 'VarDeclaration') }, timestamp: Date.now() });
-        // #endregion
 
         /** @arguments must reflect original call arguments, not bound/defaulted parameter buckets. */
         for (const argNode of nodeArgs) {
@@ -1892,24 +1836,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           cloned.frozen = true;
           argumentsArgs.push(cloned);
         }
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'arg-contract-pre-fix',
-          hypothesisId: 'H2_H3',
-          location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:argumentsPayload',
-          message: 'Mixin @arguments payload constructed',
-          data: {
-            paramCount: params.value.length,
-            argumentsCount: argumentsArgs.length,
-            argumentTypes: argumentsArgs.map((n) => n.type),
-            nodeArgCount: nodeArgs.length,
-            nodeArgTypes: nodeArgs.map((n) => n.type),
-            hasTailParam: params.value.some((n) => isNode(n, 'VarDeclaration') && n.value.name.valueOf() === 'tail')
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
       }
 
       /** Now we can evaluate our guards, if any */
@@ -1918,9 +1844,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
       thisContext.rulesContext = outerRules ?? rules;
-      // #region agent log
-      syncLog({ sessionId: process.env.DEBUG_SESSION_ID, runId: 'pre-fix', hypothesisId: 'H1_H2_H3_H5', location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:setRulesContext', message: 'Set mixin call rulesContext before guard/body eval', data: { usesOuterRules: !!outerRules, rulesContextType: thisContext.rulesContext?.type ?? 'undefined', rulesContextHasArguments: !!thisContext.rulesContext?.find?.('declaration', 'arguments', 'VarDeclaration') }, timestamp: Date.now() });
-      // #endregion
       if (guard) {
         outerRules ??= Rules.create([]);
         outerRules.adopt(guard);
@@ -1948,26 +1871,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
       try {
         let newRules: Rules;
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'arg-contract-pre-fix',
-          hypothesisId: 'H12_SHAPE',
-          location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:preEvalRulesShape',
-          message: 'Mixin candidate rules shape before eval',
-          data: {
-            candidateEvalIndex,
-            hasOuterRules: !!outerRules,
-            rulesLen: rules.value.length,
-            firstRuleType: rules.value[0]?.type ?? 'undefined',
-            firstRuleSelector: isNode(rules.value[0], 'Ruleset') ? rules.value[0].value.selector?.valueOf() : undefined,
-            firstRuleBodyLen: isNode(rules.value[0], 'Ruleset') ? rules.value[0].value.rules.value.length : undefined,
-            firstRuleBodyFirstType: isNode(rules.value[0], 'Ruleset') ? rules.value[0].value.rules.value[0]?.type : undefined,
-            firstRuleBodyFirstSelector: (isNode(rules.value[0], 'Ruleset') && isNode(rules.value[0].value.rules.value[0], 'Ruleset')) ? rules.value[0].value.rules.value[0].value.selector?.valueOf() : undefined
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
         if (!outerRules) {
           candidate.parent!.adopt(rules);
           newRules = await rules.eval(thisContext);
@@ -1976,9 +1879,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
           // hide param vars from registry-based lookup.
           outerRules.push(...rules.value);
-          // #region agent log
-          syncLog({ sessionId: process.env.DEBUG_SESSION_ID, runId: 'pre-fix', hypothesisId: 'H3', location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:beforeOuterEval', message: 'About to eval outerRules wrapper', data: { outerRulesValueLength: outerRules.value.length, outerRulesParentType: outerRules.parent?.type ?? 'undefined', innerRulesParentType: rules.parent?.type ?? 'undefined' }, timestamp: Date.now() });
-          // #endregion
           newRules = await outerRules.eval(thisContext);
         }
         candidate.parent!.adopt(newRules);
@@ -1996,25 +1896,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         declRegistry.indexPendingItems();
         // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = true;
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'arg-contract-pre-fix',
-          hypothesisId: 'H6',
-          location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:candidateOutputShape',
-          message: 'Mixin candidate output shape before merge',
-          data: {
-            outputLen: newRules.value.length,
-            firstNodeType: newRules.value[0]?.type,
-            callerType: caller?.type ?? 'undefined',
-            firstRulesetSelector: isNode(newRules.value[0], 'Ruleset') ? newRules.value[0].value.selector?.valueOf() : undefined,
-            firstRulesetBodyLen: isNode(newRules.value[0], 'Ruleset') ? newRules.value[0].value.rules.value.length : undefined,
-            firstRulesetInnerFirstType: isNode(newRules.value[0], 'Ruleset') ? newRules.value[0].value.rules.value[0]?.type : undefined,
-            firstRulesetInnerFirstSelector: (isNode(newRules.value[0], 'Ruleset') && isNode(newRules.value[0].value.rules.value[0], 'Ruleset')) ? newRules.value[0].value.rules.value[0].value.selector?.valueOf() : undefined
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -2040,21 +1921,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * their original order
      */
     outputRules.sort(comparePosition);
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'arg-contract-pre-fix',
-      hypothesisId: 'H8',
-      location: 'packages/core/src/tree/rules.ts:getFunctionFromMixins:finalOutputShape',
-      message: 'Mixin call final output shape',
-      data: {
-        outputRulesLength: outputRules.length,
-        outputInnerLengths: outputRules.map((r) => r.value.length),
-        outputFirstNodeTypes: outputRules.map((r) => r.value[0]?.type ?? 'undefined')
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
     if (outputRules.length === 1) {

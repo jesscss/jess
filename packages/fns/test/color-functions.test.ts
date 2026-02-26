@@ -22,7 +22,7 @@ describe('Color Functions', () => {
 
       const result = await rgb(r, g, b);
       expect(result).toBeInstanceOf(Color);
-      expect(result.value.format).toBe(ColorFormat.RGB);
+      expect(result.options.format).toBe(ColorFormat.RGB);
       expect(result.rgb).toEqual([255, 0, 0]);
       expect(result.alpha).toBe(1);
     });
@@ -69,7 +69,7 @@ describe('Color Functions', () => {
       // Should be a different instance (cloned)
       expect(result).not.toBe(inputColor);
       // Should have RGB format
-      expect(result.value.format).toBe(ColorFormat.RGB);
+      expect(result.options.format).toBe(ColorFormat.RGB);
       // Should preserve the color values (converted from HSL)
       // HSL [180, 0.5, 0.5] converts to approximately [64, 191, 191] in RGB
       expect(result.rgb).toEqual([64, 191, 191]);
@@ -91,7 +91,7 @@ describe('Color Functions', () => {
       // Should be a different instance (cloned)
       expect(result).not.toBe(inputColor);
       // Should have RGB format
-      expect(result.value.format).toBe(ColorFormat.RGB);
+      expect(result.options.format).toBe(ColorFormat.RGB);
       // Should preserve RGB values
       expect(result.rgb).toEqual([255, 0, 0]);
       // Should update alpha to 0.5 (50%)
@@ -153,7 +153,7 @@ describe('Color Functions', () => {
       const l = new Dimension({ number: 50, unit: '%' });
 
       const result = await hsl(h, s, l);
-      expect(result.value.format).toBe(ColorFormat.HSL);
+      expect(result.options.format).toBe(ColorFormat.HSL);
       expect(result._hsl).toEqual([180, 0.5, 0.5]);
       expect(result._alpha).toBe(1);
     });
@@ -248,7 +248,7 @@ describe('Color Functions', () => {
       // Should be a different instance (cloned)
       expect(result).not.toBe(inputColor);
       // Should have HSL format
-      expect(result.value.format).toBe(ColorFormat.HSL);
+      expect(result.options.format).toBe(ColorFormat.HSL);
       // Should preserve the color values (converted from RGB)
       expect(result.hsl[0]).toBeCloseTo(0, 1); // Red hue
       expect(result.hsl[1]).toBeCloseTo(1, 1); // Full saturation
@@ -271,7 +271,7 @@ describe('Color Functions', () => {
       // Should be a different instance (cloned)
       expect(result).not.toBe(inputColor);
       // Should have HSL format
-      expect(result.value.format).toBe(ColorFormat.HSL);
+      expect(result.options.format).toBe(ColorFormat.HSL);
       // Should preserve HSL values (converted from RGB)
       expect(result.hsl[0]).toBeCloseTo(120, 1); // Green hue
       // Should update alpha to 0.75 (75%)
@@ -483,7 +483,7 @@ describe('Color Functions', () => {
         const result = await rgbInternal.call(functionThis);
         
         expect(result).toBeInstanceOf(Color);
-        expect(result.value.format).toBe(ColorFormat.RGB);
+        expect(result.options.format).toBe(ColorFormat.RGB);
         // Green is rgb(0, 128, 0), so result should be same with alpha 0.5
         expect(result.rgb).toEqual([0, 128, 0]);
         expect(result.alpha).toBe(0.5);
@@ -524,7 +524,7 @@ describe('Color Functions', () => {
         const result = await rgbInternal.call(functionThis);
         
         expect(result).toBeInstanceOf(Color);
-        expect(result.value.format).toBe(ColorFormat.RGB);
+        expect(result.options.format).toBe(ColorFormat.RGB);
         // #123456 is rgb(18, 52, 86)
         // calc(r + 40) = 18 + 40 = 58
         // calc(g + 40) = 52 + 40 = 92
@@ -567,7 +567,7 @@ describe('Color Functions', () => {
         const result = await rgbInternal.call(functionThis);
         
         expect(result).toBeInstanceOf(Color);
-        expect(result.value.format).toBe(ColorFormat.RGB);
+        expect(result.options.format).toBe(ColorFormat.RGB);
         // r = 20, g = 51, calc(b + 200) = 20 + 200 = 220 (clamped to 255)
         expect(result.rgb).toEqual([20, 51, 220]);
       });
@@ -596,7 +596,7 @@ describe('Color Functions', () => {
         const result = await hslInternal.call(functionThis);
         
         expect(result).toBeInstanceOf(Color);
-        expect(result.value.format).toBe(ColorFormat.HSL);
+        expect(result.options.format).toBe(ColorFormat.HSL);
         // Green is approximately hsl(120, 100%, 25%)
         expect(result.hsl[0]).toBeCloseTo(120, 1);
         expect(result.hsl[1]).toBeCloseTo(1, 1);
@@ -631,7 +631,7 @@ describe('Color Functions', () => {
         const result = await hslInternal.call(functionThis);
         
         expect(result).toBeInstanceOf(Color);
-        expect(result.value.format).toBe(ColorFormat.HSL);
+        expect(result.options.format).toBe(ColorFormat.HSL);
         // h and s should be preserved, l should be increased by 20%
         expect(result.hsl[0]).toBeCloseTo(210, 1);
         expect(result.hsl[1]).toBeCloseTo(0.65, 1);
@@ -672,7 +672,7 @@ describe('Color Functions', () => {
         const result = await hslInternal.call(functionThis);
         
         expect(result).toBeInstanceOf(Color);
-        expect(result.value.format).toBe(ColorFormat.HSL);
+        expect(result.options.format).toBe(ColorFormat.HSL);
         // Red is hsl(0, 100%, 39%)
         // calc(h + 30) = 0 + 30 = 30
         // s = 100%

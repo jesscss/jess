@@ -1,7 +1,6 @@
 // rgba is an alias of rgb - it uses the same implementation but with a different name
 import rgb from './rgb.js';
-import { defineFunction, type FunctionThis, Call, TreeContext, Color, ColorFormat, Dimension, callWithContext } from '@jesscss/core';
-import { splitSequence } from '@jesscss/core';
+import { defineFunction, type FunctionThis } from '@jesscss/core';
 
 const rgba = defineFunction(
   'rgba',
@@ -9,7 +8,7 @@ const rgba = defineFunction(
     // Get rgb's internal function to call it directly with the same args
     // This avoids double-wrapping through defineFunction which would try to convert again
     const rgbInternal = (rgb as any)._internal;
-    let result: Color;
+    let result: unknown;
 
     if (this?.context && rgbInternal) {
       // Called through callWithContext - use FunctionThis to call rgb's internal function
@@ -27,22 +26,6 @@ const rgba = defineFunction(
     } else {
       // Fallback: call rgb directly (shouldn't happen)
       result = await (rgb as any)(...args);
-    }
-
-    // Override the Call node name to 'rgba' if result has a node (from Dimension branch)
-    // Color inputs return early from rgb, so they won't have a node
-    if (result instanceof Color && result.value.node && this?.context) {
-      let context = this.context;
-      let treeContext = context.treeContext;
-      context.treeContext = new TreeContext({
-        mathMode: 'parens-division'
-      });
-
-      result.value.node = new Call({
-        name: 'rgba',
-        args: (await this.rawArgs.eval(context)).value
-      });
-      context.treeContext = treeContext;
     }
 
     return result;

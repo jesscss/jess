@@ -1,10 +1,8 @@
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
-import type { FinalPrintOptions } from './print.js';
+import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
-import { syncLog } from '../../debug-log.js';
-
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -61,8 +59,36 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
 
   const rulesToRender = rules.flatRules(true);
+  const declarationOutputCache = new Map<object, string>();
+  const skippedDuplicateDeclarations = new Set<object>();
+  const seenDeclarationsByProp = new Map<string, Set<string>>();
   if (rulesToRender.length === 0) {
     return '';
+  }
+
+  // Less-style duplicate declaration handling:
+  // for each property, keep the last exact serialized declaration and skip earlier duplicates.
+  for (let i = rulesToRender.length - 1; i >= 0; i--) {
+    const node = rulesToRender[i]!;
+    if (!isNode(node, 'Declaration')) {
+      continue;
+    }
+    const declWriter = new OutputWriter();
+    const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
+    const declOut = node.toTrimmedString(declOptions);
+    declarationOutputCache.set(node, declOut);
+    const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
+    const declProp = node.value.name.valueOf();
+    let seenValues = seenDeclarationsByProp.get(declProp);
+    if (!seenValues) {
+      seenValues = new Set<string>();
+      seenDeclarationsByProp.set(declProp, seenValues);
+    }
+    if (seenValues.has(declKey)) {
+      skippedDuplicateDeclarations.add(node);
+    } else {
+      seenValues.add(declKey);
+    }
   }
 
   const hoisted = node.isHoisted(options);
@@ -91,6 +117,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let n = rulesToRender[idx]!;
 
     if (!n.visible && !n.fullRender) {
+      continue;
+    }
+    if (isNode(n, 'Declaration') && skippedDuplicateDeclarations.has(n)) {
       continue;
     }
 
@@ -134,31 +163,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     let pre = w.capture(() => n.processPrePost('pre', undefined, options));
     /** normalize pre spacing */
-    let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
-    if (!out.trim()) {
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-Session-Id': '34ceef'
-        },
-        body: JSON.stringify({
-          sessionId: '34ceef',
-          runId: 'void-output-spacing',
-          hypothesisId: 'H_void_1',
-          location: 'packages/core/src/tree/util/serialize-helper.ts:serializeRules',
-          message: 'Node rendered empty output',
-          data: {
-            nodeType: n.type,
-            requiredSemi: !!n.requiredSemi,
-            pre
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
-    }
+    let out = isNode(n, 'Declaration')
+      ? (declarationOutputCache.get(n) ?? w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 })))
+      : w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
     // Suppress pure-void Any nodes from generating blank output lines.
     if (
       isNode(n, 'Any')
@@ -178,49 +185,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
         ? `${idt}${out}`
         : normalizeIndent(declIn, idt, true);
-      if (hasEmptyValue) {
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'empty-decl-spacing',
-          hypothesisId: 'H_space_2',
-          location: 'packages/core/src/tree/util/serialize-helper.ts:serializeRules',
-          message: 'serialize-helper declaration spacing snapshot',
-          data: {
-            name: declName,
-            pre,
-            out,
-            declIn,
-            declNormalized
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': '34ceef'
-          },
-          body: JSON.stringify({
-            sessionId: '34ceef',
-            runId: 'empty-decl-spacing',
-            hypothesisId: 'H_space_2',
-            location: 'packages/core/src/tree/util/serialize-helper.ts:serializeRules',
-            message: 'serialize-helper declaration spacing snapshot',
-            data: {
-              name: declName,
-              pre,
-              out,
-              declIn,
-              declNormalized
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
-      }
       if (n.value.name.valueOf().startsWith('--')) {
         w.add(idt);
         w.add(out, n);

@@ -1,10 +1,78 @@
-import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call, TreeContext, Any } from '@jesscss/core';
+import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Any } from '@jesscss/core';
 import { percentOf, toNumber, splitSequence } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateHSLChannelReference } from '../util/relative-color.js';
+
+function hueChannelFromNode(node: unknown, hueValue: number): number | [number, string] {
+  if (!(node instanceof Dimension)) {
+    return hueValue;
+  }
+  const unit = node.value.unit ?? '';
+  return unit ? [hueValue, unit] : hueValue;
+}
+
+function getRawHueChannel(rawArgs: any, hueValue: number): number | [number, string] {
+  const firstRawArg = rawArgs?.value?.[0];
+  if (!firstRawArg) {
+    return hueValue;
+  }
+  if (firstRawArg instanceof Dimension) {
+    return hueChannelFromNode(firstRawArg, hueValue);
+  }
+  if (Array.isArray(firstRawArg?.value) && firstRawArg.value[0] instanceof Dimension) {
+    return hueChannelFromNode(firstRawArg.value[0], hueValue);
+  }
+  return hueValue;
+}
+
+function alphaChannelFromNode(node: unknown, alphaValue: number): number | [number, string] {
+  if (!(node instanceof Dimension)) {
+    return alphaValue;
+  }
+  const unit = node.value.unit ?? '';
+  if (unit === '%') {
+    const percentValue = Math.max(0, Math.min(100, node.value.number));
+    return [percentValue, '%'];
+  }
+  return alphaValue;
+}
+
+function collectDimensions(node: unknown, out: Dimension[]): void {
+  if (!node) {
+    return;
+  }
+  if (node instanceof Dimension) {
+    out.push(node);
+    return;
+  }
+  if (Array.isArray(node)) {
+    node.forEach((child) => collectDimensions(child, out));
+    return;
+  }
+  if (typeof node === 'object' && node !== null && 'value' in node) {
+    const value = (node as { value?: unknown }).value;
+    if (Array.isArray(value)) {
+      value.forEach((child) => collectDimensions(child, out));
+    }
+  }
+}
+
+function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
+  if (!hasExplicitAlpha || !rawArgs?.value?.length) {
+    return alphaValue;
+  }
+  const dimensions: Dimension[] = [];
+  collectDimensions(rawArgs.value, dimensions);
+  const lastDimension = dimensions.at(-1);
+  if (lastDimension) {
+    return alphaChannelFromNode(lastDimension, alphaValue);
+  }
+  return alphaValue;
+}
 
 const hsl = defineFunction(
   'hsl',
   async function(this: FunctionThis, ...args: any[]) {
+    const modernSyntax = Boolean(this?.caller?.options?.modernSyntax);
     // Check for relative color syntax first: hsl(from color h s l)
     if (this?.context && this.rawArgs) {
       const relativeData = parseRelativeColorSyntax(this.rawArgs);
@@ -13,7 +81,7 @@ const hsl = defineFunction(
         const originColor = await evaluateOriginColor(relativeData.originColor, this.context);
         
         // Extract channel values from origin color
-        const originAlpha = originColor.value.alpha ?? 1;
+        const originAlpha = originColor._alpha;
         
         // Evaluate channel references
         if (relativeData.channels.length < 3) {
@@ -38,22 +106,24 @@ const hsl = defineFunction(
         // 1. As the 4th channel in the sequence: hsl(from color h s l alpha)
         // 2. Separated by /: hsl(from color h s l / 0.5) - this is in relativeData.alpha
         let alpha: number = originAlpha;
+        let alphaValue: number | [number, string] = originAlpha;
         
         // First check if alpha is separated by / (from parseRelativeColorSyntax)
         if (relativeData.alpha) {
           // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
           const evaluated = await relativeData.alpha.eval(this.context);
           if (evaluated instanceof Dimension) {
-            const alphaValue = evaluated.value.number;
+            const alphaNumber = evaluated.value.number;
             const alphaUnit = evaluated.value.unit;
             if (alphaUnit === '%') {
-              alpha = alphaValue / 100;
+              alpha = alphaNumber / 100;
             } else if (alphaUnit === '' || alphaUnit === undefined) {
-              alpha = alphaValue;
+              alpha = alphaNumber;
             } else {
               throw new Error(`Invalid alpha value unit: ${alphaUnit}`);
             }
             alpha = Math.max(0, Math.min(1, alpha));
+            alphaValue = alphaChannelFromNode(evaluated, alpha);
           } else {
             throw new Error('Alpha value separated by / must evaluate to a Dimension');
           }
@@ -70,21 +140,24 @@ const hsl = defineFunction(
             // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
             const evaluated = await alphaChannel.eval(this.context);
             if (evaluated instanceof Dimension) {
-              const alphaValue = evaluated.value.number;
+              const alphaNumber = evaluated.value.number;
               const alphaUnit = evaluated.value.unit;
               if (alphaUnit === '%') {
-                alpha = alphaValue / 100;
+                alpha = alphaNumber / 100;
               } else if (alphaUnit === '' || alphaUnit === undefined) {
-                alpha = alphaValue;
+                alpha = alphaNumber;
               } else {
                 throw new Error(`Invalid alpha value unit: ${alphaUnit}`);
               }
               alpha = Math.max(0, Math.min(1, alpha));
+              alphaValue = alphaChannelFromNode(evaluated, alpha);
             } else {
               throw new Error('Channel expressions (like calc()) are not yet supported in relative color syntax');
             }
           }
         }
+        const hasExplicitAlpha = Boolean(relativeData.alpha || alphaChannel);
+        alphaValue = getRawAlphaChannel(this?.rawArgs, alpha, hasExplicitAlpha);
         
         // Normalize hue to 0-360 range
         h = ((h % 360) + 360) % 360;
@@ -93,23 +166,14 @@ const hsl = defineFunction(
         l = Math.max(0, Math.min(1, l));
         
         // Create the new color
+        const hueChannel = hueChannelFromNode(hChannel, h);
         const color = new Color({
+          hsl: [hueChannel, s, l],
+          alpha: alphaValue
+        }, {
           format: ColorFormat.HSL,
-          hsl: [h, s, l],
-          alpha
+          modernSyntax
         });
-        
-        // Store the original function call
-        let treeContext = this.context.treeContext;
-        this.context.treeContext = new TreeContext({
-          mathMode: 'parens-division'
-        });
-        
-        color.value.node = new Call({
-          name: 'hsl',
-          args: (await this.rawArgs.eval(this.context)).value
-        });
-        this.context.treeContext = treeContext;
         
         return color;
       }
@@ -122,34 +186,15 @@ const hsl = defineFunction(
       let s: number = args[1] as number;
       let l: number = args[2] as number;
       let alpha: number = args[3] !== undefined ? (args[3] as number) : 1;
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-Session-Id': '34ceef'
-        },
-        body: JSON.stringify({
-          sessionId: '34ceef',
-          runId: 'hsl-clamp-focus',
-          hypothesisId: 'H_hsl_1',
-          location: 'packages/fns/src/less/hsl.ts:hsl:dimension-signature',
-          message: 'hsl dimension signature values',
-          data: {
-            h,
-            s,
-            l,
-            alpha
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
+      const hueChannel = getRawHueChannel(this?.rawArgs, h);
+      const alphaChannel = getRawAlphaChannel(this?.rawArgs, alpha, args[3] !== undefined);
 
       const color = new Color({
+        hsl: [hueChannel, s, l],
+        alpha: alphaChannel
+      }, {
         format: ColorFormat.HSL,
-        hsl: [h, s, l],
-        alpha
+        modernSyntax
       });
 
       // Preserve raw channel values here; clamping happens at Color output/getters.
@@ -160,20 +205,23 @@ const hsl = defineFunction(
       // [Color] - clone the color and set format to HSL
       const inputColor = args[0] as Color;
       const cloned = inputColor.clone();
-      cloned.value.format = ColorFormat.HSL;
+      cloned.options.format = ColorFormat.HSL;
+      cloned.options.modernSyntax = modernSyntax;
       cloned.value.node = undefined;
       return cloned;
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
       // [Color, Dimension?] - clone color, set format to HSL, and optionally set alpha
       const inputColor = args[0] as Color;
       const cloned = inputColor.clone();
-      cloned.value.format = ColorFormat.HSL;
+      cloned.options.format = ColorFormat.HSL;
+      cloned.options.modernSyntax = modernSyntax;
       cloned.value.node = undefined;
 
       if (args[1] !== undefined) {
         // args[1] is already converted by percentOf(1), toNumber() conversion plugins
         const alpha = args[1] as number;
-        cloned.value.alpha = Math.max(0, Math.min(1, alpha));
+        const normalizedAlpha = Math.max(0, Math.min(1, alpha));
+        cloned.value.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
       }
 
       return cloned;

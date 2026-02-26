@@ -30,32 +30,24 @@ const additionalSkips = [
   'tests-unit/detached-rulesets/detached-rulesets.less' // TODO: Declaration before initialization (module load order)
 ];
 
-// Set to a non-empty array to focus on specific fixtures while debugging.
-const targetTests: string[] = [
-  'tests-unit/functions/functions.less'
-];
+// Run unit fixtures alphabetically up through this filename (inclusive).
+const runUnitThrough = 'tests-unit/functions/functions.less';
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
   const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/**/*.less')).filter((f) => {
     const rel = path.relative(testData, f).replace(/\\/g, '/');
-    if (targetTests.includes(rel)) {
-      return true;
-    }
-    // Run tests alphabetically up through the extend fixtures.
-    // This intentionally stops before later fixtures that Jess doesn't yet fully parse/execute.
-    const m = /^tests-unit\/([^/]+)\//.exec(rel);
-    const segment = m?.[1] ?? '';
-    return segment.localeCompare('functions') < 0;
+    return rel.localeCompare(runUnitThrough) <= 0;
   });
-  const configFiles: string[] = glob.sync(path.join(testData, 'tests-config/**/*.less'));
+  // Keep this suite focused on alphabetic unit-fixture progression.
+  const configFiles: string[] = [];
   const allFiles = [...unitFiles, ...configFiles];
 
   allFiles
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .filter(value => !additionalSkips.includes(value)) // Skip files tested elsewhere
-    .filter(value => targetTests.length === 0 || targetTests.includes(value)) // Target specific tests
+    .filter(value => value.startsWith('tests-unit/'))
     .sort()
     .forEach((file) => {
       const lessPath = path.join(testData, file);

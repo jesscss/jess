@@ -33,24 +33,6 @@ export default defineFunction(
     for (const group of Object.values(unitConversions)) {
       if (group[from] !== undefined && group[target] !== undefined) {
         const converted = value.value.number * (group[from] / group[target]);
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': '34ceef'
-          },
-          body: JSON.stringify({
-            sessionId: '34ceef',
-            runId: 'convert-fn',
-            hypothesisId: 'HC1',
-            location: 'packages/fns/src/less/convert.ts:convert',
-            message: 'Converted dimension units',
-            data: { from, target, input: value.value.number, output: converted },
-            timestamp: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
         return new Dimension({ number: converted, unit: target });
       }
     }

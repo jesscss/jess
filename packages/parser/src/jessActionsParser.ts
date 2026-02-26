@@ -109,11 +109,10 @@ export class JessActionsParser extends CssActionsParser {
         return new Color(
           {
             node: tokValue, // Store the original keyword string
-            format: ColorFormat.HEX,
             rgb: colorValue,
             alpha: 1
           },
-          undefined,
+          { format: ColorFormat.HEX },
           this.getLocationInfo(token),
           this.context
         );

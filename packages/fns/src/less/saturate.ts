@@ -21,9 +21,10 @@ export default defineFunction(
 
     // Create new color with adjusted saturation, preserving original format
     return new Color({
-      format: color.value.format,
       hsl: [h, newSaturation, l],
       alpha: color._alpha
+    }, {
+      format: color.options.format
     }).inherit(color);
   },
   {

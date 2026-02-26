@@ -1,11 +1,13 @@
 import { type ColorValue } from '../util/number.js';
 import hsva from './hsva.js';
-import { defineFunction, Dimension } from '@jesscss/core';
+import { ColorFormat, defineFunction, Dimension } from '@jesscss/core';
 
 const hsv = defineFunction(
   'hsv',
   function(this: any, h: ColorValue, s: ColorValue, v: ColorValue) {
-    return hsva.call(this, h, s, v, new Dimension({ number: 1 }));
+    const out = hsva.call(this, h, s, v, new Dimension({ number: 1 }));
+    out.options.format = ColorFormat.HSL;
+    return out;
   },
   {
     params: [{

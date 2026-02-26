@@ -15,9 +15,10 @@ export default defineFunction(
 
     // Create new color with adjusted hue, preserving original format
     return new Color({
-      format: color.value.format,
       hsl: [adjustedHue, s, l],
       alpha: color._alpha
+    }, {
+      format: color.options.format
     }).inherit(color);
   },
   {

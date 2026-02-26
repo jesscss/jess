@@ -65,29 +65,5 @@ export function toHSV(color: Color) {
   }
   const rawResult = { h: rawH! * 360, s: rawS, v: rawMax, a };
 
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Debug-Session-Id': '34ceef'
-    },
-    body: JSON.stringify({
-      sessionId: '34ceef',
-      runId: 'hsv-extract-focus',
-      hypothesisId: 'H_hsv_1',
-      location: 'packages/fns/src/util/to-hsv.ts:toHSV',
-      message: 'Rounded vs raw HSV conversion',
-      data: {
-        rgb,
-        rawRgb,
-        roundedResult,
-        rawResult
-      },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-
   return rawResult;
 }

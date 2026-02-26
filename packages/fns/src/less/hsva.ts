@@ -27,13 +27,14 @@ const hsva = defineFunction(
     ];
 
     return new Color({
-      format: ColorFormat.RGB,
       rgb: [
         vs[perm[i]![0]!]! * 255,
         vs[perm[i]![1]!]! * 255,
         vs[perm[i]![2]!]! * 255
       ],
       alpha: a
+    }, {
+      format: ColorFormat.RGB
     });
   },
   {

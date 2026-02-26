@@ -30,7 +30,7 @@ export function transformColorToLess(
 
     // Map 'alpha' property
     if (prop === 'alpha') {
-      return color.value.alpha ?? 1;
+      return color._alpha;
     }
 
     // Map 'value' property (Less expects string representation)
@@ -38,7 +38,7 @@ export function transformColorToLess(
       // Convert color to string representation
       // Less uses format like '#rrggbb' or 'rgba(r, g, b, a)'
       const rgb = color.value.rgb;
-      const alpha = color.value.alpha;
+      const alpha = color._alpha;
       if (rgb && alpha !== undefined && alpha < 1) {
         return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
       }

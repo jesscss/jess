@@ -3,7 +3,6 @@ import {
   Dimension,
   defineFunction
 } from '@jesscss/core';
-import { syncLog } from '@jesscss/core/debug-log';
 import { toHSL } from '../util/to-hsl.js';
 
 //
@@ -31,30 +30,7 @@ const mix = defineFunction(
     ];
 
     const out = new Color(rgba);
-    out.value.format = color1.value.format;
-    // #region agent log
-    const payload = {
-      sessionId: '34ceef',
-      runId: 'color-format-propagation',
-      hypothesisId: 'H_color_3',
-      location: 'packages/fns/src/less/mix.ts:mix',
-      message: 'mix format propagation',
-      data: {
-        inputFormat: color1.value.format ?? null,
-        outputFormat: out.value.format ?? null
-      },
-      timestamp: Date.now()
-    };
-    syncLog(payload);
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '34ceef'
-      },
-      body: JSON.stringify(payload)
-    }).catch(() => {});
-    // #endregion
+    out.options.format = color1.options.format;
     return out;
   },
   {

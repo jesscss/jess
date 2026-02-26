@@ -21,9 +21,10 @@ export default defineFunction(
 
     // Create new color with adjusted lightness, preserving original format
     return new Color({
-      format: color.value.format,
       hsl: [h, s, newLightness],
       alpha: color._alpha
+    }, {
+      format: color.options.format
     }).inherit(color);
   },
   {

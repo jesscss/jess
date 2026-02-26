@@ -3325,6 +3325,17 @@ export function functionCallLike(this: C, T: TokenMap) {
 
 export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
+  const modernColorFunctions = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+  const isModernColorCall = (name: string, args?: Node[]) => {
+    if (!modernColorFunctions.has(name.toLowerCase())) {
+      return false;
+    }
+    if (!args || args.length !== 1) {
+      return false;
+    }
+    const firstArg = args[0];
+    return Boolean(firstArg instanceof Sequence && firstArg.value.length >= 2);
+  };
 
   alt ??= (ctx: RuleContext = {}) => [
     {
@@ -3359,10 +3370,12 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
 
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
+          const functionName = name.image.slice(0, -1);
+          const modernSyntax = isModernColorCall(functionName, args);
           return new Call({
-            name: name.image.slice(0, -1),
+            name: functionName,
             args
-          }, undefined, location, this.context);
+          }, modernSyntax ? { modernSyntax: true } : undefined, location, this.context);
         }
       }
     }

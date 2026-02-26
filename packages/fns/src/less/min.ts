@@ -1,5 +1,4 @@
 import { Any, Dimension, Node, defineFunction } from '@jesscss/core';
-import { syncLog } from '@jesscss/core/debug-log';
 
 type UnitGroup = Record<string, number>;
 
@@ -46,22 +45,6 @@ export default defineFunction(
     const values: Record<string, number> = {};
     let unitStatic: string | undefined;
     let unitClone: string | undefined;
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'minmax-debug',
-      hypothesisId: 'HMM1',
-      location: 'packages/fns/src/less/min.ts:entry',
-      message: 'min called',
-      data: {
-        argTypes: args.map(a => a?.type ?? typeof a),
-        argCount: args.length,
-        unitMode,
-        isLooseMode
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
 
     for (let i = 0; i < args.length; i++) {
       let current = args[i] as unknown;
@@ -70,17 +53,6 @@ export default defineFunction(
           args.push(...((current as any).value as Node[]));
           continue;
         }
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'minmax-debug',
-          hypothesisId: 'HMM2',
-          location: 'packages/fns/src/less/min.ts:incompatibleType',
-          message: 'min incompatible type',
-          data: { currentType: (current as any)?.type ?? typeof current },
-          timestamp: Date.now()
-        });
-        // #endregion
         throw new TypeError('incompatible types');
       }
 
@@ -112,22 +84,6 @@ export default defineFunction(
     }
     const sep = this?.context?.compress ? ',' : ', ';
     const serialized = order.map(n => n.toString({ context: this?.context }).trimStart());
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'minmax-debug',
-      hypothesisId: 'HMM3',
-      location: 'packages/fns/src/less/min.ts:fallbackAny',
-      message: 'min returned fallback any',
-      data: {
-        orderTypes: order.map(n => n?.type ?? null),
-        orderValues: order.map(n => n?.toString?.({ context: this?.context })),
-        normalizedValues: serialized,
-        orderLen: order.length
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
     return new Any(`min(${serialized.join(sep)})`);
   },
   {

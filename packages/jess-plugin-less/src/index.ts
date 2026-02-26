@@ -82,42 +82,6 @@ export class LessPlugin extends AbstractPlugin {
       tree.register('function', new JsFunction({ name: runtimeName, fn: value as (...args: any[]) => any }));
       registeredNames.push(runtimeName);
     }
-    const expected = ['replace', '%', 'iscolor', 'iskeyword', 'isnumber', 'isstring', 'isunit', 'get-unit'];
-    const missingExpected = expected.filter(name => !registeredNames.includes(name));
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '34ceef'
-      },
-      body: JSON.stringify({
-        sessionId: '34ceef',
-        runId: 'function-resolution',
-        hypothesisId: 'H2',
-        location: 'packages/jess-plugin-less/src/index.ts:_registerFunctions',
-        message: 'Registered Less function names',
-        data: {
-          total: registeredNames.length,
-          missingExpected,
-          hasAdd: registeredNames.includes('add'),
-          hasIncrement: registeredNames.includes('increment'),
-          hasUnderscoreColor: registeredNames.includes('_color'),
-          hasBoolean: registeredNames.includes('boolean'),
-          hasIf: registeredNames.includes('if'),
-          hasPi: registeredNames.includes('pi'),
-          hasPow: registeredNames.includes('pow'),
-          hasMod: registeredNames.includes('mod'),
-          hasTint: registeredNames.includes('tint'),
-          hasShade: registeredNames.includes('shade'),
-          hasHsvHue: registeredNames.includes('hsvhue'),
-          hasHsvSaturation: registeredNames.includes('hsvsaturation'),
-          hasHsvValue: registeredNames.includes('hsvvalue')
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
   }
 
   expandImport(importPath: string, currentDir: string) {

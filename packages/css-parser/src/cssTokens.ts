@@ -465,7 +465,10 @@ export const rawCssTokens = () => ({
       },
       {
         name: 'NthIdent',
-        pattern: /-?n/,
+        // Only match bare `n`/`-n` forms used by :nth-* grammar.
+        // Without this guard, identifiers like `negation` are tokenized as PlainIdent
+        // via longer_alt, preventing GenericFunctionStart tokenization.
+        pattern: '-?n(?!{{nmchar}})',
         longer_alt: 'PlainIdent',
         line_breaks: false,
         categories: ['Ident']

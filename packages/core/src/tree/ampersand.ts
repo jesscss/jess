@@ -8,8 +8,6 @@ import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { F_VISIBLE } from './node.js';
-import { syncLog } from '../debug-log.js';
-
 export type AmpersandValue = {
   /**
    * The only value that may exist is an anonymous value
@@ -204,21 +202,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       selector.post = undefined;
 
       if (appendValue && !isNode(selector, 'Nil')) {
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'arg-contract-pre-fix',
-          hypothesisId: 'H14_AMP_EVAL',
-          location: 'packages/core/src/tree/ampersand.ts:evalNode:beforeAppend',
-          message: 'Ampersand appendValue evaluation',
-          data: {
-            appendValue,
-            selectorType: selector.type,
-            selectorValue: selector.valueOf()
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
         let doAppendValue = (n: Selector) => {
           let appended = false;
           for (let s of n.nodes(true)) {
@@ -268,24 +251,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // Only set hoistToRoot if we actually wrapped or if it was already set
       if (shouldWrapSelectorList || shouldWrapComplexSelector || this.hoistToRoot) {
         result.hoistToRoot = true;
-      }
-      if (appendValue !== undefined) {
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'arg-contract-pre-fix',
-          hypothesisId: 'H14_AMP_EVAL',
-          location: 'packages/core/src/tree/ampersand.ts:evalNode:result',
-          message: 'Ampersand eval result',
-          data: {
-            appendValue,
-            resultType: result.type,
-            resultValue: result.valueOf(),
-            hoistToRoot: !!result.hoistToRoot
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
       }
       return result;
     }

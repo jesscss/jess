@@ -69,7 +69,7 @@ export class Dimension extends Node<DimensionValue> {
       if (unit) {
         throw new TypeError(`Cannot convert "${this}" to a color`);
       }
-      let thisColor = new Color({ format: ColorFormat.RGB }).inherit(this);
+      let thisColor = new Color({}, { format: ColorFormat.RGB }).inherit(this);
       thisColor.rgb = [number, number, number];
       return thisColor.operate(b, op, context).inherit(this);
     }
@@ -155,7 +155,7 @@ export class Dimension extends Node<DimensionValue> {
         }
         return super.compare(b, context);
       }
-      let thisColor = new Color({ format: ColorFormat.RGB }).inherit(this);
+      let thisColor = new Color({}, { format: ColorFormat.RGB }).inherit(this);
       thisColor.rgb = [aVal, aVal, aVal];
       return thisColor.compare(b);
     }

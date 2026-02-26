@@ -404,24 +404,34 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (tokenMatcher(token, T.Ident)) {
       // Check if it's a color keyword
       const colorKey = tokValue.toLowerCase();
-      if (colors[colorKey as keyof typeof colors]) {
+      if (colorKey === 'transparent') {
+        result = new Color(
+          {
+            node: 'transparent',
+            rgb: [0, 0, 0],
+            alpha: 0
+          },
+          { format: ColorFormat.HEX },
+          this.getLocationInfo(token),
+          this.context
+        );
+      } else if (colors[colorKey as keyof typeof colors]) {
         // Create a Color node with the keyword data
         const colorValue = colors[colorKey as keyof typeof colors];
         const colorNode = new Color(
           {
             node: tokValue, // Store the original keyword string
-            format: ColorFormat.HEX,
             rgb: colorValue,
             alpha: 1
           },
-          undefined,
+          { format: ColorFormat.HEX },
           this.getLocationInfo(token),
           this.context
         );
         result = colorNode;
       } else {
         // In value position, treat as a generic identifier
-        result = new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
+        result = new Any(tokValue, { role: 'ident' }, this.getLocationInfo(token), this.context);
       }
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };

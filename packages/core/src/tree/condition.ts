@@ -98,28 +98,6 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       () => left.eval(context),
       (a) => {
         if (!right) {
-          // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Debug-Session-Id': '34ceef'
-            },
-            body: JSON.stringify({
-              sessionId: '34ceef',
-              runId: 'boolean-condition-eval',
-              hypothesisId: 'H_cond_bool_1',
-              location: 'packages/core/src/tree/condition.ts:evalNode:unaryPreCoerce',
-              message: 'Unary condition coercion snapshot',
-              data: {
-                rawLeftType: left?.type ?? null,
-                evalLeftType: (a as Node)?.type ?? null,
-                negate: negated
-              },
-              timestamp: Date.now()
-            })
-          }).catch(() => {});
-          // #endregion
           // Defer unary coercion to the final stage to avoid double-negation.
           return a;
         }

@@ -12,9 +12,6 @@ import {
   type FunctionThis,
   VarDeclaration
 } from '@jesscss/core';
-import { syncLog } from '@jesscss/core/debug-log';
-
-let eachInjectionProbeCount = 0;
 
 /**
  * This is a 1-based iterator. Meaning,
@@ -34,24 +31,6 @@ let eachInjectionProbeCount = 0;
 const each = defineFunction(
   'each',
   async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'each-escaped-paren',
-      hypothesisId: 'H_each_1_H_each_2',
-      location: 'packages/fns/src/less/each.ts:entry',
-      message: 'each() entry list shape',
-      data: {
-        listType: list?.type ?? null,
-        isParen: list instanceof Paren,
-        parenEscaped: list instanceof Paren ? !!list.options?.escaped : false,
-        parenInnerType: list instanceof Paren && list.value ? list.value.type : null,
-        isList: list instanceof List,
-        isSequence: list instanceof Sequence
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
     let entries = getEntries(list);
     /** If a Node is not list-like, wrap it */
 
@@ -81,22 +60,6 @@ const each = defineFunction(
     }
 
     for (let [value, key] of entries) {
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'each-escaped-paren',
-        hypothesisId: 'H_each_3',
-        location: 'packages/fns/src/less/each.ts:iteration',
-        message: 'each() iteration value shape',
-        data: {
-          keyType: key instanceof Node ? key.type : typeof key,
-          keyValue: key instanceof Node ? key.valueOf?.() : key,
-          valueType: value instanceof Node ? value.type : typeof value,
-          valueString: value instanceof Node ? value.toString({ context: this.context }) : String(value)
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
       let clone = mixinRules.clone(true);
       let keyStr = typeof key === 'number' ? `${key + 1}` : key;
       clone.value.unshift(new VarDeclaration({
@@ -112,32 +75,6 @@ const each = defineFunction(
         name: new Any('value', { role: 'property' }),
         value: await value.eval(this.context)
       }));
-      if (eachInjectionProbeCount < 20) {
-        eachInjectionProbeCount++;
-        const firstThree = clone.value.slice(0, 3).map((n) => {
-          if (n instanceof VarDeclaration) {
-            return n.value.name.toTrimmedString();
-          }
-          return n.type;
-        });
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'interpolated-recursion',
-          hypothesisId: 'H41',
-          location: 'packages/fns/src/less/each.ts:each',
-          message: 'each() injected iteration bindings',
-          data: {
-            indexValue: index - 1,
-            keyType: key instanceof Node ? key.type : typeof key,
-            keyStrType: keyStr instanceof Node ? keyStr.type : typeof keyStr,
-            valueType: value instanceof Node ? value.type : typeof value,
-            firstThree
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
       let result = await clone.eval(this.context);
       if (result instanceof Rules) {
         accumulatedNodes.push(...result.value);

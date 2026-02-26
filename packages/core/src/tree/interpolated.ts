@@ -7,20 +7,11 @@ import { SelectorList } from './selector-list.js';
 import type { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
-import { syncLog } from '../debug-log.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
 export const INTERPOLATION_PLACEHOLDER = '%%';
 const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
-
-function postDebugLog(payload: Record<string, unknown>) {
-  syncLog({
-    sessionId: process.env.DEBUG_SESSION_ID,
-    ...payload,
-    timestamp: Date.now()
-  });
-}
 
 export type InterpolatedValue = {
   /** String with INTERPOLATION_PLACEHOLDER placeholders */
@@ -79,59 +70,13 @@ export class Interpolated<
       try {
         replacement = replacements[i++];
       } catch (error: unknown) {
-        // #region agent log
-        postDebugLog({
-          runId: 'interpolated-recursion',
-          hypothesisId: 'H22',
-          location: 'packages/core/src/tree/interpolated.ts:replace',
-          message: 'Failed reading interpolation replacement slot',
-          data: {
-            source,
-            index: i,
-            errorName: error instanceof Error ? error.name : 'Unknown',
-            errorMessage: error instanceof Error ? error.message : String(error)
-          }
-        });
-        // #endregion
         throw error;
       }
       let result = '';
       if (replacement) {
-        if (source.includes('item-')) {
-          // #region agent log
-          postDebugLog({
-            runId: 'interpolated-recursion',
-            hypothesisId: 'H17',
-            location: 'packages/core/src/tree/interpolated.ts:replace',
-            message: 'Interpolated replacement before valueOf',
-            data: {
-              source,
-              replacementKind: typeof replacement,
-              replacementIsSelf: replacement === this,
-              replacementCtor: Object.getPrototypeOf(replacement)?.constructor?.name ?? null,
-              replacementType: replacement.type,
-              valueOfOwner: replacement.valueOf === Node.prototype.valueOf ? 'base' : 'custom'
-            }
-          });
-          // #endregion
-        }
         try {
           result = String(replacement.valueOf());
         } catch (error: unknown) {
-          // #region agent log
-          postDebugLog({
-            runId: 'interpolated-recursion',
-            hypothesisId: 'H15',
-            location: 'packages/core/src/tree/interpolated.ts:replace',
-            message: 'replacement.valueOf threw in Interpolated.replace',
-            data: {
-              source,
-              replacementKind: typeof replacement,
-              errorName: error instanceof Error ? error.name : 'Unknown',
-              errorMessage: error instanceof Error ? error.message : String(error)
-            }
-          });
-          // #endregion
           throw error;
         }
       }

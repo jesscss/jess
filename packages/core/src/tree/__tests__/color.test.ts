@@ -11,7 +11,7 @@ describe('Color Node', () => {
         alpha: 1
       });
 
-      expect(color.value.format).toBe(ColorFormat.RGB);
+      expect(color.options.format).toBe(ColorFormat.RGB);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBe(1);
     });
@@ -23,7 +23,7 @@ describe('Color Node', () => {
         alpha: 1
       });
 
-      expect(color.value.format).toBe(ColorFormat.HSL);
+      expect(color.options.format).toBe(ColorFormat.HSL);
       expect(color.hsl).toEqual([0, 1, 0.5]); // Clamped values (decimals)
       expect(color.alpha).toBe(1);
     });
@@ -31,7 +31,7 @@ describe('Color Node', () => {
     it('should create color from hex string', () => {
       const color = new Color('#ff0000');
 
-      expect(color.value.format).toBe(ColorFormat.HEX);
+      expect(color.options.format).toBe(ColorFormat.HEX);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBe(1);
     });
@@ -39,7 +39,7 @@ describe('Color Node', () => {
     it('should create color from hex string with alpha', () => {
       const color = new Color('#ff000080');
 
-      expect(color.value.format).toBe(ColorFormat.HEX);
+      expect(color.options.format).toBe(ColorFormat.HEX);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBeCloseTo(0.5, 2);
     });
@@ -52,7 +52,7 @@ describe('Color Node', () => {
         alpha: 1
       });
 
-      expect(color.value.format).toBe(ColorFormat.HEX);
+      expect(color.options.format).toBe(ColorFormat.HEX);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBe(1);
     });
@@ -216,7 +216,7 @@ describe('Color Node', () => {
 
       const result = color1.operate(color2, '+');
 
-      expect(result.value.format).toBe(ColorFormat.HSL);
+      expect(result.options.format).toBe(ColorFormat.HSL);
     });
   });
 
@@ -361,7 +361,7 @@ describe('Color Node', () => {
 
       const color = Color.fromFunctionCall(ColorFormat.RGB, args, 1);
 
-      expect(color.value.format).toBe(ColorFormat.RGB);
+      expect(color.options.format).toBe(ColorFormat.RGB);
       expect(color.value.node).toBeInstanceOf(Call);
       expect((color.value.node as Call).value.name).toBe('rgb');
       expect(color.alpha).toBe(1);
@@ -376,7 +376,7 @@ describe('Color Node', () => {
 
       const color = Color.fromFunctionCall(ColorFormat.HSL, args, 1);
 
-      expect(color.value.format).toBe(ColorFormat.HSL);
+      expect(color.options.format).toBe(ColorFormat.HSL);
       expect(color.value.node).toBeInstanceOf(Call);
       expect((color.value.node as Call).value.name).toBe('hsl');
       expect(color.alpha).toBe(1);

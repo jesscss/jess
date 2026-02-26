@@ -73,8 +73,6 @@ import {
 import { getInterpolatedOrString } from './utils.js';
 import type { ExtendTarget } from './lessActionsParser.js';
 import { all } from 'known-css-properties';
-import { syncLog } from '@jesscss/core/debug-log';
-
 function getParenFrames(ctx: RuleContext | undefined): boolean[] {
   return (ctx?.parenFrames as boolean[] | undefined) ?? [];
 }
@@ -333,31 +331,6 @@ export function main(this: P, T: TokenMap) {
         || $.LA(0).tokenType === T.Semi
       )),
       DEF: () => {
-        if (!RECORDING_PHASE) {
-          const la1 = $.LA(1);
-          const la1Line = la1.startLine ?? -1;
-          if (la1Line >= 295 && la1Line <= 304) {
-            // #region agent log
-            syncLog({
-              sessionId: process.env.DEBUG_SESSION_ID,
-              runId: 'mixin-arg-parse',
-              hypothesisId: 'H12',
-              location: 'packages/less-parser/src/productions.ts:main:beforeOr',
-              message: 'main loop before OR near paren-escapes',
-              data: {
-                requiredSemi,
-                la1Type: la1.tokenType.name,
-                la1Image: la1.image,
-                la1Line,
-                la1Col: la1.startColumn,
-                la0Type: $.LA(0).tokenType.name,
-                la0Image: $.LA(0).image
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
-          }
-        }
         const localAlt = typeof ruleAlt === 'function' ? ruleAlt(ctx) : ruleAlt;
         let value = $.OR(localAlt);
         if (!RECORDING_PHASE) {
@@ -376,46 +349,6 @@ export function main(this: P, T: TokenMap) {
               }
             } else {
               requiredSemi = !!value.requiredSemi;
-              if (value.location?.[1] && value.location[1] >= 295 && value.location[1] <= 304) {
-                // #region agent log
-                syncLog({
-                  sessionId: process.env.DEBUG_SESSION_ID,
-                  runId: 'mixin-arg-parse',
-                  hypothesisId: 'H13',
-                  location: 'packages/less-parser/src/productions.ts:main:afterOr',
-                  message: 'main loop parsed node near paren-escapes',
-                  data: {
-                    parsedType: value.type,
-                    parsedLine: value.location[1],
-                    requiredSemiAfter: requiredSemi,
-                    nextTokenType: $.LA(1).tokenType.name,
-                    nextTokenImage: $.LA(1).image,
-                    nextTokenLine: $.LA(1).startLine
-                  },
-                  timestamp: Date.now()
-                });
-                // #endregion
-              }
-              if (value instanceof Node && value.type === 'Call') {
-                // #region agent log
-                syncLog({
-                  sessionId: process.env.DEBUG_SESSION_ID,
-                  runId: 'mixin-arg-parse',
-                  hypothesisId: 'H10',
-                  location: 'packages/less-parser/src/productions.ts:main:requiredSemiFromCall',
-                  message: 'main loop set requiredSemi based on Call node',
-                  data: {
-                    requiredSemi,
-                    callLocationLine: value.location?.[1] ?? null,
-                    callNameType: (value as any).value?.name?.type ?? null,
-                    nextTokenType: $.LA(1).tokenType.name,
-                    nextTokenImage: $.LA(1).image,
-                    nextTokenLine: $.LA(1).startLine
-                  },
-                  timestamp: Date.now()
-                });
-                // #endregion
-              }
               rules.push(value);
               lastRule = value;
             }
@@ -460,28 +393,6 @@ export function declarationList(this: P, T: TokenMap) {
             // Less allows function calls like `each(...){...}` in declaration lists
             // without a required trailing semicolon.
             fnCall.requiredSemi = false;
-            const nameVal = String(fnCall.value.name?.valueOf?.() ?? '');
-            const callLine = fnCall.location?.[1] ?? -1;
-            if (callLine >= 295 && callLine <= 304) {
-              // #region agent log
-              syncLog({
-                sessionId: process.env.DEBUG_SESSION_ID,
-                runId: 'mixin-arg-parse',
-                hypothesisId: 'H11',
-                location: 'packages/less-parser/src/productions.ts:declarationList:functionCall',
-                message: 'declarationList parsed function call near paren-escapes',
-                data: {
-                  nameVal,
-                  requiredSemi: !!fnCall.requiredSemi,
-                  callLine,
-                  nextTokenType: $.LA(1).tokenType.name,
-                  nextTokenImage: $.LA(1).image,
-                  nextTokenLine: $.LA(1).startLine
-                },
-                timestamp: Date.now()
-              });
-              // #endregion
-            }
           }
           return fnCall;
         }
@@ -1057,23 +968,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
       const selectorLine = selector instanceof Node ? selector.location?.[1] ?? null : null;
       if (selectorValue === '.paren-escapes' || selectorValue === '.mixin') {
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'mixin-arg-parse',
-          hypothesisId: 'H7',
-          location: 'packages/less-parser/src/productions.ts:qualifiedRule:entrySelector',
-          message: 'qualifiedRule selector entry in paren-escapes area',
-          data: {
-            selectorValue,
-            selectorLine,
-            nextTokenType: $.LA(1).tokenType.name,
-            nextTokenImage: $.LA(1).image
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
+}
     }
     if (!isSelectorList && !isPossibleMixinDefinition && !RECORDING_PHASE) {
       for (let s of selector.nodes()) {
@@ -1095,25 +990,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
       if (selectorValue === '.mixin' || selectorValue.includes('.mixin')) {
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'mixin-arg-parse',
-          hypothesisId: 'H1',
-          location: 'packages/less-parser/src/productions.ts:qualifiedRule:mixinSelector',
-          message: 'qualifiedRule reached possible mixin selector',
-          data: {
-            selectorValue,
-            isSelectorList,
-            isPossibleMixinDefinition,
-            isPossibleMixinCall,
-            nextTokenType: $.LA(1).tokenType.name,
-            nextTokenImage: $.LA(1).image
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
+}
     }
 
     return $.OR2([
@@ -1125,24 +1002,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
             if (selectorValue === '.mixin' || selectorValue.includes('.mixin')) {
-              // #region agent log
-              syncLog({
-                sessionId: process.env.DEBUG_SESSION_ID,
-                runId: 'mixin-arg-parse',
-                hypothesisId: 'H2',
-                location: 'packages/less-parser/src/productions.ts:qualifiedRule:mixinArgsParsed',
-                message: 'qualifiedRule parsed mixin args and inspected next token',
-                data: {
-                  selectorValue,
-                  nextTokenType: next.name,
-                  argsSep: args?.options?.sep ?? null,
-                  argsCount: args?.value?.length ?? 0,
-                  argTypes: args?.value?.map(a => a.type) ?? []
-                },
-                timestamp: Date.now()
-              });
-              // #endregion
-            }
+}
           }
           if (next === T.LCurly || next === T.When) {
             isPossibleMixinCall = false;
@@ -1208,23 +1068,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
             const selectorLine = selector instanceof Node ? selector.location?.[1] ?? null : null;
             if (selectorValue === '.paren-escapes' || selectorValue === '.mixin') {
-              // #region agent log
-              syncLog({
-                sessionId: process.env.DEBUG_SESSION_ID,
-                runId: 'mixin-arg-parse',
-                hypothesisId: 'H8',
-                location: 'packages/less-parser/src/productions.ts:qualifiedRule:fallbackToQualifiedRuleBody',
-                message: 'qualifiedRule selected qualifiedRuleBody branch',
-                data: {
-                  selectorValue,
-                  selectorLine,
-                  la1Type: $.LA(1).tokenType.name,
-                  la1Image: $.LA(1).image
-                },
-                timestamp: Date.now()
-              });
-              // #endregion
-            }
+}
           }
           if (!RECORDING_PHASE) {
             $.endRule();
@@ -1262,22 +1106,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
             if (selectorValue === '.mixin' || selectorValue === '.paren-escapes') {
-              // #region agent log
-              syncLog({
-                sessionId: process.env.DEBUG_SESSION_ID,
-                runId: 'mixin-arg-parse',
-                hypothesisId: 'H9',
-                location: 'packages/less-parser/src/productions.ts:qualifiedRule:semiCallPath',
-                message: 'qualifiedRule selected semicolon-terminated mixin call branch',
-                data: {
-                  selectorValue,
-                  la1TypeBeforeConsume: $.LA(1).tokenType.name,
-                  la1ImageBeforeConsume: $.LA(1).image
-                },
-                timestamp: Date.now()
-              });
-              // #endregion
-            }
+}
           }
           // Call terminated by a semi-colon and not parens, deprecated
           $.CONSUME(T.Semi);
@@ -1747,28 +1576,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
           || usage === 'mixin-arg'
           || usage === 'default-param';
         const shouldBeCollectionFinal = shouldBeCollection && !forceMixinForDynamicUsage;
-
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'detached-ruleset-classification',
-          hypothesisId: 'H44',
-          location: 'packages/less-parser/src/productions.ts:anonymousMixinDefinition',
-          message: 'Detached ruleset classification decision',
-          data: {
-            usage,
-            hasAnonToken: !!anonToken,
-            shouldBeCollection,
-            forceMixinForDynamicUsage,
-            shouldBeCollectionFinal,
-            rulesLen: rules.value.length,
-            declarationCount: rules.value.filter((n: Node) => n.type === 'Declaration').length,
-            varDeclCount: rules.value.filter((n: Node) => n.type === 'VarDeclaration').length
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-        if (shouldBeCollectionFinal) {
+if (shouldBeCollectionFinal) {
           return new Collection(rules.value, rules.options, $.endRule(), this.context);
         }
       }
@@ -2385,22 +2193,7 @@ export function ifFunction(this: P, T: TokenMap) {
     $.startRule();
 
     let name = $.CONSUME(T.IfFunction);
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'functions-if-parse',
-      hypothesisId: 'H5',
-      location: 'packages/less-parser/src/productions.ts:ifFunction:entry',
-      message: 'ifFunction parsing started',
-      data: {
-        la1Image: $.LA(1).image,
-        la1TokenType: $.LA(1).tokenType?.name ?? 'unknown'
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-
-    let args: Node[] = [];
+let args: Node[] = [];
     let isCssBranch = false;
 
     $.OR([
@@ -2444,41 +2237,13 @@ export function ifFunction(this: P, T: TokenMap) {
             {
               ALT: () => {
                 $.CONSUME(T.Comma);
-                // #region agent log
-                syncLog({
-                  sessionId: process.env.DEBUG_SESSION_ID,
-                  runId: 'functions-if-parse',
-                  hypothesisId: 'H6',
-                  location: 'packages/less-parser/src/productions.ts:ifFunction:firstBranchArg',
-                  message: 'ifFunction parsing first branch argument',
-                  data: {
-                    la1Image: $.LA(1).image,
-                    la1TokenType: $.LA(1).tokenType?.name ?? 'unknown'
-                  },
-                  timestamp: Date.now()
-                });
-                // #endregion
-                node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                 if (!RECORDING_PHASE) {
                   args.push(node);
                 }
                 $.OPTION2(() => {
                   $.CONSUME2(T.Comma);
-                  // #region agent log
-                  syncLog({
-                    sessionId: process.env.DEBUG_SESSION_ID,
-                    runId: 'functions-if-parse',
-                    hypothesisId: 'H6',
-                    location: 'packages/less-parser/src/productions.ts:ifFunction:secondBranchArg',
-                    message: 'ifFunction parsing second branch argument',
-                    data: {
-                      la1Image: $.LA(1).image,
-                      la1TokenType: $.LA(1).tokenType?.name ?? 'unknown'
-                    },
-                    timestamp: Date.now()
-                  });
-                  // #endregion
-                  node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                   if (!RECORDING_PHASE) {
                     args.push(node);
                   }
@@ -2498,30 +2263,7 @@ export function ifFunction(this: P, T: TokenMap) {
         fallbackValue: isCssBranch ? true : undefined
       }, $.getLocationInfo(name), this.context);
       const callNode = new Call({ name: nameNode, args: args! }, undefined, location, this.context);
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-Session-Id': '34ceef'
-        },
-        body: JSON.stringify({
-          sessionId: '34ceef',
-          runId: 'parser-lowering',
-          hypothesisId: 'H9',
-          location: 'packages/less-parser/src/productions.ts:ifFunction:return',
-          message: 'ifFunction emitted lowered node',
-          data: {
-            nodeType: callNode.type,
-            argCount: args?.length ?? 0,
-            fnName: 'if',
-            branch: isCssBranch ? 'css' : 'less'
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
-      return callNode;
+return callNode;
     }
   };
 }
@@ -2532,49 +2274,14 @@ export function booleanFunction(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     let name = $.CONSUME(T.BooleanFunction);
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'functions-boolean-parse',
-      hypothesisId: 'H3',
-      location: 'packages/less-parser/src/productions.ts:booleanFunction:entry',
-      message: 'booleanFunction parsing started',
-      data: {
-        la1Image: $.LA(1).image,
-        la1TokenType: $.LA(1).tokenType?.name ?? 'unknown'
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-    let arg: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
+let arg: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
     $.CONSUME(T.RParen);
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       const conditionNode = arg instanceof Paren && arg.value instanceof Node ? arg.value : arg;
       const exprNode = new Expression(conditionNode, { parens: true }, location, this.context);
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-Session-Id': '34ceef'
-        },
-        body: JSON.stringify({
-          sessionId: '34ceef',
-          runId: 'parser-lowering',
-          hypothesisId: 'H10',
-          location: 'packages/less-parser/src/productions.ts:booleanFunction:return',
-          message: 'booleanFunction emitted Expression node',
-          data: {
-            nodeType: exprNode.type,
-            argType: conditionNode?.type ?? null
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
-      return exprNode;
+return exprNode;
     }
   };
 }
@@ -2602,26 +2309,14 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.PropertyReference);
           if (!RECORDING_PHASE) {
-            // #region agent log
-            syncLog({
-              sessionId: process.env.DEBUG_SESSION_ID,
-              runId: 'property-ref-parse',
-              hypothesisId: 'H_prop_ref_1',
-              location: 'packages/less-parser/src/productions.ts:varReference:property',
-              message: 'Parsed property reference token',
-              data: {
-                image: token.image
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
-            // Warn about $ident in custom property values - it's treated as literal text, not a property reference
+// Warn about $ident in custom property values - it's treated as literal text, not a property reference
             if (ctx.inCustomPropertyValue) {
               $.warnDeprecation(
                 '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.',
                 token,
                 'property-in-unknown-value'
               );
+              return new Any(token.image, { role: 'any' }, $.getLocationInfo(token), this.context);
             }
             return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), this.context);
           }
@@ -2652,6 +2347,7 @@ export function varReference(this: P, T: TokenMap) {
                 token,
                 'variable-in-unknown-value'
               );
+              return new Any(token.image, { role: 'any' }, $.getLocationInfo(token), this.context);
             }
             return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), this.context);
           }
@@ -2730,6 +2426,17 @@ export function valueReference(this: P, T: TokenMap) {
 
 export function functionCall(this: P, T: TokenMap) {
   const $ = this;
+  const modernColorFunctions = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+  const isModernColorCall = (name: string, args?: Node[]) => {
+    if (!modernColorFunctions.has(name.toLowerCase())) {
+      return false;
+    }
+    if (!args || args.length !== 1) {
+      return false;
+    }
+    const firstArg = args[0];
+    return Boolean(isNode(firstArg, 'Sequence') && firstArg.value.length >= 2);
+  };
 
   let funcAlt = (ctx: RuleContext = {}) => [
     {
@@ -2773,7 +2480,13 @@ export function functionCall(this: P, T: TokenMap) {
           }
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
           /** Less / Sass functions we try to call that throw just get turned into calls. */
-          return new Call({ name: nameNode, args }, { silentFail: true }, location, this.context);
+          const modernSyntax = isModernColorCall(nameValue, args);
+          return new Call(
+            { name: nameNode, args },
+            { silentFail: true, ...(modernSyntax ? { modernSyntax: true } : {}) },
+            location,
+            this.context
+          );
         }
       }
     }
@@ -2860,23 +2573,7 @@ export function value(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     if ($.LA(1).tokenType === T.Percent) {
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'functions-percent-parse',
-        hypothesisId: 'H1',
-        location: 'packages/less-parser/src/productions.ts:value:percentToken',
-        message: 'value() entered with Percent token lookahead',
-        data: {
-          la1Image: $.LA(1).image,
-          currentFunctionName: (ctx as any).currentFunctionName ?? 'unknown',
-          allowComma: !!ctx.allowComma,
-          inner: !!ctx.inner
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+}
     // eslint-disable-next-line @typescript-eslint/naming-convention
     let _isMixinReference = undefined as boolean | undefined;
     const isMixinReference = () => {
@@ -3303,21 +3000,7 @@ export function guardInParens(this: P, T: TokenMap) {
 
   return (ctx: RuleContext) => {
     $.startRule();
-    // #region agent log
-    syncLog({
-      sessionId: process.env.DEBUG_SESSION_ID,
-      runId: 'functions-boolean-parse',
-      hypothesisId: 'H4',
-      location: 'packages/less-parser/src/productions.ts:guardInParens:entry',
-      message: 'guardInParens entry token',
-      data: {
-        la1Image: $.LA(1).image,
-        la1TokenType: $.LA(1).tokenType?.name ?? 'unknown'
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-    let node = $.OR([
+let node = $.OR([
       { ALT: () => $.SUBRULE($.guardDefault, { ARGS: [ctx] }) },
       {
         ALT: () => {
@@ -3635,31 +3318,7 @@ export function mixinArgs(this: P, T: TokenMap) {
 
     const lparen = $.CONSUME(T.LParen);
     if (!$.RECORDING_PHASE) {
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'mixin-arg-parse',
-        hypothesisId: 'H3',
-        location: 'packages/less-parser/src/productions.ts:mixinArgs:entry',
-        message: 'entered mixinArgs after opening parenthesis',
-        data: {
-          isDefinitionCtx: !!ctx.isDefinition,
-          allowCommaCtx: !!ctx.allowComma,
-          lparenLine: lparen.startLine,
-          lparenColumn: lparen.startColumn,
-          nextTokenType: $.LA(1).tokenType.name,
-          nextTokenImage: $.LA(1).image,
-          nextTokenLine: $.LA(1).startLine,
-          nextTokenColumn: $.LA(1).startColumn,
-          la2Type: $.LA(2).tokenType.name,
-          la2Image: $.LA(2).image,
-          la2Line: $.LA(2).startLine,
-          la2Column: $.LA(2).startColumn
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+}
     // Clear ctx.node when parsing arguments - arguments should start fresh, not inherit the parent node
     // Calls intentionally push a `false` paren frame (matches `Call.evalNode`)
     const argCtx: RuleContext = {
@@ -3670,23 +3329,7 @@ export function mixinArgs(this: P, T: TokenMap) {
     };
     $.OPTION(() => {
       if (!$.RECORDING_PHASE) {
-        // #region agent log
-        syncLog({
-          sessionId: process.env.DEBUG_SESSION_ID,
-          runId: 'mixin-arg-parse',
-          hypothesisId: 'H6',
-          location: 'packages/less-parser/src/productions.ts:mixinArgs:optionTaken',
-          message: 'mixinArgs OPTION entered for mixinArgList',
-          data: {
-            la1Type: $.LA(1).tokenType.name,
-            la1Image: $.LA(1).image,
-            la1Line: $.LA(1).startLine,
-            la1Column: $.LA(1).startColumn
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
+}
       args = $.SUBRULE($.mixinArgList, { ARGS: [argCtx] });
     });
     $.CONSUME(T.RParen);
@@ -3888,24 +3531,7 @@ export function mixinArgList(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     if (!RECORDING_PHASE) {
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'mixin-arg-parse',
-        hypothesisId: 'H4',
-        location: 'packages/less-parser/src/productions.ts:mixinArgList:entry',
-        message: 'entered mixinArgList',
-        data: {
-          isDefinitionCtx: !!ctx.isDefinition,
-          la1Type: $.LA(1).tokenType.name,
-          la1Image: $.LA(1).image,
-          la2Type: $.LA(2).tokenType.name,
-          la2Image: $.LA(2).image
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+}
     let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
     let commaNodes: Node[] | undefined;
@@ -4040,25 +3666,7 @@ export function mixinArg(this: P, T: TokenMap) {
 
     let isDeclaration = atStart && $.LA(2).tokenType === T.Colon;
     if (!RECORDING_PHASE && atStart) {
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'mixin-arg-parse',
-        hypothesisId: 'H5',
-        location: 'packages/less-parser/src/productions.ts:mixinArg:atStart',
-        message: 'mixinArg encountered @-prefixed token',
-        data: {
-          isDefinition,
-          firstTokenType: firstToken.tokenType.name,
-          firstTokenImage: firstToken.image,
-          la2Type: $.LA(2).tokenType.name,
-          la2Image: $.LA(2).image,
-          isDeclaration
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+}
 
     return $.OR([
       {
@@ -4148,41 +3756,9 @@ export function callArgument(this: P, T: TokenMap) {
     const la1Image = $.LA(1).image ?? '';
     const la2Image = $.LA(2).image ?? '';
     if (la1Image.includes('$') || la2Image.includes('$') || $.LA(1).tokenType === T.Unknown) {
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'length-arg-parse',
-        hypothesisId: 'H_len_parse_1',
-        location: 'packages/less-parser/src/productions.ts:callArgument:tokenSnapshot',
-        message: 'callArgument token snapshot around $/unknown',
-        data: {
-          currentFunctionName: (ctx as any).currentFunctionName ?? null,
-          la1Type: $.LA(1).tokenType?.name ?? 'unknown',
-          la1Image,
-          la2Type: $.LA(2).tokenType?.name ?? 'unknown',
-          la2Image
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+}
     if ($.LA(1).tokenType === T.Percent) {
-      // #region agent log
-      syncLog({
-        sessionId: process.env.DEBUG_SESSION_ID,
-        runId: 'functions-percent-parse',
-        hypothesisId: 'H2',
-        location: 'packages/less-parser/src/productions.ts:callArgument:percentToken',
-        message: 'callArgument() sees Percent token at argument start',
-        data: {
-          la1Image: $.LA(1).image,
-          allowComma: !!ctx.allowComma,
-          inner: !!ctx.inner
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
+}
     return $.OR([
       {
         GATE: () => $.LA(1).tokenType === T.AnonMixinStart || $.LA(1).tokenType === T.LCurly,
