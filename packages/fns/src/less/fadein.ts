@@ -6,6 +6,7 @@ import {
   defineFunction,
   ColorFormat
 } from '@jesscss/core';
+import { syncLog } from '@jesscss/core/debug-log';
 
 const fadein = defineFunction(
   'fadein',
@@ -17,13 +18,25 @@ const fadein = defineFunction(
     }
 
     const newAlpha = color._alpha + adjustAmount;
+    const outputAlpha = Math.round(newAlpha * 1e12) / 1e12;
+    const outputFormat = ColorFormat.RGB;
+    syncLog({
+      fn: 'fadein',
+      inputFormat: color.value.format ?? null,
+      inputAlpha: color._alpha,
+      amountNumber: amount.value.number,
+      amountUnit: amount.value.unit ?? '',
+      methodValue: method?.value ?? null,
+      outputFormat: outputFormat ?? null,
+      outputAlpha
+    });
 
     // Create new color with adjusted alpha, preserving original format
     return new Color({
-      format: color.value.format,
+      format: outputFormat,
       rgb: color._rgb,
       hsl: color._hsl,
-      alpha: newAlpha
+      alpha: outputAlpha
     }).inherit(color);
   },
   {

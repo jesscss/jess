@@ -108,6 +108,8 @@ export class LessPlugin extends AbstractPlugin {
           hasPi: registeredNames.includes('pi'),
           hasPow: registeredNames.includes('pow'),
           hasMod: registeredNames.includes('mod'),
+          hasTint: registeredNames.includes('tint'),
+          hasShade: registeredNames.includes('shade'),
           hasHsvHue: registeredNames.includes('hsvhue'),
           hasHsvSaturation: registeredNames.includes('hsvsaturation'),
           hasHsvValue: registeredNames.includes('hsvvalue')

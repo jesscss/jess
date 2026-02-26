@@ -1,11 +1,5 @@
 import { Any, Node, Quoted, defineFunction } from '@jesscss/core';
-
-function nodeToString(value: Node, context: any): string {
-  if (value instanceof Quoted || value instanceof Any) {
-    return value.valueOf();
-  }
-  return value.toTrimmedString({ context });
-}
+import { serializeNodeValue } from '../util/serialize-node.js';
 
 const replace = defineFunction(
   'replace',
@@ -26,8 +20,8 @@ const replace = defineFunction(
     fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '34ceef'
+        ['Content-Type']: 'application/json',
+        ['X-Debug-Session-Id']: '34ceef'
       },
       body: JSON.stringify({
         sessionId: '34ceef',
@@ -46,20 +40,20 @@ const replace = defineFunction(
     }).catch(() => {});
     // #endregion
 
-    const source = nodeToString(input, this.context);
-    const patternValue = nodeToString(pattern, this.context);
+    const source = serializeNodeValue(input, this.context);
+    const patternValue = serializeNodeValue(pattern, this.context);
     const replacementValue = replacement instanceof Quoted
       ? replacement.valueOf()
-      : nodeToString(replacement, this.context);
-    const flagValue = flags ? nodeToString(flags, this.context) : '';
+      : serializeNodeValue(replacement, this.context);
+    const flagValue = flags ? serializeNodeValue(flags, this.context) : '';
     const result = source.replace(new RegExp(patternValue, flagValue), replacementValue);
 
     // #region agent log
     fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '34ceef'
+        ['Content-Type']: 'application/json',
+        ['X-Debug-Session-Id']: '34ceef'
       },
       body: JSON.stringify({
         sessionId: '34ceef',

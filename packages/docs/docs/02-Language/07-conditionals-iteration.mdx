@@ -36,7 +36,7 @@ $if ($theme = "dark") {
 
 ```less
 // An NPM module that gives us a season method
-@-from "some-date-fns" import * as date; 
+@-use "some-date-fns" as date; 
 
 $season: $date.getSeason($date.now()); // e.g., returns "spring", "summer", etc.
 

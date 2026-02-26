@@ -76,6 +76,7 @@ export { default as rgba } from './rgba.js';
 export { default as saturate } from './saturate.js';
 export { default as saturation } from './saturation.js';
 export { default as shade } from './shade.js';
+export { default as tint } from './tint.js';
 export { default as spin } from './spin.js';
 
 export { default as each } from './each.js';

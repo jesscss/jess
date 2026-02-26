@@ -155,6 +155,15 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
   - Core extend matrix (excluding intentionally deferred `extend-roots`/import boundary tests) passes:
     `src/tree/util/__tests__/extend*`, `extend-eval-integration`, `extend-less-fixtures`, `extend-rules`.
 
+**Less fixture: functions.less fade cluster (2026-02-26):**
+
+- **Area:** less functions / color alpha formatting (`fade`, `fadein`, `fadeout`)
+- **Last passing baseline:** N/A for full `all-less`; focused fixture still has unrelated failures after this cluster.
+- **Observed runtime evidence:** `syncLog` in `packages/fns/src/less/fade*.ts` showed `inputFormat: 0 (HEX)` and `outputFormat: 0` before fix, causing hex8 output (`#ff0000f2`) instead of expected `rgba(...)`.
+- **What was fixed:** forced `fade`, `fadein`, and `fadeout` outputs to `ColorFormat.RGB`; normalized `fadein` computed alpha to remove IEEE drift (`0.9500000000000001` -> `0.95`).
+- **Verification result:** after required rebuild (`@jesscss/fns`, `@jesscss/plugin-less`) and focused test run (`packages/jess/test/less/all-less.test.ts`), all fade/fadein/fadeout diffs are gone; next first mismatch begins at `hsv` format and downstream unresolved function fallbacks.
+- **Next step:** investigate `hsv` output format mismatch (`expected hex`, `received rgb`) with runtime evidence in `packages/fns/src/less/hsv.ts`/shared color formatting path before behavior change.
+
 ---
 
 ## 5. Session discipline (for Cursor/agent)
