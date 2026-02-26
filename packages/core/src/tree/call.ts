@@ -256,7 +256,9 @@ export class Call extends Node<CallValue, CallOptions> {
         'tan',
         'sin',
         'min',
-        'max'
+        'max',
+        'length',
+        'extract'
       ]);
       try {
         if (debugFnNames.has(fnNameForLog)) {
@@ -277,6 +279,13 @@ export class Call extends Node<CallValue, CallOptions> {
                 fn: fnNameForLog,
                 silentFail: !!this.options?.silentFail,
                 argTypes: args?.map(arg => arg.type) ?? [],
+                argStrings: args?.map((arg) => {
+                  try {
+                    return arg.toString({ context });
+                  } catch {
+                    return `[unprintable:${arg.type}]`;
+                  }
+                }) ?? [],
                 nameNodeType: isNode(name) ? name.type : typeof name
               },
               timestamp: Date.now()

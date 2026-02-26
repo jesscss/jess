@@ -121,7 +121,7 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
     } else if (collection.type === 'Rules') {
       rules = (collection as Rules).value;
     }
-    for (let [key, value] of rules!.entries()) {
+    for (let [, value] of rules!.entries()) {
       if (value.type === 'Comment') {
         continue;
       }
@@ -132,33 +132,12 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
     }
   } else if (isNode(collection) && isArray((collection as Node).value)) {
     // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '34ceef'
-      },
-      body: JSON.stringify({
-        sessionId: '34ceef',
-        runId: 'getEntries-node-array',
-        hypothesisId: 'H_getEntries_2',
-        location: 'packages/core/src/tree/util/collections.ts:getEntries:nodeArrayFetch',
-        message: 'getEntries() hit node.value-array branch',
-        data: {
-          nodeType: (collection as Node).type,
-          valueLength: ((collection as Node).value as unknown[]).length
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
-    // #region agent log
     syncLog({
       sessionId: process.env.DEBUG_SESSION_ID,
       runId: 'getEntries-node-array',
-      hypothesisId: 'H_getEntries_1',
+      hypothesisId: 'H_getEntries_2',
       location: 'packages/core/src/tree/util/collections.ts:getEntries:nodeArray',
-      message: 'getEntries() iterating node.value array',
+      message: 'getEntries() hit node.value-array branch',
       data: {
         nodeType: (collection as Node).type,
         valueLength: ((collection as Node).value as unknown[]).length

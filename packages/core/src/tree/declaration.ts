@@ -144,6 +144,45 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Ensure exactly one space after ':' by adding one space
       w.add(' ');
       w.add(normalizedValue, value);
+      if (normalizedValue === '') {
+        // #region agent log
+        postDebugLog({
+          runId: 'empty-decl-spacing',
+          hypothesisId: 'H_space_1',
+          location: 'packages/core/src/tree/declaration.ts:declTrimmedString',
+          message: 'Declaration spacing snapshot',
+          data: {
+            name: name.valueOf(),
+            rawValueOut: valOut,
+            normalizedValue,
+            outAfterValue: w.getSince(mark)
+          }
+        });
+        // #endregion
+        // #region agent log
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '34ceef'
+          },
+          body: JSON.stringify({
+            sessionId: '34ceef',
+            runId: 'empty-decl-spacing',
+            hypothesisId: 'H_space_1',
+            location: 'packages/core/src/tree/declaration.ts:declTrimmedString',
+            message: 'Declaration spacing snapshot',
+            data: {
+              name: name.valueOf(),
+              rawValueOut: valOut,
+              normalizedValue,
+              outAfterValue: w.getSince(mark)
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
+      }
       if (!isNode(value, 'Collection')) {
         if (important) {
           let imp = w.capture(() => important.toString(options));
@@ -270,7 +309,36 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             const hasInterpolation =
               value.type === 'Interpolated'
               || [...value.children(true)].some((child) => child.type === 'Interpolated');
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'custom-prop-eval',
+              hypothesisId: 'H_cp_1_H_cp_2',
+              location: 'packages/core/src/tree/declaration.ts:evalNode:customCheck',
+              message: 'Custom property evaluation gate',
+              data: {
+                name: name.valueOf(),
+                valueType: value.type,
+                hasInterpolation
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
             if (!hasInterpolation) {
+              // #region agent log
+              syncLog({
+                sessionId: process.env.DEBUG_SESSION_ID,
+                runId: 'custom-prop-eval',
+                hypothesisId: 'H_cp_1',
+                location: 'packages/core/src/tree/declaration.ts:evalNode:customSkip',
+                message: 'Skipping custom property value eval',
+                data: {
+                  name: name.valueOf(),
+                  valueType: value.type
+                },
+                timestamp: Date.now()
+              });
+              // #endregion
               return node;
             }
             context.inCustom = true;
@@ -296,6 +364,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           context.inCustom = false;
           if (maybeNewValue instanceof Nil) {
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'custom-prop-eval',
+              hypothesisId: 'H_cp_3',
+              location: 'packages/core/src/tree/declaration.ts:evalNode:nilResult',
+              message: 'Declaration eval produced Nil',
+              data: {
+                name: name.valueOf(),
+                isCustomProperty
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
             return (value as Nil).inherit(node);
           }
           node.value.value = maybeNewValue as Node;

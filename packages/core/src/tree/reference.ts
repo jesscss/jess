@@ -549,6 +549,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             && type === 'function'
             && debugFunctionNames.has(valueKeyStr2)
           ) {
+            const rulesCtxFn = context.rulesContext?.getRegistry?.('function');
+            const rulesParentFn = this.rulesParent?.getRegistry?.('function');
+            const rootFn = context.root?.getRegistry?.('function');
             lessFunctionLookupProbeCount++;
             // #region agent log
             syncLog({
@@ -560,7 +563,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               data: {
                 fn: valueKeyStr2,
                 rulesContextType: context.rulesContext?.type ?? null,
-                rulesParentType: this.rulesParent?.type ?? null
+                rulesParentType: this.rulesParent?.type ?? null,
+                inRulesContextRegistry: !!rulesCtxFn?.index?.get?.(valueKeyStr2),
+                inRulesParentRegistry: !!rulesParentFn?.index?.get?.(valueKeyStr2),
+                inRootRegistry: !!rootFn?.index?.get?.(valueKeyStr2)
               },
               timestamp: Date.now()
             });
@@ -582,7 +588,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   fn: valueKeyStr2,
                   refType: type ?? null,
                   rulesContextType: context.rulesContext?.type ?? null,
-                  rulesParentType: this.rulesParent?.type ?? null
+                  rulesParentType: this.rulesParent?.type ?? null,
+                  inRulesContextRegistry: !!rulesCtxFn?.index?.get?.(valueKeyStr2),
+                  inRulesParentRegistry: !!rulesParentFn?.index?.get?.(valueKeyStr2),
+                  inRootRegistry: !!rootFn?.index?.get?.(valueKeyStr2)
                 },
                 timestamp: Date.now()
               })

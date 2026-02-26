@@ -3,6 +3,7 @@ import type { Ruleset } from '../ruleset.js';
 import type { FinalPrintOptions } from './print.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
+import { syncLog } from '../../debug-log.js';
 
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -134,13 +135,97 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let pre = w.capture(() => n.processPrePost('pre', undefined, options));
     /** normalize pre spacing */
     let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
+    if (!out.trim()) {
+      // #region agent log
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': '34ceef'
+        },
+        body: JSON.stringify({
+          sessionId: '34ceef',
+          runId: 'void-output-spacing',
+          hypothesisId: 'H_void_1',
+          location: 'packages/core/src/tree/util/serialize-helper.ts:serializeRules',
+          message: 'Node rendered empty output',
+          data: {
+            nodeType: n.type,
+            requiredSemi: !!n.requiredSemi,
+            pre
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
+    }
+    // Suppress pure-void Any nodes from generating blank output lines.
+    if (
+      isNode(n, 'Any')
+      && !n.requiredSemi
+      && !out.trim()
+      && !pre.trim()
+    ) {
+      continue;
+    }
     if (isNode(n, 'Declaration')) {
       pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+      const declName = n.value.name.valueOf();
+      const declIn = pre + out;
+      const hasEmptyValue = /:\s*$/.test(out);
+      // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
+      // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
+      const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
+        ? `${idt}${out}`
+        : normalizeIndent(declIn, idt, true);
+      if (hasEmptyValue) {
+        // #region agent log
+        syncLog({
+          sessionId: process.env.DEBUG_SESSION_ID,
+          runId: 'empty-decl-spacing',
+          hypothesisId: 'H_space_2',
+          location: 'packages/core/src/tree/util/serialize-helper.ts:serializeRules',
+          message: 'serialize-helper declaration spacing snapshot',
+          data: {
+            name: declName,
+            pre,
+            out,
+            declIn,
+            declNormalized
+          },
+          timestamp: Date.now()
+        });
+        // #endregion
+        // #region agent log
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '34ceef'
+          },
+          body: JSON.stringify({
+            sessionId: '34ceef',
+            runId: 'empty-decl-spacing',
+            hypothesisId: 'H_space_2',
+            location: 'packages/core/src/tree/util/serialize-helper.ts:serializeRules',
+            message: 'serialize-helper declaration spacing snapshot',
+            data: {
+              name: declName,
+              pre,
+              out,
+              declIn,
+              declNormalized
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
+      }
       if (n.value.name.valueOf().startsWith('--')) {
         w.add(idt);
         w.add(out, n);
       } else {
-        w.add(normalizeIndent(pre + out, idt, true), n);
+        w.add(declNormalized, n);
       }
     } else if (isNode(n, 'Rules')) {
       /**

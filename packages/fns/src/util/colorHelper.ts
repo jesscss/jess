@@ -1,4 +1,5 @@
 import { Color } from '@jesscss/core';
+import { syncLog } from '@jesscss/core/debug-log';
 
 // Color Blending
 // ref: http://www.w3.org/TR/compositing-1
@@ -29,5 +30,32 @@ export function colorBlend(mode: (c1: number, c2: number) => number, color1: Col
   }
   rgba[3] = ar;
 
-  return new Color(rgba);
+  const out = new Color(rgba);
+  // Preserve color1 style for blend outputs (Less-like form continuity).
+  out.value.format = color1.value.format;
+  // #region agent log
+  const payload = {
+    sessionId: '34ceef',
+    runId: 'color-format-propagation',
+    hypothesisId: 'H_color_2',
+    location: 'packages/fns/src/util/colorHelper.ts:colorBlend',
+    message: 'colorBlend format propagation',
+    data: {
+      input1Format: color1.value.format ?? null,
+      input2Format: color2.value.format ?? null,
+      outputFormat: out.value.format ?? null
+    },
+    timestamp: Date.now()
+  };
+  syncLog(payload);
+  fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Debug-Session-Id': '34ceef'
+    },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
+  // #endregion
+  return out;
 }

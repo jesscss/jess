@@ -2602,6 +2602,19 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.PropertyReference);
           if (!RECORDING_PHASE) {
+            // #region agent log
+            syncLog({
+              sessionId: process.env.DEBUG_SESSION_ID,
+              runId: 'property-ref-parse',
+              hypothesisId: 'H_prop_ref_1',
+              location: 'packages/less-parser/src/productions.ts:varReference:property',
+              message: 'Parsed property reference token',
+              data: {
+                image: token.image
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
             // Warn about $ident in custom property values - it's treated as literal text, not a property reference
             if (ctx.inCustomPropertyValue) {
               $.warnDeprecation(
@@ -4143,6 +4156,27 @@ export function callArgument(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
+    const la1Image = $.LA(1).image ?? '';
+    const la2Image = $.LA(2).image ?? '';
+    if (la1Image.includes('$') || la2Image.includes('$') || $.LA(1).tokenType === T.Unknown) {
+      // #region agent log
+      syncLog({
+        sessionId: process.env.DEBUG_SESSION_ID,
+        runId: 'length-arg-parse',
+        hypothesisId: 'H_len_parse_1',
+        location: 'packages/less-parser/src/productions.ts:callArgument:tokenSnapshot',
+        message: 'callArgument token snapshot around $/unknown',
+        data: {
+          currentFunctionName: (ctx as any).currentFunctionName ?? null,
+          la1Type: $.LA(1).tokenType?.name ?? 'unknown',
+          la1Image,
+          la2Type: $.LA(2).tokenType?.name ?? 'unknown',
+          la2Image
+        },
+        timestamp: Date.now()
+      });
+      // #endregion
+    }
     if ($.LA(1).tokenType === T.Percent) {
       // #region agent log
       syncLog({

@@ -14,6 +14,23 @@ function getItems(value: Node): Node[] {
 const length = defineFunction(
   'length',
   function(value: Node): Dimension {
+    // #region agent log
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'length-shape',
+      hypothesisId: 'H_len_1',
+      location: 'packages/fns/src/less/length.ts:length:entry',
+      message: 'length() entry value shape',
+      data: {
+        valueType: value?.type ?? null,
+        isList: value instanceof List,
+        isSequence: value instanceof Sequence,
+        listLen: value instanceof List ? value.length : null,
+        sequenceLen: value instanceof Sequence ? value.value.length : null
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
     const items = getItems(value);
     if (value instanceof List && items.length === 1) {
       const first = items[0];

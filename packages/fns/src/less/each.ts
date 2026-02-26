@@ -10,7 +10,6 @@ import {
   getEntries,
   defineFunction,
   type FunctionThis,
-  Declaration,
   VarDeclaration
 } from '@jesscss/core';
 import { syncLog } from '@jesscss/core/debug-log';
@@ -36,29 +35,22 @@ const each = defineFunction(
   'each',
   async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
     // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '34ceef'
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'each-escaped-paren',
+      hypothesisId: 'H_each_1_H_each_2',
+      location: 'packages/fns/src/less/each.ts:entry',
+      message: 'each() entry list shape',
+      data: {
+        listType: list?.type ?? null,
+        isParen: list instanceof Paren,
+        parenEscaped: list instanceof Paren ? !!list.options?.escaped : false,
+        parenInnerType: list instanceof Paren && list.value ? list.value.type : null,
+        isList: list instanceof List,
+        isSequence: list instanceof Sequence
       },
-      body: JSON.stringify({
-        sessionId: '34ceef',
-        runId: 'each-escaped-paren',
-        hypothesisId: 'H_each_1_H_each_2',
-        location: 'packages/fns/src/less/each.ts:entry',
-        message: 'each() entry list shape',
-        data: {
-          listType: list?.type ?? null,
-          isParen: list instanceof Paren,
-          parenEscaped: list instanceof Paren ? !!list.options?.escaped : false,
-          parenInnerType: list instanceof Paren && list.value ? list.value.type : null,
-          isList: list instanceof List,
-          isSequence: list instanceof Sequence
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
+      timestamp: Date.now()
+    });
     // #endregion
     let entries = getEntries(list);
     /** If a Node is not list-like, wrap it */
@@ -90,27 +82,20 @@ const each = defineFunction(
 
     for (let [value, key] of entries) {
       // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-Session-Id': '34ceef'
+      syncLog({
+        sessionId: process.env.DEBUG_SESSION_ID,
+        runId: 'each-escaped-paren',
+        hypothesisId: 'H_each_3',
+        location: 'packages/fns/src/less/each.ts:iteration',
+        message: 'each() iteration value shape',
+        data: {
+          keyType: key instanceof Node ? key.type : typeof key,
+          keyValue: key instanceof Node ? key.valueOf?.() : key,
+          valueType: value instanceof Node ? value.type : typeof value,
+          valueString: value instanceof Node ? value.toString({ context: this.context }) : String(value)
         },
-        body: JSON.stringify({
-          sessionId: '34ceef',
-          runId: 'each-escaped-paren',
-          hypothesisId: 'H_each_3',
-          location: 'packages/fns/src/less/each.ts:iteration',
-          message: 'each() iteration value shape',
-          data: {
-            keyType: key instanceof Node ? key.type : typeof key,
-            keyValue: key instanceof Node ? key.valueOf?.() : key,
-            valueType: value instanceof Node ? value.type : typeof value,
-            valueString: value instanceof Node ? value.toString({ context: this.context }) : String(value)
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
+        timestamp: Date.now()
+      });
       // #endregion
       let clone = mixinRules.clone(true);
       let keyStr = typeof key === 'number' ? `${key + 1}` : key;

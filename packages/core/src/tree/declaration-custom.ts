@@ -3,6 +3,7 @@ import { defineType } from './node.js';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { syncLog } from '../debug-log.js';
 // import type { OutputCollector } from '../output'
 
 /**
@@ -16,11 +17,39 @@ import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
  */
 export class CustomDeclaration extends Declaration {
   override evalNode(context: Context): MaybePromise<this | Nil> {
+    // #region agent log
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'custom-prop-eval',
+      hypothesisId: 'H_cp_4',
+      location: 'packages/core/src/tree/declaration-custom.ts:evalNode:entry',
+      message: 'CustomDeclaration eval entry',
+      data: {
+        name: this.value.name.valueOf(),
+        valueType: this.value.value.type
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
     context.inCustom = true;
     return pipe(
       () => super.evalNode(context),
       (node) => {
         context.inCustom = false;
+        // #region agent log
+        syncLog({
+          sessionId: process.env.DEBUG_SESSION_ID,
+          runId: 'custom-prop-eval',
+          hypothesisId: 'H_cp_4',
+          location: 'packages/core/src/tree/declaration-custom.ts:evalNode:exit',
+          message: 'CustomDeclaration eval exit',
+          data: {
+            name: this.value.name.valueOf(),
+            resultType: node?.type ?? null
+          },
+          timestamp: Date.now()
+        });
+        // #endregion
         return node as this | Nil;
       }
     );

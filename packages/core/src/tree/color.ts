@@ -4,6 +4,7 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { syncLog } from '../debug-log.js';
 
 type ColorValues = [number, number, number, number] | number[];
 
@@ -356,6 +357,34 @@ export class Color extends Node<ColorData> {
 
     // Handle format-based serialization
     const format = this.value.format;
+    if (format === ColorFormat.RGB) {
+      const payload = {
+        sessionId: '34ceef',
+        runId: 'color-serialize',
+        hypothesisId: 'H_color_1',
+        location: 'packages/core/src/tree/color.ts:toTrimmedString',
+        message: 'Color serialization decision',
+        data: {
+          alpha: this.alpha,
+          rgb: this.rgb,
+          willEmit: this.alpha < 1 ? 'rgba' : 'rgb'
+        },
+        timestamp: Date.now()
+      };
+      // #region agent log
+      syncLog(payload);
+      // #endregion
+      // #region agent log
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': '34ceef'
+        },
+        body: JSON.stringify(payload)
+      }).catch(() => {});
+      // #endregion
+    }
     if (format === ColorFormat.RGB) {
       if (this.alpha < 1) {
         w.add('rgba(', this);
