@@ -56,7 +56,7 @@ const isunit = defineFunction(
     if (!(value instanceof Dimension)) {
       return new Bool(false);
     }
-    const expected = unit.valueOf().toString().toLowerCase();
+    const expected = String(unit.valueOf?.() ?? '').toLowerCase();
     const current = (value.value.unit ?? '').toLowerCase();
     return new Bool(current === expected);
   },

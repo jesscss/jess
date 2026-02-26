@@ -78,17 +78,23 @@ let mixinRulesetRedirectProbeCount = 0;
 let undefinedValueProbeCount = 0;
 let lessFunctionLookupProbeCount = 0;
 const debugFunctionNames = new Set([
+  '_color',
+  'increment',
+  'add',
+  'hsv',
+  'hsvhue',
+  'hsvsaturation',
+  'hsvvalue',
+  'pi',
+  'pow',
+  'mod',
+  'convert',
+  'tan',
+  'sin',
+  'min',
+  'max',
   'if',
-  'boolean',
-  'replace',
-  '%',
-  'iscolor',
-  'iskeyword',
-  'isnumber',
-  'isstring',
-  'isunit',
-  'get-unit',
-  'getunit'
+  'boolean'
 ]);
 
 /**

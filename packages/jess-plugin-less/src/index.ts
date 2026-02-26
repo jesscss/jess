@@ -75,8 +75,12 @@ export class LessPlugin extends AbstractPlugin {
   private _registerFunctions(tree: Rules) {
     const registeredNames: string[] = [];
     for (const [key, value] of Object.entries(lessFunctions)) {
-      tree.register('function', new JsFunction({ name: key, fn: value }));
-      registeredNames.push(key);
+      if (typeof value !== 'function') {
+        continue;
+      }
+      const runtimeName = ((value as any).name as string | undefined) ?? key;
+      tree.register('function', new JsFunction({ name: runtimeName, fn: value as (...args: any[]) => any }));
+      registeredNames.push(runtimeName);
     }
     const expected = ['replace', '%', 'iscolor', 'iskeyword', 'isnumber', 'isstring', 'isunit', 'get-unit'];
     const missingExpected = expected.filter(name => !registeredNames.includes(name));
@@ -95,7 +99,18 @@ export class LessPlugin extends AbstractPlugin {
         message: 'Registered Less function names',
         data: {
           total: registeredNames.length,
-          missingExpected
+          missingExpected,
+          hasAdd: registeredNames.includes('add'),
+          hasIncrement: registeredNames.includes('increment'),
+          hasUnderscoreColor: registeredNames.includes('_color'),
+          hasBoolean: registeredNames.includes('boolean'),
+          hasIf: registeredNames.includes('if'),
+          hasPi: registeredNames.includes('pi'),
+          hasPow: registeredNames.includes('pow'),
+          hasMod: registeredNames.includes('mod'),
+          hasHsvHue: registeredNames.includes('hsvhue'),
+          hasHsvSaturation: registeredNames.includes('hsvsaturation'),
+          hasHsvValue: registeredNames.includes('hsvvalue')
         },
         timestamp: Date.now()
       })

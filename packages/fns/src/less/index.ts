@@ -1,12 +1,18 @@
 /** Math functions - shared with Sass */
-export { abs, ceil, floor, round, max, min } from '../shared/index.js';
+export { abs, ceil, floor, round } from '../shared/index.js';
 
 /** Math functions - Less specific */
 export { default as acos } from './acos.js';
 export { default as asin } from './asin.js';
 export { default as atan } from './atan.js';
 export { default as cos } from './cos.js';
+export { default as convert } from './convert.js';
+export { default as mod } from './mod.js';
+export { default as max } from './max.js';
+export { default as min } from './min.js';
+export { default as pi } from './pi.js';
 export { default as percentage } from './percentage.js';
+export { default as pow } from './pow.js';
 export { default as sin } from './sin.js';
 export { default as sqrt } from './sqrt.js';
 export { default as tan } from './tan.js';
@@ -16,6 +22,8 @@ export { default as iif } from './iif.js';
 
 /** String */
 export { default as e } from './e.js';
+export { default as replace } from './replace.js';
+export { default as format } from './format.js';
 
 /** Misc */
 export { default as unit } from './unit.js';
@@ -23,6 +31,8 @@ export { default as length } from './length.js';
 export { default as extract } from './extract.js';
 export { default as isdefined } from './isdefined.js';
 export { default as isruleset } from './isruleset.js';
+export { default as getUnit } from './get-unit.js';
+export { iscolor, isnumber, isstring, iskeyword, isurl, ispixel, ispercentage, isem, isunit } from './types.js';
 
 /** Color blending */
 export { default as multiply } from './multiply.js';

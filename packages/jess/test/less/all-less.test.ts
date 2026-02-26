@@ -31,7 +31,10 @@ const additionalSkips = [
 ];
 
 // Set to a non-empty array to focus on specific fixtures while debugging.
-const targetTests: string[] = ['tests-unit/functions/functions.less'];
+const targetTests: string[] = [
+  'tests-unit/functions/functions.less',
+  'tests-config/functions-harness/functions-harness.less'
+];
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
@@ -46,7 +49,7 @@ describe('Can render Less files to CSS', () => {
     const segment = m?.[1] ?? '';
     return segment.localeCompare('functions') < 0;
   });
-  const configFiles: string[] = [];
+  const configFiles: string[] = glob.sync(path.join(testData, 'tests-config/**/*.less'));
   const allFiles = [...unitFiles, ...configFiles];
 
   allFiles

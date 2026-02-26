@@ -5,7 +5,7 @@ import { defineFunction, Dimension } from '@jesscss/core';
 const hsv = defineFunction(
   'hsv',
   function(this: any, h: ColorValue, s: ColorValue, v: ColorValue) {
-    return hsva.call(this, h, s, v, 1.0);
+    return hsva.call(this, h, s, v, new Dimension({ number: 1 }));
   },
   {
     params: [{

@@ -9,7 +9,7 @@ function nodeToString(value: Node, context: any): string {
 
 const replace = defineFunction(
   'replace',
-  function(input: Node, pattern: Node, replacement: Node, flags?: Node) {
+  function(this: any, input: Node, pattern: Node, replacement: Node, flags?: Node) {
     const source = nodeToString(input, this.context);
     const patternValue = nodeToString(pattern, this.context);
     const replacementValue = replacement instanceof Quoted

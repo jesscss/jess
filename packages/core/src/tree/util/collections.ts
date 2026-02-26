@@ -25,6 +25,7 @@ import type { Mixin } from '../mixin.js';
 import type { Rules } from '../rules.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Node } from '../node.js';
+import { syncLog } from '../../debug-log.js';
 
 const { isArray } = Array;
 
@@ -129,6 +130,43 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       }
       yield [value.value.value, value.value.name, rules!] as unknown as GetEntriesOf<T>;
     }
+  } else if (isNode(collection) && isArray((collection as Node).value)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': '34ceef'
+      },
+      body: JSON.stringify({
+        sessionId: '34ceef',
+        runId: 'getEntries-node-array',
+        hypothesisId: 'H_getEntries_2',
+        location: 'packages/core/src/tree/util/collections.ts:getEntries:nodeArrayFetch',
+        message: 'getEntries() hit node.value-array branch',
+        data: {
+          nodeType: (collection as Node).type,
+          valueLength: ((collection as Node).value as unknown[]).length
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+    // #region agent log
+    syncLog({
+      sessionId: process.env.DEBUG_SESSION_ID,
+      runId: 'getEntries-node-array',
+      hypothesisId: 'H_getEntries_1',
+      location: 'packages/core/src/tree/util/collections.ts:getEntries:nodeArray',
+      message: 'getEntries() iterating node.value array',
+      data: {
+        nodeType: (collection as Node).type,
+        valueLength: ((collection as Node).value as unknown[]).length
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+    yield* getEntries((collection as Node).value as unknown[], reverse) as Generator<GetEntriesOf<T>>;
   } else {
     yield [collection, 'value', collection] as GetEntriesOf<T>;
   }

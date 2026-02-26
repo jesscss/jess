@@ -1,15 +1,3 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper.js';
+import { defineUnaryMathFunction } from './math-factory.js';
 
-export default defineFunction(
-  'acos',
-  function(value: Dimension | number) {
-    return mathHelper(Math.acos, ['value'], 'rad', value);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+export default defineUnaryMathFunction('acos', 'acos', 'rad');

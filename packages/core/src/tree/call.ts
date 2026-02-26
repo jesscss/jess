@@ -9,14 +9,39 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
-import { createRequire } from 'node:module';
 import { syncLog } from '../debug-log.js';
-const require = createRequire(import.meta.url);
+
+let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
 // rules.ts → cast.ts → color.ts → call.ts → rules.ts
-function getRules() {
-  return require('./rules.js').Rules;
+async function getRules() {
+  if (!rulesCtorPromise) {
+    rulesCtorPromise = import('./rules.js').then(({ Rules }) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': '34ceef'
+        },
+        body: JSON.stringify({
+          sessionId: '34ceef',
+          runId: 'decl-init-order',
+          hypothesisId: 'H14',
+          location: 'packages/core/src/tree/call.ts:getRules',
+          message: 'Loaded Rules via dynamic import',
+          data: {
+            moduleUrl: import.meta.url
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
+      return Rules;
+    });
+  }
+  return rulesCtorPromise;
 }
 
 export type CallValue = {
@@ -192,7 +217,7 @@ export class Call extends Node<CallValue, CallOptions> {
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      const Rules = getRules();
+      const Rules = await getRules();
       let rules = Rules.create(n.value, n.options);
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
@@ -211,7 +236,54 @@ export class Call extends Node<CallValue, CallOptions> {
     let fn = isNode(n, 'JsFunction') ? n.value : n;
 
     if (typeof fn === 'function') {
+      const fnNameForLog = typeof name === 'string'
+        ? name
+        : (isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : '');
+      const debugFnNames = new Set([
+        '_color',
+        'increment',
+        'add',
+        'undefined',
+        'boolean',
+        'if',
+        'hsv',
+        'hsvhue',
+        'hsvsaturation',
+        'hsvvalue',
+        'pi',
+        'pow',
+        'mod',
+        'tan',
+        'sin',
+        'min',
+        'max'
+      ]);
       try {
+        if (debugFnNames.has(fnNameForLog)) {
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': '34ceef'
+            },
+            body: JSON.stringify({
+              sessionId: '34ceef',
+              runId: 'functions-runtime',
+              hypothesisId: 'H1_H2_H3',
+              location: 'packages/core/src/tree/call.ts:evalNode:beforeInvoke',
+              message: 'Invoking function',
+              data: {
+                fn: fnNameForLog,
+                silentFail: !!this.options?.silentFail,
+                argTypes: args?.map(arg => arg.type) ?? [],
+                nameNodeType: isNode(name) ? name.type : typeof name
+              },
+              timestamp: Date.now()
+            })
+          }).catch(() => {});
+          // #endregion
+        }
         if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
           console.log('[Call.evalNode] pi() resolved to function', { silentFail: this.options?.silentFail });
         }
@@ -230,6 +302,31 @@ export class Call extends Node<CallValue, CallOptions> {
             ? callWithContext(context, fn, ...args)
             : callWithContext(context, fn)
         );
+        if (debugFnNames.has(fnNameForLog)) {
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': '34ceef'
+            },
+            body: JSON.stringify({
+              sessionId: '34ceef',
+              runId: 'functions-runtime',
+              hypothesisId: 'H1_H2_H3',
+              location: 'packages/core/src/tree/call.ts:evalNode:afterInvoke',
+              message: 'Function returned',
+              data: {
+                fn: fnNameForLog,
+                resultType: isNode(result) ? result.type : typeof result,
+                isUndefined: result === undefined,
+                silentFail: !!this.options?.silentFail
+              },
+              timestamp: Date.now()
+            })
+          }).catch(() => {});
+          // #endregion
+        }
         context.caller = originalCaller;
         context.callStack.pop();
         if (isNode(result)) {
@@ -252,9 +349,30 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
-        const fnNameForLog = typeof name === 'string'
-          ? name
-          : (isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : '');
+        if (debugFnNames.has(fnNameForLog)) {
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': '34ceef'
+            },
+            body: JSON.stringify({
+              sessionId: '34ceef',
+              runId: 'functions-runtime',
+              hypothesisId: 'H1_H2_H3',
+              location: 'packages/core/src/tree/call.ts:evalNode:invokeError',
+              message: 'Function threw',
+              data: {
+                fn: fnNameForLog,
+                errorMessage: e instanceof Error ? e.message : String(e),
+                silentFail: !!this.options?.silentFail
+              },
+              timestamp: Date.now()
+            })
+          }).catch(() => {});
+          // #endregion
+        }
         if ((fnNameForLog === 'length' || fnNameForLog === 'extract') && this.options?.silentFail) {
           // #region agent log
           syncLog({
@@ -274,13 +392,39 @@ export class Call extends Node<CallValue, CallOptions> {
         if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
           console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
         }
+        const unitMode = context?.opts?.unitMode ?? 'loose';
+        const shouldRethrowForMode = unitMode === 'strict';
+        // #region agent log
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '34ceef'
+          },
+          body: JSON.stringify({
+            sessionId: '34ceef',
+            runId: 'call-error-mode-gating',
+            hypothesisId: 'H_call_mode_1',
+            location: 'packages/core/src/tree/call.ts:evalNode:catchModeDecision',
+            message: 'Call catch mode decision snapshot',
+            data: {
+              fn: fnNameForLog,
+              silentFail: !!this.options?.silentFail,
+              unitMode,
+              shouldRethrowForMode,
+              errorMessage: e instanceof Error ? e.message : String(e)
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
           if (isNode(name, 'Reference')) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
           }
           throw e;
         }
-        if (!this.options?.silentFail) {
+        if (!this.options?.silentFail || shouldRethrowForMode) {
           throw e;
         }
         let newCall = this.clone().inherit(this);

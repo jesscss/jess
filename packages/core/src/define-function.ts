@@ -777,8 +777,11 @@ async function buildCallWithContextPositionalArgs(
       if ((def as any).lazy) {
         positionalArgs.push(...arr.map(item => createThunk(item, def, context)));
       } else {
-        positionalArgs.push(...arr.map((item) => {
+        for (const item of arr) {
           let processedItem: any = (isNode(item) && !item.evaluated) ? (item as any).eval(context) : item;
+          if (isThenable(processedItem)) {
+            processedItem = await processedItem;
+          }
 
           // Validate AFTER evaluation but BEFORE conversion
           validateArgumentIfNeeded(processedItem, def, 'Argument');
@@ -787,8 +790,8 @@ async function buildCallWithContextPositionalArgs(
           if (def.convert && processedItem instanceof Dimension) {
             processedItem = applyConversionPlugins(processedItem, def.convert);
           }
-          return processedItem;
-        }));
+          positionalArgs.push(processedItem);
+        }
       }
     } else {
       const v = record[name];

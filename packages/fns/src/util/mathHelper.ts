@@ -14,7 +14,7 @@ export function num(values: Dimension | number | Array<Dimension | number>): num
 export const mathHelper = (
   fn: (...nums: number[]) => number,
   params: string[],
-  unit: string | undefined,
+  unit: string | null | undefined,
   ...input: Array<Dimension | number>
 ) => {
   let key = 0;
@@ -26,9 +26,29 @@ export const mathHelper = (
     }
   }
   const val = input[0];
+  if (unit === null) {
+    const numberResult = fn(...num(input));
+    const preservedUnit = val instanceof Dimension ? val.value.unit : undefined;
+    return new Dimension({ number: numberResult, unit: preservedUnit });
+  }
+  const normalizedInput = input.map(v => {
+    if (!(v instanceof Dimension)) {
+      return v;
+    }
+    if (v.value.unit === 'deg') {
+      return v.value.number * Math.PI / 180;
+    }
+    if (v.value.unit === 'grad') {
+      return v.value.number * Math.PI / 200;
+    }
+    if (v.value.unit === 'turn') {
+      return v.value.number * 2 * Math.PI;
+    }
+    return v.value.number;
+  });
   unit ??= val instanceof Dimension ? val.value.unit : '';
   if (unit === undefined) {
-    return new Num(fn(...num(input)));
+    return new Num(fn(...(normalizedInput as number[])));
   }
-  return new Dimension({ number: fn(...num(input)), unit });
+  return new Dimension({ number: fn(...(normalizedInput as number[])), unit });
 };

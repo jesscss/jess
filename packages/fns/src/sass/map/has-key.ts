@@ -7,7 +7,7 @@
  * map.has-key((a: 1), a) // true
  * map.has-key((a: 1), b) // false
  */
-import { defineFunction, Collection, Node, Bool, type Context } from '@jesscss/core';
+import { defineFunction, Collection, Node, Bool, Declaration, type Context } from '@jesscss/core';
 import type { FunctionThis } from '@jesscss/core';
 import { isNode } from '@jesscss/core';
 

@@ -17,7 +17,7 @@ function applyToken(token: string, value: Node, context: any): string {
 
 const format = defineFunction(
   '%',
-  function(template: Node, arg1?: Node, arg2?: Node, arg3?: Node, arg4?: Node) {
+  function(this: any, template: Node, arg1?: Node, arg2?: Node, arg3?: Node, arg4?: Node) {
     const args = [arg1, arg2, arg3, arg4].filter((arg): arg is Node => !!arg);
     let result = nodeToString(template, this.context);
     for (const value of args) {

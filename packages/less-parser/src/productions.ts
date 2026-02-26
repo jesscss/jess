@@ -2275,51 +2275,10 @@ export function expressionValue(this: P, T: TokenMap) {
             parenFrames: [...getParenFrames(ctx), true]
           };
           let node = $.SUBRULE($.valueList, { ARGS: [innerCtx] });
-
-          let isSemiList = false;
-          let semiNodes: Node[] | undefined;
-          if (!RECORDING_PHASE) {
-            semiNodes = [$.wrap(node, true)];
-          }
-          $.OPTION3({
-            GATE: () => !!escape && $.LA(1).tokenType === T.Semi,
-            DEF: () => {
-              isSemiList = true;
-              $.CONSUME(T.Semi);
-              let nextNode = $.SUBRULE2($.valueList, { ARGS: [innerCtx] });
-              if (!RECORDING_PHASE) {
-                semiNodes!.push($.wrap(nextNode, true));
-              }
-              $.MANY(() => {
-                $.CONSUME2(T.Semi);
-                nextNode = $.SUBRULE3($.valueList, { ARGS: [innerCtx] });
-                if (!RECORDING_PHASE) {
-                  semiNodes!.push($.wrap(nextNode, true));
-                }
-              });
-            }
-          });
           $.CONSUME(T.RParen);
 
           if (!RECORDING_PHASE) {
             let location = $.endRule();
-            if (isSemiList) {
-              node = new List(semiNodes!, { sep: ';' }, $.getLocationFromNodes(semiNodes!), this.context);
-              // #region agent log
-              syncLog({
-                sessionId: process.env.DEBUG_SESSION_ID,
-                runId: 'mixin-arg-parse',
-                hypothesisId: 'H14',
-                location: 'packages/less-parser/src/productions.ts:expressionValue:escapedParenSemiList',
-                message: 'parsed escaped paren as semicolon list',
-                data: {
-                  itemCount: semiNodes!.length,
-                  firstType: semiNodes![0]?.type ?? null
-                },
-                timestamp: Date.now()
-              });
-              // #endregion
-            }
             node = $.wrap(node, 'both');
             return new Paren(node, { escaped: !!escape }, location, this.context);
           }
@@ -2442,12 +2401,12 @@ export function ifFunction(this: P, T: TokenMap) {
     // #endregion
 
     let args: Node[] = [];
-    let branch: 'css' | 'less' = 'less';
+    let isCssBranch = false;
 
     $.OR([
       {
         ALT: () => {
-          branch = 'css';
+          isCssBranch = true;
           const cssArgs = $.SUBRULE($.ifFunctionArgs, { ARGS: [{ ...ctx, inner: true }] });
           $.CONSUME(T.RParen);
           if (!RECORDING_PHASE) {
@@ -2457,11 +2416,12 @@ export function ifFunction(this: P, T: TokenMap) {
       },
       {
         ALT: () => {
-          branch = 'less';
+          isCssBranch = false;
 
           let node: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
           if (!RECORDING_PHASE) {
-            args = [node];
+            const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
+            args = [condNode];
           }
 
           $.OR2([
@@ -2533,7 +2493,10 @@ export function ifFunction(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      let nameNode = new Reference('if', { type: 'function', fallbackValue: true }, $.getLocationInfo(name), this.context);
+      let nameNode = new Reference('if', {
+        type: 'function',
+        fallbackValue: isCssBranch ? true : undefined
+      }, $.getLocationInfo(name), this.context);
       const callNode = new Call({ name: nameNode, args: args! }, undefined, location, this.context);
       // #region agent log
       fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
@@ -2547,11 +2510,12 @@ export function ifFunction(this: P, T: TokenMap) {
           runId: 'parser-lowering',
           hypothesisId: 'H9',
           location: 'packages/less-parser/src/productions.ts:ifFunction:return',
-          message: 'ifFunction emitted Call node',
+          message: 'ifFunction emitted lowered node',
           data: {
             nodeType: callNode.type,
             argCount: args?.length ?? 0,
-            branch
+            fnName: 'if',
+            branch: isCssBranch ? 'css' : 'less'
           },
           timestamp: Date.now()
         })
@@ -2582,13 +2546,13 @@ export function booleanFunction(this: P, T: TokenMap) {
       timestamp: Date.now()
     });
     // #endregion
-    let arg: Condition = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
+    let arg: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
     $.CONSUME(T.RParen);
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      let nameNode = new Reference('boolean', { type: 'function', fallbackValue: true }, $.getLocationInfo(name), this.context);
-      const callNode = new Call({ name: nameNode, args: [arg] }, undefined, location, this.context);
+      const conditionNode = arg instanceof Paren && arg.value instanceof Node ? arg.value : arg;
+      const exprNode = new Expression(conditionNode, { parens: true }, location, this.context);
       // #region agent log
       fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
         method: 'POST',
@@ -2601,16 +2565,16 @@ export function booleanFunction(this: P, T: TokenMap) {
           runId: 'parser-lowering',
           hypothesisId: 'H10',
           location: 'packages/less-parser/src/productions.ts:booleanFunction:return',
-          message: 'booleanFunction emitted Call node',
+          message: 'booleanFunction emitted Expression node',
           data: {
-            nodeType: callNode.type,
-            argType: arg?.type ?? null
+            nodeType: exprNode.type,
+            argType: conditionNode?.type ?? null
           },
           timestamp: Date.now()
         })
       }).catch(() => {});
       // #endregion
-      return callNode;
+      return exprNode;
     }
   };
 }
