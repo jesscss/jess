@@ -6,12 +6,8 @@ It exists to prevent “context drift” over time and to make regeneration/refa
 
 ## What already existed (repo evidence)
 
-- **Rules** (all always-on at time of bootstrap):
-  - `.cursor/rules/main.mdc`
-  - `.cursor/rules/package-scripts.mdc`
-  - `.cursor/rules/test-debugging.mdc`
-  - `.cursor/rules/debugging-state.mdc`
-  - `.cursor/rules/project-standards/RULE.mdc`
+- **Rules** (historical baseline before current consolidation):
+  - broad always-on guidance for global behavior, tests/scripts, and quality constraints
 - **Commands**:
   - `.cursor/commands/start-debugging.md`
   - `.cursor/commands/run-baseline.md`
@@ -19,7 +15,7 @@ It exists to prevent “context drift” over time and to make regeneration/refa
 - **Skill**:
   - `.cursor/skills/systematic-debugging/SKILL.md`
 - **Subagent**:
-  - `.cursor/agents/debug-verifier.md`
+  - `.cursor/agents/jess-baseline-test-runner.md`
 - **Persistent state / plans**:
   - `.cursor/PROJECT_STATE.md`
   - `.cursor/DEBUGGING_ORCHESTRATION.md`
@@ -36,17 +32,33 @@ The new system goal is:
 - **Agents**: optional specialists for decomposition (cartography, verification, perf sanity).
 - **Commands**: explicit workflows for regeneration/mapping/verification (not day-to-day use).
 
+## Agent ownership model
+
+- **User-level agents** (`~/.cursor/agents`): personal orchestration defaults and reusable cross-repo helpers.
+- **Repo-level agents** (`.cursor/agents`): project-specific specialists that encode Jess workflows and should stay versioned with the repo.
+- Keep both layers; do not remove `.cursor/agents` unless a file is a true duplicate by role and behavior.
+
+## Context loading order
+
+1. Always-applied guardrails (`00-global`, `20-quality-bar`, `30-tests`).
+2. Glob-scoped domain/package/subtree rules for the files being touched.
+3. Skill loading by task description (debugging, fixtures, API safety, perf, verification).
+4. Optional agent/command invocation when decomposition or explicit workflow is needed.
+
 ## Merge strategy (keep vs replace vs scope)
 
 - **Keep**: state & orchestration docs (`PROJECT_STATE.md`, `DEBUGGING_ORCHESTRATION.md`, extend plans).
-- **Keep**: existing commands and `debug-verifier` agent (they remain useful and generic).
+- **Keep**: existing commands and repo-specific Jess agents.
+- **Promote/split**:
+  - Promote generic agents to `~/.cursor/agents` (for example `verification-runner`, `codebase-mapper`).
+  - Keep only Jess-specific adapters in `.cursor/agents` (for example `jess-baseline-test-runner`).
 - **Keep**: `systematic-debugging` skill (it’s already broadly applicable).
 - **Supersede with new layout**:
   - Create new `.cursor/rules/00-global.mdc`, `20-quality-bar.mdc`, `30-tests.mdc`.
   - Add domain/package/subtree rules under `.cursor/rules/{domains,packages,subtrees}/`.
 - **De-duplicate**:
-  - The original always-apply rules are converted to **`.cursor/**`-scoped “legacy” rules** so they don’t double-apply during normal code editing.
-  - Their *substance* is preserved in the new global rules (or appropriate domain rules).
+  - Legacy duplicated rules are removed.
+  - Their substance lives in canonical rules (`00-global.mdc`, `20-quality-bar.mdc`, `30-tests.mdc`) plus scoped domain/package/subtree rules.
 
 ## Known unknowns (tracked for later questions)
 

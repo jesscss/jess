@@ -31,11 +31,11 @@ const additionalSkips = [
 ];
 
 // Run unit fixtures alphabetically up through this filename (inclusive).
-const runUnitThrough = 'tests-unit/functions/functions.less';
+const runUnitThrough = 'tests-unit/ie-filters';
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
-  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/**/*.less')).filter((f) => {
+  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less')).filter((f) => {
     const rel = path.relative(testData, f).replace(/\\/g, '/');
     return rel.localeCompare(runUnitThrough) <= 0;
   });

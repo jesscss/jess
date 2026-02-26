@@ -27,4 +27,4 @@ Use this skill when you’re wrapping up a discrete task (bug fix, feature, doc 
 ## Project context
 
 - Use the skill in tandem with `systematic-debugging` (if applicable) and `verification-before-completion`.
-- The “spec check” command is often the focused Vitest suite for extend/core tasks; quality check is usually `git status -sb` + lint (per `.cursor/rules/package-scripts.mdc`).
+- The “spec check” command is often the focused Vitest suite for extend/core tasks; quality check is usually `git status -sb` + lint (per `.cursor/rules/30-tests.mdc`).

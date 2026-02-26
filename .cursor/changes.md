@@ -52,26 +52,26 @@ This file is updated daily with the most recent changes and improvements made to
 
 - **Goal**: Determine why extend-chaining was said to be "only fixed for constructed AST" — log AST, registries, extend roots, search, options.
 - **Changes**:
-  - `extend-trace-debug.ts`: `shouldTraceExtend()` now true when `runId === 'constructed'` or path includes `extend-chaining`; added `isConstructedRun()`.
-  - `debug-log.ts`: `getDebugLogPath()`, support `DEBUG_LOG_DIR`; log path is monorepo-root `.cursor/debug.log` or `DEBUG_LOG_PATH`.
-  - `extend-roots.ts`: At start of `processExtends()` log `processExtends_enter` with `runId`, `collapseNesting`, `allRootsCount`, `rootSummaries` (per-root: `serializeTypes` head, `registryIndexSize`, `registryPendingSize`, `registryKeys`), `extendsCount`, `extendsSummary`.
+  - `extend-trace-debug.ts`: expanded tracing to constructed runs and `extend-chaining`; added `isConstructedRun()`.
+  - `debug-log.ts`: added `getDebugLogPath()` with `DEBUG_LOG_DIR`/`DEBUG_LOG_PATH` support.
+  - `extend-roots.ts`: added `processExtends_enter` trace with run options, root/registry summaries, and extend summaries.
 - **Findings from trace** (parsed extend-chaining.less, with core built):
-  - **collapseNesting:true**: `.ma:extend(.md)` runs with extendRoot = inner `Rules` (valueLen:1, firstType:Rules). rootsToSearch includes the wrapper (valueLen:3, firstType:Ruleset); search finds `.md` there (foundCount:1); filter keeps it (sameOrDescendantRootCount:1); tryExtend succeeds (changed:true). So the parsed case **does** find and apply the extend.
-  - **Registries**: At processExtends_enter, doc root has `registryIndexSize:0`, `registryPendingSize:30`; @media roots have pending 2 or 1. Index is filled on first `.find()` (lazy).
+  - **collapseNesting:true**: parsed `.ma:extend(.md)` finds `.md`, passes filtering, and applies (`changed:true`).
+  - **Registries**: document root starts with pending entries and is lazily indexed on first `.find()`.
   - **all-less.test.ts** (including extend-chaining.less CSS assertion): **31 passed**.
-  - **Failing test**: `extend-chaining-ast-compare.test.ts` — "serializes AST from Jess parsing extend-chaining.less (post-eval)" snapshot mismatch: selector list order differs (e.g. `.d`/`.e` and `.x`/`.z` order). So the remaining failure is **selector order in serialized AST**, not the extend merge itself.
+  - **Remaining failure**: `extend-chaining-ast-compare.test.ts` snapshot differs by selector order (`.d`/`.e`, `.x`/`.z`), not by missing extend merges.
 
 ### Debugging orchestration (rules, commands, skills, subagents)
 
 - **Goal**: Make Cursor/LLMs more effective at debugging and preserve context across sessions (extend bugs have been stuck for weeks).
 - **Plan doc**: `.cursor/DEBUGGING_ORCHESTRATION.md` — problem statement, research (Cursor docs, LLM debugging best practices), and full implementation plan.
 - **Project memory**: `.cursor/PROJECT_STATE.md` — package dependency graph, build order, key test commands, current extend baseline section (update as debugging progresses). Read at start of debugging; update after progress or at end of session.
-- **New rule**: `.cursor/rules/debugging-state.mdc` — read/update state files; short sessions; log what was tried; use `/debug-extend`, `/run-extend-baseline`, `/update-debug-state`.
+- **Canonical rules**: `.cursor/rules/00-global.mdc`, `.cursor/rules/20-quality-bar.mdc`, `.cursor/rules/30-tests.mdc` — behavior guardrails, AST/type safety, and test/script discipline.
 - **Commands**: `.cursor/commands/` — `start-debugging.md`, `run-baseline.md`, `update-debug-state.md` (generic for any area).
 - **Skill**: `.cursor/skills/systematic-debugging/SKILL.md` — observe → hypothesize → trace → verify → fix → update state; anti-patterns.
-- **Subagent**: `.cursor/agents/debug-verifier.md` — run extend baseline and return short pass/fail report.
+- **Subagent**: `.cursor/agents/jess-baseline-test-runner.md` — run requested baseline commands and return a short pass/fail report.
 - **Usage**: Start with `/start-debugging` (optionally specify area, e.g. "for extend"); use `/run-baseline` for a clean report; use `/update-debug-state` before ending session. Next session: "Read .cursor/PROJECT_STATE.md and continue."
-- **Generalization**: Commands and state are generic for any debugging area (extend, mixins, parser, etc.). Removed `/debug-extend` and `/run-extend-baseline`; replaced with `/start-debugging` and `/run-baseline`. PROJECT_STATE section 4 is "Current debugging focus" with area, plan file, last tried, next step. Extend is one example; other areas can add plan files as needed.
+- **Generalization**: Commands and state are generic for any debugging area (extend, mixins, parser, etc.). `PROJECT_STATE` section 4 tracks current focus, last attempt, and next step.
 
 ## 2026-Feb-01
 
@@ -87,7 +87,7 @@ This file is updated daily with the most recent changes and improvements made to
 
 - **Problem**: Extends inside `@media` (e.g. `.ma:extend(.a,.b,...)`) were not finding root-level targets; "Extend targets not found" and missing merged selectors in output.
 - **Root cause**: The document root `Rules` was not always pushed onto `extendRootStack` before root-level rulesets ran `preEval`, so `.a`, `.b`, etc. registered with no extend root and were invisible to extend processing.
-- **Fix (in `packages/core/src/tree/rules.ts`)**: Ensure the root is registered and pushed before `_multiPassPreEval`: set `context.root = rules` when we're top-level (`!rules.parent` and stack empty), when we're the eval root (only Rules on stack), and when getTree set root to original but we're processing a clone; register root if needed and push when stack is empty so children see the root during preEval.
+- **Fix (in `packages/core/src/tree/rules.ts`)**: ensure root registration/push happens before `_multiPassPreEval` so child rulesets register against a valid extend root (including clone/eval-root/top-level paths).
 - **Core tests**: `extend-eval-integration.test.ts` passes (including @media extend and SelectorList target cases). Jess `extend-chaining.less` test may still fail depending on test runner resolving core from source vs built lib.
 
 ### Building core before jess tests
@@ -115,13 +115,11 @@ This file is updated daily with the most recent changes and improvements made to
 
 ### Catch-up (Jan 10–17)
 
-- **Extend processing overhaul**: major refactors across `extend.ts`, `util/extend.ts`, `util/extend-roots.ts`, `find-extendable-locations.ts`, plus new/shared helpers (`extend-helpers.ts`) and selector/registry utilities.
-- **Extend test coverage**: added/expanded suites around selector algorithm correctness, combinator handling, simplified cases, duplicate validation, where-selector behavior, and process/integration coverage (including some debug-focused tests).
-- **Less compatibility plugin work**: large expansion of `jess-plugin-less-compat` (node wrappers, transforms `from-less`/`to-less`/`proxy`, plugin-manager + multiple integration tests, and supporting docs/analysis notes).
-- **Diagnostics & errors/warnings**: refactored error/warning structure, added safe-parse coverage, improved diagnostics output/logging, and added deprecation processing + tests.
-- **Detached rulesets + recursion**: substantial progress toward correct detached ruleset behavior and recursion handling, with new helpers/tests.
-- **Config / styles-config**: extended `packages/config` options/types/tests and updated `jess` config wiring.
-- **Serialization/parser fixes (ongoing)**: additional CSS/LESS parser + serialization adjustments alongside the earlier whitespace fix already noted on Jan 9.
+- **Extend engine + coverage**: major refactors in `extend.ts`, `util/extend.ts`, `util/extend-roots.ts`, and `find-extendable-locations.ts`, with new helpers (`extend-helpers.ts`) and expanded selector/process integration tests.
+- **Less-compat expansion**: significantly grew `jess-plugin-less-compat` (node wrappers, `from-less`/`to-less`/`proxy` transforms, plugin-manager integration tests, and supporting analysis/docs).
+- **Diagnostics and safety**: refactored error/warning structures, added safe-parse coverage, improved diagnostics logging/output, and added deprecation-processing tests.
+- **Detached rulesets + recursion**: advanced recursion handling and detached-ruleset behavior with supporting helpers/tests.
+- **Config/parser/serialization follow-through**: expanded `packages/config` options/types/tests and continued CSS/LESS parser/serialization fixes (on top of prior whitespace work).
 
 ## 2026-Jan-09
 

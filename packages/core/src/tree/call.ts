@@ -9,6 +9,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
+import { syncLog } from '../debug-log.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -261,6 +262,11 @@ export class Call extends Node<CallValue, CallOptions> {
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+          syncLog({
+            tag: 'call-no-mixin',
+            callName: isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : String(name),
+            originalMessage: e.message
+          });
           if (isNode(name, 'Reference')) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
           }

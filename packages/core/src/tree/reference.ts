@@ -15,6 +15,7 @@ import { getFunctionFromMixins } from './rules.js';
 import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
+import { syncLog } from '../debug-log.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -415,7 +416,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'mixin':
               if (isNode(targetRules, 'Rules')) {
                 // valueKey can be string or string[] - find() accepts both
-                return targetRules.find('mixin', valueKey, 'Mixin', opts);
+                const mixin = targetRules.find('mixin', valueKey, 'Mixin', opts);
+                if (mixin) {
+                  return mixin;
+                }
+                // Some Less built-ins are invoked in mixin-like call positions.
+                // If a mixin lookup misses during a Call, allow function fallback.
+                if (isNode(this.parent, 'Call')) {
+                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                  return targetRules.find('function', `${keyStr}`, undefined, opts);
+                }
+                return undefined;
               }
               break;
             case 'ruleset':
@@ -426,7 +437,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'mixin-ruleset':
               if (isNode(targetRules, 'Rules')) {
-                return targetRules.find('mixin', valueKey, undefined, opts);
+                const mixinOrRuleset = targetRules.find('mixin', valueKey, undefined, opts);
+                if (mixinOrRuleset) {
+                  return mixinOrRuleset;
+                }
+                if (isNode(this.parent, 'Call')) {
+                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                  return targetRules.find('function', `${keyStr}`, undefined, opts);
+                }
+                return undefined;
               }
               break;
           }
@@ -444,7 +463,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           // definitions in ancestor scopes.
           //
           // Less mixins are lexically scoped and should be callable from nested rulesets.
-          if (returnVal === undefined && (type === 'variable' || type === 'mixin' || type === 'mixin-ruleset')) {
+          if (returnVal === undefined && (type === 'variable' || type === 'function' || type === 'mixin' || type === 'mixin-ruleset')) {
             let cursor: any = resolvedTarget.parent;
             let depth = 0;
             while (cursor && depth++ < 20) {
@@ -475,6 +494,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+          if (valueKeyStr2 === 'each' || valueKeyStr2 === 'list-1') {
+            syncLog({
+              tag: 'reference-miss',
+              key: valueKeyStr2,
+              type,
+              fallbackValue: Boolean(fallbackValue),
+              parentType: this.parent?.type ?? '',
+              rulesParentType: this.rulesParent?.type ?? '',
+              contextRulesType: context.rulesContext?.type ?? ''
+            });
+          }
           if (!fallbackValue) {
             switch (type) {
               case 'mixin':

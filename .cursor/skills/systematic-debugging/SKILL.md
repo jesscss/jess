@@ -31,11 +31,11 @@ Use this skill when debugging failing tests, runtime errors, or unexpected behav
 
 ## Project-specific
 
-- **Package scripts:** Run tests/builds from the package directory or with `pnpm --filter @jesscss/<pkg>`. See `.cursor/rules/package-scripts.mdc`.
+- **Package scripts:** Run tests/builds from the package directory or with `pnpm --filter @jesscss/<pkg>`. See `.cursor/rules/30-tests.mdc`.
 - **State and commands:** Read `.cursor/PROJECT_STATE.md` at the start (and any area-specific plan, e.g. EXTEND_DEBUG_PLAN for extend). Use `/start-debugging` to begin, `/run-baseline` to get a clean pass/fail report, `/update-debug-state` at end of session.
-- **Isolation:** Use `it.only()` or `describe.only()` to focus one test; remove before commit. See `.cursor/rules/test-debugging.mdc`.
+- **Isolation:** Use `it.only()` or `describe.only()` to focus one test; remove before commit. See `.cursor/rules/30-tests.mdc`.
 
 ## References
 
 - Full plan: `.cursor/DEBUGGING_ORCHESTRATION.md`
-- State and session discipline: `.cursor/rules/debugging-state.mdc`
+- State and session discipline: `.cursor/PROJECT_STATE.md` and `/update-debug-state`

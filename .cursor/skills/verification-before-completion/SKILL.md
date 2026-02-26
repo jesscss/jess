@@ -33,7 +33,7 @@ Always run the relevant verification command, read its output, and cite the resu
 
 ## Project notes
 
-- Tests/builds must run from the package directory or via `pnpm --filter <pkg>` per `.cursor/rules/package-scripts.mdc`.
+- Tests/builds must run from the package directory or via `pnpm --filter <pkg>` per `.cursor/rules/30-tests.mdc`.
 - Vitest is the test runner; use `pnpm test -- --run` as the verification command for unit suites.
 - Running command examples:
   - Core extend baseline: `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend`

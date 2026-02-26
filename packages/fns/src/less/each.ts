@@ -1,16 +1,17 @@
 import {
-  List,
   Node,
-  Paren,
-  Sequence,
   Rules,
   Mixin,
+  For,
+  Sequence,
+  Paren,
+  List,
+  Block,
+  Nil,
   Any,
-  Num,
-  getEntries,
+  VarDeclaration,
   defineFunction,
-  type FunctionThis,
-  VarDeclaration
+  type FunctionThis
 } from '@jesscss/core';
 
 /**
@@ -31,21 +32,15 @@ import {
 const each = defineFunction(
   'each',
   async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    let entries = getEntries(list);
-    /** If a Node is not list-like, wrap it */
-
-    let accumulatedNodes: Node[] = [];
     let mixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
-
-    let index = 1;
-    let keys = ['value', 'key', 'index'];
+    const keys = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
       let params = mixin.value.params;
       if (params) {
-        let list = params.value;
-        let key0 = list[0]?.toTrimmedString();
-        let key1 = list[1]?.toTrimmedString();
-        let key2 = list[2]?.toTrimmedString();
+        let paramList = params.value;
+        let key0 = paramList[0]?.toTrimmedString();
+        let key1 = paramList[1]?.toTrimmedString();
+        let key2 = paramList[2]?.toTrimmedString();
         if (key2) {
           keys[2] = key2;
           keys[1] = key1!;
@@ -58,32 +53,22 @@ const each = defineFunction(
         }
       }
     }
-
-    for (let [value, key] of entries) {
-      let clone = mixinRules.clone(true);
-      let keyStr = typeof key === 'number' ? `${key + 1}` : key;
-      clone.value.unshift(new VarDeclaration({
-        name: new Any('index', { role: 'property' }),
-        value: new Num(index)
-      }));
-      index++;
-      clone.value.unshift(new VarDeclaration({
-        name: new Any('key', { role: 'property' }),
-        value: keyStr instanceof Node ? await keyStr.eval(this.context) : new Any(keyStr)
-      }));
-      clone.value.unshift(new VarDeclaration({
-        name: new Any('value', { role: 'property' }),
-        value: await value.eval(this.context)
-      }));
-      let result = await clone.eval(this.context);
-      if (result instanceof Rules) {
-        accumulatedNodes.push(...result.value);
-      } else {
-        accumulatedNodes.push(result);
-      }
-    }
-
-    return new Rules(accumulatedNodes);
+    const vars = keys.map(name => new VarDeclaration({
+      name: new Any(name, { role: 'property' }),
+      value: new Nil()
+    }, { paramVar: true }));
+    const pattern = new Block(
+      new List(vars, { sep: ',' }),
+      { type: 'square' }
+    );
+    const header = new Sequence([
+      new Paren(new Sequence([
+        pattern,
+        new Any('of', { role: 'any' }),
+        list
+      ]))
+    ]);
+    return new For({ header, rules: mixinRules });
   },
   {
     params: [{

@@ -17,10 +17,29 @@ This repo uses a **path-scoped Cursor context system** so day-to-day work does n
   - Workflow-heavy procedures selected by description (debugging, fixture-driven work, API safety, perf sanity).
 
 - **Agents** (`.cursor/agents/*.md`)
-  - Optional specialists for decomposition (cartography, verification, implementation, deep package dive).
+  - Project-specific specialists (`jess-baseline-test-runner`, `jess-change-implementer`, `jess-package-analyst`).
 
 - **Commands** (`.cursor/commands/*.md`)
   - Explicit workflows (bootstrap/regenerate/map/verify). These exist for intentional operations, not daily work.
+
+### Agent ownership (user vs repo)
+
+| Layer | Location | Purpose | Versioned |
+|-----|-----|-----|-----|
+| User-level | `~/.cursor/agents` | Personal orchestration defaults reusable across projects | No |
+| Repo-level | `.cursor/agents` | Jess-specific specialists with repo precedence on disagreements | Yes |
+
+- Keep both layers.
+- Prefer user-level agents for cross-repo orchestration patterns.
+- Keep repo-level agents for project semantics and workflows that should be consistent in-team.
+- When user-level and repo-level guidance disagrees, use repo-level behavior in this repo.
+
+### Agent dispatch contract
+
+- Use `.cursor/AGENT_DISPATCH.md` as the source of truth for:
+  - when to use each agent,
+  - model-tier defaults (faster tier vs inherited/default tier),
+  - promotion rules (user-level reusable vs repo-only specialization).
 
 ### Persistent state (“project memory”)
 
@@ -43,7 +62,14 @@ When you say something like:
 - Use **subagents** when helpful (mapping, verification, perf sanity), not as mandatory “roles”.
 - Ask questions **only after** minimal evidence-gathering, and only for information the repo cannot provide.
 
+### Context loading order (minimal-by-default)
+
+1. Always-applied guardrails (`00-global`, `20-quality-bar`, `30-tests`).
+2. Path-based package/domain/subtree rules for touched files.
+3. Task-matched skills (debugging, fixture-driven, API surface, perf, verification).
+4. Optional agents/commands only when task shape needs decomposition or explicit workflow.
+
 ### Notes
 
-Some older always-apply rules were intentionally scoped to `.cursor/**` to avoid duplicated guidance; see `.cursor/CONTEXT_BOOTSTRAP.md` for the merge strategy.
+The active guidance surface is canonical and minimal: global guardrails (`00-global`, `20-quality-bar`, `30-tests`) plus scoped domain/package/subtree rules.
 

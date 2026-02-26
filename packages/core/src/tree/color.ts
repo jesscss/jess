@@ -165,6 +165,36 @@ export class Color extends Node<ColorData, ColorOptions> {
     return unit === '%' ? number / 100 : number;
   }
 
+  private getSerializedAlphaText(compress: boolean): string {
+    const alphaSource = this.value.alpha;
+    if (compress && this.alpha === 0) {
+      return '0';
+    }
+    if (Array.isArray(alphaSource)) {
+      const [alphaValue, alphaUnit] = alphaSource;
+      return `${round(alphaValue, 8)}${alphaUnit}`;
+    }
+    return `${this.alpha}`;
+  }
+
+  private getSerializedRgbText(): [string, string, string] {
+    const rgbSource = this.value.rgb;
+    if (!rgbSource) {
+      const [r, g, b] = this.rgb;
+      return [`${r}`, `${g}`, `${b}`];
+    }
+    return rgbSource.map((channel, idx) => {
+      if (typeof channel === 'number') {
+        return `${this.rgb[idx]!}`;
+      }
+      const [number, unit] = channel;
+      if (unit === '%') {
+        return `${round(clamp(number, 100), 8)}%`;
+      }
+      return `${this.rgb[idx]!}`;
+    }) as [string, string, string];
+  }
+
   /**
    * Get RGB values, converting from HSL if needed.
    * Returns clamped values (0-255) for better developer experience.
@@ -427,36 +457,26 @@ export class Color extends Node<ColorData, ColorOptions> {
     const format = this.options.format ?? ColorFormat.HEX;
     if (format === ColorFormat.RGB) {
       const useModernSyntax = Boolean(this.options.modernSyntax || compress);
-      const alphaSource = this.value.alpha;
-      const alphaText = (() => {
-        if (compress && this.alpha === 0) {
-          return '0';
-        }
-        if (Array.isArray(alphaSource)) {
-          const [alphaValue, alphaUnit] = alphaSource;
-          return `${round(alphaValue, 8)}${alphaUnit}`;
-        }
-        return `${this.alpha}`;
-      })();
+      const rgbText = this.getSerializedRgbText();
+      const alphaText = this.getSerializedAlphaText(compress);
       if (useModernSyntax) {
-        const [r, g, b] = this.rgb;
         if (this.alpha < 1) {
           w.add('rgb(', this);
-          w.add(`${r} ${g} ${b} / ${alphaText}`);
+          w.add(`${rgbText[0]} ${rgbText[1]} ${rgbText[2]} / ${alphaText}`);
           w.add(')');
         } else {
           w.add('rgb(', this);
-          w.add(`${r} ${g} ${b}`);
+          w.add(`${rgbText[0]} ${rgbText[1]} ${rgbText[2]}`);
           w.add(')');
         }
       } else {
         if (this.alpha < 1) {
           w.add('rgba(', this);
-          w.add(this.rgb.join(', ') + ', ' + alphaText);
+          w.add(`${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}, ${alphaText}`);
           w.add(')');
         } else {
           w.add('rgb(', this);
-          w.add(this.rgb.join(', '));
+          w.add(`${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}`);
           w.add(')');
         }
       }
@@ -464,17 +484,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     } else if (format === ColorFormat.HSL) {
       const [h, s, l] = this.hsl;
       const hueSource = this.value.hsl?.[0];
-      const alphaSource = this.value.alpha;
-      const alphaText = (() => {
-        if (compress && this.alpha === 0) {
-          return '0';
-        }
-        if (Array.isArray(alphaSource)) {
-          const [alphaValue, alphaUnit] = alphaSource;
-          return `${round(alphaValue, 8)}${alphaUnit}`;
-        }
-        return `${this.alpha}`;
-      })();
+      const alphaText = this.getSerializedAlphaText(compress);
       const authoredHueUnit = Array.isArray(hueSource) ? hueSource[1] : '';
       const roundedHue = round(h, 8);
       const canDropHueUnitForCompression = compress && roundedHue === 0;

@@ -2,7 +2,7 @@
 
 This document explains **why** Cursor/LLMs struggle with long debugging sessions, **what** best practices and systems exist, and **how** this project implements rules, commands, skills, and subagents to make debugging effective and context-persistent.
 
-**How it all fits together:** The **rules** (main, debugging-state, test-debugging, package-scripts, project-standards) are always-on constraints. **PROJECT_STATE.md** is the shared memory (deps, build order, test commands, current focus); **area-specific plans** (e.g. EXTEND_DEBUG_PLAN) add detail for one area. **Commands** (`/start-debugging`, `/run-baseline`, `/update-debug-state`) are generic workflows for any bug. The **systematic-debugging** skill is applied when the agent thinks you’re debugging. The **debug-verifier** subagent runs whatever baseline the parent asks for and returns a short report. Everything is designed to work for **any** debugging focus (extend, mixins, parser, etc.); extend is just the first well-documented example.
+**How it all fits together:** The always-applied **rules** (`00-global`, `20-quality-bar`, `30-tests`) provide core constraints. **PROJECT_STATE.md** is the shared memory (deps, build order, test commands, current focus); **area-specific plans** (e.g. EXTEND_DEBUG_PLAN) add detail for one area. **Commands** (`/start-debugging`, `/run-baseline`, `/update-debug-state`) are generic workflows for any bug. The **systematic-debugging** skill is applied when the agent thinks you’re debugging. The **jess-baseline-test-runner** subagent runs whatever baseline the parent asks for and returns a short report. Everything is designed to work for **any** debugging focus (extend, mixins, parser, etc.); extend is just the first well-documented example.
 
 ---
 
@@ -37,7 +37,7 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 | **Rules** | Always-on or file-scoped instructions. Included in context every time. | Enforce methodology (observe → hypothesize → trace → verify → fix), ban `console.log`/`JSON.stringify`, require `syncLog`, package script rules. |
 | **Commands** | Slash-command workflows (e.g. `/start-debugging`, `/run-baseline`). Exact steps, no shortcuts. | Standardize "load state, run baseline", "run tests and report", "update debug state". Generic so they work for any bug area (extend, mixins, parser, etc.). |
 | **Skills** | Domain capabilities in `SKILL.md`; agent applies when relevant. | Systematic debugging skill: when to use, steps, anti-patterns, session discipline. |
-| **Subagents** | Isolated context; good for long/noisy tasks. | Verifier subagent: run tests, report pass/fail, so main agent stays focused. |
+| **Subagents** | Isolated context; good for long/noisy tasks. | Baseline runner subagent: run tests, report pass/fail, so main agent stays focused. |
 
 - **Rules** = persistent constraints (how to debug, where to run commands).
 - **Commands** = repeatable workflows so the agent doesn’t improvise wrong sequences.
@@ -76,14 +76,13 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 
 **Rule:** Before starting a debugging task, the agent must **read** the relevant state files. After a meaningful debugging step or at end of session, the agent must **update** them (e.g. "Tried X; result Y; next Z").
 
-### 3.2 Rules (already present; reinforced)
+### 3.2 Rules (canonical)
 
-- **main.mdc** — Debugging methodology (observe, hypothesize, trace, verify, root cause, test hypothesis); `syncLog` only; package script execution; no random changes.
-- **test-debugging.mdc** — Use `it.only`/`describe.only` to isolate; use `syncLog` in tests.
-- **package-scripts.mdc** — Run from package dir or `pnpm --filter`; build dependency before dependent tests.
-- **project-standards/RULE.mdc** — AST invariants; no `as any`; no `JSON.stringify` in instrumentation; vitest only.
+- **`00-global.mdc`** — Evidence-first behavior, no guessing, debugging memory contract, and logging guardrails.
+- **`20-quality-bar.mdc`** — AST invariants, type safety, and instrumentation safety.
+- **`30-tests.mdc`** — Vitest-first testing, `.only` isolation discipline, and package-scoped monorepo script execution.
 
-**New rule (see below):** **debugging-state.mdc** — Read/update `.cursor/PROJECT_STATE.md` and relevant plan files; keep sessions short and log what was tried.
+For debugging sessions, state updates are handled via `PROJECT_STATE.md` and `/update-debug-state`.
 
 ### 3.3 Commands (generic for any debugging area)
 
@@ -97,10 +96,10 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 - **When:** Agent decides when the user is debugging or investigating a failure.
 - **Content:** Short checklist: observe → hypothesize → trace → verify → one fix → run test → update state. Anti-patterns: no random changes, no long sessions without state updates, no skipping "build dependency first."
 
-### 3.5 Subagent: Debug verifier
+### 3.5 Subagent: Jess baseline test runner
 
-- **Location:** `.cursor/agents/debug-verifier.md`
-- **Role:** Receives a prompt from the parent specifying what to run (e.g. "Run core extend baseline", "Run jess less test data"). Runs those tests in isolation, returns a short pass/fail report. Generic: works for any area. Main agent uses this to get a fresh, concise picture without filling the main context with logs.
+- **Location:** `.cursor/agents/jess-baseline-test-runner.md`
+- **Role:** Receives a prompt from the parent specifying what to run (e.g. "Run core extend baseline", "Run jess less test data"). Runs those tests in isolation, returns a short pass/fail report. Uses Jess-oriented defaults when ambiguous, but can run any explicitly requested baseline command. Main agent uses this to get a fresh, concise picture without filling the main context with logs.
 
 ---
 
@@ -121,7 +120,7 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 ### 4.3 When Cursor gets stuck
 
 - **Hand off via state:** Update PROJECT_STATE.md section 4 with "Stuck on X; tried A, B, C; hypothesis was Y." Start a new chat: "Read .cursor/PROJECT_STATE.md and continue debugging." (For extend, also consult `.cursor/rules/subtrees/core__extend.mdc` and the canonical core docs listed above.)
-- **Subagent:** "Run the debug verifier: run [the baseline you need, e.g. core extend tests] and report results." Use the report to decide next step without re-running in the main thread.
+- **Subagent:** "Run the Jess baseline test runner: run [the baseline you need, e.g. core extend tests] and report results." Use the report to decide next step without re-running in the main thread.
 
 ---
 
@@ -138,11 +137,13 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 
 - [x] `.cursor/DEBUGGING_ORCHESTRATION.md` (this file)
 - [x] `.cursor/PROJECT_STATE.md` (package deps, build order, test commands, current debugging focus §4)
-- [x] `.cursor/rules/debugging-state.mdc` (read/update state; session discipline)
+- [x] `.cursor/rules/00-global.mdc` (global behavior + debugging memory contract)
+- [x] `.cursor/rules/20-quality-bar.mdc` (AST/type/instrumentation invariants)
+- [x] `.cursor/rules/30-tests.mdc` (test and monorepo script discipline)
 - [x] `.cursor/commands/start-debugging.md` (generic: any area)
 - [x] `.cursor/commands/run-baseline.md` (generic: any area)
 - [x] `.cursor/commands/update-debug-state.md` (generic: any area)
 - [x] `.cursor/skills/systematic-debugging/SKILL.md`
-- [x] `.cursor/agents/debug-verifier.md` (generic: parent specifies what to run)
+- [x] `.cursor/agents/jess-baseline-test-runner.md` (repo adapter: parent specifies what to run)
 
 **Archived docs:** Older, time-specific extend notes and one-off plans live under `.cursor/archive/`. Prefer keeping the root `.cursor/` directory small and canonical.

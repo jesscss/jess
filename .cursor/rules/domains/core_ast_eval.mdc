@@ -1,7 +1,9 @@
 ---
 description: "Core AST + evaluation engine (`@jesscss/core`): tree structure, evaluation passes, extend/mixin hotspots"
 globs:
-  - "packages/core/**"
+  - "packages/core/src/tree/**"
+  - "packages/core/src/define-function.ts"
+  - "packages/core/src/**/__tests__/**"
 ---
 
 # Core (`packages/core`)

@@ -37,6 +37,8 @@ import type { Reference } from './reference.js';
 import type { Comment } from './comment.js';
 import type { Range } from './range.js';
 import type { Log } from './log.js';
+import type { Paren } from './paren.js';
+import type { Block } from './block.js';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -80,4 +82,6 @@ export type Nodes = {
   Reference: typeof Reference;
   Range: typeof Range;
   Log: typeof Log;
+  Paren: typeof Paren;
+  Block: typeof Block;
 };

@@ -8,7 +8,7 @@ Use this when you want an evidence-based map of a single package (entrypoints, s
    - Example: `packages/core`, `packages/jess`, `packages/less-parser`
 
 2. **Run a cartography pass**
-   - Use the `cartographer` agent to produce:
+   - Use the `codebase-mapper` agent to produce:
      - files inspected (paths)
      - entrypoints (`package.json` exports/main/types)
      - scripts (build/test/lint/ci)
