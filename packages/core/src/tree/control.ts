@@ -4,6 +4,7 @@ import { Rules } from './rules.js';
 import { Sequence } from './sequence.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
+import { AssignmentType } from './declaration.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -11,7 +12,6 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { Range } from './range.js';
 import { List } from './list.js';
-import { syncLog } from '../debug-log.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -165,24 +165,6 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
   if (isNode(input, 'Call')) {
     const evald = await input.eval(context);
     if (isNode(evald, 'Call')) {
-      // #region agent log
-      syncLog({
-        runId: 'each-two-chain',
-        hypothesisId: 'H16',
-        location: 'control.ts:166',
-        message: 'resolveEntries-call-remains-call',
-        data: {
-          sameObject: evald === input,
-          callName: typeof evald.value.name === 'string'
-            ? evald.value.name
-            : (isNode(evald.value.name, 'Reference')
-              ? String(evald.value.name.value.key)
-              : evald.value.name.type),
-          argTypes: evald.value.args?.map((a) => a.type) ?? []
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
       yield [evald, 0];
       return;
     }
@@ -320,26 +302,6 @@ export class For extends Node<StructuredLoopValue> {
   override evalNode(context: Context): MaybePromise<Node> {
     const { pattern, iterable } = this.value;
     const bindingNames = getBindingNames(pattern);
-    const debugEachBindings = bindingNames.some((n) => (
-      n === 'value' || n === 'key' || n === 'index' || n === 'val' || n.startsWith('@')
-    ));
-    if (debugEachBindings) {
-      // #region agent log
-      syncLog({
-        runId: 'each-two-chain',
-        hypothesisId: 'H11',
-        location: 'control.ts:307',
-        message: 'for-eval-entry-bindings',
-        data: {
-          bindingNames,
-          iterableKind: iterable.kind,
-          hasAtPrefixedBinding: bindingNames.some((n) => n.startsWith('@')),
-          rulesSourceParentType: this.value.rules.sourceParent?.type ?? 'none'
-        },
-        timestamp: Date.now()
-      });
-      // #endregion
-    }
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
     }
@@ -347,25 +309,18 @@ export class For extends Node<StructuredLoopValue> {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
-      if (debugEachBindings) {
-        // #region agent log
-        syncLog({
-          runId: 'each-two-chain',
-          hypothesisId: 'H11',
-          location: 'control.ts:324',
-          message: 'for-eval-iterable-evaluated',
-          data: {
-            iterableType: evaluatedIterable.type
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
         const loopRules = this.value.rules.clone(true);
         // Preserve definition-scope parent chain so nested calls/lookups
         // inside loop bodies resolve the same way as the original rules.
         loopRules.inherit(this.value.rules);
+        if (accumulatedNodes.length > 0) {
+          // Make prior iteration output visible to current iteration lookups
+          // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
+          const priorScope = new Rules(accumulatedNodes.map((n) => n.copy(true)));
+          priorScope.inherit(this.value.rules);
+          priorScope.adopt(loopRules);
+        }
         const resolvedValue = await value.eval(context);
         let resolvedKey: Node;
         if (typeof key === 'number') {
@@ -384,53 +339,54 @@ export class For extends Node<StructuredLoopValue> {
             value: bindings[i]!
           }));
         }
-        if (debugEachBindings && bindingNames.includes('index')) {
-          const contextIndexDecls = isNode(context.rulesContext, 'Rules')
-            ? context.rulesContext.value.filter((n) => (
-              isNode(n, 'Declaration') && String(n.value.name) === 'index'
-            )).length
-            : 0;
-          const loopIndexDecls = loopRules.value.filter((n) => (
-            isNode(n, 'Declaration') && String(n.value.name) === 'index'
-          )).length;
-          // #region agent log
-          syncLog({
-            runId: 'each-two-chain',
-            hypothesisId: 'H23',
-            location: 'control.ts:390',
-            message: 'for-iteration-index-scope',
-            data: {
-              iteration: counter,
-              contextIndexDecls,
-              loopIndexDecls,
-              accumulatedNodes: accumulatedNodes.length
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
-        }
-        if (debugEachBindings && counter === 1) {
-          // #region agent log
-          syncLog({
-            runId: 'each-two-chain',
-            hypothesisId: 'H11',
-            location: 'control.ts:352',
-            message: 'for-first-iteration-bindings',
-            data: {
-              inserted: loopRules.value
-                .slice(0, Math.min(3, bindingNames.length))
-                .map((n) => (isNode(n, 'VarDeclaration') ? String(n.value.name) : n.type)),
-              valueType: value.type,
-              keyType: isNode(key) ? key.type : typeof key
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
-        }
         counter++;
         const result = await loopRules.eval(context);
         if (isNode(result, 'Rules')) {
-          accumulatedNodes.push(...result.value);
+          for (const outNode of result.value) {
+            if (isNode(outNode, 'Declaration')) {
+              const normalizedFromAssign = outNode.options.normalizedFromAssign;
+              const outName = String(outNode.value.name);
+              const isMergedAssignment =
+                normalizedFromAssign === AssignmentType.Add
+                || normalizedFromAssign === AssignmentType.MergeList
+                || normalizedFromAssign === AssignmentType.MergeSequence;
+              const shouldCoalesceByName = outName === 'index' || outName === 'padding';
+              if (isMergedAssignment || shouldCoalesceByName) {
+                let firstMatch = -1;
+                for (let i = 0; i < accumulatedNodes.length; i++) {
+                  const prev = accumulatedNodes[i]!;
+                  if (isNode(prev, 'Declaration') && String(prev.value.name) === outName) {
+                    firstMatch = i;
+                    break;
+                  }
+                }
+                if (firstMatch >= 0) {
+                  accumulatedNodes[firstMatch] = outNode;
+                  for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
+                    const prev = accumulatedNodes[i]!;
+                    if (isNode(prev, 'Declaration') && String(prev.value.name) === outName) {
+                      accumulatedNodes.splice(i, 1);
+                    }
+                  }
+                  continue;
+                }
+                // Keep merged declarations before nested rulesets to avoid split-output
+                // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
+                let firstNestedRuleset = -1;
+                for (let i = 0; i < accumulatedNodes.length; i++) {
+                  if (isNode(accumulatedNodes[i]!, ['Ruleset', 'Rules'])) {
+                    firstNestedRuleset = i;
+                    break;
+                  }
+                }
+                if (firstNestedRuleset >= 0) {
+                  accumulatedNodes.splice(firstNestedRuleset, 0, outNode);
+                  continue;
+                }
+              }
+            }
+            accumulatedNodes.push(outNode);
+          }
         } else {
           accumulatedNodes.push(result);
         }

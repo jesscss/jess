@@ -1179,9 +1179,21 @@ export class DeclarationRegistry extends Registry<Declaration> {
           // - public: immediate candidate
           const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
           if (currentRulesVisibility === 'private') {
-            // Skip private vars entirely.
+            // Targeted namespace lookups (e.g. @set[@key]) should still be able to
+            // read private declaration members from the targeted rules.
+            if (options?.hasTarget === true) {
+              declCandidate.add(result);
+              isPublic = true;
+            }
           } else if (currentRulesVisibility === 'optional') {
-            optionalCandidates.add(result);
+            // The originating scope should still prefer its own optional vars over parent scopes.
+            // This keeps lexical shadowing intact for Less-style local vars (e.g. @list in mixins).
+            if (rules === this.rules) {
+              declCandidate.add(result);
+              isPublic = true;
+            } else {
+              optionalCandidates.add(result);
+            }
           } else {
             declCandidate.add(result);
             isPublic = true;

@@ -28,7 +28,6 @@ import { VarDeclaration } from './declaration-var.js';
 import { Any } from './any.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
-import { syncLog } from '../debug-log.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -1164,6 +1163,34 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
+   * Normalize call-produced declaration-only Rules ordering so declarations
+   * emitted from late-evaluated calls (e.g. each/$for) appear before nested
+   * rulesets/at-rules in the same parent Rules container.
+   *
+   * This runs after queue evaluation to avoid mutating rule indices mid-eval.
+   */
+  private _normalizeCallDeclarationRulesOrder(rules: Rules): void {
+    const firstNestedIdx = rules.value.findIndex((n) => isNode(n, ['Ruleset', 'AtRule']));
+    if (firstNestedIdx < 0) {
+      return;
+    }
+    const beforeNested = rules.value.slice(0, firstNestedIdx);
+    const afterNested = rules.value.slice(firstNestedIdx);
+    const shouldMove = (n: Node) => (
+      isNode(n, 'Rules')
+      && isNode(n.sourceParent, 'Call')
+      && n.value.length > 0
+      && n.value.every((child) => isNode(child, ['Declaration', 'Comment']))
+    );
+    const moved = afterNested.filter(shouldMove);
+    if (moved.length === 0) {
+      return;
+    }
+    const remainder = afterNested.filter((n) => !shouldMove(n));
+    rules.value = [...beforeNested, ...moved, ...remainder];
+  }
+
+  /**
    * After preEval: ensure root on extend stack, build eval queue, run evaluation.
    * Used by evalNode so that when eval() is called without preEval (e.g. jess compile()),
    * we still have all rulesets registered and root set for extend lookups.
@@ -1187,11 +1214,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const evalQueue = this._buildEvalQueue(rules);
     const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
     if (isThenable(maybeHoist)) {
-      return (maybeHoist as Promise<boolean>).then((rulesToHoist) => ({
-        rules,
-        rulesToHoist
-      }));
+      return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
+        this._normalizeCallDeclarationRulesOrder(rules);
+        return {
+          rules,
+          rulesToHoist
+        };
+      });
     }
+    this._normalizeCallDeclarationRulesOrder(rules);
     return { rules, rulesToHoist: maybeHoist as boolean };
   }
 
@@ -1506,24 +1537,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const isList1Ref = isNode(arg, 'Reference')
           && arg.options?.type === 'property'
           && String(arg.value.key) === 'list-1';
-        if (isList1Ref) {
-          // #region agent log
-          syncLog({
-            runId: 'list1-chain',
-            hypothesisId: 'H2',
-            location: 'rules.ts:1510',
-            message: 'mixin-arg-before-clonedEval',
-            data: {
-              argParentType: arg.parent?.type ?? 'none',
-              argSourceParentType: arg.sourceParent?.type ?? 'none',
-              callerType: thisContext.caller?.type ?? 'none',
-              rulesContextType: thisContext.rulesContext?.type ?? 'none',
-              sourceParentType: sourceParent?.type ?? 'none'
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
-        }
         // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
         // Evaluating them can register/override variables in the current scope.
         // They should only be used for parameter binding.
@@ -1538,21 +1551,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           evald.frozen = true;
           nodeArgs.push(evald);
         } catch (error: any) {
-          if (isList1Ref) {
-            // #region agent log
-            syncLog({
-              runId: 'list1-chain',
-              hypothesisId: 'H2',
-              location: 'rules.ts:1526',
-              message: 'mixin-arg-reference-error',
-              data: {
-                errorMessage: error?.message ?? 'unknown',
-                willRethrow: true
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
-          }
           throw error;
         }
       } else {

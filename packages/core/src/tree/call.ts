@@ -9,7 +9,6 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
-import { syncLog } from '../debug-log.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -224,6 +223,9 @@ export class Call extends Node<CallValue, CallOptions> {
       : (isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : '');
 
     if (typeof fn === 'function') {
+      const originalCaller = context.caller;
+      context.caller = this;
+      let didPopCallStack = false;
       try {
         if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
           console.log('[Call.evalNode] pi() resolved to function', { silentFail: this.options?.silentFail });
@@ -245,81 +247,28 @@ export class Call extends Node<CallValue, CallOptions> {
             copied.frozen = true;
             return copied;
           });
-          const hasList1Arg = args.some((arg) => (
-            isNode(arg, 'Reference')
-            && arg.options?.type === 'property'
-            && String(arg.value.key) === 'list-1'
-          ));
-          if (hasList1Arg) {
-            // #region agent log
-            syncLog({
-              runId: 'list1-chain',
-              hypothesisId: 'H1',
-              location: 'call.ts:230',
-              message: 'call-eval-before-callWithContext',
-              data: {
-                callNameType: isNode(name, 'Reference') ? name.options?.type ?? 'ref' : typeof name,
-                argMeta: args.map((a) => isNode(a, 'Reference') ? `ref:${a.options?.type ?? ''}:${String(a.value.key)}` : a.type),
-                callerType: context.caller?.type ?? 'none'
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
-          }
         }
-        let originalCaller = context.caller;
-        context.caller = this;
         if (callNameKey === 'each') {
-          // #region agent log
-          syncLog({
-            runId: 'each-two-chain',
-            hypothesisId: 'H18',
-            location: 'call.ts:266',
-            message: 'each-before-callWithContext',
-            data: {
-              argTypes: args?.map((a) => a.type) ?? [],
-              argSourceParents: args?.map((a) => a.sourceParent?.type ?? 'none') ?? []
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
+          const ancestryTypes: string[] = [];
+          const ancestryRulesetSelectors: string[] = [];
+          let cursor: Node | undefined = this;
+          for (let i = 0; i < 8 && cursor; i++) {
+            ancestryTypes.push(cursor.type);
+            if (isNode(cursor, 'Ruleset')) {
+              ancestryRulesetSelectors.push(cursor.value.selector.valueOf());
+            }
+            cursor = cursor.parent;
+          }
         }
         const result = await (
           args
             ? callWithContext(context, fn, ...args)
             : callWithContext(context, fn)
         );
-        if (callNameKey === 'each') {
-          // #region agent log
-          syncLog({
-            runId: 'each-two-chain',
-            hypothesisId: 'H12',
-            location: 'call.ts:271',
-            message: 'each-after-callWithContext',
-            data: {
-              resultType: isNode(result) ? result.type : typeof result
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
-        }
         context.caller = originalCaller;
         context.callStack.pop();
+        didPopCallStack = true;
         if (isNode(result)) {
-          if (callNameKey === 'each') {
-            // #region agent log
-            syncLog({
-              runId: 'each-two-chain',
-              hypothesisId: 'H12',
-              location: 'call.ts:282',
-              message: 'each-before-result-eval',
-              data: {
-                resultType: result.type
-              },
-              timestamp: Date.now()
-            });
-            // #endregion
-          }
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
@@ -339,22 +288,6 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
-        if (callNameKey === 'each') {
-          // #region agent log
-          syncLog({
-            runId: 'each-two-chain',
-            hypothesisId: 'H9',
-            location: 'call.ts:294',
-            message: 'each-call-function-branch-error',
-            data: {
-              errorMessage: (e as any)?.message ?? 'unknown',
-              silentFail: Boolean(this.options?.silentFail),
-              unitMode: context?.opts?.unitMode ?? 'loose'
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
-        }
         if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
           console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
         }
@@ -393,27 +326,15 @@ export class Call extends Node<CallValue, CallOptions> {
             });
           }
         });
-        context.callStack.pop();
-        context.parenFrames.pop();
         return adoptCallWhitespace(newCall);
+      } finally {
+        context.caller = originalCaller;
+        context.parenFrames.pop();
+        if (!didPopCallStack) {
+          context.callStack.pop();
+        }
       }
     } else {
-      if (n === 'each') {
-        // #region agent log
-        syncLog({
-          runId: 'each-two-chain',
-          hypothesisId: 'H5',
-          location: 'call.ts:332',
-          message: 'call-non-function-branch-for-each',
-          data: {
-            evaluatedNameType: typeof n,
-            originalNameType: isNode(name, 'Reference') ? name.options?.type ?? 'ref' : typeof name,
-            silentFail: Boolean(this.options?.silentFail)
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
       if (n === 'calc') {
         context.calcFrames++;
       }

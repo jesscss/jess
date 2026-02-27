@@ -5,7 +5,6 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { Call } from './call.js';
-import { syncLog } from '../debug-log.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -48,23 +47,6 @@ export class Operation extends Node<OperationValue> {
     let [left, op, right] = n.value;
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
-      if (op === '+' && isNode(this.parent, 'Declaration') && String(this.parent.value.name) === 'index') {
-        // #region agent log
-        syncLog({
-          runId: 'each-two-chain',
-          hypothesisId: 'H21',
-          location: 'operation.ts:50',
-          message: 'index-add-operands',
-          data: {
-            leftType: l.type,
-            rightType: r.type,
-            leftValue: l.valueOf(),
-            rightValue: r.valueOf()
-          },
-          timestamp: Date.now()
-        });
-        // #endregion
-      }
       if (context.shouldOperate(op, l, r)) {
         const unitMode = context?.opts?.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';

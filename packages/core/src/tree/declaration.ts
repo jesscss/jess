@@ -14,7 +14,6 @@ import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
-import { syncLog } from '../debug-log.js';
 
 export const enum AssignmentType {
   Default = ':',
@@ -35,6 +34,8 @@ export const enum AssignmentType {
 
 export type DeclarationOptions = {
   assign?: AssignmentType;
+  /** Tracks that this declaration was created via assignment normalization (e.g. +:, +_:). */
+  normalizedFromAssign?: AssignmentType;
   semi?: boolean;
   /**
    * This doesn't prevent shadowing; it prevents declarations like:
@@ -150,7 +151,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
       let assign = node.options?.assign;
+      const rawAssign = assign as string | undefined;
+      if (rawAssign === '+,:') {
+        assign = AssignmentType.MergeList;
+      } else if (rawAssign === '+_:') {
+        assign = AssignmentType.MergeSequence;
+      }
       if (assign) {
+        const normalizedAssign = assign;
         value = value.maybeClone(context);
         /** Reference type */
         let type: 'property' | 'variable' =
@@ -160,20 +168,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           case AssignmentType.MergeSequence: {
             const ref = new Reference({ key }, {
               type,
-              role: 'name',
               fallbackValue: new Nil(),
-              filter: (n) => {
-                const assign = n.options?.assign;
-                return assign === AssignmentType.MergeList
-                  || assign === AssignmentType.MergeSequence;
-              }
+              // Assignment normalization clears `assign` to Default, so matching by
+              // assignment flag prevents later merge iterations from seeing prior values.
+              // Exclude only the current node to avoid self-reference.
+              filter: (n) => n !== node
             });
             /**
              * @note - It's up to Sequence and List to handle
              *         the merging of the values, if Nil()
              *         or a nested list.
              */
-            value = assign === AssignmentType.MergeList
+            const isMergeListAssign = assign === AssignmentType.MergeList;
+            value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
             node.value.value = value;
@@ -181,20 +188,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           case AssignmentType.Add: {
             if (node.type === 'Declaration') {
-              // Less `prop+: value` appends to a comma list; it is not arithmetic.
-              node.value.value = new List([
+              // Use list addition semantics so first occurrence produces a scalar list item
+              // (no leading comma), while subsequent occurrences append.
+              node.value.value = new Operation([
                 new Reference({ key }, {
                   type,
-                  role: 'name',
-                  fallbackValue: new Nil(),
+                  fallbackValue: new List([]),
+                  // Prevent self-referential reads while normalizing this node.
                   filter: (n) => n !== node
                 }),
-                value
+                '+',
+                new List([value])
               ]);
             } else {
               node.value.value =
                 new Operation([
-                  new Reference({ key }, { type, role: 'name' }),
+                  new Reference({ key }, { type }),
                   '+',
                   value
                 ]);
@@ -205,12 +214,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             node.value.value =
               new Reference({ key }, {
                 type,
-                role: 'name',
                 fallbackValue: value
               });
             break;
           }
         }
+        node.options.normalizedFromAssign = normalizedAssign;
         node.options.assign = AssignmentType.Default;
       }
       const out = node.value.value.preEval(context);
@@ -250,25 +259,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
-        if (String(node.value.name) === 'index') {
-          // #region agent log
-          syncLog({
-            runId: 'each-two-chain',
-            hypothesisId: 'H22',
-            location: 'declaration.ts:236',
-            message: 'declaration-eval-index',
-            data: {
-              nodeType: node.type,
-              assign: node.options?.assign ?? 'none',
-              preEvaluated: node.preEvaluated,
-              evaluated: node.evaluated,
-              valueType: node.value.value.type,
-              parentType: node.parent?.type ?? 'none'
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
-        }
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
           return node;

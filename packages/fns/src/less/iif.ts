@@ -1,4 +1,4 @@
-import { defineFunction, Node, Bool, type Lazy } from '@jesscss/core';
+import { defineFunction, Node, Bool, Anonymous, type Lazy } from '@jesscss/core';
 
 /**
  * if condition, return ifValue, else return elseValue
@@ -13,7 +13,7 @@ const iif = defineFunction(
     if (elseValue) {
       return await elseValue();
     }
-    return undefined;
+    return new Anonymous('');
   },
   {
     params: [{
