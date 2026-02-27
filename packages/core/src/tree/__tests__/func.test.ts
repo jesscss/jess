@@ -19,7 +19,7 @@ describe('Func', () => {
         ])
       }),
       // Call using plain string name should resolve through function registry
-      call({ name: 'add', args: list([any('x'), any('y')]) })
+      call({ name: 'add', args: [any('x'), any('y')] })
     ]);
 
     // Evaluate root rules; the call should reduce to the return value node

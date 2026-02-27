@@ -125,7 +125,7 @@ describe('Flag bubbling', () => {
         ruleset({
           selector: sellist([sel([el('.a')])]),
           rules: rules([
-            decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })
+            decl({ name: 'color', value: call({ name: 'rgb', args: [num(255), num(0), num(0)] }) })
           ])
         })
       ]);
@@ -213,7 +213,7 @@ describe('Flag bubbling', () => {
     test('function call bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })])
+        rules: rules([decl({ name: 'color', value: call({ name: 'rgb', args: [num(255), num(0), num(0)] }) })])
       });
       const tree = rules([
         ruleset({

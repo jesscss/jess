@@ -282,7 +282,7 @@ describe('AtRule', () => {
         rules: rules([
           call({
             name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
-            args: list([dimension([100, 'px'])])
+            args: [dimension([100, 'px'])]
           })
         ])
       });
@@ -909,9 +909,9 @@ describe('AtRule', () => {
           rules: rules([
             call({
               name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
-              args: list([
+              args: [
                 dimension([100, 'px'])
-              ])
+              ]
             })
           ])
         }),
@@ -1128,9 +1128,9 @@ describe('AtRule', () => {
                         quoted(any('Page ', { role: 'any' })),
                         call({
                           name: any('counter', { role: 'ident' }),
-                          args: list([
+                          args: [
                             any('page')
-                          ])
+                          ]
                         })
                       ])
                     })

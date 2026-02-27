@@ -86,7 +86,8 @@ export class Call extends Node<CallValue, CallOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, args, contentNode } = this.value;
+    const { name, contentNode } = this.value;
+    const args = this.value.args;
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
@@ -97,11 +98,15 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const last = args.length - 1;
+      const normalizedArgs = args.filter(Boolean);
+      const last = normalizedArgs.length - 1;
       for (let i = 0; i <= last; i++) {
-        args[i]!.toString(options);
+        const arg = normalizedArgs[i]!;
+        const argOut = w.capture(() => arg.toString(options));
+        // Normalize boundary whitespace so calls serialize with stable comma spacing.
+        w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
         if (i < last) {
-          w.add(',');
+          w.add(', ');
         }
       }
     }
@@ -135,7 +140,8 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    let { name, args } = this.value;
+    let { name } = this.value;
+    let args = this.value.args;
     let { markImportant } = this.options;
     const adoptCallWhitespace = <T extends Node>(node: T): T => {
       node.pre = this.pre;
@@ -213,6 +219,9 @@ export class Call extends Node<CallValue, CallOptions> {
     }
 
     let fn = isNode(n, 'JsFunction') ? n.value : n;
+    const callNameKey = typeof name === 'string'
+      ? name
+      : (isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : '');
 
     if (typeof fn === 'function') {
       try {
@@ -223,20 +232,94 @@ export class Call extends Node<CallValue, CallOptions> {
         if (args) {
           args = args.map((node) => {
             const copied = node.copy(true, freezeChildren);
+            // Anchor copied references to this Call so nested property refs
+            // (e.g. $list-1) can walk back to call-site Rules.
+            // Also anchor copied Mixin callback args to call-site source scope
+            // so callback bodies can resolve surrounding variables.
+            if (isNode(copied, 'Reference')) {
+              this.adopt(copied);
+              copied.sourceParent = this;
+            } else if (isNode(copied, 'Mixin')) {
+              copied.sourceParent = this;
+            }
             copied.frozen = true;
             return copied;
           });
+          const hasList1Arg = args.some((arg) => (
+            isNode(arg, 'Reference')
+            && arg.options?.type === 'property'
+            && String(arg.value.key) === 'list-1'
+          ));
+          if (hasList1Arg) {
+            // #region agent log
+            syncLog({
+              runId: 'list1-chain',
+              hypothesisId: 'H1',
+              location: 'call.ts:230',
+              message: 'call-eval-before-callWithContext',
+              data: {
+                callNameType: isNode(name, 'Reference') ? name.options?.type ?? 'ref' : typeof name,
+                argMeta: args.map((a) => isNode(a, 'Reference') ? `ref:${a.options?.type ?? ''}:${String(a.value.key)}` : a.type),
+                callerType: context.caller?.type ?? 'none'
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
         }
         let originalCaller = context.caller;
         context.caller = this;
+        if (callNameKey === 'each') {
+          // #region agent log
+          syncLog({
+            runId: 'each-two-chain',
+            hypothesisId: 'H18',
+            location: 'call.ts:266',
+            message: 'each-before-callWithContext',
+            data: {
+              argTypes: args?.map((a) => a.type) ?? [],
+              argSourceParents: args?.map((a) => a.sourceParent?.type ?? 'none') ?? []
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         const result = await (
           args
             ? callWithContext(context, fn, ...args)
             : callWithContext(context, fn)
         );
+        if (callNameKey === 'each') {
+          // #region agent log
+          syncLog({
+            runId: 'each-two-chain',
+            hypothesisId: 'H12',
+            location: 'call.ts:271',
+            message: 'each-after-callWithContext',
+            data: {
+              resultType: isNode(result) ? result.type : typeof result
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         context.caller = originalCaller;
         context.callStack.pop();
         if (isNode(result)) {
+          if (callNameKey === 'each') {
+            // #region agent log
+            syncLog({
+              runId: 'each-two-chain',
+              hypothesisId: 'H12',
+              location: 'call.ts:282',
+              message: 'each-before-result-eval',
+              data: {
+                resultType: result.type
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
@@ -256,17 +339,28 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
+        if (callNameKey === 'each') {
+          // #region agent log
+          syncLog({
+            runId: 'each-two-chain',
+            hypothesisId: 'H9',
+            location: 'call.ts:294',
+            message: 'each-call-function-branch-error',
+            data: {
+              errorMessage: (e as any)?.message ?? 'unknown',
+              silentFail: Boolean(this.options?.silentFail),
+              unitMode: context?.opts?.unitMode ?? 'loose'
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
           console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
         }
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          syncLog({
-            tag: 'call-no-mixin',
-            callName: isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : String(name),
-            originalMessage: e.message
-          });
           if (isNode(name, 'Reference')) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
           }
@@ -304,6 +398,22 @@ export class Call extends Node<CallValue, CallOptions> {
         return adoptCallWhitespace(newCall);
       }
     } else {
+      if (n === 'each') {
+        // #region agent log
+        syncLog({
+          runId: 'each-two-chain',
+          hypothesisId: 'H5',
+          location: 'call.ts:332',
+          message: 'call-non-function-branch-for-each',
+          data: {
+            evaluatedNameType: typeof n,
+            originalNameType: isNode(name, 'Reference') ? name.options?.type ?? 'ref' : typeof name,
+            silentFail: Boolean(this.options?.silentFail)
+          },
+          timestamp: Date.now()
+        });
+        // #endregion
+      }
       if (n === 'calc') {
         context.calcFrames++;
       }

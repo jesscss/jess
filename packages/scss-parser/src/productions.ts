@@ -1759,7 +1759,7 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       }
     });
 
-    const header = !RECORDING_PHASE
+    const forParts = !RECORDING_PHASE
       ? (() => {
           const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
           const varDecl = new VarDeclaration({ name, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context);
@@ -1771,17 +1771,19 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
             ? endNodes[0]!
             : new Sequence(endNodes, undefined, $.getLocationFromNodes(endNodes), $.context);
 
-          const rangeNode = new Range(
-            { start: startExpr, end: endExpr },
-            { includeStart: true, includeEnd },
-            $.getLocationFromNodes([startExpr, endExpr]),
-            $.context
-          );
-
-          const ofNode = new Any('of', { role: 'any' }, $.getLocationInfo(dv), $.context);
-          const inner = new Sequence([varDecl, ofNode, rangeNode], undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
-          const paren = new Paren(inner, undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
-          return new Sequence([paren], undefined, $.getLocationFromNodes([paren]), $.context);
+          return {
+            pattern: {
+              kind: 'single' as const,
+              value: varDecl
+            },
+            iterable: {
+              kind: 'range' as const,
+              start: startExpr,
+              end: endExpr,
+              includeStart: true,
+              includeEnd
+            }
+          };
         })()
       : undefined;
 
@@ -1791,7 +1793,11 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     if (!RECORDING_PHASE) {
       makePublicDirectiveRules(rules);
       const loc = $.endRule();
-      return new For({ header: header!, rules }, undefined, loc, $.context);
+      return new For({
+        pattern: forParts!.pattern,
+        iterable: forParts!.iterable,
+        rules
+      }, undefined, loc, $.context);
     }
   };
 }
@@ -1834,9 +1840,9 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     // Parse the iterable expression as a value sequence (stops before `{` naturally).
     const rawExpr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
 
-    const header = !RECORDING_PHASE
+    const forParts = !RECORDING_PHASE
       ? (() => {
-          const pattern: Node =
+          const patternNode: Node =
           vars.length > 1
             ? new Block(
               new List(vars, { sep: ',' }, $.getLocationFromNodes(vars), $.context),
@@ -1854,10 +1860,23 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
                 innerExpr.pre = 0;
                 return new Expression(innerExpr, undefined, $.getLocationFromNodes([rawExpr]), $.context);
               })();
-          const ofNode = new Any('of', { role: 'any' }, $.getLocationFromNodes([pattern]), $.context);
-          const inner = new Sequence([pattern, ofNode, expr], undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
-          const paren = new Paren(inner, undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
-          return new Sequence([paren], undefined, $.getLocationFromNodes([paren]), $.context);
+          const pattern = vars.length > 1
+            ? {
+                kind: 'tuple' as const,
+                values: vars as [VarDeclaration, ...VarDeclaration[]]
+              }
+            : {
+                kind: 'single' as const,
+                value: vars[0]!
+              };
+          void patternNode;
+          return {
+            pattern,
+            iterable: {
+              kind: 'node' as const,
+              value: expr
+            }
+          };
         })()
       : undefined;
 
@@ -1867,7 +1886,11 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     if (!RECORDING_PHASE) {
       makePublicDirectiveRules(rules);
       const loc = $.endRule();
-      return new For({ header: header!, rules }, undefined, loc, $.context);
+      return new For({
+        pattern: forParts!.pattern,
+        iterable: forParts!.iterable,
+        rules
+      }, undefined, loc, $.context);
     }
   };
 }

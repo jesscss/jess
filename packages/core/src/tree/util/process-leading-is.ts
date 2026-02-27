@@ -91,7 +91,11 @@ export function processLeadingIs(
       return selector;
     }
     const arg = (first as PseudoSelector).value.arg as Selector | undefined;
-    if (!arg || isNode(arg, 'SelectorList')) return selector;
+    if (!arg) return selector;
+    const normalizedArg = isNode(arg, 'SelectorList') && arg.value.length === 1
+      ? (arg.value[0]! as Selector)
+      : arg;
+    if (isNode(normalizedArg, 'SelectorList')) return selector;
 
     const suffix = value.slice(1).map(s => (s as Selector).copy(true));
     if (suffix.length === 0) {
@@ -99,8 +103,8 @@ export function processLeadingIs(
     }
 
     // Merge suffix into last component of arg (complex or compound)
-    if (isNode(arg, 'ComplexSelector')) {
-      const complex = arg as ComplexSelector;
+    if (isNode(normalizedArg, 'ComplexSelector')) {
+      const complex = normalizedArg as ComplexSelector;
       const comps = complex.value.slice().map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
       for (let i = comps.length - 1; i >= 0; i--) {
         const c = comps[i]!;
@@ -122,13 +126,13 @@ export function processLeadingIs(
       }
       return ComplexSelector.create(comps).inherit(selector) as Selector;
     }
-    if (isNode(arg, 'CompoundSelector')) {
-      const newCompound = (arg as CompoundSelector).value.slice().map(s => (s as Selector).copy(true));
+    if (isNode(normalizedArg, 'CompoundSelector')) {
+      const newCompound = (normalizedArg as CompoundSelector).value.slice().map(s => (s as Selector).copy(true));
       newCompound.push(...suffix);
       return CompoundSelector.create(newCompound).inherit(selector) as Selector;
     }
     const newCompound = CompoundSelector.create([
-      arg.copy(true),
+      normalizedArg.copy(true),
       ...suffix
     ]).inherit(selector);
     return ComplexSelector.create([newCompound as ComplexSelectorComponent]).inherit(selector) as Selector;
@@ -155,16 +159,20 @@ export function processLeadingIs(
       return selector;
     }
     const arg = (first as PseudoSelector).value.arg as Selector | undefined;
-    if (!arg || isNode(arg, 'SelectorList')) return selector;
+    if (!arg) return selector;
+    const normalizedArg = isNode(arg, 'SelectorList') && arg.value.length === 1
+      ? (arg.value[0]! as Selector)
+      : arg;
+    if (isNode(normalizedArg, 'SelectorList')) return selector;
 
-    if (isNode(arg, 'ComplexSelector')) {
-      const argComps = (arg as ComplexSelector).value.slice().map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
+    if (isNode(normalizedArg, 'ComplexSelector')) {
+      const argComps = (normalizedArg as ComplexSelector).value.slice().map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
       const rest = value.slice(firstSelIndex + 1).map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
       const newValue = [...argComps, ...rest];
       return ComplexSelector.create(newValue).inherit(selector) as Selector;
     }
     const rest = value.slice(firstSelIndex + 1).map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
-    const newValue = [arg.copy(true) as ComplexSelectorComponent, ...rest];
+    const newValue = [normalizedArg.copy(true) as ComplexSelectorComponent, ...rest];
     return ComplexSelector.create(newValue).inherit(selector) as Selector;
   }
 

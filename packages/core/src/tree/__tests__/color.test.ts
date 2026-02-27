@@ -351,15 +351,20 @@ describe('Color Node', () => {
     });
   });
 
-  describe('fromFunctionCall', () => {
-    it('should create color with Call node for RGB function', () => {
+  describe('call-backed colors', () => {
+    it('should preserve Call node for RGB function colors', () => {
       const args = [
         new Dimension({ number: 255, unit: '' }),
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
+      const callNode = new Call({ name: 'rgb', args });
 
-      const color = Color.fromFunctionCall(ColorFormat.RGB, args, 1);
+      const color = new Color({
+        node: callNode,
+        rgb: [255, 0, 0],
+        alpha: 1
+      }, { format: ColorFormat.RGB });
 
       expect(color.options.format).toBe(ColorFormat.RGB);
       expect(color.value.node).toBeInstanceOf(Call);
@@ -367,14 +372,19 @@ describe('Color Node', () => {
       expect(color.alpha).toBe(1);
     });
 
-    it('should create color with Call node for HSL function', () => {
+    it('should preserve Call node for HSL function colors', () => {
       const args = [
         new Dimension({ number: 0, unit: 'deg' }),
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
+      const callNode = new Call({ name: 'hsl', args });
 
-      const color = Color.fromFunctionCall(ColorFormat.HSL, args, 1);
+      const color = new Color({
+        node: callNode,
+        hsl: [[0, 'deg'], [100, '%'], [50, '%']],
+        alpha: 1
+      }, { format: ColorFormat.HSL });
 
       expect(color.options.format).toBe(ColorFormat.HSL);
       expect(color.value.node).toBeInstanceOf(Call);

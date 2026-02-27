@@ -8,6 +8,10 @@ import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { Block } from './block.js';
+import { Range } from './range.js';
+import { List } from './list.js';
+import { syncLog } from '../debug-log.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -23,12 +27,64 @@ function makeDirectiveRulesPublic(rules: Rules) {
   };
 }
 
-type ForParts = {
-  pattern: Node;
-  iterable: Node;
+export type ForPattern =
+  | {
+    kind: 'single';
+    value: VarDeclaration;
+  }
+  | {
+    kind: 'tuple';
+    values: [VarDeclaration, ...VarDeclaration[]];
+  };
+
+export type ForIterable =
+  | {
+    kind: 'node';
+    value: Node;
+  }
+  | {
+    kind: 'range';
+    start: Node;
+    end: Node;
+    step?: Node;
+    includeStart: boolean;
+    includeEnd: boolean;
+  };
+
+type LegacyLoopValue = {
+  header: Sequence;
+  rules: Rules;
 };
 
-function splitForHeader(header: Sequence): ForParts {
+function parsePatternNode(patternNode: Node): ForPattern {
+  if (isNode(patternNode, 'VarDeclaration')) {
+    return { kind: 'single', value: patternNode };
+  }
+  if (isNode(patternNode, 'Block') && patternNode.options?.type === 'square' && isNode(patternNode.value, 'List')) {
+    const values = patternNode.value.value.filter((entry): entry is VarDeclaration => isNode(entry, 'VarDeclaration'));
+    if (values.length === 1) {
+      return { kind: 'single', value: values[0]! };
+    }
+    if (values.length > 1) {
+      return { kind: 'tuple', values: values as [VarDeclaration, ...VarDeclaration[]] };
+    }
+  }
+  if (isNode(patternNode, ['List', 'Sequence'])) {
+    const values = patternNode.value.filter((entry): entry is VarDeclaration => isNode(entry, 'VarDeclaration'));
+    if (values.length === 1) {
+      return { kind: 'single', value: values[0]! };
+    }
+    if (values.length > 1) {
+      return { kind: 'tuple', values: values as [VarDeclaration, ...VarDeclaration[]] };
+    }
+  }
+  throw new Error('Invalid $for pattern: expected one or more variables');
+}
+
+function parseLegacyHeader(header: Sequence): {
+  pattern: ForPattern;
+  iterable: ForIterable;
+} {
   const headerNode = header.value[0];
   const inner = isNode(headerNode, 'Paren') && headerNode.value
     ? headerNode.value
@@ -42,30 +98,63 @@ function splitForHeader(header: Sequence): ForParts {
   }
   const patternParts = sequence.slice(0, ofIndex);
   const iterableParts = sequence.slice(ofIndex + 1);
-  const pattern = patternParts.length === 1
+  const patternNode = patternParts.length === 1
     ? patternParts[0]!
     : new Sequence(patternParts);
-  const iterable = iterableParts.length === 1
+  const iterableNode = iterableParts.length === 1
     ? iterableParts[0]!
     : new Sequence(iterableParts);
-  return { pattern, iterable };
+  let iterable: ForIterable;
+  if (isNode(iterableNode, 'Range')) {
+    iterable = {
+      kind: 'range',
+      start: iterableNode.value.start,
+      end: iterableNode.value.end,
+      step: iterableNode.value.step,
+      includeStart: iterableNode.options?.includeStart !== false,
+      includeEnd: iterableNode.options?.includeEnd !== false
+    };
+  } else {
+    iterable = { kind: 'node', value: iterableNode };
+  }
+  return {
+    pattern: parsePatternNode(patternNode),
+    iterable
+  };
 }
 
-function getBindingNames(pattern: Node): string[] {
-  if (isNode(pattern, 'VarDeclaration')) {
-    return [pattern.value.name.valueOf()];
+function getBindingNames(pattern: ForPattern): string[] {
+  if (pattern.kind === 'single') {
+    return [pattern.value.value.name.valueOf()];
   }
-  if (isNode(pattern, 'Block') && pattern.options?.type === 'square' && isNode(pattern.value, 'List')) {
-    return pattern.value.value
-      .filter((entry): entry is VarDeclaration => isNode(entry, 'VarDeclaration'))
-      .map(entry => entry.value.name.valueOf());
-  }
-  if (isNode(pattern, 'List') || isNode(pattern, 'Sequence')) {
-    return pattern.value
-      .filter((entry): entry is VarDeclaration => isNode(entry, 'VarDeclaration'))
-      .map(entry => entry.value.name.valueOf());
+  if (pattern.kind === 'tuple') {
+    return pattern.values.map(entry => entry.value.name.valueOf());
   }
   return [];
+}
+
+function patternToNode(pattern: ForPattern): Node {
+  if (pattern.kind === 'single') {
+    return pattern.value;
+  }
+  return new Block(new List([...pattern.values], { sep: ',' }), { type: 'square' });
+}
+
+function iterableToNode(iterable: ForIterable): Node {
+  if (iterable.kind === 'node') {
+    return iterable.value;
+  }
+  return new Range(
+    {
+      start: iterable.start,
+      end: iterable.end,
+      step: iterable.step
+    },
+    {
+      includeStart: iterable.includeStart,
+      includeEnd: iterable.includeEnd
+    }
+  );
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
@@ -74,7 +163,30 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     return;
   }
   if (isNode(input, 'Call')) {
-    yield* resolveEntries(await input.eval(context), context);
+    const evald = await input.eval(context);
+    if (isNode(evald, 'Call')) {
+      // #region agent log
+      syncLog({
+        runId: 'each-two-chain',
+        hypothesisId: 'H16',
+        location: 'control.ts:166',
+        message: 'resolveEntries-call-remains-call',
+        data: {
+          sameObject: evald === input,
+          callName: typeof evald.value.name === 'string'
+            ? evald.value.name
+            : (isNode(evald.value.name, 'Reference')
+              ? String(evald.value.name.value.key)
+              : evald.value.name.type),
+          argTypes: evald.value.args?.map((a) => a.type) ?? []
+        },
+        timestamp: Date.now()
+      });
+      // #endregion
+      yield [evald, 0];
+      return;
+    }
+    yield* resolveEntries(evald, context);
     return;
   }
   if ((isNode(input, 'Sequence') || isNode(input, 'List')) && Array.isArray(input.value)) {
@@ -163,36 +275,93 @@ export class If extends Node<IfValue> {
   }
 }
 
-export type LoopValue = {
-  header: Sequence;
+export type StructuredLoopValue = {
+  pattern: ForPattern;
+  iterable: ForIterable;
   rules: Rules;
 };
+
+export type LoopValue = StructuredLoopValue | LegacyLoopValue;
 
 /**
  * `$for <header> { ... }`
  */
-export class For extends Node<LoopValue> {
+export class For extends Node<StructuredLoopValue> {
   type = 'For' as const;
   shortType = 'for' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: LoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+    const normalized = ('header' in value)
+      ? (() => {
+          const parsed = parseLegacyHeader(value.header);
+          return {
+            pattern: parsed.pattern,
+            iterable: parsed.iterable,
+            rules: value.rules
+          };
+        })()
+      : value;
+    super(normalized, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(value.rules);
+    makeDirectiveRulesPublic(normalized.rules);
+  }
+
+  override preEval(context: Context): MaybePromise<Node> {
+    if (!this.preEvaluated) {
+      const node = this.maybeClone(context) as For;
+      node.preEvaluated = true;
+      return node;
+    }
+    return this;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { pattern, iterable } = splitForHeader(this.value.header);
+    const { pattern, iterable } = this.value;
     const bindingNames = getBindingNames(pattern);
+    const debugEachBindings = bindingNames.some((n) => (
+      n === 'value' || n === 'key' || n === 'index' || n === 'val' || n.startsWith('@')
+    ));
+    if (debugEachBindings) {
+      // #region agent log
+      syncLog({
+        runId: 'each-two-chain',
+        hypothesisId: 'H11',
+        location: 'control.ts:307',
+        message: 'for-eval-entry-bindings',
+        data: {
+          bindingNames,
+          iterableKind: iterable.kind,
+          hasAtPrefixedBinding: bindingNames.some((n) => n.startsWith('@')),
+          rulesSourceParentType: this.value.rules.sourceParent?.type ?? 'none'
+        },
+        timestamp: Date.now()
+      });
+      // #endregion
+    }
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
     }
     const run = async (): Promise<Node> => {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
-      for await (const [value, key] of resolveEntries(await iterable.eval(context), context)) {
+      const evaluatedIterable = await iterableToNode(iterable).eval(context);
+      if (debugEachBindings) {
+        // #region agent log
+        syncLog({
+          runId: 'each-two-chain',
+          hypothesisId: 'H11',
+          location: 'control.ts:324',
+          message: 'for-eval-iterable-evaluated',
+          data: {
+            iterableType: evaluatedIterable.type
+          },
+          timestamp: Date.now()
+        });
+        // #endregion
+      }
+      for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
         const loopRules = this.value.rules.clone(true);
         // Preserve definition-scope parent chain so nested calls/lookups
         // inside loop bodies resolve the same way as the original rules.
@@ -215,6 +384,49 @@ export class For extends Node<LoopValue> {
             value: bindings[i]!
           }));
         }
+        if (debugEachBindings && bindingNames.includes('index')) {
+          const contextIndexDecls = isNode(context.rulesContext, 'Rules')
+            ? context.rulesContext.value.filter((n) => (
+              isNode(n, 'Declaration') && String(n.value.name) === 'index'
+            )).length
+            : 0;
+          const loopIndexDecls = loopRules.value.filter((n) => (
+            isNode(n, 'Declaration') && String(n.value.name) === 'index'
+          )).length;
+          // #region agent log
+          syncLog({
+            runId: 'each-two-chain',
+            hypothesisId: 'H23',
+            location: 'control.ts:390',
+            message: 'for-iteration-index-scope',
+            data: {
+              iteration: counter,
+              contextIndexDecls,
+              loopIndexDecls,
+              accumulatedNodes: accumulatedNodes.length
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
+        if (debugEachBindings && counter === 1) {
+          // #region agent log
+          syncLog({
+            runId: 'each-two-chain',
+            hypothesisId: 'H11',
+            location: 'control.ts:352',
+            message: 'for-first-iteration-bindings',
+            data: {
+              inserted: loopRules.value
+                .slice(0, Math.min(3, bindingNames.length))
+                .map((n) => (isNode(n, 'VarDeclaration') ? String(n.value.name) : n.type)),
+              valueType: value.type,
+              keyType: isNode(key) ? key.type : typeof key
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         counter++;
         const result = await loopRules.eval(context);
         if (isNode(result, 'Rules')) {
@@ -233,7 +445,11 @@ export class For extends Node<LoopValue> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('$for ', this);
-    this.value.header.toString(options);
+    w.add('(');
+    patternToNode(this.value.pattern).toString(options);
+    w.add(' of ');
+    iterableToNode(this.value.iterable).toString(options);
+    w.add(')');
     w.add(' ');
     this.value.rules.toBraced(options);
     return w.getSince(mark);
@@ -243,13 +459,13 @@ export class For extends Node<LoopValue> {
 /**
  * `$each <header> { ... }`
  */
-export class Each extends Node<LoopValue> {
+export class Each extends Node<LegacyLoopValue> {
   type = 'Each' as const;
   shortType = 'each' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: LoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }

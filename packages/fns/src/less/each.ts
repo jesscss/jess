@@ -3,10 +3,6 @@ import {
   Rules,
   Mixin,
   For,
-  Sequence,
-  Paren,
-  List,
-  Block,
   Nil,
   Any,
   VarDeclaration,
@@ -32,8 +28,11 @@ import {
 const each = defineFunction(
   'each',
   async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    let mixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
-    const keys = ['value', 'key', 'index'];
+    const rawMixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
+    // Preserve callback lexical scope for variable lookups used in each bodies.
+    let mixinRules = rawMixinRules.copy(true).inherit(rawMixinRules);
+    mixinRules.sourceParent = mixin.sourceParent ?? mixin.parent ?? mixinRules.sourceParent;
+    let keys = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
       let params = mixin.value.params;
       if (params) {
@@ -41,15 +40,12 @@ const each = defineFunction(
         let key0 = paramList[0]?.toTrimmedString();
         let key1 = paramList[1]?.toTrimmedString();
         let key2 = paramList[2]?.toTrimmedString();
-        if (key2) {
-          keys[2] = key2;
-          keys[1] = key1!;
-          keys[0] = key0!;
-        } else if (key1) {
-          keys[1] = key1;
-          keys[0] = key0!;
-        } else if (key0) {
-          keys[0] = key0;
+        const parsedKeys = [key0, key1, key2].filter((k): k is string => !!k);
+        if (parsedKeys.length > 0) {
+          // For named callback params, use exactly the provided arity.
+          // Less callbacks often use 1-3 params; keeping defaults beyond arity
+          // can create duplicate names (e.g. .(@val, @index) => index/index).
+          keys = parsedKeys;
         }
       }
     }
@@ -57,18 +53,17 @@ const each = defineFunction(
       name: new Any(name, { role: 'property' }),
       value: new Nil()
     }, { paramVar: true }));
-    const pattern = new Block(
-      new List(vars, { sep: ',' }),
-      { type: 'square' }
-    );
-    const header = new Sequence([
-      new Paren(new Sequence([
-        pattern,
-        new Any('of', { role: 'any' }),
-        list
-      ]))
-    ]);
-    return new For({ header, rules: mixinRules });
+    return new For({
+      pattern: {
+        kind: 'tuple',
+        values: vars as [VarDeclaration, ...VarDeclaration[]]
+      },
+      iterable: {
+        kind: 'node',
+        value: list
+      },
+      rules: mixinRules
+    });
   },
   {
     params: [{

@@ -361,6 +361,89 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
             }
           }
+          const keyStrForDebug = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+          const shouldDebugList1 = type === 'property' && `${keyStrForDebug}` === 'list-1';
+          const shouldDebugEach = `${keyStrForDebug}` === 'each' && (type === 'function' || type === 'mixin' || type === 'mixin-ruleset');
+          const shouldDebugTwo = `${keyStrForDebug}` === 'two';
+          const shouldDebugIndex = `${keyStrForDebug}` === 'index';
+          if (shouldDebugList1) {
+            // #region agent log
+            syncLog({
+              runId: 'list1-chain',
+              hypothesisId: 'H3',
+              location: 'reference.ts:366',
+              message: 'performLookup-attempt',
+              data: {
+                targetType: isNode(targetRules, 'Rules') ? 'Rules' : targetRules?.type ?? typeof targetRules,
+                resolution: this.options.resolution ?? 'default',
+                optsStart: opts.start ?? 'none',
+                hasTarget
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if (shouldDebugEach) {
+            // #region agent log
+            syncLog({
+              runId: 'each-two-chain',
+              hypothesisId: 'H6',
+              location: 'reference.ts:370',
+              message: 'performLookup-attempt-each',
+              data: {
+                lookupType: type,
+                targetType: isNode(targetRules, 'Rules') ? 'Rules' : targetRules?.type ?? typeof targetRules,
+                resolution: this.options.resolution ?? 'default',
+                hasTarget
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if (shouldDebugTwo) {
+            // #region agent log
+            syncLog({
+              runId: 'each-two-chain',
+              hypothesisId: 'H7',
+              location: 'reference.ts:370',
+              message: 'performLookup-attempt-two',
+              data: {
+                lookupType: type,
+                targetType: isNode(targetRules, 'Rules') ? 'Rules' : targetRules?.type ?? typeof targetRules,
+                resolution: this.options.resolution ?? 'default',
+                hasTarget,
+                targetKey: isNode(this.value.target, 'Reference')
+                  ? String(this.value.target.value.key)
+                  : (isNode(this.value.target, 'Call') ? 'CallTarget' : 'none'),
+                parentType: this.parent?.type ?? 'none',
+                sourceParentType: this.sourceParent?.type ?? 'none'
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if (shouldDebugIndex) {
+            // #region agent log
+            syncLog({
+              runId: 'each-two-chain',
+              hypothesisId: 'H20',
+              location: 'reference.ts:370',
+              message: 'performLookup-attempt-index',
+              data: {
+                lookupType: type,
+                targetType: isNode(targetRules, 'Rules') ? 'Rules' : targetRules?.type ?? typeof targetRules,
+                resolution: this.options.resolution ?? 'default',
+                hasTarget,
+                targetKey: isNode(this.value.target, 'Reference')
+                  ? String(this.value.target.value.key)
+                  : (isNode(this.value.target, 'Call') ? 'CallTarget' : 'none'),
+                parentType: this.parent?.type ?? 'none',
+                sourceParentType: this.sourceParent?.type ?? 'none'
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
           switch (type) {
             case 'index':
               if (typeof valueKey === 'number') {
@@ -381,7 +464,57 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'variable':
               if (isNode(targetRules, 'Rules')) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                return targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                if (`${keyStr}` === 'two' || `${keyStr}` === 'index') {
+                  const matchingDecl = targetRules.value.find((n) => (
+                    isNode(n, 'VarDeclaration') && String(n.value.name) === `${keyStr}`
+                  ));
+                  const visibleVarKeys = targetRules.value
+                    .filter((n) => isNode(n, 'VarDeclaration'))
+                    .slice(0, 8)
+                    .map((n) => String(n.value.name));
+                  const shadow = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', {
+                    ...opts,
+                    hasTarget: false
+                  });
+                  // #region agent log
+                  syncLog({
+                    runId: 'each-two-chain',
+                    hypothesisId: `${keyStr}` === 'two' ? 'H14' : 'H19',
+                    location: 'reference.ts:443',
+                    message: `${keyStr}` === 'two' ? 'variable-lookup-shadow-two' : 'variable-lookup-shadow-index',
+                    data: {
+                      key: `${keyStr}`,
+                      hasTargetOpt: opts.hasTarget ?? false,
+                      foundDefault: targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts) !== undefined,
+                      foundShadowNoTarget: shadow !== undefined,
+                      visibleVarKeys,
+                      matchingDeclExists: Boolean(matchingDecl),
+                      matchingDeclInSearchScope: Boolean(matchingDecl && context.searchScope.has(matchingDecl)),
+                      matchingDeclPassesFilter: Boolean(matchingDecl && filter(matchingDecl)),
+                      matchingDeclIndex: matchingDecl?.index ?? 'none',
+                      optsStart: opts.start ?? 'none'
+                    },
+                    timestamp: Date.now()
+                  });
+                  // #endregion
+                }
+                const found = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                if (found !== undefined) {
+                  return found;
+                }
+                // Fallback for unindexed cloned Rules: direct linear scan if default resolution
+                // could not resolve through the registry path.
+                if (opts.start === undefined && this.options.resolution !== 'linear' && this.options.resolution !== 'call-time') {
+                  const fallbackDecl = targetRules.value.find((n) => (
+                    isNode(n, 'VarDeclaration')
+                    && String(n.value.name) === `${keyStr}`
+                    && filter(n)
+                  ));
+                  if (fallbackDecl) {
+                    return fallbackDecl;
+                  }
+                }
+                return undefined;
               }
               break;
             case 'function':
@@ -407,7 +540,38 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'property':
               if (isNode(targetRules, 'Rules')) {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                return targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
+                const preferVarLookup = this.options?.role !== 'name'
+                  && (isNode(this.parent, 'Operation')
+                  || isNode(this.parent, 'Declaration')
+                  || this.parent?.type === 'Interpolated');
+                if (preferVarLookup) {
+                  const varFirst = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                  if (isNode(varFirst, 'VarDeclaration')) {
+                    return varFirst;
+                  }
+                }
+                const declaration = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
+                if (declaration !== undefined) {
+                  return declaration;
+                }
+                if (this.options?.role !== 'name') {
+                  // Some nested-reference paths (e.g. @index inside operations) arrive as
+                  // property lookups even when values are bound as VarDeclaration loop vars.
+                  const paramVar = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                  if (isNode(paramVar, 'VarDeclaration')) {
+                    return paramVar;
+                  }
+                  if (opts.start === undefined) {
+                    const fallbackParamVar = targetRules.value.find((n) => (
+                      isNode(n, 'VarDeclaration')
+                      && String(n.value.name) === `${keyStr}`
+                    ));
+                    if (fallbackParamVar) {
+                      return fallbackParamVar;
+                    }
+                  }
+                }
+                return undefined;
               } else if (isNode(targetRules, 'JsObject')) {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 return (targetRules as any).value[keyStr];
@@ -458,6 +622,75 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         let returnVal: any;
         if (isNode(resolvedTarget, 'Rules')) {
           returnVal = performLookup(resolvedTarget);
+          if (type === 'property' && (Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey) === 'list-1') {
+            // #region agent log
+            syncLog({
+              runId: 'list1-chain',
+              hypothesisId: 'H4',
+              location: 'reference.ts:470',
+              message: 'lookup-after-resolvedTarget',
+              data: {
+                found: returnVal !== undefined,
+                rulesParentType: this.rulesParent?.type ?? 'none',
+                sourceRulesParentType: this.sourceRulesParent?.type ?? 'none',
+                leakyRules: Boolean(context.leakyRules)
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if ((Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey) === 'each' && (type === 'function' || type === 'mixin' || type === 'mixin-ruleset')) {
+            // #region agent log
+            syncLog({
+              runId: 'each-two-chain',
+              hypothesisId: 'H6',
+              location: 'reference.ts:508',
+              message: 'lookup-after-resolvedTarget-each',
+              data: {
+                found: returnVal !== undefined,
+                lookupType: type,
+                rulesParentType: this.rulesParent?.type ?? 'none',
+                sourceRulesParentType: this.sourceRulesParent?.type ?? 'none'
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if ((Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey) === 'two') {
+            // #region agent log
+            syncLog({
+              runId: 'each-two-chain',
+              hypothesisId: 'H7',
+              location: 'reference.ts:508',
+              message: 'lookup-after-resolvedTarget-two',
+              data: {
+                found: returnVal !== undefined,
+                rulesParentType: this.rulesParent?.type ?? 'none',
+                sourceRulesParentType: this.sourceRulesParent?.type ?? 'none',
+                leakyRules: Boolean(context.leakyRules)
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          if ((Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey) === 'index') {
+            // #region agent log
+            syncLog({
+              runId: 'each-two-chain',
+              hypothesisId: 'H20',
+              location: 'reference.ts:508',
+              message: 'lookup-after-resolvedTarget-index',
+              data: {
+                found: returnVal !== undefined,
+                lookupType: type,
+                rulesParentType: this.rulesParent?.type ?? 'none',
+                sourceRulesParentType: this.sourceRulesParent?.type ?? 'none',
+                leakyRules: Boolean(context.leakyRules)
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
 
           // For variable and mixin lookups, allow walking up the parent Rules chain to find
           // definitions in ancestor scopes.
@@ -486,6 +719,38 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             if (returnVal === undefined) {
               returnVal = performLookup(this.sourceRulesParent);
             }
+            if (type === 'property' && (Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey) === 'list-1') {
+              // #region agent log
+              syncLog({
+                runId: 'list1-chain',
+                hypothesisId: 'H4',
+                location: 'reference.ts:498',
+                message: 'lookup-after-leaky-fallbacks',
+                data: {
+                  found: returnVal !== undefined,
+                  rulesParentType: this.rulesParent?.type ?? 'none',
+                  sourceRulesParentType: this.sourceRulesParent?.type ?? 'none'
+                },
+                timestamp: Date.now()
+              });
+              // #endregion
+            }
+            if ((Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey) === 'two') {
+              // #region agent log
+              syncLog({
+                runId: 'each-two-chain',
+                hypothesisId: 'H7',
+                location: 'reference.ts:547',
+                message: 'lookup-after-leaky-fallbacks-two',
+                data: {
+                  found: returnVal !== undefined,
+                  rulesParentType: this.rulesParent?.type ?? 'none',
+                  sourceRulesParentType: this.sourceRulesParent?.type ?? 'none'
+                },
+                timestamp: Date.now()
+              });
+              // #endregion
+            }
           }
         }
 
@@ -494,17 +759,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
-          if (valueKeyStr2 === 'each' || valueKeyStr2 === 'list-1') {
-            syncLog({
-              tag: 'reference-miss',
-              key: valueKeyStr2,
-              type,
-              fallbackValue: Boolean(fallbackValue),
-              parentType: this.parent?.type ?? '',
-              rulesParentType: this.rulesParent?.type ?? '',
-              contextRulesType: context.rulesContext?.type ?? ''
-            });
-          }
           if (!fallbackValue) {
             switch (type) {
               case 'mixin':

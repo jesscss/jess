@@ -10,3 +10,10 @@ globs:
 - **Build**: `cd packages/fns && pnpm build`
 - **Tests**: `cd packages/fns && pnpm test`
 
+## Function Test Context Pattern (`packages/fns/src/**/__tests__/**/*.ts`)
+
+- Prefer direct calls for pure `defineFunction` wrappers that do not use function context.
+- Use `callWithContext(new Context(), fn, ...)` when a function depends on `this.context`, `rawArgs`, preprocessors, or lazy behavior.
+- Avoid calling `._internal` in tests unless public APIs cannot express the branch (e.g. specific lazy-thunk error handling).
+- When `._internal` is unavoidable, keep casts narrow and explicit (typed helper alias), never broad `unknown` chains.
+

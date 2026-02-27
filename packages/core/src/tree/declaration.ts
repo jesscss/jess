@@ -14,6 +14,7 @@ import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { syncLog } from '../debug-log.js';
 
 export const enum AssignmentType {
   Default = ':',
@@ -159,6 +160,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           case AssignmentType.MergeSequence: {
             const ref = new Reference({ key }, {
               type,
+              role: 'name',
               fallbackValue: new Nil(),
               filter: (n) => {
                 const assign = n.options?.assign;
@@ -178,18 +180,32 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             break;
           }
           case AssignmentType.Add: {
-            node.value.value =
-              new Operation([
-                new Reference({ key }, { type }),
-                '+',
+            if (node.type === 'Declaration') {
+              // Less `prop+: value` appends to a comma list; it is not arithmetic.
+              node.value.value = new List([
+                new Reference({ key }, {
+                  type,
+                  role: 'name',
+                  fallbackValue: new Nil(),
+                  filter: (n) => n !== node
+                }),
                 value
               ]);
+            } else {
+              node.value.value =
+                new Operation([
+                  new Reference({ key }, { type, role: 'name' }),
+                  '+',
+                  value
+                ]);
+            }
             break;
           }
           case AssignmentType.CondAssign: {
             node.value.value =
               new Reference({ key }, {
                 type,
+                role: 'name',
                 fallbackValue: value
               });
             break;
@@ -234,6 +250,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
+        if (String(node.value.name) === 'index') {
+          // #region agent log
+          syncLog({
+            runId: 'each-two-chain',
+            hypothesisId: 'H22',
+            location: 'declaration.ts:236',
+            message: 'declaration-eval-index',
+            data: {
+              nodeType: node.type,
+              assign: node.options?.assign ?? 'none',
+              preEvaluated: node.preEvaluated,
+              evaluated: node.evaluated,
+              valueType: node.value.value.type,
+              parentType: node.parent?.type ?? 'none'
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
           return node;

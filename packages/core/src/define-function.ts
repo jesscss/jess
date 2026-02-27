@@ -6,6 +6,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Sequence, Operation, Num, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
+import { syncLog } from './debug-log.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 export type Lazy<T> = () => MaybePromise<T>;
@@ -311,6 +312,47 @@ export function defineFunction<
 /** This will be called internally by Jess to functions created with defineFunction */
 export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
   const fnName = (fn as any)?.name;
+  const hasList1Arg = args.some((arg) => (
+    isNode(arg, 'Reference')
+    && arg.options?.type === 'property'
+    && String(arg.value.key) === 'list-1'
+  ));
+  if (hasList1Arg) {
+    // #region agent log
+    syncLog({
+      runId: 'list1-chain',
+      hypothesisId: 'H1',
+      location: 'define-function.ts:319',
+      message: 'callWithContext-entry-list1',
+      data: {
+        fnName: String(fnName ?? ''),
+        callerType: context.caller?.type ?? 'none',
+        rulesContextType: context.rulesContext?.type ?? 'none',
+        argMeta: args.map((a) => isNode(a, 'Reference')
+          ? `ref:${a.options?.type ?? ''}:${String(a.value.key)}:p=${a.parent?.type ?? 'none'}:sp=${a.sourceParent?.type ?? 'none'}`
+          : (isNode(a) ? a.type : typeof a))
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+  }
+  if (String(fnName ?? '') === 'each') {
+    // #region agent log
+    syncLog({
+      runId: 'each-two-chain',
+      hypothesisId: 'H10',
+      location: 'define-function.ts:335',
+      message: 'callWithContext-entry-each',
+      data: {
+        callerType: context.caller?.type ?? 'none',
+        rulesContextType: context.rulesContext?.type ?? 'none',
+        argCount: args.length,
+        argTypes: args.map((a) => isNode(a) ? a.type : typeof a)
+      },
+      timestamp: Date.now()
+    });
+    // #endregion
+  }
   // Only reject record-based calls (plain objects) when there's no params metadata
   // Collections are allowed as positional arguments even without params metadata
   // (e.g., detached rulesets passed to mixins)

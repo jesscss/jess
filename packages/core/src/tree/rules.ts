@@ -26,9 +26,9 @@ import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@je
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
 import { Any } from './any.js';
-import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
+import { syncLog } from '../debug-log.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -1503,6 +1503,27 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
        * But leaving this for future expansion.
        */
       if (isNode(arg)) {
+        const isList1Ref = isNode(arg, 'Reference')
+          && arg.options?.type === 'property'
+          && String(arg.value.key) === 'list-1';
+        if (isList1Ref) {
+          // #region agent log
+          syncLog({
+            runId: 'list1-chain',
+            hypothesisId: 'H2',
+            location: 'rules.ts:1510',
+            message: 'mixin-arg-before-clonedEval',
+            data: {
+              argParentType: arg.parent?.type ?? 'none',
+              argSourceParentType: arg.sourceParent?.type ?? 'none',
+              callerType: thisContext.caller?.type ?? 'none',
+              rulesContextType: thisContext.rulesContext?.type ?? 'none',
+              sourceParentType: sourceParent?.type ?? 'none'
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
+        }
         // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
         // Evaluating them can register/override variables in the current scope.
         // They should only be used for parameter binding.
@@ -1512,9 +1533,28 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           nodeArgs.push(cloned);
           continue;
         }
-        let evald = await arg.clonedEval(thisContext);
-        evald.frozen = true;
-        nodeArgs.push(evald);
+        try {
+          const evald = await arg.clonedEval(thisContext);
+          evald.frozen = true;
+          nodeArgs.push(evald);
+        } catch (error: any) {
+          if (isList1Ref) {
+            // #region agent log
+            syncLog({
+              runId: 'list1-chain',
+              hypothesisId: 'H2',
+              location: 'rules.ts:1526',
+              message: 'mixin-arg-reference-error',
+              data: {
+                errorMessage: error?.message ?? 'unknown',
+                willRethrow: true
+              },
+              timestamp: Date.now()
+            });
+            // #endregion
+          }
+          throw error;
+        }
       } else {
         nodeArgs.push(cast(arg));
       }
@@ -1592,17 +1632,25 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             break;
           }
           if (isNode(param, 'VarDeclaration')) {
-            param.value.value = argValue;
+            const boundValue = argValue.copy(true, freezeChildren);
+            boundValue.frozen = true;
+            param.value.value = boundValue;
           } else if (isNode(param, 'Any') && param.options.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
+            const boundValue = argValue.copy(true, freezeChildren);
+            boundValue.frozen = true;
             const varDecl = new VarDeclaration({
               name: param as Any<'property'>,
-              value: argValue
+              value: boundValue
             }, { paramVar: true });
             params.value[i] = varDecl;
           } else if (isNode(param, 'Rest')) {
             /** We assume that the rest args are values */
-            let rest = nodeArgs.slice(argPos);
+            const rest = nodeArgs.slice(argPos).map((restArg) => {
+              const cloned = restArg.copy(true, freezeChildren);
+              cloned.frozen = true;
+              return cloned;
+            });
             /** Create a new variable with the rest name */
             params.value[i] = new VarDeclaration({
               name: new Any(param.value ? `${param.value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
@@ -1699,6 +1747,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let hasMatch = false;
     let outputRules: Rules[] = [];
+    const restrictMixinOutputLookup = thisContext.leakyRules !== true;
 
     let candidateEvalIndex = 0;
     for (let candidate of evalCandidates) {
@@ -1714,7 +1763,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
-        rules.sourceParent = candidate.sourceParent ?? sourceParent;
+        rules.sourceParent = sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
@@ -1725,7 +1774,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark output Rules as mixin output - accessible only when lookup has a target
-        rules.options.isMixinOutput = true;
+        rules.options.isMixinOutput = restrictMixinOutputLookup;
         outputRules.push(rules);
         continue;
       }
@@ -1735,9 +1784,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         let unlocked = candidate.value.rules.copy(true);
         candidate.parent!.adopt(unlocked);
-        unlocked.sourceParent = candidate.sourceParent ?? sourceParent;
+        unlocked.sourceParent = sourceParent;
         // Mark as mixin output; caller may override when leakyRules=true
-        unlocked.options.isMixinOutput = true;
+        unlocked.options.isMixinOutput = restrictMixinOutputLookup;
         unlocked.index = candidate.index;
         outputRules.push(unlocked);
         hasMatch = true;
@@ -1747,7 +1796,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
       candidate.parent!.adopt(rules);
-      rules.sourceParent = candidate.sourceParent ?? sourceParent;
+      rules.sourceParent = sourceParent;
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,
@@ -1796,7 +1845,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // (not a literal name/Nil), so @tail... behaves as "no remaining args".
             const restValue = isNode(param.value)
               ? param.value
-              : new Sequence([]);
+              : (
+                thisContext.treeContext?.file
+                  ? new Sequence([])
+                  : new Any(restName, { role: 'property' })
+              );
             const restVarDecl = new VarDeclaration({
               name: new Any(restName, { role: 'property' }),
               value: restValue
@@ -1816,25 +1869,28 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Mark as parameter var so it can be stripped from mixin output after evaluation.
             param.options ??= {};
             param.options.paramVar = true;
+            // Keep parameter vars lookupable but non-visible in normal Less output.
+            // Unit tests with Node.fullRender=true still render them.
             param.removeFlag(F_VISIBLE);
             outerRules.push(param);
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
         }
-        let argumentsArgs: Node[] = [];
-        const argumentsDecl = new VarDeclaration({
-          name: new Any('arguments', { role: 'property' }),
-          value: new List(argumentsArgs)
-        }, { readonly: true, paramVar: true });
-        argumentsDecl.removeFlag(F_VISIBLE);
-        outerRules.push(argumentsDecl);
-
-        /** @arguments must reflect original call arguments, not bound/defaulted parameter buckets. */
-        for (const argNode of nodeArgs) {
-          const cloned = argNode.clone(true, freezeChildren);
-          cloned.frozen = true;
-          argumentsArgs.push(cloned);
+        const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
+        if (shouldDefineArguments) {
+          const argumentsArgs: Node[] = [];
+          const argumentsDecl = new VarDeclaration({
+            name: new Any('arguments', { role: 'property' }),
+            value: new Sequence(argumentsArgs)
+          }, { readonly: true, paramVar: true });
+          argumentsDecl.removeFlag(F_VISIBLE);
+          outerRules.push(argumentsDecl);
+          for (const argNode of nodeArgs) {
+            const cloned = argNode.copy(true, freezeChildren);
+            cloned.frozen = true;
+            argumentsArgs.push(cloned);
+          }
         }
       }
 
@@ -1882,10 +1938,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           newRules = await outerRules.eval(thisContext);
         }
         candidate.parent!.adopt(newRules);
-        // Strip parameter variables from mixin output so they don't leak into later sibling lookups.
-        if (Array.isArray(newRules.value)) {
-          newRules.value = newRules.value.filter((n) => !(isNode(n, 'VarDeclaration') && (n as any).options?.paramVar === true));
-        }
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
 
@@ -1895,7 +1947,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const declRegistry = newRules.getRegistry('declaration');
         declRegistry.indexPendingItems();
         // Mark output Rules as mixin output - accessible only when lookup has a target
-        newRules.options.isMixinOutput = true;
+        newRules.options.isMixinOutput = restrictMixinOutputLookup;
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -1926,7 +1978,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     if (outputRules.length === 1) {
       output = outputRules[0]!;
       // Ensure single output rule is marked as mixin output
-      output.options.isMixinOutput = true;
+      output.options.isMixinOutput = restrictMixinOutputLookup;
     } else {
       /**
        * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
@@ -1939,7 +1991,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           VarDeclaration: 'public',
           Mixin: 'public'
         },
-        isMixinOutput: true
+        isMixinOutput: restrictMixinOutputLookup
       });
       /**
        * Add rules but keep their original parents for further lazy lookups.

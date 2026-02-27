@@ -29,6 +29,7 @@ export { default as format } from './format.js';
 export { default as unit } from './unit.js';
 export { default as length } from './length.js';
 export { default as extract } from './extract.js';
+export { default as range } from './range.js';
 export { default as isdefined } from './isdefined.js';
 export { default as isruleset } from './isruleset.js';
 export { default as getUnit } from './get-unit.js';
