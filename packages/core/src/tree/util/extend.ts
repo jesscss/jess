@@ -138,10 +138,6 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
   extendOrderByValueOf = orderByValueOf ?? null;
 }
 
-const DEBUG_APPEND_ARG = process.env.DEBUG_FIXTURE_2A === '1';
-const DEBUG_FIXTURE_2A_ENABLED = DEBUG_APPEND_ARG;
-let debugFlatten2aCount = 0;
-
 function debugSelectorInfo(selectors: Selector[]): string[] {
   return selectors.map((sel) => {
     try {
@@ -152,14 +148,13 @@ function debugSelectorInfo(selectors: Selector[]): string[] {
   });
 }
 
-function debugFixtureLog(stage: string, data: Record<string, unknown>): void {
-  if (!DEBUG_FIXTURE_2A_ENABLED) return;
-  const payload = { stage, ...data };
-  console.log('DEBUG_FIXTURE_2A', JSON.stringify(payload));
+function debugFixtureLog(_stage: string, _data: Record<string, unknown>): void {
 }
 
 function getSelectorValue(selector?: Selector): string {
-  if (!selector) return 'undefined';
+  if (!selector) {
+    return 'undefined';
+  }
   try {
     return selector.valueOf();
   } catch {
@@ -168,34 +163,26 @@ function getSelectorValue(selector?: Selector): string {
 }
 
 function logAppendArg(
-  stage: string,
-  path: Array<string | number>,
-  current: Selector,
-  matchedNode: Selector,
-  extendWith: Selector,
-  result: Selector
+  _stage: string,
+  _path: Array<string | number>,
+  _current: Selector,
+  _matchedNode: Selector,
+  _extendWith: Selector,
+  _result: Selector
 ): void {
-  if (!DEBUG_APPEND_ARG) return;
-  console.log('EXTEND_APPEND_ARG', stage, {
-    path,
-    current: getSelectorValue(current),
-    matchedNode: getSelectorValue(matchedNode),
-    extendWith: getSelectorValue(extendWith),
-    result: getSelectorValue(result)
-  });
 }
 
 // NOTE: extend finalize tracing removed; keep call sites as no-ops.
-function __agentExtendLog(_location: string, _message: string, _data: Record<string, unknown>) {
+function agentExtendLog(_location: string, _message: string, _data: Record<string, unknown>) {
   // noop
 }
 
 // NOTE: older debug helpers are now disabled (no-ops).
 // They remain only to avoid runtime ReferenceErrors from stale call sites.
-function __agentExtendDbg(_location: string, _message: string, _data: Record<string, unknown>) {
+function agentExtendDbg(_location: string, _message: string, _data: Record<string, unknown>) {
   // noop
 }
-function __agentIsOrderInteresting(_items: string[]): boolean {
+function agentIsOrderInteresting(_items: string[]): boolean {
   return false;
 }
 
@@ -282,7 +269,7 @@ export function applyExtendsToSelector(
           changed = true;
           break;
         }
-        }
+      }
     }
   }
 
@@ -392,7 +379,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     }
     if (isNode(el, 'PseudoSelector')) {
       if (root && el.value.name === ':is' && el.generated) {
-        __agentExtendLog('extend.ts:createProcessedSelector', 'unwrap-generated-is-root', {
+        agentExtendLog('extend.ts:createProcessedSelector', 'unwrap-generated-is-root', {
           root: !!root,
           generated: !!el.generated,
           name: el.value.name,
@@ -413,7 +400,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         }
       } else {
         if (root && el.value.name === ':is' && !el.generated) {
-          __agentExtendLog('extend.ts:createProcessedSelector', 'keep-non-generated-is-root', {
+          agentExtendLog('extend.ts:createProcessedSelector', 'keep-non-generated-is-root', {
             root: !!root,
             generated: !!el.generated,
             name: el.value.name,
@@ -476,27 +463,37 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         const orderByValue = extendOrderByValueOf;
         const orderFor = (s: Selector): number => {
           const fromMap = orderMap.get(s);
-          if (fromMap !== undefined) return fromMap;
+          if (fromMap !== undefined) {
+            return fromMap;
+          }
           const key = String(typeof s.valueOf === 'function' ? s.valueOf() : '').trim();
           let order = orderByValue.get(key);
           if (order === undefined && key) {
             const lastPart = key.split(/\s+/).pop();
-            if (lastPart) order = orderByValue.get(lastPart);
+            if (lastPart) {
+              order = orderByValue.get(lastPart);
+            }
           }
           return order ?? 999999;
         };
-        const withOrder = flattened.filter((s) => orderFor(s) !== 999999);
+        const withOrder = flattened.filter(s => orderFor(s) !== 999999);
         if (withOrder.length >= 2) {
           const NO_ORDER = 999999;
           flattened.sort((a, b) => {
             const oa = orderFor(a);
             const ob = orderFor(b);
-            if (oa === NO_ORDER && ob === NO_ORDER) return 0;
-            if (oa === NO_ORDER) return -1;
-            if (ob === NO_ORDER) return 1;
+            if (oa === NO_ORDER && ob === NO_ORDER) {
+              return 0;
+            }
+            if (oa === NO_ORDER) {
+              return -1;
+            }
+            if (ob === NO_ORDER) {
+              return 1;
+            }
             return oa - ob;
           });
-          }
+        }
       }
       el.value = flattened;
       push(el);
@@ -590,9 +587,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
 
           const argSel = maybeIs.value.arg;
           const argList: Selector[] = isNode(argSel, 'SelectorList') ? (argSel.value as Selector[]) : [argSel as Selector];
-          if (DEBUG_FIXTURE_2A_ENABLED && debugFlatten2aCount < 40) {
-            debugFlatten2aCount += 1;
-            }
           // If this came from implicit `& ` nesting (both ampersand and the space are invisible),
           // then the prefix is already represented by the parent ruleset context and must not be
           // duplicated in nested output. In that case we drop the prefix entirely.
@@ -666,9 +660,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               const next = ComplexSelector.create(parts as any).inherit(el);
               push(next);
             }
-            if (DEBUG_FIXTURE_2A_ENABLED && debugFlatten2aCount < 40) {
-              debugFlatten2aCount += 1;
-              }
           }
           continue;
         }
@@ -712,11 +703,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
  */
 function extractSelectorsFromIs(selector: Selector): Selector[] {
   if (isNode(selector, 'PseudoSelector') && selector.value.name === ':is') {
-    if (process.env.DEBUG_FIXTURE_2A === '1' && selector.valueOf().includes('.rep_ace')) {
-      console.log('EXTRACT_IS', {
-        selector: selector.valueOf()
-      });
-    }
     const arg = selector.value.arg;
     if (arg && isNode(arg, 'SelectorList')) {
       // Extract all selectors from the :is() argument
@@ -761,17 +747,17 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
     // by extend index and put .d before .e (wrong), because .e is also an extend source elsewhere.
     const inheritVal = inheritFrom && typeof inheritFrom.valueOf === 'function' ? inheritFrom.valueOf() : undefined;
     const ownerFirst =
-      inheritVal !== undefined &&
-      extractedSelectors.some((s) => (s.valueOf?.() ?? '') === inheritVal);
+      inheritVal !== undefined
+      && extractedSelectors.some(s => (s.valueOf?.() ?? '') === inheritVal);
     if (ownerFirst && inheritVal !== undefined) {
-      const first = extractedSelectors.find((s) => (s.valueOf?.() ?? '') === inheritVal)!;
-      const rest = extractedSelectors.filter((s) => (s.valueOf?.() ?? '') !== inheritVal);
+      const first = extractedSelectors.find(s => (s.valueOf?.() ?? '') === inheritVal)!;
+      const rest = extractedSelectors.filter(s => (s.valueOf?.() ?? '') !== inheritVal);
       // Wrap/append case: only preserve input order when we're truly appending one selector.
       // When rest has 2+ items we must sort by document order (e.g. [.clearfix, .bar, .foo] → [.clearfix, .foo, .bar]).
       const isAppendOne =
-        rest.length === 1 &&
-        selectors.length >= 2 &&
-        (() => {
+        rest.length === 1
+        && selectors.length >= 2
+        && (() => {
           const lastInput = selectors[selectors.length - 1];
           const fromLast = extractSelectorsFromIs(lastInput!);
           return fromLast.length === 1 && fromLast[0] === rest[rest.length - 1];
@@ -782,12 +768,16 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
       } else {
         const orderFor = (s: Selector, origIndex: number): number => {
           const fromMap = orderMap.get(s);
-          if (fromMap !== undefined) return fromMap;
+          if (fromMap !== undefined) {
+            return fromMap;
+          }
           const key = String(typeof s.valueOf === 'function' ? s.valueOf() : '').trim();
           let order = orderByValue?.get(key);
           if (order === undefined && key && orderByValue) {
             const lastPart = key.split(/\s+/).pop();
-            if (lastPart) order = orderByValue.get(lastPart);
+            if (lastPart) {
+              order = orderByValue.get(lastPart);
+            }
           }
           return order ?? 999999;
         };
@@ -795,12 +785,18 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
         const mapped = rest.map((s, i) => ({ selector: s, order: orderFor(s, i), origIndex: i }));
         restSorted = mapped
           .sort((a, b) => {
-            if (a.order === NO_ORDER && b.order === NO_ORDER) return a.origIndex - b.origIndex;
-            if (a.order === NO_ORDER) return -1;
-            if (b.order === NO_ORDER) return 1;
+            if (a.order === NO_ORDER && b.order === NO_ORDER) {
+              return a.origIndex - b.origIndex;
+            }
+            if (a.order === NO_ORDER) {
+              return -1;
+            }
+            if (b.order === NO_ORDER) {
+              return 1;
+            }
             return a.order - b.order || a.origIndex - b.origIndex;
           })
-          .map((x) => x.selector);
+          .map(x => x.selector);
       }
       extractedSelectors.length = 0;
       extractedSelectors.push(first, ...restSorted);
@@ -808,9 +804,9 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
       // Only preserve input order when we're truly appending one selector (original + one new).
       // When we have 3+ items we must sort by document order (e.g. [.clearfix, .bar, .foo] → [.clearfix, .foo, .bar]).
       const isAppendOneElse =
-        extractedSelectors.length === 2 &&
-        selectors.length >= 2 &&
-        (() => {
+        extractedSelectors.length === 2
+        && selectors.length >= 2
+        && (() => {
           const lastInput = selectors[selectors.length - 1];
           const fromLast = extractSelectorsFromIs(lastInput!);
           return fromLast.length === 1 && fromLast[0] === extractedSelectors[extractedSelectors.length - 1];
@@ -818,30 +814,34 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
       if (isAppendOneElse) {
         // Preserve input order (already doc order from wrap path)
       } else {
-      const withOrder: Array<{ selector: Selector; order: number }> = [];
-      const withoutOrder: Selector[] = [];
-      const orderForElse = (selector: Selector): number | undefined => {
-        const fromWeak = orderMap.get(selector);
-        if (fromWeak !== undefined) return fromWeak;
-        const key = String(typeof selector.valueOf === 'function' ? selector.valueOf() : '').trim();
-        let order = orderByValue?.get(key);
-        if (order === undefined && key && orderByValue) {
-          const lastPart = key.split(/\s+/).pop();
-          if (lastPart) order = orderByValue.get(lastPart);
+        const withOrder: Array<{ selector: Selector; order: number }> = [];
+        const withoutOrder: Selector[] = [];
+        const orderForElse = (selector: Selector): number | undefined => {
+          const fromWeak = orderMap.get(selector);
+          if (fromWeak !== undefined) {
+            return fromWeak;
+          }
+          const key = String(typeof selector.valueOf === 'function' ? selector.valueOf() : '').trim();
+          let order = orderByValue?.get(key);
+          if (order === undefined && key && orderByValue) {
+            const lastPart = key.split(/\s+/).pop();
+            if (lastPart) {
+              order = orderByValue.get(lastPart);
+            }
+          }
+          return order;
+        };
+        for (const selector of extractedSelectors) {
+          const order = orderForElse(selector);
+          if (order !== undefined) {
+            withOrder.push({ selector, order });
+          } else {
+            withoutOrder.push(selector);
+          }
         }
-        return order;
-      };
-      for (const selector of extractedSelectors) {
-        const order = orderForElse(selector);
-        if (order !== undefined) {
-          withOrder.push({ selector, order });
-        } else {
-          withoutOrder.push(selector);
-        }
-      }
-      withOrder.sort((a, b) => a.order - b.order);
-      extractedSelectors.length = 0;
-      extractedSelectors.push(...withoutOrder, ...withOrder.map((item) => item.selector));
+        withOrder.sort((a, b) => a.order - b.order);
+        extractedSelectors.length = 0;
+        extractedSelectors.push(...withoutOrder, ...withOrder.map(item => item.selector));
       }
     }
   }
@@ -852,7 +852,7 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   // createProcessedSelector may return a single selector if only one item, so ensure it's an array
   const processed = createProcessedSelector(extractedSelectors, true);
   const processedArray = isArray(processed) ? processed : [processed];
-  __agentExtendLog('extend.ts:createExtendedSelectorList', 'post-createProcessedSelector', {
+  agentExtendLog('extend.ts:createExtendedSelectorList', 'post-createProcessedSelector', {
     count: processedArray.length,
     items: processedArray.slice(0, 5).map(s => ({
       type: (s as any)?.type ?? null,
@@ -1089,24 +1089,8 @@ export function extendSelector(
       }
     }
   }
-  if (DEBUG_FIXTURE_2A_ENABLED && target.valueOf().includes('.replace.replace')) {
-    console.log('DEBUG_FIXTURE_2A', 'extendSelector-invocation', {
-      target: target.valueOf(),
-      find: find.valueOf(),
-      extendWith: extendWith.valueOf()
-    });
-  }
-
   const comparison = selectorCompare(target, find, searchResult);
-  if (DEBUG_FIXTURE_2A_ENABLED && target.valueOf().includes('.replace.replace')) {
-    }
-
   if (!searchResult.hasMatches) {
-    if (DEBUG_FIXTURE_2A_ENABLED) {
-      const normalizedTarget = normalizeSelectorForExtend(target);
-      const normalizedFind = normalizeSelectorForExtend(find);
-      const normalizedSearch = findExtendableLocations(normalizedTarget, normalizedFind);
-      }
     throw new ExtendError(
       'NOT_FOUND',
       'No match found for target selector',
@@ -1127,28 +1111,28 @@ export function extendSelector(
       if (shouldSkipResolvedOnlySimpleBoundary) {
         // Keep exact simple-selector extends on nested rules in normal flow.
         // Forcing amp-boundary hoisting here flattens authored nesting unexpectedly.
-        } else {
-      const hasWholeSelectorLocation = searchResult.locations.some((loc: any) =>
-        !loc?.isPartialMatch
-        && Array.isArray(loc?.path)
-        && loc.path.length === 0
-      );
-      // If a partial extend only matches through a resolved ampersand boundary (no whole-selector hit),
-      // the current selector should not consume it; parent-level selector processing handles it.
-      if (partial && !hasWholeSelectorLocation) {
-        throw new ExtendError(
-          'NOT_FOUND',
-          'No match found for target selector',
-          { target: originalTarget, find: originalFind, extendWith }
+      } else {
+        const hasWholeSelectorLocation = searchResult.locations.some((loc: any) =>
+          !loc?.isPartialMatch
+          && Array.isArray(loc?.path)
+          && loc.path.length === 0
         );
-      }
-      return handleAmpersandBoundaryCrossing(
-        originalTarget,
-        originalFind,
-        extendWith,
-        ampersandCrossingInfo.ampersandNode!,
-        searchResult
-      );
+        // If a partial extend only matches through a resolved ampersand boundary (no whole-selector hit),
+        // the current selector should not consume it; parent-level selector processing handles it.
+        if (partial && !hasWholeSelectorLocation) {
+          throw new ExtendError(
+            'NOT_FOUND',
+            'No match found for target selector',
+            { target: originalTarget, find: originalFind, extendWith }
+          );
+        }
+        return handleAmpersandBoundaryCrossing(
+          originalTarget,
+          originalFind,
+          extendWith,
+          ampersandCrossingInfo.ampersandNode!,
+          searchResult
+        );
       }
     }
   }
@@ -1408,15 +1392,11 @@ export function extendSelector(
               if (!isSelectorNode(arg)) {
                 continue;
               }
-              if (DEBUG_FIXTURE_2A_ENABLED) {
-                }
               // Extend the arg selector itself; this reuses existing SelectorList/Compound logic
               // (including "wrap all occurrences" for `.replace.replace`).
               const extendedArg = isNode(arg, 'SelectorList')
                 ? extendSelectorList(arg, find, extendWith, true, true, false)
                 : extendSelector(arg as Selector, find, extendWith, true, true, false);
-              if (DEBUG_FIXTURE_2A_ENABLED) {
-                }
               if (component.generated) {
                 component.value.arg = extendedArg as any;
               } else {
@@ -1586,11 +1566,6 @@ export function extendSelector(
       // This is a full match inside a pseudo-selector argument
       // Always extend inside pseudo-selectors with selector arguments
       const applied = applyExtensionAtLocation(target, location, extendWith);
-      if (DEBUG_FIXTURE_2A_ENABLED && target.valueOf().includes('.replace.replace')) {
-        console.log('DEBUG_FIXTURE_2A', 'extendSelector-applyExtension-return', {
-          result: applied.valueOf()
-        });
-      }
       return applied;
     }
 
@@ -1700,12 +1675,18 @@ function extendSelectorList(
     //
     // That triggers `maybeHoistMixedNestingSelectorList()` and produces the unwanted
     // `:is(:is(...), ...) .rep_ace` distribution.
-    if (!partial) return s;
-    if (!isNode(template, 'ComplexSelector')) return s;
+    if (!partial) {
+      return s;
+    }
+    if (!isNode(template, 'ComplexSelector')) {
+      return s;
+    }
     const t = template as ComplexSelector;
     const first = t.value[0];
     const second = t.value[1];
-    if (!(first instanceof Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) return s;
+    if (!(first instanceof Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      return s;
+    }
     // If the selector already starts with an implicit `&`, keep it.
     if (isNode(s, 'ComplexSelector')) {
       const sf = (s as ComplexSelector).value[0];
@@ -1729,11 +1710,6 @@ function extendSelectorList(
   const newSelectors: Selector[] = [];
 
   for (const selector of target.value) {
-    if (
-      (process.env.DEBUG_FIXTURE_2A === '1')
-      && (target.valueOf().includes('.replace.replace') || target.valueOf().includes('[data='))
-    ) {
-      }
     const comparison = selectorCompare(selector, find);
     if (!comparison.locations.length || (!comparison.hasWholeMatch && !comparison.hasPartialMatch)) {
       orderedSelectors.push(selector);
@@ -1742,11 +1718,6 @@ function extendSelectorList(
     }
 
     const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck, false);
-    if (
-      (process.env.DEBUG_FIXTURE_2A === '1')
-      && (target.valueOf().includes('.replace.replace') || target.valueOf().includes('[data='))
-    ) {
-      }
     let appendedVariant = false;
 
     if (extended === selector) {
@@ -1812,7 +1783,9 @@ function extendSelectorList(
               const isArgs = extractSelectorsFromIs(extended);
               const hasFind = isArgs.some((s: Selector) => s.valueOf() === find.valueOf());
               const hasExtendWith = isArgs.some((s: Selector) => s.valueOf() === extendWith.valueOf());
-              if (hasFind && hasExtendWith) fullMatchOfListItem = true;
+              if (hasFind && hasExtendWith) {
+                fullMatchOfListItem = true;
+              }
             }
           }
         }
@@ -1836,12 +1809,6 @@ function extendSelectorList(
     }
   }
 
-  if (DEBUG_FIXTURE_2A_ENABLED && orderedSelectors.length > 0) {
-    console.log('DEBUG_FIXTURE_2A', 'extendSelectorList-before-final', {
-      ordered: orderedSelectors.map(s => s.valueOf()),
-      new: newSelectors.map(s => s.valueOf())
-    });
-  }
   const allSelectors = [...orderedSelectors, ...newSelectors];
   if (partial) {
     // In partial mode we intentionally keep :is() wrappers as items (Less `all` behavior),
@@ -1934,8 +1901,7 @@ function extendSelectorList(
       }
       if (mutationCount > 0) {
         fullModeSelectors = next;
-        } else if (process.env.DEBUG_FIXTURE_2A === '1') {
-        }
+      }
     }
   }
   // In full mode, try to factorize common `:is(parent) <child>` expansions back into
@@ -1949,23 +1915,43 @@ function extendSelectorList(
     let sharedCombinator: string | null = null;
     for (let i = 0; i < allSelectors.length; i++) {
       const s = allSelectors[i]!;
-      if (!isNode(s, 'ComplexSelector')) continue;
+      if (!isNode(s, 'ComplexSelector')) {
+        continue;
+      }
       const cs = s as ComplexSelector;
-      if (cs.value.length !== 3) continue;
+      if (cs.value.length !== 3) {
+        continue;
+      }
       const first = cs.value[0];
       const second = cs.value[1];
       const third = cs.value[2];
-      if (!(first instanceof Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) continue;
+      if (!(first instanceof Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) {
+        continue;
+      }
       const parentSel = first.getResolvedSelector();
-      if (!parentSel || isNode(parentSel, 'Nil')) continue;
-      if (!isNode(parentSel, 'PseudoSelector') || (parentSel as PseudoSelector).value.name !== ':is') continue;
-      if (!isNode(second, 'Combinator')) continue;
-      if (!isNode(third, 'BasicSelector')) continue;
+      if (!parentSel || isNode(parentSel, 'Nil')) {
+        continue;
+      }
+      if (!isNode(parentSel, 'PseudoSelector') || (parentSel as PseudoSelector).value.name !== ':is') {
+        continue;
+      }
+      if (!isNode(second, 'Combinator')) {
+        continue;
+      }
+      if (!isNode(third, 'BasicSelector')) {
+        continue;
+      }
       const parentStr = parentSel.valueOf();
       const combStr = (second as Combinator).valueOf();
-      if (sharedParent === null) sharedParent = parentStr;
-      if (sharedCombinator === null) sharedCombinator = combStr;
-      if (parentStr !== sharedParent || combStr !== sharedCombinator) continue;
+      if (sharedParent === null) {
+        sharedParent = parentStr;
+      }
+      if (sharedCombinator === null) {
+        sharedCombinator = combStr;
+      }
+      if (parentStr !== sharedParent || combStr !== sharedCombinator) {
+        continue;
+      }
       candidates.push({ idx: i, sel: cs });
     }
     if (candidates.length >= 2 && sharedParent && sharedCombinator) {
@@ -1988,12 +1974,13 @@ function extendSelectorList(
         if (i === insertionIdx) {
           filtered.push(combined);
         }
-        if (removeIdx.has(i)) continue;
+        if (removeIdx.has(i)) {
+          continue;
+        }
         filtered.push(allSelectors[i]!);
       }
       finalSelectors = filtered;
-
-      }
+    }
 
     // Exact-mode de-distribution:
     // Collapse explicit cartesian-product expansions
@@ -2142,8 +2129,12 @@ function selectBestLocation(
       return loc.matchScope;
     }
     const path = Array.isArray(loc.path) ? loc.path : [];
-    if (path.includes('arg')) return 'isArgument';
-    if (isNode(target, 'SelectorList')) return 'selectorList';
+    if (path.includes('arg')) {
+      return 'isArgument';
+    }
+    if (isNode(target, 'SelectorList')) {
+      return 'selectorList';
+    }
     return 'root';
   };
 
@@ -2170,7 +2161,9 @@ function selectBestLocation(
     locations.sort((a, b) => {
       const pa = typePriority[a.extensionType] ?? 3;
       const pb = typePriority[b.extensionType] ?? 3;
-      if (pa !== pb) return pa - pb;
+      if (pa !== pb) {
+        return pa - pb;
+      }
       const pathA = Array.isArray(a.path) ? a.path.length : 0;
       const pathB = Array.isArray(b.path) ? b.path.length : 0;
       return pathA - pathB;
@@ -2178,13 +2171,6 @@ function selectBestLocation(
     searchResult.locations = locations;
   }
 
-  if (process.env.DEBUG_FIXTURE_2A === '1' && locations.length > 0) {
-    console.log('FIXTURE_2A_CANDIDATES', locations.map((l: any) => ({
-      path: l?.path,
-      extensionType: l?.extensionType,
-      matchedNode: l?.matchedNode?.valueOf?.()
-    })));
-  }
   const findV = find.valueOf();
 
   // In partial mode, prefer wrapping a specific list item over appending to the :is() list.
@@ -2229,9 +2215,13 @@ function selectBestLocation(
       if (l?.extensionType === 'append' && getMatchScope(l) === 'isArgument') {
         return true;
       }
-      if (l?.extensionType !== 'append') return true;
+      if (l?.extensionType !== 'append') {
+        return true;
+      }
       const mt = l?.matchedNode?.type ?? null;
-      if (mt === 'SelectorList') return false;
+      if (mt === 'SelectorList') {
+        return false;
+      }
       // Also drop the common parent-arg append shape: [..., 'arg'] with no index following.
       if (Array.isArray(l?.path) && l.path.length >= 2) {
         const last = l.path[l.path.length - 1];
@@ -2382,24 +2372,23 @@ function selectBestLocation(
     }
   }
 
-  if (process.env.DEBUG_FIXTURE_2A === '1') {
-    console.log('FIXTURE_LOCATION', {
-      path: location?.path,
-      extensionType: location?.extensionType,
-      matchedNode: location?.matchedNode?.valueOf?.()
-    });
-  }
   return location;
 }
 
 function isNonAllWholeSelectorItemMatch(target: Selector, findValue: string): boolean {
   // Exact whole-selector match (single selector item).
-  if (target.valueOf() === findValue) return true;
+  if (target.valueOf() === findValue) {
+    return true;
+  }
 
   // SelectorList item match.
   if (isNode(target, 'SelectorList')) {
-    return target.value.some(s => {
-      try { return (s as any)?.valueOf?.() === findValue; } catch { return false; }
+    return target.value.some((s) => {
+      try {
+        return (s as any)?.valueOf?.() === findValue;
+      } catch {
+        return false;
+      }
     });
   }
 
@@ -2409,17 +2398,25 @@ function isNonAllWholeSelectorItemMatch(target: Selector, findValue: string): bo
     const arg: any = (target as any).value?.arg;
     if (arg && isNode(arg, 'SelectorList')) {
       return arg.value.some((s: any) => {
-        try { return s?.valueOf?.() === findValue; } catch { return false; }
+        try {
+          return s?.valueOf?.() === findValue;
+        } catch {
+          return false;
+        }
       });
     }
     if (arg && typeof arg === 'object' && typeof arg.valueOf === 'function') {
       try {
-        if (arg.valueOf() === findValue) return true;
+        if (arg.valueOf() === findValue) {
+          return true;
+        }
         // Nested :is() e.g. :is(:is(.foo)) - recurse into single arg
         if (isNode(arg, 'Selector')) {
           return isNonAllWholeSelectorItemMatch(arg, findValue);
         }
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     }
   }
 
@@ -2747,9 +2744,9 @@ function selectorIsEntirelyImplicitAmpersandLeading(selector: Selector): boolean
     }
     const [first, second] = item.value;
     return (
-      isNode(first, 'Ampersand') &&
-      (first as Ampersand).hasFlag(F_IMPLICIT_AMPERSAND) &&
-      isNode(second, 'Combinator')
+      isNode(first, 'Ampersand')
+      && (first as Ampersand).hasFlag(F_IMPLICIT_AMPERSAND)
+      && isNode(second, 'Combinator')
     );
   };
   if (isNode(selector, 'SelectorList')) {
@@ -2757,7 +2754,7 @@ function selectorIsEntirelyImplicitAmpersandLeading(selector: Selector): boolean
     if (!Array.isArray(list) || list.length === 0) {
       return false;
     }
-    return list.every((item) => checkItem(item));
+    return list.every(item => checkItem(item));
   }
   return checkItem(selector);
 }
@@ -2774,9 +2771,9 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
   // ampersand" — the parent should carry the extend. Single-item "& .a" is handled by the loop
   // below (replaceAmpersandWithEmpty leaves ".a" which matches, so we don't return crossed).
   if (
-    isNode(selector, 'SelectorList') &&
-    (selector as SelectorList).value.length > 1 &&
-    selectorIsEntirelyImplicitAmpersandLeading(selector)
+    isNode(selector, 'SelectorList')
+    && (selector as SelectorList).value.length > 1
+    && selectorIsEntirelyImplicitAmpersandLeading(selector)
   ) {
     const list = (selector as SelectorList).value;
     const firstItem = list[0];
@@ -2984,7 +2981,7 @@ function handleAmpersandBoundaryCrossing(
       if (parts[start] && isNode(parts[start], 'Combinator')) {
         start += 1;
       }
-      const tail = parts.slice(start).filter((p) => isNode(p as any, 'Selector') || isNode(p as any, 'Combinator'));
+      const tail = parts.slice(start).filter(p => isNode(p as any, 'Selector') || isNode(p as any, 'Combinator'));
       if (tail.length === 0) {
         return null;
       }
@@ -3001,9 +2998,6 @@ function handleAmpersandBoundaryCrossing(
     if (nestedItems.length === 0) {
       nestedItems = selector.value.map(item => item.copy());
     }
-    if (DEBUG_FIXTURE_2A_ENABLED) {
-      }
-
     // Wrap the inner SelectorList in :is() to match Less expectations
     const innerList = SelectorList.create(nestedItems);
     const innerWrapped = isSelectorPseudo(innerList);
@@ -3282,16 +3276,6 @@ export function applyExtensionAtLocation(
   extendWith: Selector
 ): Selector {
   const result = applyExtensionAtPath(selector, location.path, location.matchedNode, extendWith, location.extensionType, location, undefined);
-  if (DEBUG_APPEND_ARG && Array.isArray(location.path) && location.path.includes('arg')) {
-    console.log('EXTEND_LOCATION_APPLIED', {
-      path: location.path,
-      extensionType: location.extensionType,
-      target: getSelectorValue(selector),
-      matchedNode: getSelectorValue(location.matchedNode),
-      extendWith: getSelectorValue(extendWith),
-      result: getSelectorValue(result)
-    });
-  }
   return result;
 }
 
@@ -3379,11 +3363,11 @@ function applyExtensionAtPath(
         && isNode((current.parent as PseudoSelector).parent as any, 'CompoundSelector')
       ) {
         const parentCompound = (current.parent as PseudoSelector).parent as CompoundSelector;
-        const pseudoIndex = parentCompound.value.findIndex((n) => n === current.parent);
+        const pseudoIndex = parentCompound.value.findIndex(n => n === current.parent);
         const trailing = pseudoIndex >= 0 ? parentCompound.value.slice(pseudoIndex + 1) : [];
         // Only force append-to-:is() for pseudo tails like `:is(.a,.b):after`.
         // For structural tails like `.a:is(.b,.c).d`, preserve positional wrap semantics.
-        const hasPseudoOnlyTail = trailing.length > 0 && trailing.every((n) => isNode(n as any, 'PseudoSelector'));
+        const hasPseudoOnlyTail = trailing.length > 0 && trailing.every(n => isNode(n as any, 'PseudoSelector'));
         if (hasPseudoOnlyTail) {
           const additions = (isNode(extendWith, 'PseudoSelector') && extendWith.value.name === ':is')
             ? extractSelectorsFromIs(extendWith)
@@ -3391,7 +3375,7 @@ function applyExtensionAtPath(
           const newValue = [...current.value];
           let changed = false;
           for (const add of additions) {
-            if (!newValue.some((s) => s.valueOf() === add.valueOf())) {
+            if (!newValue.some(s => s.valueOf() === add.valueOf())) {
               newValue.push(add);
               changed = true;
             }
@@ -3530,7 +3514,7 @@ function applyExtension(
         const additions = extractSelectorsFromIs(extendWith);
         const merged = [...existing];
         for (const add of additions) {
-          if (!merged.some((s) => s.valueOf() === add.valueOf())) {
+          if (!merged.some(s => s.valueOf() === add.valueOf())) {
             merged.push(add);
           }
         }

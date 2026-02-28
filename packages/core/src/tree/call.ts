@@ -1,4 +1,4 @@
-import { Node, defineType, type LocationInfo, type TreeContext, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { cast } from './util/cast.js';
@@ -222,18 +222,11 @@ export class Call extends Node<CallValue, CallOptions> {
     }
 
     let fn = isNode(n, 'JsFunction') ? n.value : n;
-    const callNameKey = typeof name === 'string'
-      ? name
-      : (isNode(name, 'Reference') ? String(name.value.key?.valueOf?.() ?? '') : '');
-
     if (typeof fn === 'function') {
       const originalCaller = context.caller;
       context.caller = this;
       let didPopCallStack = false;
       try {
-        if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
-          console.log('[Call.evalNode] pi() resolved to function', { silentFail: this.options?.silentFail });
-        }
         /** Freeze args */
         if (args) {
           const copiedArgs = args.copy(true, freezeChildren);
@@ -250,18 +243,6 @@ export class Call extends Node<CallValue, CallOptions> {
             copied.frozen = true;
           }
           args = copiedArgs;
-        }
-        if (callNameKey === 'each') {
-          const ancestryTypes: string[] = [];
-          const ancestryRulesetSelectors: string[] = [];
-          let cursor: Node | undefined = this;
-          for (let i = 0; i < 8 && cursor; i++) {
-            ancestryTypes.push(cursor.type);
-            if (isNode(cursor, 'Ruleset')) {
-              ancestryRulesetSelectors.push(cursor.value.selector.valueOf());
-            }
-            cursor = cursor.parent;
-          }
         }
         const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
         const result = await (
@@ -296,9 +277,6 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
-        if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
-          console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
-        }
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {

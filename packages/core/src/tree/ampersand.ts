@@ -148,8 +148,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     if (selector && isNode(selector, 'SelectorList') && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
       wrapped.generated = true;
-      if (process.env.DEBUG_FIXTURE_2A === '1') {
-        }
       return wrapped;
     }
     return selector;
@@ -231,8 +229,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const isImplicitAmp = this.hasFlag(F_IMPLICIT_AMPERSAND);
       const shouldWrapSelectorList = isNode(selector, 'SelectorList') && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
       const shouldWrapComplexSelector = isNode(selector, 'ComplexSelector');
-      if (process.env.DEBUG_FIXTURE_2A === '1' && isNode(selector, 'SelectorList')) {
-        }
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
         result = PseudoSelector.create({ name: ':is', arg: selector });

@@ -111,9 +111,6 @@ export class LessCompatPlugin extends AbstractPlugin {
 
   setCurrentFilePath(filePath: string) {
     this._currentFilePath = filePath;
-    if (process.env.DEBUG) {
-      console.log('[LessCompatPlugin] setCurrentFilePath', filePath);
-    }
   }
 
   setContext(context: any) {
@@ -312,9 +309,7 @@ export class LessCompatPlugin extends AbstractPlugin {
               Object.assign(wrapped, func);
               currentRealRegistry.add(name, wrapped);
             } catch (e) {
-              if (process.env.DEBUG) {
-                console.warn('[LessCompatPlugin] Failed to register function in Jess FunctionRegistry', name, e);
-              }
+              void e;
             }
           }
         },
@@ -528,9 +523,7 @@ export class LessCompatPlugin extends AbstractPlugin {
             // If wrapping fails, log for debugging but continue
             // The error might be expected if the plugin doesn't have visit* methods
             // We'll try other methods below
-            if (process.env.DEBUG) {
-              console.warn('Failed to wrap plugin as LessVisitor:', e?.message);
-            }
+            void e;
           }
 
           // Check if it's a plugin with install method (most common case)
@@ -841,17 +834,6 @@ export class LessCompatPlugin extends AbstractPlugin {
 
               const isLocalPath = isExplicitLocalPath || !!resolvedLocalPluginFile;
 
-              if (process.env.DEBUG) {
-                console.log('[LessCompatPlugin] Local plugin resolution', {
-                  pluginPath,
-                  baseDir,
-                  localBasePath,
-                  resolvedLocalPluginFile,
-                  isExplicitLocalPath,
-                  isLocalPath
-                });
-              }
-
               // IMPORTANT: Less allows @plugin to be loaded multiple times in different scopes.
               // Do NOT globally dedupe by pluginPath; this breaks Less's scoping rules.
               if (pluginManagerRef && mockLessRef) {
@@ -940,9 +922,6 @@ export class LessCompatPlugin extends AbstractPlugin {
                     }
                   } else {
                     // Auto-loading disabled - skip
-                    if (process.env.DEBUG) {
-                      console.warn(`Plugin "${pluginPath}" not found in registry and auto-loading is disabled. Add it to pluginRegistry option.`);
-                    }
                   }
 
                   // If we have a plugin instance, register it synchronously
@@ -993,9 +972,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                   }
                 } catch (e) {
                   // Plugin loading failed - continue without it
-                  if (process.env.DEBUG) {
-                    console.warn(`Failed to process @plugin directive: ${pluginPath}`, e);
-                  }
+                  void e;
                 }
               }
             }
