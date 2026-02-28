@@ -208,6 +208,9 @@ export class Call extends Node<CallValue, CallOptions> {
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
       rules.inherit(n);
+      // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
+      // to this call so leaky fallback can resolve call-site variables (e.g. @d).
+      rules.sourceParent = this;
       rules = await rules.eval(context);
       context.callStack.pop();
       context.parenFrames.pop();

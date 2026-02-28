@@ -260,8 +260,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const ctx = options.context;
     if (depth === 0) {
       // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
-      const __prevCharsetEmitted = ctx?.charsetEmitted;
-      const __prevTopImports = ctx?.topImports ? [...ctx.topImports] : undefined;
+      const prevCharsetEmitted = ctx?.charsetEmitted;
+      const prevTopImports = ctx?.topImports ? [...ctx.topImports] : undefined;
       // @charset must be first
       if (ctx?.currentCharset && !ctx.charsetEmitted) {
         const charset = ctx.currentCharset;
@@ -283,9 +283,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       // Restore global tracking (we only needed it during this print).
       if (ctx) {
-        ctx.charsetEmitted = __prevCharsetEmitted;
-        if (__prevTopImports) {
-          ctx.topImports = __prevTopImports;
+        ctx.charsetEmitted = prevCharsetEmitted;
+        if (prevTopImports) {
+          ctx.topImports = prevTopImports;
         }
       }
     }
@@ -611,14 +611,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
       const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
       const isNestableAtRuleBody =
-        parentAtRule &&
-        nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
+        parentAtRule
+        && nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
       const first = rules.value?.[0];
       const isWrapper =
-        isNestableAtRuleBody &&
-        rules.value?.length === 1 &&
-        isNode(first, 'Ruleset') &&
-        isNode((first as Ruleset).value?.selector, 'Ampersand');
+        isNestableAtRuleBody
+        && rules.value?.length === 1
+        && isNode(first, 'Ruleset')
+        && isNode((first as Ruleset).value?.selector, 'Ampersand');
       if (isWrapper) {
         rules = this;
       }
@@ -1001,7 +1001,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Assign depth-first document order to every Ruleset under the given Rules (single walk, source order). */
   private _assignDocumentOrderDepthFirst(rules: Rules, map: WeakMap<Ruleset, number>, counter: { value: number }): void {
     const value = rules.value;
-    if (!isArray(value)) return;
+    if (!isArray(value)) {
+      return;
+    }
     for (const node of value) {
       if (isNode(node, 'Ruleset')) {
         map.set(node as Ruleset, counter.value);
@@ -1170,7 +1172,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This runs after queue evaluation to avoid mutating rule indices mid-eval.
    */
   private _normalizeCallDeclarationRulesOrder(rules: Rules): void {
-    const firstNestedIdx = rules.value.findIndex((n) => isNode(n, ['Ruleset', 'AtRule']));
+    const firstNestedIdx = rules.value.findIndex(n => isNode(n, ['Ruleset', 'AtRule']));
     if (firstNestedIdx < 0) {
       return;
     }
@@ -1180,13 +1182,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       isNode(n, 'Rules')
       && isNode(n.sourceParent, 'Call')
       && n.value.length > 0
-      && n.value.every((child) => isNode(child, ['Declaration', 'Comment']))
+      && n.value.every(child => isNode(child, ['Declaration', 'Comment']))
     );
     const moved = afterNested.filter(shouldMove);
     if (moved.length === 0) {
       return;
     }
-    const remainder = afterNested.filter((n) => !shouldMove(n));
+    const remainder = afterNested.filter(n => !shouldMove(n));
     rules.value = [...beforeNested, ...moved, ...remainder];
   }
 
@@ -1301,7 +1303,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
         if (isOutermost) {
           const hasGeneratedLeadingIs = (selector: Selector | undefined): boolean => {
-            if (!selector) return false;
+            if (!selector) {
+              return false;
+            }
             if (isNode(selector, 'PseudoSelector')) {
               return selector.value.name === ':is' && Boolean(selector.generated);
             }
@@ -1339,7 +1343,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }> = [];
             const visitRules = (r: Rules): void => {
               for (const node of r.value) {
-                if (!node || !isNode(node, 'Ruleset')) continue;
+                if (!node || !isNode(node, 'Ruleset')) {
+                  continue;
+                }
                 const rs = node as Ruleset;
                 const rsSelector = rs.value?.selector as Selector | undefined;
                 const ownSelector = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
@@ -1528,34 +1534,41 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       : caller?.sourceParent;
 
     let nodeArgs: Node[] = [];
-    for (let arg of args) {
-      /**
-       * I think they should always be nodes?
-       * But leaving this for future expansion.
-       */
-      if (isNode(arg)) {
-        const isList1Ref = isNode(arg, 'Reference')
-          && arg.options?.type === 'property'
-          && String(arg.value.key) === 'list-1';
-        // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
-        // Evaluating them can register/override variables in the current scope.
-        // They should only be used for parameter binding.
-        if (isNode(arg, 'VarDeclaration')) {
-          const cloned = arg.copy(true, freezeChildren);
-          cloned.frozen = true;
-          nodeArgs.push(cloned);
-          continue;
+    const savedRulesContext = thisContext.rulesContext;
+    const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? savedRulesContext;
+    thisContext.rulesContext = argEvalRulesContext;
+    try {
+      for (let arg of args) {
+        /**
+         * I think they should always be nodes?
+         * But leaving this for future expansion.
+         */
+        if (isNode(arg)) {
+          const isList1Ref = isNode(arg, 'Reference')
+            && arg.options?.type === 'property'
+            && String(arg.value.key) === 'list-1';
+          // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
+          // Evaluating them can register/override variables in the current scope.
+          // They should only be used for parameter binding.
+          if (isNode(arg, 'VarDeclaration')) {
+            const cloned = arg.copy(true, freezeChildren);
+            cloned.frozen = true;
+            nodeArgs.push(cloned);
+            continue;
+          }
+          try {
+            const evald = await arg.clonedEval(thisContext);
+            evald.frozen = true;
+            nodeArgs.push(evald);
+          } catch (error: any) {
+            throw error;
+          }
+        } else {
+          nodeArgs.push(cast(arg));
         }
-        try {
-          const evald = await arg.clonedEval(thisContext);
-          evald.frozen = true;
-          nodeArgs.push(evald);
-        } catch (error: any) {
-          throw error;
-        }
-      } else {
-        nodeArgs.push(cast(arg));
       }
+    } finally {
+      thisContext.rulesContext = savedRulesContext;
     }
     /**
      * Check named and positional arguments
@@ -1782,7 +1795,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         let unlocked = candidate.value.rules.copy(true);
         candidate.parent!.adopt(unlocked);
-        unlocked.sourceParent = sourceParent;
+        unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
         unlocked.options.isMixinOutput = restrictMixinOutputLookup;
         unlocked.index = candidate.index;
@@ -1844,10 +1857,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const restValue = isNode(param.value)
               ? param.value
               : (
-                thisContext.treeContext?.file
-                  ? new Sequence([])
-                  : new Any(restName, { role: 'property' })
-              );
+                  thisContext.treeContext?.file
+                    ? new Sequence([])
+                    : new Any(restName, { role: 'property' })
+                );
             const restVarDecl = new VarDeclaration({
               name: new Any(restName, { role: 'property' }),
               value: restValue
@@ -1898,72 +1911,77 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
       thisContext.rulesContext = outerRules ?? rules;
-      if (guard) {
-        outerRules ??= Rules.create([]);
-        outerRules.adopt(guard);
-        candidate.parent!.adopt(outerRules);
-        /** Allow lookup on the inherited rules */
-        passes = false;
-        /** All nodes need context to be evaluated */
-        thisContext.isDefault = !hasMatch;
-        guard = await guard.eval(thisContext);
-        /** The guard condition passed */
-        if (guard.value) {
-          passes = true;
-        }
-      }
-      if (!passes) {
-        continue;
-      }
-      let currentCall = thisContext.callStack.at(-1);
-      // to prevent infinite loops (e.g., .recursion { .recursion(); })
-      if (currentCall && thisContext.callMap.add(currentCall, params)) {
-        // Recursive call detected - skip this candidate (don't add to outputRules)
-        // This allows other candidates to still match
-        continue;
-      }
-
       try {
-        let newRules: Rules;
-        if (!outerRules) {
-          candidate.parent!.adopt(rules);
-          newRules = await rules.eval(thisContext);
-        } else {
-          // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
-          // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
-          // hide param vars from registry-based lookup.
-          outerRules.push(...rules.value);
-          newRules = await outerRules.eval(thisContext);
+        if (guard) {
+          outerRules ??= Rules.create([]);
+          outerRules.adopt(guard);
+          candidate.parent!.adopt(outerRules);
+          /** Allow lookup on the inherited rules */
+          passes = false;
+          /** All nodes need context to be evaluated */
+          thisContext.isDefault = !hasMatch;
+          guard = await guard.eval(thisContext);
+          /** The guard condition passed */
+          if (guard.value) {
+            passes = true;
+          }
         }
-        candidate.parent!.adopt(newRules);
-        // Rules should have index from eval, but ensure it matches candidate for sorting
-        newRules.index = candidate.index;
-
-        // Visibility should be preserved by Rules.eval - no need to set it explicitly here
-        // The eval'd rules should already have their nodes registered
-        // Ensure the registry is indexed before checking
-        const declRegistry = newRules.getRegistry('declaration');
-        declRegistry.indexPendingItems();
-        // Mark output Rules as mixin output - accessible only when lookup has a target
-        newRules.options.isMixinOutput = restrictMixinOutputLookup;
-        outputRules.push(newRules);
-      } catch (error) {
-        // If recursion was detected (ReferenceError), skip this candidate
-        // This allows other candidates to still match
-        if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
-          // Skip this candidate - recursion detected
+        if (!passes) {
           continue;
         }
-        // Re-throw other errors
-        throw error;
-      } finally {
-        if (currentCall) {
-          thisContext.callMap.delete(currentCall);
+        let currentCall = thisContext.callStack.at(-1);
+        // to prevent infinite loops (e.g., .recursion { .recursion(); })
+        if (currentCall && thisContext.callMap.add(currentCall, params)) {
+          // Recursive call detected - skip this candidate (don't add to outputRules)
+          // This allows other candidates to still match
+          continue;
         }
-      }
 
-      /** Restore incoming rules context */
-      thisContext.rulesContext = rulesContext;
+        try {
+          let newRules: Rules;
+          if (!outerRules) {
+            candidate.parent!.adopt(rules);
+            newRules = await rules.eval(thisContext);
+          } else {
+            // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
+            // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
+            // hide param vars from registry-based lookup.
+            outerRules.push(...rules.value);
+            newRules = await outerRules.eval(thisContext);
+          }
+          candidate.parent!.adopt(newRules);
+          // Rules should have index from eval, but ensure it matches candidate for sorting
+          newRules.index = candidate.index;
+
+          // Visibility should be preserved by Rules.eval - no need to set it explicitly here
+          // The eval'd rules should already have their nodes registered
+          // Ensure the registry is indexed before checking
+          const declRegistry = newRules.getRegistry('declaration');
+          declRegistry.indexPendingItems();
+          // Mark output Rules as mixin output - accessible only when lookup has a target
+          newRules.options.isMixinOutput = restrictMixinOutputLookup;
+          if (thisContext.treeContext?.file) {
+            newRules.options.rulesVisibility ??= {};
+            newRules.options.rulesVisibility.VarDeclaration = 'private';
+          }
+          outputRules.push(newRules);
+        } catch (error) {
+          // If recursion was detected (ReferenceError), skip this candidate
+          // This allows other candidates to still match
+          if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
+            // Skip this candidate - recursion detected
+            continue;
+          }
+          // Re-throw other errors
+          throw error;
+        } finally {
+          if (currentCall) {
+            thisContext.callMap.delete(currentCall);
+          }
+        }
+      } finally {
+        thisContext.rulesContext = rulesContext;
+      }
     }
 
     /**
