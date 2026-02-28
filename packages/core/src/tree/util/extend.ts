@@ -138,54 +138,6 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
   extendOrderByValueOf = orderByValueOf ?? null;
 }
 
-function debugSelectorInfo(selectors: Selector[]): string[] {
-  return selectors.map((sel) => {
-    try {
-      return sel.valueOf();
-    } catch {
-      return '<value-error>';
-    }
-  });
-}
-
-function debugFixtureLog(_stage: string, _data: Record<string, unknown>): void {
-}
-
-function getSelectorValue(selector?: Selector): string {
-  if (!selector) {
-    return 'undefined';
-  }
-  try {
-    return selector.valueOf();
-  } catch {
-    return '<value-error>';
-  }
-}
-
-function logAppendArg(
-  _stage: string,
-  _path: Array<string | number>,
-  _current: Selector,
-  _matchedNode: Selector,
-  _extendWith: Selector,
-  _result: Selector
-): void {
-}
-
-// NOTE: extend finalize tracing removed; keep call sites as no-ops.
-function agentExtendLog(_location: string, _message: string, _data: Record<string, unknown>) {
-  // noop
-}
-
-// NOTE: older debug helpers are now disabled (no-ops).
-// They remain only to avoid runtime ReferenceErrors from stale call sites.
-function agentExtendDbg(_location: string, _message: string, _data: Record<string, unknown>) {
-  // noop
-}
-function agentIsOrderInteresting(_items: string[]): boolean {
-  return false;
-}
-
 function isSelectorNode(value: unknown): value is Selector {
   return !!value && typeof value === 'object' && (value as any).isSelector === true;
 }
@@ -340,12 +292,6 @@ function wrapMatchInIs(
  * 3. Discarding or flattening ampersands.
  */
 export function createProcessedSelector(selectors: Selector | Selector[], root?: boolean): Selector | Selector[] {
-  debugFixtureLog('createProcessedSelector-enter', {
-    selectors: isArray(selectors)
-      ? debugSelectorInfo(selectors)
-      : [getSelectorValue(selectors as Selector)],
-    root: Boolean(root)
-  });
   let out: Selector[] = [];
   // Only deduplicate at root level (SelectorList context), not for compound selector components
   // Compound selectors can have duplicate components (e.g., .v.w.v), so we must preserve all
@@ -379,13 +325,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     }
     if (isNode(el, 'PseudoSelector')) {
       if (root && el.value.name === ':is' && el.generated) {
-        agentExtendLog('extend.ts:createProcessedSelector', 'unwrap-generated-is-root', {
-          root: !!root,
-          generated: !!el.generated,
-          name: el.value.name,
-          argType: (el.value.arg as any)?.type ?? null,
-          argValueOf: (el.value.arg as any)?.valueOf?.() ?? null
-        });
         let result = createProcessedSelector(el.value.arg as Selector) as Selector;
         /**
          * Result will be a single selector, which we want to bubble
@@ -399,15 +338,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           push(result);
         }
       } else {
-        if (root && el.value.name === ':is' && !el.generated) {
-          agentExtendLog('extend.ts:createProcessedSelector', 'keep-non-generated-is-root', {
-            root: !!root,
-            generated: !!el.generated,
-            name: el.value.name,
-            argType: (el.value.arg as any)?.type ?? null,
-            argValueOf: (el.value.arg as any)?.valueOf?.() ?? null
-          });
-        }
         if (el.value.arg) {
           let result = createProcessedSelector(el.value.arg as Selector, root);
           // If result is a SelectorList, check if it contains generated :is() wrappers to flatten
@@ -687,11 +617,6 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     }
   }
   const result = out.length === 1 ? out[0]! : out;
-  debugFixtureLog('createProcessedSelector-exit', {
-    result: Array.isArray(result)
-      ? debugSelectorInfo(result)
-      : getSelectorValue(result as Selector)
-  });
   return result;
 }
 /**
@@ -729,10 +654,6 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
  * @returns A new SelectorList with deduplicated and flattened selectors
  */
 function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selector): SelectorList {
-  debugFixtureLog('createExtendedSelectorList-before', {
-    selectors: debugSelectorInfo(selectors),
-    inheritFrom: inheritFrom?.valueOf?.() ?? null
-  });
   // Extract selectors from any :is() wrappers in the array
   const extractedSelectors: Selector[] = [];
   for (const selector of selectors) {
@@ -845,22 +766,9 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
       }
     }
   }
-  debugFixtureLog('createExtendedSelectorList-after', {
-    extracted: debugSelectorInfo(extractedSelectors)
-  });
-
   // createProcessedSelector may return a single selector if only one item, so ensure it's an array
   const processed = createProcessedSelector(extractedSelectors, true);
   const processedArray = isArray(processed) ? processed : [processed];
-  agentExtendLog('extend.ts:createExtendedSelectorList', 'post-createProcessedSelector', {
-    count: processedArray.length,
-    items: processedArray.slice(0, 5).map(s => ({
-      type: (s as any)?.type ?? null,
-      valueOf: (s as any)?.valueOf?.() ?? null,
-      isIs: isNode(s, 'PseudoSelector') ? (s as any).value?.name === ':is' : false,
-      generated: isNode(s, 'PseudoSelector') ? !!(s as any).generated : null
-    }))
-  });
   // IMPORTANT: Avoid self-parenting cycles:
   // If `inheritFrom` is also included as an item in the selector list, the constructor will adopt it,
   // reparenting `inheritFrom` to the new SelectorList, and then `.inherit(inheritFrom)` will read
@@ -3413,9 +3321,6 @@ function applyExtensionAtPath(
           }
         }
         const result = changed ? SelectorList.create(newValue).inherit(current) : current;
-        if (extensionType === 'append' && isArgMatch && changed) {
-          logAppendArg('selector-list-append', path, current, matchedNode, extendWith, result);
-        }
         return result;
       }
     } else {
@@ -3466,9 +3371,6 @@ function applyExtensionAtPath(
         name: current.value.name,
         arg: newArg
       }).inherit(current);
-      if (extensionType === 'append' && isArgMatch) {
-        logAppendArg('pseudo-arg-append', path, current, matchedNode, extendWith, result);
-      }
       return result;
     } else {
       // Navigate deeper into the argument
