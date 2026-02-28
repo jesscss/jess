@@ -3,7 +3,7 @@ import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
-import type { List } from './list.js';
+import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
 import { Mixin } from './mixin.js';
 import { getFunctionFromMixins } from './rules.js';
@@ -80,7 +80,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
    * We intentionally reuse the mixin-call machinery for argument binding & scoped evaluation
    * to avoid duplicating complex param matching logic.
    */
-  async evalCall(context: Context, args: Node[] = []): Promise<Node> {
+  async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this.options?.returnName ?? 'return';
 
     // Normalize body to a Rules node so it can be evaluated/scoped consistently.
@@ -102,7 +102,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
 
     const fn = getFunctionFromMixins(mixinLike);
-    const evaluated = await fn.call(context, ...args.map(a => cast(a)));
+    const evaluated = await fn.call(context, ...args.value.map(a => cast(a)));
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);

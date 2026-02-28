@@ -69,4 +69,26 @@ describe('hsv/hsva/hsla()', () => {
       (hsl as unknown as { _internal?: unknown })._internal = originalInternal;
     }
   });
+
+  it('hsla internal direct-call path works without context', async () => {
+    const hslaInternal = (hsla as unknown as {
+      _internal: (this: {
+        context?: Context;
+        args: () => Promise<unknown[]>;
+        rawArgs: unknown[];
+      }, ...args: number[]) => Promise<Color>;
+    })._internal;
+
+    const result = await hslaInternal.call(
+      { context: undefined, args: async () => [], rawArgs: [] },
+      180,
+      1,
+      0.5,
+      0.2
+    );
+
+    expect(result).toBeInstanceOf(Color);
+    expect(result.options.format).toBe(ColorFormat.HSL);
+    expect(result.alpha).toBeCloseTo(0.2);
+  });
 });

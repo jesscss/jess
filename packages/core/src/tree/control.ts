@@ -317,7 +317,7 @@ export class For extends Node<StructuredLoopValue> {
         if (accumulatedNodes.length > 0) {
           // Make prior iteration output visible to current iteration lookups
           // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
-          const priorScope = new Rules(accumulatedNodes.map((n) => n.copy(true)));
+          const priorScope = new Rules(accumulatedNodes.map(n => n.copy(true)));
           priorScope.inherit(this.value.rules);
           priorScope.adopt(loopRules);
         }
@@ -350,7 +350,9 @@ export class For extends Node<StructuredLoopValue> {
                 normalizedFromAssign === AssignmentType.Add
                 || normalizedFromAssign === AssignmentType.MergeList
                 || normalizedFromAssign === AssignmentType.MergeSequence;
-              const shouldCoalesceByName = outName === 'index' || outName === 'padding';
+              // Keep manual by-name coalescing narrowly scoped to legacy padding merges.
+              // `index` declarations in plain loop bodies should remain per-iteration.
+              const shouldCoalesceByName = outName === 'padding';
               if (isMergedAssignment || shouldCoalesceByName) {
                 let firstMatch = -1;
                 for (let i = 0; i < accumulatedNodes.length; i++) {

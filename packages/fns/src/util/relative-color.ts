@@ -14,7 +14,7 @@ import {
 /**
  * Detects and parses relative color syntax from rawArgs
  * Returns null if not relative color syntax, otherwise returns parsed data
- * 
+ *
  * Example: rgb(from color r g b) -> { originColor: <color node>, channels: [r, g, b] }
  * Example: rgb(from color r g b / 0.5) -> { originColor: <color node>, channels: [r, g, b], alpha: <alpha node> }
  */
@@ -28,27 +28,27 @@ export function parseRelativeColorSyntax(rawArgs: List): {
   }
 
   const firstArg = rawArgs.value[0];
-  
+
   // Check if first argument is a Sequence starting with "from"
   if (firstArg instanceof Sequence && firstArg.value && firstArg.value.length > 0) {
     const firstItem = firstArg.value[0];
-    
+
     // Check if first item is "from" keyword
     if (firstItem instanceof Any && firstItem.value.toLowerCase() === 'from') {
       // This is relative color syntax
       if (firstArg.value.length < 2) {
         throw new Error('Relative color syntax requires an origin color after "from"');
       }
-      
+
       const originColor = firstArg.value[1]!;
       const channels = firstArg.value.slice(2) || [];
-      
+
       // Check if there's an alpha value separated by / (rawArgs.value[1] when sep is '/')
       let alpha: Node | undefined;
       if (rawArgs.value.length > 1 && rawArgs.options?.sep === '/') {
         alpha = rawArgs.value[1];
       }
-      
+
       return {
         originColor,
         channels,
@@ -56,7 +56,7 @@ export function parseRelativeColorSyntax(rawArgs: List): {
       };
     }
   }
-  
+
   return null;
 }
 
@@ -96,7 +96,7 @@ function substituteChannelVariables(
       location = node.location;
     }
     const context = (node as any).context;
-    
+
     if (format === 'rgb') {
       const values = channelValues as { r: number; g: number; b: number; alpha: number };
       switch (channelName) {
@@ -126,20 +126,20 @@ function substituteChannelVariables(
       }
     }
   }
-  
+
   // If it's a Call node (like calc()), recursively substitute in its arguments
   if (node instanceof Call && node.value.args) {
     const cloned = node.clone();
     // Recursively substitute in arguments
     if (cloned.value.args) {
-      const substitutedArgs = node.value.args.map(arg =>
+      const substitutedArgs = node.value.args.value.map(arg =>
         substituteChannelVariables(arg, channelValues, format)
       );
-      cloned.value.args = substitutedArgs;
+      cloned.value.args.value = substitutedArgs;
     }
     return cloned;
   }
-  
+
   // If it's an Operation, recursively substitute in its operands
   if (node instanceof Operation && node.value) {
     const cloned = node.clone();
@@ -151,7 +151,7 @@ function substituteChannelVariables(
     ];
     return cloned;
   }
-  
+
   // If it's a Sequence or List, recursively substitute in its values
   if ('value' in node && Array.isArray((node as any).value)) {
     const cloned = node.clone();
@@ -160,7 +160,7 @@ function substituteChannelVariables(
     );
     return cloned;
   }
-  
+
   // For other node types, return as-is
   return node;
 }
@@ -176,11 +176,11 @@ export async function evaluateRGBChannelReference(
   context: Context
 ): Promise<number> {
   const channelValues = getRGBChannelValues(originColor);
-  
+
   // Check if channel is a simple identifier (r, g, b, alpha)
   if (channel instanceof Any && typeof channel.value === 'string') {
     const channelName = channel.value.toLowerCase();
-    
+
     switch (channelName) {
       case 'r':
         return channelValues.r;
@@ -195,28 +195,28 @@ export async function evaluateRGBChannelReference(
         throw new Error(`Invalid RGB channel reference: ${channelName}. Must be r, g, b, or alpha`);
     }
   }
-  
+
   // If it's a Call node (like calc()), substitute channel variables and evaluate
   if (channel instanceof Call) {
     const substituted = substituteChannelVariables(channel, channelValues, 'rgb');
     const evaluated = await substituted.eval(context);
-    
+
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
       const value = evaluated.value.number;
       // Clamp to 0-255 range for RGB
       return Math.max(0, Math.min(255, value));
     }
-    
+
     throw new Error(`Channel expression must evaluate to a Dimension, got ${evaluated.type}`);
   }
-  
+
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
     return Math.max(0, Math.min(255, evaluated.value.number));
   }
-  
+
   throw new Error(`Channel reference must be an identifier or evaluate to a Dimension, got ${channel.type}`);
 }
 
@@ -249,11 +249,11 @@ export async function evaluateHSLChannelReference(
   context: Context
 ): Promise<number> {
   const channelValues = getHSLChannelValues(originColor);
-  
+
   // Check if channel is a simple identifier (h, s, l, alpha)
   if (channel instanceof Any && typeof channel.value === 'string') {
     const channelName = channel.value.toLowerCase();
-    
+
     switch (channelName) {
       case 'h':
         return channelValues.h;
@@ -267,17 +267,17 @@ export async function evaluateHSLChannelReference(
         throw new Error(`Invalid HSL channel reference: ${channelName}. Must be h, s, l, or alpha`);
     }
   }
-  
+
   // If it's a Call node (like calc()), substitute channel variables and evaluate
   if (channel instanceof Call) {
     const substituted = substituteChannelVariables(channel, channelValues, 'hsl');
     const evaluated = await substituted.eval(context);
-    
+
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
       const value = evaluated.value.number;
       const unit = evaluated.value.unit;
-      
+
       // Handle different units for hue (deg, turn, rad, grad)
       if (unit === 'deg' || unit === '' || unit === undefined) {
         // Normalize hue to 0-360
@@ -296,16 +296,16 @@ export async function evaluateHSLChannelReference(
         return Math.max(0, Math.min(1, value));
       }
     }
-    
+
     throw new Error(`Channel expression must evaluate to a Dimension, got ${evaluated.type}`);
   }
-  
+
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
     const value = evaluated.value.number;
     const unit = evaluated.value.unit;
-    
+
     // Handle percentage units for s/l
     if (unit === '%') {
       return Math.max(0, Math.min(1, value / 100));
@@ -317,7 +317,7 @@ export async function evaluateHSLChannelReference(
     // For other cases, return as-is (will be clamped by caller if needed)
     return value;
   }
-  
+
   throw new Error(`Channel reference must be an identifier or evaluate to a Dimension, got ${channel.type}`);
 }
 
@@ -330,12 +330,12 @@ export async function evaluateOriginColor(
 ): Promise<Color> {
   // Evaluate the origin color node
   const evaluated = await originColorNode.eval(context);
-  
+
   // Cast to Color (it should be a Color, but might need conversion)
   if (evaluated instanceof Color) {
     return evaluated;
   }
-  
+
   // Try to convert to Color if possible
   // This might need to be expanded based on what types can be converted to Color
   throw new Error(`Origin color must evaluate to a Color, got ${evaluated.type}`);

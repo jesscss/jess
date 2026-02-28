@@ -465,23 +465,23 @@ describe('Color Functions', () => {
         const gChannel = new Any('g', { role: 'ident' });
         const bChannel = new Any('b', { role: 'ident' });
         const alphaValue = new Dimension({ number: 0.5, unit: '' });
-        
+
         // Create sequence: from green r g b
         const channelSequence = new Sequence([fromKeyword, greenColor, rChannel, gChannel, bChannel]);
         // Create list: [sequence, alpha] with / separator
         const argsList = new List([channelSequence, alphaValue], { sep: '/' });
-        
+
         // Create FunctionThis manually to test rawArgs directly
         const functionThis = {
           context,
           args: () => argsList.eval(context),
           rawArgs: argsList
         };
-        
+
         // Call the internal function directly
         const rgbInternal = (rgb as any)._internal;
         const result = await rgbInternal.call(functionThis);
-        
+
         expect(result).toBeInstanceOf(Color);
         expect(result.options.format).toBe(ColorFormat.RGB);
         // Green is rgb(0, 128, 0), so result should be same with alpha 0.5
@@ -497,32 +497,32 @@ describe('Color Functions', () => {
         const rChannel = new Any('r', { role: 'ident' });
         const gChannel = new Any('g', { role: 'ident' });
         const bChannel = new Any('b', { role: 'ident' });
-        
+
         // Create calc(r + 40)
         const rValue = new Any('r', { role: 'ident' });
         const plus40 = new Dimension({ number: 40, unit: '' });
         const calcRExpr = new Operation([rValue, '+', plus40]);
-        const calcR = new Call({ name: 'calc', args: [calcRExpr] });
-        
+        const calcR = new Call({ name: 'calc', args: new List([calcRExpr]) });
+
         // Create calc(g + 40)
         const gValue = new Any('g', { role: 'ident' });
         const calcGExpr = new Operation([gValue, '+', plus40]);
-        const calcG = new Call({ name: 'calc', args: [calcGExpr] });
-        
+        const calcG = new Call({ name: 'calc', args: new List([calcGExpr]) });
+
         // Create sequence: from #123456 calc(r + 40) calc(g + 40) b
         const channelSequence = new Sequence([fromKeyword, originColor, calcR, calcG, bChannel]);
         const argsList = new List([channelSequence]);
-        
+
         // Create FunctionThis manually
         const functionThis = {
           context,
           args: () => argsList.eval(context),
           rawArgs: argsList
         };
-        
+
         const rgbInternal = (rgb as any)._internal;
         const result = await rgbInternal.call(functionThis);
-        
+
         expect(result).toBeInstanceOf(Color);
         expect(result.options.format).toBe(ColorFormat.RGB);
         // #123456 is rgb(18, 52, 86)
@@ -541,31 +541,31 @@ describe('Color Functions', () => {
           rgb: [20, 51, 20], // Approximate conversion from hwb(120deg 10% 20%)
           alpha: 1
         });
-        
+
         const fromKeyword = new Any('from', { role: 'keyword' });
         const rChannel = new Any('r', { role: 'ident' });
         const gChannel = new Any('g', { role: 'ident' });
         const bChannel = new Any('b', { role: 'ident' });
-        
+
         // Create calc(b + 200)
         const bValue = new Any('b', { role: 'ident' });
         const plus200 = new Dimension({ number: 200, unit: '' });
         const calcBExpr = new Operation([bValue, '+', plus200]);
-        const calcB = new Call({ name: 'calc', args: [calcBExpr] });
-        
+        const calcB = new Call({ name: 'calc', args: new List([calcBExpr]) });
+
         // Create sequence: from hwbColor r g calc(b + 200)
         const channelSequence = new Sequence([fromKeyword, hwbColor, rChannel, gChannel, calcB]);
         const argsList = new List([channelSequence]);
-        
+
         const functionThis = {
           context,
           args: () => argsList.eval(context),
           rawArgs: argsList
         };
-        
+
         const rgbInternal = (rgb as any)._internal;
         const result = await rgbInternal.call(functionThis);
-        
+
         expect(result).toBeInstanceOf(Color);
         expect(result.options.format).toBe(ColorFormat.RGB);
         // r = 20, g = 51, calc(b + 200) = 20 + 200 = 220 (clamped to 255)
@@ -582,19 +582,19 @@ describe('Color Functions', () => {
         const sChannel = new Any('s', { role: 'ident' });
         const lChannel = new Any('l', { role: 'ident' });
         const alphaValue = new Dimension({ number: 0.5, unit: '' });
-        
+
         const channelSequence = new Sequence([fromKeyword, greenColor, hChannel, sChannel, lChannel]);
         const argsList = new List([channelSequence, alphaValue], { sep: '/' });
-        
+
         const functionThis = {
           context,
           args: () => argsList.eval(context),
           rawArgs: argsList
         };
-        
+
         const hslInternal = (hsl as any)._internal;
         const result = await hslInternal.call(functionThis);
-        
+
         expect(result).toBeInstanceOf(Color);
         expect(result.options.format).toBe(ColorFormat.HSL);
         // Green is approximately hsl(120, 100%, 25%)
@@ -611,25 +611,25 @@ describe('Color Functions', () => {
         const hChannel = new Any('h', { role: 'ident' });
         const sChannel = new Any('s', { role: 'ident' });
         const lChannel = new Any('l', { role: 'ident' });
-        
+
         // Create calc(l + 20) - note: l is 0-1, so +20 means +20% = +0.2
         const lValue = new Any('l', { role: 'ident' });
         const plus20 = new Dimension({ number: 20, unit: '%' });
         const calcLExpr = new Operation([lValue, '+', plus20]);
-        const calcL = new Call({ name: 'calc', args: [calcLExpr] });
-        
+        const calcL = new Call({ name: 'calc', args: new List([calcLExpr]) });
+
         const channelSequence = new Sequence([fromKeyword, originColor, hChannel, sChannel, calcL]);
         const argsList = new List([channelSequence]);
-        
+
         const functionThis = {
           context,
           args: () => argsList.eval(context),
           rawArgs: argsList
         };
-        
+
         const hslInternal = (hsl as any)._internal;
         const result = await hslInternal.call(functionThis);
-        
+
         expect(result).toBeInstanceOf(Color);
         expect(result.options.format).toBe(ColorFormat.HSL);
         // h and s should be preserved, l should be increased by 20%
@@ -646,31 +646,31 @@ describe('Color Functions', () => {
         const hChannel = new Any('h', { role: 'ident' });
         const sChannel = new Any('s', { role: 'ident' });
         const lChannel = new Any('l', { role: 'ident' });
-        
+
         // Create calc(h + 30)
         const hValue = new Any('h', { role: 'ident' });
         const plus30deg = new Dimension({ number: 30, unit: 'deg' });
         const calcHExpr = new Operation([hValue, '+', plus30deg]);
-        const calcH = new Call({ name: 'calc', args: [calcHExpr] });
-        
+        const calcH = new Call({ name: 'calc', args: new List([calcHExpr]) });
+
         // Create calc(l + 30)
         const lValue = new Any('l', { role: 'ident' });
         const plus30pct = new Dimension({ number: 30, unit: '%' });
         const calcLExpr = new Operation([lValue, '+', plus30pct]);
-        const calcL = new Call({ name: 'calc', args: [calcLExpr] });
-        
+        const calcL = new Call({ name: 'calc', args: new List([calcLExpr]) });
+
         const channelSequence = new Sequence([fromKeyword, originColor, calcH, sChannel, calcL]);
         const argsList = new List([channelSequence]);
-        
+
         const functionThis = {
           context,
           args: () => argsList.eval(context),
           rawArgs: argsList
         };
-        
+
         const hslInternal = (hsl as any)._internal;
         const result = await hslInternal.call(functionThis);
-        
+
         expect(result).toBeInstanceOf(Color);
         expect(result.options.format).toBe(ColorFormat.HSL);
         // Red is hsl(0, 100%, 39%)

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Context } from '../../context.js';
-import { rules, decl, any, list, vardecl, call, fn, nil } from '..';
+import { rules, decl, any, list, vardecl, call, fn, nil } from '../index.js';
 
 describe('Func', () => {
   it('evaluates a stylesheet function and returns return: value', async () => {
@@ -19,7 +19,7 @@ describe('Func', () => {
         ])
       }),
       // Call using plain string name should resolve through function registry
-      call({ name: 'add', args: [any('x'), any('y')] })
+      call({ name: 'add', args: list([any('x'), any('y')]) })
     ]);
 
     // Evaluate root rules; the call should reduce to the return value node

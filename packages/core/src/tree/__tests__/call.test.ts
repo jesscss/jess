@@ -1,4 +1,4 @@
-import { call, num, ref } from '..';
+import { call, list, num, ref } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -10,7 +10,7 @@ describe('Call', () => {
   it('should serialize a CSS function', () => {
     let rule = call({
       name: ref('rgb'),
-      args: [num(100), num(100), num(100)]
+      args: list([num(100), num(100), num(100)])
     });
     expect(`${rule}`).toBe('rgb(100, 100, 100)');
   });
@@ -18,7 +18,7 @@ describe('Call', () => {
   it('should serialize an optional function lookup', () => {
     let rule = call({
       name: ref('rgb', { fallbackValue: true }),
-      args: [num(100), num(100), num(100)]
+      args: list([num(100), num(100), num(100)])
     });
     expect(`${rule}`).toBe('rgb?(100, 100, 100)');
   });
@@ -27,7 +27,7 @@ describe('Call', () => {
   it('should serialize a mixin call', () => {
     let rule = call({
       name: ref('my-mixin'),
-      args: [num(100), num(100), num(100)]
+      args: list([num(100), num(100), num(100)])
     });
     expect(`${rule}`).toBe('my-mixin(100, 100, 100)');
   });

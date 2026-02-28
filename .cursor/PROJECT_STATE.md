@@ -83,6 +83,71 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Coverage campaign: `@jesscss/fns` (2026-02-27):**
+
+**List-args follow-up debug: core mixin/control (2026-02-27):**
+
+- **Area:** core (`Call`/`getFunctionFromMixins` + `$for` control behavior) after reverting call args to `List<Node>`.
+- **Last passing baseline:** core build passes; targeted `fns` color tests pass. Remaining red: 3 mixin tests + 1 control test.
+- **Last thing we tried (single-test + instrumentation loop):**
+  - Isolated one failing test at a time using `--allowOnly`.
+  - `control.test.ts` (`evaluates $for with block pattern + expression iterable`): trace confirms `For.evalNode` coalesces plain `index` declarations (`shouldCoalesceByName`), so first iteration `index` is replaced by second.
+  - `mixin.test.ts` (`...calls another mixin`, `...rest parameter over mixin without rest`): traced `getFunctionFromMixins` candidate binding/output; both candidate rule-sets are produced (`a,b,color` and `a,rest,color` / wrapper+base in chain case), but final rendered CSS still drops the earlier duplicate `$a`/`$color` line.
+  - `mixin.test.ts` (`multiple nested compound selectors`): isolated failure reproduces selector-shape drift to `:is(...)` under `collapseNesting=true`.
+- **Next step:** decide policy per failing group:
+  1) keep current runtime behavior and update stale expectations, or
+  2) restore historical output by changing post-mixin output merging / collapse-nesting selector shaping (without regressing Less fixture fixes).
+
+**Selector normalization merge: processLeadingIs superset (2026-02-27):**
+
+- **Area:** core selector normalization around generated leading `:is(...)` wrappers.
+- **Hypothesis tested:** duplicate eval-time + serialization-time normalization was accidental; run only at serialization if `processLeadingIs` fully subsumes `Ruleset` static header helper behavior.
+- **What changed:**
+  - Extended `packages/core/src/tree/util/process-leading-is.ts` to also handle implicit-amp + generated `:is(SelectorList)` normalization that previously lived in `Ruleset.normalizeLeadingGeneratedIs`.
+  - Added explicit coverage in `packages/core/src/tree/util/__tests__/process-leading-is.test.ts` for:
+    1) header shape `implicit-& + generated :is(list)` unwrapping to `SelectorList`,
+    2) non-header complex shape removal of generated `:is(list)` wrapper.
+  - Removed `Ruleset.normalizeLeadingGeneratedIs`; `packages/core/src/tree/ruleset.ts` now calls `processLeadingIs` at serialization start, rewrites `this.value.selector`, and reuses `processLeadingIs` for render selector after hoisted ampersand materialization.
+  - Kept eval-time `processLeadingIs` removed in `Ruleset.evalNode`.
+- **Verification:**
+  - ✅ `pnpm --filter @jesscss/core test -- src/tree/util/__tests__/process-leading-is.test.ts` (18/18 pass)
+  - ✅ `pnpm --filter @jesscss/core test -- src/tree/__tests__/mixin.test.ts` (returns to known baseline: 2 existing failures; no extra `multiple nested compound selectors` regression)
+  - ✅ `pnpm --filter @jesscss/core build`
+  - ✅ `pnpm --filter jess test -- test/less/all-less.test.ts -t "functions.less"` (pass)
+  - ⚠️ Existing unrelated reds still present in detached-rulesets-focused suites:
+    - `packages/core/src/tree/__tests__/detached-rulesets.test.ts` optional/public expectation
+    - `packages/jess/test/less/detached-rulesets.test.ts` (`'d' is not defined`)
+- **Next step:** continue detached-rulesets root-cause work (`reference.ts` ancestry/lookup candidate path) separately from selector normalization merge.
+
+- **Area:** fns test coverage ramp-up (Less + Sass), with function-focused co-located tests.
+- **Current snapshot (last full fns run before unrelated baseline break):**
+  - `All files`: ~`86.35%` statements
+  - `fns/src/less`: ~`97.91%` statements, ~`87.52%` branches
+  - Major improvements completed: `replace.ts`, `max.ts`, `min.ts`, `rgb.ts`, `rgba.ts`, `hsla.ts` and relative-color branches.
+- **Test structure conventions now in place:**
+  - Co-located tests under `packages/fns/src/<domain>/__tests__/`.
+  - Function-focused filenames (avoid batch-style names).
+  - Prefer direct function calls or `callWithContext`; use `._internal` only for otherwise unreachable branches.
+- **Sass wrapper architecture updates completed:**
+  - Converted pure mirror wrappers to direct Less re-exports:
+    - `sass/opacify.ts` -> `less/fadein`
+    - `sass/fade-in.ts` -> `less/fadein`
+    - `sass/fade-out.ts` -> `less/fadeout`
+    - `sass/transparentize.ts` -> `less/fadeout`
+    - `sass/grayscale.ts` -> `less/greyscale`
+    - `sass/adjust-hue.ts` -> `less/spin`
+    - `sass/ie-hex-str.ts` -> `less/argb`
+  - Added alias guard tests in `packages/fns/src/sass/__tests__/export-aliases.test.ts`.
+- **Sass-vs-Less channel parity notes (documented in tests):**
+  - `sass/hue` differs from `less/hue` output shape: Sass returns `Dimension(..., 'deg')`, Less returns unitless `Num`.
+  - `sass/saturation` and `sass/lightness` currently match Less behavior in this repo (`%` dimensions).
+  - Evidence captured in `packages/fns/src/sass/__tests__/hsl-channels.test.ts`.
+- **Known temporary blocker outside this campaign:**
+  - `packages/fns/src/__tests__/each.test.ts` currently failing in isolation/full runs during concurrent workstream; another agent is handling this.
+  - While unresolved, use targeted fns test runs for incremental verification.
+- **Next step:**
+  - Continue Sass coverage with wrapper/index/module export surfaces (`sass/index.ts`, `sass/color/index.ts`, `sass/math/index.ts`) and remaining low-coverage Sass utility files, still anchored to Dart Sass behavior expectations.
+
 **Coverage unblock: css-parser + less-parser + fns (2026-02-26):**
 
 - **Area:** parser/fns coverage gate stabilization
@@ -93,6 +158,16 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
   - `pnpm --filter @jesscss/less-parser test -- --coverage`
   - `pnpm --filter @jesscss/fns test -- --coverage`
 - **Next step:** keep parser serialization fixtures aligned with ongoing core color/Any-role output changes; if strict parser coverage is needed again, reintroduce realistic `productions.ts` thresholds after adding targeted coverage tests.
+
+**Less fixture: functions-each scope + ordering (2026-02-27):**
+
+- **Area:** core less `each()` evaluation / declaration lookup / serialization ordering.
+- **Last passing baseline:** focused `functions-each.less` previously failed with 4 mismatches (`padding` split block, `width` remained `(100% / 4)`, `.a .w-*` used global `@list`, and index/padding merge issues).
+- **Last thing we tried:** added targeted instrumentation (`H18/H39/H40/H44/H45/H46/H47/H48/H49`), fixed originating-scope optional declaration precedence in `DeclarationRegistry.find`, fixed leaked `parenFrames` in `Call.evalNode` function-branch cleanup, and hoisted trailing declarations before nested rules during ruleset serialization in `serializeRulesContainer`.
+- **Result:** focused run now passes:
+  - `pnpm --filter @jesscss/core build`
+  - `DEBUG_LOG_PATH="/Users/matthew/git/oss/jess/.cursor/debug-6b8d68.log" pnpm --filter jess test -- test/less/all-less.test.ts -t "functions-each.less"`
+- **Next step:** run wider Less fixture coverage to catch regressions from the new serialization hoist behavior, then trim/keep debug probes as confirmed by user.
 
 **Less fixture: extract-and-length (2026-02-21):**
 

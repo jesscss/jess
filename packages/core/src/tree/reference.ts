@@ -380,8 +380,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'variable':
               if (isNode(targetRules, 'Rules')) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                if (`${keyStr}` === 'two' || `${keyStr}` === 'index' || `${keyStr}` === 'list') {
-                }
                 const found = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
                 if (found !== undefined) {
                   return found;
@@ -467,27 +465,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         let returnVal: any;
         if (isNode(resolvedTarget, 'Rules')) {
           returnVal = performLookup(resolvedTarget);
-
-          // For variable and mixin lookups, allow walking up the parent Rules chain to find
-          // definitions in ancestor scopes.
-          //
-          // Less mixins are lexically scoped and should be callable from nested rulesets.
-          if (returnVal === undefined && (type === 'variable' || type === 'function' || type === 'mixin' || type === 'mixin-ruleset')) {
-            let cursor: any = resolvedTarget.parent;
-            let depth = 0;
-            while (cursor && depth++ < 20) {
-              // Skip non-Rules nodes (e.g. AtRule/Ruleset wrappers) while walking upwards.
-              if (!isNode(cursor, 'Rules')) {
-                cursor = cursor.parent;
-                continue;
-              }
-              returnVal = performLookup(cursor);
-              if (returnVal !== undefined) {
-                break;
-              }
-              cursor = cursor.parent;
-            }
-          }
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {

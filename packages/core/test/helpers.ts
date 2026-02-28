@@ -13,7 +13,7 @@ const DEFAULT_WIDTH = any('10px');
 const DEFAULT_SELECTOR = el('.a');
 export const DEFAULT_VARIABLE = ref('var', { type: 'variable' });
 const DEFAULT_OPERATION = op([num(1), '+', num(2)]);
-const DEFAULT_CALL = call({ name: 'rgb', args: [any('255'), any('0'), any('0')] });
+const DEFAULT_CALL = call({ name: 'rgb', args: list([any('255'), any('0'), any('0')]) });
 const DEFAULT_NEGATIVE = negative(any('10px'));
 const DEFAULT_PAREN = paren(any('red'));
 const DEFAULT_LIST = list([any('1px'), any('2px')]);
@@ -80,7 +80,7 @@ export function createCall(functionCall = DEFAULT_CALL) {
   ]);
 }
 
-export function createVariableInCall(functionCall = call({ name: 'rgb', args: [DEFAULT_VARIABLE, any('0'), any('0')] })) {
+export function createVariableInCall(functionCall = call({ name: 'rgb', args: list([DEFAULT_VARIABLE, any('0'), any('0')]) })) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
@@ -353,7 +353,7 @@ export const testPatterns = {
   // Variable patterns
   variableReference: (property = 'color', variable = DEFAULT_VARIABLE) => () => createVariableReference(property, variable),
   variableInOperation: (operation = op([num(1), '+', DEFAULT_VARIABLE])) => () => createVariableInOperation(operation),
-  variableInCall: (functionCall = call({ name: 'rgb', args: [DEFAULT_VARIABLE, any('0'), any('0')] })) => () => createVariableInCall(functionCall),
+  variableInCall: (functionCall = call({ name: 'rgb', args: list([DEFAULT_VARIABLE, any('0'), any('0')]) })) => () => createVariableInCall(functionCall),
   variableInNegative: (negValue = negative(DEFAULT_VARIABLE)) => () => createVariableInNegative(negValue),
   variableInParen: (parenValue = paren(DEFAULT_VARIABLE)) => () => createVariableInParen(parenValue),
   variableInList: (listValue = list([DEFAULT_VARIABLE, any('2px')])) => () => createVariableInList(listValue),

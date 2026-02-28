@@ -270,12 +270,12 @@ describe('Color Node', () => {
     it('should preserve original function call syntax when node is present', () => {
       const callNode = new Call({
         name: 'rgba',
-        args: [
+        args: new List([
           new Dimension({ number: 0, unit: '' }),
           new Dimension({ number: 0, unit: '' }),
           new Dimension({ number: 0, unit: '' }),
           new Dimension({ number: 0.1, unit: '' })
-        ]
+        ])
       });
       const color = new Color({
         format: ColorFormat.RGB,

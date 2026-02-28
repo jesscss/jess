@@ -116,8 +116,8 @@ describe('Flag isolation', () => {
         ruleset({
           selector: sellist([sel([el('.a')])]),
           rules: rules([
-            decl({ name: 'c1', value: call({ name: 'rgb', args: [ref('@v', { type: 'variable' }), any('1'), any('1')] }) }),
-            decl({ name: 'c2', value: call({ name: 'rgb', args: [any('1'), any('1'), any('1')] }) })
+            decl({ name: 'c1', value: call({ name: 'rgb', args: list([ref('@v', { type: 'variable' }), any('1'), any('1')]) }) }),
+            decl({ name: 'c2', value: call({ name: 'rgb', args: list([any('1'), any('1'), any('1')]) }) })
           ])
         })
       ]);

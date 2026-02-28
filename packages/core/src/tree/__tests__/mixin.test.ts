@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '..';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -156,7 +156,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('blue')]
+            args: list([any('blue')])
           })
         ])
       });
@@ -202,7 +202,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('blue')]
+            args: list([any('blue')])
           })
         ])
       });
@@ -245,7 +245,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('blue'), any('16px')]
+            args: list([any('blue'), any('16px')])
           })
         ])
       });
@@ -285,7 +285,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px')]
+            args: list([any('10px'), any('20px')])
           })
         ])
       });
@@ -319,7 +319,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('red')]
+            args: list([any('red')])
           })
         ])
       });
@@ -330,7 +330,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('blue')]
+            args: list([any('blue')])
           })
         ])
       });
@@ -370,7 +370,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.base-mixin' }, { type: 'mixin' }),
-            args: [ref({ key: 'color' }, { type: 'variable' })]
+            args: list([ref({ key: 'color' }, { type: 'variable' })])
           })
         ])
       });
@@ -381,7 +381,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.wrapper-mixin' }, { type: 'mixin' }),
-            args: [any('blue')]
+            args: list([any('blue')])
           })
         ])
       });
@@ -429,7 +429,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.mixin' }, { type: 'mixin' }),
-            args: [any('red')]
+            args: list([any('red')])
           })
         ])
       });
@@ -439,7 +439,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.mixin' }, { type: 'mixin' }),
-            args: [any('blue')]
+            args: list([any('blue')])
           })
         ])
       });
@@ -479,7 +479,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px'), any('30px')]
+            args: list([any('10px'), any('20px'), any('30px')])
           })
         ])
       });
@@ -519,7 +519,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px'), any('30px')]
+            args: list([any('10px'), any('20px'), any('30px')])
           })
         ])
       });
@@ -655,7 +655,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px')] // Only one arg, rest should be empty
+            args: list([any('10px')]) // Only one arg, rest should be empty
           })
         ])
       });
@@ -694,7 +694,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px')] // Rest should contain 20px
+            args: list([any('10px'), any('20px')]) // Rest should contain 20px
           })
         ])
       });
@@ -733,7 +733,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px'), any('30px'), any('40px')] // Rest should contain 20px, 30px, 40px
+            args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 20px, 30px, 40px
           })
         ])
       });
@@ -773,7 +773,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px'), any('30px'), any('40px')] // Rest should contain 30px, 40px
+            args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 30px, 40px
           })
         ])
       });
@@ -814,7 +814,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px'), any('30px')]
+            args: list([any('10px'), any('20px'), any('30px')])
           })
         ])
       });
@@ -866,7 +866,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px')] // Matches mixinWithoutRest exactly
+            args: list([any('10px'), any('20px')]) // Matches mixinWithoutRest exactly
           })
         ])
       });
@@ -877,7 +877,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('10px'), any('20px'), any('30px')] // Should match mixinWithRest
+            args: list([any('10px'), any('20px'), any('30px')]) // Should match mixinWithRest
           })
         ])
       });
@@ -956,7 +956,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('red')] // Only one argument, but two are required
+            args: list([any('red')]) // Only one argument, but two are required
           })
         ])
       });
@@ -982,7 +982,7 @@ describe('Mixin', () => {
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: [any('blue')] // One argument, but mixin has no parameters
+            args: list([any('blue')]) // One argument, but mixin has no parameters
           })
         ])
       });

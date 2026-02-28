@@ -140,7 +140,7 @@ export function jessMixinDefinition(this: P, T: TokenMap) {
       const selectorValue = selector.valueOf();
       const name = typeof selectorValue === 'string' ? selectorValue : String(selectorValue);
       return new Mixin(
-        { name, params: params || [], rules, guard },
+        { name: new Any(name, { role: 'name' }), params: Array.isArray(params) ? new List(params) : (params ?? new List([])), rules, guard },
         undefined,
         loc,
         $.context
@@ -224,7 +224,7 @@ export function jessDollarExpression(this: P, T: TokenMap) {
         }
       }
     ]);
-    
+
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
       // Wrap in Expression node if we're in an expression context
@@ -264,7 +264,7 @@ export function jessDollarAccessor(this: P, T: TokenMap) {
             // Chain the property access onto the node
             // This creates a chained reference: node.prop
             node = new Call(
-              { target: node, args: [propRef] },
+              { name: node, args: new List([propRef]) },
               undefined,
               $.getLocationFromNodes([node, prop]),
               $.context
@@ -294,7 +294,7 @@ export function jessDollarAccessor(this: P, T: TokenMap) {
           $.CONSUME(T.RParen);
           if (!RECORDING_PHASE) {
             node = new Call(
-              { target: node, args },
+              { name: node, args: new List(args) },
               undefined,
               $.getLocationFromNodes([node]),
               $.context
@@ -312,7 +312,7 @@ export function jessDollarAccessor(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             // Array access is also a Call with the index as an argument
             node = new Call(
-              { target: node, args: [index] },
+              { name: node, args: new List([index]) },
               undefined,
               $.getLocationFromNodes([node]),
               $.context
@@ -384,12 +384,12 @@ export function jessMixinCallExpression(this: P, T: TokenMap) {
       const partValue = firstPart.valueOf();
       const name = typeof partValue === 'string' ? partValue : String(partValue);
       const ref = new Reference(
-        { type: 'mixin', name, fallbackValue: false },
-        undefined,
+        { key: name },
+        { type: 'mixin', fallbackValue: false },
         $.getLocationFromNodes(mixinParts),
         $.context
       );
-      return new Call({ target: ref, args: args || [] }, undefined, loc, $.context);
+      return new Call({ name: ref, args: new List(args || []) }, undefined, loc, $.context);
     }
   };
 }
@@ -852,8 +852,11 @@ function findJessInterpolations(value: string): InterpolationMatch[] {
       const contentStart = i;
       while (i < value.length && parenCount > 0) {
         const ch = value[i]!;
-        if (ch === '(') {parenCount++;}
-        else if (ch === ')') {parenCount--;}
+        if (ch === '(') {
+          parenCount++;
+        } else if (ch === ')') {
+          parenCount--;
+        }
         i++;
       }
       if (parenCount === 0) {
@@ -868,9 +871,9 @@ function findJessInterpolations(value: string): InterpolationMatch[] {
 
 let interpolationParser:
   | {
-      lexer: Lexer;
-      parser: P;
-    }
+    lexer: Lexer;
+    parser: P;
+  }
   | undefined;
 
 /**
@@ -878,7 +881,9 @@ let interpolationParser:
  * Uses a separate parser instance to avoid state conflicts.
  */
 function getInterpolationParser(): { lexer: Lexer; parser: P } {
-  if (interpolationParser) {return interpolationParser;}
+  if (interpolationParser) {
+    return interpolationParser;
+  }
   const { lexer, T } = createLexerDefinition(jessFragments(), jessTokens());
   const chevLexer = new Lexer(lexer, {
     ensureOptimizations: true,
@@ -953,8 +958,12 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
     // This keeps the fast path for normal CSS declarations.
     for (let i = 1; i < 64; i++) {
       const tok = $.LA(i);
-      if (tok.tokenType === T.Assign || tok.tokenType.name === 'EOF') {return false;}
-      if (tok.tokenType === T.InterpolationStart) {return true;}
+      if (tok.tokenType === T.Assign || tok.tokenType.name === 'EOF') {
+        return false;
+      }
+      if (tok.tokenType === T.InterpolationStart) {
+        return true;
+      }
     }
     return false;
   };
@@ -1187,8 +1196,8 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
         const la2 = $.LA(2);
         const la3 = $.LA(3);
         return la1 && la2 && la3
-          && la1.tokenType === T.Dollar 
-          && la2.tokenType === T.PlainIdent 
+          && la1.tokenType === T.Dollar
+          && la2.tokenType === T.PlainIdent
           && la3.tokenType === T.Colon;
       },
       ALT: () => $.SUBRULE($.jessVariableDeclaration, { ARGS: [ctx] })
@@ -1200,7 +1209,7 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
         const la1 = $.LA(1).tokenType;
         const la2 = $.LA(2).tokenType;
         return (la1 === T.DotName || la1 === T.HashName || la1 === T.PlainIdent)
-               && la2 === T.LParen;
+          && la2 === T.LParen;
       },
       ALT: () => $.SUBRULE($.jessMixinDefinition, { ARGS: [ctx] })
     },

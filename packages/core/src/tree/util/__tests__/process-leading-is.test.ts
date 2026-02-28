@@ -4,6 +4,7 @@ import { processLeadingIs } from '../process-leading-is.js';
 import { isNode } from '../is-node.js';
 import type { Selector } from '../../selector.js';
 import { Context } from '../../../context.js';
+import { F_IMPLICIT_AMPERSAND } from '../../node.js';
 
 /** PseudoSelector.create (Node.create) sets generated so processLeadingIs can unwrap. */
 function generatedIs(selector: Selector) {
@@ -158,6 +159,35 @@ describe('processLeadingIs', () => {
       const result = processLeadingIs(complex);
       expect(result).toBe(complex);
       expect(out(result as Selector)).toBeString(`:is(.a,.b) .y`);
+    });
+  });
+
+  describe('implicit ampersand + generated :is(SelectorList)', () => {
+    it('unwraps to selector list when shape is implicit-& + generated :is(list)', () => {
+      const ampNode = amp({ selectorContainer: { selector: el('.base') } });
+      ampNode.addFlag(F_IMPLICIT_AMPERSAND);
+      const listArg = sellist([
+        sel([el('.base'), co(' '), el('.x')]),
+        sel([el('.base'), co(' '), el('.y')])
+      ]);
+      const selector = sel([ampNode, co(' '), generatedIs(listArg)]);
+      const result = processLeadingIs(selector);
+      expect(Array.isArray(result)).toBe(false);
+      expect(out(result as Selector)).toBeString(`.x,.y`);
+    });
+
+    it('removes generated :is(list) wrapper in non-header special case', () => {
+      const ampNode = amp({ selectorContainer: { selector: el('.base') } });
+      ampNode.addFlag(F_IMPLICIT_AMPERSAND);
+      const listArg = sellist([
+        sel([el('.base'), co(' '), el('.x')]),
+        sel([el('.base'), co(' '), el('.y')])
+      ]);
+      const selector = sel([ampNode, co(' '), generatedIs(listArg), co(' '), el('.tail')]);
+      const result = processLeadingIs(selector);
+      expect(Array.isArray(result)).toBe(false);
+      expect(out(result as Selector)).not.toContain(':is(');
+      expect(out(result as Selector)).toContain('.tail');
     });
   });
 

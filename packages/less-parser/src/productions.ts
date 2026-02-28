@@ -957,7 +957,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       }
 
       /** Finally, pass this reference into a call */
-      leftNode = new Call({ name: leftNode, args: args?.value }, { markImportant: !!important }, location, this.context);
+      leftNode = new Call({ name: leftNode, args }, { markImportant: !!important }, location, this.context);
       return leftNode;
     };
 
@@ -968,7 +968,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
       const selectorLine = selector instanceof Node ? selector.location?.[1] ?? null : null;
       if (selectorValue === '.paren-escapes' || selectorValue === '.mixin') {
-}
+      }
     }
     if (!isSelectorList && !isPossibleMixinDefinition && !RECORDING_PHASE) {
       for (let s of selector.nodes()) {
@@ -990,7 +990,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
       if (selectorValue === '.mixin' || selectorValue.includes('.mixin')) {
-}
+      }
     }
 
     return $.OR2([
@@ -1002,7 +1002,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
             if (selectorValue === '.mixin' || selectorValue.includes('.mixin')) {
-}
+            }
           }
           if (next === T.LCurly || next === T.When) {
             isPossibleMixinCall = false;
@@ -1068,7 +1068,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
             const selectorLine = selector instanceof Node ? selector.location?.[1] ?? null : null;
             if (selectorValue === '.paren-escapes' || selectorValue === '.mixin') {
-}
+            }
           }
           if (!RECORDING_PHASE) {
             $.endRule();
@@ -1106,7 +1106,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
             if (selectorValue === '.mixin' || selectorValue === '.paren-escapes') {
-}
+            }
           }
           // Call terminated by a semi-colon and not parens, deprecated
           $.CONSUME(T.Semi);
@@ -1576,7 +1576,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
           || usage === 'mixin-arg'
           || usage === 'default-param';
         const shouldBeCollectionFinal = shouldBeCollection && !forceMixinForDynamicUsage;
-if (shouldBeCollectionFinal) {
+        if (shouldBeCollectionFinal) {
           return new Collection(rules.value, rules.options, $.endRule(), this.context);
         }
       }
@@ -1784,7 +1784,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
           : new Reference({ key: nameNode as any }, { type: 'variable', role: 'name' });
         // Pass markImportant in options if !important is present
         const callOptions = important ? { markImportant: true } : undefined;
-        const callNode = new Call({ name: nameRef, args: args?.value }, callOptions, location, this.context);
+        const callNode = new Call({ name: nameRef, args }, callOptions, location, this.context);
         // Clear important since it's now on the Call
         if (important) {
           important = undefined;
@@ -2179,7 +2179,7 @@ export function calcFunction(this: P, T: TokenMap) {
       const location = $.endRule();
       return new Call({
         name: 'calc',
-        args: [args]
+        args: new List([args])
       }, undefined, location, this.context);
     }
   };
@@ -2193,7 +2193,7 @@ export function ifFunction(this: P, T: TokenMap) {
     $.startRule();
 
     let name = $.CONSUME(T.IfFunction);
-let args: Node[] = [];
+    let args = new List<Node>([]);
     let isCssBranch = false;
 
     $.OR([
@@ -2203,7 +2203,7 @@ let args: Node[] = [];
           const cssArgs = $.SUBRULE($.ifFunctionArgs, { ARGS: [{ ...ctx, inner: true }] });
           $.CONSUME(T.RParen);
           if (!RECORDING_PHASE) {
-            args = [cssArgs];
+            args = new List([cssArgs]);
           }
         }
       },
@@ -2214,7 +2214,7 @@ let args: Node[] = [];
           let node: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
           if (!RECORDING_PHASE) {
             const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
-            args = [condNode];
+            args = new List([condNode]);
           }
 
           $.OR2([
@@ -2223,13 +2223,13 @@ let args: Node[] = [];
                 $.CONSUME(T.Semi);
                 node = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                 if (!RECORDING_PHASE) {
-                  args.push(node);
+                  args.value.push(node);
                 }
                 $.OPTION(() => {
                   $.CONSUME2(T.Semi);
                   node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                   if (!RECORDING_PHASE) {
-                    args.push(node);
+                    args.value.push(node);
                   }
                 });
               }
@@ -2237,15 +2237,15 @@ let args: Node[] = [];
             {
               ALT: () => {
                 $.CONSUME(T.Comma);
-node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+                node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                 if (!RECORDING_PHASE) {
-                  args.push(node);
+                  args.value.push(node);
                 }
                 $.OPTION2(() => {
                   $.CONSUME2(T.Comma);
-node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+                  node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                   if (!RECORDING_PHASE) {
-                    args.push(node);
+                    args.value.push(node);
                   }
                 });
               }
@@ -2262,8 +2262,8 @@ node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true 
         type: 'function',
         fallbackValue: isCssBranch ? true : undefined
       }, $.getLocationInfo(name), this.context);
-      const callNode = new Call({ name: nameNode, args: args! }, undefined, location, this.context);
-return callNode;
+      const callNode = new Call({ name: nameNode, args }, undefined, location, this.context);
+      return callNode;
     }
   };
 }
@@ -2274,14 +2274,14 @@ export function booleanFunction(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     let name = $.CONSUME(T.BooleanFunction);
-let arg: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
+    let arg: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
     $.CONSUME(T.RParen);
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       const conditionNode = arg instanceof Paren && arg.value instanceof Node ? arg.value : arg;
       const exprNode = new Expression(conditionNode, { parens: true }, location, this.context);
-return exprNode;
+      return exprNode;
     }
   };
 }
@@ -2309,7 +2309,7 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.PropertyReference);
           if (!RECORDING_PHASE) {
-// Warn about $ident in custom property values - it's treated as literal text, not a property reference
+            // Warn about $ident in custom property values - it's treated as literal text, not a property reference
             if (ctx.inCustomPropertyValue) {
               $.warnDeprecation(
                 '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.',
@@ -2427,14 +2427,14 @@ export function valueReference(this: P, T: TokenMap) {
 export function functionCall(this: P, T: TokenMap) {
   const $ = this;
   const modernColorFunctions = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
-  const isModernColorCall = (name: string, args?: Node[]) => {
+  const isModernColorCall = (name: string, args?: List<Node>) => {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    if (!args || args.length !== 1) {
+    if (!args || args.value.length !== 1) {
       return false;
     }
-    const firstArg = args[0];
+    const firstArg = args.value[0];
     return Boolean(isNode(firstArg, 'Sequence') && firstArg.value.length >= 2);
   };
 
@@ -2465,18 +2465,18 @@ export function functionCall(this: P, T: TokenMap) {
         $.startRule();
         const fnStart = $.CONSUME(T.FunctionStart);
         const fnNameForCtx = fnStart.image.slice(0, -1);
-        let args: Node[] | undefined;
+        let args: List<Node> | undefined;
         $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [{ ...ctx, currentFunctionName: fnNameForCtx }] }));
         $.CONSUME(T.RParen);
         if (!$.RECORDING_PHASE) {
           const location = $.endRule();
           const nameValue = fnNameForCtx;
-          if (nameValue === 'unit' && args?.[1] instanceof Any) {
-            const unitArg = args[1];
+          if (nameValue === 'unit' && args?.value[1] instanceof Any) {
+            const unitArg = args.value[1];
             const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, this.context);
             quotedUnit.pre = unitArg.pre;
             quotedUnit.post = unitArg.post;
-            args[1] = quotedUnit;
+            args.value[1] = quotedUnit;
           }
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
           /** Less / Sass functions we try to call that throw just get turned into calls. */
@@ -2562,8 +2562,8 @@ export function functionCallArgs(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       ctx.inner = prevInner;
       $.endRule();
-      let nodes = isSemiList ? semiNodes! : commaNodes!;
-      return nodes;
+      const nodes = isSemiList ? semiNodes! : commaNodes!;
+      return new List(nodes, isSemiList ? { sep: ';' } : undefined);
     }
   };
 }
@@ -2573,7 +2573,7 @@ export function value(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     if ($.LA(1).tokenType === T.Percent) {
-}
+    }
     // eslint-disable-next-line @typescript-eslint/naming-convention
     let _isMixinReference = undefined as boolean | undefined;
     const isMixinReference = () => {
@@ -3000,7 +3000,7 @@ export function guardInParens(this: P, T: TokenMap) {
 
   return (ctx: RuleContext) => {
     $.startRule();
-let node = $.OR([
+    let node = $.OR([
       { ALT: () => $.SUBRULE($.guardDefault, { ARGS: [ctx] }) },
       {
         ALT: () => {
@@ -3318,7 +3318,7 @@ export function mixinArgs(this: P, T: TokenMap) {
 
     const lparen = $.CONSUME(T.LParen);
     if (!$.RECORDING_PHASE) {
-}
+    }
     // Clear ctx.node when parsing arguments - arguments should start fresh, not inherit the parent node
     // Calls intentionally push a `false` paren frame (matches `Call.evalNode`)
     const argCtx: RuleContext = {
@@ -3329,7 +3329,7 @@ export function mixinArgs(this: P, T: TokenMap) {
     };
     $.OPTION(() => {
       if (!$.RECORDING_PHASE) {
-}
+      }
       args = $.SUBRULE($.mixinArgList, { ARGS: [argCtx] });
     });
     $.CONSUME(T.RParen);
@@ -3430,7 +3430,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
         ALT: () => {
           let args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
-            return new Call({ name: ctx.node as Call | Reference, args: args?.value }, undefined, $.endRule(), this.context);
+            return new Call({ name: ctx.node as Call | Reference, args }, undefined, $.endRule(), this.context);
           }
         }
       }
@@ -3531,7 +3531,7 @@ export function mixinArgList(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     if (!RECORDING_PHASE) {
-}
+    }
     let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
     let commaNodes: Node[] | undefined;
@@ -3666,7 +3666,7 @@ export function mixinArg(this: P, T: TokenMap) {
 
     let isDeclaration = atStart && $.LA(2).tokenType === T.Colon;
     if (!RECORDING_PHASE && atStart) {
-}
+    }
 
     return $.OR([
       {
@@ -3756,9 +3756,9 @@ export function callArgument(this: P, T: TokenMap) {
     const la1Image = $.LA(1).image ?? '';
     const la2Image = $.LA(2).image ?? '';
     if (la1Image.includes('$') || la2Image.includes('$') || $.LA(1).tokenType === T.Unknown) {
-}
+    }
     if ($.LA(1).tokenType === T.Percent) {
-}
+    }
     return $.OR([
       {
         GATE: () => $.LA(1).tokenType === T.AnonMixinStart || $.LA(1).tokenType === T.LCurly,

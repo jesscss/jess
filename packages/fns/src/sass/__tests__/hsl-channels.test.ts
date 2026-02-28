@@ -1,8 +1,11 @@
-import { Color, Context, Dimension } from '@jesscss/core';
+import { Color, Context, Dimension, Num } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 import hue from '../hue.js';
 import saturation from '../saturation.js';
 import lightness from '../lightness.js';
+import lessHue from '../../less/hue.js';
+import lessSaturation from '../../less/saturation.js';
+import lessLightness from '../../less/lightness.js';
 
 let context: Context;
 
@@ -37,6 +40,17 @@ describe('Sass HSL channel functions', () => {
       expect((result as Dimension).value.number).toBe(180);
       expect((result as Dimension).value.unit).toBe('deg');
     });
+
+    it('differs from Less: Sass returns deg while Less returns unitless number', () => {
+      const color = new Color({ format: 2, hsl: [210, 0.5, 0.5] });
+      const sassResult = hue(color) as Dimension;
+      const lessResult = lessHue(color) as Num;
+
+      expect(sassResult.value.number).toBe(210);
+      expect(sassResult.value.unit).toBe('deg');
+      expect(lessResult).toBeInstanceOf(Num);
+      expect(lessResult.value.number).toBe(210);
+    });
   });
 
   describe('saturation()', () => {
@@ -64,6 +78,17 @@ describe('Sass HSL channel functions', () => {
       expect((result as Dimension).value.number).toBe(75);
       expect((result as Dimension).value.unit).toBe('%');
     });
+
+    it('matches Less behavior for value and percent unit', () => {
+      const color = new Color({ format: 2, hsl: [120, 0.25, 0.5] });
+      const sassResult = saturation(color) as Dimension;
+      const lessResult = lessSaturation(color) as Dimension;
+
+      expect(sassResult.value.number).toBe(25);
+      expect(sassResult.value.unit).toBe('%');
+      expect(lessResult.value.number).toBe(25);
+      expect(lessResult.value.unit).toBe('%');
+    });
   });
 
   describe('lightness()', () => {
@@ -90,6 +115,17 @@ describe('Sass HSL channel functions', () => {
       expect(result).toBeInstanceOf(Dimension);
       expect((result as Dimension).value.number).toBe(25);
       expect((result as Dimension).value.unit).toBe('%');
+    });
+
+    it('matches Less behavior for value and percent unit', () => {
+      const color = new Color({ format: 2, hsl: [120, 0.5, 0.3] });
+      const sassResult = lightness(color) as Dimension;
+      const lessResult = lessLightness(color) as Dimension;
+
+      expect(sassResult.value.number).toBe(30);
+      expect(sassResult.value.unit).toBe('%');
+      expect(lessResult.value.number).toBe(30);
+      expect(lessResult.value.unit).toBe('%');
     });
   });
 });

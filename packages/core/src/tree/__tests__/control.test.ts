@@ -13,15 +13,16 @@ import {
   decl,
   expr,
   list,
+  el,
   ref,
   rules,
   ruleset,
   sel
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
 
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
-  const vars = bindingNames.map((name) => new VarDeclaration({
+  const vars = bindingNames.map(name => new VarDeclaration({
     name: new Any(name, { role: 'property' }),
     value: new Nil()
   }, { paramVar: true }));
@@ -67,8 +68,8 @@ function makeLoop(
   });
 }
 
-function isPatternNodeTuple(pattern: any): pattern is Block | List | Sequence {
-  return pattern instanceof Block || pattern instanceof List || pattern instanceof Sequence;
+function isPatternNodeTuple(pattern: any): pattern is List | Sequence {
+  return pattern instanceof List || pattern instanceof Sequence;
 }
 
 function normalizePattern(pattern: any) {
@@ -112,7 +113,7 @@ describe('Control Nodes', () => {
     }));
     const iterableCall = new Call({
       name: ref({ key: 'mkList' }, { type: 'function' }),
-      args: []
+      args: list([])
     });
     root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall));
     const evald = await root.eval(context);
@@ -127,7 +128,7 @@ describe('Control Nodes', () => {
     const iterableRules = rules([
       decl({ name: 'one', value: new Any('red') }),
       ruleset({
-        selector: sel([new Any('.skip', { role: 'name' })]),
+        selector: sel([el('.skip')]),
         rules: rules([decl({ name: 'x', value: new Any('nope') })])
       }),
       decl({ name: 'two', value: new Any('blue') })

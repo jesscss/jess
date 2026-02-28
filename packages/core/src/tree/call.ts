@@ -9,6 +9,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
+import { List, list } from './list.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -26,7 +27,7 @@ export type CallValue = {
    *   e.g. $|#mixin|.class() is -> [Call name: [Ref (#mixin.class)], args: []]
    */
   name: string | Node;
-  args?: Node[];
+  args?: List<Node>;
   /**
    * Optional content node, used for passing blocks to mixins/functions.
    * This is how Jess represents "call with content block" forms like:
@@ -97,7 +98,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const normalizedArgs = args.filter(Boolean);
+      const normalizedArgs = args.value.filter(Boolean);
       const last = normalizedArgs.length - 1;
       for (let i = 0; i <= last; i++) {
         const arg = normalizedArgs[i]!;
@@ -148,15 +149,15 @@ export class Call extends Node<CallValue, CallOptions> {
       node.sourceParent = this;
       return node;
     };
-    const evalArgNodes = async (nodes?: Node[]) => {
+    const evalArgNodes = async (nodes?: List<Node>) => {
       if (!nodes) {
         return undefined;
       }
       const out: Node[] = [];
-      for (const node of nodes) {
+      for (const node of nodes.value) {
         out.push(await node.eval(context) as Node);
       }
-      return out;
+      return list(out, nodes.options);
     };
 
     context.callStack.push(this);
@@ -186,7 +187,7 @@ export class Call extends Node<CallValue, CallOptions> {
     } else if (isNode(n, 'Func')) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       try {
-        const argNodes = await evalArgNodes(args) ?? [];
+        const argNodes = await evalArgNodes(args) ?? list([]);
         const result = await (n as any).evalCall(context, argNodes);
         context.callStack.pop();
         context.parenFrames.pop();
@@ -196,7 +197,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.length > 0) {
+      if (args && args.value.length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
@@ -232,21 +233,20 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         /** Freeze args */
         if (args) {
-          args = args.map((node) => {
-            const copied = node.copy(true, freezeChildren);
+          const copiedArgs = args.copy(true, freezeChildren);
+          for (const copied of copiedArgs.value) {
             // Anchor copied references to this Call so nested property refs
             // (e.g. $list-1) can walk back to call-site Rules.
             // Also anchor copied Mixin callback args to call-site source scope
             // so callback bodies can resolve surrounding variables.
             if (isNode(copied, 'Reference')) {
-              this.adopt(copied);
               copied.sourceParent = this;
             } else if (isNode(copied, 'Mixin')) {
               copied.sourceParent = this;
             }
             copied.frozen = true;
-            return copied;
-          });
+          }
+          args = copiedArgs;
         }
         if (callNameKey === 'each') {
           const ancestryTypes: string[] = [];
@@ -260,9 +260,14 @@ export class Call extends Node<CallValue, CallOptions> {
             cursor = cursor.parent;
           }
         }
+        const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
         const result = await (
           args
-            ? callWithContext(context, fn, ...args)
+            ? (
+                shouldPassListArgs
+                  ? callWithContext(context, fn, args)
+                  : callWithContext(context, fn, ...args.value)
+              )
             : callWithContext(context, fn)
         );
         context.caller = originalCaller;
@@ -309,7 +314,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ? String(name.value.key)
           : String(n.valueOf());
         newCall.value.args = await evalArgNodes(args);
-        newCall.value.args?.forEach((arg, argIndex) => {
+        newCall.value.args?.value.forEach((arg, argIndex) => {
           // Normalize fallback-call arg spacing to Less-style call serialization.
           arg.pre = argIndex === 0 ? 0 : 1;
           if (isNode(arg, 'Sequence')) {
@@ -350,10 +355,10 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs[0], 'Dimension')) {
-          return evaluatedArgs[0]!;
+        if (isNode(evaluatedArgs.value[0], 'Dimension')) {
+          return evaluatedArgs.value[0]!;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs[0]!);
+          return new Paren(evaluatedArgs.value[0]!);
         }
       }
       node.value.name = n;

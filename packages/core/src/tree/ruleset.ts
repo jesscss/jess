@@ -137,24 +137,40 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   /** Ensure every node in the selector has F_VISIBLE so toString() does not skip them (rep_ace bug).
    * Do NOT add F_VISIBLE to implicit ampersands: they must stay invisible so nested output stays short. */
   private static ensureSelectorVisible(sel: Selector | Nil): void {
-    if (!sel || sel instanceof Nil || typeof (sel as Node).addFlag !== 'function') {return;}
+    if (!sel || sel instanceof Nil || typeof (sel as Node).addFlag !== 'function') {
+      return;
+    }
     const n = sel as Node;
     if (isNode(sel, 'Ampersand') && n.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return;
     }
-    if (!n.hasFlag(F_VISIBLE)) {n.addFlag(F_VISIBLE);}
+    if (!n.hasFlag(F_VISIBLE)) {
+      n.addFlag(F_VISIBLE);
+    }
     if (isNode(sel, 'SelectorList')) {
       const list = sel as SelectorList;
-      if (Array.isArray(list.value)) {for (const item of list.value) Ruleset.ensureSelectorVisible(item);}
+      if (Array.isArray(list.value)) {
+        for (const item of list.value) {
+          Ruleset.ensureSelectorVisible(item);
+        }
+      }
       return;
     }
     if (isNode(sel, 'ComplexSelector')) {
       const comps = (sel as ComplexSelector).value;
-      if (Array.isArray(comps)) {for (const c of comps) Ruleset.ensureSelectorVisible(c as Selector);}
+      if (Array.isArray(comps)) {
+        for (const c of comps) {
+          Ruleset.ensureSelectorVisible(c as Selector);
+        }
+      }
       return;
     }
     const v = (sel as Selector & { value?: Selector[] }).value;
-    if (Array.isArray(v)) {for (const c of v) Ruleset.ensureSelectorVisible(c);}
+    if (Array.isArray(v)) {
+      for (const c of v) {
+        Ruleset.ensureSelectorVisible(c);
+      }
+    }
   }
 
   private static materializeHoistedImplicitAmpersands(sel: Selector | Nil): Selector | Nil {
@@ -212,95 +228,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return materialize(sel as Selector);
   }
 
-  private static unwrapGeneratedIsForImplicitAmpHeader(sel: Selector | Nil): Selector | Nil {
-    if (!sel || sel instanceof Nil) {
-      return sel;
-    }
-    if (!isNode(sel, 'ComplexSelector')) {
-      return sel;
-    }
-    const complex = sel as ComplexSelector;
-    let implicitAmpPrefix: string | null = null;
-    for (const part of complex.value) {
-      if (isNode(part, 'Ampersand') && (part as unknown as Node).hasFlag(F_IMPLICIT_AMPERSAND)) {
-        const resolved = (part as Ampersand).getResolvedSelector();
-        implicitAmpPrefix = resolved && !(resolved instanceof Nil) ? resolved.valueOf() : null;
-        break;
-      }
-    }
-    if (!implicitAmpPrefix) {
-      return sel;
-    }
-    let changed = false;
-    const outComponents: ComplexSelectorComponent[] = [];
-    for (const part of complex.value) {
-      if (isNode(part, 'PseudoSelector') && part.value.name === ':is' && part.generated) {
-        const arg = part.value.arg;
-        if (arg && isNode(arg, 'SelectorList')) {
-          const normalizedArgs: Selector[] = [];
-          for (const item of arg.value) {
-            let normalized = item.copy(true) as Selector;
-            if (isNode(normalized, 'ComplexSelector')) {
-              const itemComplex = normalized as ComplexSelector;
-              let firstVisualIndex = -1;
-              for (let i = 0; i < itemComplex.value.length; i++) {
-                if (!isNode(itemComplex.value[i], 'Combinator')) {
-                  firstVisualIndex = i;
-                  break;
-                }
-              }
-              if (firstVisualIndex >= 0) {
-                const firstVisual = itemComplex.value[firstVisualIndex] as Selector;
-                if (firstVisual.valueOf() === implicitAmpPrefix) {
-                  let start = firstVisualIndex + 1;
-                  if (start < itemComplex.value.length && isNode(itemComplex.value[start], 'Combinator')) {
-                    start++;
-                  }
-                  const tail = itemComplex.value.slice(start).map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
-                  if (tail.length === 1 && !isNode(tail[0], 'Combinator')) {
-                    normalized = tail[0] as Selector;
-                    changed = true;
-                  } else if (tail.length > 1) {
-                    normalized = ComplexSelector.create(tail).inherit(itemComplex) as Selector;
-                    changed = true;
-                  }
-                }
-              }
-            }
-            normalizedArgs.push(normalized);
-          }
-          // If this complex selector is effectively "implicit-& + combinator + generated :is(list)",
-          // the header should serialize as the list itself (not merged into one compound selector).
-          let nonCombinatorCount = 0;
-          let hasImplicitAmpPart = false;
-          for (const c of complex.value) {
-            if (!isNode(c, 'Combinator')) {
-              nonCombinatorCount++;
-              if (isNode(c, 'Ampersand') && (c as unknown as Node).hasFlag(F_IMPLICIT_AMPERSAND)) {
-                hasImplicitAmpPart = true;
-              }
-            }
-          }
-          if (nonCombinatorCount === 2 && hasImplicitAmpPart) {
-            return SelectorList.create(normalizedArgs).inherit(sel) as Selector;
-          }
-          const list = SelectorList.create(normalizedArgs).inherit(arg);
-          outComponents.push(...list.value.map(s => s.copy(true) as ComplexSelectorComponent));
-          changed = true;
-          continue;
-        }
-      }
-      outComponents.push((part as Selector).copy(true) as ComplexSelectorComponent);
-    }
-    if (!changed) {
-      return sel;
-    }
-    if (outComponents.length === 1 && !isNode(outComponents[0], 'Combinator')) {
-      return outComponents[0] as Selector;
-    }
-    return ComplexSelector.create(outComponents).inherit(sel) as Selector;
-  }
-
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
     const { selector } = this.value;
@@ -312,11 +239,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
 
-    let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    const normalizedResult = processLeadingIs(selector as Selector);
+    const normalizedSelector = Array.isArray(normalizedResult)
+      ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
+      : normalizedResult;
+    this.value.selector = normalizedSelector as typeof selector;
+    this.invalidateSelectorValueCache();
+
+    let renderSelector = withoutComments ? (this.value.selector.copy(true) as typeof selector) : this.value.selector;
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
-    renderSelector = Ruleset.unwrapGeneratedIsForImplicitAmpHeader(renderSelector as Selector) as typeof selector;
+    const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
+    renderSelector = Array.isArray(renderNormalizedResult)
+      ? SelectorList.create(renderNormalizedResult.map(s => s.copy(true) as Selector)).inherit(renderSelector as Selector) as typeof selector
+      : renderNormalizedResult as typeof selector;
     Ruleset.ensureSelectorVisible(renderSelector);
     const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
@@ -514,10 +451,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           this.value.rules = evaluatedRules as Rules;
           return evaluatedRules;
         }
-        const leadingIsResult = processLeadingIs(selector);
-        selector = Array.isArray(leadingIsResult)
-          ? SelectorList.create(leadingIsResult.map(s => s.copy(true) as Selector)).inherit(selector) as Selector
-          : leadingIsResult;
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
         this.value.selector = selector;

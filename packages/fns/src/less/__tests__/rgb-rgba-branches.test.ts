@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Color, ColorFormat, Context, Dimension, callWithContext } from '@jesscss/core';
+import { Color, ColorFormat, Context, Dimension, List, callWithContext } from '@jesscss/core';
 import rgb from '../rgb.js';
 import rgba from '../rgba.js';
 
@@ -86,5 +86,52 @@ describe('rgb()/rgba() branch coverage', () => {
     } finally {
       (rgb as unknown as { _internal?: unknown })._internal = originalInternal;
     }
+  });
+
+  it('preserves percent raw channels through rgb internal path', async () => {
+    const rgbInternal = (rgb as unknown as RgbInternal)._internal;
+    const rawArgs = new List([
+      new Dimension({ number: 10, unit: '%' }),
+      new Dimension({ number: 20, unit: '%' }),
+      new Dimension({ number: 30, unit: '%' })
+    ]);
+    const result = await rgbInternal.call(
+      {
+        context: new Context(),
+        rawArgs,
+        args: async () => []
+      },
+      25.5,
+      51,
+      76.5
+    );
+    const raw = (result as unknown as {
+      value: { rgb: Array<number | [number, string]> };
+    }).value.rgb;
+
+    expect(raw[0]).toEqual([10, '%']);
+    expect(raw[1]).toEqual([20, '%']);
+    expect(raw[2]).toEqual([30, '%']);
+  });
+
+  it('rgba internal direct-call path works without context', async () => {
+    const rgbaInternal = (rgba as unknown as {
+      _internal: (this: {
+        context?: Context;
+        args: () => Promise<unknown[]>;
+        rawArgs: unknown[];
+      }, ...args: number[]) => Promise<Color>;
+    })._internal;
+    const result = await rgbaInternal.call(
+      { context: undefined, args: async () => [], rawArgs: [] },
+      1,
+      2,
+      3,
+      0.4
+    );
+
+    expect(result).toBeInstanceOf(Color);
+    expect(result.options.format).toBe(ColorFormat.RGB);
+    expect(result.alpha).toBeCloseTo(0.4);
   });
 });

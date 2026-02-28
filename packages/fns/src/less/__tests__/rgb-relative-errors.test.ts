@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Any, Color, Context, Dimension, List, Quoted, Sequence } from '@jesscss/core';
+import { Any, Color, ColorFormat, Context, Dimension, List, Quoted, Sequence } from '@jesscss/core';
 import rgb from '../rgb.js';
 
 type RgbInternal = {
@@ -92,6 +92,57 @@ describe('rgb() relative color error paths', () => {
     expect(result).toBeInstanceOf(Color);
     expect(result.rgb).toEqual([0, 128, 0]);
     expect(result.alpha).toBe(0.5);
+  });
+
+  it('accepts slash alpha as percentage', async () => {
+    const rgbInternal = (rgb as unknown as RgbInternal)._internal;
+    const seq = new Sequence([
+      new Any('from', { role: 'keyword' }),
+      new Color('#008000'),
+      new Any('r', { role: 'ident' }),
+      new Any('g', { role: 'ident' }),
+      new Any('b', { role: 'ident' })
+    ]);
+    const argsList = new List([seq, new Dimension({ number: 40, unit: '%' })], { sep: '/' });
+
+    const result = await rgbInternal.call(makeThis(argsList));
+    expect(result.alpha).toBeCloseTo(0.4);
+  });
+
+  it('accepts 4th channel alpha keyword reference', async () => {
+    const rgbInternal = (rgb as unknown as RgbInternal)._internal;
+    const origin = new Color({
+      rgb: [0, 128, 0],
+      alpha: 0.3
+    }, { format: ColorFormat.RGB });
+    const seq = new Sequence([
+      new Any('from', { role: 'keyword' }),
+      origin,
+      new Any('r', { role: 'ident' }),
+      new Any('g', { role: 'ident' }),
+      new Any('b', { role: 'ident' }),
+      new Any('alpha', { role: 'ident' })
+    ]);
+    const argsList = new List([seq]);
+
+    const result = await rgbInternal.call(makeThis(argsList));
+    expect(result.alpha).toBeCloseTo(0.3);
+  });
+
+  it('accepts 4th channel alpha as unitless dimension', async () => {
+    const rgbInternal = (rgb as unknown as RgbInternal)._internal;
+    const seq = new Sequence([
+      new Any('from', { role: 'keyword' }),
+      new Color('#008000'),
+      new Any('r', { role: 'ident' }),
+      new Any('g', { role: 'ident' }),
+      new Any('b', { role: 'ident' }),
+      new Dimension({ number: 0.2, unit: '' })
+    ]);
+    const argsList = new List([seq]);
+
+    const result = await rgbInternal.call(makeThis(argsList));
+    expect(result.alpha).toBeCloseTo(0.2);
   });
 
   it('throws when explicit 4th-channel alpha has invalid unit', async () => {
