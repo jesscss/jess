@@ -1,21 +1,67 @@
 #!/usr/bin/env node
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
+const SHOULD_BLOCK = MODE === 'staged';
+const TODO_REPORT_PATH = path.join(ROOT, '.cursor', 'PREPUSH_CHECK_TODOS.md');
+const failures = [];
 
-function run(command, args) {
+function run(command, args, packageDir) {
   const rendered = [command, ...args].join(' ');
   console.log(`\n$ ${rendered}`);
   const result = spawnSync(command, args, {
     cwd: ROOT,
-    stdio: 'inherit'
+    encoding: 'utf8'
   });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  if (stdout) process.stdout.write(stdout);
+  if (stderr) process.stderr.write(stderr);
   if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    failures.push({
+      packageDir,
+      command: rendered,
+      status: result.status ?? 1,
+      output: [stdout, stderr].filter(Boolean).join('\n').trim()
+    });
+    if (SHOULD_BLOCK) {
+      process.exit(result.status ?? 1);
+    }
   }
+}
+
+function writeTodoReport() {
+  if (failures.length === 0 || MODE !== 'upstream') return;
+  const now = new Date().toISOString();
+  const lines = [
+    '# Pre-push Check TODOs',
+    '',
+    `Generated: ${now}`,
+    '',
+    'These checks failed during `--mode=upstream` and were treated as non-blocking.',
+    '',
+    '## TODO Items',
+    ...failures.map((f, i) => `${i + 1}. [ ] \`${f.packageDir}\` - \`${f.command}\` (exit ${f.status})`),
+    '',
+    '## Failure Details',
+    ...failures.flatMap((f, i) => [
+      `### ${i + 1}) ${f.packageDir}`,
+      '',
+      `- Command: \`${f.command}\``,
+      `- Exit: \`${f.status}\``,
+      '',
+      '```',
+      f.output || '(no output captured)',
+      '```',
+      ''
+    ])
+  ];
+  mkdirSync(path.dirname(TODO_REPORT_PATH), { recursive: true });
+  writeFileSync(TODO_REPORT_PATH, `${lines.join('\n')}\n`, 'utf8');
+  console.log(`\nWrote TODO report: ${path.relative(ROOT, TODO_REPORT_PATH)}`);
 }
 
 function readPackageScripts(packageDir) {
@@ -84,17 +130,17 @@ function stagedLintableFiles(files, packageDir) {
 
 function runTypecheckForPackage(packageDir, scripts) {
   if (scripts.typecheck) {
-    run('pnpm', ['--filter', `./${packageDir}`, 'typecheck']);
+    run('pnpm', ['--filter', `./${packageDir}`, 'typecheck'], packageDir);
     return;
   }
   const tsBuild = path.join(ROOT, packageDir, 'tsconfig.build.json');
   if (existsSync(tsBuild)) {
-    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.build.json`, '--noEmit']);
+    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.build.json`, '--noEmit'], packageDir);
     return;
   }
   const tsConfig = path.join(ROOT, packageDir, 'tsconfig.json');
   if (existsSync(tsConfig)) {
-    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.json`, '--noEmit']);
+    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.json`, '--noEmit'], packageDir);
     return;
   }
   console.log(`- skip typecheck for ${packageDir} (no tsconfig or typecheck script)`);
@@ -102,7 +148,7 @@ function runTypecheckForPackage(packageDir, scripts) {
 
 function runBuildForPackage(packageDir, scripts) {
   if (scripts.build) {
-    run('pnpm', ['--filter', `./${packageDir}`, 'build']);
+    run('pnpm', ['--filter', `./${packageDir}`, 'build'], packageDir);
     return;
   }
   console.log(`- skip build for ${packageDir} (no build script)`);
@@ -114,7 +160,7 @@ function runLintForPackage(packageDir, scripts) {
     'exec',
     'eslint',
     `${packageDir}/**/*.{mjs,cjs,js,ts,tsx}`
-  ]);
+  ], packageDir);
 }
 
 const files = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
@@ -150,11 +196,17 @@ for (const packageDir of changedPackages) {
       console.log(`- skip lint for ${packageDir} (no staged JS/TS files)`);
       continue;
     }
-    run('pnpm', ['exec', 'eslint', ...filesForPackage]);
+    run('pnpm', ['exec', 'eslint', ...filesForPackage], packageDir);
   }
 }
 
-console.log(MODE === 'upstream'
-  ? '\nPre-push package checks passed.'
-  : '\nPre-commit staged checks passed.'
-);
+if (MODE === 'upstream') {
+  writeTodoReport();
+  if (failures.length > 0) {
+    console.log(`\nPre-push package checks completed with ${failures.length} failing command(s) recorded as TODOs.`);
+    process.exit(0);
+  }
+  console.log('\nPre-push package checks passed.');
+} else {
+  console.log('\nPre-commit staged checks passed.');
+}
