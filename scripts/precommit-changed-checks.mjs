@@ -8,6 +8,12 @@ const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
 const SHOULD_BLOCK = MODE === 'staged';
 const TODO_REPORT_PATH = path.join(ROOT, '.cursor', 'PREPUSH_CHECK_TODOS.md');
 const failures = [];
+const NON_SOURCE_PATH_PATTERNS = [
+  /\/build\//,
+  /\/\.docusaurus\//,
+  /\/dist\//,
+  /\/coverage\//
+];
 
 function run(command, args, packageDir) {
   const rendered = [command, ...args].join(' ');
@@ -84,6 +90,10 @@ function stagedFiles() {
     .filter(Boolean);
 }
 
+function filterRelevantFiles(files) {
+  return files.filter(file => !NON_SOURCE_PATH_PATTERNS.some(pattern => pattern.test(file)));
+}
+
 function changedFilesAgainstUpstream() {
   const baseCandidates = ['@{upstream}', 'origin/main', 'origin/master'];
   for (const ref of baseCandidates) {
@@ -128,6 +138,25 @@ function stagedLintableFiles(files, packageDir) {
   );
 }
 
+function hasCodeImpactingChanges(files, packageDir) {
+  const prefix = `${packageDir}/`;
+  return files.some(file => {
+    if (!file.startsWith(prefix)) {
+      return false;
+    }
+    if (/\.(?:[cm]?js|[cm]?ts|tsx|json)$/.test(file)) {
+      return true;
+    }
+    if (/\/(?:scripts|src|test)\//.test(file)) {
+      return true;
+    }
+    if (/\/(?:tsconfig.*|eslint\.config\..*|package\.json)$/.test(file)) {
+      return true;
+    }
+    return false;
+  });
+}
+
 function runTypecheckForPackage(packageDir, scripts) {
   if (scripts.typecheck) {
     run('pnpm', ['--filter', `./${packageDir}`, 'typecheck'], packageDir);
@@ -154,16 +183,16 @@ function runBuildForPackage(packageDir, scripts) {
   console.log(`- skip build for ${packageDir} (no build script)`);
 }
 
-function runLintForPackage(packageDir, scripts) {
-  void scripts;
-  run('pnpm', [
-    'exec',
-    'eslint',
-    `${packageDir}/**/*.{mjs,cjs,js,ts,tsx}`
-  ], packageDir);
+function runLintForFiles(packageDir, files) {
+  if (files.length === 0) {
+    console.log(`- skip lint for ${packageDir} (no changed JS/TS files)`);
+    return;
+  }
+  run('pnpm', ['exec', 'eslint', ...files], packageDir);
 }
 
-const files = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
+const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
+const files = filterRelevantFiles(rawFiles);
 if (files.length === 0) {
   console.log(MODE === 'upstream'
     ? 'No branch changes against upstream. Skipping checks.'
@@ -187,9 +216,14 @@ for (const packageDir of changedPackages) {
   }
   console.log(`\n==> ${packageDir}`);
   if (MODE === 'upstream') {
+    const lintableFiles = stagedLintableFiles(files, packageDir);
+    if (!hasCodeImpactingChanges(files, packageDir)) {
+      console.log(`- skip typecheck/build/lint for ${packageDir} (no code-impacting changes)`);
+      continue;
+    }
     runTypecheckForPackage(packageDir, scripts);
     runBuildForPackage(packageDir, scripts);
-    runLintForPackage(packageDir, scripts);
+    runLintForFiles(packageDir, lintableFiles);
   } else {
     const filesForPackage = stagedLintableFiles(files, packageDir);
     if (filesForPackage.length === 0) {
