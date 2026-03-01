@@ -11,6 +11,7 @@ import { applyExtendsToSelector } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
+import { F_EXTENDED } from '../node.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './ruleset-trace.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
 
@@ -243,10 +244,31 @@ export function processExtends(context: Context): void {
     if (!visibleExtends.length) {
       continue;
     }
+    const activatingExtends = visibleExtends.filter((instruction) => {
+      const extendRootOptions = (instruction.extendRoot?.options as any) ?? {};
+      return extendRootOptions.referenceMode !== true;
+    });
     for (const ruleset of rulesetSet) {
       const selector = ruleset.value.selector as Selector | undefined;
       if (!selector || isNode(selector, 'Nil')) {
+        ruleset.removeFlag(F_EXTENDED);
         continue;
+      }
+      const isActivatedByVisibleExtend = activatingExtends.some(instruction =>
+        !instruction.partial
+        && findExtendableLocations(selector, instruction.target).hasMatches
+      );
+      if (isActivatedByVisibleExtend) {
+        ruleset.addFlag(F_EXTENDED);
+        if (isNode(selector, 'SelectorList')) {
+          for (const item of (selector as SelectorList).value) {
+            item.addFlag(F_EXTENDED);
+          }
+        } else {
+          selector.addFlag(F_EXTENDED);
+        }
+      } else {
+        ruleset.removeFlag(F_EXTENDED);
       }
       const ownSelector = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
       const hasResolvedNestedSelector = Boolean(
@@ -548,7 +570,7 @@ export function processExtends(context: Context): void {
                     ownIs
                   ]).inherit(newSelector) as Selector;
                   newSelector.hoistToRoot = true;
-                  }
+                }
               }
             }
           }
@@ -568,10 +590,25 @@ export function processExtends(context: Context): void {
         );
         if (boundaryOnlyNestedExactChange) {
           newSelector.hoistToRoot = true;
-          }
+        }
         const finalAfterValue = newSelector.valueOf();
         if (beforeValue === finalAfterValue) {
           continue;
+        }
+        if (hasOnlyPartialExtends && isNode(newSelector, 'SelectorList')) {
+          const previousValues = new Set<string>();
+          if (isNode(selector, 'SelectorList')) {
+            for (const item of (selector as SelectorList).value) {
+              previousValues.add(item.valueOf());
+            }
+          } else {
+            previousValues.add(selector.valueOf());
+          }
+          for (const item of (newSelector as SelectorList).value) {
+            if (!previousValues.has(item.valueOf())) {
+              item.addFlag(F_EXTENDED);
+            }
+          }
         }
         ruleset.value.selector = newSelector;
         ruleset.invalidateSelectorValueCache();

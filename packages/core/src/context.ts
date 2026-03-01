@@ -20,6 +20,7 @@ import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDia
 import type { Call } from './tree/call.js';
 import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
+import { createRequire } from 'node:module';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -468,12 +469,48 @@ export class Context {
     }
 
     if (!finalPath) {
-      /** @todo - Add messaging around tried paths */
-      throw new Error('File not found');
+      // Fallback for bare module specifiers (e.g. "@scope/pkg/path").
+      const looksBareSpecifier = (p: string) =>
+        !path.isAbsolute(p)
+        && !p.startsWith('./')
+        && !p.startsWith('../')
+        && !p.startsWith('/')
+        && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(p);
+      const tryResolveModule = (request: string, basedir: string): string | undefined => {
+        try {
+          const req = createRequire(path.join(basedir, '__jess_resolve__.js'));
+          return req.resolve(request);
+        } catch {
+          return undefined;
+        }
+      };
+      const moduleBaseDirs = [currentDirectory, ...searchPaths, process.cwd()];
+      for (const candidate of paths) {
+        if (!looksBareSpecifier(candidate)) {
+          continue;
+        }
+        for (const baseDir of moduleBaseDirs) {
+          const base = path.isAbsolute(baseDir) ? baseDir : path.resolve(currentDirectory, baseDir);
+          const resolved = tryResolveModule(candidate, base) ?? tryResolveModule(`${candidate}.less`, base);
+          if (resolved) {
+            finalPath = resolved;
+            break;
+          }
+        }
+        if (finalPath) {
+          break;
+        }
+      }
     }
 
-    const ext = path.extname(finalPath);
-    const friendlyPath = path.relative(process.cwd(), finalPath);
+    if (!finalPath) {
+      /** @todo - Add messaging around tried paths */
+      throw new Error(`File not found: ${importPath} (from: ${currentDirectory})`);
+    }
+
+    const normalizedFinalPath = finalPath.split(/[?#]/)[0]!;
+    const ext = path.extname(normalizedFinalPath);
+    const friendlyPath = path.relative(process.cwd(), normalizedFinalPath);
 
     if (!ext) {
       throw new Error(`File "${friendlyPath}" not supported`);
@@ -481,7 +518,7 @@ export class Context {
 
     return {
       triedPaths: paths,
-      resolvedPath: finalPath,
+      resolvedPath: normalizedFinalPath,
       friendlyPath
     };
   }

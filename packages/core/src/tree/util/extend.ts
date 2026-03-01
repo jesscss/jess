@@ -121,7 +121,7 @@ import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { normalizeSelectorForExtend, type ExtendSearchResult } from './find-extendable-locations.js';
-import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import {
   selectorCompare,
   type SelectorComparisonResult,
@@ -277,8 +277,9 @@ function wrapMatchInIs(
   extendWithSelectors?: Selector[]
 ): PseudoSelector {
   const computed = extendWithSelectors ?? extractSelectorsFromIs(extendWith);
+  const deduped = deduplicateSelectors([matched, ...computed]);
   return createValidatedIsWrapperWithErrors(
-    [matched, ...computed],
+    deduped,
     inheritFrom,
     contextSelector,
     context
@@ -1573,6 +1574,13 @@ function extendSelectorList(
   skipAmpersandCheck: boolean,
   preferIsWrapperInPartialMode: boolean = false
 ): Selector {
+  const markExtended = (selector: Selector): Selector => {
+    selector.addFlag(F_EXTENDED);
+    return selector;
+  };
+  const keepOriginalInReference = (_selector: Selector): boolean =>
+    !partial || (partial && find.valueOf() === extendWith.valueOf());
+
   const maybePrefixNewSelectorWithImplicitParent = (template: Selector, s: Selector): Selector => {
     // If we're extending inside a nested selector that already starts with an implicit `&`,
     // ensure any newly-added selector alternatives also start with the same implicit `&`.
@@ -1629,8 +1637,11 @@ function extendSelectorList(
     let appendedVariant = false;
 
     if (extended === selector) {
-      orderedSelectors.push(selector);
+      orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(selector.clone(true)) : selector);
       orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
+      if (comparison.hasWholeMatch && extendWith.valueOf() !== selector.valueOf()) {
+        newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+      }
       continue;
     }
 
@@ -1650,27 +1661,30 @@ function extendSelectorList(
           { target: selector, find, extendWith }
         );
         isWrapper.generated = true;
-        orderedSelectors.push(isWrapper);
+        orderedSelectors.push(markExtended(isWrapper));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         continue;
       }
 
       if (extended.value.length === 0) {
-        orderedSelectors.push(selector);
+        orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(selector.clone(true)) : selector);
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
       } else if (extended.value.length === 1 && extended.value[0]!.valueOf() === extendWith.valueOf()) {
-        orderedSelectors.push(selector);
+        orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(selector.clone(true)) : selector);
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
-        newSelectors.push(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true)));
+        if (extendWith.valueOf() !== selector.valueOf()) {
+          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+        }
         appendedVariant = true;
       } else {
-        orderedSelectors.push(extended.value[0]!.clone(true));
+        const first = extended.value[0]!.clone(true) as Selector;
+        orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(first) : first);
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         const template = extended.value[0] ?? selector;
         newSelectors.push(
           ...extended.value
             .slice(1)
-            .map(s => maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector))
+            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector)))
             .map(s => s.clone(true))
         );
         appendedVariant = true;
@@ -1700,19 +1714,21 @@ function extendSelectorList(
       }
 
       if (fullMatchOfListItem) {
-        orderedSelectors.push(selector);
+        orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(selector.clone(true)) : selector);
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
-        newSelectors.push(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true)));
+        if (extendWith.valueOf() !== selector.valueOf()) {
+          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+        }
         appendedVariant = true;
       } else {
-        orderedSelectors.push(extended.clone(true));
+        orderedSelectors.push(markExtended(extended.clone(true)));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         appendedVariant = true;
       }
     }
 
     if (!appendedVariant && extended.valueOf() !== selector.valueOf()) {
-      const variant = maybePrefixNewSelectorWithImplicitParent(selector, extended.clone(true));
+      const variant = markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extended.clone(true)));
       newSelectors.push(variant);
     }
   }

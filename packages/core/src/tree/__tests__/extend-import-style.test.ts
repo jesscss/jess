@@ -12,9 +12,9 @@ import {
   spaced,
   type Rules,
   Node
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
-import { ruleset } from '..';
+import { ruleset } from '../index.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -344,6 +344,48 @@ describe('Style import extend behavior', () => {
           color: blue;
         }
       `);
+    });
+
+    it('reference extend renders nested descendants of the extended ruleset', async () => {
+      const referencedPath = resolve(process.cwd(), 'referenced-nested.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) }),
+            ruleset({
+              selector: sellist([sel([el('.desc')])]),
+              rules: rules([
+                decl({ name: 'color', value: spaced([any('green')]) })
+              ])
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('referenced-nested.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        }),
+        ruleset({
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
+            extend({
+              target: el('.base')
+            })
+          ])
+        })
+      ]);
+
+      const css = (await node.eval(context)).toString();
+      expect(css).toContain('.base,');
+      expect(css).toContain('.child {');
+      expect(css).toContain('.desc {');
+      expect(css).toContain('color: green;');
     });
   });
 });

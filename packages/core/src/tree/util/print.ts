@@ -17,6 +17,10 @@ export type PrintOptions = {
   collapseNesting?: boolean;
   context?: Context;
   inCustom?: boolean;
+  /** True while traversing a referenced import/use tree. */
+  referenceMode?: boolean;
+  /** Effective render state while in referenceMode. */
+  referenceRenderEnabled?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -58,6 +62,8 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   options.frameHeaders ??= [];
   options.treeFrames ??= [];
   options.lastRenderedFrames ??= [];
+  options.referenceMode ??= false;
+  options.referenceRenderEnabled ??= true;
   return options as FinalPrintOptions;
 }
 

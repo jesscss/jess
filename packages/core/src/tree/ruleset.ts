@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -228,6 +228,42 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return materialize(sel as Selector);
   }
 
+  private static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
+    if (!sel || sel instanceof Nil) {
+      return false;
+    }
+    if (isNode(sel, 'SelectorList')) {
+      return (sel as SelectorList).value.some(item => item.hasFlag(F_EXTENDED));
+    }
+    return (sel as Selector).hasFlag(F_EXTENDED);
+  }
+
+  private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
+    if (!isNode(sel, 'SelectorList')) {
+      return sel.hasFlag(F_EXTENDED) ? sel : new Nil();
+    }
+    const seen = new Set<string>();
+    const kept: Selector[] = [];
+    for (const item of (sel as SelectorList).value) {
+      if (!item.hasFlag(F_EXTENDED)) {
+        continue;
+      }
+      const key = item.valueOf();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      kept.push(item.copy(true) as Selector);
+    }
+    if (kept.length === 0) {
+      return new Nil();
+    }
+    if (kept.length === 1) {
+      return kept[0]!;
+    }
+    return SelectorList.create(kept).inherit(sel);
+  }
+
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
     const { selector } = this.value;
@@ -254,6 +290,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     renderSelector = Array.isArray(renderNormalizedResult)
       ? SelectorList.create(renderNormalizedResult.map(s => s.copy(true) as Selector)).inherit(renderSelector as Selector) as typeof selector
       : renderNormalizedResult as typeof selector;
+    if (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+      && !this.hasFlag(F_EXTENDED)
+      && !(renderSelector instanceof Nil)
+      && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
+    ) {
+      renderSelector = Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector;
+      if (renderSelector instanceof Nil) {
+        return '';
+      }
+    }
     Ruleset.ensureSelectorVisible(renderSelector);
     const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));

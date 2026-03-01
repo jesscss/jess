@@ -1595,8 +1595,27 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
 export function importAtRule(this: P, T: TokenMap) {
   const $ = this;
 
-  const isCssUrl = (url: string) =>
-    url.endsWith('.css') || url.startsWith('http') || url.startsWith('//');
+  const isCssUrl = (url: string, options: string[]) => {
+    if (options.includes('inline')) {
+      return false;
+    }
+    const lower = url.toLowerCase();
+    const forcedLess = options.includes('less');
+    if (forcedLess) {
+      return false;
+    }
+    if (options.includes('css')) {
+      return true;
+    }
+    if (/\.css([?#].*)?$/.test(lower)) {
+      return true;
+    }
+    // Remote imports default to CSS.
+    if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//')) {
+      return true;
+    }
+    return false;
+  };
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1630,16 +1649,11 @@ export function importAtRule(this: P, T: TokenMap) {
     ]);
 
     let isAtRule: boolean | undefined;
+    let postludeNode: Node | undefined;
 
     if (!RECORDING_PHASE) {
-      if (options!.includes('css')) {
-        isAtRule = true;
-      } else {
-        let url = urlNode.valueOf();
-        if (isCssUrl(url)) {
-          isAtRule = true;
-        }
-      }
+      let url = urlNode.valueOf();
+      isAtRule = isCssUrl(url, options!);
     }
 
     let preludeNodes: Node[];
@@ -1653,9 +1667,16 @@ export function importAtRule(this: P, T: TokenMap) {
       extraNodes = $.SUBRULE($.importPostlude) as Node[];
     });
     if (!RECORDING_PHASE && extraNodes && extraNodes.length) {
-      isAtRule = true;
-      for (const n of extraNodes) {
-        preludeNodes!.push(n);
+      if (isAtRule || !options!.includes('inline')) {
+        isAtRule = true;
+        for (const n of extraNodes) {
+          preludeNodes!.push(n);
+        }
+      } else {
+        // Inline imports with media/query postludes should evaluate the target and then wrap output.
+        // Keep this data on import options so StyleImport.evalNode can apply the wrapper.
+        const postludeLoc = $.getLocationFromNodes(extraNodes);
+        postludeNode = new Sequence(extraNodes, undefined, postludeLoc, this.context);
       }
     }
 
@@ -1677,8 +1698,13 @@ export function importAtRule(this: P, T: TokenMap) {
       }, {
         type: 'import',
         importOptions: {
+          type: options!.includes('less') ? 'less' : undefined,
           reference: options!.includes('reference'),
-          once: !options!.includes('multiple')
+          once: !options!.includes('multiple'),
+          multiple: options!.includes('multiple'),
+          optional: options!.includes('optional'),
+          inline: options!.includes('inline'),
+          postlude: postludeNode
         }
       }, location, this.context);
     }

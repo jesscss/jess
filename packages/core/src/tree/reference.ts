@@ -480,6 +480,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+          // Less import interpolation parity: unresolved interpolation segments should fall back
+          // to their raw token text (e.g. "@{in}" -> "in") instead of throwing.
+          if (
+            !fallbackValue
+            && this.parent?.type === 'Interpolated'
+            && this.options.type === 'variable'
+            && (this.parent.options as any)?.role === 'ident'
+          ) {
+            return new Any(valueKeyStr2, { role: 'ident' });
+          }
           if (!fallbackValue) {
             switch (type) {
               case 'mixin':

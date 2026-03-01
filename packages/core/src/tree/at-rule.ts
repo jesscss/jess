@@ -135,7 +135,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (prelude) {
         node.value.prelude = prelude;
       }
-      (context.topImports ??= []).push(node);
+      // Reference imports are traversed for extend semantics but should not emit top-level CSS imports.
+      if ((context as any)._referenceImportDepth <= 0) {
+        (context.topImports ??= []).push(node);
+      }
       return new Nil();
     }
     // Defer prelude evaluation to evalNode so variable lookups happen in the correct

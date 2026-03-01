@@ -101,6 +101,8 @@ export type RulesOptions = {
    * consumers, but should not be visible to lookups within the current stylesheet scope.
    */
   forward?: boolean;
+  /** Render gating marker for referenced imports/usages (serializer-time only). */
+  referenceMode?: boolean;
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
@@ -375,6 +377,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.depth ?? 0;
     const space = indent(depth);
     const { value } = this;
+    const ownReferenceMode = Boolean((this.options as any)?.referenceMode === true);
+    const referenceMode = Boolean(options.referenceMode || ownReferenceMode);
+    const enteringReferenceMode = !Boolean(options.referenceMode) && ownReferenceMode;
+    const inheritedRenderEnabled = enteringReferenceMode
+      ? false
+      : Boolean(options.referenceRenderEnabled);
+    const referenceRenderEnabled = referenceMode ? inheritedRenderEnabled : true;
 
     // Skip charset nodes - they are collected and prepended at root level
     // Nil nodes are now non-visible, so they're automatically filtered by n.visible
@@ -386,14 +395,37 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     // No spacing flags; writer.capture is used where needed
 
+    const isInlineSourceRules = (node: Node): boolean => {
+      if (node.type !== 'Rules') {
+        return false;
+      }
+      const rulesNode = node as Rules;
+      if (rulesNode.value.length !== 1) {
+        return false;
+      }
+      const only = rulesNode.value[0]!;
+      return only.type === 'Any' && (only.options as any)?.role === 'any';
+    };
+
+    let emittedCount = 0;
+    let lastEmittedType: string | undefined;
+    let lastEmittedWasInlineSourceRules = false;
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
-      if (idx > 0) {
+      const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
+      if (referenceMode && !referenceRenderEnabled && !isContainer) {
+        continue;
+      }
+      if (emittedCount > 0) {
         // Check actual buffer state - not just previous captured output
         // Frame closing in serializeRulesContainer adds newlines that aren't in the capture
         const currentBuffer = w.getSince(0);
         const bufferEndsWithNewline = currentBuffer.endsWith('\n');
-        if (!bufferEndsWithNewline) {
+        const needsInlineBoundarySpacing = (
+          (lastEmittedType === 'Any' && n.type !== 'Any')
+          || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
+        );
+        if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
           w.add('\n');
         }
       }
@@ -408,12 +440,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Emit directly to preserve source map segments
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
-      const childOptions = isChildRules ? { ...options, depth } : { ...options, depth };
+      const childOptions = isChildRules
+        ? { ...options, depth, referenceMode, referenceRenderEnabled }
+        : { ...options, depth, referenceMode, referenceRenderEnabled };
       let rule = w.capture(() => n.toTrimmedString(childOptions));
+      if (!rule && isContainer) {
+        continue;
+      }
       w.add(rule, n); // Pass node as origin to preserve location info
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';', n);
       }
+      emittedCount++;
+      lastEmittedType = n.type;
+      lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
     }
   }
 

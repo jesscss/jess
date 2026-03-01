@@ -1,5 +1,6 @@
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
+import { F_EXTENDED } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
@@ -35,6 +36,17 @@ export function normalizeIndent(multiLineString: string, indent: string, maintai
 export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
+
+function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
+  const selector = node.value.selector;
+  if (!selector || selector instanceof Nil) {
+    return false;
+  }
+  if (isNode(selector, 'SelectorList')) {
+    return selector.value.some(item => item.hasFlag(F_EXTENDED));
+  }
+  return selector.hasFlag(F_EXTENDED);
+}
 /**
  * Handles flattening and serializing of at-rules and rulesets
  */
@@ -50,11 +62,26 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
   const mark = w.mark();
 
+  const previousReferenceMode = options.referenceMode === true;
+  const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
+  const inReferenceMode = previousReferenceMode;
+  const nodeExtendsReference = node.type === 'Ruleset' && rulesetHasExtendedTopLevelSelector(node as Ruleset);
+  const renderEnabled = inReferenceMode ? (previousReferenceRenderEnabled || nodeExtendsReference) : true;
+  options.referenceMode = inReferenceMode;
+  options.referenceRenderEnabled = renderEnabled;
+
   const rules = node.value.rules;
   if (!rules) {
+    if (inReferenceMode && !renderEnabled) {
+      options.referenceMode = previousReferenceMode;
+      options.referenceRenderEnabled = previousReferenceRenderEnabled;
+      return '';
+    }
     // Leaf at-rules (no body) are not "frame headers". Always emit them with comments
     // preserved; comment-stripping should only apply to repeated *frame* headers.
     w.add(node.getHeaderString(options, false));
+    options.referenceMode = previousReferenceMode;
+    options.referenceRenderEnabled = previousReferenceRenderEnabled;
     return w.getSince(mark);
   }
 
@@ -63,6 +90,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
   if (rulesToRender.length === 0) {
+    options.referenceMode = previousReferenceMode;
+    options.referenceRenderEnabled = previousReferenceRenderEnabled;
     return '';
   }
 
@@ -115,8 +144,12 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   /** Don't output selector yet. Let's see if any child rules need hoisting. */
   for (let idx = 0; idx < rulesToRender.length; idx++) {
     let n = rulesToRender[idx]!;
+    const isContainer = isNode(n, ['Ruleset', 'AtRule', 'Rules']);
 
     if (!n.visible && !n.fullRender) {
+      continue;
+    }
+    if (inReferenceMode && !renderEnabled && !isContainer) {
       continue;
     }
     if (isNode(n, 'Declaration') && skippedDuplicateDeclarations.has(n)) {
@@ -124,7 +157,16 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
 
     if (isNode(n, ['Ruleset', 'AtRule'])) {
-      n.toTrimmedString(options);
+      const childOptions = {
+        ...options,
+        referenceMode: inReferenceMode,
+        referenceRenderEnabled: renderEnabled
+      } as FinalPrintOptions;
+      const childOut = w.capture(() => n.toTrimmedString(childOptions));
+      if (!childOut) {
+        continue;
+      }
+      w.add(childOut, n);
       continue;
     }
 
@@ -233,5 +275,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     lastRenderedFrames.pop();
   }
 
+  options.referenceMode = previousReferenceMode;
+  options.referenceRenderEnabled = previousReferenceRenderEnabled;
   return w.getSince(mark);
 }
