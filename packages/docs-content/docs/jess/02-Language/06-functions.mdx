@@ -1,0 +1,48 @@
+---
+title: Functions
+audiences:
+  - jess
+origin: jess
+---
+:::info
+
+This section refers to functions defined in stylesheets. For importing functions from other languages, see [the `@-use` at-rule](./atrules#-use).
+
+:::
+
+In Jess, functions are anonymous mixins that return a single value. We indicate we want a single value with `>`, and the return value is then assigned with `return`.
+
+```less
+// Define a function
+$my-function: @() > {
+  return: $(1 + 2);
+}
+
+// Call a function
+value: $my-function(); // 3
+```
+
+Like arrow functions in JavaScript, anonymous functions can also return a single expression.
+
+```less
+$my-function: @() > $(1 + 2);
+
+value: $my-function(); // 3
+```
+
+:::info[No early returns]
+
+Functions do not have "early" returns. For example:
+
+```less
+$my-function: @() > {
+  $if(true) {
+    return: one;
+  }
+  return: two;
+}
+```
+
+Think of functions like "mixins that are looking up the final assignment to a property named `return`"
+
+:::

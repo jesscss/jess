@@ -266,6 +266,42 @@ importers:
         specifier: ~19.1.10
         version: 19.1.17
 
+  packages/docs-content: {}
+
+  packages/docs-less:
+    dependencies:
+      '@docusaurus/core':
+        specifier: 3.8.1
+        version: 3.8.1(@mdx-js/react@3.1.1)(react-dom@19.1.4)(react@19.1.4)(typescript@5.8.3)
+      '@docusaurus/preset-classic':
+        specifier: 3.8.1
+        version: 3.8.1(@algolia/client-search@5.47.0)(@mdx-js/react@3.1.1)(@types/react@19.1.17)(react-dom@19.1.4)(react@19.1.4)(search-insights@2.17.3)(typescript@5.8.3)
+      clsx:
+        specifier: ^1.2.1
+        version: 1.2.1
+      prism-react-renderer:
+        specifier: ~2.4.1
+        version: 2.4.1(react@19.1.4)
+      react:
+        specifier: ~19.1.0
+        version: 19.1.4
+      react-dom:
+        specifier: ~19.1.0
+        version: 19.1.4(react@19.1.4)
+    devDependencies:
+      '@docusaurus/plugin-content-docs':
+        specifier: ~3.8.1
+        version: 3.8.1(@mdx-js/react@3.1.1)(react-dom@19.1.4)(react@19.1.4)(typescript@5.8.3)
+      '@docusaurus/theme-classic':
+        specifier: ~3.8.1
+        version: 3.8.1(@types/react@19.1.17)(react-dom@19.1.4)(react@19.1.4)(typescript@5.8.3)
+      '@docusaurus/types':
+        specifier: ~3.8.1
+        version: 3.8.1(react-dom@19.1.4)(react@19.1.4)
+      '@types/react':
+        specifier: ~19.1.10
+        version: 19.1.17
+
   packages/fns:
     dependencies:
       '@jesscss/awaitable-pipe':

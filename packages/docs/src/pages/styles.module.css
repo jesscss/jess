@@ -6,10 +6,16 @@
  */
 
 .heroBanner {
-  padding: 4rem 0;
+  padding: 4.75rem 0 3.5rem;
   text-align: center;
   position: relative;
   overflow: hidden;
+  background:
+    radial-gradient(ellipse at 18% -18%, rgb(121 142 255 / 20%) 0%, rgb(121 142 255 / 0%) 56%),
+    radial-gradient(ellipse at 82% -24%, rgb(104 128 255 / 15%) 0%, rgb(104 128 255 / 0%) 52%),
+    linear-gradient(180deg, #151f3d 0%, #101933 100%);
+  color: #f2f5ff;
+  border-bottom: 1px solid rgb(141 161 255 / 24%);
 }
 
 @media screen and (max-width: 966px) {
@@ -22,16 +28,44 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 1.2rem;
 }
 
 .features {
-  display: flex;
-  align-items: center;
-  padding: 2rem 0;
+  padding: 2.2rem 0 3rem;
   width: 100%;
 }
 
-.featureImage {
-  height: 200px;
-  width: 200px;
+.tagline {
+  margin: 0 auto;
+  max-width: 46rem;
+  color: #d6defa;
+  font-size: 1.08rem;
+  line-height: 1.55;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  border: 1px solid #d8def8;
+  border-radius: 12px;
+  padding: 1rem 1rem 1.1rem;
+  background:
+    radial-gradient(ellipse at 90% -30%, rgb(153 169 255 / 20%) 0%, rgb(153 169 255 / 0%) 56%),
+    linear-gradient(180deg, rgb(239 243 255 / 74%) 0%, #ffffff 40%);
+  box-shadow: 0 12px 26px rgb(26 39 77 / 10%);
+}
+
+.card h2 {
+  margin: 0 0 0.45rem;
+  font-size: 1.1rem;
+}
+
+.card p {
+  margin: 0;
+  color: #334063;
 }

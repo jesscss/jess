@@ -1,0 +1,227 @@
+---
+id: migrating
+title: Migrating to Jess
+audiences:
+  - jess
+origin: jess
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+TODO - Show automated migration tool and what it will convert
+
+## Migrating Less to Jess
+
+```sh
+jess convert "./src/less/**/*.less" "./src/styles"
+```
+
+## Conversion steps
+
+Jess will first parse your Less/Sass file (or other language provided by a plugin). This will determine if your file is fully-supported and compatible with Jess. Then, it will evaluate the Jess tree in order to understand things like function calls and file sources, which it can then use to convert to supported Jess syntax.
+
+### At-rules
+
+Jess will convert at-rules to their prefixed counterparts. In import rules, Jess will distinguish between file-relative and module-relative imports, as Jess requires file-relative imports to be explicit.
+
+E.g. `@import` will become `@-import`
+
+<Tabs>
+  <TabItem value="Less">
+  ```less
+  @import "variables"; // variables.less
+  ```
+  </TabItem>
+  <TabItem value="Sass">
+  ```less
+  @import "variables"; // variables.scss
+  ```
+  </TabItem>
+  <TabItem value="Jess">
+  ```less
+  @-import "./variables"; // variables.jess
+  ```
+  </TabItem>
+</Tabs>
+
+### Variable declarations
+
+Less-style variable declarations will be converted to Jess-style variable declarations, which resemble Sass-style variable declarations.
+
+<Tabs>
+  <TabItem value="Less">
+  ```less
+  @color: #06c;
+  ```
+  </TabItem>
+  <TabItem value="Sass">
+  ```less
+  $color: #06c;
+  ```
+  </TabItem>
+  <TabItem value="Jess">
+  ```less
+  $color: #06c;
+  ```
+  </TabItem>
+</Tabs>
+
+### Variable references
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: @color;
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $color;
+  ```
+  </div>
+</div>
+
+#### Sass-to-Jess
+
+:::info
+
+The caret in Jess `^` is used to only look upwards for variables, not per scope. That's how Sass variable lookups work.
+
+:::
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $color;
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $^color;
+  ```
+  </div>
+</div>
+
+### Expressions
+
+All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x.y()` are considered part of the expression. Math operations like `*` or `/` or comparisons like `=` or `>` must be wrapped in parentheses `$()` e.g. `$(x + 1)` or `$(x = 1)`.
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: @width + 1;
+  value: (@width / 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $(width + 1);
+  value: $(width / 2);
+  ```
+  </div>
+</div>
+
+#### Sass-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $width + 1;
+  value: ($width / 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $(^width + 1);
+  value: $(^width / 2);
+  ```
+  </div>
+</div>
+
+### Mixin definitions
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  .box() {}
+  .with-params(
+    @param1: 1;
+    @param2: 2;
+  ) {}
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  .box() {}
+  .with-params(
+    param1: 1;
+    param2: 2;
+  ) {}
+  ```
+  </div>
+</div>
+
+#### Sass-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  @mixin box() {}
+  @mixin with-params(
+    $param1: 1,
+    $param2: 2
+  ) {}
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  box() {}
+  with-params(
+    param1: 1;
+    param2: 2;
+  ) {}
+  ```
+  </div>
+</div>
+
+### Mixin calls
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  .box();
+  .with-params(1; 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  $ > .box();
+  $ > .with-params(1; 2);
+  ```
+  </div>
+</div>
+
+#### Sass-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  @include box();
+  @include with-params(1, 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  $ > box();
+  $ > with-params(1; 2);
+  ```
+  </div>
+</div>

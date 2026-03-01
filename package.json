@@ -56,7 +56,15 @@
     "test:less:functions": "node scripts/test-less.js functions",
     "test:less:custom": "pnpm --filter @jesscss/core build && vitest packages/jess/test/less --exclude=**/all-less.test.ts",
     "test:less:test-data": "pnpm --filter @jesscss/core build && vitest packages/jess/test/less/all-less.test.ts",
-    "cleanup:test-data": "node scripts/cleanup-test-data.js"
+    "cleanup:test-data": "node scripts/cleanup-test-data.js",
+    "docs:jess:dev": "pnpm --filter jess-docs dev",
+    "docs:jess:build": "pnpm --filter jess-docs build",
+    "docs:less:dev": "pnpm --filter @jesscss/docs-less dev",
+    "docs:less:build": "pnpm --filter @jesscss/docs-less build",
+    "docs:content:migrate:jess": "pnpm --filter @jesscss/docs-content run migrate:jess",
+    "docs:content:import:less": "pnpm --filter @jesscss/docs-content run import:less",
+    "docs:content:normalize": "pnpm --filter @jesscss/docs-content run normalize",
+    "docs:content:validate": "pnpm --filter @jesscss/docs-content run validate"
   },
   "repository": {
     "type": "git",

@@ -7,14 +7,47 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: rgb(33, 175, 144);
-  --ifm-color-primary-darker: rgb(31, 165, 136);
-  --ifm-color-primary-darkest: rgb(26, 136, 112);
-  --ifm-color-primary-light: rgb(70, 203, 174);
-  --ifm-color-primary-lighter: rgb(102, 212, 189);
-  --ifm-color-primary-lightest: rgb(146, 224, 208);
+  --ifm-color-primary: #5a67d8;
+  --ifm-color-primary-dark: #4e5dca;
+  --ifm-color-primary-darker: #4a57be;
+  --ifm-color-primary-darkest: #3e4aa0;
+  --ifm-color-primary-light: #6c78e1;
+  --ifm-color-primary-lighter: #7a85e6;
+  --ifm-color-primary-lightest: #9aa3ef;
+  --ifm-font-family-base: Inter, "Avenir Next", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ifm-heading-font-family: "Plus Jakarta Sans", Inter, "Avenir Next", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ifm-font-family-monospace: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --ifm-navbar-background-color: #121a33;
+  --ifm-background-color: #f7f9ff;
   --ifm-code-font-size: 95%;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #8f9bff;
+  --ifm-background-color: #0f1530;
+  --ifm-navbar-background-color: #0d1328;
+}
+
+html,
+body {
+  background:
+    radial-gradient(ellipse at 8% -10%, rgb(145 162 255 / 14%) 0%, rgb(145 162 255 / 0%) 44%),
+    radial-gradient(ellipse at 88% -14%, rgb(111 132 255 / 10%) 0%, rgb(111 132 255 / 0%) 40%),
+    var(--ifm-background-color);
+}
+
+.navbar {
+  background:
+    radial-gradient(ellipse at 18% -20%, rgb(122 142 255 / 20%) 0%, rgb(122 142 255 / 0%) 56%),
+    linear-gradient(180deg, #151f3d 0%, #101933 100%);
+  border-bottom: 1px solid rgb(139 160 255 / 22%);
+}
+
+.theme-doc-markdown h1,
+.theme-doc-markdown h2,
+.theme-doc-markdown h3 {
+  font-family: var(--ifm-heading-font-family);
+  letter-spacing: -0.015em;
 }
 
 .docusaurus-highlight-code-line {
