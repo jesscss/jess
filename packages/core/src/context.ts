@@ -257,7 +257,7 @@ export class Context {
    * Registered extends with their extend root context
    * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
    */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number]> = [];
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
 
   /**
    * When doing any kind of lookup, the current node and resolved
@@ -318,6 +318,46 @@ export class Context {
   private _referenceStack: number = 0;
   get referenceStack() {
     return this._referenceStack;
+  }
+
+  /**
+   * Import-evaluation scope stack.
+   *
+   * This intentionally models lexical import scope instead of global counters:
+   * - each import branch pushes its semantics on entry
+   * - each branch pops in `finally`
+   * - readers ask semantic questions (`inReferenceImportScope`) instead of
+   *   inspecting mutable depth values.
+   *
+   * Why this exists:
+   * some behaviors depend on "how we got here" (call-path scope), not only
+   * on the current node's own options. Example: suppressing top-level @import
+   * hoists while traversing a reference-only branch.
+   */
+  private _importScopeStack: Array<{ reference: boolean; multiple: boolean }> = [];
+  get importScope() {
+    return this._importScopeStack;
+  }
+
+  get inReferenceImportScope() {
+    return this._importScopeStack.some(scope => scope.reference);
+  }
+
+  get inMultipleImportScope() {
+    return this._importScopeStack.some(scope => scope.multiple);
+  }
+
+  pushImportScope(scope: { reference?: boolean; multiple?: boolean }) {
+    this._importScopeStack.push({
+      reference: scope.reference === true,
+      multiple: scope.multiple === true
+    });
+  }
+
+  popImportScope() {
+    if (this._importScopeStack.length > 0) {
+      this._importScopeStack.pop();
+    }
   }
 
   pushReference() {
@@ -644,6 +684,14 @@ export class Context {
       triedPaths,
       resolvedPath
     };
+  }
+
+  /**
+   * Public path resolution for import nodes that need source-path lookups
+   * without triggering parse/eval.
+   */
+  async resolveImportPath(importPath: string) {
+    return this._getPath(importPath);
   }
 
   /**

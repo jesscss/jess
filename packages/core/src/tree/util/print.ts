@@ -21,6 +21,8 @@ export type PrintOptions = {
   referenceMode?: boolean;
   /** Effective render state while in referenceMode. */
   referenceRenderEnabled?: boolean;
+  /** Enable SelectorList-level filtering of extend target members during reference rendering. */
+  referenceFilterTargets?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -64,6 +66,7 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   options.lastRenderedFrames ??= [];
   options.referenceMode ??= false;
   options.referenceRenderEnabled ??= true;
+  options.referenceFilterTargets ??= false;
   return options as FinalPrintOptions;
 }
 

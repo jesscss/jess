@@ -75,7 +75,9 @@ export type ImportOptions = {
   forwardHide?: string[];
   /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
   readonly?: boolean;
-  [key: string]: any;
+  /** Internal marker for "once" de-duplication rendering semantics. */
+  _dedupe?: boolean;
+  [key: string]: unknown;
 };
 
 export type StyleImportOptions = {
@@ -181,15 +183,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * - If 'export' flag is set, variables and mixins are also forwarded to downstream stylesheets
      * - The 'local' flag means: visible to direct parent, but not re-exported to parent's parent
      */
-    let out = evaluatedRules.clone();
+    const isReferenceMode = (
+      (type === 'import' && (importOptions?._dedupe === true || reference))
+      || (type === 'compose' && reference)
+    );
+    // De-duped imports mutate node options during markReferenceMode; use deep clone so
+    // repeated imports do not retroactively mutate previously emitted import trees.
+    // Keep explicit reference imports on shallow clone to preserve existing extend wiring.
+    const useDeepClone = Boolean(
+      type === 'import'
+      && (importOptions!.multiple === true || importOptions!._dedupe === true)
+    );
+    let out = (useDeepClone ? evaluatedRules.clone(true) : evaluatedRules.clone()) as Rules;
     // Import type: variables are visible and re-exported (not local)
     // Compose type: variables are visible to parent but not transitive by default (`local: true`)
     // Forward: not visible locally but *is* transitive (`local: false`)
     const isLocal = type === 'compose' && !isForward;
-    const isReferenceMode = (
-      (type === 'import' && ((importOptions as any)._dedupe === true || reference))
-      || (type === 'compose' && reference)
-    );
 
     out.options = {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
@@ -198,7 +207,26 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       referenceMode: isReferenceMode,
       readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
     };
-
+    if (isReferenceMode) {
+      const markReferenceMode = (node: Node): void => {
+        const nodeOptions = node.options as { referenceMode?: boolean };
+        nodeOptions.referenceMode = true;
+        const maybeRulesValue = node.value as { rules?: Node } | undefined;
+        const rules = maybeRulesValue?.rules;
+        if (rules && isNode(rules, 'Rules')) {
+          markReferenceMode(rules);
+        }
+        const children = node.value;
+        if (Array.isArray(children)) {
+          for (const child of children) {
+            if (isNode(child, ['Rules', 'Ruleset', 'AtRule'])) {
+              markReferenceMode(child as Node);
+            }
+          }
+        }
+      };
+      markReferenceMode(out as unknown as Node);
+    }
     // Forwarded modules should never render output at this scope.
     if (isForward) {
       out.removeFlag(F_VISIBLE);
@@ -241,28 +269,32 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const finalize = async (finalPath: string) => {
       const previousTreeContext = context.treeContext;
-      const previousMultipleDepth = (context as any)._multipleImportDepth ?? 0;
-      const previousReferenceDepth = (context as any)._referenceImportDepth ?? 0;
-      const inheritedReferenceMode = previousReferenceDepth > 0;
+      // Inherit "reference branch" semantics lexically for nested imports unless
+      // `multiple` explicitly opts into fresh output.
+      const inheritedReferenceMode = context.inReferenceImportScope;
       const previousExplicitReference = importOptions!.reference;
+      let pushedImportScope = false;
       if (inheritedReferenceMode && !importOptions!.multiple) {
         importOptions!.reference = true;
       }
       if (node.treeContext) {
-        context.treeContext = node.treeContext as any;
+        context.treeContext = node.treeContext;
       }
-      if (importOptions!.multiple) {
-        (context as any)._multipleImportDepth = previousMultipleDepth + 1;
-      }
-      if (importOptions!.reference) {
-        (context as any)._referenceImportDepth = previousReferenceDepth + 1;
+      if (importOptions!.multiple || importOptions!.reference) {
+        // Scope push/pop is intentionally paired in this method's try/finally.
+        // This keeps branch semantics local to this import evaluation path.
+        context.pushImportScope({
+          multiple: importOptions!.multiple === true,
+          reference: importOptions!.reference === true
+        });
+        pushedImportScope = true;
       }
       try {
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
         let resolvedPath: string;
         if (isInlineImport) {
-          const resolved = await (context as any)._getPath(finalPath);
+          const resolved = await context.resolveImportPath(finalPath);
           resolvedPath = resolved.resolvedPath;
           const sourceGetter = context.plugins.find(plugin => plugin.getSource);
           if (!sourceGetter) {
@@ -308,10 +340,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             importOptions!.reference = true;
           }
         }
-        const inMultipleImportBranch = ((context as any)._multipleImportDepth ?? 0) > 0;
+        const inMultipleImportBranch = context.inMultipleImportScope;
         if (type === 'import' && importOptions!.once !== false && !importOptions!.multiple && !inMultipleImportBranch && evaldRules) {
           rules = evaldRules;
-          (importOptions as any)._dedupe = true;
+          importOptions!._dedupe = true;
         }
 
         if (withValues) {
@@ -438,28 +470,54 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the import type is `import`
       */
         if (withValues || !evaldRules || type === 'import') {
-          let preserveOriginalNodes = context.preserveOriginalNodes;
+          const preserveOriginalNodes = context.preserveOriginalNodes;
           context.preserveOriginalNodes = true;
+          let pushedImplicitReferenceEvalScope = false;
+          const isImplicitReferenceModeForEval = (
+            type === 'import'
+            && importOptions!.reference !== true
+            && importOptions!._dedupe === true
+            && !importOptions!.multiple
+          );
+          if (isImplicitReferenceModeForEval) {
+            // Dedupe re-imports behave like an implicit reference traversal:
+            // evaluate for symbol availability, but avoid outward extend side effects.
+            context.pushImportScope({ reference: true });
+            pushedImplicitReferenceEvalScope = true;
+          }
 
           // For protected imports (mutable: false), push the rules to extend root stack
           // so rulesets register in the import's registry, not the parent's
           const isImportProtected = type === 'import' && importOptions!.mutable === false;
-          if (isImportProtected) {
+          const shouldUseLocalExtendRoot = isImportProtected || isImplicitReferenceModeForEval;
+          if (isImplicitReferenceModeForEval) {
+            // Link local in-eval root so external extends can still target deduped imports.
+            context.extendRoots.registerRoot(rules, parentExtendRoot, {
+              isProtected: isImportProtected,
+              namespace: node.options.namespace
+            });
+          }
+          if (shouldUseLocalExtendRoot) {
             context.extendRoots.pushExtendRoot(rules);
           }
 
-          // Call preEval first to get the cloned Rules (if cloning occurs)
-          // sourceNode is already set above, so the cloned Rules will have it
-          rules = await rules.preEval(context);
-          if (type === 'import') {
-          /** Needed at evaluation time for older import type */
-            node.adopt(rules);
-          }
-          rules = await rules.eval(context);
-          context.preserveOriginalNodes = preserveOriginalNodes;
-
-          if (isImportProtected) {
-            context.extendRoots.popExtendRoot();
+          try {
+            // Call preEval first to get the cloned Rules (if cloning occurs)
+            // sourceNode is already set above, so the cloned Rules will have it
+            rules = await rules.preEval(context);
+            if (type === 'import') {
+            /** Needed at evaluation time for older import type */
+              node.adopt(rules);
+            }
+            rules = await rules.eval(context);
+          } finally {
+            context.preserveOriginalNodes = preserveOriginalNodes;
+            if (pushedImplicitReferenceEvalScope) {
+              context.popImportScope();
+            }
+            if (shouldUseLocalExtendRoot) {
+              context.extendRoots.popExtendRoot();
+            }
           }
 
           // Cache compose modules (and configured modules) after first evaluation.
@@ -488,7 +546,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.extendRoots.popExtendRoot();
         }
 
-        const finalRules = node.getFinalRules(rules);
+        let finalRules = node.getFinalRules(rules);
+        if (importOptions!.postlude && !isInlineImport) {
+          finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
+        }
 
         // For import type, register the final Rules as a child root of the parent
         // so extends from the parent can find rulesets in the imported Rules
@@ -521,8 +582,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         return finalRules;
       } finally {
         context.treeContext = previousTreeContext;
-        (context as any)._multipleImportDepth = previousMultipleDepth;
-        (context as any)._referenceImportDepth = previousReferenceDepth;
+        if (pushedImportScope) {
+          context.popImportScope();
+        }
         importOptions!.reference = previousExplicitReference;
       }
     };
@@ -578,6 +640,46 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     return Rules.create([wrapped]);
+  }
+
+  /**
+   * Applies CSS import postlude wrappers around evaluated stylesheet rules.
+   * Used for Less-style imports with media/layer/supports postludes.
+   */
+  private wrapEvaluatedRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
+    if (!postlude) {
+      return rules;
+    }
+    const postludeNodes = isNode(postlude, ['Sequence', 'List']) ? postlude.value : [postlude];
+    let wrappedRules: Rules = rules;
+    for (let i = postludeNodes.length - 1; i >= 0; i--) {
+      const current = postludeNodes[i]!;
+      if (isNode(current, 'Call')) {
+        const callName = String(current.value.name).toLowerCase();
+        if (callName === 'media' || callName === 'supports' || callName === 'layer') {
+          const args = current.value.args?.value ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.value.args;
+          if (prelude) {
+            const wrappedAtRule = new AtRule({
+              name: new Any(`@${callName}`, { role: 'atkeyword' }),
+              prelude,
+              rules: wrappedRules
+            });
+            wrappedRules = Rules.create([wrappedAtRule]);
+            continue;
+          }
+        }
+      }
+
+      const mediaAtRule = new AtRule({
+        name: new Any('@media', { role: 'atkeyword' }),
+        prelude: current,
+        rules: wrappedRules
+      });
+      wrappedRules = Rules.create([mediaAtRule]);
+    }
+
+    return wrappedRules;
   }
 }
 

@@ -1610,6 +1610,9 @@ export function importAtRule(this: P, T: TokenMap) {
     if (/\.css([?#].*)?$/.test(lower)) {
       return true;
     }
+    if (/\.less([?#].*)?$/.test(lower)) {
+      return false;
+    }
     // Remote imports default to CSS.
     if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//')) {
       return true;
@@ -1667,14 +1670,15 @@ export function importAtRule(this: P, T: TokenMap) {
       extraNodes = $.SUBRULE($.importPostlude) as Node[];
     });
     if (!RECORDING_PHASE && extraNodes && extraNodes.length) {
-      if (isAtRule || !options!.includes('inline')) {
+      if (isAtRule) {
         isAtRule = true;
         for (const n of extraNodes) {
           preludeNodes!.push(n);
         }
       } else {
-        // Inline imports with media/query postludes should evaluate the target and then wrap output.
-        // Keep this data on import options so StyleImport.evalNode can apply the wrapper.
+        // Less-style imports with media/query/layer postludes should evaluate
+        // the target and then wrap output (for both inline and non-inline forms).
+        // Keep this on import options so StyleImport.evalNode can apply wrappers.
         const postludeLoc = $.getLocationFromNodes(extraNodes);
         postludeNode = new Sequence(extraNodes, undefined, postludeLoc, this.context);
       }

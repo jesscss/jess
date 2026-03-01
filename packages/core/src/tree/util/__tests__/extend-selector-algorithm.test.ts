@@ -108,6 +108,68 @@ describe('Extend Selector Tests', () => {
   });
 
   describe('Partial match extend examples', () => {
+    it('characterization: self partial extend is deduplicated at utility level', () => {
+      // Utility-level extend deduplicates identical branches. If duplicates show up in final output,
+      // they are introduced later in the eval/serialization pipeline, not by extendSelector itself.
+      const selector = compound([el('.target'), el('.class')]);
+      const result = extendSelector(selector, el('.class'), el('.class'), true);
+      expect(result.valueOf()).toBe('.target.class');
+    });
+
+    it('characterization: extending .z within ".z .c" wraps matched segment in :is()', () => {
+      // This is the pure-extend form of the import-reference divergence: .visible:extend(.z all)
+      // can produce :is(.z,.visible) .c for selector `.z .c`.
+      const selector = sel([el('.z'), co(' '), el('.c')]);
+      const result = extendSelector(selector, el('.z'), el('.visible'), true);
+      expect(result.valueOf()).toBe(':is(.z,.visible) .c');
+    });
+
+    it('characterization: extending .z within ".z:hover" wraps the class segment in :is()', () => {
+      const selector = compound([el('.z'), pseudo({ name: ':hover' })]);
+      const result = extendSelector(selector, el('.z'), el('.visible'), true);
+      expect(result.valueOf()).toBe(':is(.z,.visible):hover');
+    });
+
+    it('characterization: extending both sides of ".z + .z" produces paired :is() wrappers', () => {
+      const selector = sel([el('.z'), co('+'), el('.z')]);
+      const result = extendSelector(selector, el('.z'), el('.visible'), true);
+      expect(result.valueOf()).toBe(':is(.z,.visible)+:is(.z,.visible)');
+    });
+
+    it('characterization: extending ".z + .z .sub" keeps .sub outside wrapped pair', () => {
+      const selector = sel([el('.z'), co('+'), el('.z'), co(' '), el('.sub')]);
+      const result = extendSelector(selector, el('.z'), el('.visible'), true);
+      expect(result.valueOf()).toBe(':is(.z,.visible)+:is(.z,.visible) .sub');
+    });
+
+    it('characterization: self-extend on complex compound duplicates class in :is() wrapper', () => {
+      // This mirrors import-reference.less self-extend shape for investigation:
+      // `.class:extend(.class all)` on authored selectors with `.class` already present.
+      const selector = compound([
+        el('input[type="text"]'),
+        el('.class'),
+        el('#id'),
+        el('[attr=i32]'),
+        pseudo({ name: ':not', arg: el('.one') as Selector })
+      ]);
+      const result = extendSelector(selector, el('.class'), el('.class'), true);
+      expect(result.valueOf()).toBe('input[type="text"].class#id[attr=i32]:not(.one)');
+    });
+
+    it('characterization: self-extend duplicates each class occurrence in multi-class compounds', () => {
+      const selector = compound([
+        el('div'),
+        el('#id'),
+        el('.class'),
+        el('[a=one]'),
+        el('[b=two]'),
+        el('.class'),
+        pseudo({ name: ':not', arg: el('.one') as Selector })
+      ]);
+      const result = extendSelector(selector, el('.class'), el('.class'), true);
+      expect(result.valueOf()).toBe('div#id.class[a=one][b=two].class:not(.one)');
+    });
+
     it('should extend compound selector with simple partial target - example 5', () => {
       // Selector: .a > .b.c, Target: .b (partial), Extend with: .d
       // Result: .a > :is(.b, .d).c

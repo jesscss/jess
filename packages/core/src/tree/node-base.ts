@@ -126,6 +126,8 @@ export const F_AMPERSAND = 0b10000;
 export const F_IMPLICIT_AMPERSAND = 0b100000;
 /** Selector item produced by extend and eligible for reference-mode rendering. */
 export const F_EXTENDED = 0b1000000;
+/** Selector item that matches an extend target and should be suppressed in reference-mode output. */
+export const F_EXTEND_TARGET = 0b10000000;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -856,6 +858,9 @@ export abstract class Node<
     }
     if (node.hasFlag(F_EXTENDED)) {
       this.addFlag(F_EXTENDED);
+    }
+    if (node.hasFlag(F_EXTEND_TARGET)) {
+      this.addFlag(F_EXTEND_TARGET);
     }
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre ||= node.pre;

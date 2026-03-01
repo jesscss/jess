@@ -10,7 +10,11 @@ import {
   any,
   decl,
   spaced,
+  co,
+  amp,
+  pseudo,
   type Rules,
+  type Selector,
   Node
 } from '../index.js';
 import { Context } from '../../context.js';
@@ -304,6 +308,209 @@ describe('Style import extend behavior', () => {
   });
 
   describe('reference import extend behavior', () => {
+    const createReferencedZTree = () => rules([
+      ruleset({
+        selector: sellist([sel([el('.z')])]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([any('red')]) }),
+          ruleset({
+            selector: sellist([sel([el('.c')])]),
+            rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+          })
+        ])
+      }),
+      ruleset({
+        selector: sellist([sel([el('.only-with-visible')]), sel([el('.z')])]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([any('green')]) }),
+          ruleset({
+            selector: sellist([sel([amp(), pseudo({ name: ':hover' })])]),
+            rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+          }),
+          ruleset({
+            selector: sellist([sel([amp(), co('+'), amp()])]),
+            rules: rules([
+              decl({ name: 'color', value: spaced([any('green')]) }),
+              ruleset({
+                selector: sellist([sel([el('.sub')])]),
+                rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const createReferenceExtendNode = () => rules([
+      style({
+        path: quoted(any('referenced-import-reference-shape.jess'))
+      }, {
+        type: 'import',
+        importOptions: { reference: true }
+      }),
+      ruleset({
+        selector: sellist([sel([el('.visible')])]),
+        rules: rules([
+          extend({
+            target: el('.z'),
+            flag: 'all' as any
+          })
+        ])
+      })
+    ]);
+
+    const createNonReferenceExtendNode = () => rules([
+      style({
+        path: quoted(any('referenced-import-reference-shape.jess'))
+      }, {
+        type: 'import'
+      }),
+      ruleset({
+        selector: sellist([sel([el('.visible')])]),
+        rules: rules([
+          extend({
+            target: el('.z'),
+            flag: 'all' as any
+          })
+        ])
+      })
+    ]);
+
+    const createSelfClassTree = () => rules([
+      ruleset({
+        selector: sellist([sel([el('.z')])]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([any('red')]) }),
+          ruleset({
+            selector: sellist([sel([el('.c')])]),
+            rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+          })
+        ])
+      }),
+      ruleset({
+        selector: sellist([sel([el('input[type="text"].class#id[attr=i32]:not(.one)')])]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([any('inherit')]) })
+        ])
+      }),
+      ruleset({
+        selector: sellist([sel([el('div#id.class[a=one][b=two].class:not(.one)')])]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([any('inherit')]) })
+        ])
+      })
+    ]);
+
+    const createReferenceSelfClassExtendNode = () => rules([
+      style({
+        path: quoted(any('referenced-import-reference-self-class.jess'))
+      }, {
+        type: 'import',
+        importOptions: { reference: true }
+      }),
+      ruleset({
+        selector: sellist([sel([el('.visible')])]),
+        rules: rules([
+          extend({
+            target: el('.z'),
+            flag: 'all' as any
+          })
+        ])
+      }),
+      ruleset({
+        selector: sellist([sel([el('.class')])]),
+        rules: rules([
+          extend({
+            target: el('.class'),
+            flag: 'all' as any
+          })
+        ])
+      })
+    ]);
+
+    const createSelfExtendDuplicateTree = () => rules([
+      ruleset({
+        selector: sellist([sel([
+          el('input[type="text"]'),
+          el('.class'),
+          el('#id'),
+          el('[attr=i32]'),
+          pseudo({ name: ':not', arg: el('.one') as Selector })
+        ])]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([any('inherit')]) })
+        ])
+      })
+    ]);
+
+    const createReferenceSelfExtendDuplicateNode = () => rules([
+      style({
+        path: quoted(any('referenced-import-self-extend-duplicate.jess'))
+      }, {
+        type: 'import',
+        importOptions: { reference: true }
+      }),
+      ruleset({
+        selector: sellist([sel([el('.class')])]),
+        rules: rules([
+          extend({
+            target: el('.class'),
+            flag: 'all' as any
+          })
+        ])
+      })
+    ]);
+
+    const createNonReferenceSelfExtendDuplicateNode = () => rules([
+      style({
+        path: quoted(any('referenced-import-self-extend-duplicate.jess'))
+      }, {
+        type: 'import'
+      }),
+      ruleset({
+        selector: sellist([sel([el('.class')])]),
+        rules: rules([
+          extend({
+            target: el('.class'),
+            flag: 'all' as any
+          })
+        ])
+      })
+    ]);
+
+    const createMultiReferenceImportsNode = () => rules([
+      style({
+        path: quoted(any('referenced-import-self-extend-duplicate.jess'))
+      }, {
+        type: 'import',
+        importOptions: { reference: true }
+      }),
+      style({
+        path: quoted(any('referenced-import-reference-shape.jess'))
+      }, {
+        type: 'import',
+        importOptions: { reference: true }
+      }),
+      ruleset({
+        selector: sellist([sel([el('.visible')])]),
+        rules: rules([
+          extend({
+            target: el('.z'),
+            flag: 'all' as any
+          })
+        ])
+      }),
+      ruleset({
+        selector: sellist([sel([el('.class')])]),
+        rules: rules([
+          extend({
+            target: el('.class'),
+            flag: 'all' as any
+          })
+        ])
+      })
+    ]);
+
     it('reference import can be extended (optional visibility)', async () => {
       const referencedPath = resolve(process.cwd(), 'referenced.jess');
       context.sourceTrees.set(referencedPath, rules([
@@ -386,6 +593,323 @@ describe('Style import extend behavior', () => {
       expect(css).toContain('.child {');
       expect(css).toContain('.desc {');
       expect(css).toContain('color: green;');
+    });
+
+    it('implicit reference mode (_dedupe) does not leak internal extends outward', async () => {
+      const referencedPath = resolve(process.cwd(), 'referenced-implicit-ref-no-leak.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.from-ref')])]),
+          rules: rules([
+            extend({
+              target: el('.outside')
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('referenced-implicit-ref-no-leak.jess'))
+        }, {
+          type: 'import',
+          importOptions: { _dedupe: true } as any
+        }),
+        ruleset({
+          selector: sellist([sel([el('.outside')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) })
+          ])
+        })
+      ]);
+
+      const css = (await node.eval(context)).toString();
+      expect(css).toBeString(`
+        .outside {
+          color: blue;
+        }
+      `);
+    });
+
+    it('implicit reference mode (_dedupe) remains externally extendable', async () => {
+      const referencedPath = resolve(process.cwd(), 'referenced-implicit-ref-extendable.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('referenced-implicit-ref-extendable.jess'))
+        }, {
+          type: 'import',
+          importOptions: { _dedupe: true } as any
+        }),
+        ruleset({
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
+            extend({
+              target: el('.base')
+            })
+          ])
+        })
+      ]);
+
+      const css = (await node.eval(context)).toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+          color: red;
+        }
+        .child {
+          color: blue;
+        }
+      `);
+    });
+
+    it('characterization: reference extend shape with collapseNesting false', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = false;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      localContext.sourceTrees.set(referencedPath, createReferencedZTree());
+
+      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      expect(css).toContain('.z,');
+      expect(css).toContain('.visible {');
+      expect(css).toContain('.c {');
+      expect(css).toContain('&:hover {');
+      expect(css).toContain('& + & {');
+      expect(css).toContain('& :is(.sub) {');
+    });
+
+    it('characterization: reference extend shape with collapseNesting true', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      localContext.sourceTrees.set(referencedPath, createReferencedZTree());
+
+      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      expect(css).toContain('.z .c {');
+      expect(css).toContain(':is(.only-with-visible, .z):hover {');
+      expect(css).toContain(':is(.only-with-visible, .z) + :is(.only-with-visible, .z) {');
+      expect(css).toContain(':is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {');
+      expect(css).toContain('.visible {');
+    });
+
+    it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-self-class.jess');
+      localContext.sourceTrees.set(referencedPath, createSelfClassTree());
+
+      const css = (await createReferenceSelfClassExtendNode().eval(localContext)).toString({ context: localContext });
+      // In this minimal setup, .visible:extend(.z all) activates .z-related output,
+      // but .class:extend(.class all) does not on its own activate class-only selectors.
+      expect(css).toContain('.z,');
+      expect(css).toContain('.visible {');
+      expect(css).toContain('.z .c {');
+      expect(css).not.toContain('input[type="text"]');
+      expect(css).not.toContain('div#id.class');
+    });
+
+    describe('investigation matrix: import reference vs non-reference by collapse mode', () => {
+      const renderMatrixCase = async (reference: boolean, collapseNesting: boolean): Promise<string> => {
+        const localContext = createTestContext();
+        localContext.opts.collapseNesting = collapseNesting;
+        const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+        localContext.sourceTrees.set(referencedPath, createReferencedZTree());
+        const node = reference ? createReferenceExtendNode() : createNonReferenceExtendNode();
+        return (await node.eval(localContext)).toString({ context: localContext });
+      };
+
+      it('snapshot: non-reference import with collapseNesting=false', async () => {
+        const css = await renderMatrixCase(false, false);
+        expect(css).toMatchInlineSnapshot(`
+          ".z,
+          .visible {
+            color: red;
+            .c {
+              color: green;
+            }
+          }
+          .only-with-visible,
+          .z,
+          .visible {
+            color: green;
+            &:hover {
+              color: green;
+            }
+            & + & {
+              color: green;
+              & :is(.sub) {
+                color: green;
+              }
+            }
+          }
+          "
+        `);
+      });
+
+      it('snapshot: non-reference import with collapseNesting=true', async () => {
+        const css = await renderMatrixCase(false, true);
+        expect(css).toMatchInlineSnapshot(`
+          ".z,
+          .visible {
+            color: red;
+          }
+          .z .c {
+            color: green;
+          }
+          .only-with-visible,
+          .z,
+          .visible {
+            color: green;
+          }
+          :is(.only-with-visible, .z):hover {
+            color: green;
+          }
+          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+            color: green;
+          }
+          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+            color: green;
+          }
+          "
+        `);
+      });
+
+      it('snapshot: reference import with collapseNesting=false', async () => {
+        const css = await renderMatrixCase(true, false);
+        expect(css).toMatchInlineSnapshot(`
+          ".z,
+          .visible {
+            color: red;
+            .c {
+              color: green;
+            }
+          }
+          .only-with-visible,
+          .z,
+          .visible {
+            color: green;
+            &:hover {
+              color: green;
+            }
+            & + & {
+              color: green;
+              & :is(.sub) {
+                color: green;
+              }
+            }
+          }
+          "
+        `);
+      });
+
+      it('snapshot: reference import with collapseNesting=true', async () => {
+        const css = await renderMatrixCase(true, true);
+        expect(css).toMatchInlineSnapshot(`
+          ".z,
+          .visible {
+            color: red;
+          }
+          .z .c {
+            color: green;
+          }
+          .only-with-visible,
+          .z,
+          .visible {
+            color: green;
+          }
+          :is(.only-with-visible, .z):hover {
+            color: green;
+          }
+          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+            color: green;
+          }
+          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+            color: green;
+          }
+          "
+        `);
+      });
+    });
+
+    describe('investigation matrix: self-extend duplication reference vs non-reference', () => {
+      const renderSelfExtendDuplicateCase = async (reference: boolean): Promise<string> => {
+        const localContext = createTestContext();
+        localContext.opts.collapseNesting = true;
+        const referencedPath = resolve(process.cwd(), 'referenced-import-self-extend-duplicate.jess');
+        localContext.sourceTrees.set(referencedPath, createSelfExtendDuplicateTree());
+        const node = reference ? createReferenceSelfExtendDuplicateNode() : createNonReferenceSelfExtendDuplicateNode();
+        return (await node.eval(localContext)).toString({ context: localContext });
+      };
+
+      it('snapshot: non-reference self-extend duplicate selector shape', async () => {
+        const css = await renderSelfExtendDuplicateCase(false);
+        expect(css).toMatchInlineSnapshot(`
+          "input[type="text"].class#id[attr=i32]:not(.one) {
+            color: inherit;
+          }
+          "
+        `);
+      });
+
+      it('snapshot: reference self-extend duplicate selector shape', async () => {
+        const css = await renderSelfExtendDuplicateCase(true);
+        expect(css).toMatchInlineSnapshot(`
+          "input[type="text"].class#id[attr=i32]:not(.one) {
+            color: inherit;
+          }
+          "
+        `);
+      });
+
+      it('snapshot: two reference imports with class self-extend and z-all extend', async () => {
+        const localContext = createTestContext();
+        localContext.opts.collapseNesting = true;
+        localContext.sourceTrees.set(
+          resolve(process.cwd(), 'referenced-import-self-extend-duplicate.jess'),
+          createSelfExtendDuplicateTree()
+        );
+        localContext.sourceTrees.set(
+          resolve(process.cwd(), 'referenced-import-reference-shape.jess'),
+          createReferencedZTree()
+        );
+        const css = (await createMultiReferenceImportsNode().eval(localContext)).toString({ context: localContext });
+        expect(css).toMatchInlineSnapshot(`
+          "input[type="text"].class#id[attr=i32]:not(.one) {
+            color: inherit;
+          }
+          .z,
+          .visible {
+            color: red;
+          }
+          .z .c {
+            color: green;
+          }
+          .only-with-visible,
+          .z,
+          .visible {
+            color: green;
+          }
+          :is(.only-with-visible, .z):hover {
+            color: green;
+          }
+          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+            color: green;
+          }
+          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+            color: green;
+          }
+          "
+        `);
+      });
     });
   });
 });

@@ -213,11 +213,12 @@ export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
 }
 
 export function processExtends(context: Context): void {
-  const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot]) => ({
+  const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, , , fromReferenceScope]) => ({
     target,
     extendWith: selectorWithExtend,
     partial,
-    extendRoot
+    extendRoot,
+    fromReferenceScope: fromReferenceScope === true
   }));
 
   if (!instructions.length) {
@@ -232,6 +233,10 @@ export function processExtends(context: Context): void {
       if (!instruction.extendRoot) {
         return false;
       }
+      if (instruction.fromReferenceScope === true) {
+        // Less parity: extends declared while evaluating a reference import are non-side-effecting.
+        return false;
+      }
       if (instruction.extendRoot === rootRules) {
         return true;
       }
@@ -244,10 +249,7 @@ export function processExtends(context: Context): void {
     if (!visibleExtends.length) {
       continue;
     }
-    const activatingExtends = visibleExtends.filter((instruction) => {
-      const extendRootOptions = (instruction.extendRoot?.options as any) ?? {};
-      return extendRootOptions.referenceMode !== true;
-    });
+    const activatingExtends = visibleExtends;
     for (const ruleset of rulesetSet) {
       const selector = ruleset.value.selector as Selector | undefined;
       if (!selector || isNode(selector, 'Nil')) {
@@ -255,7 +257,10 @@ export function processExtends(context: Context): void {
         continue;
       }
       const isActivatedByVisibleExtend = activatingExtends.some(instruction =>
-        !instruction.partial
+        (
+          !instruction.partial
+          || instruction.target.valueOf() === instruction.extendWith.valueOf()
+        )
         && findExtendableLocations(selector, instruction.target).hasMatches
       );
       if (isActivatedByVisibleExtend) {
@@ -529,6 +534,7 @@ export function processExtends(context: Context): void {
           && hasResolvedNestedSelector
           && !hasOnlyPartialExtends
           && !ownChangedByRelevant
+          && (rootRules.options as any)?.referenceMode !== true
           && parentRuleset?.hoistToRoot
           && !newSelector.hoistToRoot
         );

@@ -549,6 +549,40 @@ test('@import (multiple) "file.less" with multiple option', () => {
     `);
 });
 
+test('@import "file" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import "file" screen and (max-width: 600px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+  expect(out).toContain('postlude');
+});
+
+test('@import (less, multiple) "file.css" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import (less, multiple) "file.css" screen and (max-width: 600px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+  expect(out).toContain('postlude');
+});
+
+test('@import "import/import-test-e" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import "import/import-test-e" screen and (max-width: 600px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+});
+
+test('@import (less, multiple) "import/import-test-d.css" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import (less, multiple) "import/import-test-d.css" screen and (max-width: 601px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+});
+
 /** If it has a colon and a space after it, it's a variable declaration */
 test('parse known at-rule as variable declaration', () => {
   const result = parser.parse('@property: foo;');
@@ -1506,7 +1540,7 @@ describe('extend cases', () => {
         }
       }
     }
-    
+
     // Check the full S-expression structure
     // The parser sets extend.selector to undefined for extends inside rulesets
     const fullSExpr = serializeTypes(tree);
@@ -1516,7 +1550,7 @@ describe('extend cases', () => {
     if (extendMatch) {
       const extendStr = extendMatch[0];
       // Should not contain "selector:" followed by a BasicSelector
-      expect(extendStr).not.toContain("selector:\n                (BasicSelector '.c')");
+      expect(extendStr).not.toContain('selector:\n                (BasicSelector \'.c\')');
     }
   });
 
@@ -1538,13 +1572,13 @@ describe('extend cases', () => {
     expect(extendCount).toBe(2);
     // Extends should be inside the ruleset with selector: undefined
     expect(sExpr).toContainString('(SelectorList');
-    expect(sExpr).toContainString("(BasicSelector '.ext3')");
-    expect(sExpr).toContainString("(BasicSelector '.ext4')");
+    expect(sExpr).toContainString('(BasicSelector \'.ext3\')');
+    expect(sExpr).toContainString('(BasicSelector \'.ext4\')');
     // Targets should be present
     expect(sExpr).toContainString('(Extend');
     expect(sExpr).toContainString('target:');
-    expect(sExpr).toContainString("(BasicSelector '.foo')");
-    expect(sExpr).toContainString("(BasicSelector '.bar')");
+    expect(sExpr).toContainString('(BasicSelector \'.foo\')');
+    expect(sExpr).toContainString('(BasicSelector \'.bar\')');
   });
 
   test('extend with selector list target and all flag', () => {

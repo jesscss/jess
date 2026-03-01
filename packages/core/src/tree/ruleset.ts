@@ -302,10 +302,22 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return '';
       }
     }
+    const prevReferenceFilterTargets = options.referenceFilterTargets === true;
+    const disableTargetFilteringForTopLevelList = (
+      this.hasFlag(F_EXTENDED)
+      && !(renderSelector instanceof Nil)
+      && isNode(renderSelector as Selector, 'SelectorList')
+    );
+    options.referenceFilterTargets = (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+      && !disableTargetFilteringForTopLevelList
+    );
     Ruleset.ensureSelectorVisible(renderSelector);
     const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
     let selOut = w.capture(() => renderSelector.toString(options));
+    options.referenceFilterTargets = prevReferenceFilterTargets;
     /** Normalize single spacing */
     out += selOut.replace(/[ \t]+/g, ' ');
     return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';

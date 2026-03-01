@@ -131,13 +131,35 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const { prelude, rules } = node.value;
     // Preserve @import prelude as-authored (including comments). Evaluation here can
     // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
-    if (node.value.name.value === '@import') {
+    const atRuleName = String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim();
+    if (atRuleName === '@import') {
       if (prelude) {
         node.value.prelude = prelude;
       }
-      // Reference imports are traversed for extend semantics but should not emit top-level CSS imports.
-      if ((context as any)._referenceImportDepth <= 0) {
-        (context.topImports ??= []).push(node);
+      // Reference branches are traversed for symbol/extend resolution, but plain
+      // CSS @import hoisting must remain a visible-output concern only.
+      if (!context.inReferenceImportScope) {
+        const topImports = (context.topImports ??= []);
+        const nodeLoc = node.location?.join(':') ?? '';
+        const nodeSig = `${node.value.name.valueOf?.() ?? node.value.name}:${node.value.prelude?.valueOf?.() ?? ''}`;
+        const alreadyQueued = topImports.some((queuedNode) => {
+          if (!isNode(queuedNode, 'AtRule')) {
+            return false;
+          }
+          const queued = queuedNode as AtRule;
+          return (
+            queued === node
+            || queued.sourceNode === node.sourceNode
+            || queued.sourceNode === node
+            || (
+              (queued.location?.join(':') ?? '') === nodeLoc
+              && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
+            )
+          );
+        });
+        if (!alreadyQueued) {
+          topImports.push(node);
+        }
       }
       return new Nil();
     }
