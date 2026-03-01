@@ -155,4 +155,44 @@ describe('Config Merging', () => {
     // Verify nested merging works - property1 should be 'render-value-1', property2 should be 'file-value-2'
     // This demonstrates that nested objects are merged, not replaced
   });
+
+  it('normalizes compile.javascript=true and resolves jsReadRoot from entry lookup', () => {
+    const nestedDir = path.join(tempDir, 'src', 'nested');
+    fs.mkdirSync(nestedDir, { recursive: true });
+    const testFile = path.join(nestedDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    const compiler = new Compiler({
+      compile: {
+        javascript: true
+      }
+    });
+    const context = compiler.createContext(testFile);
+    const jsOpts = (context.opts as any).javascript;
+
+    expect(jsOpts).toBeTruthy();
+    expect(jsOpts).toEqual({
+      jsReadRoot: nestedDir
+    });
+  });
+
+  it('uses explicit javascript.jsReadRoot when provided', () => {
+    const sandboxDir = path.join(tempDir, 'sandbox');
+    fs.mkdirSync(sandboxDir, { recursive: true });
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    const compiler = new Compiler({
+      compile: {
+        javascript: {
+          jsReadRoot: sandboxDir
+        }
+      }
+    });
+    const context = compiler.createContext(testFile);
+    const jsOpts = (context.opts as any).javascript;
+
+    expect(jsOpts).toBeTruthy();
+    expect(jsOpts.jsReadRoot).toBe(path.resolve(sandboxDir));
+  });
 });

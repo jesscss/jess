@@ -83,6 +83,47 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Import reference render model (2026-02-27):**
+
+- **Area:** core import/reference serialization + less-parser import URL classification.
+- **Last passing baseline:** `import-style.test.ts` had `import-once` and reference-extend regressions after initial reference-mode gating draft.
+- **Last thing we tried:** removed parent-derived reference-mode inference from `serializeRulesContainer` (use traversal options only), added ruleset-level `F_EXTENDED` marking in `processExtends`, included ruleset flag in reference render eligibility, and expanded `import-style.test.ts` with a dedupe matrix (`once:false`, mixed reference/plain import order, compose `multiple:true`). Also restored remote `url(http...)` default CSS passthrough in less parser unless `(less)` is set.
+- **Result:** `pnpm --filter core test -- --run src/tree/__tests__/import-style.test.ts` passes; `reference import can be extended` passes again; `pnpm --filter jess test -- --run test/less/import-url.test.ts` passes. Remaining red in `extend-import-style.test.ts` are the pre-existing `extend/not-accessible` warning assertions (same failures on original branch).
+- **Next step:** decide whether to include warning-emission work (`extend/not-accessible` diagnostics) in this import branch or explicitly defer as known baseline debt.
+
+**Import reference extend parity (2026-02-27, later):**
+
+- **Area:** `extend-roots` visibility for explicit/implicit reference imports.
+- **Last thing we tried:** verified in upstream `less.js` that extends declared inside `@import (reference)` do not leak to parent selectors; added core tests for implicit reference mode (`importOptions._dedupe`) in `extend-import-style.test.ts`:
+  1) internal extends do not leak outward,
+  2) external extends can still target deduped reference trees.
+- **Implementation in progress:** in Jess core:
+  - captured `fromReferenceScope` on extend instructions (`context.extends`) using runtime reference-depth/context;
+  - constrained `processExtends` visibility for `fromReferenceScope` instructions to same/descendant roots only;
+  - for implicit reference eval (`_dedupe`), temporarily enter reference depth and use a local extend root linked to parent during eval.
+- **Verification snapshot:**
+  - ✅ focused core tests `reference import|implicit reference mode` now pass.
+  - ✅ explicit reference tests remain green.
+  - ⚠️ `jess` Less fixtures `import-reference.less` + `import-reference-issues.less` still fail (over-rendering/selector-shape parity remains).
+- **Next step:** continue `extend-roots` parity work for fixture-level cases, especially mixed global + nested referenced imports and selector-item activation filtering.
+
+**Less inline JavaScript removal (2026-02-28):**
+
+- **Area:** less-parser + jess/plugin-js inline backtick JavaScript support.
+- **Decision:** inline backtick JavaScript is intentionally unsupported; backticks should produce parse errors. Keep module-script flows (`@plugin`, `@use`) through `@jesscss/plugin-js` + Deno.
+- **Last thing we tried:** removed inline-JS pathways end-to-end: parser now throws a friendly backtick error ("use `@use` ... docs coming soon"), `evalInline` RPC path removed from `plugin-js`, and `JsExpression` node/type/export/visitor hooks removed from `core`.
+- **Verification:** `pnpm --filter @jesscss/core build`; `pnpm --filter @jesscss/less-parser test -- test/values.test.ts`; `NODE_OPTIONS='--max-old-space-size=8192' pnpm --filter jess test -- test/security-script-runtime.test.ts`; `pnpm --filter @jesscss/plugin-js test -- test/plugin-js-security.test.ts` all pass.
+- **Next step:** draft Less 5.x docs plan with shared-content strategy between `packages/docs` (Docusaurus) and `less/less-docs` (Assemble/Grunt).
+
+**Import inline postlude model (2026-02-27, later):**
+
+- **Area:** less inline imports with postludes (`layer`/`supports`/media) and import option shape cleanup.
+- **Last thing we tried:** replaced `importOptions.mediaQuery` with `importOptions.postlude` and added a generic inline wrapper path in `StyleImport.evalNode` that maps call-style postlude nodes (`layer`, `supports`, `media`) to nested at-rules; non-call postludes still fall back to `@media <node>`.
+- **Parser alignment:** `less-parser` now stores `importPostlude` as `postlude` for inline imports; remote URL default CSS handling remains intact.
+- **Coverage added:** `packages/core/src/tree/__tests__/import-style.test.ts` now includes `import-inline: supports/layer postludes wrap inline source in order`.
+- **Verification:** `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/import-style.test.ts` and `pnpm --filter jess test -- --run test/less/import-url.test.ts` pass after rebuilding `less-parser` and `plugin-less`.
+- **Next step:** decide whether to add a parser-level fixture test for full inline-postlude parsing shape (`layer + supports + media`) in `less-parser` package, or keep the new behavior locked via core import-style coverage only.
+
 **Coverage campaign: `@jesscss/fns` (2026-02-27):**
 
 **List-args follow-up debug: core mixin/control (2026-02-27):**

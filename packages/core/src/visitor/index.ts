@@ -118,8 +118,6 @@ export interface Visitor {
   interpolatedExit?(n: tree.Interpolated, ctx?: VisitorContext): void;
   defaultGuard?(n: tree.DefaultGuard, ctx?: VisitorContext): VisitorReturn;
   defaultGuardExit?(n: tree.DefaultGuard, ctx?: VisitorContext): void;
-  jsExpression?(n: tree.JsExpression, ctx?: VisitorContext): VisitorReturn;
-  jsExpressionExit?(n: tree.JsExpression, ctx?: VisitorContext): void;
   rest?(n: tree.Rest, ctx?: VisitorContext): VisitorReturn;
   restExit?(n: tree.Rest, ctx?: VisitorContext): void;
 }

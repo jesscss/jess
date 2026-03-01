@@ -8,6 +8,25 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
  */
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
+export interface JavaScriptSandboxConfig {
+  /**
+   * Allow network access for script execution runtime.
+   * @default false
+   */
+  allowHttp?: boolean;
+  /**
+   * Optional host allowlist when `allowHttp` is enabled.
+   */
+  allowNetHosts?: string[];
+  /**
+   * Optional explicit filesystem root for script reads.
+   * If omitted, compiler resolves using entry/config roots.
+   */
+  jsReadRoot?: string;
+}
+
+export type CompileJavaScriptOption = true | JavaScriptSandboxConfig;
+
 /**
  * Less compiler options
  * Based on less.js default-options.js and bin/lessc
@@ -299,6 +318,7 @@ export interface StylesConfig {
     plugins?: Array<any | string>;
     searchPaths?: string[];
     enableJavaScript?: boolean;
+    javascript?: CompileJavaScriptOption;
     mathMode?: MathMode;
     unitMode?: UnitMode;
   };

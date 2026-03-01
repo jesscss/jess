@@ -1,6 +1,7 @@
 import * as path from 'path';
+import { createRequire } from 'node:module';
 import mergeWith from 'lodash-es/mergeWith.js';
-import { getConfig } from './config.js';
+import { getConfigWithMeta } from './config.js';
 import {
   Context,
   type PrintOptions,
@@ -11,7 +12,12 @@ import {
   logger,
   type Deprecation
 } from '@jesscss/core';
-import { getOptions, type StylesConfig } from 'styles-config';
+import {
+  getOptions,
+  type StylesConfig,
+  type JavaScriptSandboxConfig,
+  type CompileJavaScriptOption
+} from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { outputDiagnostics } from './diagnostics.js';
@@ -44,6 +50,90 @@ function arrayConcatCustomizer(objValue: any, srcValue: any): any {
   return undefined;
 }
 
+const require = createRequire(import.meta.url);
+
+const normalizeCompileJavaScript = (
+  javascript: CompileJavaScriptOption | undefined
+): JavaScriptSandboxConfig | undefined => {
+  if (javascript === true) {
+    return {};
+  }
+  if (!javascript || typeof javascript !== 'object') {
+    return undefined;
+  }
+  return javascript;
+};
+
+const resolveJsReadRoot = (
+  jsConfig: JavaScriptSandboxConfig | undefined,
+  filePath: string | undefined,
+  configFilePath: string | undefined
+): string => {
+  if (jsConfig?.jsReadRoot) {
+    return path.resolve(jsConfig.jsReadRoot);
+  }
+  const entryRoot = filePath ? path.resolve(path.dirname(filePath)) : undefined;
+  const configRoot = configFilePath ? path.resolve(path.dirname(configFilePath)) : undefined;
+  if (entryRoot && configRoot) {
+    if (entryRoot.startsWith(`${configRoot}${path.sep}`) || entryRoot === configRoot) {
+      return configRoot;
+    }
+    if (configRoot.startsWith(`${entryRoot}${path.sep}`) || configRoot === entryRoot) {
+      return entryRoot;
+    }
+    return configRoot.length < entryRoot.length ? configRoot : entryRoot;
+  }
+  return entryRoot ?? configRoot ?? process.cwd();
+};
+
+const maybeLoadJsPlugin = (
+  jsConfig: JavaScriptSandboxConfig
+): PluginInterface | undefined => {
+  try {
+    require.resolve('@jesscss/plugin-js/package.json');
+
+    let pluginPromise: Promise<PluginInterface> | undefined;
+    const getPlugin = async (): Promise<PluginInterface> => {
+      if (!pluginPromise) {
+        pluginPromise = import('@jesscss/plugin-js').then((mod: any) => {
+          const pluginFactory = (mod?.default ?? mod) as ((opts?: JavaScriptSandboxConfig) => PluginInterface);
+          return pluginFactory(jsConfig);
+        });
+      }
+      return pluginPromise;
+    };
+
+    const pluginProxy: PluginInterface & { prewarm?: () => Promise<void> } = {
+      name: 'js',
+      supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
+      prewarm: async () => {
+        const plugin = await getPlugin();
+        if (typeof (plugin as any).prewarm === 'function') {
+          await (plugin as any).prewarm();
+        }
+      },
+      import: async (absoluteFilePath: string) => {
+        const plugin = await getPlugin();
+        if (!plugin.import) {
+          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
+        }
+        return plugin.import(absoluteFilePath);
+      }
+    };
+    return pluginProxy;
+  } catch (err: any) {
+    // Only ignore module-not-found for optional dependency resolution.
+    if (
+      err?.code === 'MODULE_NOT_FOUND'
+      && typeof err?.message === 'string'
+      && err.message.includes('@jesscss/plugin-js')
+    ) {
+      return undefined;
+    }
+    throw err;
+  }
+};
+
 export class Compiler {
   constructor(
     public opts: ConfigOptions = {
@@ -58,7 +148,10 @@ export class Compiler {
    */
   createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
     // Merge order: file config -> compiler opts -> render options
-    const fileConfig = filePath ? getConfig(filePath) : {};
+    const { config: loadedFileConfig, configFilePath } = filePath
+      ? getConfigWithMeta(path.dirname(filePath))
+      : { config: {}, configFilePath: undefined };
+    const fileConfig = loadedFileConfig;
     const baseConfig: ConfigOptions = {
       compile: {},
       output: {},
@@ -72,6 +165,14 @@ export class Compiler {
       renderOptions || {},
       arrayConcatCustomizer
     );
+    const normalizedCompileJavaScript = normalizeCompileJavaScript(config.compile?.javascript);
+    const resolvedJsReadRoot = resolveJsReadRoot(normalizedCompileJavaScript, filePath, configFilePath);
+    const jsPluginConfig: JavaScriptSandboxConfig = {
+      ...(normalizedCompileJavaScript ?? {}),
+      jsReadRoot: normalizedCompileJavaScript?.jsReadRoot
+        ? path.resolve(normalizedCompileJavaScript.jsReadRoot)
+        : resolvedJsReadRoot
+    };
     // Extract plugins from compile.plugins
     const plugins = config.compile?.plugins;
     /** @todo Add CSS and Jess plugins */
@@ -113,12 +214,21 @@ export class Compiler {
         }
       }
     }
+    if (!pluginMap.has('js')) {
+      const jsPlugin = maybeLoadJsPlugin(jsPluginConfig);
+      if (jsPlugin) {
+        pluginMap.set(jsPlugin.name, jsPlugin);
+      }
+    }
     // Pass output options and compile options to Context
     // Use getOptions result which includes properly merged output options
     const contextOptions = {
       ...lessOptions,
       ...config.compile
     };
+    if (normalizedCompileJavaScript) {
+      (contextOptions as any).javascript = jsPluginConfig;
+    }
 
     // Create print options for CSS output
     const printOptions = {
@@ -143,7 +253,9 @@ export class Compiler {
       // - preEvalVisitor runs on the parsed tree (before any evaluation)
       // - postEvalVisitor runs on the evaluated tree (after eval)
       const applyPreEvalVisitors = (tree: any, currentFilePath: string) => {
-        if (!tree || !context.plugins?.length) return tree;
+        if (!tree || !context.plugins?.length) {
+          return tree;
+        }
         let current = tree;
         const processed = new Set<any>();
         // Two passes: match Less.js behavior where @plugin can add new visitors
@@ -166,13 +278,21 @@ export class Compiler {
               }
             }
             const pre = (plugin as any).preEvalVisitor;
-            if (!pre) continue;
+            if (!pre) {
+              continue;
+            }
             const visitors = Array.isArray(pre) ? pre : [pre];
             for (const v of visitors) {
-              if (!v || typeof v.visit !== 'function') continue;
-              if (pass === 1 && processed.has(v)) continue;
+              if (!v || typeof v.visit !== 'function') {
+                continue;
+              }
+              if (pass === 1 && processed.has(v)) {
+                continue;
+              }
               const result = current.accept ? current.accept(v) : current;
-              if (result) current = result;
+              if (result) {
+                current = result;
+              }
               processed.add(v);
             }
           }
@@ -181,16 +301,24 @@ export class Compiler {
       };
 
       const applyPostEvalVisitors = (tree: any) => {
-        if (!tree || !context.plugins?.length) return tree;
+        if (!tree || !context.plugins?.length) {
+          return tree;
+        }
         let current = tree;
         for (const plugin of context.plugins) {
           const post = (plugin as any).postEvalVisitor;
-          if (!post) continue;
+          if (!post) {
+            continue;
+          }
           const visitors = Array.isArray(post) ? post : [post];
           for (const v of visitors) {
-            if (!v || typeof v.visit !== 'function') continue;
+            if (!v || typeof v.visit !== 'function') {
+              continue;
+            }
             const result = current.accept ? current.accept(v) : current;
-            if (result) current = result;
+            if (result) {
+              current = result;
+            }
           }
         }
         return current;
@@ -204,7 +332,7 @@ export class Compiler {
       // Ensure pre-eval visitors also run on trees loaded during evaluation (imports).
       // This keeps @plugin processing consistent for imported Less files.
       const originalGetTree = context.getTree.bind(context);
-      (context as any).getTree = async (importPath: string, importOptions: any = {}) => {
+      context.getTree = async (importPath: string, importOptions: any = {}) => {
         const result = await originalGetTree(importPath, importOptions);
         const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
         const processedTree = applyPreEvalVisitors(result.node, resolvedPath);

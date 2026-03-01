@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { loadConfigSync, type StylesConfig } from 'styles-config';
+import { loadConfigSync, loadConfigSyncWithMeta, type StylesConfig } from 'styles-config';
 
 /**
  * Get configuration from styles.config.* or jess.config.* file, searching from the given directory
@@ -10,6 +10,15 @@ import { loadConfigSync, type StylesConfig } from 'styles-config';
  */
 export const getConfig = (searchFrom?: string): StylesConfig => {
   return loadConfigSync(searchFrom);
+};
+
+export interface ConfigWithMeta {
+  config: StylesConfig;
+  configFilePath?: string;
+}
+
+export const getConfigWithMeta = (searchFrom?: string): ConfigWithMeta => {
+  return loadConfigSyncWithMeta(searchFrom);
 };
 
 export interface OutputTestConfig {
@@ -56,7 +65,9 @@ export function getExpectedOutputFiles(
     const outputFile = file.replace('{name}', name);
 
     // Extract config options (everything except 'file')
-    const { file: _, ...configOptions } = outputConfig;
+    const configOptions = Object.fromEntries(
+      Object.entries(outputConfig).filter(([key]) => key !== 'file')
+    );
     return {
       file: path.join(dir, outputFile),
       config: { output: configOptions }

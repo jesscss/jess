@@ -24,14 +24,12 @@ const baseCompiler = new Compiler({
 
 // Files that should be tested in specialized test files
 const additionalSkips = [
-  'tests-unit/color-functions/colors.less', // Tested in colors.test.ts
-  'tests-unit/nesting/nesting.less', // Tested in nesting.test.ts
-  'tests-unit/variables/variable-advanced.less', // infinite loop
-  'tests-unit/detached-rulesets/detached-rulesets.less' // TODO: Declaration before initialization (module load order)
+  'tests-unit/javascript/javascript.less', // inline backtick JavaScript is intentionally unsupported
+  'tests-unit/variables/variable-advanced.less' // infinite loop
 ];
 
 // Run unit fixtures alphabetically up through this filename (inclusive).
-const runUnitThrough = 'tests-unit/ie-filters';
+const runUnitThrough = 'tests-unit/layer';
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories

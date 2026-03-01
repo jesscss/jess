@@ -14,7 +14,6 @@ import {
 import {
   Reference,
   DefaultGuard,
-  JsExpression,
   Interpolated,
   Any,
   Bool,
@@ -281,8 +280,13 @@ export class LessActionsParser extends CssActionsParser {
       return super.processValueToken(token, ctx);
     } else if (tokenType === TT['DefaultGuardFunc']) {
       return new DefaultGuard(token.image, undefined, this.getLocationInfo(token), this.context);
-    } else if (tokenType === TT['JavaScript']) {
-      return new JsExpression(token.image, undefined, this.getLocationInfo(token), this.context);
+    } else if (
+      tokenType.name === 'JavaScript'
+      || (TT['JavaScript'] && tokenMatcher(token, TT['JavaScript']))
+    ) {
+      throw new Error(
+        'Inline JavaScript using backticks is not supported. Use @use to import a JavaScript/TypeScript module instead. Script-module documentation is coming soon.'
+      );
     } else if (tokenType === TT['InterpolatedIdent']) {
       const result = getInterpolatedOrString(token.image, this.getLocationInfo(token), this.context);
       if (result instanceof Interpolated) {

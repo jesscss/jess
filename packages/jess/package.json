@@ -36,6 +36,9 @@
     "styles-config": "workspace:*",
     "yargs": "^17.7.1"
   },
+  "optionalDependencies": {
+    "@jesscss/plugin-js": "workspace:*"
+  },
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
     "prepublishOnly": "pnpm build && pnpm test:all",

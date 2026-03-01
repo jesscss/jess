@@ -640,8 +640,14 @@ export class Context {
    * @param importOptions
    */
   async getModule(importPath: string, importOptions: ImportOptions = {}) {
+    const isFnsImport = importPath === '@jesscss/fns'
+      || importPath.startsWith('@jesscss/fns/')
+      || importPath === '#less'
+      || importPath.startsWith('#less/')
+      || importPath === '#sass'
+      || importPath.startsWith('#sass/');
     const { enableJavaScript } = this.opts;
-    if (enableJavaScript === false) {
+    if (enableJavaScript === false && !isFnsImport) {
       throw new Error('JavaScript evaluation is disabled');
     }
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
@@ -665,6 +671,9 @@ export class Context {
     if (!plugin) {
       plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.import);
       if (!plugin) {
+        if (['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'].includes(ext)) {
+          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
+        }
         throw new Error(`File "${friendlyPath}" not supported`);
       }
     }

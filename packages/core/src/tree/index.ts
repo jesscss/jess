@@ -45,7 +45,6 @@ export * from './function.js';
 export * from './js-function.js';
 export * from './js-array.js';
 export * from './js-object.js';
-export * from './js-expr.js';
 export * from './nil.js';
 export * from './operation.js';
 export * from './paren.js';
