@@ -15,7 +15,7 @@ Sass has had much bigger syntax conflicts, mostly in the space of at-rules. Sass
 
 :::info
 
-Many in the CSS community wanted to use Sass's `@if` as a new conditional rule, but ultimately settled on using `@when`, a more Less-like conditional, to not "break Sass".
+Many in the CSS community wanted to use Sass's `@if` as a new conditional rule, but ultimately settled on `@when` to avoid breaking existing Sass code. That caution makes sense: Sass syntax has had to carry a lot of historical compatibility weight, and that's why that syntax is discouraged. Jess is designed with more future-CSS headroom, so new native features are less likely to collide with compiler syntax.
 
 :::
 
@@ -97,7 +97,10 @@ Composing without a namespace is discouraged, as it can be harder to reason abou
 
 ### `with` and `set`
 
-// TODO - rewrite -- we'll just use `with` like Sass (but call it `set`?). `set` is not necessary and is potentially confusing. If someone needs "re-use", they can use mixins.
+Jess currently supports both `set` and `with` when composing stylesheets:
+
+- `set` mutates the imported module in compilation scope (shared downstream for that resolved module path).
+- `with` applies overrides only for the current compose operation.
 
 Using `set` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works, but the `with` keyword works slightly differently in Jess, which we'll explain in a bit.)
 
@@ -206,20 +209,15 @@ Use this sparingly! It may be harder to reason about where variables and values 
 
 :::
 
-### Simulating Sass's `@forward`
+### `@-export` (forwarding)
 
-Sass has an at-rule called `@forward` which "forwards" a stylesheet's values (variables, functions, and mixins) to a parent file that is importing the current stylesheet.
+Sass has an at-rule called `@forward` which forwards a stylesheet API (variables, functions, and mixins) to downstream consumers.
 
-To simulate Sass's forward, you could write:
- - `@-compose (reference, export, protected) './stylesheet.jess';`
+In Jess, use:
 
-This would do the following:
- - `reference` - Import variables and mixins but do not render rulesets.
- - `export` - variables and mixins are forwarded to a downstream stylesheet
- - `protected` - Rules cannot be extended
+ - `@-export './stylesheet.jess';`
 
-However, that's super wordy. For convenience, these three flags can be set with:
- - `@-compose (forward) './stylesheet.jess';`
+This keeps forward intent explicit, avoids long option bundles, and reflects the current project direction.
 
 ## @-use
 

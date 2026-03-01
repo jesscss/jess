@@ -12,14 +12,25 @@ Jess is in early alpha, so features and syntax are likely to change!
 :::
 
 
-The simplest way to use the Jess compiler is like this:
+If you just want to compile a file and keep moving, use install-on-demand:
+
 ```bash
-pnpm install jess -g
-```
-```bash
-jess my-file.jess my-file.css
+npx --yes --package jess jess my-file.jess my-file.css
 ```
 
-### Coming up
+```bash
+pnpm --package=jess dlx jess my-file.jess my-file.css
+```
 
-There are Rollup and Webpack plugins in the works! [Join the Jess community](https://gitter.im/jesscss/community) and see if you can help out!
+For real project work, install locally:
+
+```bash
+pnpm add -D jess
+```
+
+### Bundlers
+
+- `rollup-plugin-jess` is available and compiles `.jess` files through the current Jess compiler.
+- Webpack-specific integration is still evolving.
+
+That split is intentional: stable core path first, then framework/bundler ergonomics on top.

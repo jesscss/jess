@@ -1,7 +1,7 @@
-import React from 'react';
-import AudienceGate from './AudienceGate';
+import MDXComponents from '@theme-original/MDXComponents';
+import AudienceGate from './AudienceGate.tsx';
 
 export default {
-  // Add custom components here
-  AudienceGate,
+  ...MDXComponents,
+  AudienceGate
 };

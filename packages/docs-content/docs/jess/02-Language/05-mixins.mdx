@@ -21,8 +21,6 @@ mixin-1() {
 
 Mixins are included ("mixed in") to other rules using the `>` operator.
 
-TODO: we were using the [CSS namespace separator](https://developer.mozilla.org/en-US/docs/Web/CSS/Namespace_separator), `|`.
-
 For example, if we have the following mixin:
 
 ```less
@@ -526,7 +524,7 @@ $ > media(screen, print): @($type) {
 
 ## Calling mixins from other languages
 
-If you have the Less, and Sass+ language plugins installed (which are installed by default), you can call mixins and import variables from those languages into your Jess stylesheet.
+Jess can call mixins from Less and Sass-compatible sources when those files are composed/imported into your Jess stylesheet.
 
 Let's say we had these two files:
 

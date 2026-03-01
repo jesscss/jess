@@ -30,10 +30,7 @@
 
 html,
 body {
-  background:
-    radial-gradient(ellipse at 8% -10%, rgb(145 162 255 / 14%) 0%, rgb(145 162 255 / 0%) 44%),
-    radial-gradient(ellipse at 88% -14%, rgb(111 132 255 / 10%) 0%, rgb(111 132 255 / 0%) 40%),
-    var(--ifm-background-color);
+  background: var(--ifm-background-color);
 }
 
 .navbar {
@@ -41,6 +38,47 @@ body {
     radial-gradient(ellipse at 18% -20%, rgb(122 142 255 / 20%) 0%, rgb(122 142 255 / 0%) 56%),
     linear-gradient(180deg, #151f3d 0%, #101933 100%);
   border-bottom: 1px solid rgb(139 160 255 / 22%);
+}
+
+.navbar__brand,
+.navbar__title,
+.navbar__link {
+  color: #eef3ff !important;
+}
+
+.navbar__link:hover,
+.navbar__link:focus-visible {
+  color: #ffffff !important;
+}
+
+.navbar__link--active,
+.navbar__item .navbar__link[aria-current='page'] {
+  color: #ffffff !important;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Keep syntax colors legible regardless of theme tuning. */
+:root {
+  --ifm-code-background: #eef2ff;
+  --prism-background-color: #f7f9ff;
+}
+
+[data-theme='dark'] {
+  --ifm-code-background: #1a2345;
+  --prism-background-color: #101933;
+}
+
+pre,
+code {
+  font-family: var(--ifm-font-family-monospace);
+}
+
+.theme-code-block,
+.theme-code-block pre,
+pre.prism-code {
+  background-color: var(--prism-background-color) !important;
 }
 
 .theme-doc-markdown h1,

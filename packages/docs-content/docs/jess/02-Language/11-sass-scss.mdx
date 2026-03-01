@@ -51,9 +51,9 @@ In Jess, `@-use` is for importing JS/TS/JSON modules (see `packages/core/src/tre
 
 When parsing SCSS, Jess will treat `@use` as a stylesheet import by default, but if the `@use` path clearly targets a script module (for example `./tokens.js`, `./tokens.ts`, `./tokens.json`), it will parse to a JS import node instead.
 
-### `@forward` (SCSS) → `@-compose (forward)`
+### `@forward` (SCSS) → `@-export`
 
-Jess models Sass’s forwarding semantics using `@-compose` flags as described in [At-rules](/docs/language/atrules).
+Jess models Sass forwarding semantics with `@-export` (see [At-rules](/docs/Language/atrules)).
 
 ## Sass maps → Jess collections
 
@@ -79,7 +79,7 @@ $font-weights: {
 
 - **Quoted string keys** with no interpolation are treated as plain keys.
   - `"regular"` becomes `regular` (no quotes) in the corresponding `Declaration` name.
-- More complex Sass map keys (colors, lists, etc.) are supported by Jess collections, but the SCSS mapping rules depend on how the key can be represented as a stable collection key (see [Namespaces, collections, and maps](/docs/language/namespaces-and-maps)).
+- More complex Sass map keys (colors, lists, etc.) are supported by Jess collections, but the SCSS mapping rules depend on how the key can be represented as a stable collection key (see [Namespaces, collections, and maps](/docs/Language/namespaces-and-maps)).
 
 ## `map-get()` and `map.get()` → Reference lookups
 
@@ -115,13 +115,13 @@ Jess parses:
 
 This name conversion makes placeholders syntactically distinguishable from normal selectors while still being a selector-like key in the registry.
 
-### Placeholder visibility (deferred implementation)
+### Placeholder visibility (current state)
 
-Sass placeholders are “silent” until extended. Jess will eventually model this by marking placeholder-origin rulesets as non-visible until extended. This likely requires special-casing in extend behavior and/or ruleset visibility rules, and is intentionally deferred while extend behavior is being stabilized.
+Sass placeholders are “silent” until extended. In Jess today, placeholder parsing is supported, but full Sass-equivalent placeholder visibility behavior remains partial. Use this area with extra verification in migration-heavy code paths.
 
 ### Cross-module behavior
 
-Sass’s module system allows extending placeholders across module boundaries, with private placeholders (leading `_` or `-`) restricted to their defining module (see Sass’s placeholder docs above). Jess will align with this behavior, and we expect placeholders to behave as an “extendable API” across composed modules (details tracked as deferred work).
+Sass’s module system allows extending placeholders across module boundaries, with private placeholders (leading `_` or `-`) restricted to their defining module (see Sass’s placeholder docs above). Jess aims for parity here, but behavior is still being finalized.
 
 ## Variable flags: `!global` and `!default`
 

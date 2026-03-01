@@ -5,7 +5,7 @@ audiences:
   - jess
 origin: jess
 ---
-Jess can be configured by including a `styles.config.{ts,js}` file at the root of your project.
+Jess reads config from a `styles.config.{ts,js}` file at your project root. Keep it small at first; grow it only when your build needs it.
 
 ```js
 // styles.config.js
@@ -18,15 +18,11 @@ export default {
 
 ### dynamic
 
-Changes the compilation mode so that dynamic content is output as CSS variables (custom properties), and changes the runtime module to generate CSS patches. This is best used in conjunction with the Rollup plugin or Webpack loader.
+Changes compilation mode so dynamic content is represented as CSS custom properties and patch-friendly output. Reach for this when you need runtime theme switching or app-level style updates.
 ### module
 
-Overrides whether Jess files should be compiled as modules or not (globally). By default, any Jess file with the pattern `[filename].module.jess` or `[filename].m.jess` is treated as a module, and class names are hashed.
+Overrides whether Jess files compile as modules globally. By default, files named `[filename].module.jess` or `[filename].m.jess` are treated as modules and class names are hashed.
 
-## rollup
+## compile.plugins
 
-### plugins
-
-_WIP in alpha and not yet supported_
-
-Add a compile-time plugin or plugins to use when importing modules. Note that this is separate from (and in addition to) your Rollup setup if you are using `rollup-plugin-jess`, which creates a runtime bundle.
+Add compile-time plugins used by the compiler (for language/runtime extensions). This is separate from bundler plugins such as `rollup-plugin-jess`.

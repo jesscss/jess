@@ -5,7 +5,7 @@ audiences:
   - jess
 origin: jess
 ---
-Jess can import from other Jess stylesheets and JavaScript, and you can use [Rollup](https://rollupjs.org/) plugins to extend the types of imports.
+Jess imports are intentionally practical: bring in stylesheet APIs, pull values from JS/TS, and keep source boundaries explicit.
 
 ```css
 // JavaScript example
@@ -26,7 +26,7 @@ Jess can import from other Jess stylesheets and JavaScript, and you can use [Rol
 
 ### Ignoring imports
 
-Imports that are not using the ES module pattern are ignored / output as-is. The output for the following will be the same as input.
+Imports that do not use the ESM-style pattern are treated as passthrough and emitted as-is. So this stays exactly what you wrote:
 ```css
 @import url("fonts.css");
 ```
@@ -44,15 +44,15 @@ You can import / mixin entire stylesheets using the default export.
 
 :::caution
 
-This requires the Rollup or Webpack plugin, which are not ready yet! So this part of the API is currently the least stable and needs the most input!
+Historically this section described an older runtime/module shape. The current `rollup-plugin-jess` behavior is intentionally minimal.
 
 :::
 
 ### Using with React
 
-Given the following Jess stylesheet `component.m.jess`...
+Given the following Jess stylesheet `component.jess`...
 ```css
-// component.m.jess
+// component.jess
 @mixin myMixin(something) {
   width: $something;
   color: white;
@@ -62,18 +62,11 @@ Given the following Jess stylesheet `component.m.jess`...
   align-items: center;
 }
 ```
-...the Rollup / Webpack plugin will allow you to import like this into a React component:
+...`rollup-plugin-jess` compiles it, emits a CSS asset, and returns the compiled CSS as the default JS export:
 ```jsx
-import styles, { myMixin } from 'component.m.jess'
+import cssText from './component.jess';
 
-export const myComponent = props => {
-  return (
-    <div
-      style={myMixin(props.something).obj()}
-      className={styles.box}
-    >
-      foo
-    </div>
-  )
-}
+console.log(cssText);
 ```
+
+Today this is not a CSS Modules-style named export API. If you need that shape, layer it in at the bundler/runtime boundary.

@@ -1,29 +1,47 @@
 ---
 id: vscode
-title: VSCode Support
+title: VSCode & Cursor Support
 audiences:
   - jess
 origin: jess
 ---
-TODO: Rewrite
+The Jess editor extension is actively developed in this repo at `packages/vscode`, backed by `packages/language-service`.
 
-A VSCode language extension [is planned](https://github.com/jesscss/jess/issues/25). (If you know how to develop VSCode extensions, we could use your help!) In the meantime, to get basic code coloring, you can do the following:
+## Current status
 
-### Install PostCSS Language Support
+- Extension target: VSCode and Cursor
+- Languages: `css`, `less`, `scss`, `jess`
+- Implemented editor features include:
+  - diagnostics
+  - completion
+  - hover
+  - go to definition / references
+  - document symbols
+  - folding + selection ranges
+  - formatting
+  - semantic tokens
+  - color picker support
+  - import/document links
 
-Jess doesn't use PostCSS, but this is a syntax highlighter that is flexible to syntax.
+:::note
+The extension is currently source-first (in-repo) and not yet published as a stable marketplace package.
+:::
 
-The extension can be found here: https://marketplace.visualstudio.com/items?itemName=csstools.postcss
+## Run locally (recommended right now)
 
-### Associate `.jess` files with PostCSS
+From the repo root:
 
-Add this to your `settings.json` file:
-```json
-    "files.associations": {
-        "*.jess": "postcss"
-    }
+```bash
+pnpm --filter @jesscss/language-service build
+pnpm --filter @jesscss/vscode-extension build
 ```
 
-### Other IDEs
+Then open VSCode/Cursor with this repository and run the launch config:
 
-For other IDEs, the process should be similar. Find a flexible CSS-y syntax highlighter (like PostCSS), and associate it with `.jess` files.
+`Run Jess Language Service (Extension Dev Host)`
+
+If you're building extension features right now, this is the fastest feedback loop.
+
+## Temporary fallback (syntax highlighting only)
+
+If you are not using the in-repo extension yet, you can still associate `*.jess` files with a CSS-like grammar (PostCSS works fine) as a temporary stopgap. You will get basic highlighting, but not Jess-aware intelligence.

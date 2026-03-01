@@ -11,11 +11,53 @@
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 18% -18%, rgb(121 142 255 / 20%) 0%, rgb(121 142 255 / 0%) 56%),
-    radial-gradient(ellipse at 82% -24%, rgb(104 128 255 / 15%) 0%, rgb(104 128 255 / 0%) 52%),
-    linear-gradient(180deg, #151f3d 0%, #101933 100%);
+    radial-gradient(ellipse at 16% -18%, rgb(255 145 54 / 30%) 0%, rgb(255 145 54 / 0%) 50%),
+    radial-gradient(ellipse at 84% -18%, rgb(119 161 255 / 26%) 0%, rgb(119 161 255 / 0%) 56%),
+    linear-gradient(180deg, #1a2247 0%, #0e1737 58%, #0b1230 100%);
+  background-attachment: fixed, fixed, scroll;
   color: #f2f5ff;
-  border-bottom: 1px solid rgb(141 161 255 / 24%);
+  border-bottom: 1px solid rgb(255 170 92 / 22%);
+}
+
+.heroBanner::before,
+.heroBanner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.heroBanner::before {
+  background:
+    repeating-linear-gradient(
+      120deg,
+      rgb(255 176 91 / 7%) 0 1px,
+      transparent 1px 22px
+    ),
+    repeating-linear-gradient(
+      -120deg,
+      rgb(129 157 255 / 6%) 0 1px,
+      transparent 1px 24px
+    );
+  background-attachment: fixed, fixed;
+  opacity: 0.55;
+}
+
+.heroBanner::after {
+  inset: auto -12% -42%;
+  height: 65%;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(255 142 52 / 34%) 0%, rgb(255 142 52 / 0%) 66%);
+  filter: blur(24px);
+  opacity: 0.85;
+}
+
+.heroLogo {
+  width: clamp(68px, 8vw, 108px);
+  height: auto;
+  display: block;
+  margin: 0 auto 0.9rem;
+  filter: drop-shadow(0 8px 22px rgb(20 30 65 / 35%));
 }
 
 @media screen and (max-width: 966px) {
@@ -31,9 +73,47 @@
   margin-top: 1.2rem;
 }
 
+.buttons :global(.button) {
+  border: 1px solid rgb(255 201 155 / 48%);
+  background: linear-gradient(135deg, rgb(255 165 89 / 34%) 0%, rgb(111 132 255 / 34%) 100%);
+  color: #f7f9ff;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 26%),
+    0 14px 30px rgb(7 14 39 / 42%);
+  backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+}
+
+.buttons :global(.button:hover),
+.buttons :global(.button:focus-visible) {
+  border-color: rgb(255 194 140 / 68%);
+  background: linear-gradient(135deg, rgb(255 165 89 / 46%) 0%, rgb(111 132 255 / 46%) 100%);
+  transform: translateY(-1px);
+}
+
 .features {
   padding: 2.2rem 0 3rem;
   width: 100%;
+  position: relative;
+  background:
+    radial-gradient(circle at 8% 0%, rgb(255 173 100 / 14%) 0%, rgb(255 173 100 / 0%) 35%),
+    radial-gradient(circle at 92% 0%, rgb(118 142 255 / 13%) 0%, rgb(118 142 255 / 0%) 36%),
+    linear-gradient(180deg, rgb(238 241 252 / 88%) 0%, rgb(235 239 251 / 88%) 100%);
+}
+
+.features::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgb(255 255 255 / 32%) 0 1px,
+      transparent 1px 32px
+    );
+  background-attachment: fixed;
+  opacity: 0.45;
 }
 
 .tagline {
@@ -44,28 +124,183 @@
   line-height: 1.55;
 }
 
+.successorLine {
+  margin: 0.35rem auto 0.8rem;
+  color: #e4ebff;
+  font-size: 1.08rem;
+  line-height: 1.45;
+}
+
+.tickerFrame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+  padding: 0.15rem 0.6rem 0.2rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgb(255 196 146 / 20%);
+  background: linear-gradient(180deg, rgb(17 27 56 / 36%) 0%, rgb(12 20 44 / 44%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 236 214 / 11%),
+    0 6px 12px rgb(10 16 35 / 18%);
+  vertical-align: baseline;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width 190ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.tickerWord {
+  display: inline-block;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  transition: transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 260ms ease;
+}
+
+.tickerWordEnter {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tickerWordExit {
+  opacity: 0;
+  transform: translateY(34%);
+}
+
+.tickerMeasureRack {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.tickerMeasureWord {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 1.08rem;
+  line-height: 1.45;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tickerFrame {
+    transition: none;
+  }
+
+  .tickerWord {
+    transition: none;
+  }
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
+  gap: 1.15rem;
+  align-items: stretch;
 }
 
 .card {
-  border: 1px solid #d8def8;
-  border-radius: 12px;
-  padding: 1rem 1rem 1.1rem;
-  background:
-    radial-gradient(ellipse at 90% -30%, rgb(153 169 255 / 20%) 0%, rgb(153 169 255 / 0%) 56%),
-    linear-gradient(180deg, rgb(239 243 255 / 74%) 0%, #ffffff 40%);
-  box-shadow: 0 12px 26px rgb(26 39 77 / 10%);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.65rem;
+  border: 1px solid rgb(255 182 119 / 26%);
+  border-radius: 16px;
+  padding: 1.05rem 1.05rem 1rem;
+  box-shadow:
+    0 18px 30px rgb(20 28 61 / 16%),
+    inset 0 1px 0 rgb(255 255 255 / 55%);
+  backdrop-filter: blur(10px) saturate(125%);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: linear-gradient(180deg, rgb(255 141 58 / 88%) 0%, rgb(108 137 255 / 88%) 100%);
+  opacity: 0.88;
+}
+
+@supports (grid-template-rows: subgrid) {
+  .grid {
+    grid-template-rows: repeat(3, auto);
+  }
+
+  .card {
+    grid-template-rows: subgrid;
+    grid-row: span 3;
+  }
 }
 
 .card h2 {
-  margin: 0 0 0.45rem;
+  margin: 0;
   font-size: 1.1rem;
+  color: #0f1b47;
 }
 
 .card p {
   margin: 0;
-  color: #334063;
+  color: #1f2d57;
+}
+
+.cardCore {
+  background:
+    radial-gradient(ellipse at 92% -28%, rgb(255 174 107 / 31%) 0%, rgb(255 174 107 / 0%) 58%),
+    linear-gradient(160deg, rgb(245 248 255 / 84%) 0%, rgb(233 239 255 / 90%) 52%, rgb(233 242 255 / 84%) 100%);
+}
+
+.cardTooling {
+  background:
+    radial-gradient(ellipse at 8% -35%, rgb(255 154 92 / 30%) 0%, rgb(255 154 92 / 0%) 56%),
+    linear-gradient(160deg, rgb(239 249 255 / 84%) 0%, rgb(232 242 255 / 90%) 48%, rgb(238 239 255 / 84%) 100%);
+}
+
+.cardRefs {
+  background:
+    radial-gradient(ellipse at 88% -30%, rgb(255 146 78 / 28%) 0%, rgb(255 146 78 / 0%) 58%),
+    linear-gradient(160deg, rgb(248 242 255 / 84%) 0%, rgb(243 238 255 / 90%) 52%, rgb(239 244 255 / 84%) 100%);
+}
+
+.cardCta {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+  padding: 0.36rem 0.68rem;
+  border-radius: 999px;
+  border: 1px solid rgb(255 169 102 / 45%);
+  background: linear-gradient(135deg, rgb(255 255 255 / 60%) 0%, rgb(250 241 255 / 64%) 100%);
+  color: #1c2c73;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  backdrop-filter: blur(10px) saturate(125%);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+  box-shadow: 0 6px 14px rgb(21 31 69 / 15%);
+}
+
+.cardCta:hover,
+.cardCta:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgb(255 154 90 / 72%);
+  background: linear-gradient(135deg, rgb(255 255 255 / 82%) 0%, rgb(251 237 255 / 86%) 100%);
+  color: #132667;
+  box-shadow: 0 9px 18px rgb(21 31 69 / 22%);
 }

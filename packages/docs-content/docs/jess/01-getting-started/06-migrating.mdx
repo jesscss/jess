@@ -8,7 +8,9 @@ origin: jess
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-TODO - Show automated migration tool and what it will convert
+:::note
+`jess convert` is available today and is best used as a first-pass migration assistant. Plan on reviewing converted output and iterating on edge cases (especially complex mixin/namespace patterns) as Jess syntax continues to evolve in alpha.
+:::
 
 ## Migrating Less to Jess
 
@@ -18,7 +20,7 @@ jess convert "./src/less/**/*.less" "./src/styles"
 
 ## Conversion steps
 
-Jess will first parse your Less/Sass file (or other language provided by a plugin). This will determine if your file is fully-supported and compatible with Jess. Then, it will evaluate the Jess tree in order to understand things like function calls and file sources, which it can then use to convert to supported Jess syntax.
+Jess starts by parsing your Less/Sass source (or other plugin-provided language), then evaluates the tree so it can rewrite syntax with real context (imports, function calls, variable lookups). Think of it as "mechanical migration first, human polish second."
 
 ### At-rules
 
