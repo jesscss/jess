@@ -86,7 +86,7 @@ export default function Home(): React.JSX.Element {
   }, [tickerItems.length, tickerWidths]);
 
   return (
-    <Layout title="Jess Docs">
+    <Layout>
       <main>
         <section className={styles.heroBanner}>
           <div className="container">
