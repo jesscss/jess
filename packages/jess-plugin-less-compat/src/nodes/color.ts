@@ -45,7 +45,8 @@ export function transformColorToLess(
       if (rgb) {
         // Convert to hex
         const hex = rgb.map((v) => {
-          const h = Math.round(v).toString(16).padStart(2, '0');
+          const numericValue = Array.isArray(v) ? v[0] : v;
+          const h = Math.round(numericValue).toString(16).padStart(2, '0');
           return h;
         }).join('');
         return `#${hex}`;

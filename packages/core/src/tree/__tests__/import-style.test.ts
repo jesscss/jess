@@ -12,10 +12,13 @@ import {
   ruleset,
   mixin,
   call,
+  list,
   quoted,
+  Interpolated,
+  INTERPOLATION_PLACEHOLDER,
   type Rules,
   Node
-} from '..';
+} from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { Context } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
@@ -840,6 +843,284 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       // Both imports should be present
       expect(evald.value.length).toBe(2);
+    });
+  });
+
+  describe('less import fixture regressions', () => {
+    it('import-inline: inline import with media postlude inlines source content', async () => {
+      const inlinePath = resolve(process.cwd(), 'inline-source.css');
+      const inlineContext = new Context({}, [{
+        name: 'inline-plugin',
+        supportedExtensions: ['.css'],
+        resolve(filePath: string | string[]) {
+          const paths = Array.isArray(filePath) ? filePath : [filePath];
+          return paths.map(p => (p.endsWith('.css') ? p : `${p}.css`));
+        },
+        locate(pathCandidates: string[], currentDir: string) {
+          for (const candidate of pathCandidates) {
+            const abs = candidate.startsWith('/') ? candidate : resolve(currentDir, candidate);
+            if (abs === inlinePath) {
+              return abs;
+            }
+          }
+          return null;
+        },
+        async getSource() {
+          return '#css { color: yellow; }\n';
+        }
+      }]);
+      inlineContext.treeContext = {
+        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
+      } as any;
+
+      const node = rules([
+        style({ path: quoted(any('inline-source.css')) }, {
+          type: 'import',
+          importOptions: {
+            inline: true,
+            postlude: any('(min-width: 600px)')
+          }
+        })
+      ]);
+      const evald = await node.eval(inlineContext);
+      expect(evald.toString({ context: inlineContext })).toContain('@media (min-width: 600px)');
+      expect(evald.toString({ context: inlineContext })).toContain('#css { color: yellow; }');
+    });
+
+    it('import-inline: supports/layer postludes wrap inline source in order', async () => {
+      const inlinePath = resolve(process.cwd(), 'inline-postlude.css');
+      const inlineContext = new Context({}, [{
+        name: 'inline-plugin',
+        supportedExtensions: ['.css'],
+        resolve(filePath: string | string[]) {
+          const paths = Array.isArray(filePath) ? filePath : [filePath];
+          return paths.map(p => (p.endsWith('.css') ? p : `${p}.css`));
+        },
+        locate(pathCandidates: string[], currentDir: string) {
+          for (const candidate of pathCandidates) {
+            const abs = candidate.startsWith('/') ? candidate : resolve(currentDir, candidate);
+            if (abs === inlinePath) {
+              return abs;
+            }
+          }
+          return null;
+        },
+        async getSource() {
+          return '#css { color: yellow; }\n';
+        }
+      }]);
+      inlineContext.treeContext = {
+        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
+      } as any;
+
+      const postlude = list([
+        call({ name: 'layer', args: list([any('theme')]) }),
+        call({ name: 'supports', args: list([any('(display: grid)')]) }),
+        any('screen and (min-width: 600px)')
+      ], { sep: ' ' });
+
+      const node = rules([
+        style({ path: quoted(any('inline-postlude.css')) }, {
+          type: 'import',
+          importOptions: {
+            inline: true,
+            postlude
+          }
+        })
+      ]);
+
+      const css = (await node.eval(inlineContext)).toString({ context: inlineContext });
+      expect(css).toContain('@layer theme');
+      expect(css).toContain('@supports (display: grid)');
+      expect(css).toContain('@media screen and (min-width: 600px)');
+      expect(css).toContain('#css { color: yellow; }');
+    });
+
+    it('import-interpolation: unresolved interpolated segments fallback to literal tokens', async () => {
+      const interpolatedPath = new Interpolated({
+        source: `import-${INTERPOLATION_PLACEHOLDER}${INTERPOLATION_PLACEHOLDER}.jess`,
+        replacements: [ref('in', { type: 'variable' }), ref('terpolation', { type: 'variable' })]
+      }, { role: 'ident' });
+      const fullPath = resolve(process.cwd(), 'import-interpolation.jess');
+      context.sourceTrees.set(fullPath, rules([
+        vardecl({ name: 'x', value: any('ok') })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(interpolatedPath) }, { type: 'import', importOptions: { optional: false } })
+      ]);
+      const evald = await node.eval(context);
+      expect(evald.value.length).toBe(1);
+    });
+
+    it('import-module: context can resolve bare module-like specifiers', async () => {
+      const moduleContext = new Context();
+      moduleContext.treeContext = {
+        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
+      } as any;
+      const result = await (moduleContext as any)._getPath('lodash-es');
+      expect(typeof result.resolvedPath).toBe('string');
+      expect(result.resolvedPath.length).toBeGreaterThan(0);
+    });
+
+    it('import-once: default once semantics de-dupe repeated imports', async () => {
+      const oncePath = resolve(process.cwd(), 'once.jess');
+      context.sourceTrees.set(oncePath, rules([
+        ruleset({
+          selector: sellist([sel([el('.once')])]),
+          rules: rules([decl({ name: any('color'), value: any('red') })])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('once.jess')) }, { type: 'import' }),
+        style({ path: quoted(any('once.jess')) }, { type: 'import' })
+      ]);
+      const evald = await node.eval(context);
+      expect(evald.toString().split('.once').length - 1).toBe(1);
+    });
+
+    it('import-reference-issues: reference imports are optional visibility', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-issues.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.hidden')])]),
+          rules: rules([decl({ name: any('color'), value: any('red') })])
+        })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('reference-issues.jess')) }, { type: 'import', importOptions: { reference: true } })
+      ]);
+      const evald = await node.eval(context);
+      const imported = evald.at(0) as Rules;
+      expect(imported.options.rulesVisibility?.Ruleset).toBe('optional');
+    });
+
+    it('import-reference: reference imports remain discoverable for lookups', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        vardecl({ name: 'fromRef', value: any('42') })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('reference.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        decl({ name: any('value'), value: ref('fromRef', { type: 'variable' }) })
+      ]);
+      const evald = await node.eval(context);
+      const declaration = evald.at(1) as any;
+      const resolved = await declaration.eval(context);
+      expect(`${resolved}`).toBe('value: 42');
+    });
+
+    it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
+      const remoteContext = new Context({}, [{
+        name: 'remote-map',
+        supportedExtensions: ['.less'],
+        resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
+          const paths = Array.isArray(filePath) ? filePath : [filePath];
+          const mapped = paths.map((candidate) => {
+            const m = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
+            return m?.[1] ?? candidate;
+          });
+          void currentDir;
+          void searchPaths;
+          return mapped;
+        },
+        locate() {
+          return null;
+        }
+      }]);
+      remoteContext.treeContext = {
+        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
+      } as any;
+      const result = await (remoteContext as any)._getPath('https://cdn.jsdelivr.net/npm/lodash-es/lodash.js');
+      expect(typeof result.resolvedPath).toBe('string');
+      expect(result.resolvedPath.length).toBeGreaterThan(0);
+    });
+
+    it('import.less: optional missing imports do not throw and produce empty rules', async () => {
+      const node = rules([
+        style({ path: quoted(any('missing-file.jess')) }, { type: 'import', importOptions: { optional: true } })
+      ]);
+      const evald = await node.eval(context);
+      expect(evald.value.length).toBe(1);
+      const imported = evald.at(0) as Rules;
+      expect(imported.value.length).toBe(0);
+    });
+  });
+
+  describe('reference/multiple dedupe matrix', () => {
+    const countSelector = (css: string, selector: string) => css.split(selector).length - 1;
+
+    it('import once:false renders repeated imports', async () => {
+      context.sourceTrees.set('repeat.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.repeat')])]),
+          rules: rules([decl({ name: any('color'), value: any('red') })])
+        })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('repeat.jess')) }, { type: 'import', importOptions: { once: false } }),
+        style({ path: quoted(any('repeat.jess')) }, { type: 'import', importOptions: { once: false } })
+      ]);
+      const evald = await node.eval(context);
+      expect(countSelector(evald.toString(), '.repeat')).toBe(2);
+    });
+
+    it('plain import followed by reference import renders once', async () => {
+      context.sourceTrees.set('mix-order.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.mix-order')])]),
+          rules: rules([decl({ name: any('color'), value: any('red') })])
+        })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('mix-order.jess')) }, { type: 'import' }),
+        style(
+          { path: quoted(any('mix-order.jess')) },
+          { type: 'import', importOptions: { reference: true } }
+        )
+      ]);
+      const evald = await node.eval(context);
+      expect(countSelector(evald.toString(), '.mix-order')).toBe(1);
+    });
+
+    it('reference import followed by plain import stays suppressed without multiple', async () => {
+      context.sourceTrees.set('mix-order-rev.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.mix-order-rev')])]),
+          rules: rules([decl({ name: any('color'), value: any('red') })])
+        })
+      ]));
+      const node = rules([
+        style(
+          { path: quoted(any('mix-order-rev.jess')) },
+          { type: 'import', importOptions: { reference: true } }
+        ),
+        style({ path: quoted(any('mix-order-rev.jess')) }, { type: 'import' })
+      ]);
+      const evald = await node.eval(context);
+      expect(countSelector(evald.toString(), '.mix-order-rev')).toBe(0);
+    });
+
+    it('compose multiple:true renders repeated modules', async () => {
+      context.sourceTrees.set('compose-repeat.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.compose-repeat')])]),
+          rules: rules([decl({ name: any('color'), value: any('red') })])
+        })
+      ]));
+      const node = rules([
+        style(
+          { path: quoted(any('compose-repeat.jess')) },
+          { type: 'compose', namespace: '*', importOptions: { multiple: true } }
+        ),
+        style(
+          { path: quoted(any('compose-repeat.jess')) },
+          { type: 'compose', namespace: '*', importOptions: { multiple: true } }
+        )
+      ]);
+      const evald = await node.eval(context);
+      expect(countSelector(evald.toString(), '.compose-repeat')).toBe(2);
     });
   });
 

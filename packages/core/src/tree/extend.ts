@@ -152,7 +152,7 @@ export class Extend extends Node<ExtendValue> {
                 ownSel.copy(true)
               ]) as unknown as Selector;
               usedParentListComposition = true;
-              }
+            }
           }
           if (!this.value.selector && !usedParentListComposition) {
             if (fullSel && !(fullSel instanceof Nil)) {
@@ -177,7 +177,14 @@ export class Extend extends Node<ExtendValue> {
         resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
-        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder]);
+        const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
+        // Extends declared while traversing a reference branch are tagged so the
+        // extend resolver can keep them non-side-effecting outside that branch.
+        const fromReferenceScope = (
+          context.inReferenceImportScope
+          || extendRootOptions.referenceMode === true
+        );
+        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
         return new Nil();
       });
     }
@@ -224,7 +231,7 @@ export class Extend extends Node<ExtendValue> {
             ownSel.copy(true)
           ]) as unknown as Selector;
           usedParentListComposition = true;
-          }
+        }
       }
       if (!this.value.selector && !usedParentListComposition) {
         if (fullSel && !(fullSel instanceof Nil)) {
@@ -249,7 +256,13 @@ export class Extend extends Node<ExtendValue> {
     resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
     const rs = currentFrame && isNode(currentFrame, 'Ruleset') ? currentFrame as Ruleset : undefined;
     const docOrder = getDocumentOrderForExtend(rs, context);
-    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder]);
+    const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
+    // Same reference-scope tagging for sync path.
+    const fromReferenceScope = (
+      context.inReferenceImportScope
+      || extendRootOptions.referenceMode === true
+    );
+    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
     return new Nil();
   }
 }
@@ -325,9 +338,13 @@ function getDocumentOrderForExtend(rs: Ruleset | undefined, context: Context): n
   }
   const loc = (rs as Node).location;
   const fromLoc = Array.isArray(loc) && loc.length >= 1 && typeof loc[0] === 'number' ? loc[0] : undefined;
-  if (fromLoc !== undefined) return fromLoc;
+  if (fromLoc !== undefined) {
+    return fromLoc;
+  }
   const fromMap = context.documentOrderByRuleset?.get(rs);
-  if (fromMap !== undefined) return fromMap;
+  if (fromMap !== undefined) {
+    return fromMap;
+  }
   return context.extends.length;
 }
 export const extend = defineType(Extend, 'Extend');

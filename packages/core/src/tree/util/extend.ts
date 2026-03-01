@@ -121,7 +121,7 @@ import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { normalizeSelectorForExtend, type ExtendSearchResult } from './find-extendable-locations.js';
-import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import {
   selectorCompare,
   type SelectorComparisonResult,
@@ -275,10 +275,25 @@ function wrapMatchInIs(
   contextSelector?: Selector,
   context?: { target?: Selector; find?: Selector; extendWith?: Selector },
   extendWithSelectors?: Selector[]
-): PseudoSelector {
+): Selector {
   const computed = extendWithSelectors ?? extractSelectorsFromIs(extendWith);
+  // Self-extends on the exact same matched component are visibility-only;
+  // avoid generating :is(.x,.x) wrappers and preserve the original shape.
+  if (computed.length === 1 && computed[0]!.valueOf() === matched.valueOf()) {
+    return matched.copy(true) as Selector;
+  }
+  const matchedForList = matched.copy(true) as Selector;
+  if (context?.find && context.find.valueOf() !== context.extendWith?.valueOf()) {
+    matchedForList.addFlag(F_EXTEND_TARGET);
+  }
+  const extendWithForList = computed.map((item) => {
+    const out = item.copy(true) as Selector;
+    out.addFlag(F_EXTENDED);
+    return out;
+  });
+  const deduped = deduplicateSelectors([matchedForList, ...extendWithForList]);
   return createValidatedIsWrapperWithErrors(
-    [matched, ...computed],
+    deduped,
     inheritFrom,
     contextSelector,
     context
@@ -324,6 +339,16 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       el = el.copy() as Selector;
     }
     if (isNode(el, 'PseudoSelector')) {
+      if (el.value.name === ':is') {
+        const arg = el.value.arg;
+        if (arg && isNode(arg, 'SelectorList')) {
+          const deduped = deduplicateSelectors((arg as SelectorList).value as Selector[]);
+          if (deduped.length === 1) {
+            push(deduped[0]!);
+            continue;
+          }
+        }
+      }
       if (root && el.value.name === ':is' && el.generated) {
         let result = createProcessedSelector(el.value.arg as Selector) as Selector;
         /**
@@ -978,6 +1003,9 @@ export function extendSelector(
   skipAmpersandCheck: boolean = false,
   hasMoreAfterIs: boolean = false
 ): Selector {
+  if (partial && find.valueOf() === extendWith.valueOf()) {
+    return target;
+  }
   // Use the unified ExtendLocation API for all selector matching.
   //
   // IMPORTANT: normalize :is(...) equivalences for matching. In Less output we often materialize
@@ -1573,6 +1601,19 @@ function extendSelectorList(
   skipAmpersandCheck: boolean,
   preferIsWrapperInPartialMode: boolean = false
 ): Selector {
+  const markExtended = (selector: Selector): Selector => {
+    selector.addFlag(F_EXTENDED);
+    return selector;
+  };
+  const markExtendTarget = (selector: Selector): Selector => {
+    if (partial && find.valueOf() !== extendWith.valueOf()) {
+      selector.addFlag(F_EXTEND_TARGET);
+    }
+    return selector;
+  };
+  const keepOriginalInReference = (_selector: Selector): boolean =>
+    !partial || (partial && find.valueOf() === extendWith.valueOf());
+
   const maybePrefixNewSelectorWithImplicitParent = (template: Selector, s: Selector): Selector => {
     // If we're extending inside a nested selector that already starts with an implicit `&`,
     // ensure any newly-added selector alternatives also start with the same implicit `&`.
@@ -1629,8 +1670,15 @@ function extendSelectorList(
     let appendedVariant = false;
 
     if (extended === selector) {
-      orderedSelectors.push(selector);
+      orderedSelectors.push(
+        keepOriginalInReference(selector)
+          ? markExtended(selector.clone(true))
+          : markExtendTarget(selector.clone(true))
+      );
       orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
+      if (comparison.hasWholeMatch && extendWith.valueOf() !== selector.valueOf()) {
+        newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+      }
       continue;
     }
 
@@ -1650,27 +1698,38 @@ function extendSelectorList(
           { target: selector, find, extendWith }
         );
         isWrapper.generated = true;
-        orderedSelectors.push(isWrapper);
+        orderedSelectors.push(markExtended(isWrapper));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         continue;
       }
 
       if (extended.value.length === 0) {
-        orderedSelectors.push(selector);
+        orderedSelectors.push(
+          keepOriginalInReference(selector)
+            ? markExtended(selector.clone(true))
+            : markExtendTarget(selector.clone(true))
+        );
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
       } else if (extended.value.length === 1 && extended.value[0]!.valueOf() === extendWith.valueOf()) {
-        orderedSelectors.push(selector);
+        orderedSelectors.push(
+          keepOriginalInReference(selector)
+            ? markExtended(selector.clone(true))
+            : markExtendTarget(selector.clone(true))
+        );
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
-        newSelectors.push(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true)));
+        if (extendWith.valueOf() !== selector.valueOf()) {
+          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+        }
         appendedVariant = true;
       } else {
-        orderedSelectors.push(extended.value[0]!.clone(true));
+        const first = extended.value[0]!.clone(true) as Selector;
+        orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(first) : markExtendTarget(first));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         const template = extended.value[0] ?? selector;
         newSelectors.push(
           ...extended.value
             .slice(1)
-            .map(s => maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector))
+            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector)))
             .map(s => s.clone(true))
         );
         appendedVariant = true;
@@ -1700,19 +1759,25 @@ function extendSelectorList(
       }
 
       if (fullMatchOfListItem) {
-        orderedSelectors.push(selector);
+        orderedSelectors.push(
+          keepOriginalInReference(selector)
+            ? markExtended(selector.clone(true))
+            : markExtendTarget(selector.clone(true))
+        );
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
-        newSelectors.push(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true)));
+        if (extendWith.valueOf() !== selector.valueOf()) {
+          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+        }
         appendedVariant = true;
       } else {
-        orderedSelectors.push(extended.clone(true));
+        orderedSelectors.push(markExtended(extended.clone(true)));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         appendedVariant = true;
       }
     }
 
     if (!appendedVariant && extended.valueOf() !== selector.valueOf()) {
-      const variant = maybePrefixNewSelectorWithImplicitParent(selector, extended.clone(true));
+      const variant = markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extended.clone(true)));
       newSelectors.push(variant);
     }
   }
@@ -2490,7 +2555,18 @@ function createValidatedIsWrapperWithErrors(
     extendWith?: Selector;
   }
 ): PseudoSelector {
-  const validation = validateIsWrapper(selectors, contextSelector);
+  const decoratedSelectors = selectors.map(selector => selector.copy(true) as Selector);
+  if (context?.find && context?.extendWith && context.find.valueOf() !== context.extendWith.valueOf()) {
+    const first = decoratedSelectors[0];
+    if (first) {
+      first.addFlag(F_EXTEND_TARGET);
+    }
+    for (let i = 1; i < decoratedSelectors.length; i++) {
+      decoratedSelectors[i]!.addFlag(F_EXTENDED);
+    }
+  }
+
+  const validation = validateIsWrapper(decoratedSelectors, contextSelector);
   if (!validation.isValid) {
     throw new ExtendError(
       validation.errorType!,
@@ -2499,7 +2575,7 @@ function createValidatedIsWrapperWithErrors(
     );
   }
 
-  const wrapper = createIsWrapper(selectors, inheritFrom);
+  const wrapper = createIsWrapper(decoratedSelectors, inheritFrom);
   // Mark generated so downstream normalization and valueOf can flatten when appropriate.
   wrapper.generated = true;
   return wrapper;

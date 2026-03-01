@@ -124,6 +124,10 @@ export const F_NON_STATIC = 0b1000;
 export const F_AMPERSAND = 0b10000;
 /** Whether an ampersand was implicitly added (not written by user) */
 export const F_IMPLICIT_AMPERSAND = 0b100000;
+/** Selector item produced by extend and eligible for reference-mode rendering. */
+export const F_EXTENDED = 0b1000000;
+/** Selector item that matches an extend target and should be suppressed in reference-mode output. */
+export const F_EXTEND_TARGET = 0b10000000;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -756,11 +760,11 @@ export abstract class Node<
       try {
         out = node.forEachNode(n => n.preEval(context));
       } catch (error: unknown) {
-throw error;
+        throw error;
       }
       if (isThenable(out)) {
         return (out as Promise<void>).then(() => node).catch((error: unknown) => {
-throw error;
+          throw error;
         });
       }
       return node;
@@ -851,6 +855,12 @@ throw error;
     // handling in createProcessedSelector and valueOf() remains correct for exact extend matching.
     if (node.hasFlag(F_IMPLICIT_AMPERSAND)) {
       this.addFlag(F_IMPLICIT_AMPERSAND);
+    }
+    if (node.hasFlag(F_EXTENDED)) {
+      this.addFlag(F_EXTENDED);
+    }
+    if (node.hasFlag(F_EXTEND_TARGET)) {
+      this.addFlag(F_EXTEND_TARGET);
     }
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre ||= node.pre;

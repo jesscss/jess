@@ -1,5 +1,7 @@
 import {
-  defineType
+  defineType,
+  F_EXTENDED,
+  F_EXTEND_TARGET
 } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
@@ -73,7 +75,29 @@ export class SelectorList extends Selector<Selector[]> {
       }
       value.push(item);
     }
+    if (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+      && options.referenceFilterTargets === true
+    ) {
+      const hasTargetItems = value.some(item => item.hasFlag(F_EXTEND_TARGET));
+      if (hasTargetItems) {
+        const filtered = value.filter(item => !item.hasFlag(F_EXTEND_TARGET));
+        if (filtered.length > 0) {
+          value.splice(0, value.length, ...filtered);
+        }
+      } else {
+        // Fallback for wrappers that only carry "extended" provenance.
+        const extendedOnly = value.filter(item => item.hasFlag(F_EXTENDED));
+        if (extendedOnly.length > 0) {
+          value.splice(0, value.length, ...extendedOnly);
+        }
+      }
+    }
     let length = value.length;
+    if (length === 0) {
+      return '';
+    }
     const mark = w.mark();
     let item = value[0]!;
 

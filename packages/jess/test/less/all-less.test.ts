@@ -29,7 +29,7 @@ const additionalSkips = [
 ];
 
 // Run unit fixtures alphabetically up through this filename (inclusive).
-const runUnitThrough = 'tests-unit/layer';
+const runUnitThrough = 'tests-unit/layer/layer.less';
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
@@ -63,22 +63,35 @@ describe('Can render Less files to CSS', () => {
             // Merge test case config with base compiler config
             // Default: collapseNesting: true (from baseCompiler)
             // Override: testCase.config.output (from styles.config.ts) takes precedence
+            const testCompileConfig = (testCase.config.compile || {}) as Record<string, any>;
+            const {
+              plugins: testCasePlugins = [],
+              ...restCompileConfig
+            } = testCompileConfig;
             const testCompiler = new Compiler({
               ...baseCompiler.opts,
               ...testCase.config,
+              compile: {
+                ...(baseCompiler.opts.compile || {}),
+                ...restCompileConfig,
+                plugins: [
+                  ...(baseCompiler.opts.compile?.plugins || []),
+                  ...testCasePlugins
+                ]
+              },
               output: {
                 ...baseCompiler.opts.output,
                 ...(testCase.config.output || {})
               }
             });
 
-            const context = testCompiler.createContext(lessPath, { outputFile: testCase.expectedFile });
+            let context: any;
             let node: Rules;
             try {
-              ({ node } = await context.getTree(lessPath));
+              ({ context, tree: node } = await testCompiler.compile(lessPath, { outputFile: testCase.expectedFile }));
             } catch (error: any) {
               // Output diagnostics if available
-              if (context.errors.length > 0 || context.warnings.length > 0) {
+              if (context && (context.errors.length > 0 || context.warnings.length > 0)) {
                 outputDiagnostics(context.errors, context.warnings, {
                   suppressWarnings: false,
                   breakOnError: false
@@ -87,11 +100,10 @@ describe('Can render Less files to CSS', () => {
               throw error;
             }
             try {
-              const evald = await node.eval(context);
-              expect(evald.toString({ context })).toBe(expectedCss);
+              expect(node.toString({ context })).toBe(expectedCss);
             } catch (error: any) {
               // Output diagnostics if available
-              if (context.errors.length > 0 || context.warnings.length > 0) {
+              if (context && (context.errors.length > 0 || context.warnings.length > 0)) {
                 outputDiagnostics(context.errors, context.warnings, {
                   suppressWarnings: false,
                   breakOnError: false

@@ -46,6 +46,10 @@ export function getExpectedOutputFiles(
   // getConfig expects a directory, so pass the directory of the less file
   const config = getConfig(path.dirname(lessFilePath));
   const outputConfig = config.output;
+  // Preserve non-output config (compile/language/etc.) so fixture-level styles.config
+  // can drive compiler behavior in tests.
+  const { output: ignoredOutput, ...baseConfig } = config as StylesConfig & Record<string, unknown>;
+  void ignoredOutput;
 
   // Extract file name without extension for {name} replacement
   const dir = path.dirname(lessFilePath);
@@ -55,7 +59,7 @@ export function getExpectedOutputFiles(
   if (!outputConfig) {
     return {
       file: path.join(dir, `${name}.css`),
-      config: {}
+      config: baseConfig
     };
   }
 
@@ -70,7 +74,7 @@ export function getExpectedOutputFiles(
     );
     return {
       file: path.join(dir, outputFile),
-      config: { output: configOptions }
+      config: { ...baseConfig, output: configOptions }
     };
   }
 
@@ -109,7 +113,7 @@ export function getExpectedOutputFiles(
 
     outputs.push({
       file: path.join(dir, finalFile),
-      config: { output: mergedOptions }
+      config: { ...baseConfig, output: mergedOptions }
     });
   }
 
@@ -123,6 +127,6 @@ export function getExpectedOutputFiles(
     ? outputs
     : [{
         file: path.join(dir, `${name}.css`),
-        config: {}
+        config: baseConfig
       }];
 }

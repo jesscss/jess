@@ -101,6 +101,8 @@ export type RulesOptions = {
    * consumers, but should not be visible to lookups within the current stylesheet scope.
    */
   forward?: boolean;
+  /** Render gating marker for referenced imports/usages (serializer-time only). */
+  referenceMode?: boolean;
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
@@ -258,6 +260,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mark = w.mark();
 
     const ctx = options.context;
+    const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
     if (depth === 0) {
       // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
       const prevCharsetEmitted = ctx?.charsetEmitted;
@@ -272,9 +275,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Do not permanently flip `charsetEmitted` here; restore at end.
         ctx.charsetEmitted = true;
       }
+      // Less keeps leading comments before hoisted @import output.
+      const isCommentLike = (node: Node): boolean => {
+        const text = String(node.valueOf?.() ?? '').trimStart();
+        if (!text.startsWith('/*')) {
+          return false;
+        }
+        return isNode(node, 'Comment') || isNode(node, 'Any');
+      };
+      if (ctx?.topImports?.length) {
+        for (const node of this.value) {
+          if (!isCommentLike(node)) {
+            break;
+          }
+          const commentStr = w.capture(() => node.toTrimmedString(options));
+          w.add(normalizeIndent(commentStr, ''), node);
+          w.add('\n');
+          const wasVisible = node.hasFlag(F_VISIBLE);
+          suppressedLeadingComments.push({ node, visible: wasVisible });
+          if (wasVisible) {
+            node.removeFlag(F_VISIBLE);
+          }
+        }
+      }
       // @import must come after @charset but before other rules
       if (ctx?.topImports?.length) {
         for (const importRule of ctx.topImports) {
+          if (isNode(importRule, 'AtRule')) {
+            const importPrelude = importRule.value.prelude;
+            if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
+              const maybePrelude = importPrelude.eval(ctx);
+              if (!isThenable(maybePrelude)) {
+                importRule.value.prelude = maybePrelude as Node;
+              }
+            }
+          }
           const importStr = w.capture(() => importRule.toString(options));
           w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
@@ -300,6 +335,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // At root level, ensure output ends with a single newline (standard for CSS files)
     // Don't propagate all the last child's post content (which may have extra whitespace)
     if (depth === 0) {
+      for (const suppressed of suppressedLeadingComments) {
+        if (suppressed.visible) {
+          suppressed.node.addFlag(F_VISIBLE);
+        }
+      }
       const result = w.getSince(mark).trimEnd();
       // Ensure exactly one trailing newline (only if there's content)
       return result ? result + '\n' : '';
@@ -375,6 +415,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.depth ?? 0;
     const space = indent(depth);
     const { value } = this;
+    const referenceMode = Boolean(options.referenceMode);
+    const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
     // Skip charset nodes - they are collected and prepended at root level
     // Nil nodes are now non-visible, so they're automatically filtered by n.visible
@@ -386,14 +428,58 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     // No spacing flags; writer.capture is used where needed
 
+    const isInlineSourceRules = (node: Node): boolean => {
+      if (node.type !== 'Rules') {
+        return false;
+      }
+      const rulesNode = node as Rules;
+      if (rulesNode.value.length !== 1) {
+        return false;
+      }
+      const only = rulesNode.value[0]!;
+      return only.type === 'Any' && (only.options as any)?.role === 'any';
+    };
+
+    let emittedCount = 0;
+    let lastEmittedType: string | undefined;
+    let lastEmittedWasInlineSourceRules = false;
+    const isInMixinOutputScope = (node: Node): boolean => {
+      const seen = new Set<Node>();
+      const queue: Node[] = [node];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (seen.has(current)) {
+          continue;
+        }
+        seen.add(current);
+        if ((current.options as any)?.isMixinOutput === true) {
+          return true;
+        }
+        if (current.parent) {
+          queue.push(current.parent);
+        }
+        if (current.sourceParent && isNode(current.sourceParent)) {
+          queue.push(current.sourceParent);
+        }
+      }
+      return false;
+    };
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
-      if (idx > 0) {
+      const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
+      if (referenceMode && !referenceRenderEnabled && !isContainer) {
+        continue;
+      }
+      if (emittedCount > 0) {
         // Check actual buffer state - not just previous captured output
         // Frame closing in serializeRulesContainer adds newlines that aren't in the capture
         const currentBuffer = w.getSince(0);
         const bufferEndsWithNewline = currentBuffer.endsWith('\n');
-        if (!bufferEndsWithNewline) {
+        const needsInlineBoundarySpacing = (
+          (lastEmittedType === 'Any' && n.type !== 'Any')
+          || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
+        );
+        if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
           w.add('\n');
         }
       }
@@ -408,12 +494,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Emit directly to preserve source map segments
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
-      const childOptions = isChildRules ? { ...options, depth } : { ...options, depth };
+      let childOptions = isChildRules
+        ? { ...options, depth }
+        : { ...options, depth };
+      if (isChildRules) {
+        const inMixinOutputScope = isInMixinOutputScope(n);
+        const sourceIsCall = (
+          (n.sourceParent as any)?.type === 'Call'
+          || (n.sourceNode as any)?.sourceParent?.type === 'Call'
+        );
+        const ownReferenceMode = (
+          (n.options as any)?.referenceMode === true
+          && (!inMixinOutputScope || !sourceIsCall)
+        );
+        const childReferenceMode = referenceMode || ownReferenceMode;
+        const enteringReferenceMode = !referenceMode && ownReferenceMode;
+        const childReferenceRenderEnabled = childReferenceMode
+          ? (enteringReferenceMode ? false : referenceRenderEnabled)
+          : true;
+        childOptions = {
+          ...childOptions,
+          referenceMode: childReferenceMode,
+          referenceRenderEnabled: childReferenceRenderEnabled
+        };
+      }
       let rule = w.capture(() => n.toTrimmedString(childOptions));
+      if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
+        continue;
+      }
       w.add(rule, n); // Pass node as origin to preserve location info
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';', n);
       }
+      emittedCount++;
+      lastEmittedType = n.type;
+      lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
     }
   }
 
@@ -841,12 +956,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (isThenable(result)) {
             // Handle async preEval
             return (result as Promise<Node>).then((resolvedNode) => {
+              if (resolvedNode.index === undefined) {
+                resolvedNode.index = node.index;
+              }
+              if (!resolvedNode.sourceNode) {
+                resolvedNode.sourceNode = node.sourceNode ?? node;
+              }
               // Register rulesets after preEval regardless of static name
               if (resolvedNode.type === 'Ruleset') {
                 // registerNode handles both 'mixin' and 'ruleset' registries
                 rules.registerNode(resolvedNode);
               }
-              if (this._hasStaticName(resolvedNode)) {
+              if (isNode(resolvedNode, 'Nil') || this._hasStaticName(resolvedNode)) {
                 resolvedNodes.push(resolvedNode);
                 this._registerNodeIfEligible(rules, resolvedNode, context);
                 madeProgress = true;
@@ -858,13 +979,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Register rulesets after preEval regardless of static name
+          if (result.index === undefined) {
+            result.index = node.index;
+          }
+          if (!result.sourceNode) {
+            result.sourceNode = node.sourceNode ?? node;
+          }
           if (result.type === 'Ruleset') {
             // registerNode handles both 'mixin' and 'ruleset' registries
             rules.registerNode(result);
           }
 
           // Check if the node now has a static name
-          if (this._hasStaticName(result)) {
+          if (isNode(result, 'Nil') || this._hasStaticName(result)) {
             resolvedNodes.push(result);
             this._registerNodeIfEligible(rules, result, context);
             madeProgress = true;
@@ -1759,6 +1886,105 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let hasMatch = false;
     let outputRules: Rules[] = [];
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
+    const originatesFromReferenceImport = (node: Node): boolean => {
+      const queue: any[] = [node, node.sourceNode, node.sourceParent];
+      const seen = new Set<any>();
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || seen.has(current)) {
+          continue;
+        }
+        seen.add(current);
+        if (current.type === 'StyleImport') {
+          const importOptions = current.options?.importOptions;
+          if (importOptions?.reference === true || importOptions?._dedupe === true) {
+            return true;
+          }
+        }
+        queue.push(current.sourceNode, current.sourceParent, current.parent);
+      }
+      return false;
+    };
+    const clearReferenceModeForMixinOutput = (node: Node): void => {
+      if (originatesFromReferenceImport(node)) {
+        return;
+      }
+      if ((node.options as any)?.referenceMode === true) {
+        (node.options as any).referenceMode = false;
+      }
+      const nestedRules = (node as any).value?.rules;
+      if (nestedRules && isNode(nestedRules, 'Rules')) {
+        clearReferenceModeForMixinOutput(nestedRules as Node);
+      }
+      const children = (node as any).value;
+      if (Array.isArray(children)) {
+        for (const child of children) {
+          if (isNode(child, ['Rules', 'Ruleset', 'AtRule'])) {
+            clearReferenceModeForMixinOutput(child as Node);
+          }
+        }
+      }
+    };
+    const resetEvalStateDeep = (node: Node): void => {
+      node.preEvaluated = false;
+      node.evaluated = false;
+      if (isNode(node, 'Ruleset')) {
+        const rulesetNode = node as Ruleset;
+        const selector = rulesetNode.value.selector as Selector | Nil;
+        const sourceSelector = selector?.sourceNode;
+        if (sourceSelector && isNode(sourceSelector)) {
+          // Recover definition-time selector shape (e.g. raw `&`) so call-site
+          // preEval can rebuild selectors in the caller's frame.
+          rulesetNode.value.selector = sourceSelector.copy(true) as Selector | Nil;
+          rulesetNode.value.selector.sourceNode = sourceSelector;
+        }
+      }
+      if (isNode(node, 'Ampersand')) {
+        // Ampersands cloned from mixin definitions can carry a stale selector container
+        // that points at definition-time selectors. Clear it so call-site frames rebind `&`.
+        const ampNode = node as unknown as { _selectorContainer?: unknown; _storedSelector?: unknown };
+        ampNode._selectorContainer = undefined;
+        ampNode._storedSelector = undefined;
+      }
+      const value = (node as { value?: unknown }).value;
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (isNode(child)) {
+            resetEvalStateDeep(child);
+          }
+        }
+        return;
+      }
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        for (const propValue of Object.values(record)) {
+          if (isNode(propValue)) {
+            resetEvalStateDeep(propValue);
+            continue;
+          }
+          if (Array.isArray(propValue)) {
+            for (const item of propValue) {
+              if (isNode(item)) {
+                resetEvalStateDeep(item);
+              }
+            }
+          }
+        }
+      }
+    };
+    const getRootSourceRules = (rules: Rules): Rules => {
+      let current = rules;
+      const seen = new Set<Rules>();
+      while (current.sourceNode && isNode(current.sourceNode, 'Rules')) {
+        const next = current.sourceNode as Rules;
+        if (next === current || seen.has(next)) {
+          break;
+        }
+        seen.add(current);
+        current = next;
+      }
+      return current;
+    };
 
     let candidateEvalIndex = 0;
     for (let candidate of evalCandidates) {
@@ -1771,7 +1997,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Guard failed at definition time - skip this ruleset
           continue;
         }
-        let rules = (candidate as Ruleset).value.rules.copy(true);
+        const candidateRules = (candidate as Ruleset).value.rules;
+        const sourceRules = getRootSourceRules(candidateRules);
+        let rules = sourceRules.clone(true);
+        resetEvalStateDeep(rules as unknown as Node);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
@@ -1786,6 +2015,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark output Rules as mixin output - accessible only when lookup has a target
         rules.options.isMixinOutput = restrictMixinOutputLookup;
+        rules.options.referenceMode = false;
+        clearReferenceModeForMixinOutput(rules as unknown as Node);
         outputRules.push(rules);
         continue;
       }
@@ -1793,11 +2024,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Calling `@rulesetVar();` should *unlock* the rules into scope (including mixin definitions),
       // not eagerly execute/flatten them.
       if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
-        let unlocked = candidate.value.rules.copy(true);
+        const sourceRules = getRootSourceRules(candidate.value.rules);
+        let unlocked = sourceRules.clone(true);
+        resetEvalStateDeep(unlocked as unknown as Node);
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
         unlocked.options.isMixinOutput = restrictMixinOutputLookup;
+        unlocked.options.referenceMode = false;
+        clearReferenceModeForMixinOutput(unlocked as unknown as Node);
         unlocked.index = candidate.index;
         outputRules.push(unlocked);
         hasMatch = true;
@@ -1805,7 +2040,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.copy(true);
+      rules = rules.clone(true);
+      resetEvalStateDeep(rules as unknown as Node);
       candidate.parent!.adopt(rules);
       rules.sourceParent = sourceParent;
       // Don't set index before evaluation - let evaluation assign the correct index
@@ -1960,6 +2196,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           declRegistry.indexPendingItems();
           // Mark output Rules as mixin output - accessible only when lookup has a target
           newRules.options.isMixinOutput = restrictMixinOutputLookup;
+          newRules.options.referenceMode = false;
+          clearReferenceModeForMixinOutput(newRules as unknown as Node);
           if (thisContext.treeContext?.file) {
             newRules.options.rulesVisibility ??= {};
             newRules.options.rulesVisibility.VarDeclaration = 'private';
@@ -1995,6 +2233,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       output = outputRules[0]!;
       // Ensure single output rule is marked as mixin output
       output.options.isMixinOutput = restrictMixinOutputLookup;
+      output.options.referenceMode = false;
+      clearReferenceModeForMixinOutput(output as unknown as Node);
     } else {
       /**
        * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
@@ -2007,7 +2247,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           VarDeclaration: 'public',
           Mixin: 'public'
         },
-        isMixinOutput: restrictMixinOutputLookup
+        isMixinOutput: restrictMixinOutputLookup,
+        referenceMode: false
       });
       /**
        * Add rules but keep their original parents for further lazy lookups.
