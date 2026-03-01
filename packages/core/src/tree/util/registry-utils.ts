@@ -478,7 +478,7 @@ export class MixinRegistry extends Registry<
       // Universal (*) and pseudo (:) keys are not used as index keys but do not prevent indexing
       // when there is at least one indexable key.
       const indexableKeys = Array.from(keySet).filter(
-        (key) => typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
+        key => typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
       );
 
       if (indexableKeys.length === 0) {
@@ -530,9 +530,9 @@ export class MixinRegistry extends Registry<
         // to index by the callable selector that was explicitly authored.
         if (keySetToUse !== undefined) {
           if (
-            keySetToUse.size === 0 &&
-            ownSelector &&
-            !isNode(ownSelector, 'Nil')
+            keySetToUse.size === 0
+            && ownSelector
+            && !isNode(ownSelector, 'Nil')
           ) {
             const ownKeySet = (ownSelector as Selector).visibleKeySet;
             if (ownKeySet?.size) {
@@ -1218,7 +1218,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
         searchedRules: searchedRules
       };
 
-      const searchRules = this.rules;
+      const searchRules = rules;
       searchChildrenOptions.optionalCandidates = optionalCandidates;
       searchRules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);
 

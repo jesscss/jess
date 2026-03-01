@@ -113,7 +113,15 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Decision:** inline backtick JavaScript is intentionally unsupported; backticks should produce parse errors. Keep module-script flows (`@plugin`, `@use`) through `@jesscss/plugin-js` + Deno.
 - **Last thing we tried:** removed inline-JS pathways end-to-end: parser now throws a friendly backtick error ("use `@use` ... docs coming soon"), `evalInline` RPC path removed from `plugin-js`, and `JsExpression` node/type/export/visitor hooks removed from `core`.
 - **Verification:** `pnpm --filter @jesscss/core build`; `pnpm --filter @jesscss/less-parser test -- test/values.test.ts`; `NODE_OPTIONS='--max-old-space-size=8192' pnpm --filter jess test -- test/security-script-runtime.test.ts`; `pnpm --filter @jesscss/plugin-js test -- test/plugin-js-security.test.ts` all pass.
-- **Next step:** draft Less 5.x docs plan with shared-content strategy between `packages/docs` (Docusaurus) and `less/less-docs` (Assemble/Grunt).
+- **Next step:** complete docs architecture migration to Docusaurus-only dual outputs.
+
+**Docs architecture migration (2026-02-28):**
+
+- **Area:** docs architecture + Less 5.x migration path.
+- **Decision:** canonical docs source now lives in new package `packages/docs-content`; both Jess and Less outputs use Docusaurus renderers (`packages/docs`, new `packages/docs-less`).
+- **Last thing we tried:** added migration/import scripts in `packages/docs-content/scripts`, migrated Jess docs into `docs-content/docs/jess`, imported `less/less-docs` markdown into `docs-content/docs/less`, created `docs-less` Docusaurus package, and rewired `packages/docs` to render from canonical content.
+- **Verification snapshot:** `pnpm --filter @jesscss/docs-content run validate`, `pnpm --filter jess-docs build`, and `pnpm --filter @jesscss/docs-less build` all pass (with known legacy broken-link/broken-anchor warnings in imported Less/Jess content).
+- **Next step:** progressively fix legacy links/anchors in canonical docs content and add redirect/path mapping data in `packages/docs-content/migration/*.json`.
 
 **Import inline postlude model (2026-02-27, later):**
 
