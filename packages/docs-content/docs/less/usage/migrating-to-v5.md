@@ -44,6 +44,23 @@ Default behavior example (`collapseNesting: false`):
 Compiles to:
 
 ```css
+.card {
+  padding: 1rem;
+  .title {
+    font-weight: 600;
+  }
+  @media (min-width: 48rem) {
+    padding: 1.25rem;
+  }
+}
+```
+
+If you enable `collapseNesting: true`, nesting may be flattened/collapsed more aggressively for deduplication and parity behaviors.
+
+```css
+.card {
+  padding: 1rem;
+}
 .card .title {
   font-weight: 600;
 }
@@ -53,8 +70,6 @@ Compiles to:
   }
 }
 ```
-
-If you enable `collapseNesting: true`, nesting may be flattened/collapsed more aggressively for deduplication and parity behaviors.
 
 ### Less-style parent suffix selectors (`&-1`)
 
@@ -106,12 +121,12 @@ Example (mirrors core fixture patterns):
 }
 
 .sidebar2 {
-  &:extend(.sidebar all);
+  &:extend(.sidebar !all);
 }
 
 .type1 {
   .sidebar3 {
-    &:extend(.sidebar all);
+    &:extend(.sidebar !all);
   }
 }
 ```

@@ -29,6 +29,20 @@ const currentOnlyDocs = [
 ];
 const currentOnlyHomeLine =
   '- **Clear upgrade runway**: when you are ready, Less 5.x lets teams migrate seamlessly to the Jess language without rewriting everything at once.';
+const currentOnlyPluginWarnings = [
+  `:::warning 5.x+ status
+In the 5.x+ track, \`@plugin\` is **deprecated** and **experimentally supported**.
+
+Prefer \`@use\` for new work. Dedicated \`@use\` documentation is not published yet and will be added in a follow-up docs update.
+:::
+`,
+  `:::warning 5.x+ status
+In the 5.x+ track, \`@plugin\` is **deprecated** and currently **experimental**.
+
+Prefer \`@use\` for new integrations. We have not published dedicated \`@use\` documentation yet.
+:::
+`
+];
 
 const walkFiles = (dirPath, out = []) => {
   if (!fs.existsSync(dirPath)) {
@@ -85,6 +99,12 @@ if (fs.existsSync(legacyDownloadOptionsPath)) {
   fs.mkdirSync(path.dirname(versionDownloadOptionsPath), { recursive: true });
   fs.copyFileSync(legacyDownloadOptionsPath, versionDownloadOptionsPath);
 }
+const versionExtendPath = path.join(versionDocsDir, 'features', 'extend.md');
+if (fs.existsSync(versionExtendPath)) {
+  const extendContent = fs.readFileSync(versionExtendPath, 'utf8');
+  const legacyExtendContent = extendContent.replaceAll('!all', 'all');
+  fs.writeFileSync(versionExtendPath, legacyExtendContent, 'utf8');
+}
 const versionHomePath = path.join(versionDocsDir, 'Home.md');
 if (fs.existsSync(versionHomePath)) {
   const homeContent = fs.readFileSync(versionHomePath, 'utf8');
@@ -92,6 +112,17 @@ if (fs.existsSync(versionHomePath)) {
     .replace(`${currentOnlyHomeLine}\n`, '')
     .replace(currentOnlyHomeLine, '');
   fs.writeFileSync(versionHomePath, nextHomeContent, 'utf8');
+}
+for (const relPath of ['features/plugins.md', 'usage/plugins.md']) {
+  const pluginDocPath = path.join(versionDocsDir, relPath);
+  if (!fs.existsSync(pluginDocPath)) {
+    continue;
+  }
+  let pluginDocContent = fs.readFileSync(pluginDocPath, 'utf8');
+  for (const warningBlock of currentOnlyPluginWarnings) {
+    pluginDocContent = pluginDocContent.replace(warningBlock, '');
+  }
+  fs.writeFileSync(pluginDocPath, pluginDocContent, 'utf8');
 }
 fs.mkdirSync(path.dirname(versionedSidebarPath), { recursive: true });
 const sidebarModule = await import(`file://${sourceSidebarPath}`);

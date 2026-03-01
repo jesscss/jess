@@ -9,6 +9,7 @@ origin: less
 Load plugins before parsing begins in Less.js so plugin features are available during compilation.
 :::
 
+
 While the easiest way to use a plugin is using the [`@plugin` at-rule](../features/plugins), in a Node.js environment, you can pre-load a global Less.js plugin via the command line or by specifying it in the [Less options](./less-options).
 
 ### Preprocessing
