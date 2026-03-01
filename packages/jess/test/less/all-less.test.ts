@@ -29,7 +29,7 @@ const additionalSkips = [
 ];
 
 // Run unit fixtures alphabetically up through this filename (inclusive).
-const runUnitThrough = 'tests-unit/layer/layer.less';
+const runUnitThrough = 'tests-unit/media/media.less';
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
