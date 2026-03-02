@@ -1111,13 +1111,14 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           // Call terminated by a semi-colon and not parens, deprecated
           $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
-            $.endRule();
+            const location = $.endRule();
             // Mixin call without parentheses - deprecated
             $.warnDeprecation(
               'Calling a mixin without parentheses is deprecated',
               undefined,
               'mixin-call-no-parens'
             );
+            return createMixinCall(location);
           }
         }
       }

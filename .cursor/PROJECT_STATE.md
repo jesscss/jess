@@ -83,6 +83,17 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Less fixture: merge.less property assignment merge chain (2026-03-01):**
+
+- **Area:** core declaration assignment normalization + rules call-output merge coalescing.
+- **Last passing baseline:** focused `test/less/all-less.test.ts -t "tests-unit/merge/merge.less"` initially failed across many merge cases (split declarations, recursive growth, interleaved over-append).
+- **Last thing we tried:** completed merge-stage consolidation in `Rules` (`_coalesceMergedDeclarations`) and removed the call-specific `_mergeCallProducedDeclarationsWithPriorScope`; then updated `Declaration` `AssignmentType.Add` normalization to list composition (`List([Reference, value])`) instead of generic `Operation +`, and added immediate merged-list placeholder cleanup in `Declaration.evalNode` so later declarations read normalized prior values.
+- **Result:** focused Less fixture now passes:
+  - `pnpm --filter @jesscss/core build` ✅
+  - `pnpm --filter jess test -- --run test/less/all-less.test.ts -t "tests-unit/merge/merge.less"` ✅
+  Merge semantics are no longer duplicated across call-specific helper paths.
+- **Next step:** run a wider Less-fixture smoke pass (at least through current `runUnitThrough` ceiling) to ensure no regressions from the `AssignmentType.Add` normalization change and declaration-time placeholder cleanup.
+
 **Import reference render model (2026-02-27):**
 
 - **Area:** core import/reference serialization + less-parser import URL classification.
@@ -133,6 +144,32 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Next step:** decide whether to add a parser-level fixture test for full inline-postlude parsing shape (`layer + supports + media`) in `less-parser` package, or keep the new behavior locked via core import-style coverage only.
 
 **Coverage campaign: `@jesscss/fns` (2026-02-27):**
+
+**Less fixture: mixin-noparens namespaced no-parens call (2026-03-01):**
+
+- **Area:** less-parser mixin-call parsing (`#theme > .mixin;` deprecated no-parens form).
+- **Observed failure:** `tests-unit/mixin-noparens/mixin-noparens.less` warned (`mixin-call-no-parens`) but dropped emitted declarations; expected `#container` to include `background-color: grey`.
+- **Root cause:** in `packages/less-parser/src/productions.ts` (qualified-rule OR branch for semicolon-terminated no-parens mixin call), parser consumed `;` and emitted deprecation warning but returned no `Call` node.
+- **Fix:** after `$.endRule()`, return `createMixinCall(location)` in that deprecated branch so no-parens selector calls still execute while warning.
+- **Verification:**
+  - `pnpm --filter @jesscss/less-parser build` ✅
+  - `pnpm test packages/jess/test/less/all-less.test.ts -- --run -t "mixin-noparens.less"` ✅
+  - `pnpm test packages/jess/test/less/mixins.test.ts -- --run -t "without parentheses"` ✅
+- **Next step:** continue mixin fixture progression by isolating the next failing mixin-oriented fixture and repeat single-fixture debug loop.
+
+**Less fixtures: mixins directory progression (2026-03-01, later):**
+
+- **Area:** `@less/test-data` mixin fixtures after `mixin-noparens`.
+- **Harness change for progression:** `packages/jess/test/less/all-less.test.ts` `runUnitThrough` advanced to `tests-unit/mixins/mixins.less` to include `tests-unit/mixins/*`.
+- **Verification snapshot:**
+  - `pnpm --filter @jesscss/less-parser build` ✅
+  - `pnpm test packages/jess/test/less/all-less.test.ts -- --run -t "mixin-noparens.less"` ✅
+  - `pnpm test packages/jess/test/less/all-less.test.ts -- --run -t "tests-unit/mixins/"` ❌
+- **Current failing mixin fixtures (isolated):**
+  1. `tests-unit/mixins/mixins-advanced.less` → `ReferenceError: No matching mixins found for '.mixin'` (namespace path case: `#namespace > .mixin();`)
+  2. `tests-unit/mixins/mixins.less` → `ReferenceError: No matching mixins found for '.amp.support.higher'`
+- **Last thing we tried:** parser-side call-key shape experiments in `createMixinCall` (nested refs vs array key extraction); reverted exploratory parts after no improvement to keep only confirmed `mixin-noparens` fix.
+- **Next step:** debug `mixin-ruleset` lookup path in core (`reference.ts` + `registry-utils.ts` / mixin registry recursion) using focused `mixins.less` compound-selector call cases first, then verify `mixins-advanced` namespaced call case.
 
 **List-args follow-up debug: core mixin/control (2026-02-27):**
 

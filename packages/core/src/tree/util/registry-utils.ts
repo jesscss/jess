@@ -473,19 +473,18 @@ export class MixinRegistry extends Registry<
     const index = this.index;
 
     if (keySet?.size) {
-      // Index by the first *indexable* key so guarded rulesets are findable by selector name
-      // even when the selector keySet includes guard-related keys (e.g. :when).
-      // Universal (*) and pseudo (:) keys are not used as index keys but do not prevent indexing
-      // when there is at least one indexable key.
-      const indexableKeys = Array.from(keySet).filter(
-        key => typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
+      // Keep `*` in the trailing match path so selectors like `.mixin > *` do not collide
+      // with plain `.mixin` mixin calls. Only pseudo keys are excluded from indexing.
+      const candidateKeys = Array.from(keySet).filter(
+        key => typeof key === 'string' && !key.startsWith(':')
       );
-
-      if (indexableKeys.length === 0) {
+      const startIndex = candidateKeys.findIndex(key => !key.startsWith('*'));
+      if (startIndex === -1) {
         return; // Only skip when there is no indexable key (e.g. :hover-only selector)
       }
 
-      const [startKey, ...rest] = indexableKeys;
+      const startKey = candidateKeys[startIndex]!;
+      const rest = candidateKeys.slice(startIndex + 1);
       const existing = index.get(startKey!);
       if (existing) {
         existing.push({ value: mixin, match: rest });
@@ -536,7 +535,15 @@ export class MixinRegistry extends Registry<
           ) {
             const ownKeySet = (ownSelector as Selector).visibleKeySet;
             if (ownKeySet?.size) {
-              keySetToUse = ownKeySet;
+              const ownKeys = Array.from(ownKeySet);
+              const selectorText = String(selectorToIndex.valueOf?.() ?? '');
+              // In nested `&...` rulesets, ownKeySet may include inherited parent key first.
+              // For local lookup chains we want the nested segment as the start key.
+              if (selectorText.startsWith('&') && ownKeys.length > 1) {
+                keySetToUse = new Set(ownKeys.slice(1));
+              } else {
+                keySetToUse = ownKeySet;
+              }
             }
           }
           this._indexSelectorStart(mixin, keySetToUse);
@@ -835,7 +842,6 @@ export class MixinRegistry extends Registry<
               let subRules = candidateNode.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
-              const candidatesBeforeRecursive = candidates ? new Set(candidates) : new Set();
               subMixinRegistry.find(search, filterType, {
                 searchParents: false,
                 local,
@@ -845,9 +851,6 @@ export class MixinRegistry extends Registry<
                 hasTarget,
                 searchedRules: undefined // Not needed when searchParents is false
               } as FindOptions);
-              const candidatesAfterRecursive = candidates ? new Set(candidates) : new Set();
-              const newCandidates = Array.from(candidatesAfterRecursive).filter(c => !candidatesBeforeRecursive.has(c));
-              const newCandidateNames = newCandidates.map(c => isNode(c, 'Mixin') ? c.value.name?.valueOf?.() : (isNode(c, 'Ruleset') ? (c as any).selector?.valueOf?.() : 'unknown'));
             }
           }
         }

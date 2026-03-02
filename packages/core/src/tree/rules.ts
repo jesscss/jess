@@ -26,6 +26,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@je
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
 import { Any } from './any.js';
+import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 const { isArray } = Array;
@@ -1292,6 +1293,129 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
+   * Coalesce assignment-normalized declaration chains in one stage after evaluation.
+   * This handles both in-scope merges and merges that span call-produced Rules blocks.
+   */
+  private _coalesceMergedDeclarations(rules: Rules): void {
+    const isMergedAssign = (assign: unknown): boolean => (
+      assign === '+:' || assign === '&,:' || assign === '&_:'
+    );
+    const isDeclarationOnlyRules = (node: Node): node is Rules => (
+      isNode(node, 'Rules')
+      && node.value.length > 0
+      && node.value.every(child => isNode(child, ['Declaration', 'Comment']))
+    );
+    const composeMergedValue = (decl: Node, prior: Node, assign: string): void => {
+      if (!isNode(decl, 'Declaration') || !isNode(prior, 'Declaration')) {
+        return;
+      }
+      const priorValue = prior.value.value.copy(true, freezeChildren);
+      const nextValue = decl.value.value.copy(true, freezeChildren);
+      decl.value.value = assign === '&_:'
+        ? spaced([priorValue, nextValue])
+        : new List([priorValue, nextValue]);
+      if (!decl.value.important && prior.value.important) {
+        decl.value.important = prior.value.important;
+      }
+    };
+    const normalizeMergedDeclarationValue = (node: Node): void => {
+      if (!isNode(node, 'Declaration')) {
+        return;
+      }
+      const current = node.value.value;
+      if (!isNode(current, 'List') || current.value.length === 0) {
+        return;
+      }
+      const [first, ...rest] = current.value;
+      let firstIsEmptyString = false;
+      try {
+        firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
+      } catch {
+        firstIsEmptyString = false;
+      }
+      const isEmptyPlaceholder = Boolean(
+        first
+        && (
+          isNode(first, 'Nil')
+          || (isNode(first, 'List') && first.value.length === 0)
+          || firstIsEmptyString
+        )
+      );
+      if (!isEmptyPlaceholder) {
+        return;
+      }
+      if (rest.length === 0) {
+        node.value.value = new Nil();
+        return;
+      }
+      if (rest.length === 1) {
+        node.value.value = rest[0]!.copy(true, freezeChildren);
+        return;
+      }
+      node.value.value = new List(rest.map(item => item.copy(true, freezeChildren)));
+    };
+
+    const lastVisibleByName = new Map<string, Node>();
+    const mergedAnchorByName = new Map<string, Node>();
+    const stream: Node[] = [];
+
+    for (const node of rules.value) {
+      if (isNode(node, 'Declaration')) {
+        stream.push(node);
+        continue;
+      }
+      if (isDeclarationOnlyRules(node)) {
+        for (const child of node.value) {
+          if (isNode(child, 'Declaration')) {
+            stream.push(child);
+          }
+        }
+      }
+    }
+
+    for (const node of stream) {
+      if (!isNode(node, 'Declaration')) {
+        continue;
+      }
+      const name = String(node.value.name);
+      const assign = String(node.options.normalizedFromAssign ?? '');
+      const merged = isMergedAssign(assign);
+
+      if (!merged) {
+        mergedAnchorByName.delete(name);
+        if (node.visible) {
+          lastVisibleByName.set(name, node);
+        }
+        continue;
+      }
+      normalizeMergedDeclarationValue(node);
+
+      const prior = lastVisibleByName.get(name);
+      if (prior && prior !== node && prior.parent !== node.parent) {
+        composeMergedValue(node, prior, assign);
+      }
+
+      const existingAnchor = mergedAnchorByName.get(name);
+      if (existingAnchor && existingAnchor !== node && isNode(existingAnchor, 'Declaration')) {
+        existingAnchor.value.value = node.value.value.copy(true);
+        if (!existingAnchor.value.important && node.value.important) {
+          existingAnchor.value.important = node.value.important;
+        }
+        node.removeFlag(F_VISIBLE);
+        if (existingAnchor.visible) {
+          lastVisibleByName.set(name, existingAnchor);
+        }
+        continue;
+      }
+
+      mergedAnchorByName.set(name, node);
+      if (node.visible) {
+        lastVisibleByName.set(name, node);
+      }
+    }
+  }
+
+  /**
    * Normalize call-produced declaration-only Rules ordering so declarations
    * emitted from late-evaluated calls (e.g. each/$for) appear before nested
    * rulesets/at-rules in the same parent Rules container.
@@ -1305,12 +1429,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     const beforeNested = rules.value.slice(0, firstNestedIdx);
     const afterNested = rules.value.slice(firstNestedIdx);
-    const shouldMove = (n: Node) => (
-      isNode(n, 'Rules')
-      && isNode(n.sourceParent, 'Call')
-      && n.value.length > 0
-      && n.value.every(child => isNode(child, ['Declaration', 'Comment']))
-    );
+    const shouldMove = (n: Node) => {
+      if (
+        !isNode(n, 'Rules')
+        || !isNode(n.sourceParent, 'Call')
+        || n.value.length === 0
+        || !n.value.every(child => isNode(child, ['Declaration', 'Comment']))
+      ) {
+        return false;
+      }
+      const sourceName = n.sourceParent.value.name;
+      // Keep mixin-call declaration blocks in source order relative to nested rulesets.
+      if (
+        isNode(sourceName, 'Reference')
+        && (sourceName.options?.type === 'mixin'
+          || sourceName.options?.type === 'mixin-ruleset'
+          || sourceName.options?.type === 'ruleset')
+      ) {
+        return false;
+      }
+      return true;
+    };
     const moved = afterNested.filter(shouldMove);
     if (moved.length === 0) {
       return;
@@ -1345,6 +1484,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (isThenable(maybeHoist)) {
       return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
         this._normalizeCallDeclarationRulesOrder(rules);
+        this._coalesceMergedDeclarations(rules);
         return {
           rules,
           rulesToHoist
@@ -1352,6 +1492,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       });
     }
     this._normalizeCallDeclarationRulesOrder(rules);
+    this._coalesceMergedDeclarations(rules);
     return { rules, rulesToHoist: maybeHoist as boolean };
   }
 
@@ -1685,6 +1826,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           try {
             const evald = await arg.clonedEval(thisContext);
+            if (isNode(evald, 'Rest')) {
+              const restValue = evald.value;
+              if (isNode(restValue, 'Sequence') || isNode(restValue, 'List')) {
+                for (const restArg of restValue.value) {
+                  const frozenRestArg = restArg.copy(true, freezeChildren);
+                  frozenRestArg.frozen = true;
+                  nodeArgs.push(frozenRestArg);
+                }
+                continue;
+              }
+            }
             evald.frozen = true;
             nodeArgs.push(evald);
           } catch (error: any) {

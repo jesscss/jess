@@ -169,10 +169,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             const ref = new Reference({ key }, {
               type,
               fallbackValue: new Nil(),
+              resolution: 'linear',
               // Assignment normalization clears `assign` to Default, so matching by
               // assignment flag prevents later merge iterations from seeing prior values.
               // Exclude only the current node to avoid self-reference.
-              filter: (n) => n !== node
+              filter: n => n !== node
             });
             /**
              * @note - It's up to Sequence and List to handle
@@ -188,17 +189,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           case AssignmentType.Add: {
             if (node.type === 'Declaration') {
-              // Use list addition semantics so first occurrence produces a scalar list item
-              // (no leading comma), while subsequent occurrences append.
-              node.value.value = new Operation([
+              // Less property `+:` appends comma-separated items.
+              // Use list composition (not generic `Operation +`) so scalar previous values
+              // remain distinct list members rather than string-concatenating.
+              node.value.value = new List([
                 new Reference({ key }, {
                   type,
-                  fallbackValue: new List([]),
+                  fallbackValue: new Nil(),
+                  resolution: 'linear',
                   // Prevent self-referential reads while normalizing this node.
-                  filter: (n) => n !== node
+                  filter: n => n !== node
                 }),
-                '+',
-                new List([value])
+                value
               ]);
             } else {
               node.value.value =
@@ -259,6 +261,38 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
+        const normalizeMergedLeadingPlaceholder = () => {
+          const normalizedAssign = node.options.normalizedFromAssign;
+          const isListMergedAssign =
+            normalizedAssign === AssignmentType.Add
+            || normalizedAssign === AssignmentType.MergeList;
+          if (!isListMergedAssign || !isNode(node.value.value, 'List')) {
+            return;
+          }
+          const listValue = node.value.value.value;
+          if (listValue.length === 0) {
+            return;
+          }
+          const first = listValue[0]!;
+          const isEmptyPlaceholder = (
+            isNode(first, 'Nil')
+            || (isNode(first, 'List') && first.value.length === 0)
+            || String(first.valueOf?.() ?? '') === ''
+          );
+          if (!isEmptyPlaceholder) {
+            return;
+          }
+          const rest = listValue.slice(1);
+          if (rest.length === 0) {
+            node.value.value = new Nil();
+            return;
+          }
+          if (rest.length === 1) {
+            node.value.value = rest[0]!.copy(true);
+            return;
+          }
+          node.value.value = new List(rest.map(item => item.copy(true)));
+        };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
           return node;
@@ -269,7 +303,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (isCustomProperty) {
             const hasInterpolation =
               value.type === 'Interpolated'
-              || [...value.children(true)].some((child) => child.type === 'Interpolated');
+              || [...value.children(true)].some(child => child.type === 'Interpolated');
             if (!hasInterpolation) {
               return node;
             }
@@ -283,6 +317,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 return newValue.inherit(node);
               }
               node.value.value = newValue;
+              normalizeMergedLeadingPlaceholder();
               // Merge !important from referenced declarations
               if (context.hasImportantSource && !node.value.important) {
                 node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
@@ -299,6 +334,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return (value as Nil).inherit(node);
           }
           node.value.value = maybeNewValue as Node;
+          normalizeMergedLeadingPlaceholder();
           // Merge !important from referenced declarations
           if (context.hasImportantSource && !node.value.important) {
             node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
