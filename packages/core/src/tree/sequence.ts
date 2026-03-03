@@ -49,7 +49,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
 
     // Serialize first node with toString() to preserve comments
-    value[0]!.toString(options);
+    const firstCaptured = w.captureWithMeta(() => value[0]!.toString(options));
+    w.add(firstCaptured.text);
+    let prevTrailingIntent = firstCaptured.trailingIntent;
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
@@ -68,15 +70,21 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
         // Capture current node's output to check if it starts with space
         // This captures the serialized output including pre/post from child nodes
-        const currentNodeOut = w.capture(() => node.toString(options));
+        const currentCaptured = w.captureWithMeta(() => node.toString(options));
+        const currentNodeOut = currentCaptured.text;
         const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+        const hasExplicitNoSpaceBoundary = (
+          prevTrailingIntent === 'explicit_none'
+          || currentCaptured.leadingIntent === 'explicit_none'
+        );
 
-        if (!prevEndsWithSpace && !currentStartsWithSpace) {
+        if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
           // No space present - add single space before node
           w.add(' ');
         }
         // Write the captured output (node was already serialized in capture())
         w.add(currentNodeOut);
+        prevTrailingIntent = currentCaptured.trailingIntent;
       }
     }
 

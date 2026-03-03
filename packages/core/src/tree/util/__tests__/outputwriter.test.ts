@@ -96,6 +96,32 @@ describe('OutputWriter', () => {
       expect(w.toString()).toBe('line1\n');
       expect(captured).toBe('line2\nline3\n');
     });
+
+    it('captureWithMeta defaults to implicit boundary intent', () => {
+      const w = new OutputWriter();
+      const captured = w.captureWithMeta(() => {
+        w.add('abc');
+      });
+      expect(captured).toEqual({
+        text: 'abc',
+        leadingIntent: 'implicit',
+        trailingIntent: 'implicit'
+      });
+    });
+
+    it('captureWithMeta preserves explicit boundary intent signals', () => {
+      const w = new OutputWriter();
+      const captured = w.captureWithMeta(() => {
+        w.signalBoundaryIntent('pre', 'explicit_none');
+        w.add('abc');
+        w.signalBoundaryIntent('post', 'explicit_none');
+      });
+      expect(captured).toEqual({
+        text: 'abc',
+        leadingIntent: 'explicit_none',
+        trailingIntent: 'explicit_none'
+      });
+    });
   });
 
   describe('mark and restore', () => {
@@ -164,9 +190,9 @@ describe('OutputWriter', () => {
       // Access private _positions array for testing
       const positions = (w as any)._positions;
       expect(positions).toHaveLength(3);
-      expect(positions[0]).toEqual({ line: 0, column: 5, segments: 0 });
-      expect(positions[1]).toEqual({ line: 0, column: 11, segments: 0 });
-      expect(positions[2]).toEqual({ line: 1, column: 8, segments: 0 });
+      expect(positions[0]).toEqual({ line: 0, column: 5, segments: 0, length: 5 });
+      expect(positions[1]).toEqual({ line: 0, column: 11, segments: 0, length: 11 });
+      expect(positions[2]).toEqual({ line: 1, column: 8, segments: 0, length: 20 });
     });
 
     it('capture does not affect _positions array', () => {

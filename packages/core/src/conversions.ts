@@ -38,7 +38,8 @@ function memoize<Args extends any[], Return>(
  */
 export const percentOf = memoize((base: number): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension && value.value.unit === '%') {
-    return value.value.number * base / 100;
+    const converted = value.value.number * base / 100;
+    return new Num(converted);
   }
   return value;
 });
@@ -54,16 +55,16 @@ export const angleToDegrees = memoize((): ConversionPlugin => (value: unknown) =
   }
   const { number, unit } = value.value;
   if (unit === 'turn') {
-    return number * 360;
+    return new Num(number * 360);
   }
   if (unit === 'rad') {
-    return number * 180 / Math.PI;
+    return new Num(number * 180 / Math.PI);
   }
   if (unit === 'grad') {
-    return number * 0.9;
+    return new Num(number * 0.9);
   }
   if (unit === 'deg' || unit === '') {
-    return number;
+    return new Num(number);
   }
   return value;
 });
@@ -96,7 +97,7 @@ export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => 
 
   // Normalize to 0-360 range
   degrees = ((degrees % 360) + 360) % 360;
-  return degrees;
+  return new Num(degrees);
 });
 
 /**
@@ -119,7 +120,8 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
     return value; // Don't convert if unit is not recognized
   }
 
-  return Math.max(0, Math.min(1, result));
+  const clamped = Math.max(0, Math.min(1, result));
+  return new Num(clamped);
 });
 
 /**
@@ -128,7 +130,10 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
  */
 export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension) {
-    return value.value.number; // Extract number from Dimension
+    return new Num(value.value.number); // Extract number from Dimension
+  }
+  if (value instanceof Num) {
+    return new Num(value.value.number);
   }
   return value; // Don't know how to handle this, pass through
 });
@@ -150,14 +155,14 @@ export const lengthToPx = (baseFontSize: number = 16): ConversionPlugin => (valu
   const { number, unit } = value.value;
 
   switch (unit) {
-    case 'px': return number;
-    case 'em': return number * baseFontSize;
-    case 'rem': return number * baseFontSize;
-    case 'in': return number * 96;
-    case 'cm': return number * 96 / 2.54;
-    case 'mm': return number * 96 / 25.4;
-    case 'pt': return number * 96 / 72;
-    case 'pc': return number * 96 / 6;
+    case 'px': return new Num(number);
+    case 'em': return new Num(number * baseFontSize);
+    case 'rem': return new Num(number * baseFontSize);
+    case 'in': return new Num(number * 96);
+    case 'cm': return new Num(number * 96 / 2.54);
+    case 'mm': return new Num(number * 96 / 25.4);
+    case 'pt': return new Num(number * 96 / 72);
+    case 'pc': return new Num(number * 96 / 6);
     default: return value;
   }
 };
@@ -172,10 +177,10 @@ export const timeToMs = (): ConversionPlugin => (value: unknown) => {
   }
   const { number, unit } = value.value;
   if (unit === 'ms') {
-    return number;
+    return new Num(number);
   }
   if (unit === 's') {
-    return number * 1000;
+    return new Num(number * 1000);
   }
   return value;
 };
@@ -190,10 +195,10 @@ export const frequencyToHz = (): ConversionPlugin => (value: unknown) => {
   }
   const { number, unit } = value.value;
   if (unit === 'hz') {
-    return number;
+    return new Num(number);
   }
   if (unit === 'khz') {
-    return number * 1000;
+    return new Num(number * 1000);
   }
   return value;
 };
@@ -208,16 +213,16 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
   }
   const { number, unit } = value.value;
   if (unit === 'turn') {
-    return number * 2 * Math.PI;
+    return new Num(number * 2 * Math.PI);
   }
   if (unit === 'rad') {
-    return number;
+    return new Num(number);
   }
   if (unit === 'grad') {
-    return number * Math.PI / 200;
+    return new Num(number * Math.PI / 200);
   }
   if (unit === 'deg' || unit === '') {
-    return number * Math.PI / 180;
+    return new Num(number * Math.PI / 180);
   }
   return value;
 };

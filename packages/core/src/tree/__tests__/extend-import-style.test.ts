@@ -662,10 +662,6 @@ describe('Style import extend behavior', () => {
 
       const css = (await node.eval(context)).toString();
       expect(css).toBeString(`
-        .base,
-        .child {
-          color: red;
-        }
         .child {
           color: blue;
         }

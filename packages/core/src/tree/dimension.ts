@@ -86,6 +86,12 @@ export class Dimension extends Node<DimensionValue> {
       let outUnit = aUnit ?? bUnit;
       /** One or both doesn't have a unit, so just calculate the number */
       if ((isStrictMode || isPreserveMode) && bUnit && op === '/') {
+        if (isPreserveMode) {
+          return new Dimension({
+            number: calculate(aVal, op, bVal),
+            unit: `1/${bUnit}`
+          }).inherit(this);
+        }
         throw new TypeError('Cannot divide a number by a unit');
       }
       return new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }).inherit(this);
@@ -98,6 +104,12 @@ export class Dimension extends Node<DimensionValue> {
       }
       if (isStrictMode || isPreserveMode) {
         if (op === '*') {
+          if (isPreserveMode) {
+            return new Dimension({
+              number: calculate(aVal, op, bVal),
+              unit: `${aUnit}*${bUnit}`
+            }).inherit(this);
+          }
           throw new TypeError('Cannot multiply two units together');
         } else {
           /** Cancel units during division */
@@ -112,18 +124,35 @@ export class Dimension extends Node<DimensionValue> {
 
     if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
       if (isStrictMode || isPreserveMode) {
+        if (isPreserveMode) {
+          return new Dimension({
+            number: calculate(aVal, op, bVal),
+            unit: (
+              op === '+' || op === '-'
+                ? `${aUnit}±${bUnit}`
+                : `${aUnit}${op}${bUnit}`
+            )
+          }).inherit(this);
+        }
         /** Units don't match, and can't be converted */
         throw new TypeError('Incompatible units. Change the units or use the unit function');
       }
       /** Just coerce to the left-hand unit */
       return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
     }
-    
+
     const group = conversions[bGroup];
     // @ts-expect-error - set up proper indexing later
     let atomicUnit = group[aUnit] as number;
     // @ts-expect-error - set up proper indexing later
     let targetUnit = group[bUnit] as number;
+
+    if (isPreserveMode && (op === '*' || op === '/')) {
+      return new Dimension({
+        number: calculate(aVal, op, bVal),
+        unit: `${aUnit}${op}${bUnit}`
+      }).inherit(this);
+    }
 
     bVal = bVal / (atomicUnit / targetUnit);
     return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
@@ -203,16 +232,16 @@ export class Dimension extends Node<DimensionValue> {
     const w = options.writer!;
     const mark = w.mark();
     let { number, unit = '' } = this.value;
-    
+
     // Check if unit is compound (contains '/', '*', or '±')
     const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));
-    
+
     if (isCompoundUnit) {
       // Output as calc() for compound units
       // Parse the compound unit to reconstruct a valid calc() expression
       w.add('calc(', this);
       const numberStr = `${round(number, 8)}`.toLowerCase();
-      
+
       // Parse compound unit to create calc expression
       if (unit.includes('/')) {
         // Division: "px/s" or "1/s" → calc(number * 1px / 1s) or calc(number / 1s)

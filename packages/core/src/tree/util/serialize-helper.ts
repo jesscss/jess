@@ -147,7 +147,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   // for each property, keep the last exact serialized declaration and skip earlier duplicates.
   for (let i = rulesToRender.length - 1; i >= 0; i--) {
     const node = rulesToRender[i]!;
-    if (!isNode(node, 'Declaration')) {
+    if (!isNode(node, 'Declaration') || isNode(node, 'VarDeclaration')) {
       continue;
     }
     const declWriter = new OutputWriter();
@@ -211,7 +211,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (inReferenceMode && !renderEnabled && !isContainer) {
       continue;
     }
-    if (isNode(n, 'Declaration') && skippedDuplicateDeclarations.has(n)) {
+    if (isNode(n, 'Declaration') && !isNode(n, 'VarDeclaration') && skippedDuplicateDeclarations.has(n)) {
       continue;
     }
 
@@ -232,7 +232,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let matches = -1;
     /** Close current frames if needed */
     for (let i = 0; i < lastRenderedFrames.length; i++) {
-      if (inFrames[i]?.valueOf() !== lastRenderedFrames[i]?.valueOf()) {
+      const currentFrame = inFrames[i];
+      const priorFrame = lastRenderedFrames[i];
+      const sameValueOf = currentFrame?.valueOf() === priorFrame?.valueOf();
+      if (!sameValueOf) {
         break;
       }
       matches = i;

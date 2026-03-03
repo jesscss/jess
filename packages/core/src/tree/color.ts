@@ -124,7 +124,19 @@ export class Color extends Node<ColorData, ColorOptions> {
     super(colorData, colorOptions, location, context);
   }
 
+  private normalizeChannelValue(value: unknown): ChannelValue {
+    if (typeof value === 'number') {
+      return value;
+    }
+    if (isNode(value, 'Dimension')) {
+      const { number, unit } = value.value;
+      return unit ? [number, unit] : number;
+    }
+    return value as ChannelValue;
+  }
+
   private hueToDegrees(value: ChannelValue): number {
+    value = this.normalizeChannelValue(value) as ChannelValue;
     if (typeof value === 'number') {
       return value;
     }
@@ -142,6 +154,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   private percentToUnit(value: ChannelValue): number {
+    value = this.normalizeChannelValue(value) as ChannelValue;
     if (typeof value === 'number') {
       return value;
     }
@@ -150,6 +163,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   private rgbChannelToNumber(value: ChannelValue): number {
+    value = this.normalizeChannelValue(value) as ChannelValue;
     if (typeof value === 'number') {
       return value;
     }
@@ -158,6 +172,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   private alphaToNumber(value: AlphaValue): number {
+    value = this.normalizeChannelValue(value) as AlphaValue;
     if (typeof value === 'number') {
       return value;
     }
@@ -170,8 +185,9 @@ export class Color extends Node<ColorData, ColorOptions> {
     if (compress && this.alpha === 0) {
       return '0';
     }
-    if (Array.isArray(alphaSource)) {
-      const [alphaValue, alphaUnit] = alphaSource;
+    const normalizedAlphaSource = this.normalizeChannelValue(alphaSource) as AlphaValue;
+    if (Array.isArray(normalizedAlphaSource)) {
+      const [alphaValue, alphaUnit] = normalizedAlphaSource;
       return `${round(alphaValue, 8)}${alphaUnit}`;
     }
     return `${this.alpha}`;
@@ -184,6 +200,7 @@ export class Color extends Node<ColorData, ColorOptions> {
       return [`${r}`, `${g}`, `${b}`];
     }
     return rgbSource.map((channel, idx) => {
+      channel = this.normalizeChannelValue(channel) as ChannelValue;
       if (typeof channel === 'number') {
         return `${this.rgb[idx]!}`;
       }

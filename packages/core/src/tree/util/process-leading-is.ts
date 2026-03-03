@@ -278,9 +278,11 @@ export function processLeadingIs(
     }
 
     if (isNode(normalizedArg, 'ComplexSelector')) {
-      const argComps = (normalizedArg as ComplexSelector).value.slice().map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
-      const rest = value.slice(firstSelIndex + 1).map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
-      const newValue = [...argComps, ...rest];
+      const argComplex = normalizedArg as ComplexSelector;
+      const rest = value.slice(firstSelIndex + 1);
+      const argComps = argComplex.value.slice().map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
+      const restComps = rest.map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
+      const newValue = [...argComps, ...restComps];
       return ComplexSelector.create(newValue).inherit(selector) as Selector;
     }
     const rest = value.slice(firstSelIndex + 1).map(c => (c as Selector).copy(true) as ComplexSelectorComponent);

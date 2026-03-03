@@ -111,7 +111,22 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   /** Used for equality comparison with other rulesets */
   override valueOf() {
-    return (this._valueOf ??= this.selector instanceof Nil ? '' : this.selector.valueOf());
+    if (this._valueOf !== undefined) {
+      return this._valueOf;
+    }
+    const selector = this.selector;
+    if (selector instanceof Nil) {
+      this._valueOf = '';
+      return this._valueOf;
+    }
+    const normalizedResult = processLeadingIs(selector as Selector);
+    if (Array.isArray(normalizedResult)) {
+      const normalizedList = SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector);
+      this._valueOf = normalizedList.valueOf();
+      return this._valueOf;
+    }
+    this._valueOf = (normalizedResult as Selector).valueOf();
+    return this._valueOf;
   }
 
   /**

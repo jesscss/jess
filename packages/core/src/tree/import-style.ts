@@ -469,6 +469,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the rules have not been evaluated yet
        * - the import type is `import`
       */
+        let evaluatedInImplicitReferenceMode = false;
         if (withValues || !evaldRules || type === 'import') {
           const preserveOriginalNodes = context.preserveOriginalNodes;
           context.preserveOriginalNodes = true;
@@ -480,6 +481,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             && !importOptions!.multiple
           );
           if (isImplicitReferenceModeForEval) {
+            evaluatedInImplicitReferenceMode = true;
             // Dedupe re-imports behave like an implicit reference traversal:
             // evaluate for symbol availability, but avoid outward extend side effects.
             context.pushImportScope({ reference: true });
@@ -546,7 +548,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.extendRoots.popExtendRoot();
         }
 
+        if (evaluatedInImplicitReferenceMode) {
+          (rules.options as { referenceMode?: boolean }).referenceMode = false;
+        }
         let finalRules = node.getFinalRules(rules);
+        if (evaluatedInImplicitReferenceMode) {
+          (finalRules.options as { referenceMode?: boolean }).referenceMode = false;
+        }
         if (importOptions!.postlude && !isInlineImport) {
           finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
         }
@@ -558,20 +566,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const currentParentExtendRoot = context.extendRoots.getCurrentExtendRoot();
           // Import type is mutable by default (unless explicitly mutable: false)
           const isImportProtected = importOptions!.mutable === false;
+          const isImplicitReferenceModeForRegistration = (
+            importOptions!._dedupe === true
+            && importOptions!.reference !== true
+            && !importOptions!.multiple
+          );
+          const shouldReRegisterLocalRootRulesets = isImportProtected || isImplicitReferenceModeForRegistration;
           context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
             isProtected: isImportProtected,
             namespace: node.options.namespace
           });
 
-          // For protected imports, rulesets were registered in the original rules' registry
+          // For imports that evaluated under a local extend root (protected import or implicit _dedupe
+          // reference traversal), rulesets were registered in the pre-finalized Rules root. Since
+          // getFinalRules can clone, re-register all descendant rulesets under finalRules.
           // during preEval (when we pushed rules to the stack). Since getFinalRules clones,
-          // we need to re-register rulesets in finalRules' registry
-          if (isImportProtected) {
+          // we need to re-register rulesets in finalRules' registry.
+          if (shouldReRegisterLocalRootRulesets) {
             const finalRulesRegistry = finalRules.getRegistry('ruleset');
-            // Find all rulesets that are children of finalRules and register them
-            for (const child of finalRules.value) {
-              if (child.type === 'Ruleset') {
-                finalRulesRegistry.add(child as Ruleset);
+            for (const maybeRuleset of finalRules.nodes()) {
+              if (isNode(maybeRuleset, 'Ruleset')) {
+                finalRulesRegistry.add(maybeRuleset as Ruleset);
               }
             }
           }

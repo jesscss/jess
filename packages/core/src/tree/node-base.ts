@@ -575,11 +575,31 @@ export abstract class Node<
    * @returns The result from visiting this node (may be a replacement node)
    */
   accept(visitor: Visitor): Node {
-    // Visit self first (like Less.js pattern)
-    // Note: visitor.visit() handles enter() hook and ABORT checking internally.
-    // It normalizes symbols (ABORT, REMOVE, SKIP) to a Node, so we always get a Node back.
-    // Individual visitor methods can return symbols, but visit() normalizes them.
-    const result = visitor.visit(this);
+    // Visit self first (like Less.js pattern).
+    // Support both Visitor class instances (visit()) and plain visitor objects.
+    let result: Node | NodeVisitReturn = this;
+    const treeVisitMethod = (visitor as unknown as { _visit?: (node: Node, ctx?: unknown) => NodeVisitReturn })._visit;
+    const hasTreeVisitorState = (visitor as unknown as { visitedNodes?: unknown }).visitedNodes instanceof Set;
+    const visitMethod = (visitor as unknown as { visit?: (node: Node) => Node }).visit;
+    if (typeof treeVisitMethod === 'function' && hasTreeVisitorState) {
+      result = treeVisitMethod.call(visitor, this, {});
+    } else if (typeof visitMethod === 'function') {
+      result = visitMethod.call(visitor, this);
+    } else {
+      const maybeAbort = visitor.enter?.(this);
+      if (maybeAbort === ABORT) {
+        return this;
+      }
+      const methodName = this.type.charAt(0).toLowerCase() + this.type.slice(1);
+      const typeMethod = (visitor as unknown as Record<string, unknown>)[methodName];
+      if (typeof typeMethod === 'function') {
+        const visited = (typeMethod as (node: Node) => NodeVisitReturn).call(visitor, this);
+        if (visited) {
+          result = visited;
+        }
+      }
+      result = visitor.exit?.(result) ?? result;
+    }
 
     // Visit children recursively (Less.js pattern)
     // Note: If TreeVisitor is using accept(), it will skip auto-visiting children
@@ -594,7 +614,7 @@ export abstract class Node<
     }
 
     // Return the result (may be a replacement node)
-    return result;
+    return result instanceof Node ? result : this;
   }
 
   /**
@@ -908,12 +928,17 @@ export abstract class Node<
     if (value === undefined) {
       if (defaultVal) {
         w.add(defaultVal);
+        if (defaultVal === ' ') {
+          w.signalBoundaryIntent(key, 'explicit_space');
+        }
       }
       return w.getSince(mark);
     } else if (value === 0) {
+      w.signalBoundaryIntent(key, 'explicit_none');
       return '';
     } else if (value === 1) {
       w.add(' ');
+      w.signalBoundaryIntent(key, 'explicit_space');
       return w.getSince(mark);
     } else if (isArray(value)) {
       // Handle Node[] array - call toString() on each node (they will emit into writer)

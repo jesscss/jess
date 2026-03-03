@@ -16,7 +16,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -94,7 +93,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -121,7 +119,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -182,7 +179,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -316,7 +312,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -363,7 +358,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -466,7 +460,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -573,7 +566,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                       value: 
                         (Color
                           node: 'black'
-                          format: 0
                           rgb:
                             [0, 0, 0]
                           alpha: 1
@@ -648,7 +640,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                                   value: 
                                     (Color
                                       node: 'red'
-                                      format: 0
                                       rgb:
                                         [255, 0, 0]
                                       alpha: 1
@@ -719,7 +710,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -797,7 +787,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -847,7 +836,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -921,7 +909,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1090,7 +1077,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1155,7 +1141,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1281,7 +1266,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1353,7 +1337,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                       value: 
                         (Color
                           node: 'black'
-                          format: 0
                           rgb:
                             [0, 0, 0]
                           alpha: 1
@@ -1415,7 +1398,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                                   value: 
                                     (Color
                                       node: 'red'
-                                      format: 0
                                       rgb:
                                         [255, 0, 0]
                                       alpha: 1

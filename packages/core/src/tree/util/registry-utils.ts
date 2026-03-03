@@ -539,25 +539,23 @@ export class MixinRegistry extends Registry<
           && !isNode(ownSelector, 'Nil')
         ) {
           const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
-          if (ownSelectorText.trimStart().startsWith('&')) {
-            const ownKeys = Array.from((ownSelector as Selector).visibleKeySet ?? []);
-            const parentSelector = isNode(mixin.parent?.parent, 'Ruleset')
-              ? (mixin.parent.parent as Ruleset).value.selector
-              : undefined;
-            const parentKeys = (
-              parentSelector && !isNode(parentSelector, 'Nil')
-                ? Array.from(parentSelector.visibleKeySet ?? [])
-                : []
-            );
-            if (
-              parentKeys.length > 0
-              && ownKeys.length > parentKeys.length
-              && parentKeys.every((k, i) => ownKeys[i] === k)
-            ) {
-              keySetToUse = new Set(ownKeys.slice(parentKeys.length));
-            } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
-              keySetToUse = new Set(ownKeys.slice(1));
-            }
+          const ownKeys = Array.from((ownSelector as Selector).visibleKeySet ?? []);
+          const parentSelector = isNode(mixin.parent?.parent, 'Ruleset')
+            ? (mixin.parent.parent as Ruleset).value.selector
+            : undefined;
+          const parentKeys = (
+            parentSelector && !isNode(parentSelector, 'Nil')
+              ? Array.from(parentSelector.visibleKeySet ?? [])
+              : []
+          );
+          if (
+            parentKeys.length > 0
+            && ownKeys.length > parentKeys.length
+            && parentKeys.every((k, i) => ownKeys[i] === k)
+          ) {
+            keySetToUse = new Set(ownKeys.slice(parentKeys.length));
+          } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
+            keySetToUse = new Set(ownKeys.slice(1));
           }
         }
         // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
@@ -723,6 +721,7 @@ export class MixinRegistry extends Registry<
     while (rules) {
       // Don't add to searchedRules yet - we'll add it after we finish searching (including children)
       let [startKey, ...search] = keyList;
+      const activeFile = String((context as any)?.treeContext?.file?.path ?? (context as any)?.treeContext?.file ?? '');
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
       const existing = registry.index.get(startKey!);
@@ -1254,9 +1253,16 @@ export class DeclarationRegistry extends Registry<Declaration> {
           // - public: immediate candidate
           const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
           if (currentRulesVisibility === 'private') {
-            // Targeted namespace lookups (e.g. @set[@key]) should still be able to
-            // read private declaration members from the targeted rules.
-            if (options?.hasTarget === true) {
+            // Local lookups are allowed to read private declarations in their own scope.
+            // Additionally, targeted reference resolution may set context.rulesContext
+            // to this same Rules scope; allow private reads in that exact in-scope case.
+            const inContextScope = options?.context?.rulesContext === rules;
+            if ((local || inContextScope) && rules === this.rules) {
+              declCandidate.add(result);
+              isPublic = true;
+            } else if (options?.hasTarget === true) {
+              // Targeted namespace lookups (e.g. @set[@key]) should still be able to
+              // read private declaration members from the targeted rules.
               declCandidate.add(result);
               isPublic = true;
             }

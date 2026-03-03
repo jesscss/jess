@@ -3443,18 +3443,23 @@ function applyExtensionAtPath(
         newArg = SelectorList.create([arg as Selector, extendWith]);
       }
 
+      const processedArg = createProcessedSelector(newArg as Selector, true);
+      const normalizedArg = isArray(processedArg) ? SelectorList.create(processedArg as Selector[]) : processedArg;
       const result = PseudoSelector.create({
         name: current.value.name,
-        arg: newArg
+        arg: normalizedArg as Selector
       }).inherit(current);
       return result;
     } else {
       // Navigate deeper into the argument
       const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined);
-      return PseudoSelector.create({
+      const processedArg = createProcessedSelector(newArg as Selector, true);
+      const normalizedArg = isArray(processedArg) ? SelectorList.create(processedArg as Selector[]) : processedArg;
+      const nestedResult = PseudoSelector.create({
         name: current.value.name,
-        arg: newArg
+        arg: normalizedArg as Selector
       }).inherit(current);
+      return nestedResult;
     }
   }
 

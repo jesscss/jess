@@ -5,14 +5,11 @@ import {
 } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
-import { PseudoSelector } from './selector-pseudo.js';
-import { CompoundSelector } from './selector-compound.js';
-import { ComplexSelector } from './selector-complex.js';
 import { getEntries } from './util/collections.js';
-import { type PrintOptions, getPrintOptions, OutputWriter } from './util/print.js';
-import { normalizeContinuationIndent } from './util/format.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { selectorCompare } from './util/compare.js';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
@@ -23,8 +20,12 @@ export class SelectorList extends Selector<Selector[]> {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();
     for (const selector of this.value) {
-      combinedKeySet = combinedKeySet.union(selector.keySet);
-      combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
+      for (const key of selector.keySet) {
+        combinedKeySet.add(key);
+      }
+      for (const key of selector.visibleKeySet) {
+        combinedVisibleKeySet.add(key);
+      }
     }
 
     this._keySet = combinedKeySet;
@@ -115,40 +116,19 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    // Keep valueOf consistent with toTrimmedString flattening.
-    // Only flatten :is() when it is generated (extend-created); preserve structure when not.
-    const out: string[] = [];
-    for (const item of this.value) {
-      if (isNode(item, 'PseudoSelector') && item.value.name === ':is' && (item as PseudoSelector).generated) {
-        const arg = item.value.arg;
-        if (arg && isNode(arg, 'SelectorList')) {
-          out.push(...arg.value.map(v => v.valueOf()));
-          continue;
-        }
-      }
-      if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is' && (only as PseudoSelector).generated) {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            out.push(...arg.value.map(v => v.valueOf()));
-            continue;
-          }
-        }
-      }
-      if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is' && (only as PseudoSelector).generated) {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            out.push(...arg.value.map(v => v.valueOf()));
-            continue;
-          }
-        }
-      }
-      out.push(item.valueOf());
+    const itemValues = this.value.map(item => item.valueOf());
+    return itemValues.join(',');
+  }
+
+  override compare(b: Selector): 0 | 1 | -1 | undefined {
+    if (!isNode(b, 'Selector')) {
+      return super.compare(b as unknown as Selector);
     }
-    return out.join(',');
+    const semantic = selectorCompare(this, b);
+    if (semantic.isEquivalent) {
+      return 0;
+    }
+    return super.compare(b);
   }
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {

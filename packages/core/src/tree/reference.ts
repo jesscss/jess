@@ -144,8 +144,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         break;
       case 'mixin':
         // If this mixin reference has a target (e.g. `ns.foo`), render it as a scoped lookup:
-        // `ns > foo`. The `$` prefix is the responsibility of the parent `Expression`.
-        w.add(' > ');
+        // `ns > foo`. Without target, keep the legacy mixin marker form (`|foo`).
+        w.add(target ? ' > ' : '|');
         emitKey(key);
         break;
       case 'ruleset':
@@ -298,8 +298,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (!targetRules) {
             return undefined;
           }
-
           const opts: FindOptions = { filter, context, hasTarget };
+          if (!target && targetRules.options?.isMixinOutput === true) {
+            opts.local = true;
+          }
 
           if (this.options.resolution === 'linear') {
             // For linear resolution, climb up the parent chain until we find a node with a Rules parent

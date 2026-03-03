@@ -197,6 +197,17 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
   - `pnpm test packages/jess/test/less/all-less.test.ts -- --run -t "tests-unit/mixins-interpolated/mixins-interpolated.less"` ✅
 - **Next step:** decide whether mixin-output `VarDeclaration` visibility should move from `optional` to `public` now that optional fallback semantics are restored and validated.
 
+**Reference vs private boundary recursion (2026-03-01, later):**
+
+- **Area:** `DeclarationRegistry.find` visibility handling + `Reference` local lookup intent.
+- **Observed regression:** restoring strict private semantics fixed detached-rulesets but reintroduced `reference.test.ts` nested mixin-ruleset failures (`'colors' is not defined`).
+- **Runtime evidence:** logs showed `colors` exists in the same Rules index while that Rules has `VarDeclaration: private`; lookup arrived with `local: false`, so private candidate was skipped even in same-scope reference evaluation.
+- **Fix:** kept global private boundary behavior unchanged in registry search; only local reference lookups now opt into one local boundary pass by setting `opts.local = true` in untargeted `Reference` lookups, and registry accepts private declarations only when `local === true && rules === this.rules` (targeted lookups behavior unchanged).
+- **Verification:**
+  - `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/detached-rulesets.test.ts src/tree/__tests__/reference.test.ts` ✅
+  - Debug logs confirm same-scope private variable reads only for local reference path (`key=colors`, `local:true`, `sameScope:true`) while detached-ruleset private lookups remain `local:false` and cross to public parent.
+- **Next step:** run full `@jesscss/core` suite and pick the next failing cluster after these two are stable.
+
 **Selector normalization merge: processLeadingIs superset (2026-02-27):**
 
 - **Area:** core selector normalization around generated leading `:is(...)` wrappers.

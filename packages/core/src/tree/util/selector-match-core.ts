@@ -178,7 +178,9 @@ export function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolea
  * True when find's components appear in target in order (subsequence). Enables .a.c.b to match .a.b.
  */
 function compoundContainsCompoundSubsequence(target: CompoundSelector, find: CompoundSelector): boolean {
-  if (find.value.length > target.value.length) return false;
+  if (find.value.length > target.value.length) {
+    return false;
+  }
   const eq = (t: any, f: any) => isNode(f, 'PseudoSelector') && f.value.arg && isSelector(f.value.arg)
     ? arePseudoSelectorsEquivalent(t, f)
     : t.valueOf() === f.valueOf();
@@ -193,7 +195,9 @@ function compoundContainsCompoundSubsequence(target: CompoundSelector, find: Com
       }
       tIdx++;
     }
-    if (!found) return false;
+    if (!found) {
+      return false;
+    }
   }
   return true;
 }
@@ -565,8 +569,12 @@ export interface ExtendLocation {
 export type MatchScope = 'root' | 'selectorList' | 'isArgument';
 
 function inferMatchScope(path: Array<string | number>, matchedNode: Selector): MatchScope {
-  if (path.includes('arg')) return 'isArgument';
-  if (isNode(matchedNode, 'SelectorList')) return 'selectorList';
+  if (path.includes('arg')) {
+    return 'isArgument';
+  }
+  if (isNode(matchedNode, 'SelectorList')) {
+    return 'selectorList';
+  }
   return 'root';
 }
 
@@ -629,7 +637,9 @@ export function findExtendableLocations(
   const metrics = { fastRejections: 0, fastPathHits: 0, fullSearches: 0 };
 
   // OPTIMIZATION 1: Exact match cache for identical selectors
-  if (target.valueOf() === find.valueOf()) {
+  const targetValue = target.valueOf();
+  const findValue = find.valueOf();
+  if (targetValue === findValue) {
     const cached = EXACT_MATCH_CACHE.get(target);
     if (cached) {
       const result = { locations: cached, hasMatches: cached.length > 0, hasWholeMatch: true, metrics };
@@ -724,11 +734,15 @@ export function selectorMatchesExtendTarget(
   const keySet = target.keySet instanceof Set ? target.keySet : (target.keySet ? new Set(target.keySet) : undefined);
   if (keySet?.size && 'keySet' in selector && selector.keySet) {
     for (const k of keySet) {
-      if (!selector.keySet.has(k as string)) return false;
+      if (!selector.keySet.has(k as string)) {
+        return false;
+      }
     }
   }
   const targetValue = target.valueOf();
-  if (typeof selector.valueOf === 'function' && selector.valueOf() === targetValue) return true;
+  if (typeof selector.valueOf === 'function' && selector.valueOf() === targetValue) {
+    return true;
+  }
   if (isNode(selector, 'SelectorList')) {
     return (selector as SelectorList).value.some((item: Selector) => {
       const comparison = selectorCompare(item, target);
@@ -749,7 +763,6 @@ function tryFastPathExtendMatch(
   find: Selector,
   basePath: Array<string | number>
 ): ExtendLocation[] | null {
-
   // Fast path 1: Exact match (most common case)
   if (target.valueOf() === find.valueOf()) {
     return [withMatchScope({
@@ -1892,6 +1905,19 @@ export function selectorCompare(
 ): SelectorComparisonResult {
   const normalizedA = normalizeSelectorForExtend(a);
   const normalizedB = normalizeSelectorForExtend(b);
+  if (isNode(normalizedA, 'SelectorList') && isNode(normalizedB, 'SelectorList')) {
+    const aItems = normalizedA.value.map(item => normalizeSelectorForExtend(item as Selector).valueOf()).slice().sort();
+    const bItems = normalizedB.value.map(item => normalizeSelectorForExtend(item as Selector).valueOf()).slice().sort();
+    const equivalent = aItems.length === bItems.length && aItems.every((v, i) => v === bItems[i]);
+    if (equivalent) {
+      return {
+        isEquivalent: true,
+        hasWholeMatch: true,
+        hasPartialMatch: false,
+        locations: []
+      };
+    }
+  }
   const forward = forwardSearch ?? findExtendableLocations(normalizedA, normalizedB);
   const backward = backwardSearch ?? findExtendableLocations(normalizedB, normalizedA);
   return {

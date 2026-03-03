@@ -1,4 +1,5 @@
 import type { Context } from '../../context.js';
+import { WARN, toDiagnostic } from '../../jess-error.js';
 import type { AtRule } from '../at-rule.js';
 import { Combinator } from '../combinator.js';
 import { ComplexSelector } from '../selector-complex.js';
@@ -11,7 +12,7 @@ import { applyExtendsToSelector } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
-import { F_EXTENDED } from '../node.js';
+import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './ruleset-trace.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
 
@@ -24,6 +25,7 @@ export class ExtendRootRegistry {
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
   private layerNames = new WeakMap<AtRule, string>();
+  private allRoots = new Set<Rules>();
 
   root?: Rules;
   extendRootStack: Rules[] = [];
@@ -37,6 +39,10 @@ export class ExtendRootRegistry {
     parent?: Rules,
     options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean; namespace?: string }
   ): void {
+    this.allRoots.add(rules);
+    if (parent) {
+      this.allRoots.add(parent);
+    }
     if (!this.root) {
       this.root = rules;
     }
@@ -155,6 +161,9 @@ export class ExtendRootRegistry {
     if (rulesetRoot === extendRoot) {
       return true;
     }
+    if (this.isProtected.get(rulesetRoot)) {
+      return false;
+    }
     const layerA = this.layerName.get(rulesetRoot);
     const layerB = this.layerName.get(extendRoot);
     if (layerA && layerB && layerA === layerB) {
@@ -165,6 +174,9 @@ export class ExtendRootRegistry {
       return false;
     }
     for (const child of children) {
+      if (this.isProtected.get(child)) {
+        continue;
+      }
       if (this.isSameOrDescendantRoot(rulesetRoot, child)) {
         return true;
       }
@@ -186,6 +198,14 @@ export class ExtendRootRegistry {
       this.layerNames.delete(atRule);
     }
     return layer;
+  }
+
+  getAllRoots(): Set<Rules> {
+    return new Set(this.allRoots);
+  }
+
+  isProtectedRoot(rules: Rules): boolean {
+    return this.isProtected.get(rules) === true;
   }
 }
 
@@ -212,40 +232,123 @@ export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
   const sourceNode = ruleset.sourceNode;
 }
 
+function isInstructionVisibleForRoot(
+  context: Context,
+  rootRules: Rules,
+  instruction: {
+    extendRoot?: Rules;
+    fromReferenceScope: boolean;
+  }
+): boolean {
+  if (!instruction.extendRoot) {
+    return false;
+  }
+  if (instruction.fromReferenceScope === true) {
+    // Less parity: extends declared while evaluating a reference import are non-side-effecting.
+    return false;
+  }
+  if (context.extendRoots.isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
+    return false;
+  }
+  if (instruction.extendRoot === rootRules) {
+    return true;
+  }
+  if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
+    return true;
+  }
+  const visibleRoots = context.extendRoots.getVisibleRoots(instruction.extendRoot);
+  return visibleRoots.has(rootRules);
+}
+
+function rootHasTargetMatch(root: Rules, target: Selector, partial: boolean): boolean {
+  const targetValue = target.valueOf();
+  const stack: unknown[] = [...root.value];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || typeof node !== 'object') {
+      continue;
+    }
+    if (isNode(node, 'Ruleset')) {
+      const selector = (node as Ruleset).value.selector as Selector | undefined;
+      if (!selector || isNode(selector, 'Nil')) {
+        continue;
+      }
+      const selectorValue = selector.valueOf();
+      if (selectorValue.includes(targetValue)) {
+        return true;
+      }
+      if (findExtendableLocations(selector, target).hasMatches) {
+        return true;
+      }
+      const rules = (node as Ruleset).value.rules;
+      if (rules && isNode(rules, 'Rules')) {
+        stack.push(...rules.value);
+      }
+      continue;
+    }
+    if (isNode(node, 'Rules')) {
+      stack.push(...(node as Rules).value);
+      continue;
+    }
+    if (isNode(node, 'AtRule')) {
+      const value = (node as any).value;
+      if (value && isNode(value, 'Rules')) {
+        stack.push(...(value as Rules).value);
+      }
+    }
+  }
+  return false;
+}
+
 export function processExtends(context: Context): void {
-  const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, , , fromReferenceScope]) => ({
+  const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => ({
     target,
     extendWith: selectorWithExtend,
     partial,
     extendRoot,
+    extendNode,
     fromReferenceScope: fromReferenceScope === true
   }));
 
   if (!instructions.length) {
     return;
   }
+  const instructionStats = new Map(instructions.map(i => [i, { visibleMatchCount: 0, blockedMatchCount: 0 }]));
 
   for (const [rootRules, rulesetSet] of rulesetsByRoot) {
     if (!rootRules) {
       continue;
     }
-    const visibleExtends = instructions.filter((instruction) => {
-      if (!instruction.extendRoot) {
-        return false;
+    const visibleExtendSet = new Set(instructions.filter(instruction =>
+      isInstructionVisibleForRoot(context, rootRules, instruction)
+    ));
+    for (const instruction of instructions) {
+      const selectorDiagnostics: Array<{ selector: string; hasMatches: boolean }> = [];
+      const matchedInRoot = Array.from(rulesetSet).some((ruleset) => {
+        const selector = ruleset.value.selector as Selector | undefined;
+        if (!selector || isNode(selector, 'Nil')) {
+          return false;
+        }
+        const locations = findExtendableLocations(selector, instruction.target);
+        if (instruction.target.valueOf() === '.base') {
+          selectorDiagnostics.push({ selector: selector.valueOf(), hasMatches: locations.hasMatches });
+        }
+        return locations.hasMatches;
+      });
+      if (!matchedInRoot) {
+        continue;
       }
-      if (instruction.fromReferenceScope === true) {
-        // Less parity: extends declared while evaluating a reference import are non-side-effecting.
-        return false;
+      const stats = instructionStats.get(instruction);
+      if (!stats) {
+        continue;
       }
-      if (instruction.extendRoot === rootRules) {
-        return true;
+      if (visibleExtendSet.has(instruction)) {
+        stats.visibleMatchCount += 1;
+      } else {
+        stats.blockedMatchCount += 1;
       }
-      if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
-        return true;
-      }
-      const visibleRoots = context.extendRoots.getVisibleRoots(instruction.extendRoot);
-      return visibleRoots.has(rootRules);
-    });
+    }
+    const visibleExtends = Array.from(visibleExtendSet);
     if (!visibleExtends.length) {
       continue;
     }
@@ -265,12 +368,17 @@ export function processExtends(context: Context): void {
       );
       if (isActivatedByVisibleExtend) {
         ruleset.addFlag(F_EXTENDED);
+        // If a reference-scoped/import-scoped ruleset is externally extended, it must become
+        // visible in output so the merged selector can render.
+        ruleset.addFlag(F_VISIBLE);
         if (isNode(selector, 'SelectorList')) {
           for (const item of (selector as SelectorList).value) {
             item.addFlag(F_EXTENDED);
+            item.addFlag(F_VISIBLE);
           }
         } else {
           selector.addFlag(F_EXTENDED);
+          selector.addFlag(F_VISIBLE);
         }
       } else {
         ruleset.removeFlag(F_EXTENDED);
@@ -461,6 +569,11 @@ export function processExtends(context: Context): void {
             && nonPartialOwnOnly.length === 0
             && hasAncestorDrivenNonPartial
           );
+          const hasParentMatchedOwnOnlyNonPartial = nonPartialWithInclusion.some(d =>
+            d.ownChangedSingle
+            && !d.fullChangedSingle
+            && d.parentHasTargetMatch
+          );
           // When non-partial extends match only the full (cross-product) selector and not
           // the own selector, and partial extends would incorrectly alter the own selector,
           // the non-partial extend takes precedence. Applying partial extends to the own
@@ -481,6 +594,14 @@ export function processExtends(context: Context): void {
           if (ownChangedByPartial || nonPartialOwnOnly.length > 0) {
             ruleset.value.selector = ownAfterPartialAndOwnOnlyNonPartial;
             (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartialAndOwnOnlyNonPartial;
+            ruleset.invalidateSelectorValueCache();
+            continue;
+          }
+          if (hasParentMatchedOwnOnlyNonPartial) {
+            // Less parity: exact extends that only match nested own selector while parent already
+            // carries the target should remain parent-scoped (do not inject extender into child selector).
+            ruleset.value.selector = ownAfterPartial;
+            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
             ruleset.invalidateSelectorValueCache();
             continue;
           }
@@ -623,5 +744,31 @@ export function processExtends(context: Context): void {
         }
       }
     }
+  }
+  for (const instruction of instructions) {
+    const stats = instructionStats.get(instruction);
+    if (!stats || instruction.fromReferenceScope === true) {
+      continue;
+    }
+    if (stats.visibleMatchCount > 0) {
+      continue;
+    }
+    const target = instruction.target.valueOf();
+    const inaccessibleMatchExists = Array.from(context.extendRoots.getAllRoots()).some((root) => {
+      if (isInstructionVisibleForRoot(context, root, instruction)) {
+        return false;
+      }
+      return rootHasTargetMatch(root, instruction.target, instruction.partial);
+    });
+    const blockedProtectedRootExists = Array.from(context.extendRoots.getAllRoots()).some(root =>
+      !isInstructionVisibleForRoot(context, root, instruction)
+      && context.extendRoots.isProtectedRoot(root)
+    );
+    const diagnostic = (
+      stats.blockedMatchCount > 0 || inaccessibleMatchExists || blockedProtectedRootExists
+        ? WARN.extendNotAccessible({ meta: { target } })
+        : WARN.extendNotFound({ meta: { target } })
+    );
+    context.warnings.push(toDiagnostic(diagnostic));
   }
 }

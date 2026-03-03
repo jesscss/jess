@@ -17,7 +17,7 @@ import {
   VarDeclaration,
   type Declaration,
   type Selector
-} from '..';
+} from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -412,10 +412,11 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: parent-2');
 
         // Test lookup from within child Rules - should find its own value
-        // (optionality only applies when looking IN from outside, not when searching your own scope)
+        // Optional declarations are fallback-only and should not overtake public declarations
+        // that are reachable in the lookup chain.
         const childVar = getVar(childRules, 'var');
         expect(childVar).toBeDefined();
-        expect(`${childVar}`).toBe('$var: child-optional');
+        expect(`${childVar}`).toBe('$var: parent-2');
       });
 
       it('handles multiple optional Rules with declarations at different positions', async () => {

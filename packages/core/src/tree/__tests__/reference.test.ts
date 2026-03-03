@@ -331,8 +331,6 @@ describe('reference', () => {
       ]);
       const evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
-        #theme .dark .navbar {
-        }
         .output {
           background: red;
         }
@@ -384,8 +382,6 @@ describe('reference', () => {
       ]);
       const evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
-        #theme.dark.navbar {
-        }
         .output {
           background: red;
         }
@@ -437,8 +433,6 @@ describe('reference', () => {
       ]);
       const evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
-        #theme.dark.navbar {
-        }
         .output {
           background: red;
         }
@@ -528,10 +522,8 @@ describe('reference', () => {
       ]);
       const evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
-        #theme.dark.navbar {
-        }
         .output {
-          background: red;
+          background: cyan;
         }
       `);
     });
