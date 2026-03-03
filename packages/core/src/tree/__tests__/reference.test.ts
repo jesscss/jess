@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el } from '..';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -179,6 +179,92 @@ describe('reference', () => {
   });
 
   describe('nested references for mixin-ruleset lookups', () => {
+    it('should register and resolve escaped class selector via string key', async () => {
+      const node = rules([
+        ruleset({
+          selector: el('.\\123'),
+          rules: rules([
+            decl({ name: 'a', value: any('ok') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: '.\\123' }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .\\123 {
+          a: ok;
+        }
+        .out {
+          a: ok;
+        }
+      `);
+    });
+
+    it('should register and resolve escaped id selector via selector key reference', async () => {
+      const node = rules([
+        ruleset({
+          selector: el('#\\31a'),
+          rules: rules([
+            decl({ name: 'a', value: any('ok') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: el('#\\31a') }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #\\31a {
+          a: ok;
+        }
+        .out {
+          a: ok;
+        }
+      `);
+    });
+
+    it('should register and resolve escaped compound path via array key reference', async () => {
+      const node = rules([
+        ruleset({
+          selector: compound([el('.a'), el('.\\32b')]),
+          rules: rules([
+            decl({ name: 'a', value: any('ok') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.a', '.\\32b']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .a.\\32b {
+          a: ok;
+        }
+        .out {
+          a: ok;
+        }
+      `);
+    });
+
     it('should resolve nested References: #theme → .dark → .navbar → .colors', async () => {
       // #theme {
       //   .dark {

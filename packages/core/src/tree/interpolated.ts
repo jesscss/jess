@@ -4,6 +4,7 @@ import type { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { BasicSelector } from './selector-basic.js';
 import { SelectorList } from './selector-list.js';
+import { CompoundSelector } from './selector-compound.js';
 import type { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
@@ -116,7 +117,22 @@ export class Interpolated<
         output += (segments[i] ?? '') + replacement.toTrimmedString();
       }
     }
+    // Preserve any trailing literal segment after the last interpolation placeholder.
+    if (!list.length && segments.length > replacements.length) {
+      output += segments.slice(replacements.length).join(INTERPOLATION_PLACEHOLDER);
+    }
     if (!list.length) {
+      // Interpolated selector output can produce compound selectors (e.g. ".a#b").
+      // Preserve token boundaries so keySet/registry lookup can match correctly.
+      const simpleTokens = output.match(/[#.][^#.\s]+|[^#.\s]+/g) ?? [output];
+      if (
+        simpleTokens.length > 1
+        && !output.includes(':')
+        && !output.includes('[')
+        && !output.includes('&')
+      ) {
+        return new CompoundSelector(simpleTokens.map(token => new BasicSelector(token))).inherit(this);
+      }
       return new BasicSelector(output).inherit(this);
     } else {
       return new SelectorList(

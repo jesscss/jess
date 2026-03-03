@@ -2346,13 +2346,20 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Ensure the registry is indexed before checking
           const declRegistry = newRules.getRegistry('declaration');
           declRegistry.indexPendingItems();
+          const candidateName = String(candidate.value.name?.valueOf?.() ?? candidate.value.name ?? '');
           // Mark output Rules as mixin output - accessible only when lookup has a target
           newRules.options.isMixinOutput = restrictMixinOutputLookup;
           newRules.options.referenceMode = false;
           clearReferenceModeForMixinOutput(newRules as unknown as Node);
           if (thisContext.treeContext?.file) {
+            const hasParamVar = newRules.children(true).some(
+              node => isNode(node, 'VarDeclaration') && !!node.options?.paramVar
+            );
             newRules.options.rulesVisibility ??= {};
-            newRules.options.rulesVisibility.VarDeclaration = 'private';
+            // Keep parameter vars lookupable for lazy evaluation chains (e.g. nested mixins
+            // referencing @gender_ through @gender), while still honoring existing visibility
+            // tightening for non-parameter var declarations.
+            newRules.options.rulesVisibility.VarDeclaration = hasParamVar ? 'optional' : 'private';
           }
           outputRules.push(newRules);
         } catch (error) {

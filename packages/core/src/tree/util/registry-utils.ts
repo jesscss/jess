@@ -511,9 +511,14 @@ export class MixinRegistry extends Registry<
         if (isNode(callableSelector, 'Ampersand')) {
           continue;
         }
-        // Use sourceNode if available - it has the original selector with implicit ampersand
-        // Use visibleKeySet to get only the visible selectors (ignoring invisible ampersands)
-        const selectorToIndex = (selector.sourceNode || selector) as Selector;
+        // Prefer evaluated selector keys; they resolve interpolations (e.g. .@{a0} -> .\123).
+        // Fall back to source selector only when evaluated keys are empty.
+        const sourceSelector = selector.sourceNode as Selector | undefined;
+        const selectorToIndex = (
+          selector.visibleKeySet?.size
+            ? selector
+            : (sourceSelector?.visibleKeySet?.size ? sourceSelector : selector)
+        ) as Selector;
         let keySetToUse: Set<string> | undefined;
         if (isNode(selectorToIndex, 'SelectorList')) {
           /** Selector list's selectors are individually registered */
@@ -524,15 +529,48 @@ export class MixinRegistry extends Registry<
         } else {
           keySetToUse = selectorToIndex.visibleKeySet;
         }
+        // Normalize nested `&...` selectors to local keys when possible.
+        // Evaluated key sets can include inherited parent keys (e.g. [".b",".bb",".foo-xxx",...]),
+        // but recursive lookup descends with local remainder keys (e.g. [".foo-xxx", ...]).
+        if (
+          keySetToUse
+          && keySetToUse.size > 0
+          && ownSelector
+          && !isNode(ownSelector, 'Nil')
+        ) {
+          const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
+          if (ownSelectorText.trimStart().startsWith('&')) {
+            const ownKeys = Array.from((ownSelector as Selector).visibleKeySet ?? []);
+            const parentSelector = isNode(mixin.parent?.parent, 'Ruleset')
+              ? (mixin.parent.parent as Ruleset).value.selector
+              : undefined;
+            const parentKeys = (
+              parentSelector && !isNode(parentSelector, 'Nil')
+                ? Array.from(parentSelector.visibleKeySet ?? [])
+                : []
+            );
+            if (
+              parentKeys.length > 0
+              && ownKeys.length > parentKeys.length
+              && parentKeys.every((k, i) => ownKeys[i] === k)
+            ) {
+              keySetToUse = new Set(ownKeys.slice(parentKeys.length));
+            } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
+              keySetToUse = new Set(ownKeys.slice(1));
+            }
+          }
+        }
         // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
         // would not index. Use the ruleset's ownSelector (set in preEval before getImplicitSelector)
         // to index by the callable selector that was explicitly authored.
         if (keySetToUse !== undefined) {
+          let usedOwnSelectorFallback = false;
           if (
             keySetToUse.size === 0
             && ownSelector
             && !isNode(ownSelector, 'Nil')
           ) {
+            usedOwnSelectorFallback = true;
             const ownKeySet = (ownSelector as Selector).visibleKeySet;
             if (ownKeySet?.size) {
               const ownKeys = Array.from(ownKeySet);
@@ -688,12 +726,38 @@ export class MixinRegistry extends Registry<
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
       const existing = registry.index.get(startKey!);
+      // Resolve interpolated selector starts (e.g. "@{a2}") against current context
+      // so unresolved-index keys can still match resolved call keys (e.g. ".foo").
+      let resolvedInterpolatedStartEntries: Array<{ value: Mixin | Ruleset; match: string[] }> = [];
+      if (context && typeof startKey === 'string' && !existing?.length) {
+        for (const [indexedKey, indexedEntries] of registry.index) {
+          const matchInterpolated = /^@\{(.+)\}$/.exec(indexedKey);
+          if (!matchInterpolated) {
+            continue;
+          }
+          const varName = matchInterpolated[1]!;
+          const maybeVar = rules.find('declaration', varName, 'VarDeclaration', {
+            context,
+            hasTarget,
+            filter: options?.filter
+          } as FindOptions);
+          if (isNode(maybeVar, 'VarDeclaration')) {
+            const resolvedValue = String(maybeVar.value.value.valueOf?.() ?? maybeVar.value.value ?? '');
+            if (resolvedValue === startKey) {
+              resolvedInterpolatedStartEntries.push(...indexedEntries);
+            }
+          }
+        }
+      }
 
       // With the new indexing (by local visible keys), nested rulesets are indexed under their own keys
       // So we only need to check entries under the startKey - no need to scan all entries
       let allEntriesToCheck: Array<{ value: Mixin | Ruleset; match: string[] }> = [];
       if (existing) {
         allEntriesToCheck.push(...existing);
+      }
+      if (resolvedInterpolatedStartEntries.length > 0) {
+        allEntriesToCheck.push(...resolvedInterpolatedStartEntries);
       }
       // Also check if any entries match the full search path (for compound selectors like .foo.bar)
       const targetMatch = search.length === 0 ? [startKey!] : search;
@@ -827,9 +891,17 @@ export class MixinRegistry extends Registry<
             const isMixin = isNode(candidateNode, 'Mixin');
             const isRuleset = isNode(candidateNode, 'Ruleset');
             const hasNoParams = isMixin && (!candidateNode.value.params || (candidateNode.value.params?.length ?? 0) === 0);
-            // Check if this candidate matches the startKey (for mixins, check name; for rulesets, check selector)
-            const candidateKey = isMixin ? candidateNode.value.name?.valueOf?.() : (isRuleset ? (candidateNode as any).selector?.valueOf?.() : '');
-            const matchesStartKey = candidateKey === startKey;
+            // Check if this candidate matches the startKey.
+            // For rulesets discovered via child-search, key-set membership is the reliable signal.
+            const candidateKey = isMixin
+              ? candidateNode.value.name?.valueOf?.()
+              : (isRuleset ? candidateNode.value.selector.valueOf?.() : '');
+            const matchesStartKey = isRuleset
+              ? (
+                  (!isNode(candidateNode.value.selector, 'Nil') && candidateNode.value.selector.visibleKeySet.has(startKey!))
+                  || (!isNode(candidateNode.value.selector, 'Nil') && candidateNode.value.selector.keySet.has(startKey!))
+                )
+              : candidateKey === startKey;
 
             // For compound paths (keyList.length > 1), remove startKey from candidates if it was added by _searchRulesChildren
             // because we only want to search inside it, not include it as a final candidate
@@ -1189,14 +1261,9 @@ export class DeclarationRegistry extends Registry<Declaration> {
               isPublic = true;
             }
           } else if (currentRulesVisibility === 'optional') {
-            // The originating scope should still prefer its own optional vars over parent scopes.
-            // This keeps lexical shadowing intact for Less-style local vars (e.g. @list in mixins).
-            if (rules === this.rules) {
-              declCandidate.add(result);
-              isPublic = true;
-            } else {
-              optionalCandidates.add(result);
-            }
+            // Optional declarations are fallback-only: keep searching for public declarations
+            // through the lookup chain and only return optional candidates if none are found.
+            optionalCandidates.add(result);
           } else {
             declCandidate.add(result);
             isPublic = true;

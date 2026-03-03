@@ -184,6 +184,19 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
   1) keep current runtime behavior and update stale expectations, or
   2) restore historical output by changing post-mixin output merging / collapse-nesting selector shaping (without regressing Less fixture fixes).
 
+**Optional visibility fallback restoration (2026-03-01):**
+
+- **Area:** declaration lookup semantics (`DeclarationRegistry.find`) for `rulesVisibility.VarDeclaration = 'optional'`.
+- **Observed regression:** detached-rulesets optionality test showed optional values overtaking public values (`expected '$var: public-value', received '$var: optional-value'`).
+- **Runtime evidence:** debug logs in `core/registry-utils.ts:declaration-find-optional-branch` showed optional candidates with `isOriginatingScope: true` being classified in a path that promoted them as public.
+- **Fix:** restored strict optional semantics by always collecting optional declarations into `optionalCandidates` (fallback-only), never promoting optional to public in the current/originating scope.
+- **Verification:**
+  - `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/detached-rulesets.test.ts -t "optional"` ✅
+  - `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "param vars preferred"` ✅
+  - `pnpm --filter @jesscss/core build` ✅
+  - `pnpm test packages/jess/test/less/all-less.test.ts -- --run -t "tests-unit/mixins-interpolated/mixins-interpolated.less"` ✅
+- **Next step:** decide whether mixin-output `VarDeclaration` visibility should move from `optional` to `public` now that optional fallback semantics are restored and validated.
+
 **Selector normalization merge: processLeadingIs superset (2026-02-27):**
 
 - **Area:** core selector normalization around generated leading `:is(...)` wrappers.
