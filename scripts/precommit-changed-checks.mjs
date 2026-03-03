@@ -15,7 +15,8 @@ const NON_SOURCE_PATH_PATTERNS = [
   /\/coverage\//
 ];
 
-function run(command, args, packageDir) {
+function run(command, args, packageDir, options = {}) {
+  const { required = SHOULD_BLOCK } = options;
   const rendered = [command, ...args].join(' ');
   console.log(`\n$ ${rendered}`);
   const result = spawnSync(command, args, {
@@ -33,7 +34,7 @@ function run(command, args, packageDir) {
       status: result.status ?? 1,
       output: [stdout, stderr].filter(Boolean).join('\n').trim()
     });
-    if (SHOULD_BLOCK) {
+    if (required) {
       process.exit(result.status ?? 1);
     }
   }
@@ -191,6 +192,22 @@ function runLintForFiles(packageDir, files) {
   run('pnpm', ['exec', 'eslint', ...files], packageDir);
 }
 
+function runRequiredTestsForPackage(packageDir, scripts, files) {
+  if (packageDir !== 'packages/core') {
+    return;
+  }
+  if (!hasCodeImpactingChanges(files, packageDir)) {
+    console.log(`- skip required tests for ${packageDir} (no code-impacting changes)`);
+    return;
+  }
+  if (!scripts.test) {
+    console.log(`- skip required tests for ${packageDir} (no test script)`);
+    return;
+  }
+  // Core tests are a hard pre-push gate for core package changes.
+  run('pnpm', ['--filter', `./${packageDir}`, 'test'], packageDir, { required: true });
+}
+
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
 const files = filterRelevantFiles(rawFiles);
 if (files.length === 0) {
@@ -216,6 +233,7 @@ for (const packageDir of changedPackages) {
   }
   console.log(`\n==> ${packageDir}`);
   if (MODE === 'upstream') {
+    runRequiredTestsForPackage(packageDir, scripts, files);
     const lintableFiles = stagedLintableFiles(files, packageDir);
     if (!hasCodeImpactingChanges(files, packageDir)) {
       console.log(`- skip typecheck/build/lint for ${packageDir} (no code-impacting changes)`);

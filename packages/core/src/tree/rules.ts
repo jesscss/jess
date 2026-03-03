@@ -2268,8 +2268,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Mark as parameter var so it can be stripped from mixin output after evaluation.
             param.options ??= {};
             param.options.paramVar = true;
-            // Keep parameter vars lookupable but non-visible in normal Less output.
-            // Unit tests with Node.fullRender=true still render them.
+            // Keep parameter vars lookupable but hidden in normal output.
+            // They still render in tests that set Node.fullRender=true.
             param.removeFlag(F_VISIBLE);
             outerRules.push(param);
           }
