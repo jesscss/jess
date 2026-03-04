@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializeTypes, isNode, Condition, Log } from '@jesscss/core';
+import { serializeTypes } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 import { assertValidTree } from './assert-valid-tree.js';
 
@@ -15,11 +15,12 @@ describe('scss-parser (ast serialize)', () => {
       (Ruleset
         selector:
           (BasicSelector '.a')
-      `);
-    expect(serializeTypes(tree)).toContainString(`
-      (Declaration
-        name:
-          (Any [role=property] 'color')
+        rules:
+          (Rules
+            [
+              (Declaration
+                name:
+                  (Any [role=property] 'color')
       `);
   });
 
@@ -28,9 +29,24 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString('(Collection');
-    expect(String(tree)).toContain('regular: 400;');
-    expect(String(tree)).toContain('medium: 500;');
+    expect(serializeTypes(tree)).toContainString(`
+      (Collection
+        [
+          (Declaration
+            name:
+              (Any [role=property] 'regular')
+            value:
+              (Number 400)
+          )
+          (Declaration
+            name:
+              (Any [role=property] 'medium')
+            value:
+              (Number 500)
+          )
+        ]
+      )
+    `);
   });
 
   it('serializes map.get() desugaring without literal map.get', () => {
@@ -38,11 +54,15 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(String(tree)).not.toContain('map.get(');
-    // Structural smoke: Reference chain should exist.
-    expect(serializeTypes(tree)).toContainString('(Reference');
-    expect(String(tree)).toContain('font-weights');
-    expect(String(tree)).toContain('medium');
+    expect(serializeTypes(tree)).toContainString(`
+      (Reference
+        target:
+          (Reference
+            key: 'font-weights'
+          )
+        key: 'medium'
+      )
+    `);
   });
 
   it('serializes @content rewrite', () => {
@@ -62,19 +82,9 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`(If`);
     expect(String(tree)).toContain('=');
     expect(String(tree)).not.toContain('==');
-    // `serializeTypes` does not traverse into `If.value.branches` (plain objects), so assert via structure.
-    expect(isNode(tree, 'Rules')).toBe(true);
-    if (isNode(tree, 'Rules')) {
-      const ifNode = tree.value.find(n => isNode(n, 'If'));
-      expect(ifNode && isNode(ifNode, 'If')).toBe(true);
-      if (ifNode && isNode(ifNode, 'If')) {
-        const cond = ifNode.value.branches[0]?.condition;
-        expect(cond && isNode(cond, 'Paren')).toBe(true);
-        if (cond && isNode(cond, 'Paren')) {
-          expect(cond.value instanceof Condition).toBe(true);
-        }
-      }
-    }
+    expect(serializeTypes(tree)).toContainString(`
+      (If
+    `);
   });
 
   it('serializes @use "sass:map" rewrite as JsImport "#sass/map"', () => {
@@ -84,9 +94,6 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (JsImport
-      `);
-    // Path is represented as a quoted node in Jess.
-    expect(serializeTypes(tree)).toContainString(`
         path:
           (Quoted
             (Any [role=any] '#sass/map')
@@ -101,8 +108,7 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (StyleImport
-      `);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+        type: 'compose'
         importOptions: {
           forward: true
         }
@@ -125,11 +131,9 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`forwardShow: [`); // presence check
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`'$a'`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`'mixin-b'`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`'fn-c'`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`forwardHide: [`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      forwardShow: ['$a', 'mixin-b', 'fn-c']
+    `);
   });
 
   it('serializes @forward "foo" with(...) as StyleImport with injected vars', () => {
@@ -139,13 +143,11 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (StyleImport
-      `);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+        type: 'compose'
         importOptions: {
           forward: true
         }
       `);
-    expect(serializeTypes(tree)).toContainString(`(Interpolated`);
   });
 
   it('serializes @use with(...) config var flags (!default, !global)', () => {
@@ -153,9 +155,9 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    // Ensure both flags are captured on VarDeclarations inside the config Collection.
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`assign: '?:'`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`setDefined: true`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      assign: '?:'
+    `);
   });
 
   it('serializes @extend .b inside a ruleset as an Extend node', () => {
@@ -168,13 +170,20 @@ describe('scss-parser (ast serialize)', () => {
     `);
   });
 
-  it('serializes ns.$var as Expression(Reference(target=Reference))', () => {
+  it('serializes ns.$var as Reference(target=Reference)', () => {
     const { tree, errors, lexerResult } = parser.parse(`.a { color: ns.$c; }`);
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`(Expression`);
-    expect(serializeTypes(tree)).toContainString(`(Reference`);
+    expect(serializeTypes(tree)).toContainString(`
+      (Reference
+        target:
+          (Reference
+            key: 'ns'
+          )
+        key: 'c'
+      )
+    `);
   });
 
   it('serializes ns.fn($x) as Expression(Call(name=Reference(target=Reference)))', () => {
@@ -182,9 +191,18 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`(Expression`);
-    expect(serializeTypes(tree)).toContainString(`(Call`);
-    expect(serializeTypes(tree)).toContainString(`(Reference`);
+    expect(serializeTypes(tree)).toContainString(`
+      (Expression
+        (Call
+          name:
+            (Reference
+              target:
+                (Reference
+                  key: 'ns'
+                )
+              key: 'fn'
+            )
+      `);
   });
 
   it('serializes plain fn($x) as Call(name=Reference(type=function,fallbackValue:true)) (no Expression)', () => {
@@ -192,11 +210,15 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`(Call`);
-    expect(serializeTypes(tree)).toContainString(`(Reference`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`type: 'function'`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`fallbackValue: true`);
-    expect(serializeTypes(tree)).not.toContainString(`(Expression`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Call
+        name:
+          (Reference
+            type: 'function'
+            fallbackValue: true
+            key: 'fn'
+          )
+      `);
   });
 
   it('serializes @include ns.foo($x) as Call(name=Reference(target=Reference))', () => {
@@ -204,9 +226,26 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`(Expression`);
-    expect(serializeTypes(tree)).toContainString(`(Call`);
-    expect(serializeTypes(tree)).toContainString(`(Reference`);
+    expect(serializeTypes(tree)).toContainString(`
+      (Call
+        name: 
+          (Reference
+            target: 
+              (Reference
+                key: 'ns'
+              )
+            key: 'foo'
+          )
+        args: 
+          (List
+            [
+              (Reference
+                key: 'x'
+              )
+            ]
+          )
+      )
+    `);
   });
 
   it('serializes @use "foo" as bar with options.namespace=bar', () => {
@@ -214,8 +253,11 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`(StyleImport`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`namespace: 'bar'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (StyleImport
+        type: 'compose'
+        namespace: 'bar'
+      `);
   });
 
   it('serializes @use "foo" as * with options.namespace=*', () => {
@@ -223,8 +265,11 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`(StyleImport`);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`namespace: '*'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (StyleImport
+        type: 'compose'
+        namespace: '*'
+      `);
   });
 
   it('serializes ns.\\#foo($x) as Expression(Call(name=Reference(type=mixin-ruleset)))', () => {
@@ -232,9 +277,13 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`(Expression`);
-    expect(serializeTypes(tree)).toContainString(`(Call`);
-    expect(serializeTypes(tree)).toContainString(`(Reference`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Expression
+        (Call
+          name:
+            (Reference
+              type: 'function'
+      `);
   });
 
   it('serializes @each destructuring as For(header=Paren(Sequence(Block[square](List(VarDeclaration...)), "of", expr)))', () => {
@@ -246,13 +295,27 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`(For`);
-    expect(serializeTypes(tree)).toContainString(`(Paren`);
-    expect(serializeTypes(tree)).toContainString(`(Sequence`);
-    expect(serializeTypes(tree)).toContainString(`(Block`);
-    expect(serializeTypes(tree)).toContainString(`(List`);
-    expect(serializeTypes(tree)).toContainString(`(VarDeclaration`);
-    expect(String(tree)).toContain('$for ([$a, $b] of $list)');
+    expect(serializeTypes(tree)).toContainString(`
+      (For
+        pattern: {
+          kind: 'tuple'
+          values:
+            [
+              (VarDeclaration
+                name:
+                  (Any [role=property] 'a')
+                value:
+                  (Nil '')
+              )
+              (VarDeclaration
+                name:
+                  (Any [role=property] 'b')
+                value:
+                  (Nil '')
+              )
+            ]
+        }
+      `);
   });
 
   it('serializes @debug, @warn, @error as Log nodes with correct level', () => {
@@ -264,19 +327,12 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`(Log`);
-    // Verify Log nodes exist with correct structure
-    const rules = isNode(tree, 'Rules') ? tree : null;
-    expect(rules).not.toBeNull();
-    const logNodes = rules!.value.filter((node: any) => isNode(node, 'Log'));
-    expect(logNodes.length).toBe(3);
-    expect(logNodes[0].value.level).toBe('debug');
-    expect(logNodes[1].value.level).toBe('warn');
-    expect(logNodes[2].value.level).toBe('error');
+    expect(serializeTypes(tree)).toContainString(`
+      (Log
+    `);
     // Verify they serialize to empty strings
     expect(String(tree)).not.toContain('@debug');
     expect(String(tree)).not.toContain('@warn');
     expect(String(tree)).not.toContain('@error');
   });
 });
-

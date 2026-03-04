@@ -9,7 +9,7 @@ describe('Call', () => {
 
   it('should serialize a CSS function', () => {
     let rule = call({
-      name: ref('rgb'),
+      name: 'rgb',
       args: list([num(100), num(100), num(100)])
     });
     expect(`${rule}`).toBe('rgb(100, 100, 100)');
@@ -20,16 +20,16 @@ describe('Call', () => {
       name: ref('rgb', { fallbackValue: true }),
       args: list([num(100), num(100), num(100)])
     });
-    expect(`${rule}`).toBe('rgb?(100, 100, 100)');
+    expect(`${rule}`).toBe('$rgb?(100, 100, 100)');
   });
 
   /** @todo */
   it('should serialize a mixin call', () => {
     let rule = call({
-      name: ref('my-mixin'),
+      name: ref('my-mixin', { type: 'mixin' }),
       args: list([num(100), num(100), num(100)])
     });
-    expect(`${rule}`).toBe('my-mixin(100, 100, 100)');
+    expect(`${rule}`).toBe('|my-mixin(100, 100, 100)');
   });
 
   // it('should serialize to a module', () => {

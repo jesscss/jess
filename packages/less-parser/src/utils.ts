@@ -1,4 +1,4 @@
-import { Interpolated, Reference, INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
+import { Interpolated, InterpolatedReference, INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
 
 // Pre-compiled regex for @{variable} interpolation - more efficient than creating new instances
 const INTERPOLATION_REGEX = /([$@]){([^}]+)}/g;
@@ -39,9 +39,9 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
       source = beforeMatch + INTERPOLATION_PLACEHOLDER + afterMatch;
       offset += match.fullMatch.length - INTERPOLATION_PLACEHOLDER.length;
 
-      const ref = new Reference(
-        { key: match.varName },
-        { type: match.prefix === '@' ? 'variable' : 'property' },
+      const ref = new InterpolatedReference(
+        match.varName,
+        { referenceType: match.prefix === '$' ? 'property' : 'variable' },
         location,
         context
       );
@@ -66,17 +66,18 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
   const nextPos = atPos !== -1 ? atPos : dollarPos;
   const start = name.slice(1, nextPos);
   const end = name.slice(nextPos);
-  let type = end.startsWith('@') ? 'variable' as const : 'property' as const;
-
+  const type: 'variable' | 'property' = end.startsWith('@') ? 'variable' : 'property';
   // For @id-@num variable variables, we need to create an Interpolated node
   const endResult = getInterpolatedOrString(end, location, context);
   if (typeof endResult === 'string') {
     return new Interpolated({
       source: start + INTERPOLATION_PLACEHOLDER,
       replacements: [
-        new Reference(
-          { key: endResult },
-          { type, role: 'ident' }
+        new InterpolatedReference(
+          endResult,
+          { referenceType: type },
+          location,
+          context
         )
       ]
     }, { role: 'ident' });

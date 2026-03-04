@@ -1097,7 +1097,7 @@ describe('Mixin', () => {
         ])
       });
       expect(`${rule}`).toBeString(`
-        my-mixin($a: black; $b: white) when ($a = $b) {
+        my-mixin($a: black; $b: white) when ($($a) = $($b)) {
           color: black;
           background-color: white;
         }

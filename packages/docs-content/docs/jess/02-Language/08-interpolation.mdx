@@ -4,7 +4,21 @@ audiences:
   - jess
 origin: jess
 ---
-Want to jam the result of a Jess expression anywhere in your CSS output? Use interpolation: just wrap your Jess expression in `$()`. Jess will evaluate it and stick the value right into the code, wherever you put it.
+Jess has two interpolation forms:
+
+- `$(...)` for full `Expression` interpolation.
+- `$[ident]` for identifier interpolation (`InterpolatedReference`).
+
+Use `$[ident]` when the interpolation input is a single reference.
+Use `$(...)` when you need an actual expression.
+
+In selector contexts, that single reference may still resolve to a non-identifier selector fragment at runtime.
+
+## Quick guide: which form to use?
+
+- **Selector/property/mixin names**: use `$[ident]`
+- **Strings and custom property values**: use `$[ident]` or `$(...)`
+- **Normal values**: use direct references like `$var` unless you need expression behavior
 
 ## Interpolation examples
 
@@ -12,7 +26,7 @@ Want to jam the result of a Jess expression anywhere in your CSS output? Use int
 
 ```scss
 $side: left;
-.widget-$(side) {
+.widget-$[side] {
   float: $side;
 }
 ```
@@ -27,7 +41,7 @@ $side: left;
 ```scss
 $radius: top-right;
 .card {
-  border-$(radius)-radius: 12px;
+  border-$[radius]-radius: 12px;
 }
 ```
 →
@@ -41,19 +55,21 @@ $radius: top-right;
 ```less
 $theme: dark;
 body {
-  --theme-mode: $(theme);
+  --theme-mode: $[theme];
+  --theme-mode-fallback: $($theme);
 }
 ```
 →
 ```css
 body {
   --theme-mode: dark;
+  --theme-mode-fallback: dark;
 }
 ```
 
 :::info
 
-Note: in normal property values, you can just use `$theme`, but in custom property values, you must use interpolation `$(theme)` because custom property values have very loose syntax rules.
+Note: in normal property values, you can usually just use `$theme`. In custom property values, use interpolation (`$[theme]` or `$(...)`) so intent is explicit.
 
 :::
 
@@ -88,7 +104,7 @@ $fn: "min";
 $s1: 30vw;
 $s2: 50vw;
 .container {
-  width: $(fn)( $s1, $s2 );
+  width: $[fn]( $s1, $s2 );
 }
 ```
 →
@@ -98,12 +114,32 @@ $s2: 50vw;
 }
 ```
 
-### 7. Any plain output
+### 7. Less and SCSS source conversion
+
+```less
+// Less input
+.@{name} { color: red; }
+```
+```scss
+// Jess output shape
+.$[name] { color: red; }
+```
+
+```scss
+// SCSS input (single variable interpolation in selector/property name)
+.btn-#{$name} { color: red; }
+```
+```scss
+// Jess output shape
+.btn-$[name] { color: red; }
+```
+
+### 8. Any plain output
 
 ```scss
 $color-name: "red";
 .container {
-  color: ~"$(color-name)";
+  color: ~"$[color-name]";
 }
 ```
 →

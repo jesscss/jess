@@ -30,16 +30,16 @@ describe('serializeTypes coverage', () => {
             name: 
               (Any [role=ident] 'ref')
             value: 
-              (Expression
-                (Reference
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          key:
-                            ['#ns', '.breakpoint']
-                        )
-                      args:
+              (Reference
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key:
+                          ['#ns', '.breakpoint']
+                      )
+                    args: 
+                      (List
                         [
                           (Reference
                             target: 
@@ -49,9 +49,9 @@ describe('serializeTypes coverage', () => {
                             key: -1
                           )
                         ]
-                    )
-                  key: 'max'
-                )
+                      )
+                  )
+                key: 'max'
               )
           )
         ]
@@ -100,10 +100,8 @@ describe('serializeTypes coverage', () => {
                 name: 
                   (Any [role=property] 'color')
                 value: 
-                  (Expression
-                    (Reference
-                      key: 'color'
-                    )
+                  (Reference
+                    key: 'color'
                   )
               )
             ]
@@ -136,15 +134,17 @@ describe('serializeTypes coverage', () => {
             key: 
               (BasicSelector '.mixin')
           )
-        args:
-          [
-            (Color
-              node: 'red'
-              rgb:
-              [255, 0, 0]
-              alpha: 1
-            )
-          ]
+        args: 
+          (List
+            [
+              (Color
+                node: 'red'
+                rgb:
+                [255, 0, 0]
+                alpha: 1
+              )
+            ]
+          )
       )
     `);
   });
@@ -194,14 +194,12 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(tree.toString().replace(/\s+/g, '')).toContain('$obj.~prop');
     expect(serializeTypes(tree)).toContainString(`
-      (Expression
-        (Reference
-          target: 
-            (Reference
-              key: 'obj'
-            )
-          key: 'prop'
-        )
+      (Reference
+        target: 
+          (Reference
+            key: 'obj'
+          )
+        key: 'prop'
       )
     `);
   });
@@ -215,7 +213,7 @@ describe('serializeTypes coverage', () => {
             source: '.${INTERPOLATION_PLACEHOLDER}-button'
             replacements:
             [
-              (Reference [role=ident]
+              (InterpolatedReference [role=ident]
                 key: 'prefix'
               )
             ]
@@ -233,7 +231,7 @@ describe('serializeTypes coverage', () => {
           source: '${INTERPOLATION_PLACEHOLDER}'
           replacements:
           [
-            (Reference [role=ident]
+            (InterpolatedReference [role=ident]
               key: 'prop'
             )
           ]
@@ -249,7 +247,7 @@ describe('serializeTypes coverage', () => {
                   source: '${INTERPOLATION_PLACEHOLDER}'
                   replacements:
                   [
-                    (Reference
+                    (InterpolatedReference [role=ident]
                       key: 'colorVar'
                     )
                   ]
@@ -339,12 +337,14 @@ test('static rgb() is preserved as Call node', () => {
           (Reference
             key: 'rgb'
           )
-        args:
-          [
-            (Number 255)
-            (Number 0)
-            (Number 0)
-          ]
+        args: 
+          (List
+            [
+              (Number 255)
+              (Number 0)
+              (Number 0)
+            ]
+          )
       )
     `);
 });
@@ -358,16 +358,16 @@ test('rgb() with variable creates Call node', () => {
           (Reference
             key: 'rgb'
           )
-        args:
-          [
-            (Expression
+        args: 
+          (List
+            [
               (Reference
                 key: 'r'
               )
-            )
-            (Number 0)
-            (Number 0)
-          ]
+              (Number 0)
+              (Number 0)
+            ]
+          )
       )
     `);
 });
@@ -381,18 +381,20 @@ test('static hsl() is preserved as Call node', () => {
           (Reference
             key: 'hsl'
           )
-        args:
-          [
-            (Number 120)
-            (Dimension
-              number: 50
-              unit: '%'
-            )
-            (Dimension
-              number: 50
-              unit: '%'
-            )
-          ]
+        args: 
+          (List
+            [
+              (Number 120)
+              (Dimension
+                number: 50
+                unit: '%'
+              )
+              (Dimension
+                number: 50
+                unit: '%'
+              )
+            ]
+          )
       )
     `);
 });
@@ -406,6 +408,9 @@ test('@import "file.less" parsed as StyleImport', () => {
         importOptions: {
           reference: false
           once: true
+          multiple: false
+          optional: false
+          inline: false
         }
         path: 
           (Quoted
@@ -491,8 +496,12 @@ test('@import (less, reference) "file" with options', () => {
       (StyleImport
         type: 'import'
         importOptions: {
+          type: 'less'
           reference: true
           once: true
+          multiple: false
+          optional: false
+          inline: false
         }
         path: 
           (Quoted
@@ -535,6 +544,9 @@ test('@import (multiple) "file.less" with multiple option', () => {
         importOptions: {
           reference: false
           once: false
+          multiple: true
+          optional: false
+          inline: false
         }
         path: 
           (Quoted
@@ -688,13 +700,11 @@ test('namespace call - simple id with parentheses', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  key: '#id'
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                key: '#id'
+              )
           )
       )
     `);
@@ -709,14 +719,12 @@ test('namespace call - complex selector with parentheses', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  key:
-                    ['#namespace', '.scoped-mixin']
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                key:
+                  ['#namespace', '.scoped-mixin']
+              )
           )
       )
     `);
@@ -751,23 +759,21 @@ test('variable reference with accessor', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Reference
-              target: 
-                (Reference
-                  key: 'config'
-                )
-              key: 
-                (Interpolated [role=ident]
-                  source: '${INTERPOLATION_PLACEHOLDER}'
-                  replacements:
-                  [
-                    (Reference [role=ident]
-                      key: 'prop'
-                    )
-                  ]
-                )
-            )
+          (Reference
+            target: 
+              (Reference
+                key: 'config'
+              )
+            key: 
+              (Interpolated [role=ident]
+                source: '${INTERPOLATION_PLACEHOLDER}'
+                replacements:
+                [
+                  (InterpolatedReference [role=ident]
+                    key: 'prop'
+                  )
+                ]
+              )
           )
       )
     `);
@@ -803,18 +809,16 @@ test('namespace call with accessor and parentheses', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference
-                  target: 
-                    (Reference [role=name]
-                      key:
-                        ['#namespace', '.scoped-mixin']
-                    )
-                  key: 'ref'
-                )
-            )
+          (Call
+            name: 
+              (Reference
+                target: 
+                  (Reference [role=name]
+                    key:
+                      ['#namespace', '.scoped-mixin']
+                  )
+                key: 'ref'
+              )
           )
       )
     `);
@@ -829,20 +833,18 @@ test('chained mixin calls - simple chain', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          key: '.mixin1'
-                        )
-                    )
-                  key: '.mixin2'
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key: '.mixin1'
+                      )
+                  )
+                key: '.mixin2'
+              )
           )
       )
     `);
@@ -857,17 +859,17 @@ test('chained mixin calls - with arguments', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          key: '.mixin1'
-                        )
-                      args:
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key: '.mixin1'
+                      )
+                    args: 
+                      (List
                         [
                           (VarDeclaration
                             name: 
@@ -876,10 +878,10 @@ test('chained mixin calls - with arguments', () => {
                               (Any [role=ident] 'bar')
                           )
                         ]
-                    )
-                  key: '.mixin2'
-                )
-            )
+                      )
+                  )
+                key: '.mixin2'
+              )
           )
       )
     `);
@@ -894,25 +896,25 @@ test('chained mixin calls - complex chain with accessors', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Reference
-              target: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          target: 
-                            (Reference
-                              target: 
-                                (Reference [role=name]
-                                  target: 
-                                    (Call
-                                      name: 
-                                        (Reference [role=name]
-                                          key: '.mixin1'
-                                        )
-                                      args:
+          (Reference
+            target: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        target: 
+                          (Reference
+                            target: 
+                              (Reference [role=name]
+                                target: 
+                                  (Call
+                                    name: 
+                                      (Reference [role=name]
+                                        key: '.mixin1'
+                                      )
+                                    args: 
+                                      (List
                                         [
                                           (VarDeclaration
                                             name: 
@@ -921,18 +923,18 @@ test('chained mixin calls - complex chain with accessors', () => {
                                               (Any [role=ident] 'bar')
                                           )
                                         ]
-                                    )
-                                  key: '.mixin2'
-                                )
-                              key: 'val1'
-                            )
-                          key: '.ns'
-                        )
-                    )
-                  key: '.sub-mixin'
-                )
-              key: 'val2'
-            )
+                                      )
+                                  )
+                                key: '.mixin2'
+                              )
+                            key: 'val1'
+                          )
+                        key: '.ns'
+                      )
+                  )
+                key: '.sub-mixin'
+              )
+            key: 'val2'
           )
       )
     `);
@@ -947,34 +949,32 @@ test('chained mixin calls - deep nesting', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          target: 
-                            (Call
-                              name: 
-                                (Reference [role=name]
-                                  target: 
-                                    (Call
-                                      name: 
-                                        (Reference [role=name]
-                                          key: '.mixin1'
-                                        )
-                                    )
-                                  key: '.mixin2'
-                                )
-                            )
-                          key: '.mixin3'
-                        )
-                    )
-                  key: '.mixin4'
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        target: 
+                          (Call
+                            name: 
+                              (Reference [role=name]
+                                target: 
+                                  (Call
+                                    name: 
+                                      (Reference [role=name]
+                                        key: '.mixin1'
+                                      )
+                                  )
+                                key: '.mixin2'
+                              )
+                          )
+                        key: '.mixin3'
+                      )
+                  )
+                key: '.mixin4'
+              )
           )
       )
     `);

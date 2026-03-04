@@ -40,6 +40,7 @@ import {
   Quoted,
   AtRule,
   Interpolated,
+  InterpolatedReference,
   InterpolatedSelector,
   Reference,
   Dimension,
@@ -91,35 +92,6 @@ function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext
   return { ...(ctx ?? {}), calcFrames };
 }
 
-function shouldWrapCallAsExpression(node: Call): boolean {
-  const { name } = node.value;
-  if (typeof name === 'string') {
-    return false;
-  }
-  if (isNode(name, 'Reference') && name.options?.type === 'function') {
-    return false;
-  }
-  return true;
-}
-
-function isVariableReferenceChain(node: Reference): boolean {
-  // The outermost reference may be a property/index lookup on top of a variable reference.
-  let current: Reference | undefined = node;
-  while (current) {
-    if (current.options?.type === 'variable') {
-      return true;
-    }
-    const target: unknown = current.value?.target;
-    if (isNode(target, 'Reference')) {
-      current = target;
-      continue;
-    }
-    // If this is a lookup on a call result (e.g. @ns()[@key]), treat it as non-variable.
-    return false;
-  }
-  return false;
-}
-
 function loc(node: Node): LocationInfo | undefined {
   const location = node.location;
   return location.length === 6 ? (location as LocationInfo) : undefined;
@@ -135,20 +107,6 @@ function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | und
   // Expressions should never contain Expressions; avoid nesting.
   if (node instanceof Expression) {
     return node;
-  }
-
-  // Variable references as standalone values should be treated as expressions.
-  if (isNode(node, 'Reference') && isVariableReferenceChain(node)) {
-    // Reference expressions should be outer-wrapped, but not parenthesized.
-    // e.g. `$obj.~prop`, NOT `$(obj.~prop)`
-    return new Expression(node, undefined, loc(node), this.context);
-  }
-
-  // Outermost chained mixin/variable calls should be treated as expressions.
-  if (isNode(node, 'Call') && shouldWrapCallAsExpression(node)) {
-    // Call expressions should be outer-wrapped, but not parenthesized.
-    // e.g. `$media()`, NOT `$(media())`
-    return new Expression(node, undefined, loc(node), this.context);
   }
 
   // Math expressions: only wrap if this operation would actually be performed.
@@ -454,7 +412,12 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
   while (result = interpolatedRegex.exec(name)) {
     const [match, propOrVar, value] = result;
     source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' });
+    const reference = new InterpolatedReference(
+      value!,
+      { referenceType: propOrVar === '$' ? 'property' : 'variable' },
+      location,
+      context
+    );
     replacements.push(reference);
   }
   return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
@@ -2347,7 +2310,12 @@ export function varReference(this: P, T: TokenMap) {
                 token,
                 'property-in-unknown-value'
               );
-              return new Any(token.image, { role: 'any' }, $.getLocationInfo(token), this.context);
+              return new InterpolatedReference(
+                token.image.slice(1),
+                { referenceType: 'property' },
+                $.getLocationInfo(token),
+                this.context
+              );
             }
             return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), this.context);
           }
@@ -2360,6 +2328,9 @@ export function varReference(this: P, T: TokenMap) {
             const raw = token.image;
             const type: 'variable' | 'property' = raw.startsWith('@') ? 'variable' : 'property';
             const key = getInterpolatedOrString(raw);
+            if (ctx.inCustomPropertyValue && typeof key === 'string') {
+              return new InterpolatedReference(key, undefined, $.getLocationInfo(token), this.context);
+            }
             if (typeof key === 'string') {
               return new Reference(key, { type }, $.getLocationInfo(token), this.context);
             }
@@ -2378,7 +2349,12 @@ export function varReference(this: P, T: TokenMap) {
                 token,
                 'variable-in-unknown-value'
               );
-              return new Any(token.image, { role: 'any' }, $.getLocationInfo(token), this.context);
+              return new InterpolatedReference(
+                token.image.slice(1),
+                { referenceType: 'variable' },
+                $.getLocationInfo(token),
+                this.context
+              );
             }
             return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), this.context);
           }
@@ -2814,16 +2790,21 @@ function processStringInterpolation(value: string, location: LocationInfo, conte
     source = before + INTERPOLATION_PLACEHOLDER + after;
     offset += (match.end - match.start) - INTERPOLATION_PLACEHOLDER.length;
 
-    const type = match.prefix === '@' ? 'variable' : 'property';
-
     // Recursively process the content in case it has nested interpolation
     const innerResult = processStringInterpolation(match.content, location, context);
     if (innerResult instanceof Interpolated) {
-      // The content itself has interpolation - create an Interpolated reference
-      replacements.push(new Reference({ key: innerResult }, { type, role: 'ident' }, location, context));
+      // Nested interpolation in string contexts still resolves through a reference,
+      // but must remain expression-wrapped in Jess output.
+      const nestedRef = new Reference({ key: innerResult }, { type: 'variable', role: 'ident' }, location, context);
+      replacements.push(new Expression(nestedRef, undefined, location, context));
     } else {
-      // Simple variable reference
-      replacements.push(new Reference(match.content, { type, role: 'ident' }, location, context));
+      // Simple interpolation reference
+      replacements.push(new InterpolatedReference(
+        match.content,
+        { referenceType: match.prefix === '$' ? 'property' : 'variable' },
+        location,
+        context
+      ));
     }
   }
 

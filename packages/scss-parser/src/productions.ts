@@ -1,6 +1,6 @@
 import { productions as cssProductions } from '@jesscss/css-parser';
 import type { AltContext, RuleContext } from '@jesscss/css-parser';
-import type { IToken } from 'chevrotain';
+import { tokenMatcher, type IToken } from 'chevrotain';
 import { Lexer } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { ScssActionsParser, type TokenMap as ScssTokenMap } from './scssActionsParser.js';
@@ -20,6 +20,7 @@ import {
   Declaration,
   Extend,
   Interpolated,
+  InterpolatedReference,
   INTERPOLATION_PLACEHOLDER,
   type AssignmentType,
   Each,
@@ -66,8 +67,11 @@ function findScssInterpolations(value: string): InterpolationMatch[] {
       const contentStart = i;
       while (i < value.length && braceCount > 0) {
         const ch = value[i]!;
-        if (ch === '{') {braceCount++;}
-        else if (ch === '}') {braceCount--;}
+        if (ch === '{') {
+          braceCount++;
+        } else if (ch === '}') {
+          braceCount--;
+        }
         i++;
       }
       if (braceCount === 0) {
@@ -85,10 +89,12 @@ let interpolationParser:
     lexer: Lexer;
     parser: ScssActionsParser;
   }
-    | undefined;
+  | undefined;
 
 function getInterpolationParser(): { lexer: Lexer; parser: ScssActionsParser } {
-  if (interpolationParser) {return interpolationParser;}
+  if (interpolationParser) {
+    return interpolationParser;
+  }
   const { lexer, T } = createLexerDefinition(scssFragments(), scssTokens());
   const chevLexer = new Lexer(lexer, {
     ensureOptimizations: true,
@@ -133,7 +139,14 @@ function processScssStringInterpolation(
     offset += (match.end - match.start) - INTERPOLATION_PLACEHOLDER.length;
 
     const parsed = parseInterpolationExpression(match.content.trim());
-    replacements.push(parsed);
+    const simpleRef = asSingleVariableReference(parsed);
+    if (simpleRef && typeof simpleRef.value.key === 'string') {
+      replacements.push(new InterpolatedReference(simpleRef.value.key, undefined, location, context));
+    } else if (isNode(parsed, 'Reference')) {
+      replacements.push(new Expression(parsed, undefined, location, context));
+    } else {
+      replacements.push(parsed);
+    }
   }
 
   return new Interpolated({ source, replacements }, { role: 'any' }, location, context);
@@ -152,6 +165,47 @@ function unwrapSingleSequence(n: Node): Node {
     return (n as Sequence).value[0]!;
   }
   return n;
+}
+
+function asSingleVariableReference(n: Node): Reference | undefined {
+  const node = unwrapSingleSequence(n);
+  if (
+    isNode(node, 'Reference')
+    && node.options?.type === 'variable'
+    && !node.value.target
+    && typeof node.value.key === 'string'
+  ) {
+    return node as Reference;
+  }
+  return undefined;
+}
+
+function makePrivateTempVarDecl(parser: ScssActionsParser, name: string, value: Node, location?: LocationInfo): VarDeclaration {
+  const decl = new VarDeclaration(
+    {
+      name: new Any(name, { role: 'property' }, location, parser.context),
+      value
+    },
+    undefined,
+    location,
+    parser.context
+  );
+  decl.options.rulesVisibility = { VarDeclaration: 'private' };
+  return decl;
+}
+
+function toNameInterpolationReplacement(
+  parser: ScssActionsParser,
+  expr: Node,
+  location?: LocationInfo
+): Node {
+  const simpleRef = asSingleVariableReference(expr);
+  if (simpleRef && typeof simpleRef.value.key === 'string') {
+    return new InterpolatedReference(simpleRef.value.key, undefined, location, parser.context);
+  }
+  const tmpName = parser.nextTempVarName();
+  parser.enqueuePendingNode(makePrivateTempVarDecl(parser, tmpName, expr, location));
+  return new InterpolatedReference(tmpName, undefined, location, parser.context);
 }
 
 function toDeclKey(node: Node): string {
@@ -188,9 +242,9 @@ function desugarMapLookup(
   // Reference.target only supports Reference or Call today; keep conservative.
   const initialTarget: Reference | Call | undefined =
     isNode(mapExpr, 'Reference')
-? (mapExpr as Reference)
+      ? (mapExpr as Reference)
       : isNode(mapExpr, 'Call')
-? (mapExpr as Call)
+        ? (mapExpr as Call)
         : undefined;
 
   if (!initialTarget) {
@@ -240,12 +294,20 @@ function makeNamespacedReference(
 
 function desugarNamespacedCall(parser: ScssActionsParser, call: Call): Call {
   const { name } = call.value;
-  if (typeof name !== 'string') {return call;}
-  if (!name.includes('.')) {return call;}
+  if (typeof name !== 'string') {
+    return call;
+  }
+  if (!name.includes('.')) {
+    return call;
+  }
   // Preserve special-casing for map.get() which has additional semantics elsewhere.
-  if (name === 'map.get') {return call;}
+  if (name === 'map.get') {
+    return call;
+  }
   const parts = name.split('.').filter(Boolean);
-  if (parts.length < 2) {return call;}
+  if (parts.length < 2) {
+    return call;
+  }
   const ref = makeNamespacedReference(parser, parts, 'function');
   return new Call({ name: ref, args: call.value.args }, call.options, call.location, parser.context);
 }
@@ -256,11 +318,17 @@ function looksLikeMapLiteral(la: (k: number) => IToken, T: ScssTokenMap): boolea
   let depth = 0;
   for (let i = 1; i < 50; i++) {
     const tok = la(i);
-    if (tok.tokenType === T.LParen) {depth++;}
+    if (tok.tokenType === T.LParen) {
+      depth++;
+    }
     if (tok.tokenType === T.RParen) {
-      if (depth === 0) {return false;}
+      if (depth === 0) {
+        return false;
+      }
       depth--;
-      if (depth === 0) {return false;}
+      if (depth === 0) {
+        return false;
+      }
     }
     if (tok.tokenType === T.Colon && depth === 1) {
       return true;
@@ -624,7 +692,7 @@ export function value(this: ScssActionsParser, T: ScssTokenMap, valueAlt?: AltCo
           const key = dv.image.slice(1);
           const nsRef = new Reference(ns, { type: 'variable' }, loc, $.context);
           const ref = new Reference({ target: nsRef, key }, { type: 'variable' }, loc, $.context);
-          return new Expression(ref, undefined, loc, $.context);
+          return ref;
         }
       }
     },
@@ -702,8 +770,12 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
   const base = cssProductions.functionCall.call(this, T, alt);
   return (ctx: RuleContext = {}) => {
     const node = base(ctx) as unknown as Call;
-    if ($.RECORDING_PHASE) {return node;}
-    if (!isNode(node, 'Call')) {return node as unknown as any;}
+    if ($.RECORDING_PHASE) {
+      return node;
+    }
+    if (!isNode(node, 'Call')) {
+      return node as unknown as any;
+    }
 
     // First, keep existing Sass map.get() desugaring behavior.
     const mapped = desugarMapLookup(this, node);
@@ -798,8 +870,50 @@ export function main(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext)
     // Allow stray semicolons at root.
     { ALT: () => $.CONSUME2(T.Semi) }
   ];
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    if (!RECORDING_PHASE && ctx.isRoot) {
+      $.resetGeneratedState();
+    }
 
-  return cssProductions.main.call(this, T, alt as any);
+    let rules: Node[] = [];
+    let requiredSemi = false;
+    let lastRule: Node | undefined;
+
+    $.MANY({
+      GATE: () => !requiredSemi || (requiredSemi && (
+        $.LA(1).tokenType === T.Semi
+        || $.LA(0).tokenType === T.Semi
+      )),
+      DEF: () => {
+        const localAlt = typeof alt === 'function' ? alt(ctx) : alt;
+        const value = $.OR(localAlt);
+        if (!RECORDING_PHASE) {
+          if (!(value instanceof JessNode)) {
+            if (lastRule) {
+              lastRule.options.semi = true;
+            } else {
+              rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), $.context));
+            }
+            return;
+          }
+
+          const pending = $.consumePendingNodes();
+          if (pending.length) {
+            rules.push(...pending);
+          }
+          requiredSemi = !!value.requiredSemi;
+          rules.push(value);
+          lastRule = value;
+        }
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
+      return $.wrap(withComments, true);
+    }
+  };
 }
 
 /**
@@ -822,8 +936,12 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
       const origTokens = ($ as any).originalInput as IToken[];
       let out = '';
       for (const tok of origTokens) {
-        if (tok.startOffset < startTokenOffset) {continue;}
-        if (tok.startOffset > endTokenOffset) {break;}
+        if (tok.startOffset < startTokenOffset) {
+          continue;
+        }
+        if (tok.startOffset > endTokenOffset) {
+          break;
+        }
         out += tok.image;
       }
       source += out;
@@ -839,14 +957,16 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
           $.CONSUME(T.RCurly);
           if (!RECORDING_PHASE) {
             source += INTERPOLATION_PLACEHOLDER;
-            replacements.push(expr);
+            replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
           }
         }
       },
       {
         ALT: () => {
           let startTokenOffset = 0;
-          if (!RECORDING_PHASE) {startTokenOffset = $.LA(1).startOffset;}
+          if (!RECORDING_PHASE) {
+            startTokenOffset = $.LA(1).startOffset;
+          }
           const sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
           if (!RECORDING_PHASE) {
             const endTokenOffset = $.LA(-1).startOffset;
@@ -870,14 +990,16 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
               $.CONSUME2(T.RCurly);
               if (!RECORDING_PHASE) {
                 source += INTERPOLATION_PLACEHOLDER;
-                replacements.push(expr);
+                replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
               }
             }
           },
           {
             ALT: () => {
               let startTokenOffset = 0;
-              if (!RECORDING_PHASE) {startTokenOffset = $.LA(1).startOffset;}
+              if (!RECORDING_PHASE) {
+                startTokenOffset = $.LA(1).startOffset;
+              }
               const sel = $.SUBRULE4($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
               if (!RECORDING_PHASE) {
                 const endTokenOffset = $.LA(-1).startOffset;
@@ -895,7 +1017,9 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
       if (replacements.length > 0) {
         return new Interpolated({ source, replacements }, { role: 'ident' }, location, $.context);
       }
-      if (selectors.length === 1) {return selectors[0]!;}
+      if (selectors.length === 1) {
+        return selectors[0]!;
+      }
       return new CompoundSelector(selectors, undefined, location, $.context);
     }
   };
@@ -1018,7 +1142,9 @@ function defaultNamespaceFromPath(path: string): string | undefined {
     return name.split('/').filter(Boolean).pop();
   }
   const base = path.split('/').filter(Boolean).pop();
-  if (!base) {return undefined;}
+  if (!base) {
+    return undefined;
+  }
   const noExt = base.replace(/\.(scss|sass|css|jess|js|ts|json)$/i, '');
   return noExt || undefined;
 }
@@ -1048,8 +1174,9 @@ export function scssUseAtRule(this: ScssActionsParser, T: ScssTokenMap) {
         $.OR([
           { ALT: () => (namespace = $.CONSUME2(T.Ident).image) },
           { ALT: () => {
- $.CONSUME(T.Star); namespace = '*'; 
-} }
+            $.CONSUME(T.Star);
+            namespace = '*';
+          } }
         ]);
       }
     });
@@ -1182,8 +1309,11 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
             : ($.CONSUME5(T.PlainIdent) as unknown as IToken);
           forwardListMode = kw.image === 'hide' ? 'hide' : 'show';
           if (!RECORDING_PHASE) {
-            if (forwardListMode === 'show') {forwardShow = [];}
-            else {forwardHide = [];}
+            if (forwardListMode === 'show') {
+              forwardShow = [];
+            } else {
+              forwardHide = [];
+            }
           }
           return;
         }
@@ -1324,7 +1454,9 @@ export function scssWithConfig(this: ScssActionsParser, T: ScssTokenMap) {
     $.CONSUME(T.LParen);
 
     let decls: VarDeclaration[] | undefined;
-    if (!RECORDING_PHASE) {decls = [];}
+    if (!RECORDING_PHASE) {
+      decls = [];
+    }
 
     $.OPTION(() => {
       $.AT_LEAST_ONE_SEP({
@@ -1340,11 +1472,13 @@ export function scssWithConfig(this: ScssActionsParser, T: ScssTokenMap) {
           $.MANY(() => {
             $.OR([
               { ALT: () => {
- $.CONSUME(T.SassDefault); sawDefault = true; 
-} },
+                $.CONSUME(T.SassDefault);
+                sawDefault = true;
+              } },
               { ALT: () => {
- $.CONSUME(T.SassGlobal); sawGlobal = true; 
-} }
+                $.CONSUME(T.SassGlobal);
+                sawGlobal = true;
+              } }
             ]);
           });
           if (!RECORDING_PHASE) {
@@ -1420,59 +1554,54 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     let nameHasOpenParen = false;
     $.OR([
       {
-        // Interpolated mixin name: `@include #{$mixin}(...);` or `@include foo-#{$bar}(...);`
+        // Sass parity: interpolation in mixin names is not valid syntax.
         GATE: () => $.LA(1).tokenType === T.InterpolationStart || $.LA(2).tokenType === T.InterpolationStart,
         ALT: () => {
-          let source = '';
-          const replacements: Node[] = [];
-          let startTok: IToken | undefined;
-
           $.AT_LEAST_ONE({
             DEF: () => {
               $.OR2([
                 {
                   GATE: () => $.LA(1).tokenType === T.InterpolationStart,
                   ALT: () => {
-                    const istart = $.CONSUME(T.InterpolationStart);
-                    startTok ??= istart;
-                    const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+                    $.CONSUME(T.InterpolationStart);
+                    $.SUBRULE($.valueSequence, { ARGS: [ctx] });
                     $.CONSUME2(T.RCurly);
-                    if (!RECORDING_PHASE) {
-                      source += INTERPOLATION_PLACEHOLDER;
-                      replacements.push(expr);
-                    }
                   }
                 },
                 {
                   ALT: () => {
-                    const ident = $.CONSUME(T.Ident);
-                    startTok ??= ident;
-                    if (!RECORDING_PHASE) {
-                      source += ident.image;
-                    }
+                    $.CONSUME(T.Ident);
                   }
                 }
               ]);
             }
           });
-
           if (!RECORDING_PHASE) {
-            const loc = startTok ? $.getLocationInfo(startTok) : $.getLocationInfo($.LA(-1));
-            mixinKey = new Interpolated({ source, replacements }, { role: 'ident' }, loc, $.context);
+            throw new Error('SCSS does not allow interpolation in mixin names for @include.');
           }
         }
       },
       {
         // Mixin call where lexer tokenizes `name(` as a single token.
         // e.g. `@include wrap(red);` may arrive as FunctionStart("wrap(") + ...
-        GATE: () => $.LA(1).tokenType === T.FunctionStart || $.LA(1).tokenType === T.GenericFunctionStart,
+        GATE: () => tokenMatcher($.LA(1), T.FunctionStart) || tokenMatcher($.LA(1), T.GenericFunctionStart),
         ALT: () => {
           const nameTok = $.OR7([
-            { GATE: () => $.LA(1).tokenType === T.FunctionStart, ALT: () => $.CONSUME9(T.FunctionStart) },
+            { GATE: () => tokenMatcher($.LA(1), T.FunctionStart), ALT: () => $.CONSUME9(T.FunctionStart) },
             { ALT: () => $.CONSUME9(T.GenericFunctionStart) }
           ]) as unknown as IToken;
           if (!RECORDING_PHASE) {
-            mixinKey = nameTok.image.slice(0, -1);
+            const parsedName = nameTok.image.slice(0, -1);
+            if (parsedName.includes('.')) {
+              const parts = parsedName.split('.').filter(Boolean);
+              if (parts.length >= 2) {
+                mixinNameRef = makeNamespacedReference($, parts, 'mixin');
+              } else {
+                mixinKey = parsedName;
+              }
+            } else {
+              mixinKey = parsedName;
+            }
             nameHasOpenParen = true;
           }
         }
@@ -1569,7 +1698,9 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
         // (no `: <default>`), matching Jess' `@($x, $y) { ... }` syntax.
         $.CONSUME2(T.LParen);
         let p: JessNode[] | undefined;
-        if (!RECORDING_PHASE) {p = [];}
+        if (!RECORDING_PHASE) {
+          p = [];
+        }
         $.OPTION7(() => {
           $.AT_LEAST_ONE_SEP({
             SEP: T.Comma,
@@ -1630,7 +1761,7 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
       const call = new Call({ name: mixinRef, args, contentNode }, undefined, loc, $.context);
       // SCSS `@include` is a statement; serialize as Jess mixin injection using `$ > ...`.
-      return new Expression(call, undefined, loc, $.context);
+      return call;
     }
   };
 }
@@ -1733,7 +1864,9 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       },
       DEF: () => {
         const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
-        if (!RECORDING_PHASE) {startNodes.push($.wrap(n, 'both'));}
+        if (!RECORDING_PHASE) {
+          startNodes.push($.wrap(n, 'both'));
+        }
       }
     });
 
@@ -1755,7 +1888,9 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
       DEF: () => {
         const n = $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
-        if (!RECORDING_PHASE) {endNodes.push($.wrap(n, 'both'));}
+        if (!RECORDING_PHASE) {
+          endNodes.push($.wrap(n, 'both'));
+        }
       }
     });
 
@@ -1929,63 +2064,54 @@ export function scssMixinAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const looksLikeInterpolatedMixinName = () => {
       for (let i = 1; i < 64; i++) {
         const tok = $.LA(i);
-        if (tok.tokenType === T.LParen || tok.tokenType === T.LCurly || tok.tokenType.name === 'EOF') {return false;}
-        if (tok.tokenType === T.InterpolationStart) {return true;}
+        if (tok.tokenType === T.LParen || tok.tokenType === T.LCurly || tok.tokenType.name === 'EOF') {
+          return false;
+        }
+        if (tok.tokenType === T.InterpolationStart) {
+          return true;
+        }
       }
       return false;
     };
 
     $.OR([
       {
-        // Interpolated mixin name: `@mixin foo-#{$bar} { ... }` or `@mixin #{$name}() { ... }`
+        // Sass parity: interpolation in mixin names is not valid syntax.
         GATE: () => looksLikeInterpolatedMixinName(),
         ALT: () => {
-          let source = '';
-          const replacements: Node[] = [];
-          let startTok: IToken | undefined;
-
           $.AT_LEAST_ONE({
             DEF: () => {
               $.OR3([
                 {
                   GATE: () => $.LA(1).tokenType === T.InterpolationStart,
                   ALT: () => {
-                    const istart = $.CONSUME(T.InterpolationStart);
-                    startTok ??= istart;
-                    const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+                    $.CONSUME(T.InterpolationStart);
+                    $.SUBRULE($.valueSequence, { ARGS: [ctx] });
                     $.CONSUME2(T.RCurly);
-                    if (!RECORDING_PHASE) {
-                      source += INTERPOLATION_PLACEHOLDER;
-                      replacements.push(expr);
-                    }
                   }
                 },
                 {
                   ALT: () => {
-                    const ident = $.CONSUME(T.Ident);
-                    startTok ??= ident;
-                    if (!RECORDING_PHASE) {source += ident.image;}
+                    $.CONSUME(T.Ident);
                   }
                 }
               ]);
             }
           });
-
           if (!RECORDING_PHASE) {
-            const loc = startTok ? $.getLocationInfo(startTok) : $.getLocationInfo($.LA(-1));
-            nameNode = new Interpolated({ source, replacements }, { role: 'name' }, loc, $.context);
+            throw new Error('SCSS does not allow interpolation in mixin names for @mixin.');
           }
         }
       },
       {
-        GATE: () => $.LA(1).tokenType === T.FunctionStart,
+        GATE: () => tokenMatcher($.LA(1), T.FunctionStart),
         ALT: () => {
           nameTok = $.CONSUME2(T.FunctionStart);
           hasParamsFromStart = true;
         }
       },
       {
-        GATE: () => $.LA(1).tokenType === T.GenericFunctionStart,
+        GATE: () => tokenMatcher($.LA(1), T.GenericFunctionStart),
         ALT: () => {
           nameTok = $.CONSUME3(T.GenericFunctionStart);
           hasParamsFromStart = true;
@@ -2024,7 +2150,7 @@ export function scssMixinAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       const loc = $.endRule();
 
       const finalNameNode = nameNode ?? (() => {
-        const mixinName = (nameTok.tokenType === T.FunctionStart || nameTok.tokenType === T.GenericFunctionStart)
+        const mixinName = (tokenMatcher(nameTok, T.FunctionStart) || tokenMatcher(nameTok, T.GenericFunctionStart))
           ? String(nameTok.image).slice(0, -1)
           : String(nameTok.image);
         return new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok), $.context);
@@ -2047,7 +2173,9 @@ export function scssMixinParams(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.LParen);
     let params: Node[] | undefined;
-    if (!RECORDING_PHASE) {params = [];}
+    if (!RECORDING_PHASE) {
+      params = [];
+    }
 
     $.OPTION(() => {
       $.AT_LEAST_ONE_SEP({
@@ -2075,7 +2203,9 @@ export function scssMixinParamsAfterFunctionStart(this: ScssActionsParser, T: Sc
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let params: Node[] | undefined;
-    if (!RECORDING_PHASE) {params = [];}
+    if (!RECORDING_PHASE) {
+      params = [];
+    }
 
     $.OPTION(() => {
       $.AT_LEAST_ONE_SEP({
@@ -2162,8 +2292,12 @@ export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltC
     // This keeps the fast path for normal CSS declarations.
     for (let i = 1; i < 64; i++) {
       const tok = $.LA(i);
-      if (tok.tokenType === T.Assign || tok.tokenType.name === 'EOF') {return false;}
-      if (tok.tokenType === T.InterpolationStart) {return true;}
+      if (tok.tokenType === T.Assign || tok.tokenType.name === 'EOF') {
+        return false;
+      }
+      if (tok.tokenType === T.InterpolationStart) {
+        return true;
+      }
     }
     return false;
   };
@@ -2182,11 +2316,13 @@ export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltC
         $.MANY2(() => {
           $.OR3([
             { ALT: () => {
- $.CONSUME(T.SassDefault); sawDefault = true; 
-} },
+              $.CONSUME(T.SassDefault);
+              sawDefault = true;
+            } },
             { ALT: () => {
- $.CONSUME(T.SassGlobal); sawGlobal = true; 
-} }
+              $.CONSUME(T.SassGlobal);
+              sawGlobal = true;
+            } }
           ]);
         });
 
@@ -2232,7 +2368,7 @@ export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltC
                   $.CONSUME4(T.RCurly);
                   if (!RECORDING_PHASE) {
                     source += INTERPOLATION_PLACEHOLDER;
-                    replacements.push(expr);
+                    replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
                   }
                 }
               },
@@ -2406,13 +2542,17 @@ export function scssMediaPrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
+        if (!RECORDING_PHASE) {
+          nodes.push($.wrap(n));
+        }
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) {return nodes[0]!;}
+      if (nodes.length === 1) {
+        return nodes[0]!;
+      }
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2453,13 +2593,17 @@ export function scssSupportsPrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
+        if (!RECORDING_PHASE) {
+          nodes.push($.wrap(n));
+        }
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) {return nodes[0]!;}
+      if (nodes.length === 1) {
+        return nodes[0]!;
+      }
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2500,13 +2644,17 @@ export function scssContainerPrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
+        if (!RECORDING_PHASE) {
+          nodes.push($.wrap(n));
+        }
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) {return nodes[0]!;}
+      if (nodes.length === 1) {
+        return nodes[0]!;
+      }
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2547,13 +2695,17 @@ export function scssScopePrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
+        if (!RECORDING_PHASE) {
+          nodes.push($.wrap(n));
+        }
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) {return nodes[0]!;}
+      if (nodes.length === 1) {
+        return nodes[0]!;
+      }
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2672,20 +2824,48 @@ export function unknownAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
   return (ctx: RuleContext = {}) => {
     const img = $.LA(1).image;
-    if (img === '@use') {return $.SUBRULE($.scssUseAtRule, { ARGS: [ctx] });}
-    if (img === '@forward') {return $.SUBRULE($.scssForwardAtRule, { ARGS: [ctx] });}
-    if (img === '@extend') {return $.SUBRULE($.scssExtendAtRule, { ARGS: [ctx] });}
-    if (img === '@content') {return $.SUBRULE($.scssContentAtRule, { ARGS: [ctx] });}
-    if (img === '@if') {return $.SUBRULE($.scssIfAtRule, { ARGS: [ctx] });}
-    if (img === '@for') {return $.SUBRULE($.scssForAtRule, { ARGS: [ctx] });}
-    if (img === '@each') {return $.SUBRULE($.scssEachAtRule, { ARGS: [ctx] });}
-    if (img === '@while') {return $.SUBRULE($.scssWhileAtRule, { ARGS: [ctx] });}
-    if (img === '@include') {return $.SUBRULE($.scssIncludeAtRule, { ARGS: [ctx] });}
-    if (img === '@mixin') {return $.SUBRULE($.scssMixinAtRule, { ARGS: [ctx] });}
-    if (img === '@function') {return $.SUBRULE($.scssFunctionAtRule, { ARGS: [ctx] });}
-    if (img === '@return') {return $.SUBRULE($.scssReturnAtRule, { ARGS: [ctx] });}
-    if (img === '@debug' || img === '@warn' || img === '@error') {return $.SUBRULE($.scssDiagnosticAtRule, { ARGS: [ctx] });}
-    if (img === '@at-root') {return $.SUBRULE($.scssAtRootAtRule, { ARGS: [ctx] });}
+    if (img === '@use') {
+      return $.SUBRULE($.scssUseAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@forward') {
+      return $.SUBRULE($.scssForwardAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@extend') {
+      return $.SUBRULE($.scssExtendAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@content') {
+      return $.SUBRULE($.scssContentAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@if') {
+      return $.SUBRULE($.scssIfAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@for') {
+      return $.SUBRULE($.scssForAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@each') {
+      return $.SUBRULE($.scssEachAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@while') {
+      return $.SUBRULE($.scssWhileAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@include') {
+      return $.SUBRULE($.scssIncludeAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@mixin') {
+      return $.SUBRULE($.scssMixinAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@function') {
+      return $.SUBRULE($.scssFunctionAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@return') {
+      return $.SUBRULE($.scssReturnAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@debug' || img === '@warn' || img === '@error') {
+      return $.SUBRULE($.scssDiagnosticAtRule, { ARGS: [ctx] });
+    }
+    if (img === '@at-root') {
+      return $.SUBRULE($.scssAtRootAtRule, { ARGS: [ctx] });
+    }
     return baseUnknown(ctx);
   };
 }
@@ -2730,14 +2910,14 @@ export function scssFunctionAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.OR([
       {
         // function name may be tokenized as a FunctionStart / GenericFunctionStart (`name(`)
-        GATE: () => $.LA(1).tokenType === T.FunctionStart,
+        GATE: () => tokenMatcher($.LA(1), T.FunctionStart),
         ALT: () => {
           nameTok = $.CONSUME(T.FunctionStart) as unknown as IToken;
           hasParamsFromStart = true;
         }
       },
       {
-        GATE: () => $.LA(1).tokenType === T.GenericFunctionStart,
+        GATE: () => tokenMatcher($.LA(1), T.GenericFunctionStart),
         ALT: () => {
           nameTok = $.CONSUME(T.GenericFunctionStart) as unknown as IToken;
           hasParamsFromStart = true;
@@ -2851,9 +3031,9 @@ export function scssAtRootAtRule(this: ScssActionsParser, T: ScssTokenMap) {
         // @at-root .selector { ... }
         GATE: () => {
           const next = $.LA(1);
-          return next.tokenType === T.Ident || next.tokenType === T.PlainIdent 
-                 || next.tokenType === T.Dot || next.tokenType === T.Hash
-                 || next.tokenType === T.Colon || next.tokenType === T.LBracket;
+          return next.tokenType === T.Ident || next.tokenType === T.PlainIdent
+            || next.tokenType === T.Dot || next.tokenType === T.Hash
+            || next.tokenType === T.Colon || next.tokenType === T.LBracket;
         },
         ALT: () => {
           // Parse as a selector list (CSS parser method)

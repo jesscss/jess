@@ -2,11 +2,6 @@ import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { isNode } from './util/is-node.js';
-
-export type ExpressionOptions = {
-  parens?: boolean;
-};
 
 /**
  * An expression is a node that returns a value.
@@ -15,11 +10,11 @@ export type ExpressionOptions = {
  * When parsing Less/Sass, everything containing an operation is
  * considered an expression.
  */
-export interface Expression extends Node<Node, ExpressionOptions> {
+export interface Expression extends Node<Node> {
   eval(context: Context): MaybePromise<Node>;
 }
 
-export class Expression extends Node<Node, ExpressionOptions> {
+export class Expression extends Node<Node> {
   type = 'Expression' as const;
   shortType = 'expr' as const;
 
@@ -36,16 +31,11 @@ export class Expression extends Node<Node, ExpressionOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { parens } = this.options;
     const mark = w.mark();
     w.add('$', this);
-    if (parens) {
-      w.add('(');
-    }
+    w.add('(');
     this.value.toString(options);
-    if (parens) {
-      w.add(')');
-    }
+    w.add(')');
     return w.getSince(mark);
   }
 }

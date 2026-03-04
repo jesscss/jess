@@ -105,6 +105,39 @@ into a **Reference lookup chain**:
 
 This is the same core mechanism Jess uses for `$theme.colors.primary` and array/map-like access.
 
+## SCSS interpolation mapping
+
+Jess distinguishes:
+
+- `Reference`: `$var`
+- `Expression`: `$(...)`
+- `InterpolatedReference`: `$[ident]`
+
+### `#{$...}` in selector/property names
+
+When SCSS interpolation appears in selector or property-name positions:
+
+- `#{$ident}` (single variable reference) maps to `$[ident]`
+- More complex interpolation expressions are rewritten through a generated private temp variable (`_tmp_<n>`), then referenced as `$[_tmp_<n>]`
+
+This keeps selector/property interpolation identifier-only while still supporting complex expressions.
+
+### `#{$...}` in values/strings
+
+In value/string contexts, SCSS interpolation may map to:
+
+- `$[ident]` for simple identifier interpolation
+- `$(...)` for expression interpolation
+
+For example, `#{$color}` can become `$($color)` when expression semantics are needed.
+
+### Interpolation in mixin names
+
+SCSS does not allow interpolation in mixin names. Jess follows that behavior:
+
+- `@include foo-#{$bar}()` is rejected
+- `@mixin foo-#{$bar}` is rejected
+
 ## Placeholder selectors (`%foo`)
 
 Sass placeholder selectors don’t emit CSS unless they’re extended.

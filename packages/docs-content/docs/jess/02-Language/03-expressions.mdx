@@ -6,9 +6,12 @@ origin: jess
 ---
 Jess supports expressions, which are used to evaluate values, perform calculations, and more.
 
-All Jess expressions start with `$`. You can think of `$` or `$(` as starting a new "expression context". If Jess encounters a mixin or function call e.g. `func(`, it will start a new "CSS value context" and temporarily exit the expression context. This is best explained with examples below.
+In Jess, an `Expression` is always written as `$(`...`)`.
 
-Note: all expressions used in interpolation (within strings or identifiers) must be wrapped in `$()`.
+- `$var` is a variable `Reference` (not an `Expression`).
+- `$(...)` is an `Expression`.
+
+If you need to evaluate a variable inside an expression, use `$($var)`.
 
 ## Examples
 
@@ -55,23 +58,19 @@ $height: $(width + 10px);
 }
 ```
 
-## Identifiers in expressions
+## References vs expressions
 
-Identifiers in expressions are evaluated as variable references. Note in the example below, when we call `iscolor`, we enter a new "CSS value context" and temporarily exit the expression context. So if we want to pass in a variable, we need to start a new expression with `$`.
+Inside an expression, plain identifiers are treated as normal values/keywords when possible.
 
 ```less
 $color: red;
-value: $(color); // red
+value: $(red); // red (color keyword literal)
+value: $($color); // red (variable reference inside Expression)
 value: $less.iscolor($color); // true
 ```
 ```less
 $num: 10;
-value: $(num + 1); // 11
-```
-If you need to pass in a keyword argument in an expression context for some reason, Jess allows `~` before an identifier to signify a keyword literal. So, like `~""` for string escapes and `~()` for parentheses escapes, you can think of it as escaping the expression context.
-
-```less
-value: $(~black + #111); // #111
+value: $($num + 1); // 11
 ```
 
 ## Other operators

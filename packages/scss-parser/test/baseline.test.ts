@@ -344,8 +344,8 @@ describe('scss-parser (baseline)', () => {
     expect(result.errors.map(e => e.message)).toEqual([]);
     // Placeholder token `%foo` becomes `\\foo` and we prefix `*|` for global placeholder lookup.
     expect(serializeTypes(result.tree)).toContainString('(Extend');
-    expect(serializeTypes(result.tree)).toContainString("namespace: '*'");
-    expect(serializeTypes(result.tree)).toContainString("\\foo");
+    expect(serializeTypes(result.tree)).toContainString('namespace: \'*\'');
+    expect(serializeTypes(result.tree)).toContainString('\\foo');
     assertValidTree(result.tree);
   });
 
@@ -364,8 +364,15 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`.a { color: ns.$c; }`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(serializeTypes(result.tree)).toContainString('(Expression');
-    expect(serializeTypes(result.tree)).toContainString("(Reference");
+    expect(serializeTypes(result.tree)).toContainString(`
+      (Reference
+        target:
+          (Reference
+            key: 'ns'
+          )
+        key: 'c'
+      )
+    `);
     assertValidTree(result.tree);
   });
 
@@ -375,8 +382,8 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     expect(serializeTypes(result.tree)).toContainString('(Expression');
-    expect(serializeTypes(result.tree)).toContainString("(Call");
-    expect(serializeTypes(result.tree)).toContainString("(Reference");
+    expect(serializeTypes(result.tree)).toContainString('(Call');
+    expect(serializeTypes(result.tree)).toContainString('(Reference');
     assertValidTree(result.tree);
   });
 
@@ -385,9 +392,26 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`@include ns.foo($x);`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(serializeTypes(result.tree)).toContainString('(Expression');
-    expect(serializeTypes(result.tree)).toContainString('(Call');
-    expect(serializeTypes(result.tree)).toContainString('(Reference');
+    expect(serializeTypes(result.tree)).toContainString(`
+      (Call
+        name: 
+          (Reference
+            target: 
+              (Reference
+                key: 'ns'
+              )
+            key: 'foo'
+          )
+        args: 
+          (List
+            [
+              (Reference
+                key: 'x'
+              )
+            ]
+          )
+      )
+    `);
     assertValidTree(result.tree);
   });
 
@@ -411,7 +435,7 @@ describe('scss-parser (baseline)', () => {
     expect(result.errors.map(e => e.message)).toEqual([]);
     expect(serializeTypes(result.tree)).toContainString('(Mixin');
     const out = String(result.tree);
-    expect(out).toContain('$ > wrap(');
+    expect(out).toContain('|wrap(');
     expect(out).toContain(': @($c, $n)');
     expect(out).toContain('.child');
     assertValidTree(result.tree);
@@ -427,7 +451,7 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     const out = String(result.tree);
-    expect(out).toContain('$for ($a of $list)');
+    expect(out).toContain('$for ($a of $($list');
     assertValidTree(result.tree);
   });
 
@@ -440,7 +464,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(String(result.tree)).toContain('$for ([$a, $b] of $list)');
+    expect(String(result.tree)).toContain('$for ([$a, $b] of $($list');
     assertValidTree(result.tree);
   });
 
@@ -574,23 +598,18 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
-  it('parses SCSS interpolation inside @include mixin names', () => {
+  it('rejects SCSS interpolation inside @include mixin names', () => {
     const parser = new Parser();
-    const result = parser.parse(`@include foo-#{$bar}();`);
-    expect(result.lexerResult.errors.length).toBe(0);
-    expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
-    assertValidTree(result.tree);
+    expect(() => parser.parse(`@include foo-#{$bar}();`)).toThrow(
+      'SCSS does not allow interpolation in mixin names for @include.'
+    );
   });
 
-  it('parses SCSS interpolation inside @mixin names', () => {
+  it('rejects SCSS interpolation inside @mixin names', () => {
     const parser = new Parser();
-    const result = parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`);
-    expect(result.lexerResult.errors.length).toBe(0);
-    expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(serializeTypes(result.tree)).toContainString('(Mixin');
-    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
-    assertValidTree(result.tree);
+    expect(() => parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`)).toThrow(
+      'SCSS does not allow interpolation in mixin names for @mixin.'
+    );
   });
 
   it('parses SCSS interpolation inside @media prelude', () => {
@@ -661,7 +680,7 @@ describe('scss-parser (baseline)', () => {
     // Smoke: ensure both vars were parsed as VarDeclaration nodes.
     expect(serializeTypes(result.tree)).toContainString('(VarDeclaration');
     // Flags should be preserved on the VarDeclaration options.
-    expect(serializeTypes(result.tree, { showOptions: true })).toContainString("assign: '?:'");
+    expect(serializeTypes(result.tree, { showOptions: true })).toContainString('assign: \'?:\'');
     expect(serializeTypes(result.tree, { showOptions: true })).toContainString('setDefined: true');
     assertValidTree(result.tree);
   });
@@ -705,4 +724,3 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 });
-

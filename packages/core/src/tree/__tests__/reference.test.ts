@@ -12,7 +12,7 @@ describe('reference', () => {
   describe('serialization', () => {
     it('should serialize a variable reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable' });
-      expect(`${node}`).toBe('foo');
+      expect(`${node}`).toBe('$foo');
     });
 
     it('should serialize a property reference', () => {
@@ -27,7 +27,7 @@ describe('reference', () => {
 
     it('should serialize an optional reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable', fallbackValue: true });
-      expect(`${node}`).toBe('foo?');
+      expect(`${node}`).toBe('$foo?');
     });
 
     it('should serialize a mixin reference', () => {

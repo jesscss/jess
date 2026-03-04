@@ -13,6 +13,7 @@ import {
 
 import {
   Reference,
+  InterpolatedReference,
   DefaultGuard,
   Interpolated,
   Any,
@@ -257,13 +258,12 @@ export class LessActionsParser extends CssActionsParser {
     // Also check tokenMatcher in case the token type name check doesn't work
     if (tokenType.name === 'AtKeyword' || tokenMatcher(token, this.T.AtKeyword)) {
       if (!this.RECORDING_PHASE && ctx?.inCustomPropertyValue) {
-        // Warn about @ident in custom property values - it's treated as literal text, not a variable reference
         this.warnDeprecation(
           '@[ident] in custom property values is treated as literal text, not a variable reference. Use @{[ident]} if you want it to be evaluated.',
           token,
           'variable-in-unknown-value'
         );
-        return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
+        return new InterpolatedReference(token.image.slice(1), undefined, this.getLocationInfo(token), this.context);
       }
       return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
     } else if (tokenType.name === 'PropertyReference') {
@@ -274,7 +274,7 @@ export class LessActionsParser extends CssActionsParser {
             token,
             'property-in-unknown-value'
           );
-          return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
+          return new InterpolatedReference(token.image.slice(1), undefined, this.getLocationInfo(token), this.context);
         }
       }
       return super.processValueToken(token, ctx);
