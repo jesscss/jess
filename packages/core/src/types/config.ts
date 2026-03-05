@@ -1,6 +1,6 @@
-import type { MathMode, UnitMode } from './modes.js';
+import type { EqualityMode, MathMode, UnitMode } from './modes.js';
 
-export type { MathMode, UnitMode };
+export type { EqualityMode, MathMode, UnitMode };
 
 /**
  * Less compiler options.
@@ -112,6 +112,14 @@ export interface LessOptions {
    * @default 'loose'
    */
   unitMode?: UnitMode;
+
+  /**
+   * How to handle equality/coercion in guards and comparisons.
+   * - 'coerce': Less-compatible coercion behavior
+   * - 'strict': type-strict behavior
+   * @default 'coerce'
+   */
+  equalityMode?: EqualityMode;
 
   /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:

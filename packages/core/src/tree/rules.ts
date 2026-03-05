@@ -19,7 +19,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 import { atIndex } from './util/collections.js';
 import type { Condition } from './condition.js';
-import type { Bool } from './bool.js';
+import { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
@@ -756,6 +756,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let n = rules.value[i]!;
         n.index = i;
       }
+      const trackedTopLevel = rules.value
+        .map(node => ({
+          type: node.type,
+          name: isNode(node, 'Mixin')
+            ? String((node as any).value?.name ?? '')
+            : isNode(node, 'Ruleset')
+              ? String((node as any).value?.selector?.valueOf?.() ?? '')
+              : isNode(node, 'Call')
+                ? String((node as any).value?.name?.valueOf?.() ?? '')
+                : ''
+        }))
+        .filter(item => item.name.includes('guard') || item.name.includes('deeper') || item.name.includes('mixin') || item.name.includes('lock'));
+      if (trackedTopLevel.length > 0) {
+      }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
         this.parent.adopt(rules);
@@ -847,6 +861,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
 
     const finish = () => {
+      const trackedAfterFirstPass = rules.value
+        .map((node) => {
+          const liveName = isNode(node, 'Mixin')
+            ? String((node as any).value?.name ?? '')
+            : isNode(node, 'Ruleset')
+              ? String((node as any).value?.selector?.valueOf?.() ?? '')
+              : isNode(node, 'Call')
+                ? String((node as any).value?.name?.valueOf?.() ?? '')
+                : '';
+          const sourceName = isNode(node, 'Ruleset')
+            ? String(((node as any).options?.ownSelector?.valueOf?.() ?? (node as any).sourceNode?.value?.selector?.valueOf?.() ?? ''))
+            : '';
+          return { type: node.type, liveName, sourceName };
+        })
+        .filter((item) => {
+          const key = `${item.liveName} ${item.sourceName}`;
+          return key.includes('guard') || key.includes('deeper') || key.includes('mixin') || key.includes('lock');
+        });
+      if (trackedAfterFirstPass.length > 0) {
+      }
       // If no dynamic nodes, we're done
       if (dynamicNodes.length === 0) {
         // Restore context after preEval is complete
@@ -940,6 +974,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let firstError: Error | undefined;
     let resolutionAttempts = 0;
     const MAX_RESOLUTION_ATTEMPTS = 5;
+    const trackedSummary = () => rules.value
+      .map((node) => {
+        const liveName = isNode(node, 'Mixin')
+          ? String((node as any).value?.name ?? '')
+          : isNode(node, 'Ruleset')
+            ? String((node as any).value?.selector?.valueOf?.() ?? '')
+            : isNode(node, 'Call')
+              ? String((node as any).value?.name?.valueOf?.() ?? '')
+              : '';
+        return { type: node.type, liveName };
+      })
+      .filter(item => item.liveName.includes('guard') || item.liveName.includes('deeper') || item.liveName.includes('mixin') || item.liveName.includes('lock'));
 
     const attemptResolution = (): MaybePromise<this> => {
       resolutionAttempts++;
@@ -1149,6 +1195,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let evalQueue: EvalQueueMap = new Map();
     for (let item of rules) {
       let [idx, rule] = item;
+      if (isNode(rule, ['Mixin', 'Ruleset', 'Call'])) {
+        const name = isNode(rule, 'Mixin')
+          ? String((rule as any).value?.name ?? '')
+          : isNode(rule, 'Ruleset')
+            ? String((rule as any).value?.selector?.valueOf?.() ?? '')
+            : String((rule as any).value?.name?.valueOf?.() ?? '');
+        if (name.includes('guard') || name.includes('deeper') || name.includes('mixin') || name.includes('lock')) {
+        }
+      }
+      if (isNode(rule, 'Rules')) {
+        const nested = rule.value ?? [];
+        const nestedSelectors = nested
+          .filter(n => isNode(n, 'Ruleset'))
+          .map((n: any) => String(n?.value?.selector?.valueOf?.() ?? ''))
+          .filter(s => s.includes('guard') || s.includes('deeper') || s.includes('mixin') || s.includes('lock'));
+        if (nestedSelectors.length > 0) {
+        }
+      }
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
       // Less variable-calls `@foo();` are parsed as Expression(Call(variable-ref)).
       // We *selectively* boost only those calls that "unlock mixins" (i.e. calling a variable whose
@@ -1189,14 +1253,68 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const retriedNodes = new Set<Node>();
 
     const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
-    const phaseRun = serialForEach(priorities, (p: Priority) => {
+    const runPriority = (p: Priority): MaybePromise<void> => {
       const queue = evalQueue.get(p);
       if (!queue) {
         return;
       }
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
-      const innerResultPromise = serialForEach(entries, ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
+      const trackedInPriority = entries
+        .map(([, [idx, rule]]) => ({
+          idx,
+          type: String((rule as any)?.type ?? ''),
+          name: isNode(rule, 'Mixin')
+            ? String((rule as any).value?.name ?? '')
+            : isNode(rule, 'Ruleset')
+              ? String((rule as any).value?.selector?.valueOf?.() ?? '')
+              : isNode(rule, 'Call')
+                ? String((rule as any).value?.name?.valueOf?.() ?? '')
+                : ''
+        }))
+        .filter(item => item.name.includes('guard') || item.name.includes('deeper') || item.name.includes('mixin') || item.name.includes('lock'));
+      const hasTrackedEvalIndexes = entries.some(([, [idx]]) => idx === 93 || idx === 104 || idx === 106);
+      const trackedQueuePositions = entries
+        .filter(([, [idx]]) => idx === 93 || idx === 99 || idx === 104 || idx === 106)
+        .map(([q, [idx, rule]]) => ({
+          q,
+          idx,
+          type: String((rule as any)?.type ?? ''),
+          name: isNode(rule, 'Mixin')
+            ? String((rule as any).value?.name ?? '')
+            : isNode(rule, 'Ruleset')
+              ? String((rule as any).value?.selector?.valueOf?.() ?? '')
+              : isNode(rule, 'Call')
+                ? String((rule as any).value?.name?.valueOf?.() ?? '')
+                : ''
+        }));
+      if (p === Priority.Low && (hasTrackedEvalIndexes || entries.length > 80)) {
+      }
+      const runSingleEntry = ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
         const [idx, rule] = item;
+        if (p === Priority.Low && (idx === 76 || idx === 88 || idx === 93 || idx === 99 || idx === 104 || idx === 106)) {
+        }
+        if (isNode(rule, ['Call', 'Ruleset', 'Mixin'])) {
+          const ruleName = isNode(rule, 'Call')
+            ? String((rule.value.name as any)?.value?.key?.valueOf?.() ?? (rule.value.name as any)?.valueOf?.() ?? '')
+            : isNode(rule, 'Mixin')
+              ? String((rule as any).value?.name ?? '')
+              : String((rule as any).value?.selector?.valueOf?.() ?? '');
+          const sourceName = isNode(rule, 'Ruleset')
+            ? String(((rule as any).options?.ownSelector?.valueOf?.() ?? (rule as any).sourceNode?.value?.selector?.valueOf?.() ?? ''))
+            : '';
+          if (
+            ruleName.includes('guard')
+            || ruleName.includes('deeper')
+            || ruleName.includes('mixin')
+            || ruleName.includes('lock')
+            || sourceName.includes('guard')
+            || sourceName.includes('deeper')
+            || sourceName.includes('mixin')
+            || sourceName.includes('lock')
+            || isNode(rule, 'Call')
+          ) {
+          }
+        }
 
         /**
          * Var declarations have late evaluation, so they are skipped.
@@ -1277,10 +1395,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return stepResult;
         }
         return;
-      });
-      // Return innerResultPromise - if it's a rejected promise, serialForEach should propagate it
-      return innerResultPromise;
-    });
+      };
+      return serialForEach(entries, runSingleEntry);
+    };
+    const phaseRun = serialForEach(priorities, runPriority);
 
     if (isThenable(phaseRun)) {
       return (phaseRun as Promise<void>).then(() => {
@@ -1473,6 +1591,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     if (rules.evaluated) {
       return { rules, rulesToHoist: false };
+    }
+    const trackedBeforeQueue = rules.value
+      .map((node, idx) => ({
+        idx,
+        type: node.type,
+        name: isNode(node, 'Mixin')
+          ? String((node as any).value?.name ?? '')
+          : isNode(node, 'Ruleset')
+            ? String((node as any).value?.selector?.valueOf?.() ?? '')
+            : isNode(node, 'Call')
+              ? String((node as any).value?.name?.valueOf?.() ?? '')
+              : ''
+      }))
+      .filter(item => item.name.includes('guard') || item.name.includes('deeper') || item.name.includes('mixin') || item.name.includes('lock'));
+    if (trackedBeforeQueue.length > 0) {
     }
     if (rules === context.root) {
       const map = new WeakMap<Ruleset, number>();
@@ -1989,18 +2122,72 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * default guards last.
      */
     let hasDefault = false;
+    const guardContainsDefault = (node: Node | undefined): boolean => {
+      if (!node) {
+        return false;
+      }
+      if (node.type === 'DefaultGuard') {
+        return true;
+      }
+      if (node.type === 'Call') {
+        const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
+        if (callName === 'default' || callName === '??') {
+          return true;
+        }
+      }
+      const value = (node as { value?: unknown }).value;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (isNode(item) && guardContainsDefault(item)) {
+            return true;
+          }
+        }
+        return false;
+      }
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        for (const item of Object.values(record)) {
+          if (isNode(item) && guardContainsDefault(item)) {
+            return true;
+          }
+          if (Array.isArray(item)) {
+            for (const child of item) {
+              if (isNode(child) && guardContainsDefault(child)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+    const hasFailedGuardAncestor = (node: Node): boolean => {
+      let current: any = node.parent;
+      while (current) {
+        if (isNode(current, 'Ruleset')) {
+          const guardNode = (current as Ruleset).value.guard;
+          if (guardNode instanceof Nil) {
+            return true;
+          }
+        }
+        current = current.parent;
+      }
+      return false;
+    };
     evalCandidates = mixinCandidates
       .filter((candidate) => {
         const inStack = thisContext.rulesEvalStack.includes(candidate.value.rules.sourceNode as Rules);
-        return !inStack;
+        const blockedByFailedGuardAncestor = hasFailedGuardAncestor(candidate as unknown as Node);
+        if (blockedByFailedGuardAncestor) {
+        }
+        return !inStack && !blockedByFailedGuardAncestor;
       })
       .map<MixinEntry>(
         (candidate) => {
-          let isDefault = candidate.options?.hasDefault;
-          if (isDefault) {
-            if (hasDefault) {
-              throw new Error('Ambiguous use of default guard found');
-            }
+          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(candidate.value.guard as unknown as Node | undefined);
+          if (hasDefaultGuard) {
+            candidate.options ??= {};
+            candidate.options.hasDefault = true;
             hasDefault = true;
           }
           return candidate;
@@ -2017,10 +2204,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
 
         if (!aDefault) {
-          return 1;
+          return -1;
         }
         if (!bDefault) {
-          return -1;
+          return 1;
         }
         return 0;
       });
@@ -2138,6 +2325,99 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       return current;
     };
 
+    const DEF_FALSE_EITHER = -1;
+    const DEF_NONE = 0;
+    const DEF_TRUE = 1;
+    const DEF_FALSE = 2;
+    type DefaultPendingCandidate = {
+      candidate: Mixin;
+      rules: Rules;
+      outerRules?: Rules;
+      params?: List<Node>;
+      group: number;
+    };
+    const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
+    let hasDefNoneCandidate = false;
+    const evaluateCandidateOutput = async (
+      candidate: Mixin,
+      rules: Rules,
+      outerRules: Rules | undefined,
+      params: List<Node> | undefined
+    ): Promise<void> => {
+      hasMatch = true;
+      const currentCall = thisContext.callStack.at(-1);
+      // to prevent infinite loops (e.g., .recursion { .recursion(); })
+      if (currentCall && thisContext.callMap.add(currentCall, params)) {
+        // Recursive call detected - skip this candidate (don't add to outputRules)
+        // This allows other candidates to still match
+        return;
+      }
+
+      try {
+        let newRules: Rules;
+        if (!outerRules) {
+          candidate.parent!.adopt(rules);
+          newRules = await rules.eval(thisContext);
+        } else {
+          // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
+          // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
+          // hide param vars from registry-based lookup.
+          outerRules.push(...rules.value);
+          newRules = await outerRules.eval(thisContext);
+        }
+        candidate.parent!.adopt(newRules);
+        // Rules should have index from eval, but ensure it matches candidate for sorting
+        newRules.index = candidate.index;
+
+        // Visibility should be preserved by Rules.eval - no need to set it explicitly here
+        // The eval'd rules should already have their nodes registered
+        // Ensure the registry is indexed before checking
+        const declRegistry = newRules.getRegistry('declaration');
+        declRegistry.indexPendingItems();
+        const candidateName = String(candidate.value.name?.valueOf?.() ?? candidate.value.name ?? '');
+        // Mark output Rules as mixin output - accessible only when lookup has a target
+        newRules.options.isMixinOutput = restrictMixinOutputLookup;
+        newRules.options.referenceMode = false;
+        clearReferenceModeForMixinOutput(newRules as unknown as Node);
+        if (thisContext.treeContext?.file) {
+          let hasParamVar = false;
+          let hasNestedMixin = false;
+          for (const node of newRules.children(true)) {
+            if (isNode(node, 'VarDeclaration') && !!node.options?.paramVar) {
+              hasParamVar = true;
+            }
+            if (isNode(node, 'Mixin')) {
+              hasNestedMixin = true;
+            }
+            if (hasParamVar && hasNestedMixin) {
+              break;
+            }
+          }
+          newRules.options.rulesVisibility ??= {};
+          // Nested mixin definitions need captured param vars to remain directly
+          // visible; otherwise guards resolve outer globals (e.g. @a=auto) instead
+          // of closure vars (e.g. @a=1 from .lock-mixin call).
+          newRules.options.rulesVisibility.VarDeclaration = hasParamVar
+            ? (hasNestedMixin ? 'public' : 'optional')
+            : 'private';
+        }
+        outputRules.push(newRules);
+      } catch (error) {
+        // If recursion was detected (ReferenceError), skip this candidate
+        // This allows other candidates to still match
+        if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
+          // Skip this candidate - recursion detected
+          return;
+        }
+        // Re-throw other errors
+        throw error;
+      } finally {
+        if (currentCall) {
+          thisContext.callMap.delete(currentCall);
+        }
+      }
+    };
+
     let candidateEvalIndex = 0;
     for (let candidate of evalCandidates) {
       candidateEvalIndex++;
@@ -2194,6 +2474,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(true);
       resetEvalStateDeep(rules as unknown as Node);
+      // During mixin evaluation, local declarations must be directly visible in the current scope
+      // so they properly shadow outer params/variables while the body executes.
+      rules.options.rulesVisibility ??= {};
+      rules.options.rulesVisibility.VarDeclaration = 'public';
       candidate.parent!.adopt(rules);
       rules.sourceParent = sourceParent;
       // Don't set index before evaluation - let evaluation assign the correct index
@@ -2306,78 +2590,105 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           candidate.parent!.adopt(outerRules);
           /** Allow lookup on the inherited rules */
           passes = false;
-          /** All nodes need context to be evaluated */
-          thisContext.isDefault = !hasMatch;
-          guard = await guard.eval(thisContext);
-          /** The guard condition passed */
-          if (guard.value) {
-            passes = true;
+          let guardPasses = false;
+          let defaultGroup = DEF_FALSE_EITHER;
+          if (hasDefault) {
+            const originalIsDefault = thisContext.isDefault;
+            const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
+              const probeGuard = candidate.value.guard?.copy(true);
+              if (!probeGuard) {
+                return false;
+              }
+              outerRules!.adopt(probeGuard);
+              thisContext.isDefault = isDefaultValue;
+              const probeResult = await probeGuard.eval(thisContext);
+              return probeResult instanceof Bool && probeResult.value === true;
+            };
+            const passWhenDefaultFalse = await evalWithDefault(false);
+            const passWhenDefaultTrue = await evalWithDefault(true);
+            thisContext.isDefault = originalIsDefault;
+            if (passWhenDefaultFalse || passWhenDefaultTrue) {
+              passes = true;
+              if (passWhenDefaultFalse && passWhenDefaultTrue) {
+                defaultGroup = DEF_NONE;
+                hasDefNoneCandidate = true;
+              } else {
+                defaultGroup = passWhenDefaultTrue ? DEF_TRUE : DEF_FALSE;
+              }
+            }
+            guardPasses = passes;
+            if (passes) {
+              pendingDefaultCandidates.push({
+                candidate: candidate as Mixin,
+                rules,
+                outerRules,
+                params,
+                group: defaultGroup
+              });
+            }
+          } else {
+            /** All nodes need context to be evaluated */
+            thisContext.isDefault = false;
+            guard = await guard.eval(thisContext);
+            /** Less guards only pass on explicit Bool(true), never JS truthiness. */
+            guardPasses = guard instanceof Bool && guard.value === true;
+            if (guardPasses) {
+              passes = true;
+              hasDefNoneCandidate = true;
+            }
           }
         }
         if (!passes) {
           continue;
         }
-        let currentCall = thisContext.callStack.at(-1);
-        // to prevent infinite loops (e.g., .recursion { .recursion(); })
-        if (currentCall && thisContext.callMap.add(currentCall, params)) {
-          // Recursive call detected - skip this candidate (don't add to outputRules)
-          // This allows other candidates to still match
+        if (!guard || !hasDefault) {
+          // Non-default candidates are equivalent to Less's defNone group
+          // (match regardless of default() assumption), so they suppress ambiguity.
+          hasDefNoneCandidate = true;
+        }
+        if (guard && hasDefault) {
           continue;
         }
-
-        try {
-          let newRules: Rules;
-          if (!outerRules) {
-            candidate.parent!.adopt(rules);
-            newRules = await rules.eval(thisContext);
-          } else {
-            // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
-            // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
-            // hide param vars from registry-based lookup.
-            outerRules.push(...rules.value);
-            newRules = await outerRules.eval(thisContext);
-          }
-          candidate.parent!.adopt(newRules);
-          // Rules should have index from eval, but ensure it matches candidate for sorting
-          newRules.index = candidate.index;
-
-          // Visibility should be preserved by Rules.eval - no need to set it explicitly here
-          // The eval'd rules should already have their nodes registered
-          // Ensure the registry is indexed before checking
-          const declRegistry = newRules.getRegistry('declaration');
-          declRegistry.indexPendingItems();
-          const candidateName = String(candidate.value.name?.valueOf?.() ?? candidate.value.name ?? '');
-          // Mark output Rules as mixin output - accessible only when lookup has a target
-          newRules.options.isMixinOutput = restrictMixinOutputLookup;
-          newRules.options.referenceMode = false;
-          clearReferenceModeForMixinOutput(newRules as unknown as Node);
-          if (thisContext.treeContext?.file) {
-            const hasParamVar = newRules.children(true).some(
-              node => isNode(node, 'VarDeclaration') && !!node.options?.paramVar
-            );
-            newRules.options.rulesVisibility ??= {};
-            // Keep parameter vars lookupable for lazy evaluation chains (e.g. nested mixins
-            // referencing @gender_ through @gender), while still honoring existing visibility
-            // tightening for non-parameter var declarations.
-            newRules.options.rulesVisibility.VarDeclaration = hasParamVar ? 'optional' : 'private';
-          }
-          outputRules.push(newRules);
-        } catch (error) {
-          // If recursion was detected (ReferenceError), skip this candidate
-          // This allows other candidates to still match
-          if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
-            // Skip this candidate - recursion detected
-            continue;
-          }
-          // Re-throw other errors
-          throw error;
-        } finally {
-          if (currentCall) {
-            thisContext.callMap.delete(currentCall);
-          }
-        }
+        await evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params);
       } finally {
         thisContext.rulesContext = rulesContext;
+      }
+    }
+
+    if (pendingDefaultCandidates.length > 0) {
+      let defTrueCount = 0;
+      let defFalseCount = 0;
+      for (const pending of pendingDefaultCandidates) {
+        if (pending.group === DEF_TRUE) {
+          defTrueCount++;
+        } else if (pending.group === DEF_FALSE) {
+          defFalseCount++;
+        } else if (pending.group === DEF_NONE) {
+          hasDefNoneCandidate = true;
+        }
+      }
+
+      const defaultResult = hasDefNoneCandidate ? DEF_FALSE : DEF_TRUE;
+      if (!hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1) {
+        throw new ReferenceError('Ambiguous use of default() while matching mixins.');
+      }
+
+      for (const pending of pendingDefaultCandidates) {
+        if (pending.group !== DEF_NONE && pending.group !== defaultResult) {
+          continue;
+        }
+        const previousRulesContext = thisContext.rulesContext;
+        thisContext.rulesContext = pending.outerRules ?? pending.rules;
+        try {
+          await evaluateCandidateOutput(
+            pending.candidate,
+            pending.rules,
+            pending.outerRules,
+            pending.params
+          );
+        } finally {
+          thisContext.rulesContext = previousRulesContext;
+        }
       }
     }
 

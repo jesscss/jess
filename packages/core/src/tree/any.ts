@@ -66,6 +66,37 @@ export class Any<
   override evalNode(context: Context): MaybePromise<Node> {
     return this;
   }
+
+  override compare(other: Node): 0 | 1 | -1 | undefined {
+    // In Less guards, quoted strings are distinct from bare identifiers.
+    if (other.type === 'Quoted') {
+      return undefined;
+    }
+    if (other.type === 'Any' || other.type === 'Keyword') {
+      return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
+    }
+    if (other.type === 'Number' || other.type === 'Dimension') {
+      const text = this.value.trim();
+      if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
+        return undefined;
+      }
+      const otherValue = (other as any).value;
+      const otherNumber = otherValue?.number;
+      const otherUnit = otherValue?.unit;
+      if (typeof otherNumber !== 'number') {
+        return undefined;
+      }
+      if (other.type === 'Dimension' && otherUnit) {
+        return undefined;
+      }
+      return Number(text) === otherNumber ? 0 : undefined;
+    }
+    if ((other as any).toString) {
+      const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
+      return normalize(this.toString()) === normalize((other as any).toString()) ? 0 : undefined;
+    }
+    return undefined;
+  }
 }
 
 // Custom any function that properly handles role narrowing

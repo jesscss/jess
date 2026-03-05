@@ -159,9 +159,21 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
+    if (b.type === 'Any') {
+      const text = String((b as any).value ?? '').trim();
+      if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
+        return undefined;
+      }
+      return this.value.number === Number(text) ? 0 : undefined;
+    }
+    if (b.type === 'Quoted') {
+      return undefined;
+    }
+    if (b.type === 'Bool') {
+      return undefined;
+    }
     if (!(b instanceof Dimension || b instanceof Color)) {
-      /** Do a string comparison */
-      return super.compare(b, context);
+      return undefined;
     }
     let unitToGroup = this.unitToGroup;
     let unitMode = context?.opts?.unitMode ?? 'loose';
@@ -194,10 +206,14 @@ export class Dimension extends Node<DimensionValue> {
       bUnit = undefined;
     }
 
-    if (
-      (!aUnit && !bUnit)
-      || (aUnit && bUnit)
-    ) {
+    if (!aUnit && !bUnit) {
+      return Node.numericCompare(aVal, bVal);
+    }
+    if (!aUnit || !bUnit) {
+      // Less guards allow unitless numbers to compare directly with dimensions.
+      return Node.numericCompare(aVal, bVal);
+    }
+    if (aUnit && bUnit) {
       /** These are the only truly comparable dimensions */
       if (!aUnit) {
         return Node.numericCompare(aVal, bVal);
@@ -210,8 +226,7 @@ export class Dimension extends Node<DimensionValue> {
           /** Units don't match, and can't be converted */
           throw new TypeError('Incompatible units. Change the units or use the unit function');
         }
-        /** Just compare numbers but not units */
-        return Node.numericCompare(aVal, bVal);
+        return undefined;
       }
       const group = conversions[bGroup];
       // @ts-expect-error - set up proper indexing later
@@ -222,9 +237,8 @@ export class Dimension extends Node<DimensionValue> {
       bVal = bVal / (atomicUnit / targetUnit);
 
       return Node.numericCompare(aVal, bVal);
-    } else {
-      return super.compare(b, context);
     }
+    return super.compare(b, context);
   }
 
   override toTrimmedString(options?: PrintOptions) {

@@ -164,6 +164,19 @@ export class Call extends Node<CallValue, CallOptions> {
     context.parenFrames.push(false);
 
     let n = typeof name === 'string' ? name : await name.eval(context);
+    const callName = typeof name === 'string'
+      ? name
+      : String((name as any)?.value?.key?.valueOf?.() ?? (name as any)?.valueOf?.() ?? '');
+    if (
+      callName.includes('mixin')
+      || callName.includes('lock')
+      || callName.includes('guard')
+      || callName === 'default'
+      || callName === '??'
+    ) {
+    }
+    if (typeof n !== 'string') {
+    }
     // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
     // by parsers that support them. We intentionally avoid implicit string→function lookup here
     // to prevent surprising behavior for plain CSS function-like calls.

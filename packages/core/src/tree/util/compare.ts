@@ -2,8 +2,9 @@ import { isNode } from './is-node.js';
 import isObject from 'lodash-es/isObject.js';
 import { type Node } from '../node.js';
 import { type Rules } from '../rules.js';
+import type { EqualityMode } from '../../types/modes.js';
 
-export function compare(a: any, b: any) {
+export function compare(a: any, b: any, mode: EqualityMode = 'coerce') {
   if (a === b) {
     return 0;
   }
@@ -14,7 +15,7 @@ export function compare(a: any, b: any) {
     return a.compare(b);
   }
   /** Do comparison without strict equality */
-  if (a == b) {
+  if (mode === 'coerce' && a == b) {
     return 0;
   }
   return undefined;
@@ -72,7 +73,7 @@ export function comparePosition(a: Node, b: Node) {
   return a0.index! - b0.index!;
 }
 
-export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {
+export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'coerce'): 0 | 1 | -1 | undefined {
   let output: 0 | 1 | -1 | undefined;
 
   if (a.length !== b.length) {
@@ -84,7 +85,7 @@ export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {
    * Anything else is undefined.
    */
   for (let i = 0; i < a.length; i++) {
-    let result = compare(a[i]!, b[i]!);
+    let result = compare(a[i]!, b[i]!, mode);
     if (result === undefined) {
       return undefined;
     }

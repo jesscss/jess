@@ -110,6 +110,20 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('mixin default guard sets hasDefault and does not leak', () => {
+    const { errors, tree } = parser.parse(`
+      .withDefault(@x) when (default()) { a: 1; }
+      .plain(@x) { b: 1; }
+      .withNegatedDefault(@x) when not (default()) { c: 1; }
+    `);
+    expect(errors.length).toBe(0);
+    const mixins = (tree as any).value.filter((node: any) => node.type === 'Mixin');
+    expect(mixins).toHaveLength(3);
+    expect(mixins[0].options?.hasDefault).toBe(true);
+    expect(Boolean(mixins[1].options?.hasDefault)).toBe(false);
+    expect(mixins[2].options?.hasDefault).toBe(true);
+  });
+
   test('mixin call', () => {
     const { errors, tree } = parser.parse('.mixin() { color: red; } .test { .mixin(); }');
     expect(errors.length).toBe(0);

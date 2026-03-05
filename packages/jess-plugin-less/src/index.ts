@@ -14,7 +14,7 @@ import {
   type ErrorDiagnostic,
   type WarningDiagnostic
 } from '@jesscss/core';
-import type { MathMode, UnitMode, LessOptions } from 'styles-config';
+import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
 import { Parser } from '@jesscss/less-parser';
 import path from 'node:path';
@@ -27,6 +27,7 @@ export class LessPlugin extends AbstractPlugin {
   parser: Parser;
   mathMode: MathMode;
   unitMode: UnitMode;
+  equalityMode: EqualityMode;
   leakyRules: boolean;
   bubbleRootAtRules: boolean;
   collapseNesting: boolean;
@@ -65,6 +66,7 @@ export class LessPlugin extends AbstractPlugin {
       unitMode = 'preserve';
     }
     this.unitMode = unitMode;
+    this.equalityMode = opts.equalityMode ?? 'coerce';
     this.leakyRules = opts.leakyRules ?? true;
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
     this.collapseNesting = opts.collapseNesting ?? false;
@@ -164,6 +166,7 @@ export class LessPlugin extends AbstractPlugin {
       },
       mathMode: this.mathMode,
       unitMode: this.unitMode,
+      equalityMode: this.equalityMode,
       plugin: this,
       collapseNesting: this.collapseNesting,
       leakyRules: this.leakyRules,

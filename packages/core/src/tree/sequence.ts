@@ -29,9 +29,17 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   override compare(other: Node) {
     if (other instanceof Sequence) {
-      return compareNodeArray(this.value, other.value);
+      const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
+      const result = compareNodeArray(this.value, other.value, equalityMode);
+      return result;
     }
-    return super.compare(other);
+    if (other.type === 'Any') {
+      const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+      const left = normalize(this.toString());
+      const right = normalize(other.toString());
+      return left === right ? 0 : undefined;
+    }
+    return undefined;
   }
 
   override toTrimmedString(options?: PrintOptions): string {

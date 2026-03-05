@@ -25,13 +25,13 @@ export interface GetOptionsParams {
 /**
  * Map of file extensions to language keys
  */
-const extensionToLanguage: Record<string, string> = {
-  '.less': 'less',
-  '.scss': 'scss',
-  '.sass': 'scss',
-  '.jess': 'jess',
-  '.css': 'css'
-};
+const extensionToLanguage = new Map<string, string>([
+  ['.less', 'less'],
+  ['.scss', 'scss'],
+  ['.sass', 'scss'],
+  ['.jess', 'jess'],
+  ['.css', 'css']
+]);
 
 /**
  * Infer language from a file path's extension
@@ -41,7 +41,7 @@ function inferLanguage(filePath: string | undefined): string | undefined {
     return undefined;
   }
   const ext = path.extname(filePath).toLowerCase();
-  return extensionToLanguage[ext];
+  return extensionToLanguage.get(ext);
 }
 
 /**
@@ -94,14 +94,14 @@ function getMatchingOptions<T extends FileMatchOptions>(
     // Include if: no file pattern (default), or file pattern matches
     if (!opt.file || (filePath && matchesFile(opt.file, filePath))) {
       // Merge this entry's options, excluding the 'file' property
-      const { file, ...rest } = opt;
+      const rest = { ...opt } as Record<string, unknown>;
+      delete rest.file;
       result = { ...result, ...rest };
     }
   }
 
   return result;
 }
-
 /**
  * Get merged options by combining compile, language, input, and output settings.
  *
@@ -156,6 +156,7 @@ export function getOptions(
     // Start with compile-level settings
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
+    equalityMode: compile.equalityMode,
     paths: compile.searchPaths,
     javascriptEnabled: compile.enableJavaScript,
 
@@ -169,4 +170,3 @@ export function getOptions(
     ...matchedOutput
   };
 }
-

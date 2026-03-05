@@ -482,8 +482,24 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
+        const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+        if (
+          type === 'mixin-ruleset'
+          || type === 'ruleset'
+          || valueKeyStr2.includes('guard')
+          || valueKeyStr2.includes('lock')
+          || valueKeyStr2.includes('deeper')
+          || valueKeyStr2.includes('mixin')
+        ) {
+          const returnSummary = Array.isArray(returnVal)
+            ? returnVal.map(item => ({
+                type: String((item as any)?.type ?? typeof item),
+                name: String((item as any)?.value?.name?.valueOf?.() ?? (item as any)?.valueOf?.() ?? ''),
+                hasGuard: Boolean((item as any)?.value?.guard)
+              }))
+            : String((returnVal as any)?.type ?? typeof returnVal);
+        }
         if (returnVal === undefined) {
-          const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
           // Less import interpolation parity: unresolved interpolation segments should fall back
           // to their raw token text (e.g. "@{in}" -> "in") instead of throwing.
           if (

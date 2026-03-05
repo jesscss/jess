@@ -2,6 +2,7 @@ import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_IMPLICIT_AMPERSAND, defineT
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
+import { Bool } from './bool.js';
 import type { Condition } from './condition.js';
 import type { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
@@ -473,6 +474,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     return pipe(
       () => {
+        const selectorText = String(this.value.selector?.valueOf?.() ?? '');
+        if (
+          selectorText.includes('.call-lock-mixin')
+          || selectorText.includes('#guarded-caller')
+          || selectorText.includes('#guarded-deeper')
+        ) {
+        }
         let { guard } = this.value;
         // Guard was already set to Nil (failed in a previous eval)
         if (guard instanceof Nil) {
@@ -484,7 +492,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return pipe(
             () => guard.eval(context),
             (guardResult) => {
-              if (!guardResult.value) {
+              const selectorText = String(this.value.selector?.valueOf?.() ?? '');
+              const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
+              if (selectorText.includes('#guarded') || selectorText.includes('#top') || selectorText.includes('#deeper')) {
+              }
+              if (!guardPasses) {
                 // Guard failed - mark as Nil and return it
                 this.value.guard = new Nil();
                 return new Nil();
@@ -548,6 +560,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         if (evaluatedRules instanceof Nil) {
           return evaluatedRules;
+        }
+        const selectorText = String(this.value.selector?.valueOf?.() ?? '');
+        if (
+          selectorText.includes('.call-lock-mixin')
+          || selectorText.includes('#guarded-caller')
+          || selectorText.includes('#guarded-deeper')
+        ) {
         }
 
         // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)

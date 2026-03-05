@@ -92,6 +92,67 @@ function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext
   return { ...(ctx ?? {}), calcFrames };
 }
 
+function guardContainsDefaultCall(node: Node | undefined): boolean {
+  if (!node) {
+    return false;
+  }
+  const isNodeLike = (value: unknown): value is Node => {
+    return Boolean(
+      value
+      && typeof value === 'object'
+      && typeof (value as any).type === 'string'
+      && typeof (value as any).valueOf === 'function'
+    );
+  };
+  const queue: unknown[] = [node];
+  const seen = new Set<unknown>();
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || seen.has(current) || !isNodeLike(current)) {
+      continue;
+    }
+    seen.add(current);
+    if (current.type === 'DefaultGuard') {
+      return true;
+    }
+    if (current.type === 'Call') {
+      const callName = (current as Call).value.name;
+      const callNameStr = String(
+        (callName as any)?.valueOf?.() ?? callName ?? ''
+      );
+      if (callNameStr === 'default' || callNameStr === '??') {
+        return true;
+      }
+      const key = (callName as any)?.value?.key;
+      const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
+      if (keyStr === 'default' || keyStr === '??') {
+        return true;
+      }
+    }
+    const value = (current as any).value;
+    if (Array.isArray(value)) {
+      queue.push(...value);
+    } else if (value && typeof value === 'object') {
+      queue.push(...Object.values(value));
+    }
+  }
+  return false;
+}
+
+function isDefaultGuardCall(node: Node | undefined): node is Call {
+  if (!node || node.type !== 'Call') {
+    return false;
+  }
+  const callName = (node as Call).value.name;
+  const callNameStr = String((callName as any)?.valueOf?.() ?? callName ?? '');
+  if (callNameStr === 'default' || callNameStr === '??') {
+    return true;
+  }
+  const key = (callName as any)?.value?.key;
+  const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
+  return keyStr === 'default' || keyStr === '??';
+}
+
 function loc(node: Node): LocationInfo | undefined {
   const location = node.location;
   return location.length === 6 ? (location as LocationInfo) : undefined;
@@ -927,12 +988,17 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     let isPossibleMixinDefinition = (selector instanceof BasicSelector && (selector.isClass || selector.isId))
       || (selector instanceof InterpolatedSelector && (selector.isClass || selector.isId));
     let isPossibleMixinCall = true;
-    if (!RECORDING_PHASE) {
-      const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
-      const selectorLine = selector instanceof Node ? selector.location?.[1] ?? null : null;
-      if (selectorValue === '.paren-escapes' || selectorValue === '.mixin') {
-      }
-    }
+    const selectorValueDebug = !RECORDING_PHASE && selector instanceof Node
+      ? String(selector.valueOf() ?? '')
+      : '';
+    const trackedSelector = !RECORDING_PHASE && (
+      selectorValueDebug.includes('#guarded')
+      || selectorValueDebug.includes('#top')
+      || selectorValueDebug.includes('#deeper')
+      || selectorValueDebug.includes('.lock-mixin')
+      || selectorValueDebug.includes('.inner-locked-mixin')
+      || selectorValueDebug.includes('.mixin')
+    );
     if (!isSelectorList && !isPossibleMixinDefinition && !RECORDING_PHASE) {
       for (let s of selector.nodes()) {
         /** Keep going until we get to basic selectors. */
@@ -950,12 +1016,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         break;
       }
     }
-    if (!RECORDING_PHASE) {
-      const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
-      if (selectorValue === '.mixin' || selectorValue.includes('.mixin')) {
-      }
-    }
-
     return $.OR2([
       {
         GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
@@ -975,8 +1035,10 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
               GATE: () => isPossibleMixinDefinition,
               /** Mixin definition */
               ALT: () => {
+                if (trackedSelector) {
+                }
                 $.OPTION(() => {
-                  guard = $.SUBRULE($.guard);
+                  guard = $.SUBRULE($.guard, { ARGS: [ctx] });
                 });
                 $.CONSUME(T.LCurly);
 
@@ -985,7 +1047,15 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   // Convert Any nodes to VarDeclaration nodes for mixin definition parameters
                   convertArgsForDefinition(args);
-                  const node = new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
+                  const guardText = String(guard?.toString?.() ?? '');
+                  const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
+                  const node = new Mixin(
+                    { name: selector.valueOf(), params: args, rules, guard },
+                    hasDefault ? { hasDefault: true } : undefined,
+                    $.endRule(),
+                    this.context
+                  );
+                  ctx.hasDefault = false;
                   return node;
                 }
               }
@@ -994,6 +1064,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
               GATE: () => isPossibleMixinCall,
               /** Mixin call */
               ALT: () => {
+                if (trackedSelector) {
+                }
                 $.OPTION2(() => {
                   important = $.CONSUME(T.Important);
                 });
@@ -1027,11 +1099,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         /** Parse as qualified rule */
         ALT: () => {
-          if (!RECORDING_PHASE) {
-            const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
-            const selectorLine = selector instanceof Node ? selector.location?.[1] ?? null : null;
-            if (selectorValue === '.paren-escapes' || selectorValue === '.mixin') {
-            }
+          if (trackedSelector) {
           }
           if (!RECORDING_PHASE) {
             $.endRule();
@@ -1066,10 +1134,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         GATE: () => isPossibleMixinCall,
         ALT: () => {
-          if (!RECORDING_PHASE) {
-            const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
-            if (selectorValue === '.mixin' || selectorValue === '.paren-escapes') {
-            }
+          if (trackedSelector) {
           }
           // Call terminated by a semi-colon and not parens, deprecated
           $.CONSUME(T.Semi);
@@ -2978,6 +3043,13 @@ export function guardAnd(this: P, T: TokenMap) {
             ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
           }
         ]);
+        if (!RECORDING_PHASE && isDefaultGuardCall(right)) {
+          ctx.hasDefault = true;
+          const location = Array.isArray(right.location) && right.location.length === 6
+            ? right.location as LocationInfo
+            : undefined;
+          right = new DefaultGuard('default()', undefined, location, this.context);
+        }
         ctx.allowComma = allowComma;
         if (!RECORDING_PHASE && not) {
           let [,,, endOffset, endLine, endColumn] = right.location!;
@@ -3025,6 +3097,13 @@ export function guardInParens(this: P, T: TokenMap) {
     ]);
 
     if (!$.RECORDING_PHASE) {
+      if (isDefaultGuardCall(node)) {
+        ctx.hasDefault = true;
+        const location = Array.isArray(node.location) && node.location.length === 6
+          ? node.location as LocationInfo
+          : undefined;
+        node = new DefaultGuard('default()', undefined, location, this.context);
+      }
       node = $.wrap(node, 'both');
       return new Paren(node, undefined, $.endRule(), this.context);
     }

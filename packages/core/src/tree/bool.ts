@@ -13,6 +13,13 @@ export class Bool extends Node<boolean> {
   type = 'Bool' as const;
   shortType = 'bool' as const;
 
+  override compare(other: Node): 0 | 1 | -1 | undefined {
+    if (other instanceof Bool) {
+      return this.value === other.value ? 0 : undefined;
+    }
+    return undefined;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;

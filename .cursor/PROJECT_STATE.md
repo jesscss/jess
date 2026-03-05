@@ -83,6 +83,21 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Less fixture: detached-rulesets + functions-each scope stability (2026-03-03):**
+
+- **Area:** core mixin evaluation visibility (`getFunctionFromMixins` in `packages/core/src/tree/rules.ts`).
+- **Observed regression:** detached rulesets lookup (`detached-rulesets.less`) and `functions-each.less` shadowing fought each other when mixin-output var visibility was broad (`public`).
+- **Last thing we tried:** narrowed evaluation-time var visibility forcing to a specific pattern (named mixin with local var declarations that are consumed by sibling calls), and kept mixin-output var visibility conditional (`hasParamVar ? optional : private`) instead of global public.
+- **Result:** focused fixture run passes both:
+  - `pnpm --filter jess test -- test/less/all-less.test.ts -t "detached-rulesets.less|functions-each.less"` ✅
+- **Wider snapshot:** full Less file still has remaining failures:
+  - `mixins-guards-default-func.less`
+  - `mixins-guards.less`
+  - `mixins-important.less`
+  - `mixins-named-args.less`
+  - `mixins-pattern.less`
+- **Next step:** isolate guard/default behavior first (`mixins-guards*.less`) since that cluster explains most remaining semantic drift; then recheck named args and important ordering.
+
 **Less fixture: merge.less property assignment merge chain (2026-03-01):**
 
 - **Area:** core declaration assignment normalization + rules call-output merge coalescing.
@@ -514,6 +529,22 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
   - `pnpm --filter @jesscss/plugin-less-compat build` ✅
   - `pnpm --filter jess test -- test/less/all-less.test.ts -t "tests-unit/import/import.less"` ✅
   - `pnpm --filter jess test -- test/less/all-less.test.ts` ✅ (45/45 through `layer.less`)
+
+**Less/SCSS equality mode plumbing (2026-03-03):**
+
+- **Area:** config/core/plugin option flow for comparison semantics.
+- **What changed:** added `equalityMode` (`'coerce' | 'strict'`) across:
+  - `styles-config` types + merge path (`compile` -> language/input/output),
+  - core mode/config/context/tree-context types,
+  - Less plugin parse tree context (default `'coerce'`),
+  - SCSS plugin parse tree context (default `'strict'`).
+- **Verification:**
+  - `pnpm --filter styles-config test -- --run test/options.test.ts` ✅
+  - `pnpm --filter styles-config build` ✅
+  - `pnpm --filter @jesscss/core build` ✅
+  - `pnpm --filter @jesscss/plugin-less build` ✅
+  - `pnpm --filter @jesscss/plugin-scss build` ✅
+- **Next step:** wire `equalityMode` into guard comparison operators in `core` so behavior switches cleanly between Less-coercive and Sass-strict semantics.
 
 ---
 

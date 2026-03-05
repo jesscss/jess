@@ -139,6 +139,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     let { name, rules } = node.value;
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
+      // Keep Less mixin-definition vars as fallback by default. Call-time scope
+      // controls for params/local vars are handled in mixin evaluation paths.
       rules.options.rulesVisibility.VarDeclaration = 'optional';
     } else {
       rules.options.rulesVisibility.Mixin = 'private';

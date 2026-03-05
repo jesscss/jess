@@ -12,7 +12,7 @@ import type { Visitor } from './visitor/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
-import { MathMode, UnitMode } from './types/modes.js';
+import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
@@ -41,6 +41,7 @@ export interface ContextOptions {
   enableJavaScript?: boolean;
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  equalityMode?: EqualityMode;
 
   /** Directories to search to resolve files */
   searchPaths?: string[];
@@ -143,6 +144,7 @@ export class TreeContext implements TreeContextOptions {
   bubbleRootAtRules: boolean | undefined;
   mathMode: MathMode | undefined;
   unitMode: UnitMode | undefined;
+  equalityMode: EqualityMode | undefined;
 
   /** @todo - Change how extend works based on this value */
   isModule: boolean | undefined;
@@ -162,6 +164,7 @@ export class TreeContext implements TreeContextOptions {
     let {
       mathMode,
       unitMode,
+      equalityMode,
       isModule,
       file,
       plugin,
@@ -171,6 +174,7 @@ export class TreeContext implements TreeContextOptions {
     } = opts;
     this.mathMode = mathMode;
     this.unitMode = unitMode;
+    this.equalityMode = equalityMode;
     this.isModule = isModule;
     this.file = file;
     this.plugin = plugin;

@@ -363,6 +363,43 @@ export class For extends Node<StructuredLoopValue> {
                   }
                 }
                 if (firstMatch >= 0) {
+                  const prev = accumulatedNodes[firstMatch]!;
+                  if (isNode(prev, 'Declaration')) {
+                    const prevValue = prev.value.value;
+                    const nextValue = outNode.value.value;
+                    if (
+                      normalizedFromAssign === AssignmentType.Add
+                      || normalizedFromAssign === AssignmentType.MergeList
+                    ) {
+                      const prevItems = isNode(prevValue, 'List')
+                        ? prevValue.value
+                        : [prevValue];
+                      const nextItems = isNode(nextValue, 'List')
+                        ? nextValue.value
+                        : [nextValue];
+                      const nextAlreadyIncludesPrev =
+                        nextItems.length >= prevItems.length
+                        && prevItems.every((item, idx) => String(item.valueOf()) === String(nextItems[idx]?.valueOf()));
+                      const mergedItems = nextAlreadyIncludesPrev
+                        ? [...nextItems]
+                        : [...prevItems, ...nextItems];
+                      outNode.value.value = new List(mergedItems).inherit(outNode.value.value);
+                    } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
+                      const prevItems = isNode(prevValue, 'Sequence')
+                        ? prevValue.value
+                        : [prevValue];
+                      const nextItems = isNode(nextValue, 'Sequence')
+                        ? nextValue.value
+                        : [nextValue];
+                      const nextAlreadyIncludesPrev =
+                        nextItems.length >= prevItems.length
+                        && prevItems.every((item, idx) => String(item.valueOf()) === String(nextItems[idx]?.valueOf()));
+                      const mergedItems = nextAlreadyIncludesPrev
+                        ? [...nextItems]
+                        : [...prevItems, ...nextItems];
+                      outNode.value.value = new Sequence(mergedItems).inherit(outNode.value.value);
+                    }
+                  }
                   accumulatedNodes[firstMatch] = outNode;
                   for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
                     const prev = accumulatedNodes[i]!;

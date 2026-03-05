@@ -74,9 +74,17 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override compare(other: Node) {
     if (other instanceof List) {
-      return compareNodeArray(this.value, other.value);
+      const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
+      const result = compareNodeArray(this.value, other.value, equalityMode);
+      return result;
     }
-    return super.compare(other);
+    if (other.type === 'Any') {
+      const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
+      const left = normalize(this.toString());
+      const right = normalize(other.toString());
+      return left === right ? 0 : undefined;
+    }
+    return undefined;
   }
 
   override operate(b: Node, op: Operator, context: Context): List<T> {

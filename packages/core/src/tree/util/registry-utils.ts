@@ -711,6 +711,28 @@ export class MixinRegistry extends Registry<
       context,
       hasTarget = false
     } = options ?? {};
+    const mixinHasNoRequiredParams = (mixinNode: Mixin): boolean => {
+      const params = mixinNode.value.params;
+      if (!params || params.length === 0) {
+        return true;
+      }
+      for (const param of params.value) {
+        if (isNode(param, 'Rest')) {
+          continue;
+        }
+        if (isNode(param, 'VarDeclaration')) {
+          if (param.value.value instanceof Nil) {
+            return false;
+          }
+          continue;
+        }
+        if (isNode(param, 'Any') && param.options.role === 'property') {
+          return false;
+        }
+        return false;
+      }
+      return true;
+    };
 
     // Track which Rules nodes we've already searched to prevent infinite recursion
     // Use the searchedRules from options if it exists, otherwise create a new Set
@@ -799,7 +821,7 @@ export class MixinRegistry extends Registry<
           if (search.length > 0 && (arraysEqual(match, [startKey!]) || match.length === 0)) {
             if (
               (isNode(value, 'Ruleset'))
-              || (isNode(value, 'Mixin') && (!value.value.params || (value.value.params?.length ?? 0) === 0))
+              || (isNode(value, 'Mixin') && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
@@ -840,7 +862,7 @@ export class MixinRegistry extends Registry<
             }
             if (
               (isNode(value, 'Ruleset'))
-              || (isNode(value, 'Mixin') && (!value.value.params || (value.value.params?.length ?? 0) === 0))
+              || (isNode(value, 'Mixin') && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
@@ -889,7 +911,7 @@ export class MixinRegistry extends Registry<
           if (!candidatesBeforeChildren.has(candidateNode)) {
             const isMixin = isNode(candidateNode, 'Mixin');
             const isRuleset = isNode(candidateNode, 'Ruleset');
-            const hasNoParams = isMixin && (!candidateNode.value.params || (candidateNode.value.params?.length ?? 0) === 0);
+            const hasNoParams = isMixin && mixinHasNoRequiredParams(candidateNode as Mixin);
             // Check if this candidate matches the startKey.
             // For rulesets discovered via child-search, key-set membership is the reliable signal.
             const candidateKey = isMixin
@@ -1318,6 +1340,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
         if (options && searchChildrenOptions.readonly) {
           options.readonly = true;
         }
+        if (bestResult) {
+        }
         return bestResult;
       }
 
@@ -1359,7 +1383,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
         const pos = comparePosition(a, b);
         return pos ?? 0;
       });
-      return optionalArray[optionalArray.length - 1];
+      const optionalResult = optionalArray[optionalArray.length - 1];
+      return optionalResult;
     }
     return declCandidate.values().next().value;
   }

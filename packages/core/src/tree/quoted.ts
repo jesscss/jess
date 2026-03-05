@@ -42,6 +42,18 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return value instanceof Node ? value.valueOf() : value;
   }
 
+  override compare(other: Node): 0 | 1 | -1 | undefined {
+    if (other.type === 'Quoted' && !this.options?.escaped && !(other as any).options?.escaped) {
+      const left = String(this.valueOf());
+      const right = String(other.valueOf?.() ?? '');
+      if (left === right) {
+        return 0;
+      }
+      return left > right ? 1 : -1;
+    }
+    return (other as any).toString && this.toString() === (other as any).toString() ? 0 : undefined;
+  }
+
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
     let { value } = this;
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {

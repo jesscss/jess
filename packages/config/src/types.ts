@@ -8,6 +8,11 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
  */
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
+/**
+ * Equality/coercion modes for guard comparisons.
+ */
+export type EqualityMode = 'coerce' | 'strict';
+
 export interface JavaScriptSandboxConfig {
   /**
    * Allow network access for script execution runtime.
@@ -137,6 +142,14 @@ export interface LessOptions {
   unitMode?: UnitMode;
 
   /**
+   * How to handle equality/coercion in guards and comparisons.
+   * - 'coerce': Less-compatible coercion behavior
+   * - 'strict': type-strict behavior
+   * @default 'coerce'
+   */
+  equalityMode?: EqualityMode;
+
+  /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:
    * - 0 or 'always' → 'always'
    * - 1 or 'parens-division' → 'parens-division'
@@ -264,6 +277,7 @@ export interface InputOptions extends FileMatchOptions {
   // Compile-level options that can be overridden per-input
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  equalityMode?: EqualityMode;
   searchPaths?: string[];
   enableJavaScript?: boolean;
 
@@ -321,6 +335,7 @@ export interface StylesConfig {
     javascript?: CompileJavaScriptOption;
     mathMode?: MathMode;
     unitMode?: UnitMode;
+    equalityMode?: EqualityMode;
   };
   /**
    * Input file options. Can be a single object for defaults, or an array
