@@ -60,9 +60,13 @@ export class Parser {
     parser.warnings = [];
     parser.input = lexedTokens;
     const tree = parser[rule](...args);
-    
+
     // Capture warnings immediately after parsing to ensure they're not lost
     const warnings = [...parser.warnings];
+    if (parser.errors.length > 0) {
+      const firstError = parser.errors[0] as Record<string, any> | undefined;
+      const firstToken = firstError?.token as Record<string, any> | undefined;
+    }
 
     return { tree, lexerResult, errors: parser.errors, warnings };
   }

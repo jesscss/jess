@@ -1632,59 +1632,81 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(this.sourceNode as Rules);
-    const pipeResult = pipe(
-      () => {
-        this._setupContextForRules(context, this);
-        // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
-        // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
-        const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
-          if (rules.preEvaluated) {
-            return rules;
-          }
-          const result = rules.preEval(context);
-          return isThenable(result) ? (result as Promise<Rules>) : result;
-        };
-        const rulesAfterPreEval = runPreEvalIfNeeded(this);
-        const afterPreEval = (rules: Rules) => {
-          // When we're the outermost Rules, use the tree we're evaling as root (may differ from context.root set in getTree, or be preEval's clone).
-          if (context.rulesEvalStack.length === 1) {
-            context.root = rules;
-          }
-          return this._afterPreEvalStep(rules, context);
-        };
-        if (isThenable(rulesAfterPreEval)) {
-          return (rulesAfterPreEval as Promise<Rules>).then(afterPreEval);
+    const restoreContextOnError = () => {
+      context.rulesContext = saved.rulesContext;
+      if (saved.treeRoot !== undefined) {
+        context.treeRoot = saved.treeRoot;
+      }
+      if (saved.root !== undefined) {
+        context.root = saved.root;
+      }
+      const currentLength = context.extendRoots.extendRootStack.length;
+      if (saved.extendRootStackLength !== undefined && currentLength > saved.extendRootStackLength) {
+        while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
+          context.extendRoots.popExtendRoot();
         }
-        return afterPreEval(rulesAfterPreEval as Rules);
-      },
-      ({ rules }: { rules: Rules; rulesToHoist: boolean }) => {
+      }
+      if (context.rulesEvalStack[context.rulesEvalStack.length - 1] === (this.sourceNode as Rules)) {
+        context.rulesEvalStack.pop();
+      }
+      context.depth--;
+    };
+    let pipeResult: MaybePromise<this>;
+    try {
+      pipeResult = pipe(
+        () => {
+          this._setupContextForRules(context, this);
+          // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
+          // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
+          const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
+            if (rules.preEvaluated) {
+              return rules;
+            }
+            const result = rules.preEval(context);
+            return isThenable(result) ? (result as Promise<Rules>) : result;
+          };
+          const rulesAfterPreEval = runPreEvalIfNeeded(this);
+          const afterPreEval = (rules: Rules) => {
+            // When we're the outermost Rules, use the tree we're evaling as root (may differ from context.root set in getTree, or be preEval's clone).
+            if (context.rulesEvalStack.length === 1) {
+              context.root = rules;
+            }
+            return this._afterPreEvalStep(rules, context);
+          };
+          if (isThenable(rulesAfterPreEval)) {
+            return (rulesAfterPreEval as Promise<Rules>).then(afterPreEval);
+          }
+          return afterPreEval(rulesAfterPreEval as Rules);
+        },
+        ({ rules }: { rules: Rules; rulesToHoist: boolean }) => {
         // Note: Rulesets from imported Rules are already registered to their own treeRoot
         // during preEval when the imported Rules node is evaluated. The extend search
         // loops through allRoots, so it should find them. The _searchRulesChildrenForRulesets
         // method in RulesetRegistry also searches imported Rules' registries.
 
-        // After all evaluation stages, check if any variables in the current Rules
-        // shadow readonly variables from imported Rules (compose type) at the same level
-        // Only check direct children of the Rules node, not nested variables (e.g., inside rulesets)
-        if (rules.rulesSet.length > 0) {
-          let currentRegistry = rules.getRegistry('declaration');
-          currentRegistry.indexPendingItems();
-          for (const entry of rules.rulesSet) {
-            if (entry.readonly) {
-              let importedRegistry = entry.node.getRegistry('declaration');
-              importedRegistry.indexPendingItems();
-              for (const [key, declarations] of importedRegistry.index) {
-                for (const decl of declarations) {
-                  if (isNode(decl, 'VarDeclaration')) {
+          // After all evaluation stages, check if any variables in the current Rules
+          // shadow readonly variables from imported Rules (compose type) at the same level
+          // Only check direct children of the Rules node, not nested variables (e.g., inside rulesets)
+          if (rules.rulesSet.length > 0) {
+            let currentRegistry = rules.getRegistry('declaration');
+            currentRegistry.indexPendingItems();
+            for (const entry of rules.rulesSet) {
+              if (entry.readonly) {
+                let importedRegistry = entry.node.getRegistry('declaration');
+                importedRegistry.indexPendingItems();
+                for (const [key, declarations] of importedRegistry.index) {
+                  for (const decl of declarations) {
+                    if (isNode(decl, 'VarDeclaration')) {
                     // Check if a variable with this name exists in the current Rules' registry
-                    let currentDeclarations = currentRegistry.index.get(key);
-                    if (currentDeclarations) {
-                      for (const currentDecl of currentDeclarations) {
-                        if (isNode(currentDecl, 'VarDeclaration') && !currentDecl.options?.setDefined) {
+                      let currentDeclarations = currentRegistry.index.get(key);
+                      if (currentDeclarations) {
+                        for (const currentDecl of currentDeclarations) {
+                          if (isNode(currentDecl, 'VarDeclaration') && !currentDecl.options?.setDefined) {
                           // Only throw if the variable is a direct child of the Rules node (same level)
                           // Nested variables (e.g., inside rulesets) are allowed to shadow
-                          if (currentDecl.parent === rules) {
-                            throw new ReferenceError(`"${key}" is readonly`);
+                            if (currentDecl.parent === rules) {
+                              throw new ReferenceError(`"${key}" is readonly`);
+                            }
                           }
                         }
                       }
@@ -1694,131 +1716,140 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
           }
-        }
 
-        // Check if we're at the outermost level BEFORE restoring context
-        // Only process extends at the TRUE outermost root (context.root)
-        // This ensures extends are processed AFTER all evaluation completes,
-        // including imports and nested Rules
-        const isOutermost = rules === context.root;
+          // Check if we're at the outermost level BEFORE restoring context
+          // Only process extends at the TRUE outermost root (context.root)
+          // This ensures extends are processed AFTER all evaluation completes,
+          // including imports and nested Rules
+          const isOutermost = rules === context.root;
 
-        if (isOutermost) {
-          const hasGeneratedLeadingIs = (selector: Selector | undefined): boolean => {
-            if (!selector) {
+          if (isOutermost) {
+            const hasGeneratedLeadingIs = (selector: Selector | undefined): boolean => {
+              if (!selector) {
+                return false;
+              }
+              if (isNode(selector, 'PseudoSelector')) {
+                return selector.value.name === ':is' && Boolean(selector.generated);
+              }
+              if (isNode(selector, 'CompoundSelector')) {
+                const first = selector.value[0];
+                return Boolean(
+                  first
+                  && isNode(first, 'PseudoSelector')
+                  && first.value.name === ':is'
+                  && Boolean(first.generated)
+                );
+              }
+              if (isNode(selector, 'ComplexSelector')) {
+                const firstVisual = selector.value.find(c => !isNode(c, 'Combinator')) as Selector | undefined;
+                return Boolean(
+                  firstVisual
+                  && isNode(firstVisual, 'PseudoSelector')
+                  && firstVisual.value.name === ':is'
+                  && Boolean(firstVisual.generated)
+                );
+              }
               return false;
-            }
-            if (isNode(selector, 'PseudoSelector')) {
-              return selector.value.name === ':is' && Boolean(selector.generated);
-            }
-            if (isNode(selector, 'CompoundSelector')) {
-              const first = selector.value[0];
-              return Boolean(
-                first
-                && isNode(first, 'PseudoSelector')
-                && first.value.name === ':is'
-                && Boolean(first.generated)
-              );
-            }
-            if (isNode(selector, 'ComplexSelector')) {
-              const firstVisual = selector.value.find(c => !isNode(c, 'Combinator')) as Selector | undefined;
-              return Boolean(
-                firstVisual
-                && isNode(firstVisual, 'PseudoSelector')
-                && firstVisual.value.name === ':is'
-                && Boolean(firstVisual.generated)
-              );
-            }
-            return false;
-          };
-          const collectGeneratedLeadingIs = (): Array<{
-            selector: string;
-            ownSelector: string | null;
-            selectorGeneratedLeadingIs: boolean;
-            ownGeneratedLeadingIs: boolean;
-          }> => {
-            const out: Array<{
+            };
+            const collectGeneratedLeadingIs = (): Array<{
               selector: string;
               ownSelector: string | null;
               selectorGeneratedLeadingIs: boolean;
               ownGeneratedLeadingIs: boolean;
-            }> = [];
-            const visitRules = (r: Rules): void => {
-              for (const node of r.value) {
-                if (!node || !isNode(node, 'Ruleset')) {
-                  continue;
+            }> => {
+              const out: Array<{
+                selector: string;
+                ownSelector: string | null;
+                selectorGeneratedLeadingIs: boolean;
+                ownGeneratedLeadingIs: boolean;
+              }> = [];
+              const visitRules = (r: Rules): void => {
+                for (const node of r.value) {
+                  if (!node || !isNode(node, 'Ruleset')) {
+                    continue;
+                  }
+                  const rs = node as Ruleset;
+                  const rsSelector = rs.value?.selector as Selector | undefined;
+                  const ownSelector = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+                  const selectorGeneratedLeadingIs = hasGeneratedLeadingIs(rsSelector);
+                  const ownGeneratedLeadingIs = hasGeneratedLeadingIs(ownSelector);
+                  if (selectorGeneratedLeadingIs || ownGeneratedLeadingIs) {
+                    out.push({
+                      selector: rsSelector?.valueOf?.() ?? '',
+                      ownSelector: ownSelector?.valueOf?.() ?? null,
+                      selectorGeneratedLeadingIs,
+                      ownGeneratedLeadingIs
+                    });
+                  }
+                  const childRules = rs.value?.rules;
+                  if (childRules && isNode(childRules, 'Rules')) {
+                    visitRules(childRules as Rules);
+                  }
                 }
-                const rs = node as Ruleset;
-                const rsSelector = rs.value?.selector as Selector | undefined;
-                const ownSelector = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
-                const selectorGeneratedLeadingIs = hasGeneratedLeadingIs(rsSelector);
-                const ownGeneratedLeadingIs = hasGeneratedLeadingIs(ownSelector);
-                if (selectorGeneratedLeadingIs || ownGeneratedLeadingIs) {
-                  out.push({
-                    selector: rsSelector?.valueOf?.() ?? '',
-                    ownSelector: ownSelector?.valueOf?.() ?? null,
-                    selectorGeneratedLeadingIs,
-                    ownGeneratedLeadingIs
-                  });
-                }
-                const childRules = rs.value?.rules;
-                if (childRules && isNode(childRules, 'Rules')) {
-                  visitRules(childRules as Rules);
-                }
-              }
+              };
+              visitRules(rules);
+              return out;
             };
-            visitRules(rules);
-            return out;
-          };
-          const hasReplaceReplaceExtend = context.extends.some(([target]) => {
-            try {
-              return target.valueOf().includes('replace.replace');
-            } catch {
-              return false;
-            }
-          });
-          const hasRepAceExtend = context.extends.some(([, sel]) => {
-            try {
-              return sel.valueOf().includes('rep_ace');
-            } catch {
-              return false;
-            }
-          });
-          // Process all registered extends using the extend roots registry system
-          processExtends(context);
-        }
-        /** Restore contexts */
-        context.rulesContext = saved.rulesContext;
-        // Only restore context.treeRoot if saved.treeRoot is defined and we're not at the outermost level
-        // If saved.treeRoot is undefined, it means we're at the outermost level, so keep context.treeRoot as is
-        // This ensures extends evaluated during selector evaluation can still access the correct treeRoot
-        if (saved.treeRoot !== undefined && !isOutermost) {
-          context.treeRoot = saved.treeRoot;
-        }
-        // Only restore context.root if we're not at the outermost level (where it was originally set)
-        // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
-        if (saved.root !== undefined && !isOutermost) {
-          context.root = saved.root;
-        }
-        // Restore extend root stack to its original length (if we're not the main root)
-        // The main root manages its own push/pop, but nested Rules should restore the stack
-        if (!isOutermost && saved.extendRootStackLength !== undefined) {
-          const currentLength = context.extendRoots.extendRootStack.length;
-          if (currentLength > saved.extendRootStackLength) {
+            const hasReplaceReplaceExtend = context.extends.some(([target]) => {
+              try {
+                return target.valueOf().includes('replace.replace');
+              } catch {
+                return false;
+              }
+            });
+            const hasRepAceExtend = context.extends.some(([, sel]) => {
+              try {
+                return sel.valueOf().includes('rep_ace');
+              } catch {
+                return false;
+              }
+            });
+            // Process all registered extends using the extend roots registry system
+            processExtends(context);
+          }
+          /** Restore contexts */
+          context.rulesContext = saved.rulesContext;
+          // Only restore context.treeRoot if saved.treeRoot is defined and we're not at the outermost level
+          // If saved.treeRoot is undefined, it means we're at the outermost level, so keep context.treeRoot as is
+          // This ensures extends evaluated during selector evaluation can still access the correct treeRoot
+          if (saved.treeRoot !== undefined && !isOutermost) {
+            context.treeRoot = saved.treeRoot;
+          }
+          // Only restore context.root if we're not at the outermost level (where it was originally set)
+          // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
+          if (saved.root !== undefined && !isOutermost) {
+            context.root = saved.root;
+          }
+          // Restore extend root stack to its original length (if we're not the main root)
+          // The main root manages its own push/pop, but nested Rules should restore the stack
+          if (!isOutermost && saved.extendRootStackLength !== undefined) {
+            const currentLength = context.extendRoots.extendRootStack.length;
+            if (currentLength > saved.extendRootStackLength) {
             // Pop any extend roots that were pushed during this Rules evaluation
-            while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
-              context.extendRoots.popExtendRoot();
+              while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
+                context.extendRoots.popExtendRoot();
+              }
             }
           }
+          // Pop extend root if we pushed it (check if this is still the root)
+          if (rules === context.root) {
+            context.extendRoots.popExtendRoot();
+          }
+          context.rulesEvalStack.pop();
+          context.depth--;
+          return rules;
         }
-        // Pop extend root if we pushed it (check if this is still the root)
-        if (rules === context.root) {
-          context.extendRoots.popExtendRoot();
-        }
-        context.rulesEvalStack.pop();
-        context.depth--;
-        return rules;
-      }
-    );
+      ) as MaybePromise<this>;
+    } catch (error) {
+      restoreContextOnError();
+      throw error;
+    }
+    if (isThenable(pipeResult)) {
+      return (pipeResult as Promise<this>).catch((error) => {
+        restoreContextOnError();
+        throw error;
+      });
+    }
     return pipeResult as MaybePromise<this>;
   }
 }
@@ -1933,6 +1964,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let sourceParent = caller?.value.name instanceof Node
       ? caller.value.name.sourceParent
       : caller?.sourceParent;
+    const callerName = isNode(caller?.value?.name, 'Reference')
+      ? String(caller.value.name.value.key?.valueOf?.() ?? '')
+      : String(caller?.value?.name?.valueOf?.() ?? caller?.value?.name ?? '');
+    const shouldTraceDetachedRuleset = callerName.includes('wrap-mixin');
 
     let nodeArgs: Node[] = [];
     const savedRulesContext = thisContext.rulesContext;
@@ -1982,14 +2017,35 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     } finally {
       thisContext.rulesContext = savedRulesContext;
     }
+    if (shouldTraceDetachedRuleset) {
+    }
+    if (callerName.includes('.mixin2')) {
+    }
+    if (callerName.includes('.Person')) {
+    }
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
+    const normalizeBoundLeadingItemWhitespace = (node: Node): void => {
+      if (!isNode(node, ['List', 'Sequence'])) {
+        return;
+      }
+      const items = node.value as Node[];
+      if (items.length > 0) {
+        items[0]!.pre = 0;
+      }
+      for (const item of items) {
+        if (isNode(item, ['List', 'Sequence'])) {
+          normalizeBoundLeadingItemWhitespace(item as Node);
+        }
+      }
+    };
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
+      const mixinNameDebug = isNode(mixin, 'Mixin') ? String(mixin.value.name?.valueOf?.() ?? mixin.value.name ?? '') : '';
       let isPlainRule = isNode(mixin, 'Rules');
       let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0;
       if (!paramLength) {
@@ -2001,6 +2057,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
         let params = (mixin as Mixin).value.params!.copy(true);
+        const hasRestParamOriginal = (mixin as Mixin).value.params!.value.some(p => isNode(p, 'Rest'));
+        const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : params.length;
         let positions = params.length;
         let requiredPositions = 0;
         for (let param of params.value) {
@@ -2038,6 +2096,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             );
             if (param) {
               argValue = arg.value.value;
+              if (mixinNameDebug.includes('.mixin2') || mixinNameDebug.includes('.Person')) {
+                const hypothesisId = mixinNameDebug.includes('.Person') ? 'H39' : 'H31';
+                const message = mixinNameDebug.includes('.Person')
+                  ? 'person named arg matched'
+                  : 'mixin2 named arg matched';
+              }
             } else {
               match = false;
               break;
@@ -2057,11 +2121,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           if (isNode(param, 'VarDeclaration')) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
+            normalizeBoundLeadingItemWhitespace(boundValue);
             param.value.value = boundValue;
+            if (shouldTraceDetachedRuleset && String(param.value.name.valueOf?.() ?? '') === 'ruleset') {
+            }
           } else if (isNode(param, 'Any') && param.options.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
+            normalizeBoundLeadingItemWhitespace(boundValue);
             const varDecl = new VarDeclaration({
               name: param as Any<'property'>,
               value: boundValue
@@ -2089,21 +2157,82 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           argPos++;
         }
+        const positionalArgCount = nodeArgs.filter(argNode => !isNode(argNode, 'VarDeclaration')).length;
+        if (positionalArgCount > maxPositionalArgs) {
+          if (mixinNameDebug === '.mixin') {
+            const paramShape = params.value.map((p) => {
+              if (isNode(p, 'VarDeclaration')) {
+                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
+              }
+              return p.type;
+            });
+          }
+          continue;
+        }
         /**
          * Now we can check remaining positional matches
          * against the remaining parameters.
          */
         if (argPos < requiredPositions) {
+          if (mixinNameDebug === '.mixin') {
+            const paramShape = params.value.map((p) => {
+              if (isNode(p, 'VarDeclaration')) {
+                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
+              }
+              if (isNode(p, 'Rest')) {
+                return 'rest';
+              }
+              return p.type;
+            });
+          }
           /** This mixin is not a match */
           continue;
         }
         if (nodeArgs.length > 1 && params.value.length === 1 && requiredPositions === 1) {
           // Less should not match single required-parameter overloads against extra positional args.
+          if (mixinNameDebug === '.mixin') {
+            const paramShape = params.value.map((p) => {
+              if (isNode(p, 'VarDeclaration')) {
+                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
+              }
+              return p.type;
+            });
+          }
           continue;
         }
         if (match) {
+          if (mixinNameDebug === '.mixin') {
+            const paramShape = params.value.map((p) => {
+              if (isNode(p, 'VarDeclaration')) {
+                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
+              }
+              if (isNode(p, 'Rest')) {
+                return 'rest';
+              }
+              return p.type;
+            });
+          }
           const mixinName = String((mixin as Mixin).value.name?.valueOf?.() ?? (mixin as Mixin).value.name ?? '');
+          if (mixinName.includes('.mixin2') || mixinName.includes('.Person')) {
+            const paramSummary = params.value.map((p) => {
+              if (isNode(p, 'VarDeclaration')) {
+                return {
+                  name: String(p.value.name.valueOf?.() ?? ''),
+                  valueType: p.value.value.type,
+                  valueHead: String(p.value.value.valueOf?.() ?? '').slice(0, 40)
+                };
+              }
+              return { type: p.type };
+            });
+            const hypothesisId = mixinName.includes('.Person') ? 'H40' : 'H32';
+            const message = mixinName.includes('.Person')
+              ? 'person candidate params after binding'
+              : 'mixin2 candidate params after binding';
+          }
           if (mixinName === '.mixin-args') {
+          }
+          if (shouldTraceDetachedRuleset) {
+            const rulesetParam = params.value.find(p => isNode(p, 'VarDeclaration') && String((p as VarDeclaration).value.name.valueOf?.() ?? '') === 'ruleset');
           }
           /** Make a shallow copy to attach our resolved params (w/ args) */
           let originalMixin = mixin;
@@ -2375,31 +2504,35 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const declRegistry = newRules.getRegistry('declaration');
         declRegistry.indexPendingItems();
         const candidateName = String(candidate.value.name?.valueOf?.() ?? candidate.value.name ?? '');
+        if (candidateName === '.mixin') {
+          const currentCallName = isNode(currentCall?.value?.name, 'Reference')
+            ? String(currentCall.value.name.value.key?.valueOf?.() ?? '')
+            : String((currentCall as any)?.value?.name?.valueOf?.() ?? (currentCall as any)?.value?.name ?? '');
+          const outputSummary = newRules.value.map(node => ({
+            type: node.type,
+            key: isNode(node, 'Declaration') ? String(node.value.name.valueOf?.() ?? '') : '',
+            head: String(node.valueOf?.() ?? '').slice(0, 40)
+          }));
+        }
         // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         newRules.options.referenceMode = false;
         clearReferenceModeForMixinOutput(newRules as unknown as Node);
         if (thisContext.treeContext?.file) {
-          let hasParamVar = false;
-          let hasNestedMixin = false;
-          for (const node of newRules.children(true)) {
-            if (isNode(node, 'VarDeclaration') && !!node.options?.paramVar) {
-              hasParamVar = true;
-            }
-            if (isNode(node, 'Mixin')) {
-              hasNestedMixin = true;
-            }
-            if (hasParamVar && hasNestedMixin) {
-              break;
-            }
-          }
+          /**
+           * NOTE (debug policy):
+           * `hasParamVar` / `hasNestedMixin` visibility branching was removed and
+           * should NOT be reintroduced.
+           *
+           * If this causes regressions, fix lookup/parenting behavior instead:
+           * - declaration/mixin registry traversal semantics
+           * - sourceParent/rulesParent/sourceRulesParent propagation
+           *
+           * Do not solve those regressions by adding new visibility heuristics based on
+           * "contains param vars" or "contains nested mixins".
+           */
           newRules.options.rulesVisibility ??= {};
-          // Nested mixin definitions need captured param vars to remain directly
-          // visible; otherwise guards resolve outer globals (e.g. @a=auto) instead
-          // of closure vars (e.g. @a=1 from .lock-mixin call).
-          newRules.options.rulesVisibility.VarDeclaration = hasParamVar
-            ? (hasNestedMixin ? 'public' : 'optional')
-            : 'private';
+          newRules.options.rulesVisibility.VarDeclaration = 'private';
         }
         outputRules.push(newRules);
       } catch (error) {
@@ -2569,7 +2702,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }, { readonly: true, paramVar: true });
           argumentsDecl.removeFlag(F_VISIBLE);
           outerRules.push(argumentsDecl);
-          for (const argNode of nodeArgs) {
+          const paramValues = params?.value
+            .filter((p): p is VarDeclaration => isNode(p, 'VarDeclaration'))
+            .map(p => p.value.value);
+          const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
+          for (const argNode of argumentNodes) {
             const cloned = argNode.copy(true, freezeChildren);
             cloned.frozen = true;
             argumentsArgs.push(cloned);
@@ -2697,6 +2834,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * their original order
      */
     outputRules.sort(comparePosition);
+    const finalCall = thisContext.callStack.at(-1);
+    const finalCallName = isNode(finalCall?.value?.name, 'Reference')
+      ? String(finalCall.value.name.value.key?.valueOf?.() ?? '')
+      : String((finalCall as any)?.value?.name?.valueOf?.() ?? (finalCall as any)?.value?.name ?? '');
+    if (finalCallName === '.mixin') {
+      const outputRulesSummary = outputRules.map((rule, ruleIndex) => ({
+        ruleIndex,
+        nodeTypes: rule.value.map(child => child.type),
+        nodeHeads: rule.value.map(child => String(child.valueOf?.() ?? '').slice(0, 40))
+      }));
+    }
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
     if (outputRules.length === 1) {

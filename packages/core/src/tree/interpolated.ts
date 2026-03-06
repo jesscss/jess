@@ -20,6 +20,20 @@ export type InterpolatedValue = {
   replacements: Node[];
 };
 
+const shouldTraceInterpolatedSource = (source: string): boolean => (
+  source.includes('import-')
+  || source.includes('item-')
+  || source.includes('a.png')
+);
+
+const traceInterpolated = (
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+  hypothesisId: string
+): void => {
+};
+
 /**
  * Merge an interface to declare the specific types
  *
@@ -77,6 +91,19 @@ export class Interpolated<
       if (replacement) {
         try {
           result = String(replacement.valueOf());
+          if (shouldTraceInterpolatedSource(source)) {
+            traceInterpolated(
+              'packages/core/src/tree/interpolated.ts:94',
+              'interpolated replace value',
+              {
+                source,
+                replacementType: replacement.type,
+                replacementValueOf: result,
+                replacementRendered: replacement.toTrimmedString()
+              },
+              'H1'
+            );
+          }
         } catch (error: unknown) {
           throw error;
         }
@@ -182,9 +209,38 @@ export class Interpolated<
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           replacements[idx] = result;
+          if (shouldTraceInterpolatedSource(node.value.source)) {
+            traceInterpolated(
+              'packages/core/src/tree/interpolated.ts:205',
+              'interpolated evaluated replacement',
+              {
+                source: node.value.source,
+                originalType: n.type,
+                resultType: result.type,
+                resultValueOf: String(result.valueOf()),
+                resultRendered: result.toTrimmedString()
+              },
+              'H2'
+            );
+          }
         });
       }
       replacements[idx] = out as Node;
+      if (shouldTraceInterpolatedSource(node.value.source)) {
+        const result = out as Node;
+        traceInterpolated(
+          'packages/core/src/tree/interpolated.ts:220',
+          'interpolated evaluated replacement',
+          {
+            source: node.value.source,
+            originalType: n.type,
+            resultType: result.type,
+            resultValueOf: String(result.valueOf()),
+            resultRendered: result.toTrimmedString()
+          },
+          'H2'
+        );
+      }
       return undefined;
     });
     if (isThenable(maybe)) {

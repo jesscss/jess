@@ -167,6 +167,11 @@ export class Call extends Node<CallValue, CallOptions> {
     const callName = typeof name === 'string'
       ? name
       : String((name as any)?.value?.key?.valueOf?.() ?? (name as any)?.valueOf?.() ?? '');
+    const resolvedName = typeof n === 'string'
+      ? n
+      : String((n as any)?.value?.key?.valueOf?.() ?? (n as any)?.valueOf?.() ?? '');
+    if (callName.includes('each') || resolvedName.includes('each')) {
+    }
     if (
       callName.includes('mixin')
       || callName.includes('lock')
@@ -207,6 +212,8 @@ export class Call extends Node<CallValue, CallOptions> {
         return result;
       } finally {}
     } else if (isNode(n, 'Collection')) {
+      if (callName === 'ruleset') {
+      }
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
@@ -248,7 +255,7 @@ export class Call extends Node<CallValue, CallOptions> {
             // (e.g. $list-1) can walk back to call-site Rules.
             // Also anchor copied Mixin callback args to call-site source scope
             // so callback bodies can resolve surrounding variables.
-            if (isNode(copied, 'Reference')) {
+            if (isNode(copied, 'Reference') && copied.options?.type === 'property') {
               copied.sourceParent = this;
             } else if (isNode(copied, 'Mixin')) {
               copied.sourceParent = this;
@@ -258,6 +265,10 @@ export class Call extends Node<CallValue, CallOptions> {
           args = copiedArgs;
         }
         const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
+        if (callName.includes('wrap-mixin')) {
+        }
+        if (callName === 'each') {
+        }
         const result = await (
           args
             ? (
@@ -267,6 +278,8 @@ export class Call extends Node<CallValue, CallOptions> {
               )
             : callWithContext(context, fn)
         );
+        if (callName === 'each') {
+        }
         context.caller = originalCaller;
         context.callStack.pop();
         didPopCallStack = true;
@@ -290,6 +303,8 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
+        if (callName === 'each') {
+        }
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {

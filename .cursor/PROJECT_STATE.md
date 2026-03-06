@@ -83,6 +83,45 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Less fixture: mixins-named-args parser + @arguments parity (2026-03-06):**
+
+**Less fixtures: spacing + leading `:is()` parity (2026-03-06, later):**
+
+- **Area:** core mixin arg binding whitespace metadata (`packages/core/src/tree/rules.ts`) + selector leading-`:is` normalization (`packages/core/src/tree/util/process-leading-is.ts`) + fixture expectation update for accepted repeated-block merge.
+- **Runtime evidence:**
+  - `H53-A/H53-B` proved extra spaces in `mixins-guards.less` came from bound list arg item metadata (`argItem0Pre:1`) surviving into `content:` serialization.
+  - `H55-B` showed failing selector shape for `mixins-interpolated.less` was a `ComplexSelector` whose first visual item is a `CompoundSelector` containing generated `:is(...)` as first child (not handled by prior unwrap path).
+  - `H56-A` confirmed repeated `guard-default-definition-order-2` frames are distinct rulesets but merge due same `valueOf` frame reuse.
+- **Fixes:**
+  - Normalize bound list/sequence leading item whitespace during param binding to prevent injected extra spaces in interpolated list output.
+  - Extend `processLeadingIs` complex-selector handling to unwrap leading generated `:is(...)` when wrapped inside first `CompoundSelector`.
+  - Accepted repeated-selector merge in `mixins-guards-default-func.css`; preserved prior snapshot at `legacy/mixins-guards-default-func.css`.
+- **Verification:**
+  - `pnpm --filter @jesscss/core build` ✅
+  - `pnpm test all-less` ✅ (`62 passed`)
+- **Next step:** if desired, remove/trim temporary debug instrumentation blocks now that parity is restored.
+
+- **Area:** less parser arg-context propagation (`mixinArgs` / `mixinArgList`) + core mixin `@arguments` materialization.
+- **Last passing baseline:** focused fixture previously failed with parser syntax error at `.mixin2 (@a: 1px, @b: 50%, @c: 50)`.
+- **Last thing we tried:** runtime instrumentation (`H26`..`H35`) showed `ctx.allowComma` was `true` when entering `mixinArgs` for mixin calls, causing `.mixin2(3px, @c: 100)` to parse as a single list arg (`3px; $c: 100`) instead of positional + named args. Forced `allowComma: false` in `mixinArgs` arg context and kept declaration-default parsing with `allowComma: false`.
+- **Result:** focused syntax/runtime failure resolved; `mixins-named-args.less` now executes and binds `@c` correctly. Current mismatch shifted to `@arguments` rendering in named-arg calls, which was emitting raw named forms.
+- **Current fix in progress:** switched `@arguments` construction in `packages/core/src/tree/rules.ts` to prefer bound parameter values (`params`) over raw `nodeArgs`.
+- **Next step:** re-run focused fixture and confirm expected CSS parity (`args: 1px 100%`, `args: 1px 20%`, `args: 2px 10%`), then run full Less suite snapshot.
+
+**Less fixture: mixins-interpolated `@gender_` lookup (2026-03-06, later):**
+
+- **Area:** core declaration lookup visibility gate for private param vars (`packages/core/src/tree/util/registry-utils.ts`) + reference lookup tracing (`packages/core/src/tree/reference.ts`).
+- **Last passing baseline:** `mixins-interpolated.less` failed with `ReferenceError: 'gender_' is not defined` while `.Person(@name, @gender_)` call parsed and bound successfully.
+- **Runtime evidence:** parser/mixin logs confirmed definition + binding were correct (`gender_` present and bound to `"Male"`), but lookup logs showed private visibility gate rejecting that bound param (`local:false`, `inContextScope:false`, `rulesIsOrigin:false`) even though the active `rulesContext` was in the same invocation lineage.
+- **Fix:** in `DeclarationRegistry.find`, when scope visibility is private, allow `VarDeclaration` nodes with `paramVar` when the current `rulesContext` is a descendant of the candidate rules (`inContextLineage`), while keeping private boundary behavior for non-param vars.
+- **Verification:**
+  - `pnpm --filter @jesscss/core build && pnpm --filter @jesscss/plugin-less build && pnpm --filter jess exec vitest test/less/all-less.test.ts --run -t "tests-unit/mixins-interpolated/mixins-interpolated.less"` ✅
+  - Follow-up focused runs:
+    - `tests-unit/mixins-pattern/mixins-pattern.less` ✅ (fixed with runtime-backed overload filtering; optional non-rest overloads no longer match positional overflow)
+    - `tests-unit/mixins-important/mixins-important.less` ❌ (still failing order parity: declarations and nested `.inner` blocks interleave per invocation)
+- **Current remaining fixture:** `tests-unit/mixins-important/mixins-important.less`
+- **Next step:** continue focused ordering instrumentation (`H42/H43/H45`) and implement a bounded, runtime-proven ordering fix without touching global at-rule/extend serialization paths.
+
 **Less fixture: detached-rulesets + functions-each scope stability (2026-03-03):**
 
 - **Area:** core mixin evaluation visibility (`getFunctionFromMixins` in `packages/core/src/tree/rules.ts`).
@@ -293,6 +332,29 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
   - `pnpm --filter @jesscss/core build`
   - `DEBUG_LOG_PATH="/Users/matthew/git/oss/jess/.cursor/debug-6b8d68.log" pnpm --filter jess test -- test/less/all-less.test.ts -t "functions-each.less"`
 - **Next step:** run wider Less fixture coverage to catch regressions from the new serialization hoist behavior, then trim/keep debug probes as confirmed by user.
+
+**Less fixture: mixins-important ordering parity (2026-03-03):**
+
+- **Area:** `packages/core/src/tree/util/serialize-helper.ts` child ruleset emission order for call-expanded output.
+- **Runtime-confirmed failing shape:** `mixins-important.less` needed grouped parent declarations before repeated nested `.class .inner` blocks, while broad deferral heuristics regressed `detached-rulesets.less`, `import-reference.less`, and `mixins.less`.
+- **Rejected hypotheses (removed/overwritten):**
+  - Deferring all expanded descendants with later non-container siblings (too broad; reordered unrelated fixtures).
+  - Deferring by same-call ancestry only (too narrow/unstable; failed to trigger for required chunks).
+- **Proven heuristic now in place (with instrumentation retained):**
+  - Defer only when ALL are true:
+    1. child is call-origin expanded descendant of current parent selector,
+    2. child is **not** self-wrapped descendant (`.x .x` shape),
+    3. there is a later renderable non-container sibling outside child ownership,
+    4. the same child selector appears more than once in the parent stream.
+  - Render deferred children with isolated frame state after parent frame unwind.
+- **Evidence logs:**
+  - `H49`: repeated `.class .inner` children are deferred with `hasRepeatedExpandedSelectorAny: true`.
+  - `H50`: each deferred `.class .inner` emits as standalone block output.
+  - `H51`: `.wrap-selector .wrap-selector` is not deferred (`isSelfWrappedDescendant: true`).
+- **Verification:**
+  - ✅ Targeted: `mixins-important`, `import-reference`, `mixins`, `detached-rulesets`.
+  - ✅ Full scoped file: `pnpm --filter jess test -- test/less/all-less.test.ts` -> `62 passed`.
+- **Next step:** keep instrumentation until user confirms no further reproductions, then remove debug probes.
 
 **Less fixture: extract-and-length (2026-02-21):**
 

@@ -754,6 +754,10 @@ export function processExtends(context: Context): void {
       continue;
     }
     const target = instruction.target.valueOf();
+    const targetLocation = instruction.target.location;
+    const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
+    const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
+    const targetFilePath = instruction.target.treeContext?.file?.fullPath;
     const inaccessibleMatchExists = Array.from(context.extendRoots.getAllRoots()).some((root) => {
       if (isInstructionVisibleForRoot(context, root, instruction)) {
         return false;
@@ -766,8 +770,18 @@ export function processExtends(context: Context): void {
     );
     const diagnostic = (
       stats.blockedMatchCount > 0 || inaccessibleMatchExists || blockedProtectedRootExists
-        ? WARN.extendNotAccessible({ meta: { target } })
-        : WARN.extendNotFound({ meta: { target } })
+        ? WARN.extendNotAccessible({
+            filePath: targetFilePath,
+            line: targetLine,
+            column: targetColumn,
+            meta: { target }
+          })
+        : WARN.extendNotFound({
+            filePath: targetFilePath,
+            line: targetLine,
+            column: targetColumn,
+            meta: { target }
+          })
     );
     context.warnings.push(toDiagnostic(diagnostic));
   }

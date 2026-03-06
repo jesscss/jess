@@ -260,6 +260,30 @@ export function processLeadingIs(
     }
     const first = value[firstSelIndex];
     if (
+      isNode(first, 'CompoundSelector')
+      && isNode((first as CompoundSelector).value?.[0] as any, 'PseudoSelector')
+      && ((first as CompoundSelector).value?.[0] as PseudoSelector).value.name === ':is'
+      && ((first as CompoundSelector).value?.[0] as PseudoSelector).generated
+    ) {
+      const unwrappedFirst = processLeadingIs(first as Selector, { inSelectorList: false });
+      if (!Array.isArray(unwrappedFirst)) {
+        const prefix = value
+          .slice(0, firstSelIndex)
+          .map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
+        const rest = value
+          .slice(firstSelIndex + 1)
+          .map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
+        const unwrappedComps = isNode(unwrappedFirst, 'ComplexSelector')
+          ? (unwrappedFirst as ComplexSelector).value.map(c => (c as Selector).copy(true) as ComplexSelectorComponent)
+          : [unwrappedFirst.copy(true) as ComplexSelectorComponent];
+        return ComplexSelector.create([
+          ...prefix,
+          ...unwrappedComps,
+          ...rest
+        ]).inherit(selector) as Selector;
+      }
+    }
+    if (
       !isNode(first, 'PseudoSelector')
       || (first as PseudoSelector).value.name !== ':is'
       || !(first as PseudoSelector).generated

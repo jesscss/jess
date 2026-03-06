@@ -6,6 +6,19 @@ export type InterpolatedReferenceOptions = {
   referenceType?: 'variable' | 'property';
 };
 
+type InterpolatedReferenceInput = string | { key: unknown };
+
+const normalizeInterpolatedReferenceKey = (value: InterpolatedReferenceInput): string => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  const key = value?.key;
+  if (typeof key === 'string') {
+    return key;
+  }
+  return String((key as { valueOf?: () => unknown } | undefined)?.valueOf?.() ?? key ?? '');
+};
+
 /**
  * A reference used specifically for interpolation key slots.
  * Serializes as `$[ident]`.
@@ -14,9 +27,9 @@ export class InterpolatedReference extends Reference {
   override type = 'InterpolatedReference' as const;
   override shortType = 'iref' as const;
 
-  constructor(value: string, options?: InterpolatedReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: InterpolatedReferenceInput, options?: InterpolatedReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     const referenceType = options?.referenceType ?? 'variable';
-    super({ key: value }, { type: referenceType, role: 'ident' }, location, treeContext);
+    super({ key: normalizeInterpolatedReferenceKey(value) }, { type: referenceType, role: 'ident' }, location, treeContext);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

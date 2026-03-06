@@ -29,6 +29,12 @@ describe('interpolated-reference', () => {
     expect(`${iref('1bad')}`).toBe('$[1bad]');
   });
 
+  it('preserves the key through clone and copy', () => {
+    const node = iref('theme');
+    expect(`${node.clone()}`).toBe('$[theme]');
+    expect(`${node.copy()}`).toBe('$[theme]');
+  });
+
   it('keeps regular references separate', () => {
     const node = ref({ key: 'ident' }, { type: 'variable' });
     expect(`${node}`).toBe('$ident');

@@ -308,6 +308,14 @@ export class For extends Node<StructuredLoopValue> {
     const run = async (): Promise<Node> => {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
+      const trackedLoopBody = (() => {
+        try {
+          const rendered = String(this.value.rules.valueOf?.() ?? '');
+          return rendered.includes('columns') || rendered.includes('.pick') || rendered.includes('each(');
+        } catch {
+          return false;
+        }
+      })();
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
         const loopRules = this.value.rules.clone(true);
@@ -338,6 +346,8 @@ export class For extends Node<StructuredLoopValue> {
             name: new Any(bindingNames[i]!, { role: 'property' }),
             value: bindings[i]!
           }));
+        }
+        if (trackedLoopBody) {
         }
         counter++;
         const result = await loopRules.eval(context);

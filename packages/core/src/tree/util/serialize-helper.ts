@@ -108,9 +108,21 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
 
   const rulesToRender = rules.flatRules(true);
+  const selectorText = node.type === 'Ruleset'
+    ? String(node.value.selector?.valueOf?.() ?? '')
+    : '';
+  const traceImportantClass = node.type === 'Ruleset' && selectorText === '.class';
+  if (traceImportantClass) {
+    const renderSummary = rulesToRender.slice(0, 40).map((n: any) => ({
+      type: n.type,
+      key: isNode(n, 'Declaration') ? String(n.value.name?.valueOf?.() ?? '') : '',
+      head: String(n.valueOf?.() ?? '').slice(0, 40)
+    }));
+  }
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
+  const deferredExpandedChildren: any[] = [];
   const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
     const seen = new Set<any>();
     const queue: any[] = [start];
@@ -216,6 +228,82 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
 
     if (isNode(n, ['Ruleset', 'AtRule'])) {
+      if (node.type === 'Ruleset' && isNode(n, 'Ruleset')) {
+        const parentSelector = String(node.value.selector?.valueOf?.() ?? '');
+        const childSelector = String(n.value.selector?.valueOf?.() ?? '');
+        const isExpandedDescendant = parentSelector !== '' && (
+          childSelector.startsWith(`${parentSelector} `)
+          || childSelector.startsWith(`${parentSelector}.`)
+          || childSelector.startsWith(`${parentSelector}#`)
+          || childSelector.startsWith(`${parentSelector}:`)
+          || childSelector.startsWith(`${parentSelector}[`)
+        );
+        const isSelfWrappedDescendant = parentSelector !== ''
+          && (
+            childSelector === `${parentSelector} ${parentSelector}`
+            || childSelector.startsWith(`${parentSelector} ${parentSelector} `)
+          );
+        const fromCall = originatesFromCall(n as any);
+        const laterCandidates = rulesToRender.slice(idx + 1);
+        const hasLaterExternalNonContainer = laterCandidates.some((later) => {
+          if (!later.visible && !later.fullRender) {
+            return false;
+          }
+          if (isNode(later, ['Ruleset', 'AtRule', 'Rules'])) {
+            return false;
+          }
+          if (isNode(later, 'Declaration') && skippedDuplicateDeclarations.has(later)) {
+            return false;
+          }
+          const ownedByCurrentChild = sourceChainHas(later, (current) => {
+            if (current === n) {
+              return true;
+            }
+            if (current?.type !== 'Ruleset') {
+              return false;
+            }
+            const currentSelector = String(current.value?.selector?.valueOf?.() ?? '');
+            return currentSelector !== '' && currentSelector === childSelector;
+          });
+          return !ownedByCurrentChild;
+        });
+        const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
+          return otherIdx !== idx
+            && isNode(other, 'Ruleset')
+            && String(other.value.selector?.valueOf?.() ?? '') === childSelector;
+        });
+        if (isExpandedDescendant
+          && !isSelfWrappedDescendant
+          && fromCall
+          && hasLaterExternalNonContainer
+          && hasRepeatedExpandedSelectorAny
+        ) {
+          deferredExpandedChildren.push(n);
+          if (traceImportantClass) {
+          }
+          if (node.type === 'Ruleset' && selectorText.includes('wrap-selector')) {
+            const laterSummary = laterCandidates.slice(0, 8).map(later => ({
+              type: later.type,
+              head: String(later.valueOf?.() ?? '').slice(0, 30),
+              ownedByCurrentChild: sourceChainHas(later, (current) => {
+                if (current === n) {
+                  return true;
+                }
+                if (current?.type !== 'Ruleset') {
+                  return false;
+                }
+                const currentSelector = String(current.value?.selector?.valueOf?.() ?? '');
+                return currentSelector !== '' && currentSelector === childSelector;
+              })
+            }));
+          }
+          continue;
+        }
+        if (node.type === 'Ruleset' && selectorText.includes('wrap-selector')) {
+        }
+      }
+      if (traceImportantClass) {
+      }
       const childOptions = {
         ...options,
         referenceMode: inReferenceMode,
@@ -313,6 +401,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (n.requiredSemi) {
       w.add(';');
     }
+    if (traceImportantClass) {
+    }
     w.add('\n');
     let post = w.capture(() => n.processPrePost('post', undefined, options));
 
@@ -324,7 +414,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     //   n.toString({ ...options, depth: options.depth + 1 });
     // }
   }
-
   inFrames.pop();
   frameHeaders.pop();
   if (prevTreeFrames) {
@@ -336,7 +425,26 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     options.depth--;
     lastRenderedFrames.pop();
   }
-
+  for (const deferred of deferredExpandedChildren) {
+    const deferredWriter = new OutputWriter();
+    const childOptions = {
+      ...options,
+      writer: deferredWriter,
+      frameHeaders: [],
+      lastRenderedFrames: [],
+      treeFrames: [],
+      inFrames: [],
+      referenceMode: inReferenceMode,
+      referenceRenderEnabled: renderEnabled
+    } as FinalPrintOptions;
+    const childOut = deferred.toTrimmedString(childOptions);
+    if (!childOut) {
+      continue;
+    }
+    if (traceImportantClass) {
+    }
+    w.add(childOut, deferred);
+  }
   options.referenceMode = previousReferenceMode;
   options.referenceRenderEnabled = previousReferenceRenderEnabled;
   return w.getSince(mark);

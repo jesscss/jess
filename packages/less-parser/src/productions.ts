@@ -981,6 +981,23 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       }
 
       /** Finally, pass this reference into a call */
+      const selectorText = String(selector.valueOf?.() ?? '');
+      if (!RECORDING_PHASE && selectorText.includes('.mixin2')) {
+        const argSummary = args?.value?.map((arg) => {
+          if (arg instanceof VarDeclaration) {
+            return {
+              type: arg.type,
+              name: String(arg.value.name.valueOf?.() ?? ''),
+              valueType: arg.value.value.type,
+              valueHead: String(arg.value.value.valueOf?.() ?? '').slice(0, 40)
+            };
+          }
+          return {
+            type: arg?.type ?? typeof arg,
+            head: String((arg as any)?.valueOf?.() ?? '').slice(0, 40)
+          };
+        }) ?? [];
+      }
       leftNode = new Call({ name: leftNode, args }, { markImportant: !!important }, location, this.context);
       return leftNode;
     };
@@ -1020,6 +1037,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
         ALT: () => {
+          if (!RECORDING_PHASE && selectorValueDebug.includes('.mixin2')) {
+          }
           args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
           let next = $.LA(1).tokenType;
           if (!RECORDING_PHASE) {
@@ -1047,6 +1066,26 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   // Convert Any nodes to VarDeclaration nodes for mixin definition parameters
                   convertArgsForDefinition(args);
+                  const selectorText = String(selector.valueOf?.() ?? '');
+                  if (selectorText.includes('.mixin2') || selectorText.includes('.Person')) {
+                    const paramSummary = args?.value?.map((arg) => {
+                      if (arg instanceof VarDeclaration) {
+                        return {
+                          type: arg.type,
+                          name: String(arg.value.name.valueOf?.() ?? ''),
+                          isParamVar: Boolean(arg.options?.paramVar)
+                        };
+                      }
+                      return {
+                        type: arg?.type ?? typeof arg,
+                        value: String((arg as any)?.valueOf?.() ?? '')
+                      };
+                    }) ?? [];
+                    const hypothesisId = selectorText.includes('.Person') ? 'H37' : 'H30';
+                    const message = selectorText.includes('.Person')
+                      ? 'person definition params after conversion'
+                      : 'mixin2 definition params after conversion';
+                  }
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
@@ -1137,13 +1176,13 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (trackedSelector) {
           }
           // Call terminated by a semi-colon and not parens, deprecated
-          $.CONSUME(T.Semi);
+          const semi = $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
             const location = $.endRule();
             // Mixin call without parentheses - deprecated
             $.warnDeprecation(
               'Calling a mixin without parentheses is deprecated',
-              undefined,
+              semi,
               'mixin-call-no-parens'
             );
             return createMixinCall(location);
@@ -2572,6 +2611,8 @@ export function functionCallArgs(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
+    if (!RECORDING_PHASE && ctx.currentFunctionName === 'each') {
+    }
     $.startRule();
 
     // Inside function arguments, allow inner tokens like ':'
@@ -2580,6 +2621,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     // Calls intentionally push a `false` paren frame (matches `Call.evalNode`)
     const argCtx: RuleContext = {
       ...ctx,
+      allowComma: false,
       parenFrames: [...getParenFrames(ctx), false],
       detachedRulesetUsage: 'function-arg'
     };
@@ -2862,6 +2904,8 @@ function processStringInterpolation(value: string, location: LocationInfo, conte
       // but must remain expression-wrapped in Jess output.
       const nestedRef = new Reference({ key: innerResult }, { type: 'variable', role: 'ident' }, location, context);
       replacements.push(new Expression(nestedRef, undefined, location, context));
+      if (value.includes('import-') || value.includes('item-') || value.includes('a.png')) {
+      }
     } else {
       // Simple interpolation reference
       replacements.push(new InterpolatedReference(
@@ -2870,6 +2914,8 @@ function processStringInterpolation(value: string, location: LocationInfo, conte
         location,
         context
       ));
+      if (value.includes('import-') || value.includes('item-') || value.includes('a.png')) {
+      }
     }
   }
 
@@ -3415,6 +3461,7 @@ export function mixinArgs(this: P, T: TokenMap) {
     const argCtx: RuleContext = {
       ...ctx,
       node: undefined,
+      allowComma: false,
       parenFrames: [...getParenFrames(ctx), false],
       detachedRulesetUsage: ctx.isDefinition ? 'default-param' : 'mixin-arg'
     };
@@ -3620,6 +3667,8 @@ export function mixinArgList(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
+    if (!RECORDING_PHASE && ctx.isDefinition) {
+    }
     $.startRule();
     if (!RECORDING_PHASE) {
     }
@@ -3642,6 +3691,8 @@ export function mixinArgList(this: P, T: TokenMap) {
             GATE: () => !isSemiList,
             ALT: () => {
               $.CONSUME(T.Comma);
+              if (!RECORDING_PHASE && ctx.isDefinition) {
+              }
               let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
               if (!RECORDING_PHASE) {
                 commaNodes!.push($.wrap(node, true));
@@ -3756,13 +3807,20 @@ export function mixinArg(this: P, T: TokenMap) {
     );
 
     let isDeclaration = atStart && $.LA(2).tokenType === T.Colon;
-    if (!RECORDING_PHASE && atStart) {
+    const traceAlt = (alt: string) => {
+      if (!RECORDING_PHASE && typeof firstToken.image === 'string' && firstToken.image.startsWith('@')) {
+      }
+    };
+    if (!RECORDING_PHASE && typeof firstToken.image === 'string' && firstToken.image.startsWith('@')) {
+    }
+    if (!RECORDING_PHASE && isDefinition) {
     }
 
     return $.OR([
       {
         GATE: () => !isDeclaration && atStart && $.LA(2).tokenType === T.Ellipsis,
         ALT: () => {
+          traceAlt('rest-param');
           $.startRule();
           let name = $.SUBRULE2($.varName, { ARGS: [ctx] });
           let ellipsis;
@@ -3794,15 +3852,22 @@ export function mixinArg(this: P, T: TokenMap) {
       },
       {
         GATE: () => !isDeclaration && !atStart,
-        ALT: () => $.SUBRULE($.callArgument, { ARGS: [ctx] })
+        ALT: () => {
+          traceAlt('callArgument-not-atStart');
+          return $.SUBRULE($.callArgument, { ARGS: [ctx] });
+        }
       },
       {
         GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== T.Ellipsis && $.LA(2).tokenType !== T.RParen && $.LA(2).tokenType !== T.Comma && $.LA(2).tokenType !== T.Semi,
-        ALT: () => $.SUBRULE3($.callArgument, { ARGS: [ctx] })
+        ALT: () => {
+          traceAlt('callArgument-atStart');
+          return $.SUBRULE3($.callArgument, { ARGS: [ctx] });
+        }
       },
       {
         GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== T.Ellipsis && ($.LA(2).tokenType === T.RParen || $.LA(2).tokenType === T.Comma || $.LA(2).tokenType === T.Semi),
         ALT: () => {
+          traceAlt('name-only');
           $.startRule();
           let name = $.SUBRULE3($.varName, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
@@ -3814,11 +3879,14 @@ export function mixinArg(this: P, T: TokenMap) {
       {
         GATE: () => isDeclaration,
         ALT: () => {
+          traceAlt('declaration');
           $.startRule();
           let name = $.SUBRULE4($.varName, { ARGS: [ctx] });
           $.CONSUME(T.Colon);
+          if (!RECORDING_PHASE && typeof name.image === 'string' && name.image.startsWith('@')) {
+          }
           /** Default value */
-          let value = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, detachedRulesetUsage: 'default-param' }] });
+          let value = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowComma: false, detachedRulesetUsage: 'default-param' }] });
 
           if (!RECORDING_PHASE) {
             let location = $.endRule();
@@ -3846,6 +3914,8 @@ export function callArgument(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     const la1Image = $.LA(1).image ?? '';
     const la2Image = $.LA(2).image ?? '';
+    if (!$.RECORDING_PHASE && ctx.currentFunctionName === 'each') {
+    }
     if (la1Image.includes('$') || la2Image.includes('$') || $.LA(1).tokenType === T.Unknown) {
     }
     if ($.LA(1).tokenType === T.Percent) {

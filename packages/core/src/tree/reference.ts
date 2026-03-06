@@ -173,6 +173,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
+    if (this.parent?.type === 'Interpolated') {
+    }
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
     // Prefer the *current* evaluation rules context (mixin call-time scope) over the lexical rulesParent.
@@ -219,6 +221,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return [resolvedTarget, out] as [any, string];
       },
       ([resolvedTarget, valueKey]) => {
+        if (this.parent?.type === 'Interpolated') {
+        }
         /**
          * If we don't have rules yet, assume that this node
          * was an ambiguous reference to a mixin (such as a valid color
@@ -291,7 +295,34 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       },
       ([resolvedTarget, valueKey]) => {
         originalFilter ??= () => true;
-        const filter = (n: Node) => originalFilter!(n) && !context.searchScope.has(n);
+        const trackedKey = Array.isArray(valueKey)
+          ? valueKey.join('')
+          : String(valueKey);
+        const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
+          let cursor: Node | undefined = activeRules;
+          while (cursor) {
+            if (cursor === paramParent) {
+              return true;
+            }
+            cursor = cursor.parent;
+          }
+          return false;
+        };
+        const filter = (n: Node) => {
+          const passesOriginal = originalFilter!(n);
+          const blockedParamVar = isNode(n, 'VarDeclaration')
+            && Boolean(n.options?.paramVar)
+            && !isWithinParamVarScope(n.parent, context.rulesContext);
+          const blockedBySearchScope = context.searchScope.has(n);
+          if (
+            (trackedKey === 'columns' || trackedKey === 'list')
+            && blockedBySearchScope
+          ) {
+          }
+          if (trackedKey === 'gender_' && blockedParamVar) {
+          }
+          return passesOriginal && !blockedBySearchScope && !blockedParamVar;
+        };
         // If this Reference has a target, mark hasTarget=true so 'targeted' Rules are searchable
         const hasTarget = !!target;
 
@@ -467,16 +498,58 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
         let returnVal: any;
+        const shouldTraceLookup =
+          trackedKey === 'columns'
+          || trackedKey === 'list'
+          || trackedKey === 'c'
+          || trackedKey === 'gender_'
+          || trackedKey === 'gender'
+          || trackedKey === 'ruleset'
+          || trackedKey === 'v'
+          || trackedKey === 'index'
+          || trackedKey === '.pick'
+          || trackedKey === 'pick';
+        let sourceCarrierType: string | null = null;
+        let sourceParentType: string | null = null;
+        let sourceCarrierPath = this.type;
+        if (shouldTraceLookup) {
+          let carrier: Node | undefined = this;
+          let foundSourceParent: Node | undefined = this.sourceParent;
+          let cursor: Node | undefined = this.parent;
+          while (cursor && !foundSourceParent) {
+            sourceCarrierPath += `>${cursor.type}`;
+            foundSourceParent = cursor.sourceParent;
+            if (foundSourceParent) {
+              carrier = cursor;
+              break;
+            }
+            cursor = cursor.parent;
+          }
+          sourceCarrierType = carrier?.type ?? null;
+          sourceParentType = foundSourceParent?.type ?? null;
+        }
+        if (shouldTraceLookup) {
+        }
+        const traceLookupAttempt = (label: string, targetRules: unknown, result: unknown) => {
+          if (!shouldTraceLookup) {
+            return;
+          }
+        };
         if (isNode(resolvedTarget, 'Rules')) {
           returnVal = performLookup(resolvedTarget);
+          traceLookupAttempt('primary', resolvedTarget, returnVal);
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
             returnVal = performLookup(this.rulesParent);
+            traceLookupAttempt('leaky-rulesParent', this.rulesParent, returnVal);
             if (returnVal === undefined) {
               returnVal = performLookup(this.sourceRulesParent);
+              traceLookupAttempt('leaky-sourceRulesParent', this.sourceRulesParent, returnVal);
             }
           }
+        }
+        if (shouldTraceLookup) {
         }
 
         return { returnVal, valueKey };
@@ -536,6 +609,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
           const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
+          const shouldTraceInterpolationLookup = (
+            this.parent?.type === 'Interpolated'
+            && ['in', 'terpolation', 's', 'value'].includes(valueKeyStr2)
+          );
           return pipe(
             () => {
               // Track that this value came from an important declaration
@@ -548,6 +625,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return declValue.eval(context);
             },
             (evald) => {
+              if (shouldTraceInterpolationLookup) {
+              }
               context.searchScope.delete(returnVal);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag

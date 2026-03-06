@@ -1031,18 +1031,6 @@ export abstract class Node<
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     let aVal = this.valueOf();
     let bVal = b.valueOf();
-    if (
-      (this.type === 'Dimension' || this.type === 'Quoted' || this.type === 'Keyword' || b.type === 'Dimension' || b.type === 'Quoted' || b.type === 'Keyword')
-      && (aVal as any) == (bVal as any)
-      && aVal !== bVal
-    ) {
-    }
-    if (
-      (this.type === 'Quoted' || this.type === 'Keyword' || b.type === 'Quoted' || b.type === 'Keyword')
-      && aVal === bVal
-      && this.type !== b.type
-    ) {
-    }
     if (aVal === bVal) {
       return 0;
     }

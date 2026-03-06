@@ -747,6 +747,8 @@ export class MixinRegistry extends Registry<
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
       const existing = registry.index.get(startKey!);
+      if (startKey === '.pick' || startKey === 'each') {
+      }
       // Resolve interpolated selector starts (e.g. "@{a2}") against current context
       // so unresolved-index keys can still match resolved call keys (e.g. ".foo").
       let resolvedInterpolatedStartEntries: Array<{ value: Mixin | Ruleset; match: string[] }> = [];
@@ -1248,6 +1250,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
       registry.indexPendingItems();
       let set = registry.index.get(key);
       let list = set ? [...set] : undefined;
+      if (key === 'columns' || key === 'list' || key === 'v' || key === 'index') {
+      }
       if (list) {
         list = list.filter(
           n =>
@@ -1279,7 +1283,25 @@ export class DeclarationRegistry extends Registry<Declaration> {
             // Additionally, targeted reference resolution may set context.rulesContext
             // to this same Rules scope; allow private reads in that exact in-scope case.
             const inContextScope = options?.context?.rulesContext === rules;
+            const contextRules = options?.context?.rulesContext;
+            let inContextLineage = false;
+            let contextCursor: Node | undefined = contextRules;
+            while (contextCursor) {
+              if (contextCursor === rules) {
+                inContextLineage = true;
+                break;
+              }
+              contextCursor = contextCursor.parent;
+            }
+            const isParamVar = isNode(result, 'VarDeclaration') && Boolean(result.options?.paramVar);
+            if (key === 'gender_') {
+            }
             if ((local || inContextScope) && rules === this.rules) {
+              declCandidate.add(result);
+              isPublic = true;
+            } else if (isParamVar && inContextLineage) {
+              // Mixin parameters are lexical bindings and remain visible to descendant
+              // scopes in the same invocation chain, even when declaration visibility is private.
               declCandidate.add(result);
               isPublic = true;
             } else if (options?.hasTarget === true) {
