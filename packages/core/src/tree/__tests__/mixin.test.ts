@@ -899,9 +899,6 @@ describe('Mixin', () => {
         }
         .test2 {
           $a: 10px;
-          $b: 20px;
-          color: red;
-          $a: 10px;
           $rest: 20px 30px;
           color: blue;
         }
