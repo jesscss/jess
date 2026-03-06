@@ -2,7 +2,7 @@ import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
   type SimpleSelector, type Combinator, type Selector
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
 import { F_AMPERSAND, F_VISIBLE } from '../node.js';
 
@@ -178,6 +178,12 @@ describe('Ampersand', () => {
         inner: one two;
       }`
     );
+  });
+
+  it('should reject invalid ampersand merge-template joins', async () => {
+    const node = wrapAmpList([sel([amp('.fruit-&')])]);
+    context = new Context({ collapseNesting: true });
+    await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
   });
 
   it('should wrap inner lists in :is()', async () => {

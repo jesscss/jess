@@ -3,6 +3,8 @@ import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { PseudoSelector } from './selector-pseudo.js';
+import { SelectorList } from './selector-list.js';
+import { BasicSelector } from './selector-basic.js';
 import { isNode } from './util/is-node.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
@@ -200,33 +202,103 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       selector.post = undefined;
 
       if (appendValue && !isNode(selector, 'Nil')) {
-        let doAppendValue = (n: Selector) => {
-          let appended = false;
-          for (let s of n.nodes(true)) {
-            /** Find the last simple selector and attempt to append */
-            if (isNode(s, 'SimpleSelector')) {
-              if (typeof s.value === 'string') {
-                s.value += appendValue;
-                appended = true;
+        const isTemplateMerge = appendValue.includes('&');
+        if (isTemplateMerge) {
+          const isIdentJoinChar = (char: string | undefined): boolean => {
+            return !!char && /[a-zA-Z0-9_-]/.test(char);
+          };
+          const assertValidTemplateJoin = (template: string, replacement: string): void => {
+            if (!replacement) {
+              return;
+            }
+            let searchFrom = 0;
+            while (true) {
+              const idx = template.indexOf('&', searchFrom);
+              if (idx === -1) {
                 break;
               }
+              const before = idx > 0 ? template[idx - 1] : undefined;
+              const after = idx < template.length - 1 ? template[idx + 1] : undefined;
+              const first = replacement[0];
+              const last = replacement[replacement.length - 1];
+              const invalidHeadJoin = (first === '.' || first === '#') && isIdentJoinChar(before);
+              const invalidTailJoin = (last === '.' || last === '#') && isIdentJoinChar(after);
+              if (invalidHeadJoin || invalidTailJoin) {
+                throw new SyntaxError(`Invalid ampersand merge template "${template}" with parent selector "${replacement}"`);
+              }
+              searchFrom = idx + 1;
+            }
+          };
+          const mergeTemplate = (baseSelector: Selector): Selector => {
+            const baseValues: string[] = [];
+            if (
+              isNode(baseSelector, 'PseudoSelector')
+              && baseSelector.value.name === ':is'
+              && baseSelector.value.arg
+              && isNode(baseSelector.value.arg, 'SelectorList')
+            ) {
+              for (const item of baseSelector.value.arg.value) {
+                baseValues.push(item.toTrimmedString());
+              }
+            } else {
+              const base = baseSelector.toTrimmedString();
+              if (base.includes(',')) {
+                throw new SyntaxError(`Invalid ampersand merge template "${appendValue}" with parent selector "${base}"`);
+              } else {
+                baseValues.push(base);
+              }
+            }
+            const merged = baseValues.map((value) => {
+              assertValidTemplateJoin(appendValue, value);
+              return new BasicSelector(appendValue.split('&').join(value)).inherit(baseSelector);
+            });
+            if (merged.length === 1) {
+              return merged[0]!;
+            }
+            return new SelectorList(merged).inherit(baseSelector);
+          };
+          if (isNode(selector, 'SelectorList')) {
+            const mergedItems: Selector[] = [];
+            for (const item of selector.value) {
+              const merged = mergeTemplate(item as Selector);
+              if (isNode(merged, 'SelectorList')) {
+                mergedItems.push(...merged.value);
+              } else {
+                mergedItems.push(merged);
+              }
+            }
+            selector = new SelectorList(mergedItems).inherit(selector);
+          } else {
+            selector = mergeTemplate(selector);
+          }
+        } else {
+          let doAppendValue = (n: Selector) => {
+            let appended = false;
+            for (let s of n.nodes(true)) {
+              /** Find the last simple selector and attempt to append */
+              if (isNode(s, 'SimpleSelector')) {
+                if (typeof s.value === 'string') {
+                  s.value += appendValue;
+                  appended = true;
+                  break;
+                }
+                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+              }
+            }
+            if (!appended) {
               throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
             }
-          }
-          if (!appended) {
-            throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
-          }
-        };
+          };
 
-        if (isNode(selector, 'SelectorList')) {
-          selector.value.forEach(doAppendValue);
-        } else {
-          doAppendValue(selector);
+          if (isNode(selector, 'SelectorList')) {
+            selector.value.forEach(doAppendValue);
+          } else {
+            doAppendValue(selector);
+          }
         }
       }
 
       let result: Selector | Nil;
-      const isImplicitAmp = this.hasFlag(F_IMPLICIT_AMPERSAND);
       const shouldWrapSelectorList = isNode(selector, 'SelectorList') && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
       const shouldWrapComplexSelector = isNode(selector, 'ComplexSelector');
 

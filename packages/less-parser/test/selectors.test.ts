@@ -141,6 +141,18 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
     });
 
+    it('should parse ampersand merge template from class suffix form', () => {
+      const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+    });
+
+    it('should parse ampersand merge template with explicit insertion point', () => {
+      const { errors, tree } = parser.parse('.parent { &(.foo-&) { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+    });
+
     it('should parse pseudo selector', () => {
       // Pseudo selectors need an element or be nested
       const { errors, tree } = parser.parse('.test:hover { color: red; }');

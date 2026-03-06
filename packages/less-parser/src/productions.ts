@@ -57,6 +57,7 @@ import {
   Rest,
   StyleImport,
   Expression,
+  SelectorCapture,
   ComplexSelector,
   CompoundSelector,
   SelectorList,
@@ -1502,12 +1503,31 @@ export function extend(this: P, T: TokenMap) {
   };
 }
 
+function getAmpersandTemplateValue(image: string): string | undefined {
+  if (image === '&') {
+    return undefined;
+  }
+  if (image.startsWith('&(') && image.endsWith(')')) {
+    return image.slice(2, -1);
+  }
+  if (image.startsWith('&')) {
+    return image.slice(1) || undefined;
+  }
+  if (image.includes('&')) {
+    return image;
+  }
+  return undefined;
+}
+
 export function simpleSelector(this: P, T: TokenMap) {
   const $ = this;
 
   let selectorAlt = (ctx: RuleContext): IOrAlt<any>[] => [
     {
-      GATE: () => !ctx.inExtend || $.LA(1).tokenType !== T.All,
+      GATE: () => (
+        (!ctx.inExtend || $.LA(1).tokenType !== T.All)
+        && $.LA(1).tokenType !== T.InterpolatedIdent
+      ),
       /**
        * In Less/Sass (and now CSS), the first inner selector can be an identifier
        */
@@ -1522,12 +1542,12 @@ export function simpleSelector(this: P, T: TokenMap) {
       ALT: () => {
         let amp = $.CONSUME(T.Ampersand);
         if (!$.RECORDING_PHASE) {
-          let ampImg = amp.image;
-          let value = ampImg.slice(1);
+          const value = getAmpersandTemplateValue(amp.image);
           return new Ampersand(value || undefined, undefined, $.getLocationInfo(amp), this.context);
         }
       }
     },
+    { ALT: () => $.CONSUME(T.InterpolatedIdent) },
     { ALT: () => $.CONSUME(T.InterpolatedSelector) },
     { ALT: () => $.SUBRULE($.classSelector) },
     { ALT: () => $.SUBRULE($.idSelector) },
@@ -1552,11 +1572,13 @@ export function simpleSelector(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       if ($.isToken(selector)) {
         if (selector.tokenType.name === 'Ampersand') {
-          let ampImg = selector.image;
-          let value = ampImg.slice(1);
+          const value = getAmpersandTemplateValue(selector.image);
           return new Ampersand(value || undefined, undefined, $.getLocationInfo(selector), this.context);
         }
-        if (selector.tokenType.name === 'InterpolatedSelector') {
+        if (
+          selector.tokenType.name === 'InterpolatedSelector'
+          || selector.tokenType.name === 'InterpolatedIdent'
+        ) {
           // Create an InterpolatedSelector wrapper for interpolated selectors
           let nameValue = selector.image;
           let interpolatedNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context);
@@ -1900,11 +1922,59 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
         important = undefined;
       }
 
+      if (value && isLegacySelectorLikeValue(value)) {
+        const varName = String(nameNode.valueOf());
+        throw new SyntaxError(
+          `Unquoted selector capture in '${varName}' is no longer supported. Use '*[ ... ]' (e.g. ${varName}: *[.a, .b]).`
+        );
+      }
+
       return new VarDeclaration({
         name: $.wrap(nameNode, true) as any,
         value: $.wrap(value, true),
         important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), this.context), true) : undefined
       }, undefined, location, this.context);
+    }
+  };
+}
+
+function isLegacySelectorLikeValue(node: Node): boolean {
+  if (node.type === 'SelectorCapture') {
+    return false;
+  }
+  if (isNode(node, 'Call')) {
+    return false;
+  }
+  if (isNode(node, 'Reference')) {
+    return node.options.type === 'mixin-ruleset';
+  }
+  if (isNode(node, 'List') || isNode(node, 'Sequence')) {
+    return node.value.length > 0 && node.value.every(child => isLegacySelectorLikeValue(child));
+  }
+  return false;
+}
+
+export function selectorCapture(this: P, T: TokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    $.CONSUME(T.Star);
+    if (!$.RECORDING_PHASE && !$.noSep()) {
+      throw new SyntaxError('Selector capture must use \'*[\' with no whitespace.');
+    }
+    $.CONSUME(T.LSquare);
+    const selector = $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, inner: true }] });
+    $.CONSUME(T.RSquare);
+
+    if (!$.RECORDING_PHASE) {
+      const location = $.endRule();
+      return new SelectorCapture(
+        { selector: $.wrap(selector, true) as Selector },
+        undefined,
+        location,
+        this.context
+      );
     }
   };
 }
@@ -2728,6 +2798,10 @@ export function value(this: P, T: TokenMap) {
     };
     let node: Node = $.OR([
       { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
+      {
+        GATE: () => $.LA(1).tokenType === T.Star && $.LA(2).tokenType === T.LSquare,
+        ALT: () => $.SUBRULE($.selectorCapture, { ARGS: [ctx] })
+      },
       {
         GATE: isMixinReference,
         ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] })

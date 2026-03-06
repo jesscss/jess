@@ -259,11 +259,23 @@ function $preBuildTokens() {
       case 'Ampersand':
         copyToken();
         /**
-         * e.g. &-foo or &(foo)
-         * @note Jess parsing won't absorb the post-ampersand
-         * characters, so will properly support the ampersand
+         * Captures not just ampersands, but "ampersand merges", where
+         * the intent of the author was to merge the parent selector with a token
+         * suffix or prefix.
+         *
+         * e.g.
+         *   1. &-foo
+         *   2. &(foo)
+         *   3. &1
+         *   4. .foo-&
          */
-        token.pattern = '&(?:\\({{nmchar}}*\\)|{{nmchar}}*)';
+        token.pattern = '(?:[.#](?:{{ident}}-)?&|&)(?:\\((?:[.#]|{{nmchar}}|&)+\\)|{{nmchar}}*)';
+        token.start_chars_hint = ['&', '.', '#'];
+        break;
+      case 'DotName':
+      case 'HashName':
+        copyToken();
+        token.longer_alt = 'Ampersand';
         break;
       case 'Divide':
         copyToken();
