@@ -176,4 +176,63 @@ describe('Variables', () => {
       expect(css).toContain('class: my-test-class');
     });
   });
+
+  describe('Variable call with mixin reference', () => {
+    it('errors when variable holds mixin reference but mixin does not exist', async () => {
+      // @foo: .a; @foo(); — .a is not defined as mixin, so eval should error at @foo().
+      const lessCode = `
+        @foo: .a;
+        @foo();
+      `;
+
+      const result = await compiler.renderToResult(
+        { source: lessCode, language: 'less' }
+      );
+      expect(result.errors.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('passes when variable holds mixin reference and mixin exists', async () => {
+      const lessCode = `
+.a() {
+  color: blue;
+}
+@foo: .a;
+@foo();
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('color: blue');
+    });
+
+    it('no error when mixin reference is not called', async () => {
+      // @foo: .a; with no @foo(); — parses and compiles (no eval of .a).
+      const lessCode = `
+        @foo: .a;
+        .bar { color: red; }
+      `;
+
+      const result = await compiler.renderToResult(
+        { source: lessCode, language: 'less' }
+      );
+      expect(result.errors.length).toBe(0);
+      expect(result.css).toContain('color: red');
+    });
+
+    it('can use mixin reference variable as selector', async () => {
+      // @foo: .a; then use @{foo} as selector — .a need not exist as mixin.
+      const lessCode = `
+.a() {
+  color: blue;
+}
+@foo: .a;
+@{foo} {
+  color: green;
+}
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('.a');
+      expect(css).toContain('color: green');
+    });
+  });
 });

@@ -25,9 +25,9 @@ describe('varDeclarationOrCall', () => {
   });
 
   it('should hard error on legacy unquoted selector-like variables', () => {
-    expect(() => parse('@classes: .a, .b, .c;', 'stylesheet')).toThrow(
-      /Unquoted selector capture/
-    );
+    const { errors } = parse('@classes: .a, .b, .c;', 'stylesheet');
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0]!.message).toMatch(/Unquoted selector capture/);
   });
 });
 

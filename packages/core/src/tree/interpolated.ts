@@ -139,62 +139,51 @@ export class Interpolated<
   }
 
   /**
-   * Can turn simple #id, .class, element and list into a selector
+   * Can turn simple #id, .class, element or SelectorCapture into a selector.
+   * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
   createSelector() {
     let { source, replacements } = this.value;
     let segments = source.split(INTERPOLATION_PLACEHOLDER);
     let output = '';
-    let list: string[] = [];
     for (let [i, replacement] of replacements.entries()) {
       if (!replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
-      if (isNode(replacement, 'List')) {
-        for (let item of replacement.value) {
-          list.push(this.replace([item, ...replacements.slice(i + 1)]));
+      if (replacement.type === 'SelectorCapture') {
+        const captured = (replacement as { value: Selector }).value;
+        const isWholeSelectorInterpolation = (
+          replacements.length === 1
+          && segments.length === 2
+          && (segments[0] ?? '') === ''
+          && (segments[1] ?? '') === ''
+        );
+        if (isWholeSelectorInterpolation) {
+          // Return the selector as-is so it serializes normally (e.g. SelectorList → ".a, .b, .c").
+          return (captured.copy(true) as Selector).inherit(this);
         }
-      } else {
-        if (replacement.type === 'SelectorCapture') {
-          const captured = (replacement as unknown as { value: { selector: Selector } }).value.selector;
-          const normalized = normalizeCapturedSelector(captured);
-          const isWholeSelectorInterpolation = (
-            replacements.length === 1
-            && segments.length === 2
-            && (segments[0] ?? '') === ''
-            && (segments[1] ?? '') === ''
-          );
-          if (isWholeSelectorInterpolation) {
-            return normalized.inherit(this);
-          }
-          output += (segments[i] ?? '') + normalized.toTrimmedString();
-          continue;
-        }
-        output += (segments[i] ?? '') + replacement.toTrimmedString();
+        const normalized = normalizeCapturedSelector(captured);
+        output += (segments[i] ?? '') + normalized.toTrimmedString();
+        continue;
       }
+      output += (segments[i] ?? '') + replacement.toTrimmedString();
     }
     // Preserve any trailing literal segment after the last interpolation placeholder.
-    if (!list.length && segments.length > replacements.length) {
+    if (segments.length > replacements.length) {
       output += segments.slice(replacements.length).join(INTERPOLATION_PLACEHOLDER);
     }
-    if (!list.length) {
-      // Interpolated selector output can produce compound selectors (e.g. ".a#b").
-      // Preserve token boundaries so keySet/registry lookup can match correctly.
-      const simpleTokens = output.match(/[#.][^#.\s]+|[^#.\s]+/g) ?? [output];
-      if (
-        simpleTokens.length > 1
-        && !output.includes(':')
-        && !output.includes('[')
-        && !output.includes('&')
-      ) {
-        return new CompoundSelector(simpleTokens.map(token => new BasicSelector(token))).inherit(this);
-      }
-      return new BasicSelector(output).inherit(this);
-    } else {
-      return new SelectorList(
-        list.map(item => new BasicSelector(item))
-      ).inherit(this);
+    // Interpolated selector output can produce compound selectors (e.g. ".a#b").
+    // Preserve token boundaries so keySet/registry lookup can match correctly.
+    const simpleTokens = output.match(/[#.][^#.\s]+|[^#.\s]+/g) ?? [output];
+    if (
+      simpleTokens.length > 1
+      && !output.includes(':')
+      && !output.includes('[')
+      && !output.includes('&')
+    ) {
+      return new CompoundSelector(simpleTokens.map(token => new BasicSelector(token))).inherit(this);
     }
+    return new BasicSelector(output).inherit(this);
   }
 
   createGeneric() {

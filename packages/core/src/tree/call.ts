@@ -6,7 +6,7 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type Rules } from './rules.js';
+import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
@@ -164,6 +164,10 @@ export class Call extends Node<CallValue, CallOptions> {
     context.parenFrames.push(false);
 
     let n = typeof name === 'string' ? name : await name.eval(context);
+    // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
+    if (isNode(n, 'Reference') && n.options?.type === 'mixin-ruleset') {
+      n = await n.eval(context);
+    }
     const callName = typeof name === 'string'
       ? name
       : String((name as any)?.value?.key?.valueOf?.() ?? (name as any)?.valueOf?.() ?? '');
@@ -200,8 +204,8 @@ export class Call extends Node<CallValue, CallOptions> {
         context.parenFrames.pop();
         return result;
       } finally {}
-    } else if (isNode(n, 'Mixin')) {
-      n = cast(getFunctionFromMixins(n));
+    } else if (isNode(n, 'Mixin') || isNode(n, 'Ruleset') || Array.isArray(n)) {
+      n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
     } else if (isNode(n, 'Func')) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       try {

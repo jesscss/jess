@@ -630,6 +630,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             this.parent?.type === 'Interpolated'
             && ['in', 'terpolation', 's', 'value'].includes(valueKeyStr2)
           );
+          const declValue = returnVal.value.value;
+          // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
+          // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).
+          const isMixinRef = isNode(declValue, 'Reference') && declValue.options?.type === 'mixin-ruleset';
           return pipe(
             () => {
               // Track that this value came from an important declaration
@@ -637,8 +641,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               if (hasImportant) {
                 context.pushImportantSource();
               }
-              const declValue = returnVal.value.value;
               declValue.frozen = true;
+              if (isMixinRef) {
+                return declValue;
+              }
               return declValue.eval(context);
             },
             (evald) => {

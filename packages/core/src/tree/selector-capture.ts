@@ -5,44 +5,40 @@ import { SelectorList } from './selector-list.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
-export type SelectorCaptureValue = {
-  selector: Selector | SelectorList;
-};
-
-export interface SelectorCapture extends Node<SelectorCaptureValue> {
-  eval(context: Context): MaybePromise<SelectorCapture>;
+export interface SelectorCapture extends Node<Selector> {
+  eval(context: Context): MaybePromise<Selector>;
 }
 
 /**
  * Explicit selector-capture wrapper used by parsers for selector-valued payloads
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
-export class SelectorCapture extends Node<SelectorCaptureValue> {
+export class SelectorCapture extends Node<Selector> {
   type = 'SelectorCapture' as const;
   shortType = 'selcap' as const;
 
   override valueOf(): string {
-    return String(this.value.selector.valueOf());
+    return String(this.value.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this.value.selector.toString(options);
+    w.add('*[', this);
+    this.value.toString(options);
+    w.add(']', this);
     return w.getSince(mark);
   }
 
-  override evalNode(context: Context): MaybePromise<SelectorCapture> {
-    const out = this.value.selector.eval(context);
+  override evalNode(context: Context): MaybePromise<Selector> {
+    const out = this.value.eval(context);
     if (isThenable(out)) {
-      return (out as Promise<Selector | SelectorList>).then((selector) => {
-        this.value.selector = selector;
-        return this;
+      return (out as Promise<Selector>).then((selector) => {
+        return selector;
       });
     }
-    this.value.selector = out as Selector | SelectorList;
-    return this;
+    return out as Selector;
   }
 }
 

@@ -1867,9 +1867,9 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
           ]);
         }
       },
-      /** This is a variable call */
+      /** This is a variable call. Allow optional whitespace between name and (. */
       {
-        GATE: () => $.noSep() && $.LA(1).tokenType === T.LParen,
+        GATE: () => $.LA(1).tokenType === T.LParen,
         /**
          * This is a change from Less 1.x-4.x
          * e.g.
@@ -1924,8 +1924,12 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
 
       if (value && isLegacySelectorLikeValue(value)) {
         const varName = String(nameNode.valueOf());
-        throw new SyntaxError(
-          `Unquoted selector capture in '${varName}' is no longer supported. Use '*[ ... ]' (e.g. ${varName}: *[.a, .b]).`
+        $._errors.push(
+          new NoViableAltException(
+            `Unquoted selector capture in '${varName}' is no longer supported. Use '*[ ... ]' (e.g. ${varName}: *[.a, .b]).`,
+            $.LA(1),
+            $.LA(0)
+          )
         );
       }
 
@@ -1938,18 +1942,30 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
   };
 }
 
-function isLegacySelectorLikeValue(node: Node): boolean {
-  if (node.type === 'SelectorCapture') {
-    return false;
-  }
-  if (isNode(node, 'Call')) {
+/** True for a node that could be one item in the old unquoted selector list (e.g. .a or #id). */
+function isSelectorLikeListItem(node: Node): boolean {
+  if (node.type === 'SelectorCapture' || isNode(node, 'Call')) {
     return false;
   }
   if (isNode(node, 'Reference')) {
     return node.options.type === 'mixin-ruleset';
   }
   if (isNode(node, 'List') || isNode(node, 'Sequence')) {
-    return node.value.length > 0 && node.value.every(child => isLegacySelectorLikeValue(child));
+    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
+  }
+  return false;
+}
+
+/** True only for the legacy unquoted selector-list form (e.g. @var: .a, .b, .c), not @var: .a; */
+function isLegacySelectorLikeValue(node: Node): boolean {
+  if (node.type === 'SelectorCapture' || isNode(node, 'Call')) {
+    return false;
+  }
+  if (isNode(node, 'Reference')) {
+    return false; // Single mixin reference is valid.
+  }
+  if (isNode(node, 'List') || isNode(node, 'Sequence')) {
+    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -1960,17 +1976,23 @@ export function selectorCapture(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     $.CONSUME(T.Star);
-    if (!$.RECORDING_PHASE && !$.noSep()) {
-      throw new SyntaxError('Selector capture must use \'*[\' with no whitespace.');
-    }
-    $.CONSUME(T.LSquare);
-    const selector = $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, inner: true }] });
-    $.CONSUME(T.RSquare);
+    // Use $.OR with a gate for a positive assertion
+    const selector = $.OR([
+      {
+        GATE: $.noSep,
+        ALT: () => {
+          $.CONSUME(T.LSquare);
+          const selector = $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, inner: true }] });
+          $.CONSUME(T.RSquare);
+          return selector;
+        }
+      }
+    ]);
 
     if (!$.RECORDING_PHASE) {
       const location = $.endRule();
       return new SelectorCapture(
-        { selector: $.wrap(selector, true) as Selector },
+        $.wrap(selector, true),
         undefined,
         location,
         this.context

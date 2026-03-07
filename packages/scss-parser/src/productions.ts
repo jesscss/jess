@@ -808,7 +808,7 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
       }
       const selectorText = String(firstArg.value.valueOf());
       const selector = parseSelectorListExpression(selectorText);
-      return new SelectorCapture({ selector }, undefined, loc, $.context);
+      return new SelectorCapture(selector, undefined, loc, $.context);
     }
 
     const maybe = desugarNamespacedCall(this, call);
