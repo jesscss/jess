@@ -190,8 +190,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
-    if (this.parent?.type === 'Interpolated') {
-    }
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
     // Prefer the *current* evaluation rules context (mixin call-time scope) over the lexical rulesParent.
@@ -235,11 +233,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         if (Array.isArray(out)) {
           return [resolvedTarget, out] as [any, string[]];
         }
-        return [resolvedTarget, out] as [any, string];
+        const normalizedKey = isNode(out) ? out.valueOf() : out;
+        return [resolvedTarget, normalizedKey] as [any, string];
       },
       ([resolvedTarget, valueKey]) => {
-        if (this.parent?.type === 'Interpolated') {
-        }
         /**
          * If we don't have rules yet, assume that this node
          * was an ambiguous reference to a mixin (such as a valid color
@@ -331,13 +328,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             && Boolean(n.options?.paramVar)
             && !isWithinParamVarScope(n.parent, context.rulesContext);
           const blockedBySearchScope = context.searchScope.has(n);
-          if (
-            (trackedKey === 'columns' || trackedKey === 'list')
-            && blockedBySearchScope
-          ) {
-          }
-          if (trackedKey === 'gender_' && blockedParamVar) {
-          }
           return passesOriginal && !blockedBySearchScope && !blockedParamVar;
         };
         // If this Reference has a target, mark hasTarget=true so 'targeted' Rules are searchable

@@ -466,6 +466,24 @@ export function declarationList(this: P, T: TokenMap) {
 
 let interpolatedRegex = /([$@]){([^}]+)}/g;
 
+const createInterpolatedReference = (
+  prefix: string,
+  value: string,
+  location: LocationInfo,
+  context: TreeContext
+): Reference => {
+  const isProperty = prefix === '$';
+  const key = isProperty
+    ? new Quoted(value, { quote: '\'' }, location, context)
+    : value;
+  return new Reference(
+    { key },
+    { type: isProperty ? 'property' : 'variable', role: 'ident' },
+    location,
+    context
+  );
+};
+
 const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
   const replacements: Node[] = [];
   let result: RegExpExecArray | null;
@@ -473,12 +491,7 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
   while (result = interpolatedRegex.exec(name)) {
     const [match, propOrVar, value] = result;
     source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = new Reference(
-      { key: value! },
-      { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' },
-      location,
-      context
-    );
+    const reference = createInterpolatedReference(propOrVar!, value!, location, context);
     replacements.push(reference);
   }
   return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
@@ -2892,6 +2905,9 @@ export function string(this: P, T: TokenMap) {
           }
           let location = $.endRule();
           let value = contents?.image;
+          if (escaped && value) {
+            value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
+          }
 
           // Handle interpolation in string contents
           if (value && (value.includes('@{') || value.includes('${'))) {
@@ -2918,6 +2934,9 @@ export function string(this: P, T: TokenMap) {
           }
           let location = $.endRule();
           let value = contents?.image;
+          if (escaped && value) {
+            value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
+          }
 
           // Handle interpolation in string contents
           if (value && (value.includes('@{') || value.includes('${'))) {
@@ -2999,18 +3018,9 @@ function processStringInterpolation(value: string, location: LocationInfo, conte
       // but must remain expression-wrapped in Jess output.
       const nestedRef = new Reference({ key: innerResult }, { type: 'variable', role: 'ident' }, location, context);
       replacements.push(new Expression(nestedRef, undefined, location, context));
-      if (value.includes('import-') || value.includes('item-') || value.includes('a.png')) {
-      }
     } else {
       // Simple interpolation reference
-      replacements.push(new Reference(
-        { key: match.content },
-        { type: match.prefix === '$' ? 'property' : 'variable', role: 'ident' },
-        location,
-        context
-      ));
-      if (value.includes('import-') || value.includes('item-') || value.includes('a.png')) {
-      }
+      replacements.push(createInterpolatedReference(match.prefix, match.content, location, context));
     }
   }
 

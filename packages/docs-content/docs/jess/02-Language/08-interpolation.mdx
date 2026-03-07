@@ -7,9 +7,11 @@ origin: jess
 Jess has two interpolation forms:
 
 - `$(...)` for full `Expression` interpolation.
-- `$[ident]` for identifier interpolation (`Reference` with `role: 'ident'`).
+- `$[key]` for identifier-style interpolation (`Reference` with `role: 'ident'`).
+  - Variable keys serialize as bare identifiers: `$[theme]`
+  - Property lookup keys serialize as quoted literals: `$['--custom-color']`
 
-Use `$[ident]` when the interpolation input is a single reference.
+Use `$[key]` when the interpolation input is a single reference.
 Use `$(...)` when you need an actual expression.
 
 In selector contexts, that single reference may still resolve to a non-identifier selector fragment at runtime.
@@ -56,6 +58,7 @@ $radius: top-right;
 $theme: dark;
 body {
   --theme-mode: $[theme];
+  custom-color: $['--custom-color'];
   --theme-mode-fallback: $($theme);
 }
 ```
@@ -63,6 +66,7 @@ body {
 ```css
 body {
   --theme-mode: dark;
+  custom-color: dark;
   --theme-mode-fallback: dark;
 }
 ```

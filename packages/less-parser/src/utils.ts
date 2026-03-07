@@ -1,7 +1,25 @@
-import { Interpolated, Reference, INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
+import { Interpolated, Quoted, Reference, INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
 
 // Pre-compiled regex for @{variable} interpolation - more efficient than creating new instances
 const INTERPOLATION_REGEX = /([$@]){([^}]+)}/g;
+
+const createInterpolatedReference = (
+  prefix: string,
+  varName: string,
+  location?: any,
+  context?: any
+): Reference => {
+  const isProperty = prefix === '$';
+  const key = isProperty
+    ? new Quoted(varName, { quote: '\'' }, location, context)
+    : varName;
+  return new Reference(
+    { key },
+    { type: isProperty ? 'property' : 'variable', role: 'ident' },
+    location,
+    context
+  );
+};
 
 /* Handle both @{variable} interpolation and @id-@num variable variables */
 export const getInterpolatedOrString = (name: string, location?: any, context?: any): Interpolated | string => {
@@ -39,12 +57,7 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
       source = beforeMatch + INTERPOLATION_PLACEHOLDER + afterMatch;
       offset += match.fullMatch.length - INTERPOLATION_PLACEHOLDER.length;
 
-      const ref = new Reference(
-        { key: match.varName },
-        { type: match.prefix === '$' ? 'property' : 'variable', role: 'ident' },
-        location,
-        context
-      );
+      const ref = createInterpolatedReference(match.prefix, match.varName, location, context);
       replacements.push(ref); // Add to end to maintain order
     }
 
@@ -70,11 +83,14 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
   // For @id-@num variable variables, we need to create an Interpolated node
   const endResult = getInterpolatedOrString(end, location, context);
   if (typeof endResult === 'string') {
+    const endKey = type === 'property'
+      ? new Quoted(endResult, { quote: '\'' }, location, context)
+      : endResult;
     return new Interpolated({
       source: start + INTERPOLATION_PLACEHOLDER,
       replacements: [
         new Reference(
-          { key: endResult },
+          { key: endKey },
           { type, role: 'ident' },
           location,
           context

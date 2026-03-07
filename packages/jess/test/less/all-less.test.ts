@@ -27,6 +27,11 @@ const additionalSkips = [
   'tests-unit/variables/variable-advanced.less' // infinite loop
 ];
 
+// Allow specific fixtures even when they are listed in shared invalidLess.
+const forcedIncludes = new Set<string>([
+  'tests-unit/permissive-parse/permissive-parse.less'
+]);
+
 describe('Can render Less files to CSS', () => {
   // Run all unit fixtures under tests-unit.
   const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less'));
@@ -36,7 +41,7 @@ describe('Can render Less files to CSS', () => {
 
   allFiles
     .map(value => path.relative(testData, value))
-    .filter(value => !invalidLess.includes(value))
+    .filter(value => forcedIncludes.has(value) || !invalidLess.includes(value))
     .filter(value => !additionalSkips.includes(value)) // Skip files tested elsewhere
     .filter(value => !value.startsWith('tests-unit/plugin-')) // Keep only plugin/plugin.less, not plugin-* variants
     .filter(value => value <= 'tests-unit/plugin/plugin.less')

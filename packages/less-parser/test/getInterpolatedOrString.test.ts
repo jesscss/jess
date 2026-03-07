@@ -1,5 +1,5 @@
 import { getInterpolatedOrString } from '../src/utils.js';
-import { Reference, Interpolated } from '@jesscss/core';
+import { Quoted, Reference, Interpolated } from '@jesscss/core';
 
 describe('getInterpolatedOrString', () => {
   describe('variable accessor syntax', () => {
@@ -25,7 +25,8 @@ describe('getInterpolatedOrString', () => {
         expect(result.value.replacements.length).toBe(1);
         const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.value.key).toBe('key');
+          expect(replacement.value.key).toBeInstanceOf(Quoted);
+          expect((replacement.value.key as Quoted).value).toBe('key');
           expect(replacement.options.type).toBe('property');
         }
       }
@@ -39,7 +40,8 @@ describe('getInterpolatedOrString', () => {
         expect(result.value.replacements.length).toBe(1);
         const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.value.key).toBe('key');
+          expect(replacement.value.key).toBeInstanceOf(Quoted);
+          expect((replacement.value.key as Quoted).value).toBe('key');
           expect(replacement.options.type).toBe('property');
         }
       }
@@ -69,7 +71,8 @@ describe('getInterpolatedOrString', () => {
         expect(result.value.replacements.length).toBe(1);
         const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.value.key).toBe('property');
+          expect(replacement.value.key).toBeInstanceOf(Quoted);
+          expect((replacement.value.key as Quoted).value).toBe('property');
           expect(replacement.options.type).toBe('property');
         }
       }

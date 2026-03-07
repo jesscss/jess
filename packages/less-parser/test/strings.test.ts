@@ -5,7 +5,7 @@ const parse = parser.parse;
 
 describe('string', () => {
   it('should parse single-quoted string', () => {
-    const { errors } = parse("content: 'text'", 'declaration');
+    const { errors } = parse('content: \'text\'', 'declaration');
     expect(errors.length).toBe(0);
   });
 
@@ -15,7 +15,7 @@ describe('string', () => {
   });
 
   it('should parse escaped string with ~', () => {
-    const { errors } = parse("content: ~'text'", 'declaration');
+    const { errors } = parse('content: ~\'text\'', 'declaration');
     expect(errors.length).toBe(0);
   });
 
@@ -28,5 +28,14 @@ describe('string', () => {
     const { errors } = parse('content: ""', 'declaration');
     expect(errors.length).toBe(0);
   });
-});
 
+  it('should parse double-quoted string with escaped line continuation', () => {
+    const { errors } = parse('content: "line1\\\nline2"', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse escaped double-quoted string with escaped line continuation', () => {
+    const { errors } = parse('content: ~"line1\\\nline2"', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+});

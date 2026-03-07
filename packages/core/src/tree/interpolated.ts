@@ -15,26 +15,6 @@ import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable
 export const INTERPOLATION_PLACEHOLDER = '%%';
 const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
 
-function getInterpolationSlotKey(node: Node): string {
-  if (isNode(node, 'Reference')) {
-    const k = (node as Reference).value.key;
-    if (typeof k === 'string') {
-      return k;
-    }
-    if (typeof k === 'number') {
-      return String(k);
-    }
-    if (Array.isArray(k)) {
-      return k.join('');
-    }
-    if (k && typeof k === 'object' && 'valueOf' in k) {
-      return String((k as { valueOf(): unknown }).valueOf());
-    }
-    return String(k ?? '');
-  }
-  return String((node as { value?: { key?: unknown } }).value?.key ?? (node as { valueOf?(): string }).valueOf?.() ?? '');
-}
-
 function shouldWrapSelectorInIs(replacement: Node): boolean {
   if (isNode(replacement, 'SelectorList')) {
     return true;
@@ -129,7 +109,8 @@ export class Interpolated<
       let result = '';
       if (replacement) {
         if (isNode(replacement, 'Reference')) {
-          result = '$[' + getInterpolationSlotKey(replacement) + ']';
+          // Preserve exact interpolation reference syntax (including quoted property keys).
+          result = w.capture(() => replacement.toTrimmedString(printOpts));
         } else if (isNode(replacement, 'Quoted')) {
           // Interpolated string slots merge raw string content.
           // Using valueOf() avoids re-emitting inner quote delimiters.

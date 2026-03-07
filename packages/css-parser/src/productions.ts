@@ -863,9 +863,10 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       const isCustom = name!.valueOf().startsWith('--');
+      const wrapCtx = isCustom ? { ...ctx, inCustomPropertyValue: true } : ctx;
       return new (isCustom ? CustomDeclaration : Declaration)({
         name: name!,
-        value: $.wrap(value!, 'both'),
+        value: $.wrap(value!, 'both', wrapCtx),
         important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), this.context), 'both') : undefined
       }, { assign: assign!.image as AssignmentType }, location, this.context);
     }
@@ -906,7 +907,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
           { ALT: () => $.CONSUME(T.Unknown) }
         ]);
         if (!$.RECORDING_PHASE) {
-          return $.wrap($.processValueToken(token, ctx));
+          return $.wrap($.processValueToken(token, ctx), undefined, ctx);
         }
       }
     }
@@ -1055,7 +1056,7 @@ export function customBlock(this: C, T: TokenMap, alt?: AltContext) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      let type: 'paren' | 'square' | 'curly' | undefined;
+      let type: 'square' | 'curly' | undefined;
       switch (start!.image) {
         case '[':
           type = 'square';
@@ -1068,13 +1069,10 @@ export function customBlock(this: C, T: TokenMap, alt?: AltContext) {
         // Preserve inner sequence post so trailing semicolons become part of block content
         const seqLoc = nodes!.length ? $.getLocationFromNodes(nodes!) : undefined;
         let seq = new Sequence(nodes!, undefined, seqLoc, this.context);
-        if (type === 'paren') {
-          return $.wrap(new Paren($.wrap(seq, true), undefined, location, this.context));
-        }
-        return $.wrap(new Block($.wrap(seq, true), { type }, location, this.context));
+        return $.wrap(new Block($.wrap(seq, true, ctx), { type }, location, this.context), undefined, ctx);
       } else {
-        let startNode = $.wrap(new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), this.context));
-        let endNode = $.wrap(new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), this.context));
+        let startNode = $.wrap(new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), this.context), undefined, ctx);
+        let endNode = $.wrap(new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), this.context), undefined, ctx);
         nodes = [startNode, ...nodes!, endNode];
         return new Sequence(nodes, undefined, location, this.context);
       }
@@ -1241,8 +1239,13 @@ export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
         $.CONSUME(T.SingleQuoteEnd);
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
-          let value = contents?.image;
-          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quote.image as '"' | '\'' }, location, this.context);
+          const escaped = quote.image.startsWith('~');
+          const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
+          let value = contents?.image ?? '';
+          if (escaped) {
+            value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
+          }
+          return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
         }
       }
     },
@@ -1255,8 +1258,13 @@ export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
         $.CONSUME(T.DoubleQuoteEnd);
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
-          let value = contents?.image;
-          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quote.image as '"' | '\'' }, location, this.context);
+          const escaped = quote.image.startsWith('~');
+          const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
+          let value = contents?.image ?? '';
+          if (escaped) {
+            value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
+          }
+          return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
         }
       }
     }

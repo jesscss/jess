@@ -43,8 +43,8 @@ export const rawCssFragments = () => [
    * which causes problems for Less / Sass.
    */
   ['unit', '(?:[a-zA-Z]|{{nonascii}}|{{escape}})+'],
-  ['string1', '\\"(\\\\"|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
-  ['string2', '\\\'(\\\\\'|[^\\n\\r\\f\\\']|{{newline}}|{{escape}})*\\\''],
+  ['string1', '\\"(\\\\"|\\\\{{newline}}|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
+  ['string2', '\\\'(\\\\\'|\\\\{{newline}}|[^\\n\\r\\f\\\']|{{newline}}|{{escape}})*\\\''],
 
   ['integer', '[+-]?\\d+'],
   /**
@@ -499,7 +499,7 @@ export const rawCssTokens = () => ({
        */
       {
         name: 'SingleQuoteStringContents',
-        pattern: '(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\\'|{{newline}}|{{escape}})+'
+        pattern: '(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\\'|\\\\{{newline}}|{{newline}}|{{escape}})+'
       },
       {
         name: 'SingleQuoteEnd',
@@ -510,7 +510,7 @@ export const rawCssTokens = () => ({
     DoubleQuoteString: [
       {
         name: 'DoubleQuoteStringContents',
-        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u005B\\u005D-\\uFFFF]|\\\\"|{{newline}}|{{escape}})+'
+        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u005B\\u005D-\\uFFFF]|\\\\"|\\\\{{newline}}|{{newline}}|{{escape}})+'
       },
       {
         name: 'DoubleQuoteEnd',

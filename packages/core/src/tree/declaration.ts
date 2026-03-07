@@ -105,8 +105,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
       options.inCustom = true;
-      // Emit value exactly as captured (no trimming, no added spaces)
-      value.toString(options);
+      // Preserve custom value text, but normalize boundary artifacts:
+      // - if capture ended with a line break before declaration termination,
+      //   drop that trailing line break so semicolon insertion stays inline.
+      // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
+      //   insert a single separator space for stable CSS output.
+      let customOut = w.capture(() => value.toString(options));
+      customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
+      customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
+      w.add(customOut, value);
       options.inCustom = false;
     } else {
       // Capture value output to normalize spacing after ':'

@@ -263,7 +263,7 @@ export class LessActionsParser extends CssActionsParser {
           token,
           'variable-in-unknown-value'
         );
-        return new Reference({ key: token.image.slice(1) }, { type: 'variable', role: 'ident' }, this.getLocationInfo(token), this.context);
+        return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
       }
       return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
     } else if (tokenType.name === 'PropertyReference') {
@@ -274,7 +274,7 @@ export class LessActionsParser extends CssActionsParser {
             token,
             'property-in-unknown-value'
           );
-          return new Reference({ key: token.image.slice(1) }, { type: 'property', role: 'ident' }, this.getLocationInfo(token), this.context);
+          return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
         }
       }
       return super.processValueToken(token, ctx);

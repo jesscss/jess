@@ -19,6 +19,7 @@ import {
   type LocationInfo,
   Node,
   Comment,
+  F_VISIBLE,
   Color,
   ColorFormat,
   Dimension,
@@ -53,6 +54,8 @@ export type RuleContext = {
   firstSelector?: boolean;
   /** If downstream selector rules are part of a qualified rule */
   qualifiedRule?: boolean;
+  /** Inside a custom property value */
+  inCustomPropertyValue?: boolean;
 
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
@@ -320,7 +323,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     return returnRules;
   }
 
-  protected getPrePost(offset: number, post?: boolean): Node['pre'] {
+  protected getPrePost(offset: number, post?: boolean, ctx?: RuleContext): Node['pre'] {
     let skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset);
     if (!skipped) {
       return 0;
@@ -335,7 +338,11 @@ export class CssActionsParser extends AdvancedActionsParser {
       if (name === 'WS') {
         return token.image;
       } else {
-        return new Comment(token.image, { lineComment: name.includes('Line') }, this.getLocationInfo(token), this.context);
+        const comment = new Comment(token.image, { lineComment: name.includes('Line') }, this.getLocationInfo(token), this.context);
+        if (ctx?.inCustomPropertyValue && comment.options.lineComment) {
+          comment.addFlag(F_VISIBLE);
+        }
+        return comment;
       }
     });
 
@@ -354,7 +361,7 @@ export class CssActionsParser extends AdvancedActionsParser {
    * Rules node may be empty, and hence doesn't
    * have a location.
    */
-  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both'): T {
+  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', ctx?: RuleContext): T {
     if (!(node instanceof Node)) {
       return node;
     }
@@ -363,7 +370,7 @@ export class CssActionsParser extends AdvancedActionsParser {
       if (node.post === undefined) {
         let offset = node.location[3];
         if (offset !== undefined) {
-          node.post = this.getPrePost(offset, true);
+          node.post = this.getPrePost(offset, true, ctx);
           // throw new Error(`Node "${node.type}" can't be wrapped`)
         }
       }
@@ -377,7 +384,7 @@ export class CssActionsParser extends AdvancedActionsParser {
       // allow callers to reassign this pre to the parent Rules/Ruleset.
       let offset = node.location[0];
       if (offset !== undefined && node.pre === undefined) {
-        const pre = this.getPrePost(offset);
+        const pre = this.getPrePost(offset, false, ctx);
         // Narrow to allowed type: Array<Comment | Nil | string> | 1 | 0 | undefined
         node.pre = pre as any;
       }
