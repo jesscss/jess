@@ -83,6 +83,23 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Less fixture: ampersand template merge forms (2026-03-03):**
+
+- **Area:** less-parser ampersand tokenization + core `Ampersand.evalNode` template merge semantics.
+- **Last passing baseline:** parser accepted `&-suffix` style only; `.foo-&`/`&(.foo-&)` were not consistently captured as single ampersand merge templates.
+- **Last thing we tried:**
+  - Updated less token model so `Ampersand` captures merge templates (`.foo-&`, `#foo-&`, `&(1)`, `&(-foo)`, `&(.foo-&)`) and added `DotName`/`HashName -> longer_alt: Ampersand`.
+  - Updated less parser ampersand value extraction to preserve template payloads rather than always slicing as suffix.
+  - Reworked core ampersand eval append path:
+    - `appendValue` containing `&` is treated as template insertion (all `&` positions replaced),
+    - generated `:is(SelectorList)` bases are expanded item-wise for capture-like selector lists,
+    - comma-string bases are wrapped as single `:is(...)` for quoted-style list strings.
+  - Added focused parser tests in `packages/less-parser/test/selectors.test.ts` for `.foo-&` and `&(.foo-&)`.
+- **Result:**
+  - Focused parser tests pass and probes confirm single-token ampersand capture for all target forms.
+  - `parse-interpolation.less` no longer throws ampersand append errors; fruit capture/quoted shaping is now aligned except for non-semantic formatting deltas still present in fixture diff.
+- **Next step:** finish remaining selector-format parity in `parse-interpolation.less` (spacing/comma/newline normalization and existing quoted/capture selector-list formatting differences), then re-run focused fixture and broader all-less sweep. After parity is locked, update Less v5 docs to describe ampersand merge-template rules and the nesting behavior change (when `&` is preserved vs interpreted as merge).
+
 **Less fixture: mixins-named-args parser + @arguments parity (2026-03-06):**
 
 **Less fixtures: spacing + leading `:is()` parity (2026-03-06, later):**

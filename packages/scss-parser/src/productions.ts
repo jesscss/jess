@@ -43,6 +43,7 @@ import {
   Rest,
   Rules,
   Sequence,
+  SelectorCapture,
   StyleImport,
   VarDeclaration,
   While,
@@ -114,6 +115,18 @@ function parseInterpolationExpression(expr: string): Node {
   parser.input = lexed.tokens;
   // Parse as a value sequence (expression-ish).
   return parser.valueSequence({} as any) as unknown as Node;
+}
+
+function parseSelectorListExpression(expr: string): Selector {
+  const { lexer, parser } = getInterpolationParser();
+  const lexed = lexer.tokenize(expr);
+  parser.input = lexed.tokens;
+  const out = parser.selectorList({} as any) as unknown as Selector;
+  if (parser.errors.length > 0) {
+    const msg = parser.errors[0]?.message ?? 'Invalid selector.parse() input';
+    throw new SyntaxError(msg);
+  }
+  return out;
 }
 
 function processScssStringInterpolation(
@@ -783,6 +796,20 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
       return mapped as unknown as any;
     }
     const call = mapped as Call;
+
+    if (typeof call.value.name === 'string' && call.value.name === 'selector.parse') {
+      const args = isNode(call.value.args, 'List') ? call.value.args.value : [];
+      const firstArg = args[0];
+      const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
+        ? (call.location as LocationInfo)
+        : undefined;
+      if (!firstArg || !isNode(firstArg, 'Quoted') || !isNode(firstArg.value, 'Any')) {
+        throw new SyntaxError('selector.parse() requires a quoted selector string literal.');
+      }
+      const selectorText = String(firstArg.value.valueOf());
+      const selector = parseSelectorListExpression(selectorText);
+      return new SelectorCapture({ selector }, undefined, loc, $.context);
+    }
 
     const maybe = desugarNamespacedCall(this, call);
     if (maybe !== call) {

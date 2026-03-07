@@ -57,6 +57,37 @@ export function processLeadingIs(
     return null;
   };
 
+  const hasEscapedQuoted = (node: Node | undefined, seen = new Set<Node>()): boolean => {
+    if (!node || seen.has(node)) {
+      return false;
+    }
+    seen.add(node);
+    if (isNode(node, 'Quoted') && Boolean(node.options?.escaped)) {
+      return true;
+    }
+    const value = (node as unknown as { value?: unknown }).value;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item && typeof item === 'object' && 'type' in (item as Record<string, unknown>)) {
+          if (hasEscapedQuoted(item as Node, seen)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+    if (value && typeof value === 'object') {
+      for (const item of Object.values(value as Record<string, unknown>)) {
+        if (item && typeof item === 'object' && 'type' in (item as Record<string, unknown>)) {
+          if (hasEscapedQuoted(item as Node, seen)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
   const stripImplicitPrefixFromItem = (item: Selector, implicitAmpPrefix: string): Selector => {
     if (!isNode(item, 'ComplexSelector')) {
       return item.copy(true) as Selector;
@@ -120,6 +151,9 @@ export function processLeadingIs(
     if (!arg) {
       return selector;
     }
+    if (hasEscapedQuoted(arg)) {
+      return selector;
+    }
     // :is(SelectorList): in list context merge; else return array for caller to handle
     if (isNode(arg, 'SelectorList')) {
       if (inSelectorList) {
@@ -155,11 +189,33 @@ export function processLeadingIs(
     if (!arg) {
       return selector;
     }
+    if (hasEscapedQuoted(arg)) {
+      return selector;
+    }
     const normalizedArg = isNode(arg, 'SelectorList') && arg.value.length === 1
       ? (arg.value[0]! as Selector)
       : arg;
     if (isNode(normalizedArg, 'SelectorList')) {
-      return selector;
+      const suffix = value.slice(1).map(s => (s as Selector).copy(true));
+      if (suffix.length === 0) {
+        return SelectorList.create(normalizedArg.value.map(s => s.copy(true) as Selector)).inherit(selector) as Selector;
+      }
+      const expanded: Selector[] = normalizedArg.value.map((item) => {
+        if (isNode(item, 'ComplexSelector')) {
+          return ComplexSelector.create([
+            ...(item as ComplexSelector).value.map(c => (c as Selector).copy(true) as ComplexSelectorComponent),
+            ...suffix.map(c => c as ComplexSelectorComponent)
+          ]).inherit(selector) as Selector;
+        }
+        return CompoundSelector.create([
+          (item as Selector).copy(true),
+          ...suffix
+        ]).inherit(selector) as Selector;
+      });
+      if (expanded.length === 1) {
+        return expanded[0]!;
+      }
+      return SelectorList.create(expanded).inherit(selector) as Selector;
     }
 
     const suffix = value.slice(1).map(s => (s as Selector).copy(true));
@@ -215,6 +271,10 @@ export function processLeadingIs(
       for (const part of complex.value) {
         if (isNode(part, 'PseudoSelector') && part.value.name === ':is' && part.generated) {
           const arg = part.value.arg;
+          if (arg && hasEscapedQuoted(arg as Node)) {
+            outComponents.push((part as Selector).copy(true) as ComplexSelectorComponent);
+            continue;
+          }
           if (arg && isNode(arg, 'SelectorList')) {
             const normalizedArgs = arg.value.map((item) => {
               const normalized = stripImplicitPrefixFromItem(item as Selector, implicitAmpPrefix);
@@ -294,11 +354,33 @@ export function processLeadingIs(
     if (!arg) {
       return selector;
     }
+    if (hasEscapedQuoted(arg)) {
+      return selector;
+    }
     const normalizedArg = isNode(arg, 'SelectorList') && arg.value.length === 1
       ? (arg.value[0]! as Selector)
       : arg;
     if (isNode(normalizedArg, 'SelectorList')) {
-      return selector;
+      const rest = value.slice(firstSelIndex + 1).map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
+      const expanded: Selector[] = normalizedArg.value.map((item) => {
+        if (isNode(item, 'ComplexSelector')) {
+          return ComplexSelector.create([
+            ...(item as ComplexSelector).value.map(c => (c as Selector).copy(true) as ComplexSelectorComponent),
+            ...rest
+          ]).inherit(selector) as Selector;
+        }
+        if (rest.length === 0) {
+          return (item as Selector).copy(true) as Selector;
+        }
+        return ComplexSelector.create([
+          (item as Selector).copy(true) as ComplexSelectorComponent,
+          ...rest
+        ]).inherit(selector) as Selector;
+      });
+      if (expanded.length === 1) {
+        return expanded[0]!;
+      }
+      return SelectorList.create(expanded).inherit(selector) as Selector;
     }
 
     if (isNode(normalizedArg, 'ComplexSelector')) {

@@ -72,6 +72,17 @@ export type ReferenceOptions = {
 };
 const { isArray } = Array;
 
+function isInsideSelectorCapture(node: Node | undefined): boolean {
+  let cursor: Node | undefined = node;
+  while (cursor) {
+    if (cursor.type === 'SelectorCapture') {
+      return true;
+    }
+    cursor = cursor.parent;
+  }
+  return false;
+}
+
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
@@ -584,6 +595,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             return new Any(valueKeyStr2, { role: 'ident' });
           }
           if (!fallbackValue) {
+            if (
+              (type === 'mixin' || type === 'mixin-ruleset')
+              && isInsideSelectorCapture(this)
+            ) {
+              return new Any(valueKeyStr2, { role: 'ident' });
+            }
             switch (type) {
               case 'mixin':
                 throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);

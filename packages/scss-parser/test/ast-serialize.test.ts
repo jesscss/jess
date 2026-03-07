@@ -221,6 +221,16 @@ describe('scss-parser (ast serialize)', () => {
       `);
   });
 
+  it('serializes selector.parse("...") as SelectorCapture', () => {
+    const { tree, errors, lexerResult } = parser.parse(`.a { x: selector.parse(".b, .c"); }`);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString(`
+      (SelectorCapture
+    `);
+  });
+
   it('serializes @include ns.foo($x) as Call(name=Reference(target=Reference))', () => {
     const { tree, errors, lexerResult } = parser.parse(`@include ns.foo($x);`);
     expect(lexerResult.errors).toEqual([]);

@@ -230,13 +230,55 @@ export class Compiler {
       (contextOptions as any).javascript = jsPluginConfig;
     }
 
-    // Create print options for CSS output
+    const resolveMatchedOutputCollapseNesting = (): boolean | undefined => {
+      if (!Array.isArray(config.output) || !resolvedOutputFilePath) {
+        return undefined;
+      }
+      const outputEntries = config.output as Array<Record<string, any>>;
+      let defaults: Record<string, any> = {};
+      if (outputEntries[0] && typeof outputEntries[0] === 'object' && !('file' in outputEntries[0])) {
+        defaults = outputEntries[0]!;
+      }
+      const dir = filePath ? path.dirname(filePath) : '.';
+      const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
+      for (const entry of outputEntries) {
+        if (!entry || typeof entry !== 'object' || !('file' in entry)) {
+          continue;
+        }
+        const filePattern = String(entry.file ?? '{name}.css');
+        const expandedPath = path.join(dir, filePattern.replace('{name}', name));
+        if (expandedPath === resolvedOutputFilePath) {
+          if ('collapseNesting' in entry) {
+            return entry.collapseNesting as boolean | undefined;
+          }
+          if ('collapseNesting' in defaults) {
+            return defaults.collapseNesting as boolean | undefined;
+          }
+          return undefined;
+        }
+      }
+      return undefined;
+    };
+
+    // Create print options for CSS output.
+    // For array output configs, infer the matched entry's collapseNesting using resolved outputFile.
+    const matchedOutputCollapseNesting = resolveMatchedOutputCollapseNesting();
+    const explicitOutputCollapseNesting = (
+      !Array.isArray(config.output)
+        ? (config.output as any)?.collapseNesting
+        : undefined
+    ) as boolean | undefined;
     const printOptions = {
-      collapseNesting: lessOptions.collapseNesting ?? (Array.isArray(config.output) ? undefined : (config.output as any)?.collapseNesting)
+      // Respect explicit output config first; lessOptions can carry defaults.
+      collapseNesting: explicitOutputCollapseNesting
+        ?? matchedOutputCollapseNesting
+        ?? lessOptions.collapseNesting
     };
 
     // Ensure output options are available on context.opts.output.
     // Many serializer/hoisting behaviors (including Less extend materialization) consult output.collapseNesting.
+    // Also mirror to top-level context option because selector/ruleset preEval paths consult context.opts.collapseNesting.
+    (contextOptions as any).collapseNesting = printOptions.collapseNesting;
     (contextOptions as any).output = {
       ...(typeof (config.output as any) === 'object' && !Array.isArray(config.output) ? (config.output as any) : {}),
       collapseNesting: printOptions.collapseNesting

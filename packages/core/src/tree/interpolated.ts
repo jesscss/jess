@@ -5,6 +5,7 @@ import { isNode } from './util/is-node.js';
 import { BasicSelector } from './selector-basic.js';
 import { SelectorList } from './selector-list.js';
 import { CompoundSelector } from './selector-compound.js';
+import { PseudoSelector } from './selector-pseudo.js';
 import type { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
@@ -13,6 +14,19 @@ import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable
 // but is also easily typeable for tests
 export const INTERPOLATION_PLACEHOLDER = '%%';
 const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
+
+function shouldWrapSelectorInIs(selector: Selector): boolean {
+  return !isNode(selector, 'BasicSelector') && !isNode(selector, 'CompoundSelector');
+}
+
+function normalizeCapturedSelector(selector: Selector): Selector {
+  const copy = selector.copy(true) as Selector;
+  if (!shouldWrapSelectorInIs(copy)) {
+    return copy;
+  }
+  const wrapped = PseudoSelector.create({ name: ':is', arg: copy });
+  return wrapped.inherit(selector) as Selector;
+}
 
 export type InterpolatedValue = {
   /** String with INTERPOLATION_PLACEHOLDER placeholders */
@@ -141,6 +155,21 @@ export class Interpolated<
           list.push(this.replace([item, ...replacements.slice(i + 1)]));
         }
       } else {
+        if (replacement.type === 'SelectorCapture') {
+          const captured = (replacement as unknown as { value: { selector: Selector } }).value.selector;
+          const normalized = normalizeCapturedSelector(captured);
+          const isWholeSelectorInterpolation = (
+            replacements.length === 1
+            && segments.length === 2
+            && (segments[0] ?? '') === ''
+            && (segments[1] ?? '') === ''
+          );
+          if (isWholeSelectorInterpolation) {
+            return normalized.inherit(this);
+          }
+          output += (segments[i] ?? '') + normalized.toTrimmedString();
+          continue;
+        }
         output += (segments[i] ?? '') + replacement.toTrimmedString();
       }
     }

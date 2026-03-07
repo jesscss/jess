@@ -49,6 +49,12 @@ export class Operation extends Node<OperationValue> {
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (context.shouldOperate(op, l, r)) {
+        if (isNode(l, 'Operation') || isNode(r, 'Operation')) {
+          // Preserve composite expressions such as `10px / 2 * 2` when a nested
+          // operation intentionally remains unevaluated under current math mode.
+          n.value = [l, op, r];
+          return n;
+        }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
 
@@ -78,7 +84,12 @@ export class Operation extends Node<OperationValue> {
           }
         }
 
-        let out = l.operate(r, op, context);
+        let out: Node;
+        try {
+          out = l.operate(r, op, context);
+        } catch (error) {
+          throw error;
+        }
         out.pre = left.pre;
         out.post = right.post;
         return out;

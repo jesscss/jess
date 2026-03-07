@@ -308,6 +308,9 @@ export class Call extends Node<CallValue, CallOptions> {
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+          if (this.parent?.type === 'SelectorCapture') {
+            return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+          }
           if (isNode(name, 'Reference')) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
           }

@@ -167,6 +167,7 @@ export class LessActionsParser extends CssActionsParser {
 
   varDeclarationOrCall!: Rule;
   varName!: Rule;
+  selectorCapture!: Rule;
   valueReference!: Rule;
   varReference!: Rule;
 

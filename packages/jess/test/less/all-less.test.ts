@@ -28,15 +28,9 @@ const additionalSkips = [
   'tests-unit/variables/variable-advanced.less' // infinite loop
 ];
 
-// Run unit fixtures alphabetically up through this filename (inclusive).
-const runUnitThrough = 'tests-unit/nesting';
-
 describe('Can render Less files to CSS', () => {
-  // Get all .less files from tests-unit and tests-config directories
-  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less')).filter((f) => {
-    const rel = path.relative(testData, f).replace(/\\/g, '/');
-    return rel.localeCompare(runUnitThrough) <= 0;
-  });
+  // Run all unit fixtures under tests-unit.
+  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less'));
   // Keep this suite focused on alphabetic unit-fixture progression.
   const configFiles: string[] = [];
   const allFiles = [...unitFiles, ...configFiles];
@@ -100,7 +94,8 @@ describe('Can render Less files to CSS', () => {
               throw error;
             }
             try {
-              expect(node.toString({ context })).toBe(expectedCss);
+              const actualCss = node.toString({ context });
+              expect(actualCss).toBe(expectedCss);
             } catch (error: any) {
               // Output diagnostics if available
               if (context && (context.errors.length > 0 || context.warnings.length > 0)) {

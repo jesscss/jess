@@ -546,7 +546,9 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     if (isNode(b, 'Dimension')) {
       const { number: bVal, unit: bUnit } = b.value;
-      if (bUnit) {
+      const unitMode = context?.opts?.unitMode ?? 'loose';
+      const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
+      if (bUnit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${b}" to a color`);
       }
       // Apply operation to each RGB component with the number

@@ -1,5 +1,4 @@
 import { type Context } from '../context.js';
-import { UnitMode } from '../types/modes.js';
 import { Color, ColorFormat } from './color.js';
 import {
   Node,
@@ -66,11 +65,15 @@ export class Dimension extends Node<DimensionValue> {
     let unitToGroup = this.unitToGroup;
     if (b instanceof Color) {
       let { number, unit } = this.value;
-      if (unit) {
+      const unitMode = context?.opts?.unitMode ?? 'loose';
+      const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
+      if (unit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${this}" to a color`);
       }
-      let thisColor = new Color({}, { format: ColorFormat.RGB }).inherit(this);
-      thisColor.rgb = [number, number, number];
+      let thisColor = new Color(
+        { rgb: [number, number, number] },
+        { format: b.options?.format ?? ColorFormat.RGB }
+      ).inherit(this);
       return thisColor.operate(b, op, context).inherit(this);
     }
     let { number: aVal, unit: aUnit } = this.value;
@@ -196,8 +199,7 @@ export class Dimension extends Node<DimensionValue> {
         }
         return super.compare(b, context);
       }
-      let thisColor = new Color({}, { format: ColorFormat.RGB }).inherit(this);
-      thisColor.rgb = [aVal, aVal, aVal];
+      let thisColor = new Color({ rgb: [aVal, aVal, aVal] }, { format: ColorFormat.RGB }).inherit(this);
       return thisColor.compare(b);
     }
     let { number: bVal, unit: bUnit } = b.value;
