@@ -121,12 +121,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return this._valueOf;
     }
     const normalizedResult = processLeadingIs(selector as Selector);
-    if (Array.isArray(normalizedResult)) {
-      const normalizedList = SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector);
-      this._valueOf = normalizedList.valueOf();
-      return this._valueOf;
-    }
-    this._valueOf = (normalizedResult as Selector).valueOf();
+    const normalizedSelector = Array.isArray(normalizedResult)
+      ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
+      : (normalizedResult as Selector);
+    this._valueOf = (normalizedSelector as Selector | Nil) instanceof Nil ? '' : (normalizedSelector as Selector).valueOf();
     return this._valueOf;
   }
 
@@ -294,7 +292,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const normalizedResult = processLeadingIs(selector as Selector);
     const normalizedSelector = Array.isArray(normalizedResult)
       ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
-      : normalizedResult;
+      : (normalizedResult as Selector);
     this.value.selector = normalizedSelector as typeof selector;
     this.invalidateSelectorValueCache();
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
+import { Context } from '../../context.js';
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
@@ -459,9 +460,10 @@ describe('Color Node', () => {
         alpha: 1
       });
       const dimension = new Dimension({ number: 10, unit: 'px' });
+      const context = new Context({ unitMode: 'strict' });
 
       expect(() => {
-        color.operate(dimension, '+');
+        color.operate(dimension, '+', context);
       }).toThrow('Cannot convert "10px" to a color');
     });
 

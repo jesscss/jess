@@ -31,14 +31,13 @@ Always run the relevant verification command, read its output, and cite the resu
 - Declaring “done” right before running verification; always run verification first.
 - Reporting “all good” when the verification command is still running or hasn’t been run yet.
 
-## Project notes
+## Project notes (Jess monorepo)
 
+- **Commit gate:** Before claiming completion or that tests pass, run **`pnpm run verify:baseline`**. It runs core + less-parser + css-parser + `packages/jess/test/less/all-less.test.ts`. All must pass.
+- **Move the bar up:** As we increase stability, always move the baseline up — fix failing tests, add new critical suites to the baseline; never relax expectations or remove tests to get green.
 - Tests/builds must run from the package directory or via `pnpm --filter <pkg>` per `.cursor/rules/30-tests.mdc`.
 - Vitest is the test runner; use `pnpm test -- --run` as the verification command for unit suites.
-- Running command examples:
-  - Core extend baseline: `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend`
-  - Less fixtures: `pnpm --filter @jesscss/core build` then `pnpm run test:less:test-data`
-  - Parser docs unaffected by these commands, but remember to re-run relevant packages when touching them.
+- Scoped examples: core extend `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend`; Less fixtures `pnpm run test:less:test-data`.
 - Always read the command output; mention “exit 0 / 0 failures” before claiming success.
 
 ## Reference

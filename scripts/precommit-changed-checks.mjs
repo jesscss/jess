@@ -8,6 +8,15 @@ const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
 const SHOULD_BLOCK = MODE === 'staged';
 const TODO_REPORT_PATH = path.join(ROOT, '.cursor', 'PREPUSH_CHECK_TODOS.md');
 const failures = [];
+
+/** Packages that gate on full baseline (core + parsers + all-less.test.ts). Push blocked if baseline fails. */
+const BASELINE_PACKAGES = new Set([
+  'packages/core',
+  'packages/less-parser',
+  'packages/css-parser',
+  'packages/jess'
+]);
+
 const NON_SOURCE_PATH_PATTERNS = [
   /\/build\//,
   /\/\.docusaurus\//,
@@ -192,8 +201,12 @@ function runLintForFiles(packageDir, files) {
   run('pnpm', ['exec', 'eslint', ...files], packageDir);
 }
 
-function runRequiredTestsForPackage(packageDir, scripts, files) {
+function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyRun) {
   if (packageDir !== 'packages/core') {
+    return;
+  }
+  if (baselineAlreadyRun) {
+    console.log(`- skip core-only test (verify:baseline already ran)`);
     return;
   }
   if (!hasCodeImpactingChanges(files, packageDir)) {
@@ -204,8 +217,12 @@ function runRequiredTestsForPackage(packageDir, scripts, files) {
     console.log(`- skip required tests for ${packageDir} (no test script)`);
     return;
   }
-  // Core tests are a hard pre-push gate for core package changes.
   run('pnpm', ['--filter', `./${packageDir}`, 'test'], packageDir, { required: true });
+}
+
+function runVerifyBaseline() {
+  console.log('\n==> Running verify:baseline (core + parsers + all-less.test.ts)');
+  run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
@@ -225,6 +242,16 @@ if (changedPackages.length === 0) {
 }
 
 console.log(`Checking ${changedPackages.length} changed package(s) [mode=${MODE}]...`);
+
+let baselineRan = false;
+if (MODE === 'upstream') {
+  const needsBaseline = changedPackages.some((pkg) => BASELINE_PACKAGES.has(pkg));
+  if (needsBaseline) {
+    runVerifyBaseline();
+    baselineRan = true;
+  }
+}
+
 for (const packageDir of changedPackages) {
   const scripts = readPackageScripts(packageDir);
   if (!scripts) {
@@ -233,7 +260,7 @@ for (const packageDir of changedPackages) {
   }
   console.log(`\n==> ${packageDir}`);
   if (MODE === 'upstream') {
-    runRequiredTestsForPackage(packageDir, scripts, files);
+    runRequiredTestsForPackage(packageDir, scripts, files, baselineRan);
     const lintableFiles = stagedLintableFiles(files, packageDir);
     if (!hasCodeImpactingChanges(files, packageDir)) {
       console.log(`- skip typecheck/build/lint for ${packageDir} (no code-impacting changes)`);
