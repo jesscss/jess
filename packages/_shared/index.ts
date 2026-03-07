@@ -67,8 +67,8 @@ export const invalidLess: string[] = [
   // 'tests-unit/functions/functions.less',
   // 'tests-unit/mixins-interpolated/mixins-interpolated.less',
 
-  // 'tests-unit/permissive-parse/permissive-parse.less',
-  // 'tests-unit/property-name-interp/property-name-interp.less',
+  'tests-unit/permissive-parse/permissive-parse.less',
+  'tests-unit/property-name-interp/property-name-interp.less',
   // 'tests-config/compression/compression.less',
 
   // // 'tests-config/math/parens-division/new-division.less',
