@@ -503,6 +503,17 @@ export class JsPlugin extends AbstractPlugin {
   }
 }
 
+/**
+ * Global flag set when @jesscss/plugin-js is loaded.
+ * less-compat checks this before running @plugin scripts (scripts must be run when plugin-js/Deno is present).
+ */
+export const JESS_PLUGIN_JS_GLOBAL = '__JESS_PLUGIN_JS_AVAILABLE__';
+
+declare let globalThis: { [k: string]: unknown };
+if (typeof globalThis !== 'undefined') {
+  globalThis[JESS_PLUGIN_JS_GLOBAL] = true;
+}
+
 const jsPlugin = ((opts?: JsPluginOptions) => {
   return new JsPlugin(opts);
 }) satisfies Plugin;

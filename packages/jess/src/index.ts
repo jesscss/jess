@@ -220,6 +220,14 @@ export class Compiler {
         pluginMap.set(jsPlugin.name, jsPlugin);
       }
     }
+    // Eagerly load plugin-js when present so it sets globalThis (less-compat @plugin requires it to be present)
+    if (pluginMap.has('js')) {
+      try {
+        createRequire(import.meta.url)('@jesscss/plugin-js');
+      } catch {
+        // optional: plugin-js may be missing; @plugin will throw at runtime if used
+      }
+    }
     // Pass output options and compile options to Context
     // Use getOptions result which includes properly merged output options
     const contextOptions = {

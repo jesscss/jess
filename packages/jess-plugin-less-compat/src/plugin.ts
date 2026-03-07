@@ -2,15 +2,70 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { AbstractPlugin, Any, Collection, Declaration, Dimension, type Plugin, type Visitor, type Node, F_VISIBLE } from '@jesscss/core';
-import { toLessNode, fromLessNode } from './transform/index.js';
+import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { getJessNodeFromProxy } from './transform/proxy.js';
 import type { LessVisitor } from './types.js';
 import { filterPlugins } from './plugin-utils.js';
 import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures.js';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
+/** Global key set by @jesscss/plugin-js when loaded. @plugin scripts require plugin-js (Deno) to be present. */
+const JESS_PLUGIN_JS_GLOBAL = '__JESS_PLUGIN_JS_AVAILABLE__';
+
+function assertPluginJsPresent(): void {
+  if (typeof globalThis === 'undefined' || !(globalThis as Record<string, unknown>)[JESS_PLUGIN_JS_GLOBAL]) {
+    throw new Error('@plugin script execution requires @jesscss/plugin-js (scripts must be run via Deno). Install @jesscss/plugin-js.');
+  }
+}
+
 const isThenable = (v: any): v is PromiseLike<any> =>
   !!v && (typeof v === 'object' || typeof v === 'function') && typeof (v as any).then === 'function';
+
+/**
+ * Wrap a Less plugin function and add it to a Jess function registry.
+ * Used so that @plugin-loaded functions register into the Rules that contain the @plugin.
+ * Conversion of Less return values to Jess uses the shared fromLessPluginReturnValue.
+ */
+function addToJessRegistry(jessRegistry: any, name: string, func: any): void {
+  if (!jessRegistry || typeof jessRegistry.add !== 'function') {
+    return;
+  }
+  try {
+    name = name.toLowerCase();
+    const wrapped = function(this: any, ...args: any[]) {
+      const maybeEvaldArgs = args.map((arg) => {
+        if (arg instanceof Any || arg instanceof Declaration || arg instanceof Dimension) {
+          // Fast path for common nodes that are safe to eval normally via .eval
+        }
+        if (arg instanceof Object && arg && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
+          try {
+            return (arg as any).eval(this);
+          } catch {
+            return arg;
+          }
+        }
+        return arg;
+      });
+
+      const call = (finalArgs: any[]) => func.apply(this, finalArgs);
+
+      const maybeNeedsAwait = maybeEvaldArgs.some(isThenable);
+      const result = maybeNeedsAwait
+        ? Promise.all(maybeEvaldArgs.map(a => isThenable(a) ? a : Promise.resolve(a))).then(call)
+        : call(maybeEvaldArgs);
+
+      const statementContext = this?.caller?.parent?.type === 'Rules';
+      const convertResult = (r: unknown) =>
+        fromLessPluginReturnValue(r, { statementContext });
+
+      return isThenable(result) ? (result as Promise<unknown>).then(convertResult) : convertResult(result);
+    };
+    Object.assign(wrapped, func);
+    jessRegistry.add(name, wrapped);
+  } catch (e) {
+    void e;
+  }
+}
 
 export interface LessCompatPluginOptions {
   /**
@@ -190,127 +245,10 @@ export class LessCompatPlugin extends AbstractPlugin {
 
         // Less.js API methods
         add(name: string, func: any): void {
-          // Convert to lowercase for Less.js compatibility
           name = name.toLowerCase();
           data[name] = func;
-
-          // If we have a real Jess registry, also add to it
           if (currentRealRegistry) {
-            try {
-              /**
-               * Less.js evaluates function args before calling plugin functions.
-               * Jess's raw-js-function calls (no defineFunction metadata) pass args through,
-               * so we wrap plugin functions to eagerly eval Node args for compatibility.
-               */
-              // Wrap the Less plugin function so it can return Less nodes,
-              // but Jess evaluation receives primitives / Jess nodes.
-              const wrapped = function(this: any, ...args: any[]) {
-                const maybeEvaldArgs = args.map((arg) => {
-                  if (arg instanceof Any || arg instanceof Declaration || arg instanceof Dimension) {
-                    // Fast path for common nodes that are safe to eval normally via .eval
-                  }
-                  if (arg instanceof Object && arg && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
-                    try {
-                      return (arg as any).eval(this);
-                    } catch {
-                      return arg;
-                    }
-                  }
-                  return arg;
-                });
-
-                const call = (finalArgs: any[]) => func.apply(this, finalArgs);
-
-                const maybeNeedsAwait = maybeEvaldArgs.some(isThenable);
-                const result = maybeNeedsAwait
-                  ? Promise.all(maybeEvaldArgs.map(a => isThenable(a) ? a : Promise.resolve(a))).then(call)
-                  : call(maybeEvaldArgs);
-
-                // Avoid core's cast() path (which uses createRequire) by returning Nodes directly
-                // for primitives produced by Less plugins.
-                const convertResult = (r: any) => {
-                  if (typeof r === 'number') {
-                    // Less prints raw JS numbers without rounding here (e.g. Math.PI)
-                    return new Any(String(r));
-                  }
-                  // Less plugins often return booleans as "no output" sentinels when called as a statement.
-                  // If called in a Rules list (i.e. `fn(...);`), drop the output.
-                  if ((r === true || r === false) && this?.caller?.parent?.type === 'Rules') {
-                    return undefined;
-                  }
-                  if (r && typeof r === 'object' && typeof (r as any).type === 'string') {
-                    const t = (r as any).type;
-                    if (t === 'Anonymous') {
-                      return (r as any).value;
-                    }
-                    if (t === 'Quoted') {
-                      // Return a quoted string primitive; Jess will preserve quoting when needed
-                      return String((r as any).value);
-                    }
-                    if (t === 'Dimension' && typeof (r as any).value === 'number') {
-                      const n = (r as any).value as number;
-                      const u = typeof (r as any).unit === 'string' ? (r as any).unit : '';
-                      return new Dimension({ number: n, unit: u || undefined });
-                    }
-                    if (t === 'Declaration') {
-                      const prop = String((r as any).name ?? '');
-                      const val = (r as any).value;
-                      const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
-                        ? val.value
-                        : String(val);
-                      return `${prop}: ${valueStr};`;
-                    }
-                    if (t === 'DetachedRuleset') {
-                      const ruleset = (r as any).ruleset;
-                      const rules = (ruleset && Array.isArray(ruleset.rules)) ? ruleset.rules : [];
-                      const nodes: Node[] = [];
-                      for (const rr of rules) {
-                        if (rr && typeof rr === 'object' && rr.type === 'Declaration') {
-                          const prop = String(rr.name ?? '');
-                          const val = (rr as any).value;
-                          const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
-                            ? val.value
-                            : String(val);
-                          const decl = new Declaration({
-                            name: new Any(prop, { role: 'property' as any }),
-                            value: new Any(String(valueStr))
-                          });
-                          // Avoid carrying any incidental whitespace into serialization.
-                          decl.pre = 0;
-                          decl.post = 0;
-                          nodes.push(decl);
-                        }
-                      }
-                      return new Collection(nodes);
-                    }
-                    if (t === 'AtRule') {
-                      const n = String((r as any).name);
-                      const v = String((r as any).value);
-                      const line = `${n} ${v};`;
-                      if (n === '@charset') {
-                        return new Any(line, { role: 'charset' as any });
-                      }
-                      return new Any(line);
-                    }
-                  }
-                  if (r && typeof r === 'object' && typeof (r as any).toCSS === 'function') {
-                    try {
-                      return (r as any).toCSS();
-                    } catch {
-                      // ignore
-                    }
-                  }
-                  return r;
-                };
-
-                return isThenable(result) ? (result as Promise<any>).then(convertResult) : convertResult(result);
-              };
-              // Preserve Less.js function metadata flags if present
-              Object.assign(wrapped, func);
-              currentRealRegistry.add(name, wrapped);
-            } catch (e) {
-              void e;
-            }
+            addToJessRegistry(currentRealRegistry, name, func);
           }
         },
 
@@ -397,14 +335,79 @@ export class LessCompatPlugin extends AbstractPlugin {
       });
     };
 
+    /**
+     * Create a mock function registry that forwards add/addMultiple/get to the given
+     * Jess registry. Used when loading @plugin scripts so functions register into the
+     * Rules that contain the @plugin directive.
+     */
+    const createScopedFunctionRegistry = (jessRegistry: any) => {
+      const data: Record<string, any> = {};
+      const registry = {
+        add(name: string, func: any): void {
+          name = name.toLowerCase();
+          data[name] = func;
+          addToJessRegistry(jessRegistry, name, func);
+        },
+        addMultiple(functions: Record<string, any>): void {
+          Object.keys(functions).forEach((name) => {
+            this.add(name, functions[name]);
+          });
+        },
+        get(name: string): any {
+          name = name.toLowerCase();
+          if (data[name]) {
+            return data[name];
+          }
+          try {
+            return jessRegistry?.get?.(name);
+          } catch {
+            return undefined;
+          }
+        }
+      };
+      return new Proxy(registry, {
+        get(target, prop) {
+          if (prop in target) {
+            return target[prop as keyof typeof target];
+          }
+          if (typeof prop === 'string' && /^[A-Z]/.test(prop)) {
+            if (LessTreeConstructors[prop]) {
+              return LessTreeConstructors[prop];
+            }
+            return function(...args: any[]) {
+              return {
+                value: null,
+                type: prop,
+                name: args[0] || '',
+                args: args.slice(1) || [],
+                index: 0,
+                fileInfo: {},
+                accept: function(visitor: any) {
+                  return visitor.visit(this);
+                }
+              };
+            };
+          }
+          return function() {
+            return { value: null };
+          };
+        }
+      });
+    };
+
     const functionRegistry = createFunctionRegistry();
     const mockLess = createLessMock(functionRegistry);
     const pluginManager = new LessPluginManagerClass(mockLess, true);
     this._lessPluginManager = pluginManager;
 
-    const loadPluginSource = (fullPath: string, registerPlugin: (plugin: any) => void) => {
+    const loadPluginSource = (fullPath: string, registerPlugin: (plugin: any) => void, targetJessRegistry?: any) => {
+      assertPluginJsPresent();
       const contents = fs.readFileSync(fullPath, 'utf8');
       const localModule = { exports: {} as any };
+      // When loading from an @plugin directive, pass a mock that registers to the Rules containing that @plugin
+      const functions = targetJessRegistry != null
+        ? createScopedFunctionRegistry(targetJessRegistry)
+        : functionRegistry;
       const loader = new Function(
         'module',
         'require',
@@ -419,7 +422,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         localModule,
         createRequire(fullPath),
         registerPlugin,
-        functionRegistry,
+        functions,
         LessTreeConstructors,
         mockLess,
         { filename: fullPath }
@@ -430,12 +433,12 @@ export class LessCompatPlugin extends AbstractPlugin {
       };
     };
 
-    const requirePluginFile = (fullPath: string) => {
+    const requirePluginFile = (fullPath: string, targetJessRegistry?: any) => {
       const registeredPlugins: any[] = [];
       const registerPlugin = (plugin: any) => {
         registeredPlugins.push(plugin);
       };
-      const loaded = loadPluginSource(fullPath, registerPlugin);
+      const loaded = loadPluginSource(fullPath, registerPlugin, targetJessRegistry);
       return {
         module: loaded.module,
         registered: registeredPlugins.length > 0 ? registeredPlugins[registeredPlugins.length - 1] : loaded.registered
@@ -864,7 +867,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                     const pluginFactory = this.opts.pluginRegistry[pluginPath];
                     pluginInstance = typeof pluginFactory === 'function' ? pluginFactory() : pluginFactory;
                   } else if (isLocalPath && resolvedLocalPluginFile) {
-                    const { module: pluginModule, registered } = requirePluginFile(resolvedLocalPluginFile);
+                    const { module: pluginModule, registered } = requirePluginFile(resolvedLocalPluginFile, currentRealRegistry);
                     const PluginClass = pluginModule.default || pluginModule;
                     pluginInstance = registered || PluginClass;
                   } else if (!isLocalPath && this.opts.autoLoadPlugins !== false) {
@@ -883,7 +886,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                         if (resolvedPath) {
                           try {
                             // Load the module using require
-                            const { module: pluginModule, registered } = requirePluginFile(resolvedPath);
+                            const { module: pluginModule, registered } = requirePluginFile(resolvedPath, currentRealRegistry);
                             // Get the plugin - could be default export or direct export
                             let PluginClass = pluginModule.default || pluginModule;
                             pluginInstance = registered || PluginClass;
@@ -902,7 +905,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                           // Try to require the plugin from node_modules
                           // This uses Node's module resolution (similar to Less.js)
                           if (typeof require !== 'undefined') {
-                            const { module: pluginModule, registered } = requirePluginFile(fullName);
+                            const { module: pluginModule, registered } = requirePluginFile(fullName, currentRealRegistry);
                             // Get the plugin - could be default export or direct export
                             let PluginClass = pluginModule.default || pluginModule;
                             // Less.js pattern: if plugin is a function, instantiate it with new (no args)

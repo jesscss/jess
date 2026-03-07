@@ -220,4 +220,50 @@ describe('@jesscss/plugin-js security', () => {
       await expect(testCase.run(), `case failed: ${testCase.name}`).resolves.toBe(testCase.expected);
     }
   });
+
+  it('denies reading system file /etc/hosts from Deno context', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'read-hosts.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'export function readEtcHosts(): string {',
+        '  try {',
+        '    return Deno.readTextFileSync("/etc/hosts");',
+        '  } catch (e) {',
+        '    return "DENIED";',
+        '  }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.readEtcHosts()).resolves.toBe('DENIED');
+  });
+
+  it('denies access to process (Node global) from Deno context', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'process-probe.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'export function getProcessEnv(): string {',
+        '  try {',
+        '    return (typeof (globalThis as any).process !== "undefined"',
+        '      ? (globalThis as any).process.env?.HOME ?? "LEAKED"',
+        '      : "DENIED");',
+        '  } catch {',
+        '    return "DENIED";',
+        '  }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.getProcessEnv()).resolves.toBe('DENIED');
+  });
 });
