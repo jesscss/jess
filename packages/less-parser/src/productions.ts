@@ -40,7 +40,6 @@ import {
   Quoted,
   AtRule,
   Interpolated,
-  InterpolatedReference,
   InterpolatedSelector,
   Reference,
   Dimension,
@@ -474,9 +473,9 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
   while (result = interpolatedRegex.exec(name)) {
     const [match, propOrVar, value] = result;
     source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = new InterpolatedReference(
-      value!,
-      { referenceType: propOrVar === '$' ? 'property' : 'variable' },
+    const reference = new Reference(
+      { key: value! },
+      { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' },
       location,
       context
     );
@@ -2506,9 +2505,9 @@ export function varReference(this: P, T: TokenMap) {
                 token,
                 'property-in-unknown-value'
               );
-              return new InterpolatedReference(
-                token.image.slice(1),
-                { referenceType: 'property' },
+              return new Reference(
+                { key: token.image.slice(1) },
+                { type: 'property', role: 'ident' },
                 $.getLocationInfo(token),
                 this.context
               );
@@ -2525,7 +2524,7 @@ export function varReference(this: P, T: TokenMap) {
             const type: 'variable' | 'property' = raw.startsWith('@') ? 'variable' : 'property';
             const key = getInterpolatedOrString(raw);
             if (ctx.inCustomPropertyValue && typeof key === 'string') {
-              return new InterpolatedReference(key, undefined, $.getLocationInfo(token), this.context);
+              return new Reference({ key }, { type: 'variable', role: 'ident' }, $.getLocationInfo(token), this.context);
             }
             if (typeof key === 'string') {
               return new Reference(key, { type }, $.getLocationInfo(token), this.context);
@@ -2545,9 +2544,9 @@ export function varReference(this: P, T: TokenMap) {
                 token,
                 'variable-in-unknown-value'
               );
-              return new InterpolatedReference(
-                token.image.slice(1),
-                { referenceType: 'variable' },
+              return new Reference(
+                { key: token.image.slice(1) },
+                { type: 'variable', role: 'ident' },
                 $.getLocationInfo(token),
                 this.context
               );
@@ -3004,9 +3003,9 @@ function processStringInterpolation(value: string, location: LocationInfo, conte
       }
     } else {
       // Simple interpolation reference
-      replacements.push(new InterpolatedReference(
-        match.content,
-        { referenceType: match.prefix === '$' ? 'property' : 'variable' },
+      replacements.push(new Reference(
+        { key: match.content },
+        { type: match.prefix === '$' ? 'property' : 'variable', role: 'ident' },
         location,
         context
       ));

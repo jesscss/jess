@@ -70,7 +70,6 @@ export * from './reference.js';
 export * from './import-style.js';
 export * from './import-js.js';
 export * from './interpolated.js';
-export * from './interpolated-reference.js';
 export * from './selector-interpolated.js';
 export * from './default-guard.js';
 export * from './rest.js';

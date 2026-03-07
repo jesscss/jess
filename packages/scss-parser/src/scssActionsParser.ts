@@ -10,7 +10,7 @@ import {
 } from '@jesscss/css-parser';
 
 import type { IToken } from 'chevrotain';
-import { InterpolatedReference, Reference, type Node } from '@jesscss/core';
+import { Reference, type Node } from '@jesscss/core';
 
 import type { ScssTokenType, ScssExtraTokenType } from './scssTokens.js';
 import * as productions from './productions.js';
@@ -126,9 +126,9 @@ export class ScssActionsParser extends CssActionsParser {
   protected override processValueToken(token: IToken, ctx?: RuleContext) {
     if (token.tokenType.name === 'DollarVariable') {
       if (ctx?.inCustomPropertyValue) {
-        return new InterpolatedReference(
-          token.image.slice(1),
-          undefined,
+        return new Reference(
+          { key: token.image.slice(1) },
+          { type: 'variable', role: 'ident' },
           this.getLocationInfo(token),
           this.context
         );

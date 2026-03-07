@@ -1,9 +1,10 @@
-import { iref, ref, rules, vardecl, decl, any } from '../index.js';
+import { ref, rules, vardecl, decl, any } from '../index.js';
 import { Context } from '../../context.js';
 
-describe('interpolated-reference', () => {
+/** Reference with role=ident serializes as $[ident] (interpolation slot form) */
+describe('Reference role=ident (interpolation slot)', () => {
   it('serializes as $[ident]', () => {
-    const node = iref('ident');
+    const node = ref({ key: 'ident' }, { type: 'variable', role: 'ident' });
     expect(`${node}`).toBe('$[ident]');
   });
 
@@ -16,7 +17,7 @@ describe('interpolated-reference', () => {
       }),
       decl({
         name: any('bar'),
-        value: iref('foo')
+        value: ref({ key: 'foo' }, { type: 'variable', role: 'ident' })
       })
     ]);
     const evald = await node.eval(context);
@@ -26,11 +27,12 @@ describe('interpolated-reference', () => {
   });
 
   it('does not enforce identifier regex validation', () => {
-    expect(`${iref('1bad')}`).toBe('$[1bad]');
+    const node = ref({ key: '1bad' }, { type: 'variable', role: 'ident' });
+    expect(`${node}`).toBe('$[1bad]');
   });
 
   it('preserves the key through clone and copy', () => {
-    const node = iref('theme');
+    const node = ref({ key: 'theme' }, { type: 'variable', role: 'ident' });
     expect(`${node.clone()}`).toBe('$[theme]');
     expect(`${node.copy()}`).toBe('$[theme]');
   });

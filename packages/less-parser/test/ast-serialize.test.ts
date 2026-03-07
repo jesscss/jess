@@ -227,7 +227,7 @@ describe('serializeTypes coverage', () => {
             source: '.${INTERPOLATION_PLACEHOLDER}-button'
             replacements:
             [
-              (InterpolatedReference [role=ident]
+              (Reference [role=ident]
                 key: 'prefix'
               )
             ]
@@ -245,7 +245,7 @@ describe('serializeTypes coverage', () => {
           source: '${INTERPOLATION_PLACEHOLDER}'
           replacements:
           [
-            (InterpolatedReference [role=ident]
+            (Reference [role=ident]
               key: 'prop'
             )
           ]
@@ -261,7 +261,7 @@ describe('serializeTypes coverage', () => {
                   source: '${INTERPOLATION_PLACEHOLDER}'
                   replacements:
                   [
-                    (InterpolatedReference [role=ident]
+                    (Reference [role=ident]
                       key: 'colorVar'
                     )
                   ]
@@ -783,7 +783,7 @@ test('variable reference with accessor', () => {
                 source: '${INTERPOLATION_PLACEHOLDER}'
                 replacements:
                 [
-                  (InterpolatedReference [role=ident]
+                  (Reference [role=ident]
                     key: 'prop'
                   )
                 ]

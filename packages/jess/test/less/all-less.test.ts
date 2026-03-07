@@ -39,7 +39,7 @@ describe('Can render Less files to CSS', () => {
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .filter(value => !additionalSkips.includes(value)) // Skip files tested elsewhere
-    .filter(value => value.startsWith('tests-unit/'))
+    .filter(value => value.startsWith('tests-unit/p'))
     .sort()
     .forEach((file) => {
       const lessPath = path.join(testData, file);

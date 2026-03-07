@@ -290,7 +290,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // @plugin is handled by the Less compatibility plugin (preEval). If we reach eval and it's still visible, no plugin processed it.
     const atName = String(node.value?.name?.valueOf?.() ?? '');
     if (atName === '@plugin' && node.visible) {
-      throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less).');
+      throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
     }
 
     // Check if this is a root-only at-rule that should bubble to root

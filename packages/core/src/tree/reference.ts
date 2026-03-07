@@ -112,7 +112,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { type = 'variable', resolution, fallbackValue } = this.options;
+    let { type = 'variable', resolution, fallbackValue, role } = this.options;
     let { target, key } = this.value;
     const emitKey = (k: any) => {
       if (typeof k === 'string' || typeof k === 'number') {
@@ -132,6 +132,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       w.add('^');
     } else if (resolution === 'call-time') {
       w.add('~');
+    }
+    if (role === 'ident' && (type === 'variable' || type === 'property') && !target) {
+      w.add('$[');
+      emitKey(key);
+      w.add(']');
+      return w.getSince(mark);
     }
     switch (type) {
       case 'index':

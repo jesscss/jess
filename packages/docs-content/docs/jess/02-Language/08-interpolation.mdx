@@ -7,7 +7,7 @@ origin: jess
 Jess has two interpolation forms:
 
 - `$(...)` for full `Expression` interpolation.
-- `$[ident]` for identifier interpolation (`InterpolatedReference`).
+- `$[ident]` for identifier interpolation (`Reference` with `role: 'ident'`).
 
 Use `$[ident]` when the interpolation input is a single reference.
 Use `$(...)` when you need an actual expression.

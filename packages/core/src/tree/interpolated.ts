@@ -1,12 +1,12 @@
 import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node.js';
 import { Any, type AnyRole, type AnyOptions } from './any.js';
 import type { Context } from '../context.js';
-import { isNode } from './util/is-node.js';
 import { BasicSelector } from './selector-basic.js';
-import { SelectorList } from './selector-list.js';
 import { CompoundSelector } from './selector-compound.js';
-import { PseudoSelector } from './selector-pseudo.js';
 import type { Selector } from './selector.js';
+import type { Reference } from './reference.js';
+import { PseudoSelector } from './selector-pseudo.js';
+import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -15,37 +15,59 @@ import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable
 export const INTERPOLATION_PLACEHOLDER = '%%';
 const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
 
-function shouldWrapSelectorInIs(selector: Selector): boolean {
-  return !isNode(selector, 'BasicSelector') && !isNode(selector, 'CompoundSelector');
+function getInterpolationSlotKey(node: Node): string {
+  if (isNode(node, 'Reference')) {
+    const k = (node as Reference).value.key;
+    if (typeof k === 'string') {
+      return k;
+    }
+    if (typeof k === 'number') {
+      return String(k);
+    }
+    if (Array.isArray(k)) {
+      return k.join('');
+    }
+    if (k && typeof k === 'object' && 'valueOf' in k) {
+      return String((k as { valueOf(): unknown }).valueOf());
+    }
+    return String(k ?? '');
+  }
+  return String((node as { value?: { key?: unknown } }).value?.key ?? (node as { valueOf?(): string }).valueOf?.() ?? '');
 }
 
-function normalizeCapturedSelector(selector: Selector): Selector {
-  const copy = selector.copy(true) as Selector;
-  if (!shouldWrapSelectorInIs(copy)) {
-    return copy;
+function shouldWrapSelectorInIs(replacement: Node): boolean {
+  if (isNode(replacement, 'SelectorList')) {
+    return true;
   }
-  const wrapped = PseudoSelector.create({ name: ':is', arg: copy });
-  return wrapped.inherit(selector) as Selector;
+  if (isNode(replacement, 'ComplexSelector')) {
+    return true;
+  }
+  if (replacement.type === 'SelectorCapture') {
+    const arg = (replacement as { value: Node }).value;
+    return isNode(arg, 'SelectorList') || isNode(arg, 'ComplexSelector');
+  }
+  const str = String(replacement.valueOf?.() ?? replacement);
+  return str.includes(',');
+}
+
+function getIsWrapperArg(replacement: Node): Node {
+  if (replacement.type === 'SelectorCapture') {
+    return (replacement as { value: Node }).value;
+  }
+  return replacement;
+}
+
+function serializeGeneratedIsWrapper(replacement: Node): string {
+  const arg = getIsWrapperArg(replacement);
+  const pseudo = PseudoSelector.create({ name: ':is', arg });
+  pseudo.generated = true;
+  return pseudo.toTrimmedString().replace(/\n\s*/g, ' ');
 }
 
 export type InterpolatedValue = {
   /** String with INTERPOLATION_PLACEHOLDER placeholders */
   source: string;
   replacements: Node[];
-};
-
-const shouldTraceInterpolatedSource = (source: string): boolean => (
-  source.includes('import-')
-  || source.includes('item-')
-  || source.includes('a.png')
-);
-
-const traceInterpolated = (
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-  hypothesisId: string
-): void => {
 };
 
 /**
@@ -90,10 +112,13 @@ export class Interpolated<
     return this.value.source;
   }
 
-  replace(replacements: Node[]): string {
+  replace(replacements: Node[], options?: PrintOptions): string {
     let { source } = this.value;
     let output = source;
     let i = 0;
+    let printOpts = getPrintOptions(options);
+    let w = printOpts!.writer;
+    INTERPOLATION_PLACEHOLDER_REGEXP.lastIndex = 0;
     output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
       let replacement: Node | undefined;
       try {
@@ -103,27 +128,16 @@ export class Interpolated<
       }
       let result = '';
       if (replacement) {
-        try {
-          result = String(replacement.valueOf());
-          if (shouldTraceInterpolatedSource(source)) {
-            traceInterpolated(
-              'packages/core/src/tree/interpolated.ts:94',
-              'interpolated replace value',
-              {
-                source,
-                replacementType: replacement.type,
-                replacementValueOf: result,
-                replacementRendered: replacement.toTrimmedString()
-              },
-              'H1'
-            );
-          }
-        } catch (error: unknown) {
-          throw error;
+        if (isNode(replacement, 'Reference')) {
+          result = '$[' + getInterpolationSlotKey(replacement) + ']';
+        } else {
+          result = w.capture(() => replacement!.toTrimmedString(printOpts));
+        }
+        if (!isNode(replacement, 'Reference')) {
+          result = result.trim();
         }
       }
-      // Trim whitespace to avoid issues with Sequence nodes that have pre/post spacing
-      return result.trim();
+      return result;
     });
 
     return output;
@@ -133,7 +147,7 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const result = this.replace(this.value.replacements);
+    const result = this.replace(this.value.replacements, options);
     w.add(result, this);
     return w.getSince(mark);
   }
@@ -144,29 +158,35 @@ export class Interpolated<
    */
   createSelector() {
     let { source, replacements } = this.value;
-    let segments = source.split(INTERPOLATION_PLACEHOLDER);
+    const segments = source.split(INTERPOLATION_PLACEHOLDER);
+    const isWholeSelectorInterpolation = (
+      replacements.length === 1
+      && segments.length === 2
+      && segments[0]!.trim() === ''
+      && segments[1]!.trim() === ''
+    );
+    // For full-selector interpolation, collapse directly to the resolved selector/text.
+    // Generated :is wrappers are only needed for embedded interpolation fragments.
+    if (isWholeSelectorInterpolation) {
+      const replacement = replacements[0]!;
+      if (!replacement.evaluated) {
+        throw new Error('Cannot create selector from un-evaluated interpolated node');
+      }
+      if (isNode(replacement, 'Selector')) {
+        return replacement.copy(true).inherit(this) as Selector;
+      }
+      return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);
+    }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
       if (!replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
-      if (replacement.type === 'SelectorCapture') {
-        const captured = (replacement as { value: Selector }).value;
-        const isWholeSelectorInterpolation = (
-          replacements.length === 1
-          && segments.length === 2
-          && (segments[0] ?? '') === ''
-          && (segments[1] ?? '') === ''
-        );
-        if (isWholeSelectorInterpolation) {
-          // Return the selector as-is so it serializes normally (e.g. SelectorList → ".a, .b, .c").
-          return (captured.copy(true) as Selector).inherit(this);
-        }
-        const normalized = normalizeCapturedSelector(captured);
-        output += (segments[i] ?? '') + normalized.toTrimmedString();
-        continue;
+      let part = replacement.toTrimmedString();
+      if (shouldWrapSelectorInIs(replacement)) {
+        part = serializeGeneratedIsWrapper(replacement);
       }
-      output += (segments[i] ?? '') + replacement.toTrimmedString();
+      output += (segments[i] ?? '') + part;
     }
     // Preserve any trailing literal segment after the last interpolation placeholder.
     if (segments.length > replacements.length) {
@@ -227,38 +247,9 @@ export class Interpolated<
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           replacements[idx] = result;
-          if (shouldTraceInterpolatedSource(node.value.source)) {
-            traceInterpolated(
-              'packages/core/src/tree/interpolated.ts:205',
-              'interpolated evaluated replacement',
-              {
-                source: node.value.source,
-                originalType: n.type,
-                resultType: result.type,
-                resultValueOf: String(result.valueOf()),
-                resultRendered: result.toTrimmedString()
-              },
-              'H2'
-            );
-          }
         });
       }
       replacements[idx] = out as Node;
-      if (shouldTraceInterpolatedSource(node.value.source)) {
-        const result = out as Node;
-        traceInterpolated(
-          'packages/core/src/tree/interpolated.ts:220',
-          'interpolated evaluated replacement',
-          {
-            source: node.value.source,
-            originalType: n.type,
-            resultType: result.type,
-            resultValueOf: String(result.valueOf()),
-            resultRendered: result.toTrimmedString()
-          },
-          'H2'
-        );
-      }
       return undefined;
     });
     if (isThenable(maybe)) {

@@ -12,6 +12,7 @@ describe('Less full-suite (minus invalid files)', () => {
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
+    .filter(value => !value.includes('-REMOVED'))
     .sort()
     .forEach((file) => {
       it(`${file}`, () => {

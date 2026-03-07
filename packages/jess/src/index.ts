@@ -134,6 +134,58 @@ const maybeLoadJsPlugin = (
   }
 };
 
+const maybeLoadConfiguredPlugin = (
+  specifier: string
+): (PluginInterface & { prewarm?: () => Promise<void> }) | undefined => {
+  let pluginPromise: Promise<PluginInterface> | undefined;
+  let loadedPlugin: PluginInterface | undefined;
+  const getPlugin = async (): Promise<PluginInterface> => {
+    if (!pluginPromise) {
+      pluginPromise = import(specifier).then((mod: any) => {
+        const pluginFactoryOrInstance = mod?.default ?? mod?.lessCompatPlugin ?? mod?.plugin ?? mod;
+        const plugin = typeof pluginFactoryOrInstance === 'function'
+          ? pluginFactoryOrInstance()
+          : pluginFactoryOrInstance;
+        if (!plugin || typeof plugin !== 'object' || typeof plugin.name !== 'string') {
+          throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
+        }
+        loadedPlugin = plugin as PluginInterface;
+        return loadedPlugin;
+      });
+    }
+    return pluginPromise;
+  };
+
+  const base: Record<string, any> = {
+    name: specifier,
+    prewarm: async () => {
+      const plugin = await getPlugin();
+      if (typeof (plugin as any).prewarm === 'function') {
+        await (plugin as any).prewarm();
+      }
+    }
+  };
+
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      if (prop === 'name' && loadedPlugin?.name) {
+        return loadedPlugin.name;
+      }
+      if (Reflect.has(target, prop)) {
+        return Reflect.get(target, prop, receiver);
+      }
+      if (!loadedPlugin) {
+        return undefined;
+      }
+      const value = (loadedPlugin as any)[prop];
+      if (typeof value === 'function') {
+        return value.bind(loadedPlugin);
+      }
+      return value;
+    }
+  }) as PluginInterface & { prewarm?: () => Promise<void> };
+};
+
 export class Compiler {
   constructor(
     public opts: ConfigOptions = {
@@ -205,9 +257,17 @@ export class Compiler {
     if (plugins) {
       for (const plugin of plugins) {
         if (typeof plugin === 'string') {
-          // String key - could be resolved from a plugin registry in the future
-          // For now, we'll skip string keys as they need to be resolved elsewhere
-          continue;
+          if (plugin === '@jesscss/plugin-js') {
+            const jsPlugin = maybeLoadJsPlugin(jsPluginConfig);
+            if (jsPlugin) {
+              pluginMap.set(jsPlugin.name, jsPlugin);
+            }
+            continue;
+          }
+          const loadedPlugin = maybeLoadConfiguredPlugin(plugin);
+          if (loadedPlugin) {
+            pluginMap.set(plugin, loadedPlugin);
+          }
         } else {
           // PluginInterfaceBase instance - cast to PluginInterface (they're compatible)
           pluginMap.set(plugin.name, plugin as PluginInterface);
@@ -394,6 +454,14 @@ export class Compiler {
         }
         return result;
       };
+
+      // Eagerly initialize lazy configured plugins before parsing/evaluation so
+      // parse/import hooks and visitors are available from the first file.
+      for (const plugin of context.plugins) {
+        if (typeof (plugin as any).prewarm === 'function') {
+          await (plugin as any).prewarm();
+        }
+      }
 
       const { node } = await context.getTree(filePath);
       const preEvaldTree = applyPreEvalVisitors(node, filePath);

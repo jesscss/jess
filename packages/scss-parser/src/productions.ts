@@ -20,7 +20,6 @@ import {
   Declaration,
   Extend,
   Interpolated,
-  InterpolatedReference,
   INTERPOLATION_PLACEHOLDER,
   type AssignmentType,
   Each,
@@ -154,7 +153,7 @@ function processScssStringInterpolation(
     const parsed = parseInterpolationExpression(match.content.trim());
     const simpleRef = asSingleVariableReference(parsed);
     if (simpleRef && typeof simpleRef.value.key === 'string') {
-      replacements.push(new InterpolatedReference(simpleRef.value.key, undefined, location, context));
+      replacements.push(new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, context));
     } else if (isNode(parsed, 'Reference')) {
       replacements.push(new Expression(parsed, undefined, location, context));
     } else {
@@ -214,11 +213,11 @@ function toNameInterpolationReplacement(
 ): Node {
   const simpleRef = asSingleVariableReference(expr);
   if (simpleRef && typeof simpleRef.value.key === 'string') {
-    return new InterpolatedReference(simpleRef.value.key, undefined, location, parser.context);
+    return new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, parser.context);
   }
   const tmpName = parser.nextTempVarName();
   parser.enqueuePendingNode(makePrivateTempVarDecl(parser, tmpName, expr, location));
-  return new InterpolatedReference(tmpName, undefined, location, parser.context);
+  return new Reference({ key: tmpName }, { type: 'variable', role: 'ident' }, location, parser.context);
 }
 
 function toDeclKey(node: Node): string {

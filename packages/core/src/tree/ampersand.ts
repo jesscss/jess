@@ -230,25 +230,21 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             }
           };
           const mergeTemplate = (baseSelector: Selector): Selector => {
-            const baseValues: string[] = [];
+            const baseSelectors: Selector[] = [];
             if (
               isNode(baseSelector, 'PseudoSelector')
               && baseSelector.value.name === ':is'
               && baseSelector.value.arg
               && isNode(baseSelector.value.arg, 'SelectorList')
             ) {
-              for (const item of baseSelector.value.arg.value) {
-                baseValues.push(item.toTrimmedString());
-              }
+              baseSelectors.push(...baseSelector.value.arg.value.map(item => item as Selector));
+            } else if (isNode(baseSelector, 'SelectorList')) {
+              baseSelectors.push(...baseSelector.value.map(item => item as Selector));
             } else {
-              const base = baseSelector.toTrimmedString();
-              if (base.includes(',')) {
-                throw new SyntaxError(`Invalid ampersand merge template "${appendValue}" with parent selector "${base}"`);
-              } else {
-                baseValues.push(base);
-              }
+              baseSelectors.push(baseSelector);
             }
-            const merged = baseValues.map((value) => {
+            const merged = baseSelectors.map((item) => {
+              const value = item.toTrimmedString();
               assertValidTemplateJoin(appendValue, value);
               return new BasicSelector(appendValue.split('&').join(value)).inherit(baseSelector);
             });
