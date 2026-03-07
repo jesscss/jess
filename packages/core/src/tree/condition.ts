@@ -88,46 +88,6 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override evalNode(context: Context): MaybePromise<Bool> {
     let [left, op, right] = this.value;
     let negated = !!this.options?.negate;
-    const nodeContainsDefaultCall = (node: Node | undefined): boolean => {
-      if (!node) {
-        return false;
-      }
-      if (node.type === 'DefaultGuard') {
-        return true;
-      }
-      if (node.type === 'Any') {
-        const anyVal = String((node as any).valueOf?.() ?? (node as any).value ?? '');
-        if (anyVal === 'default' || anyVal === '??') {
-          return true;
-        }
-      }
-      if (node.type === 'Call') {
-        const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
-        if (callName === 'default' || callName === '??') {
-          return true;
-        }
-      }
-      const value = (node as any).value;
-      if (Array.isArray(value)) {
-        return value.some(item => item && typeof item === 'object' && 'type' in item && nodeContainsDefaultCall(item as Node));
-      }
-      if (value && typeof value === 'object') {
-        for (const entry of Object.values(value)) {
-          if (entry && typeof entry === 'object' && 'type' in (entry as any) && nodeContainsDefaultCall(entry as Node)) {
-            return true;
-          }
-          if (Array.isArray(entry)) {
-            for (const child of entry) {
-              if (child && typeof child === 'object' && 'type' in (child as any) && nodeContainsDefaultCall(child as Node)) {
-                return true;
-              }
-            }
-          }
-        }
-      }
-      return false;
-    };
-    const rightContainsDefault = nodeContainsDefaultCall(right);
 
     return pipe(
       () => left.eval(context),
@@ -165,22 +125,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         };
         a = normalizeDefaultCall(a);
         b = normalizeDefaultCall(b);
-        if (op === '=' && rightContainsDefault) {
-        }
-        if (op === '=') {
-          const leftVal = String(a.valueOf?.() ?? '');
-          const rightVal = String(b.valueOf?.() ?? '');
-          if (
-            leftVal.includes('default')
-            || rightVal.includes('default')
-            || leftVal.includes('??')
-            || rightVal.includes('??')
-          ) {
-          }
-        }
-        let compareResult = op === 'and' || op === 'or' ? null : a.compare(b);
         let result = Condition.getResult(a, b, op!);
-        const equalityMode = a.treeContext?.equalityMode ?? b.treeContext?.equalityMode ?? context.treeContext?.equalityMode ?? 'coerce';
         return new Bool(negated ? !result : result);
       }
     );

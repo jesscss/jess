@@ -108,17 +108,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
 
   const rulesToRender = rules.flatRules(true);
-  const selectorText = node.type === 'Ruleset'
-    ? String(node.value.selector?.valueOf?.() ?? '')
-    : '';
-  const traceImportantClass = node.type === 'Ruleset' && selectorText === '.class';
-  if (traceImportantClass) {
-    const renderSummary = rulesToRender.slice(0, 40).map((n: any) => ({
-      type: n.type,
-      key: isNode(n, 'Declaration') ? String(n.value.name?.valueOf?.() ?? '') : '',
-      head: String(n.valueOf?.() ?? '').slice(0, 40)
-    }));
-  }
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
@@ -279,30 +268,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
           && hasRepeatedExpandedSelectorAny
         ) {
           deferredExpandedChildren.push(n);
-          if (traceImportantClass) {
-          }
-          if (node.type === 'Ruleset' && selectorText.includes('wrap-selector')) {
-            const laterSummary = laterCandidates.slice(0, 8).map(later => ({
-              type: later.type,
-              head: String(later.valueOf?.() ?? '').slice(0, 30),
-              ownedByCurrentChild: sourceChainHas(later, (current) => {
-                if (current === n) {
-                  return true;
-                }
-                if (current?.type !== 'Ruleset') {
-                  return false;
-                }
-                const currentSelector = String(current.value?.selector?.valueOf?.() ?? '');
-                return currentSelector !== '' && currentSelector === childSelector;
-              })
-            }));
-          }
           continue;
         }
-        if (node.type === 'Ruleset' && selectorText.includes('wrap-selector')) {
-        }
-      }
-      if (traceImportantClass) {
       }
       const childOptions = {
         ...options,
@@ -369,7 +336,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     if (isNode(n, 'Declaration')) {
       pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-      const declName = n.value.name.valueOf();
       const declIn = pre + out;
       const hasEmptyValue = /:\s*$/.test(out);
       // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
@@ -401,8 +367,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (n.requiredSemi) {
       w.add(';');
     }
-    if (traceImportantClass) {
-    }
+
     w.add('\n');
     let post = w.capture(() => n.processPrePost('post', undefined, options));
 
@@ -441,8 +406,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (!childOut) {
       continue;
     }
-    if (traceImportantClass) {
-    }
+
     w.add(childOut, deferred);
   }
   options.referenceMode = previousReferenceMode;

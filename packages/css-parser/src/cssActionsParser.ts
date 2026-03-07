@@ -28,7 +28,6 @@ import {
   Any,
   type Nil
 } from '@jesscss/core';
-import type { CssErrorMessageProvider } from './cssErrorMessageProvider.js';
 import colors from 'color-name';
 
 const { isArray } = Array;
@@ -394,7 +393,7 @@ export class CssActionsParser extends AdvancedActionsParser {
 
   protected processValueToken(
     token: IToken,
-    ctx?: RuleContext
+    _ctx?: RuleContext
   ): Node {
     let tokValue = token.image;
     let tokType = token.tokenType;
@@ -470,33 +469,5 @@ export class CssActionsParser extends AdvancedActionsParser {
       result = new Any(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
     }
     return result;
-  }
-
-  /**
-   * Convenience helper to temporarily set context flags while invoking a subrule.
-   * - Saves current values for provided keys
-   * - Applies overrides via Object.assign
-   * - Invokes callback with the same ctx object
-   * - Restores only the provided keys to their previous values
-   */
-  public callSubRuleWith<T>(
-    ctx: RuleContext,
-    overrides: Partial<RuleContext>,
-    callback: (ctx: RuleContext) => T
-  ): T {
-    const keys = Object.keys(overrides) as Array<keyof RuleContext>;
-    const prev: Partial<RuleContext> = {};
-    for (const key of keys) {
-      prev[key] = ctx[key];
-    }
-    Object.assign(ctx, overrides);
-    try {
-      return callback(ctx);
-    } finally {
-      for (const key of keys) {
-        const oldVal = prev[key];
-        ctx[key] = oldVal;
-      }
-    }
   }
 }

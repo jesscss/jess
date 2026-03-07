@@ -299,7 +299,7 @@ export abstract class Registry<
     return candidates;
   }
 
-  find(keys: string | string[] | Set<string>, filterType?: string, options?: FindOptions): Type[] | Type | Array<{ value: Type; [key: string]: any }> | undefined {
+  find(keys: string | string[] | Set<string>, _filterType?: string, _options?: FindOptions): Type[] | Type | Array<{ value: Type; [key: string]: any }> | undefined {
     this.indexPendingItems();
     let candidates: Set<Type> | Type | undefined;
     if (isArray(keys) || keys instanceof Set) {
@@ -347,7 +347,6 @@ export class RulesetRegistry extends Registry<Ruleset> {
       if (!('keySet' in selector)) {
         continue;
       }
-      const selectorStr = selector.valueOf();
       const keySet = selector.keySet;
       for (const key of keySet) {
         const existing = index.get(key);
@@ -562,13 +561,11 @@ export class MixinRegistry extends Registry<
         // would not index. Use the ruleset's ownSelector (set in preEval before getImplicitSelector)
         // to index by the callable selector that was explicitly authored.
         if (keySetToUse !== undefined) {
-          let usedOwnSelectorFallback = false;
           if (
             keySetToUse.size === 0
             && ownSelector
             && !isNode(ownSelector, 'Nil')
           ) {
-            usedOwnSelectorFallback = true;
             const ownKeySet = (ownSelector as Selector).visibleKeySet;
             if (ownKeySet?.size) {
               const ownKeys = Array.from(ownKeySet);
@@ -743,12 +740,9 @@ export class MixinRegistry extends Registry<
     while (rules) {
       // Don't add to searchedRules yet - we'll add it after we finish searching (including children)
       let [startKey, ...search] = keyList;
-      const activeFile = String((context as any)?.treeContext?.file?.path ?? (context as any)?.treeContext?.file ?? '');
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
       const existing = registry.index.get(startKey!);
-      if (startKey === '.pick' || startKey === 'each') {
-      }
       // Resolve interpolated selector starts (e.g. "@{a2}") against current context
       // so unresolved-index keys can still match resolved call keys (e.g. ".foo").
       let resolvedInterpolatedStartEntries: Array<{ value: Mixin | Ruleset; match: string[] }> = [];
@@ -1250,8 +1244,6 @@ export class DeclarationRegistry extends Registry<Declaration> {
       registry.indexPendingItems();
       let set = registry.index.get(key);
       let list = set ? [...set] : undefined;
-      if (key === 'columns' || key === 'list' || key === 'v' || key === 'index') {
-      }
       if (list) {
         list = list.filter(
           n =>
@@ -1294,8 +1286,6 @@ export class DeclarationRegistry extends Registry<Declaration> {
               contextCursor = contextCursor.parent;
             }
             const isParamVar = isNode(result, 'VarDeclaration') && Boolean(result.options?.paramVar);
-            if (key === 'gender_') {
-            }
             if ((local || inContextScope) && rules === this.rules) {
               declCandidate.add(result);
               isPublic = true;
@@ -1361,8 +1351,6 @@ export class DeclarationRegistry extends Registry<Declaration> {
         }
         if (options && searchChildrenOptions.readonly) {
           options.readonly = true;
-        }
-        if (bestResult) {
         }
         return bestResult;
       }
