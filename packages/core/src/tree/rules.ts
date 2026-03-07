@@ -601,7 +601,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
-  registerNode(node: Node, options?: Record<string, any>, context?: Context) {
+  registerNode(node: Node, options?: Record<string, any>, _context?: Context) {
     if (isNode(node, 'Rules')) {
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
@@ -756,20 +756,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let n = rules.value[i]!;
         n.index = i;
       }
-      const trackedTopLevel = rules.value
-        .map(node => ({
-          type: node.type,
-          name: isNode(node, 'Mixin')
-            ? String((node as any).value?.name ?? '')
-            : isNode(node, 'Ruleset')
-              ? String((node as any).value?.selector?.valueOf?.() ?? '')
-              : isNode(node, 'Call')
-                ? String((node as any).value?.name?.valueOf?.() ?? '')
-                : ''
-        }))
-        .filter(item => item.name.includes('guard') || item.name.includes('deeper') || item.name.includes('mixin') || item.name.includes('lock'));
-      if (trackedTopLevel.length > 0) {
-      }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
         this.parent.adopt(rules);
@@ -861,26 +847,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
 
     const finish = () => {
-      const trackedAfterFirstPass = rules.value
-        .map((node) => {
-          const liveName = isNode(node, 'Mixin')
-            ? String((node as any).value?.name ?? '')
-            : isNode(node, 'Ruleset')
-              ? String((node as any).value?.selector?.valueOf?.() ?? '')
-              : isNode(node, 'Call')
-                ? String((node as any).value?.name?.valueOf?.() ?? '')
-                : '';
-          const sourceName = isNode(node, 'Ruleset')
-            ? String(((node as any).options?.ownSelector?.valueOf?.() ?? (node as any).sourceNode?.value?.selector?.valueOf?.() ?? ''))
-            : '';
-          return { type: node.type, liveName, sourceName };
-        })
-        .filter((item) => {
-          const key = `${item.liveName} ${item.sourceName}`;
-          return key.includes('guard') || key.includes('deeper') || key.includes('mixin') || key.includes('lock');
-        });
-      if (trackedAfterFirstPass.length > 0) {
-      }
       // If no dynamic nodes, we're done
       if (dynamicNodes.length === 0) {
         // Restore context after preEval is complete
@@ -954,7 +920,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Register a node if it's eligible for registration
    */
-  private _registerNodeIfEligible(rules: Rules, node: Node, context: Context) {
+  private _registerNodeIfEligible(rules: Rules, node: Node, _context: Context) {
     if (isNode(node, 'Declaration')) {
       rules.registerNode(node);
     } else if (isNode(node, 'Mixin')) {
@@ -974,19 +940,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let firstError: Error | undefined;
     let resolutionAttempts = 0;
     const MAX_RESOLUTION_ATTEMPTS = 5;
-    const trackedSummary = () => rules.value
-      .map((node) => {
-        const liveName = isNode(node, 'Mixin')
-          ? String((node as any).value?.name ?? '')
-          : isNode(node, 'Ruleset')
-            ? String((node as any).value?.selector?.valueOf?.() ?? '')
-            : isNode(node, 'Call')
-              ? String((node as any).value?.name?.valueOf?.() ?? '')
-              : '';
-        return { type: node.type, liveName };
-      })
-      .filter(item => item.liveName.includes('guard') || item.liveName.includes('deeper') || item.liveName.includes('mixin') || item.liveName.includes('lock'));
-
     const attemptResolution = (): MaybePromise<this> => {
       resolutionAttempts++;
       if (resolutionAttempts > MAX_RESOLUTION_ATTEMPTS) {
@@ -1194,25 +1147,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _buildEvalQueue(rules: Rules): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
     for (let item of rules) {
-      let [idx, rule] = item;
-      if (isNode(rule, ['Mixin', 'Ruleset', 'Call'])) {
-        const name = isNode(rule, 'Mixin')
-          ? String((rule as any).value?.name ?? '')
-          : isNode(rule, 'Ruleset')
-            ? String((rule as any).value?.selector?.valueOf?.() ?? '')
-            : String((rule as any).value?.name?.valueOf?.() ?? '');
-        if (name.includes('guard') || name.includes('deeper') || name.includes('mixin') || name.includes('lock')) {
-        }
-      }
-      if (isNode(rule, 'Rules')) {
-        const nested = rule.value ?? [];
-        const nestedSelectors = nested
-          .filter(n => isNode(n, 'Ruleset'))
-          .map((n: any) => String(n?.value?.selector?.valueOf?.() ?? ''))
-          .filter(s => s.includes('guard') || s.includes('deeper') || s.includes('mixin') || s.includes('lock'));
-        if (nestedSelectors.length > 0) {
-        }
-      }
+      let [, rule] = item;
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
       // Less variable-calls `@foo();` are parsed as Expression(Call(variable-ref)).
       // We *selectively* boost only those calls that "unlock mixins" (i.e. calling a variable whose
@@ -1259,62 +1194,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
-      const trackedInPriority = entries
-        .map(([, [idx, rule]]) => ({
-          idx,
-          type: String((rule as any)?.type ?? ''),
-          name: isNode(rule, 'Mixin')
-            ? String((rule as any).value?.name ?? '')
-            : isNode(rule, 'Ruleset')
-              ? String((rule as any).value?.selector?.valueOf?.() ?? '')
-              : isNode(rule, 'Call')
-                ? String((rule as any).value?.name?.valueOf?.() ?? '')
-                : ''
-        }))
-        .filter(item => item.name.includes('guard') || item.name.includes('deeper') || item.name.includes('mixin') || item.name.includes('lock'));
-      const hasTrackedEvalIndexes = entries.some(([, [idx]]) => idx === 93 || idx === 104 || idx === 106);
-      const trackedQueuePositions = entries
-        .filter(([, [idx]]) => idx === 93 || idx === 99 || idx === 104 || idx === 106)
-        .map(([q, [idx, rule]]) => ({
-          q,
-          idx,
-          type: String((rule as any)?.type ?? ''),
-          name: isNode(rule, 'Mixin')
-            ? String((rule as any).value?.name ?? '')
-            : isNode(rule, 'Ruleset')
-              ? String((rule as any).value?.selector?.valueOf?.() ?? '')
-              : isNode(rule, 'Call')
-                ? String((rule as any).value?.name?.valueOf?.() ?? '')
-                : ''
-        }));
-      if (p === Priority.Low && (hasTrackedEvalIndexes || entries.length > 80)) {
-      }
       const runSingleEntry = ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
         const [idx, rule] = item;
-        if (p === Priority.Low && (idx === 76 || idx === 88 || idx === 93 || idx === 99 || idx === 104 || idx === 106)) {
-        }
-        if (isNode(rule, ['Call', 'Ruleset', 'Mixin'])) {
-          const ruleName = isNode(rule, 'Call')
-            ? String((rule.value.name as any)?.value?.key?.valueOf?.() ?? (rule.value.name as any)?.valueOf?.() ?? '')
-            : isNode(rule, 'Mixin')
-              ? String((rule as any).value?.name ?? '')
-              : String((rule as any).value?.selector?.valueOf?.() ?? '');
-          const sourceName = isNode(rule, 'Ruleset')
-            ? String(((rule as any).options?.ownSelector?.valueOf?.() ?? (rule as any).sourceNode?.value?.selector?.valueOf?.() ?? ''))
-            : '';
-          if (
-            ruleName.includes('guard')
-            || ruleName.includes('deeper')
-            || ruleName.includes('mixin')
-            || ruleName.includes('lock')
-            || sourceName.includes('guard')
-            || sourceName.includes('deeper')
-            || sourceName.includes('mixin')
-            || sourceName.includes('lock')
-            || isNode(rule, 'Call')
-          ) {
-          }
-        }
 
         /**
          * Var declarations have late evaluation, so they are skipped.
@@ -1592,21 +1473,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rules.evaluated) {
       return { rules, rulesToHoist: false };
     }
-    const trackedBeforeQueue = rules.value
-      .map((node, idx) => ({
-        idx,
-        type: node.type,
-        name: isNode(node, 'Mixin')
-          ? String((node as any).value?.name ?? '')
-          : isNode(node, 'Ruleset')
-            ? String((node as any).value?.selector?.valueOf?.() ?? '')
-            : isNode(node, 'Call')
-              ? String((node as any).value?.name?.valueOf?.() ?? '')
-              : ''
-      }))
-      .filter(item => item.name.includes('guard') || item.name.includes('deeper') || item.name.includes('mixin') || item.name.includes('lock'));
-    if (trackedBeforeQueue.length > 0) {
-    }
     if (rules === context.root) {
       const map = new WeakMap<Ruleset, number>();
       context.documentOrderByRuleset = map;
@@ -1724,86 +1590,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const isOutermost = rules === context.root;
 
           if (isOutermost) {
-            const hasGeneratedLeadingIs = (selector: Selector | undefined): boolean => {
-              if (!selector) {
-                return false;
-              }
-              if (isNode(selector, 'PseudoSelector')) {
-                return selector.value.name === ':is' && Boolean(selector.generated);
-              }
-              if (isNode(selector, 'CompoundSelector')) {
-                const first = selector.value[0];
-                return Boolean(
-                  first
-                  && isNode(first, 'PseudoSelector')
-                  && first.value.name === ':is'
-                  && Boolean(first.generated)
-                );
-              }
-              if (isNode(selector, 'ComplexSelector')) {
-                const firstVisual = selector.value.find(c => !isNode(c, 'Combinator')) as Selector | undefined;
-                return Boolean(
-                  firstVisual
-                  && isNode(firstVisual, 'PseudoSelector')
-                  && firstVisual.value.name === ':is'
-                  && Boolean(firstVisual.generated)
-                );
-              }
-              return false;
-            };
-            const collectGeneratedLeadingIs = (): Array<{
-              selector: string;
-              ownSelector: string | null;
-              selectorGeneratedLeadingIs: boolean;
-              ownGeneratedLeadingIs: boolean;
-            }> => {
-              const out: Array<{
-                selector: string;
-                ownSelector: string | null;
-                selectorGeneratedLeadingIs: boolean;
-                ownGeneratedLeadingIs: boolean;
-              }> = [];
-              const visitRules = (r: Rules): void => {
-                for (const node of r.value) {
-                  if (!node || !isNode(node, 'Ruleset')) {
-                    continue;
-                  }
-                  const rs = node as Ruleset;
-                  const rsSelector = rs.value?.selector as Selector | undefined;
-                  const ownSelector = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
-                  const selectorGeneratedLeadingIs = hasGeneratedLeadingIs(rsSelector);
-                  const ownGeneratedLeadingIs = hasGeneratedLeadingIs(ownSelector);
-                  if (selectorGeneratedLeadingIs || ownGeneratedLeadingIs) {
-                    out.push({
-                      selector: rsSelector?.valueOf?.() ?? '',
-                      ownSelector: ownSelector?.valueOf?.() ?? null,
-                      selectorGeneratedLeadingIs,
-                      ownGeneratedLeadingIs
-                    });
-                  }
-                  const childRules = rs.value?.rules;
-                  if (childRules && isNode(childRules, 'Rules')) {
-                    visitRules(childRules as Rules);
-                  }
-                }
-              };
-              visitRules(rules);
-              return out;
-            };
-            const hasReplaceReplaceExtend = context.extends.some(([target]) => {
-              try {
-                return target.valueOf().includes('replace.replace');
-              } catch {
-                return false;
-              }
-            });
-            const hasRepAceExtend = context.extends.some(([, sel]) => {
-              try {
-                return sel.valueOf().includes('rep_ace');
-              } catch {
-                return false;
-              }
-            });
             // Process all registered extends using the extend roots registry system
             processExtends(context);
           }
@@ -1964,11 +1750,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let sourceParent = caller?.value.name instanceof Node
       ? caller.value.name.sourceParent
       : caller?.sourceParent;
-    const callerName = isNode(caller?.value?.name, 'Reference')
-      ? String(caller.value.name.value.key?.valueOf?.() ?? '')
-      : String(caller?.value?.name?.valueOf?.() ?? caller?.value?.name ?? '');
-    const shouldTraceDetachedRuleset = callerName.includes('wrap-mixin');
-
     let nodeArgs: Node[] = [];
     const savedRulesContext = thisContext.rulesContext;
     const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? savedRulesContext;
@@ -1980,9 +1761,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
          * But leaving this for future expansion.
          */
         if (isNode(arg)) {
-          const isList1Ref = isNode(arg, 'Reference')
-            && arg.options?.type === 'property'
-            && String(arg.value.key) === 'list-1';
           // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
           // Evaluating them can register/override variables in the current scope.
           // They should only be used for parameter binding.
@@ -2017,12 +1795,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     } finally {
       thisContext.rulesContext = savedRulesContext;
     }
-    if (shouldTraceDetachedRuleset) {
-    }
-    if (callerName.includes('.mixin2')) {
-    }
-    if (callerName.includes('.Person')) {
-    }
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.
@@ -2045,7 +1817,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     };
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
-      const mixinNameDebug = isNode(mixin, 'Mixin') ? String(mixin.value.name?.valueOf?.() ?? mixin.value.name ?? '') : '';
       let isPlainRule = isNode(mixin, 'Rules');
       let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0;
       if (!paramLength) {
@@ -2084,7 +1855,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           let argValue: Node;
           if (isNode(arg, 'VarDeclaration')) {
             param = params.value.find(
-              (p, i) => {
+              (p) => {
                 if (isNode(p, 'VarDeclaration')) {
                   return p.value.name.valueOf() === arg.value.name.valueOf();
                 }
@@ -2096,12 +1867,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             );
             if (param) {
               argValue = arg.value.value;
-              if (mixinNameDebug.includes('.mixin2') || mixinNameDebug.includes('.Person')) {
-                const hypothesisId = mixinNameDebug.includes('.Person') ? 'H39' : 'H31';
-                const message = mixinNameDebug.includes('.Person')
-                  ? 'person named arg matched'
-                  : 'mixin2 named arg matched';
-              }
             } else {
               match = false;
               break;
@@ -2123,8 +1888,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             boundValue.frozen = true;
             normalizeBoundLeadingItemWhitespace(boundValue);
             param.value.value = boundValue;
-            if (shouldTraceDetachedRuleset && String(param.value.name.valueOf?.() ?? '') === 'ruleset') {
-            }
           } else if (isNode(param, 'Any') && param.options.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             const boundValue = argValue.copy(true, freezeChildren);
@@ -2159,14 +1922,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
         const positionalArgCount = nodeArgs.filter(argNode => !isNode(argNode, 'VarDeclaration')).length;
         if (positionalArgCount > maxPositionalArgs) {
-          if (mixinNameDebug === '.mixin') {
-            const paramShape = params.value.map((p) => {
-              if (isNode(p, 'VarDeclaration')) {
-                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
-              }
-              return p.type;
-            });
-          }
           continue;
         }
         /**
@@ -2174,66 +1929,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
          * against the remaining parameters.
          */
         if (argPos < requiredPositions) {
-          if (mixinNameDebug === '.mixin') {
-            const paramShape = params.value.map((p) => {
-              if (isNode(p, 'VarDeclaration')) {
-                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
-              }
-              if (isNode(p, 'Rest')) {
-                return 'rest';
-              }
-              return p.type;
-            });
-          }
           /** This mixin is not a match */
           continue;
         }
         if (nodeArgs.length > 1 && params.value.length === 1 && requiredPositions === 1) {
           // Less should not match single required-parameter overloads against extra positional args.
-          if (mixinNameDebug === '.mixin') {
-            const paramShape = params.value.map((p) => {
-              if (isNode(p, 'VarDeclaration')) {
-                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
-              }
-              return p.type;
-            });
-          }
           continue;
         }
         if (match) {
-          if (mixinNameDebug === '.mixin') {
-            const paramShape = params.value.map((p) => {
-              if (isNode(p, 'VarDeclaration')) {
-                return `${String(p.value.name.valueOf?.() ?? '')}:${p.value.value instanceof Nil ? 'required' : 'default'}`;
-              }
-              if (isNode(p, 'Rest')) {
-                return 'rest';
-              }
-              return p.type;
-            });
-          }
-          const mixinName = String((mixin as Mixin).value.name?.valueOf?.() ?? (mixin as Mixin).value.name ?? '');
-          if (mixinName.includes('.mixin2') || mixinName.includes('.Person')) {
-            const paramSummary = params.value.map((p) => {
-              if (isNode(p, 'VarDeclaration')) {
-                return {
-                  name: String(p.value.name.valueOf?.() ?? ''),
-                  valueType: p.value.value.type,
-                  valueHead: String(p.value.value.valueOf?.() ?? '').slice(0, 40)
-                };
-              }
-              return { type: p.type };
-            });
-            const hypothesisId = mixinName.includes('.Person') ? 'H40' : 'H32';
-            const message = mixinName.includes('.Person')
-              ? 'person candidate params after binding'
-              : 'mixin2 candidate params after binding';
-          }
-          if (mixinName === '.mixin-args') {
-          }
-          if (shouldTraceDetachedRuleset) {
-            const rulesetParam = params.value.find(p => isNode(p, 'VarDeclaration') && String((p as VarDeclaration).value.name.valueOf?.() ?? '') === 'ruleset');
-          }
           /** Make a shallow copy to attach our resolved params (w/ args) */
           let originalMixin = mixin;
           mixin = mixin.copy();
@@ -2307,8 +2010,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       .filter((candidate) => {
         const inStack = thisContext.rulesEvalStack.includes(candidate.value.rules.sourceNode as Rules);
         const blockedByFailedGuardAncestor = hasFailedGuardAncestor(candidate as unknown as Node);
-        if (blockedByFailedGuardAncestor) {
-        }
         return !inStack && !blockedByFailedGuardAncestor;
       })
       .map<MixinEntry>(
@@ -2351,7 +2052,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * but first we need to create a new scope for each mixin,
      * and create variable declarations for each parameter.
      */
-    let hasMatch = false;
     let outputRules: Rules[] = [];
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
     const originatesFromReferenceImport = (node: Node): boolean => {
@@ -2473,7 +2173,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       outerRules: Rules | undefined,
       params: List<Node> | undefined
     ): Promise<void> => {
-      hasMatch = true;
       const currentCall = thisContext.callStack.at(-1);
       // to prevent infinite loops (e.g., .recursion { .recursion(); })
       if (currentCall && thisContext.callMap.add(currentCall, params)) {
@@ -2501,19 +2200,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Visibility should be preserved by Rules.eval - no need to set it explicitly here
         // The eval'd rules should already have their nodes registered
         // Ensure the registry is indexed before checking
-        const declRegistry = newRules.getRegistry('declaration');
-        declRegistry.indexPendingItems();
-        const candidateName = String(candidate.value.name?.valueOf?.() ?? candidate.value.name ?? '');
-        if (candidateName === '.mixin') {
-          const currentCallName = isNode(currentCall?.value?.name, 'Reference')
-            ? String(currentCall.value.name.value.key?.valueOf?.() ?? '')
-            : String((currentCall as any)?.value?.name?.valueOf?.() ?? (currentCall as any)?.value?.name ?? '');
-          const outputSummary = newRules.value.map(node => ({
-            type: node.type,
-            key: isNode(node, 'Declaration') ? String(node.value.name.valueOf?.() ?? '') : '',
-            head: String(node.valueOf?.() ?? '').slice(0, 40)
-          }));
-        }
         // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         newRules.options.referenceMode = false;
@@ -2551,9 +2237,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
     };
 
-    let candidateEvalIndex = 0;
     for (let candidate of evalCandidates) {
-      candidateEvalIndex++;
       if (isNode(candidate, 'Ruleset')) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
         // guard === undefined means passed, guard instanceof Nil means failed
@@ -2576,7 +2260,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         candidate.parent!.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
-        hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark output Rules as mixin output - accessible only when lookup has a target
         rules.options.isMixinOutput = restrictMixinOutputLookup;
@@ -2600,7 +2283,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         clearReferenceModeForMixinOutput(unlocked as unknown as Node);
         unlocked.index = candidate.index;
         outputRules.push(unlocked);
-        hasMatch = true;
         continue;
       }
       let rules = candidate.value.rules;
@@ -2834,17 +2516,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * their original order
      */
     outputRules.sort(comparePosition);
-    const finalCall = thisContext.callStack.at(-1);
-    const finalCallName = isNode(finalCall?.value?.name, 'Reference')
-      ? String(finalCall.value.name.value.key?.valueOf?.() ?? '')
-      : String((finalCall as any)?.value?.name?.valueOf?.() ?? (finalCall as any)?.value?.name ?? '');
-    if (finalCallName === '.mixin') {
-      const outputRulesSummary = outputRules.map((rule, ruleIndex) => ({
-        ruleIndex,
-        nodeTypes: rule.value.map(child => child.type),
-        nodeHeads: rule.value.map(child => String(child.valueOf?.() ?? '').slice(0, 40))
-      }));
-    }
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
     if (outputRules.length === 1) {

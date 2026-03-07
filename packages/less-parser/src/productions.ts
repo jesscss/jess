@@ -46,7 +46,6 @@ import {
   Num,
   Extend,
   type Extend as ExtendType,
-  ExtendFlag,
   Negative,
   Mixin,
   Condition,
@@ -80,11 +79,6 @@ function getParenFrames(ctx: RuleContext | undefined): boolean[] {
 
 function getCalcFrames(ctx: RuleContext | undefined): number {
   return (ctx?.calcFrames as number | undefined) ?? 0;
-}
-
-function withParenFrame(ctx: RuleContext | undefined, frame: boolean): RuleContext {
-  const parenFrames = [...getParenFrames(ctx), frame];
-  return { ...(ctx ?? {}), parenFrames };
 }
 
 function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext {
@@ -324,7 +318,6 @@ export function main(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
 
-    const isRoot = !!ctx.isRoot;
     let context: TreeContext;
 
     if (!RECORDING_PHASE) {
@@ -605,13 +598,13 @@ export function mediaInParens(this: P, T: TokenMap) {
     ]);
 }
 
-export function containerInParens(this: P, T: TokenMap, alt?: AltContext) {
+export function containerInParens(this: P, _T: TokenMap, _alt?: AltContext) {
   const $ = this;
   // Reuse mediaInParens which already handles variables
   return (ctx: RuleContext = {}) => $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
 }
 
-export function mfValue(this: P, T: TokenMap) {
+export function mfValue(this: P, _T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) =>
@@ -631,7 +624,7 @@ export function mfValue(this: P, T: TokenMap) {
     })();
 }
 
-export function mfNonIdentifierValue(this: P, T: TokenMap, alt?: AltContext) {
+export function mfNonIdentifierValue(this: P, T: TokenMap, _alt?: AltContext) {
   const $ = this;
 
   return (ctx: RuleContext = {}) =>
@@ -788,7 +781,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
   };
 }
 
-export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
+export function qualifiedRule(this: P, _T: TokenMap, altContext?: AltContext) {
   const $ = this;
 
   let selectorAlt = altContext ?? ((ctx: RuleContext) => [
@@ -994,23 +987,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       }
 
       /** Finally, pass this reference into a call */
-      const selectorText = String(selector.valueOf?.() ?? '');
-      if (!RECORDING_PHASE && selectorText.includes('.mixin2')) {
-        const argSummary = args?.value?.map((arg) => {
-          if (arg instanceof VarDeclaration) {
-            return {
-              type: arg.type,
-              name: String(arg.value.name.valueOf?.() ?? ''),
-              valueType: arg.value.value.type,
-              valueHead: String(arg.value.value.valueOf?.() ?? '').slice(0, 40)
-            };
-          }
-          return {
-            type: arg?.type ?? typeof arg,
-            head: String((arg as any)?.valueOf?.() ?? '').slice(0, 40)
-          };
-        }) ?? [];
-      }
       leftNode = new Call({ name: leftNode, args }, { markImportant: !!important }, location, this.context);
       return leftNode;
     };
@@ -1018,17 +994,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     let isPossibleMixinDefinition = (selector instanceof BasicSelector && (selector.isClass || selector.isId))
       || (selector instanceof InterpolatedSelector && (selector.isClass || selector.isId));
     let isPossibleMixinCall = true;
-    const selectorValueDebug = !RECORDING_PHASE && selector instanceof Node
-      ? String(selector.valueOf() ?? '')
-      : '';
-    const trackedSelector = !RECORDING_PHASE && (
-      selectorValueDebug.includes('#guarded')
-      || selectorValueDebug.includes('#top')
-      || selectorValueDebug.includes('#deeper')
-      || selectorValueDebug.includes('.lock-mixin')
-      || selectorValueDebug.includes('.inner-locked-mixin')
-      || selectorValueDebug.includes('.mixin')
-    );
     if (!isSelectorList && !isPossibleMixinDefinition && !RECORDING_PHASE) {
       for (let s of selector.nodes()) {
         /** Keep going until we get to basic selectors. */
@@ -1050,15 +1015,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
         ALT: () => {
-          if (!RECORDING_PHASE && selectorValueDebug.includes('.mixin2')) {
-          }
           args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
           let next = $.LA(1).tokenType;
-          if (!RECORDING_PHASE) {
-            const selectorValue = selector instanceof Node ? String(selector.valueOf() ?? '') : '';
-            if (selectorValue === '.mixin' || selectorValue.includes('.mixin')) {
-            }
-          }
           if (next === T.LCurly || next === T.When) {
             isPossibleMixinCall = false;
           }
@@ -1067,8 +1025,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
               GATE: () => isPossibleMixinDefinition,
               /** Mixin definition */
               ALT: () => {
-                if (trackedSelector) {
-                }
                 $.OPTION(() => {
                   guard = $.SUBRULE($.guard, { ARGS: [ctx] });
                 });
@@ -1079,26 +1035,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   // Convert Any nodes to VarDeclaration nodes for mixin definition parameters
                   convertArgsForDefinition(args);
-                  const selectorText = String(selector.valueOf?.() ?? '');
-                  if (selectorText.includes('.mixin2') || selectorText.includes('.Person')) {
-                    const paramSummary = args?.value?.map((arg) => {
-                      if (arg instanceof VarDeclaration) {
-                        return {
-                          type: arg.type,
-                          name: String(arg.value.name.valueOf?.() ?? ''),
-                          isParamVar: Boolean(arg.options?.paramVar)
-                        };
-                      }
-                      return {
-                        type: arg?.type ?? typeof arg,
-                        value: String((arg as any)?.valueOf?.() ?? '')
-                      };
-                    }) ?? [];
-                    const hypothesisId = selectorText.includes('.Person') ? 'H37' : 'H30';
-                    const message = selectorText.includes('.Person')
-                      ? 'person definition params after conversion'
-                      : 'mixin2 definition params after conversion';
-                  }
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
@@ -1116,8 +1052,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
               GATE: () => isPossibleMixinCall,
               /** Mixin call */
               ALT: () => {
-                if (trackedSelector) {
-                }
                 $.OPTION2(() => {
                   important = $.CONSUME(T.Important);
                 });
@@ -1127,8 +1061,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   // Convert Any nodes to Reference nodes for mixin call arguments
                   convertArgsForCall(args);
                 }
-                let hasParens = false;
-                let parensToken: IToken | undefined;
                 let result = $.OPTION3({
                   /** in Less legacy mode, mixin calls can happen without a space. */
                   GATE: () => {
@@ -1136,10 +1068,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                     let next = $.LA(1).tokenType;
                     return (noSpace && next === T.LSquare) || ((noSpace || $.looseMode) && next === T.LParen);
                   },
-                  DEF: () => {
-                    hasParens = true;
-                    return $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: createMixinCall(location) }] });
-                  }
+                  DEF: () => $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: createMixinCall(location) }] })
                 });
                 // Note: Mixin calls without parentheses are handled in the semicolon-terminated ALT below
                 return result ?? createMixinCall(location!);
@@ -1151,8 +1080,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         /** Parse as qualified rule */
         ALT: () => {
-          if (trackedSelector) {
-          }
           if (!RECORDING_PHASE) {
             $.endRule();
           }
@@ -1186,8 +1113,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         GATE: () => isPossibleMixinCall,
         ALT: () => {
-          if (trackedSelector) {
-          }
           // Call terminated by a semi-colon and not parens, deprecated
           const semi = $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
@@ -1354,7 +1279,6 @@ function groupExtendsByTargetAndFlag(
   for (const ext of extendNodes) {
     let target = ext.value.target;
     let flag = ext.value.flag ?? 1; // ExtendFlag.Exact = 1
-    let selector = ext.value.selector as ComplexSelector | undefined;
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -1478,7 +1402,7 @@ export function extend(this: P, T: TokenMap) {
     $.CONSUME(T.Extend);
 
     ctx.inExtend = true;
-    let target = $.SUBRULE($.selectorList, { ARGS: [ctx] });
+    $.SUBRULE($.selectorList, { ARGS: [ctx] });
     let extendTargets = ctx.extendTargets;
     ctx.inExtend = false;
 
@@ -2013,7 +1937,7 @@ export function selectorCapture(this: P, T: TokenMap) {
   };
 }
 
-export function valueSequence(this: P, T: TokenMap) {
+export function valueSequence(this: P, _T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
@@ -2149,7 +2073,6 @@ export function expressionSum(this: P, T: TokenMap) {
       },
       DEF: () => {
         let op: string | undefined;
-        let signed: IToken | undefined;
         let right: Node;
 
         $.OR([
@@ -2475,7 +2398,7 @@ export function booleanFunction(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     $.startRule();
-    let name = $.CONSUME(T.BooleanFunction);
+    $.CONSUME(T.BooleanFunction);
     let arg: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
     $.CONSUME(T.RParen);
 
@@ -2628,7 +2551,7 @@ export function varReference(this: P, T: TokenMap) {
   };
 }
 
-export function valueReference(this: P, T: TokenMap) {
+export function valueReference(this: P, _T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
@@ -2715,8 +2638,6 @@ export function functionCallArgs(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    if (!RECORDING_PHASE && ctx.currentFunctionName === 'each') {
-    }
     $.startRule();
 
     // Inside function arguments, allow inner tokens like ':'
@@ -2949,7 +2870,7 @@ export function string(this: P, T: TokenMap) {
     }
   ];
 
-  return (ctx: RuleContext = {}) => $.OR(stringAlt);
+  return (_ctx: RuleContext = {}) => $.OR(stringAlt);
 }
 
 /**
@@ -3087,9 +3008,6 @@ export function guard(this: P, T: TokenMap) {
         ALT: () => {
           ctx.allowComma = true;
           const node = $.SUBRULE($.guardOr, { ARGS: [ctx] });
-          if (!$.RECORDING_PHASE) {
-
-          }
           return node;
         }
       }
@@ -3262,7 +3180,7 @@ export function guardInParens(this: P, T: TokenMap) {
 }
 
 // The inner content of a guard inside parentheses
-export function guardInner(this: P, T: TokenMap) {
+export function guardInner(this: P, _T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) =>
     $.OR([
@@ -3558,9 +3476,7 @@ export function mixinArgs(this: P, T: TokenMap) {
     const hasWhitespace = !$.RECORDING_PHASE && !$.noSep();
     const openingParenToken = hasWhitespace ? $.LA(1) : undefined;
 
-    const lparen = $.CONSUME(T.LParen);
-    if (!$.RECORDING_PHASE) {
-    }
+    $.CONSUME(T.LParen);
     // Clear ctx.node when parsing arguments - arguments should start fresh, not inherit the parent node
     // Calls intentionally push a `false` paren frame (matches `Call.evalNode`)
     const argCtx: RuleContext = {
@@ -3571,8 +3487,6 @@ export function mixinArgs(this: P, T: TokenMap) {
       detachedRulesetUsage: ctx.isDefinition ? 'default-param' : 'mixin-arg'
     };
     $.OPTION(() => {
-      if (!$.RECORDING_PHASE) {
-      }
       args = $.SUBRULE($.mixinArgList, { ARGS: [argCtx] });
     });
     $.CONSUME(T.RParen);
@@ -3772,11 +3686,7 @@ export function mixinArgList(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    if (!RECORDING_PHASE && ctx.isDefinition) {
-    }
     $.startRule();
-    if (!RECORDING_PHASE) {
-    }
     let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
     let commaNodes: Node[] | undefined;
@@ -3796,8 +3706,6 @@ export function mixinArgList(this: P, T: TokenMap) {
             GATE: () => !isSemiList,
             ALT: () => {
               $.CONSUME(T.Comma);
-              if (!RECORDING_PHASE && ctx.isDefinition) {
-              }
               let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
               if (!RECORDING_PHASE) {
                 commaNodes!.push($.wrap(node, true));
@@ -3902,7 +3810,6 @@ export function mixinArg(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
-    const isDefinition = !!ctx.isDefinition;
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let firstToken = $.LA(1);
 
@@ -3912,20 +3819,11 @@ export function mixinArg(this: P, T: TokenMap) {
     );
 
     let isDeclaration = atStart && $.LA(2).tokenType === T.Colon;
-    const traceAlt = (alt: string) => {
-      if (!RECORDING_PHASE && typeof firstToken.image === 'string' && firstToken.image.startsWith('@')) {
-      }
-    };
-    if (!RECORDING_PHASE && typeof firstToken.image === 'string' && firstToken.image.startsWith('@')) {
-    }
-    if (!RECORDING_PHASE && isDefinition) {
-    }
 
     return $.OR([
       {
         GATE: () => !isDeclaration && atStart && $.LA(2).tokenType === T.Ellipsis,
         ALT: () => {
-          traceAlt('rest-param');
           $.startRule();
           let name = $.SUBRULE2($.varName, { ARGS: [ctx] });
           let ellipsis;
@@ -3958,21 +3856,18 @@ export function mixinArg(this: P, T: TokenMap) {
       {
         GATE: () => !isDeclaration && !atStart,
         ALT: () => {
-          traceAlt('callArgument-not-atStart');
           return $.SUBRULE($.callArgument, { ARGS: [ctx] });
         }
       },
       {
         GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== T.Ellipsis && $.LA(2).tokenType !== T.RParen && $.LA(2).tokenType !== T.Comma && $.LA(2).tokenType !== T.Semi,
         ALT: () => {
-          traceAlt('callArgument-atStart');
           return $.SUBRULE3($.callArgument, { ARGS: [ctx] });
         }
       },
       {
         GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== T.Ellipsis && ($.LA(2).tokenType === T.RParen || $.LA(2).tokenType === T.Comma || $.LA(2).tokenType === T.Semi),
         ALT: () => {
-          traceAlt('name-only');
           $.startRule();
           let name = $.SUBRULE3($.varName, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
@@ -3984,7 +3879,6 @@ export function mixinArg(this: P, T: TokenMap) {
       {
         GATE: () => isDeclaration,
         ALT: () => {
-          traceAlt('declaration');
           $.startRule();
           let name = $.SUBRULE4($.varName, { ARGS: [ctx] });
           $.CONSUME(T.Colon);
@@ -4017,14 +3911,6 @@ export function callArgument(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
-    const la1Image = $.LA(1).image ?? '';
-    const la2Image = $.LA(2).image ?? '';
-    if (!$.RECORDING_PHASE && ctx.currentFunctionName === 'each') {
-    }
-    if (la1Image.includes('$') || la2Image.includes('$') || $.LA(1).tokenType === T.Unknown) {
-    }
-    if ($.LA(1).tokenType === T.Percent) {
-    }
     return $.OR([
       {
         GATE: () => $.LA(1).tokenType === T.AnonMixinStart || $.LA(1).tokenType === T.LCurly,

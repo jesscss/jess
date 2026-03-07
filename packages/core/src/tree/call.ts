@@ -168,56 +168,32 @@ export class Call extends Node<CallValue, CallOptions> {
     if (isNode(n, 'Reference') && n.options?.type === 'mixin-ruleset') {
       n = await n.eval(context);
     }
-    const callName = typeof name === 'string'
-      ? name
-      : String((name as any)?.value?.key?.valueOf?.() ?? (name as any)?.valueOf?.() ?? '');
-    const resolvedName = typeof n === 'string'
-      ? n
-      : String((n as any)?.value?.key?.valueOf?.() ?? (n as any)?.valueOf?.() ?? '');
-    if (callName.includes('each') || resolvedName.includes('each')) {
-    }
-    if (
-      callName.includes('mixin')
-      || callName.includes('lock')
-      || callName.includes('guard')
-      || callName === 'default'
-      || callName === '??'
-    ) {
-    }
-    if (typeof n !== 'string') {
-    }
     // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
     // by parsers that support them. We intentionally avoid implicit string→function lookup here
     // to prevent surprising behavior for plain CSS function-like calls.
     // If the evaluated name is a Call node, execute it directly
     // This handles cases like @alias: .something(foo); @alias();
     if (isNode(n, 'Call')) {
-      try {
-        // Execute the inner Call node (it will handle its own callStack push/pop)
-        const result = await n.eval(context);
-        // Apply markImportant if needed
-        if (markImportant && isNode(result, 'Rules')) {
-          this.makeImportant(result);
-        }
-        // Always pop the outer call's stack entries
-        context.callStack.pop();
-        context.parenFrames.pop();
-        return result;
-      } finally {}
+      // Execute the inner Call node (it will handle its own callStack push/pop)
+      const result = await n.eval(context);
+      // Apply markImportant if needed
+      if (markImportant && isNode(result, 'Rules')) {
+        this.makeImportant(result);
+      }
+      // Always pop the outer call's stack entries
+      context.callStack.pop();
+      context.parenFrames.pop();
+      return result;
     } else if (isNode(n, 'Mixin') || isNode(n, 'Ruleset') || Array.isArray(n)) {
       n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
     } else if (isNode(n, 'Func')) {
       // Execute stylesheet-defined functions via their evalCall behavior.
-      try {
-        const argNodes = await evalArgNodes(args) ?? list([]);
-        const result = await (n as any).evalCall(context, argNodes);
-        context.callStack.pop();
-        context.parenFrames.pop();
-        return result;
-      } finally {}
+      const argNodes = await evalArgNodes(args) ?? list([]);
+      const result = await (n as any).evalCall(context, argNodes);
+      context.callStack.pop();
+      context.parenFrames.pop();
+      return result;
     } else if (isNode(n, 'Collection')) {
-      if (callName === 'ruleset') {
-      }
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
@@ -269,10 +245,6 @@ export class Call extends Node<CallValue, CallOptions> {
           args = copiedArgs;
         }
         const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
-        if (callName.includes('wrap-mixin')) {
-        }
-        if (callName === 'each') {
-        }
         const result = await (
           args
             ? (
@@ -282,8 +254,6 @@ export class Call extends Node<CallValue, CallOptions> {
               )
             : callWithContext(context, fn)
         );
-        if (callName === 'each') {
-        }
         context.caller = originalCaller;
         context.callStack.pop();
         didPopCallStack = true;
@@ -307,8 +277,6 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
-        if (callName === 'each') {
-        }
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {

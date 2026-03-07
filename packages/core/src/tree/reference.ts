@@ -276,12 +276,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             return [resolvedTarget, valueKey] as [any, string | string[]];
           }
         }
-        // if (typeof resolvedTarget === 'function') {
-        //   return Promise.all([
-        //     resolvedTarget.call(context),
-        //     valueKey
-        //   ]);
-        // }
 
         /**
          * If we're looking something up on a mixin or ruleset (namespace lookup),
@@ -309,9 +303,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       },
       ([resolvedTarget, valueKey]) => {
         originalFilter ??= () => true;
-        const trackedKey = Array.isArray(valueKey)
-          ? valueKey.join('')
-          : String(valueKey);
         const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
           let cursor: Node | undefined = activeRules;
           while (cursor) {
@@ -330,10 +321,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           const blockedBySearchScope = context.searchScope.has(n);
           return passesOriginal && !blockedBySearchScope && !blockedParamVar;
         };
-        // If this Reference has a target, mark hasTarget=true so 'targeted' Rules are searchable
         const hasTarget = !!target;
 
-        // Helper function to perform lookup with a given target Rules
         const performLookup = (targetRules: Rules | Node | undefined): any => {
           if (!targetRules) {
             return undefined;
@@ -505,91 +494,23 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
         let returnVal: any;
-        const shouldTraceLookup =
-          trackedKey === 'columns'
-          || trackedKey === 'list'
-          || trackedKey === 'c'
-          || trackedKey === 'gender_'
-          || trackedKey === 'gender'
-          || trackedKey === 'ruleset'
-          || trackedKey === 'v'
-          || trackedKey === 'index'
-          || trackedKey === '.pick'
-          || trackedKey === 'pick';
-        let sourceCarrierType: string | null = null;
-        let sourceParentType: string | null = null;
-        let sourceCarrierPath = this.type;
-        if (shouldTraceLookup) {
-          let carrier: Node | undefined = this;
-          let foundSourceParent: Node | undefined = this.sourceParent;
-          let cursor: Node | undefined = this.parent;
-          while (cursor && !foundSourceParent) {
-            sourceCarrierPath += `>${cursor.type}`;
-            foundSourceParent = cursor.sourceParent;
-            if (foundSourceParent) {
-              carrier = cursor;
-              break;
-            }
-            cursor = cursor.parent;
-          }
-          sourceCarrierType = carrier?.type ?? null;
-          sourceParentType = foundSourceParent?.type ?? null;
-        }
-        if (shouldTraceLookup) {
-        }
-        const traceLookupAttempt = (label: string, targetRules: unknown, result: unknown) => {
-          if (!shouldTraceLookup) {
-            return;
-          }
-        };
         if (isNode(resolvedTarget, 'Rules')) {
           returnVal = performLookup(resolvedTarget);
-          traceLookupAttempt('primary', resolvedTarget, returnVal);
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
             returnVal = performLookup(this.rulesParent);
-            traceLookupAttempt('leaky-rulesParent', this.rulesParent, returnVal);
             if (returnVal === undefined) {
               returnVal = performLookup(this.sourceRulesParent);
-              traceLookupAttempt('leaky-sourceRulesParent', this.sourceRulesParent, returnVal);
             }
           }
-        }
-        if (shouldTraceLookup) {
         }
 
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
         const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
-        if (
-          type === 'mixin-ruleset'
-          || type === 'ruleset'
-          || valueKeyStr2.includes('guard')
-          || valueKeyStr2.includes('lock')
-          || valueKeyStr2.includes('deeper')
-          || valueKeyStr2.includes('mixin')
-        ) {
-          const returnSummary = Array.isArray(returnVal)
-            ? returnVal.map(item => ({
-                type: String((item as any)?.type ?? typeof item),
-                name: String((item as any)?.value?.name?.valueOf?.() ?? (item as any)?.valueOf?.() ?? ''),
-                hasGuard: Boolean((item as any)?.value?.guard)
-              }))
-            : String((returnVal as any)?.type ?? typeof returnVal);
-        }
         if (returnVal === undefined) {
-          // Less import interpolation parity: unresolved interpolation segments should fall back
-          // to their raw token text (e.g. "@{in}" -> "in") instead of throwing.
-          if (
-            !fallbackValue
-            && this.parent?.type === 'Interpolated'
-            && this.options.type === 'variable'
-            && (this.parent.options as any)?.role === 'ident'
-          ) {
-            return new Any(valueKeyStr2, { role: 'ident' });
-          }
           if (!fallbackValue) {
             if (
               (type === 'mixin' || type === 'mixin-ruleset')
@@ -622,10 +543,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
           const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
-          const shouldTraceInterpolationLookup = (
-            this.parent?.type === 'Interpolated'
-            && ['in', 'terpolation', 's', 'value'].includes(valueKeyStr2)
-          );
           const declValue = returnVal.value.value;
           // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
           // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).
@@ -644,8 +561,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return declValue.eval(context);
             },
             (evald) => {
-              if (shouldTraceInterpolationLookup) {
-              }
               context.searchScope.delete(returnVal);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
@@ -675,22 +590,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return result;
       }
     );
-    // Handle both sync and async results to ensure cleanup
     if (isThenable(result)) {
       return result.then(
-        (res) => {
-          // context.stopEvaluatingReference(this);
-          return res;
-        },
+        res => res,
         (err) => {
-          // context.stopEvaluatingReference(this);
           throw err;
         }
       );
-    } else {
-      // context.stopEvaluatingReference(this);
-      return result;
     }
+    return result;
   }
 }
 
