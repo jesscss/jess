@@ -240,15 +240,17 @@ describe('@container - container query type functions', () => {
     expect(queryNode.value[0].type).toBe('Call');
     expect(queryNode.value[0].value.name).toBe('scroll-state');
     const argList = queryNode.value[0].value.args;
-    expect(argList.length).toBe(1);
-    expect(argList[0].type).toBe('QueryCondition');
-    expect(argList[0].value.length).toBe(3); // Paren, Any('and'), Paren
-    expect(argList[0].value[0].type).toBe('Paren');
-    expect(argList[0].value[0].value.type).toBe('Declaration');
-    expect(argList[0].value[1].type).toBe('Keyword');
-    expect(argList[0].value[1].value).toBe('and');
-    expect(argList[0].value[2].type).toBe('Paren');
-    expect(argList[0].value[2].value.type).toBe('Declaration');
+    expect(argList.type).toBe('List');
+    expect(argList.value.length).toBe(1);
+    const firstArg = argList.value[0];
+    expect(firstArg.type).toBe('QueryCondition');
+    expect(firstArg.value.length).toBe(3); // Paren, Any('and'), Paren
+    expect(firstArg.value[0].type).toBe('Paren');
+    expect(firstArg.value[0].value.type).toBe('Declaration');
+    expect(firstArg.value[1].type).toBe('Keyword');
+    expect(firstArg.value[1].value).toBe('and');
+    expect(firstArg.value[2].type).toBe('Paren');
+    expect(firstArg.value[2].value.type).toBe('Declaration');
   });
 
   test('not scroll-state with declaration argument', () => {
