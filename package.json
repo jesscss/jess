@@ -1,50 +1,78 @@
 {
-  "name": "@jess/root",
+  "name": "@jesscss/root",
   "version": "1000.0.0",
   "private": true,
-  "workspaces": {
-    "packages": [
-      "packages/*"
-    ],
-    "nohoist": [
-      "**/html-minifier-terser"
-    ]
-  },
   "description": "The Jess Monorepo",
   "main": "rollup.config.js",
-  "dependencies": {},
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^17.0.0",
-    "@rollup/plugin-node-resolve": "^11.1.0",
-    "@rollup/plugin-sucrase": "^3.1.0",
-    "@types/chai": "^4.2.1",
-    "@types/glob": "^7.1.1",
-    "@types/mocha": "^5.2.7",
-    "@types/node": "^12.7.4",
-    "@typescript-eslint/eslint-plugin": "^4.10.0",
-    "@typescript-eslint/parser": "^4.10.0",
-    "chai": "^4.2.0",
-    "eslint": "^6.6.0",
-    "glob": "^7.1.4",
-    "husky": "3.0.9",
-    "lerna": "^3.16.4",
-    "lint-staged": "9.4.2",
+    "@changesets/cli": "~2.29.5",
+    "@eslint/eslintrc": "~3.3.1",
+    "@eslint/js": "~9.31.0",
+    "@less/test-data": "link:../less.js/packages/test-data",
+    "@rollup/plugin-commonjs": "^24.1.0",
+    "@rollup/plugin-node-resolve": "^15.0.2",
+    "@rollup/plugin-sucrase": "^5.0.1",
+    "@stylistic/eslint-plugin": "~5.1.0",
+    "@types/glob": "^8.1.0",
+    "@types/node": "^18.15.13",
+    "@typescript-eslint/eslint-plugin": "^8.36.0",
+    "@typescript-eslint/parser": "^8.36.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "cross-env": "~7.0.3",
+    "eslint": "^9.31.0",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-n": "^17.21.0",
+    "eslint-plugin-promise": "^7.2.1",
+    "glob": "^10.2.1",
+    "globals": "~16.3.0",
+    "husky": "~8.0.3",
+    "lint-staged": "13.2.1",
     "lite-server": "^2.6.1",
-    "mocha": "^6.2.0",
-    "puppeteer": "^5.5.0",
-    "rollup": "^2.36.2",
-    "shx": "^0.3.2",
-    "ts-mocha": "^8.0.0",
+    "puppeteer": "^19.10.1",
+    "rollup": "^3.20.7",
+    "shx": "^0.3.4",
     "ts-node": "^9.1.1",
-    "tslib": "^2.1.0",
-    "typescript": "^4.0.3"
+    "tslib": "^2.6.2",
+    "type-fest": "^4.32.0",
+    "typescript": "~5.8.2",
+    "typescript-eslint": "~8.36.0",
+    "vite": "^6.3.5",
+    "vite-plugin-circular-dependency": "~0.5.0",
+    "vitest": "^3.2.3"
   },
   "scripts": {
-    "ci": "lerna run ci && yarn run lint",
-    "lint:fix": "eslint --fix '**/*.{ts,json}'",
-    "lint": "eslint '**/*.{ts,json}'",
-    "bootstrap": "lerna bootstrap",
-    "compile": "lerna run compile"
+    "ci": "pnpm run -r ci && pnpm run lint",
+    "prepare": "husky install",
+    "precommit:staged": "node scripts/precommit-changed-checks.mjs --mode=staged",
+    "prepush:changed-packages": "node scripts/precommit-changed-checks.mjs --mode=upstream",
+    "lint:fix": "eslint --fix '**/*.{mjs,cjs,js,ts}'",
+    "lint": "eslint '**/*.{mjs,cjs,js,ts}'",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "preinstall": "npx only-allow pnpm",
+    "test:less": "node scripts/test-less.js",
+    "test:less:colors": "node scripts/test-less.js colors",
+    "test:less:nesting": "node scripts/test-less.js nesting",
+    "test:less:functions": "node scripts/test-less.js functions",
+    "test:less:custom": "pnpm --filter @jesscss/core build && vitest packages/jess/test/less --exclude=**/all-less.test.ts",
+    "test:less:test-data": "pnpm --filter @jesscss/core build && vitest packages/jess/test/less/all-less.test.ts",
+    "verify:baseline": "node scripts/verify-baseline.mjs",
+    "release:alpha:check": "pnpm run verify:baseline && node scripts/release/validate-alpha-publish-set.mjs && node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
+    "release:alpha:version": "pnpm exec changeset version",
+    "release:alpha:publish": "node scripts/release/publish-alpha.mjs --tag alpha",
+    "release:alpha:dry-run": "node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
+    "release:alpha": "node scripts/release/release-alpha.mjs",
+    "release:alpha:friendly": "node scripts/release/release-alpha.mjs",
+    "release:alpha:friendly:dry-run": "node scripts/release/release-alpha.mjs --dry-run",
+    "cleanup:test-data": "node scripts/cleanup-test-data.js",
+    "docs:jess:dev": "pnpm --filter jess-docs dev",
+    "docs:jess:build": "pnpm --filter jess-docs build",
+    "docs:less:dev": "pnpm --filter @jesscss/docs-less dev",
+    "docs:less:build": "pnpm --filter @jesscss/docs-less build",
+    "docs:content:migrate:jess": "pnpm --filter @jesscss/docs-content run migrate:jess",
+    "docs:content:import:less": "pnpm --filter @jesscss/docs-content run import:less",
+    "docs:content:normalize": "pnpm --filter @jesscss/docs-content run normalize",
+    "docs:content:validate": "pnpm --filter @jesscss/docs-content run validate"
   },
   "repository": {
     "type": "git",
@@ -55,5 +83,11 @@
   "bugs": {
     "url": "https://github.com/matthew-dean/jess/issues"
   },
-  "homepage": "https://github.com/matthew-dean/jess#readme"
+  "homepage": "https://github.com/matthew-dean/jess#readme",
+  "pnpm": {
+    "patchedDependencies": {
+      "superstruct@1.0.3": "patches/superstruct@1.0.3.patch"
+    }
+  },
+  "packageManager": "pnpm@8.15.0+sha512.ea45517d5285d123eac02c3793505fa1fd6da90a2fc60d1e8d9e0c1e9292886ecfaff513f062b9d1cc8021bb8615033b1ac5bea3b2ee3fc165a6d7034bbe6b03"
 }

@@ -1,5 +1,5 @@
-import { EMPTY_ALT } from 'chevrotain'
-import type { JessParser } from '../jessParser'
+import { EMPTY_ALT } from 'chevrotain';
+import type { JessParser } from '../jessParser.js';
 
 export default function(this: JessParser, $: JessParser) {
   $.testQualifiedRule = $.OVERRIDE_RULE('testQualifiedRule', () => {
@@ -12,13 +12,13 @@ export default function(this: JessParser, $: JessParser) {
         { ALT: () => $.CONSUME($.T.LSquare) },
         {
           ALT: () => {
-            $.SUBRULE($.testQualifiedRuleExpression)
-            $.CONSUME($.T.LCurly)
+            $.SUBRULE($.testQualifiedRuleExpression);
+            $.CONSUME($.T.LCurly);
           }
         }
       ]
-    })
-  })
+    });
+  });
 
   $.testQualifiedRuleExpression = $.OVERRIDE_RULE('testQualifiedRuleExpression', () => {
     $.MANY(() => {
@@ -28,20 +28,24 @@ export default function(this: JessParser, $: JessParser) {
         { ALT: () => $.CONSUME($.T.Comma) },
         { ALT: () => $.CONSUME($.T.Colon) },
         { ALT: () => $.CONSUME($.T.WS) },
-        { ALT: () => {
-          $.OR2([
-            { ALT: () => $.CONSUME($.T.Function) },
-            { ALT: () => $.CONSUME($.T.LParen) }
-          ])
-          $.SUBRULE($.testQualifiedRuleExpression)
-          $.CONSUME($.T.RParen)
-        }},
-        { ALT: () => {
-          $.CONSUME($.T.LSquare)
-          $.SUBRULE2($.testQualifiedRuleExpression)
-          $.CONSUME($.T.RSquare)
-        }}
-      ])
-    })
-  })
+        {
+          ALT: () => {
+            $.OR2([
+              { ALT: () => $.CONSUME($.T.Function) },
+              { ALT: () => $.CONSUME($.T.LParen) }
+            ]);
+            $.SUBRULE($.testQualifiedRuleExpression);
+            $.CONSUME($.T.RParen);
+          }
+        },
+        {
+          ALT: () => {
+            $.CONSUME($.T.LSquare);
+            $.SUBRULE2($.testQualifiedRuleExpression);
+            $.CONSUME($.T.RSquare);
+          }
+        }
+      ]);
+    });
+  });
 }

@@ -1,27 +1,52 @@
 {
   "name": "@jesscss/fns",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.8-alpha.8",
+  "version": "2.0.0-alpha.1",
   "description": "Jess functions module",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib"
   ],
   "scripts": {
-    "ci": "yarn build && yarn test",
+    "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
-    "build": "yarn clean && yarn compile",
-    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "test": "cross-env TEST=true vitest",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
-  "author": "Matthew Dean",
-  "license": "MIT",
   "dependencies": {
-    "jess": "^1.0.8-alpha.8",
-    "lodash": "^4.17.20"
-  }
+    "@jesscss/core": "workspace:*",
+    "@jesscss/awaitable-pipe": "workspace:*",
+    "color-name": "~2.0.0",
+    "lodash-es": "^4.17.21",
+    "superstruct": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/lodash-es": "^4.17.8"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
 }

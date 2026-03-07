@@ -10,7 +10,7 @@ $color: red;
 ```
 **Jess**
 ```less
-@let color: red;
+$color: red;
 ```
 
 ### Variable Reference
@@ -36,12 +36,11 @@ width: (@width * 2);
 ```
 **Sass**
 ```scss
-width: ($width * 2);
+width: #{$width * 2};
 ```
 **Jess**
 ```scss
-@import multiply from '@jesscss/functions/multiply';
-width: $multiply(width, 2);
+width: #($width * 2);
 ```
 
 ### Mixins
@@ -67,13 +66,11 @@ width: $multiply(width, 2);
 ```
 **Jess**
 ```less
-@import multiply from '@jesscss/functions/multiply';
-
-@mixin mixin(size) {
-  width: multiply($size, 1px);
+mixin($size) {
+  width: #($size * 1px);
 }
 .box {
-  @include mixin(50);
+  $ > mixin(50);
 }
 ```
 
@@ -105,14 +102,11 @@ each(@sizes, #(@size) {
 **Jess**
 
 ```less
-@import each from '@jesscss/functions/each';
-
-@mixin size(size) {
-  .icon-$(size) {
+$for ($size of $sizes) {
+  .icon-#($size) {
     font-size: $size;
     height: $size;
     width: $size;
   }
 }
-@include each($sizes, $size);
 ```

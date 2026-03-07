@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/parser (Jess CST parser/orchestrator)"
+globs:
+  - "packages/parser/**"
+---
+
+# `@jesscss/parser`
+
+- **Role**: Jess CST parser; depends on core + css/less/scss parsers.
+- **Build**: `cd packages/parser && pnpm build`
+- **Tests**: `cd packages/parser && pnpm test`
+

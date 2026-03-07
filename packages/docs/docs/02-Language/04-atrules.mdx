@@ -1,0 +1,270 @@
+---
+title: Jess's at-rules
+sidebar_label: At-rules
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+
+One of the ironies about the popularity of both Less and Sass is they became too popular, and their syntax was too intuitive. In the case of Less, this meant that useful functions like `if()` had syntax conflict as soon as a CSS-native `if()` was adopted (in 2025), as well as many other Less functions.
+
+Sass has had much bigger syntax conflicts, mostly in the space of at-rules. Sass has a huge number of at-rules, and some of those at-rules have been adopted by the CSS working group.
+
+:::info
+
+Many in the CSS community wanted to use Sass's `@if` as a new conditional rule, but ultimately settled on using `@when`, a more Less-like conditional, to not "break Sass".
+
+:::
+
+One of Jess's goals is to make the syntax as future-proof as possible. So, even in the case where Jess supports Less and Sass behavior, compiler at-rules are prefixed with dashes to not cause clashes.
+
+## @-compose
+
+This is probably the most important at-rule. It's what you will use to compose together different stylesheets. It is most similar to, and largely a drop-in replacement of Sass's `@use` at-rule.
+
+That is, it will render
+
+Here's an example:
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```less
+    @-compose './theme' as theme;
+
+    .box {
+      color: $theme.primary-color;
+    }
+    ```
+  </TabItem>
+  <TabItem value="less" label="Less 5+">
+    ```less
+    @compose './theme' as @theme;
+
+    .box {
+      color: @theme[primary-color];
+    }
+    ```
+  </TabItem>
+  <TabItem value="sass" label="Sass">
+    ```less
+    @use './theme' as theme;
+
+    .box {
+      color: theme.$primary-color;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+:::warning[Hold up]
+
+Why `@-compose` and not `@-use`, similar to Sass? A couple reasons.
+
+1. "Use" typically implies an import of values, but values and variables can actually flow _into_ the stylesheet you're composing with (which can change how it evaluates and compiles), which we'll get to!
+2. We're not just importing values; composing also renders rules. In addition, those rules can be altered by extending them, which also is contrary to how "use" works in most languages.
+3. We have a use case for `@-use` which fits into the "use" semantics a bit better.
+
+:::
+
+### Composing with a namespace
+
+Like Sass, namespaces for `@-compose` and `@-use` are set automatically based on the file name or path. But you can also set a namespace explicitly with the `as` keyword.
+
+```less
+@-compose './theme.jess'; // is the same as...
+@-compose './theme.jess' as theme;
+```
+
+You can compose without a namespace using the `*` symbol.
+
+```less
+@-compose './theme.jess' as *;
+
+.box {
+  color: $primary-color; // from theme.jess
+}
+```
+
+:::warning
+
+Composing without a namespace is discouraged, as it can be harder to reason about where variables and values come from when you have multiple files.
+
+:::
+
+
+### `with` and `set`
+
+// TODO - rewrite -- we'll just use `with` like Sass (but call it `set`?). `set` is not necessary and is potentially confusing. If someone needs "re-use", they can use mixins.
+
+Using `set` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works, but the `with` keyword works slightly differently in Jess, which we'll explain in a bit.)
+
+Note that `set` may not be used more than once with the same module (resolved to the same file path), and if you first import the module without using `set` and then try to use it after, this also throws an error. `set` must be used the first time a file is imported or not at all.
+
+Example:
+
+```less
+// theme.jess
+$primary-color: blue;
+```
+
+```less
+// file1.jess
+@-compose './theme' set {
+  $primary-color: rebeccapurple;
+}
+.box {
+  color: $theme.primary-color; // rebeccapurple
+}
+```
+```less
+// file2.jess
+@-compose './theme';
+
+.box {
+  color: $theme.primary-color; // rebeccapurple
+}
+```
+
+#### Using the `with` keyword
+
+In contrast to `set`, `with` will set values only while being composed into the current file.
+
+```less
+// file1.jess
+@-compose './theme' with {
+  $primary-color: rebeccapurple;
+}
+.box {
+  color: $theme.primary-color; // rebeccapurple
+}
+```
+```less
+// file2.jess
+@-compose './theme';
+
+.box {
+  color: $theme.primary-color; // blue
+}
+```
+
+### @-compose (reference)
+
+This is the same as basic `@-compose` except rules will not be rendered unless extended. In other words, you can use `reference` to import values, variables, and functions.
+
+This is much like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@-compose (reference)`, the scope is isolated.
+
+```less
+// rules.jess
+$border-color: green;
+.box {
+  border: 1px solid $border-color;
+}
+```
+```less
+@-compose (reference) './rules';
+
+.container {
+  border: 2px dashed $rules.border-color;
+}
+```
+This would output:
+```css
+.container {
+  border: 2px dashed green;
+}
+```
+
+### @-compose (protected)
+
+Rules cannot be extended when composed by other stylesheets.
+
+```less
+// library.jess
+.box {
+  border: 1px solid green;
+}
+```
+```less
+// main.jess
+@-compose (protected) './library.jess';
+
+// Error!
+.second-box:-extend(.box);
+```
+
+
+### @-compose (export)
+
+In Jess, variables defined or imported with `@-compose (export)` (or the namespace) will be re-exported and made available to a stylesheet downstream.
+
+:::warning
+
+Use this sparingly! It may be harder to reason about where variables and values come from. Instead, consider importing stylesheet dependencies directly per file.
+
+:::
+
+### Simulating Sass's `@forward`
+
+Sass has an at-rule called `@forward` which "forwards" a stylesheet's values (variables, functions, and mixins) to a parent file that is importing the current stylesheet.
+
+To simulate Sass's forward, you could write:
+ - `@-compose (reference, export, protected) './stylesheet.jess';`
+
+This would do the following:
+ - `reference` - Import variables and mixins but do not render rulesets.
+ - `export` - variables and mixins are forwarded to a downstream stylesheet
+ - `protected` - Rules cannot be extended
+
+However, that's super wordy. For convenience, these three flags can be set with:
+ - `@-compose (forward) './stylesheet.jess';`
+
+## @-use
+
+We told you we had a good purpose for `@-use`, and here it is. Jess can import and use values from JavaScript, TypeScript, and JSON. Easily.
+
+:::info
+
+In order to evaluate JS/TS while compiling, you need to install the `@jesscss/plugin-js` package. This package is required because it installs the Deno runtime (if you're not already using Deno), as that's the only way to execute unknown JS safely.
+
+The reason this is necessary is that, when maintaining Less, we found that it sometimes surprised developers to learn that their stylesheets could execute JavaScript, which meant potential security vulnerabilities if they weren't careful.
+
+:::
+
+We can directly import JS/TS modules with `@-use` e.g.
+
+```scss
+@-use './my-module.js' as js;
+
+.box {
+  value: $js.myFunc();
+}
+```
+
+You can also import and use Less and Sass functions.
+
+```scss
+@-use '#less/type';
+@-use '#sass/math';
+
+.box {
+  value: $(type.isnumber(math.e)); // true
+}
+```
+
+## @-import (discouraged)
+
+:::warning
+
+Use of the `@-import`, by default, will trigger a deprecation warning when compiling.
+
+:::
+
+For legacy compilation and migration support, Jess supports the `@-import` at rule (named `@import` in Less/Sass). However, the use of `@-import` is discouraged, for a few reasons.
+
+1. The `@-import` rule has access to parent variables, so the "context" of evaluation changes for every import call, even of the same file. It also makes the imported file hard to reason about.
+2. Variables from the root of the import are accessible anywhere in other stylesheets (they are re-exported), so it can be difficult to find the source file of a given variable or mixin.
+3. It intentionally overlaps the CSS `@import` rule, making it unclear from code whether the `@import` should appear in rendered output.
+
+```less
+@-import './my-file.jess';
+```

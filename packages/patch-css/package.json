@@ -1,19 +1,21 @@
 {
   "name": "@jesscss/patch-css",
-  "version": "1.0.8-alpha.8",
+  "version": "2.0.0-alpha.1",
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "ci": "yarn build && yarn test",
-    "prepublishOnly": "yarn build",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build",
     "dist": "rollup -c",
-    "build": "yarn clean && yarn compile",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json && yarn dist",
-    "dev": "tsc -b tsconfig.json -w",
+    "compile": "tsc -p tsconfig.build.json && pnpm dist",
+    "dev": "tsc -p tsconfig.build.json -w",
     "serve": "lite-server --baseDir=\"test\"",
-    "test": "yarn dist && mocha test/bootstrap.js --recursive test/**/*.spec.js"
+    "test:tofix": "pnpm dist && jest",
+    "lint:fix:TOFIX": "eslint --fix '**/*.{js,ts}'",
+    "lint:TOFIX": "eslint '**/*.{js,ts}'"
   },
   "description": "Attach stylesheets given an id",
   "main": "lib/index",

@@ -1,6 +1,3 @@
+export * from './less/index.js';
 
-export * from './each'
-export * from './iif'
-export * from './color'
-export * from './color-blending'
-export * from './math'
+// export * from './math'

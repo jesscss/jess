@@ -12,3 +12,8 @@ Our goal is to build a unique and welcoming community around this project. Code 
 ### On the details of contributing
 
 As far as code style, repo management, tools, etc, ehh we can figure that out! Don't sweat it. Ask questions, and when you find answers, do your best to fill in any gaps in code documentation and in the Docusaurus docs, so that the next person doesn't encounter the same gaps.
+
+
+### One note about `let` vs `const`
+
+This code-base _prefers_ `const` only for module-level scope, and `let` for temporary assignment scope. For this reason, I tried using https://www.npmjs.com/package/eslint-plugin-prefer-let, but TypeScript cannot do type narrowing in some instances if `let` is used instead of `const`. Therefore, while `let` is preferred, `const` is fine, and ESLint doesn't enforce anything. See [this article](https://medium.com/@PepsRyuu/use-let-by-default-not-const-58773e53db52) for more information.

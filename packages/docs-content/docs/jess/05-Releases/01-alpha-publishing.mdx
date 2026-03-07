@@ -1,0 +1,82 @@
+---
+title: Alpha Publishing
+---
+
+# Alpha Publishing
+
+Jess uses a guided alpha release flow so publishing is predictable, repeatable, and low-stress.
+
+## Publish scope
+
+The current alpha publish set is controlled by:
+
+- `scripts/release/alpha-allowlist.json`
+
+Packages not in the allowlist are intentionally excluded (for example, packages with private runtime dependencies).
+
+## Branch/tag guardrails
+
+- `alpha` npm tag publishes are only allowed from branch `alpha`.
+- non-alpha npm tags (future stable releases) are only allowed from branch `main`.
+- These rules are enforced in the publish script, not just in docs.
+
+## Friendly one-command flow
+
+From repo root:
+
+```bash
+pnpm run release:alpha:friendly:dry-run
+```
+
+If dry-run is healthy and you are on branch `alpha`:
+
+```bash
+pnpm run release:alpha
+```
+
+## What the orchestrator does
+
+`release:alpha` runs:
+
+1. Branch + working tree safety checks
+2. Baseline verification and publish-set validation
+3. Lockstep versioning (`changeset version`)
+4. Release commit + annotated git tag
+5. Push branch and tag
+6. Publish allowlisted packages to npm tag `alpha`
+7. npm smoke checks for `@alpha` installs
+
+## Manual commands (advanced)
+
+- Preflight gate only:
+
+```bash
+pnpm run release:alpha:check
+```
+
+- Version only:
+
+```bash
+pnpm run release:alpha:version
+```
+
+- Publish only:
+
+```bash
+pnpm run release:alpha:publish
+```
+
+## CI backup path
+
+If you want Actions to publish instead of local CLI, run:
+
+- Workflow: `.github/workflows/publish-alpha.yml`
+- Trigger: manual `workflow_dispatch` only
+
+The recommended default remains `pnpm run release:alpha` from CLI.
+
+## Recovery strategy
+
+- If one package fails during publish, fix root cause and rerun `release:alpha:publish`.
+- Avoid unpublish unless absolutely necessary and allowed by npm policy.
+- Prefer releasing a new `-alpha.N+1` with fixes.

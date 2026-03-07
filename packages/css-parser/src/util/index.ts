@@ -1,106 +1,152 @@
-import {
-  Lexer,
-  createToken,
+import type {
   ITokenConfig,
   TokenType,
+  IMultiModeLexerDefinition,
   TokenPattern,
   CustomPatternMatcherFunc
-} from 'chevrotain'
+} from 'chevrotain';
+import {
+  Lexer,
+  createToken
+} from 'chevrotain';
+import { type WritableDeep } from 'type-fest';
 
 // TODO: get rid of xRegExp dep
-import * as XRegExp from 'xregexp'
-
-export * from './cst'
+import XRegExp from 'xregexp';
 
 export enum LexerType {
   NA,
   SKIPPED
 }
 
-export interface TokenMap {
-  [key: string]: TokenType
+export interface RawToken
+  extends Omit<ITokenConfig, 'longer_alt' | 'categories' | 'pattern' | 'group' | 'start_chars_hint'> {
+  pattern: TokenPattern | LexerType | readonly [string, (this: RegExp, text: string, startOffset: number) => any];
+  group?: ITokenConfig['group'] | LexerType;
+  longer_alt?: string | readonly string[];
+  categories?: readonly string[];
+  start_chars_hint?: readonly string[];
+}
+export type RawTokenConfig = Readonly<RawToken[]>;
+export type RawModeConfig = Readonly<{
+  modes: {
+    Default: ReadonlyArray<Readonly<RawToken>>;
+    [k: string]: ReadonlyArray<string | Readonly<RawToken>>;
+  };
+  defaultMode: 'Default';
+}>;
+
+export interface ILexer {
+  T: Record<string, TokenType>;
+  lexer: IMultiModeLexerDefinition;
 }
 
-export interface rawTokenConfig
-  extends Omit<ITokenConfig, 'longer_alt' | 'categories' | 'pattern' | 'group'> {
-  pattern: TokenPattern | LexerType | [string, Function]
-  group?: ITokenConfig['group'] | LexerType
-  longer_alt?: string
-  categories?: string[]
-}
-
-interface ILexer {
-  T: TokenMap
-  tokens: TokenType[]
-}
+export function buildFragments(rawFragments: ReadonlyArray<Readonly<[string, string]>>) {
+  const fragments: Record<string, RegExp> = {};
+  for (const fragment of rawFragments) {
+    fragments[fragment[0]!] = XRegExp.build(fragment[1]!, fragments);
+  };
+  return fragments;
+};
 
 /**
  * Builds proper tokens from a raw token definition.
  * This allows us to extend / modify tokens before creating them
  */
-export const createTokens = (rawFragments: string[][], rawTokens: rawTokenConfig[]): ILexer => {
-  const fragments: {
-    [key: string]: RegExp
-  } = {}
-  const T: TokenMap = {}
-  const tokens: TokenType[] = []
+export function createLexerDefinition(
+  rawFragments: ReadonlyArray<Readonly<[string, string]>>,
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  _rawTokens: RawModeConfig
+): ILexer {
+  const rawTokens = _rawTokens as WritableDeep<RawModeConfig>;
+  /**
+    * @todo - consider alternative approaches to eliminate XRegExp dependency
+   */
+
+  const fragments: Record<string, RegExp> = buildFragments(rawFragments);
+  const T: Record<string, TokenType> = {};
+  const lexer: IMultiModeLexerDefinition = {
+    modes: {
+      Default: []
+    },
+    defaultMode: 'Default'
+  };
 
   /** Build fragment replacements */
-  rawFragments.forEach(fragment => {
-    fragments[fragment[0]] = XRegExp.build(fragment[1], fragments)
-  })
-  rawTokens.forEach((rawToken: rawTokenConfig) => {
-    let { name, pattern, longer_alt, categories, group, ...rest } = rawToken
-    let regExpPattern: RegExp | CustomPatternMatcherFunc
-    if (pattern !== LexerType.NA) {
-      const category = !categories || categories[0]
-      if (!category || (group !== LexerType.SKIPPED && category !== 'BlockMarker')) {
-        if (categories) {
-          categories.push('Value')
+  const entries = Object.entries(rawTokens.modes);
+  entries.forEach(([mode, modeTokens]) => {
+    modeTokens.forEach((rawToken) => {
+      const addToken = (token: TokenType) => {
+        if (lexer.modes[mode] === undefined) {
+          lexer.modes[mode] = [token];
         } else {
-          categories = ['Value']
+          /** Build tokens from bottom to top */
+          lexer.modes[mode]!.unshift(token);
         }
-        if (category !== 'Ident') {
-          categories.push('NonIdent')
-        }
+      };
+      if (typeof rawToken === 'string') {
+        const token = lexer.modes.Default!.find(token => token.name === rawToken)!;
+        addToken(token);
+        return;
       }
-      if (pattern instanceof RegExp) {
-        regExpPattern = pattern
-      } else if (Array.isArray(pattern)) {
-        regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'y'))
+      let { name, pattern, longer_alt, categories, group, ...rest } = rawToken;
+      let regExpPattern: RegExp | CustomPatternMatcherFunc;
+      if (pattern !== LexerType.NA) {
+        const isUnknownToken = name === 'Unknown';
+        if (!isUnknownToken && (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker')))) {
+          if (!categories) {
+            categories = [];
+          } else {
+            /** Any non-blockmarker that's not an Identifier */
+            if (!categories.includes('Ident')) {
+              categories.push('NonIdent');
+            }
+          }
+          categories.push('Value');
+        }
+        if (pattern instanceof RegExp) {
+          regExpPattern = pattern;
+        } else if (Array.isArray(pattern)) {
+          regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'yi'));
+        } else {
+          regExpPattern = XRegExp.build(pattern as string, fragments, 'i');
+        }
       } else {
-        regExpPattern = XRegExp.build(<string>pattern, fragments)
+        regExpPattern = Lexer.NA;
       }
-    } else {
-      regExpPattern = Lexer.NA
-    }
 
-    const longerAlt = longer_alt ? { longer_alt: T[longer_alt] } : {}
-    const groupValue = group === LexerType.SKIPPED
-      ? { group: Lexer.SKIPPED }
-      : group ? { group: <string>group } : {}
-    const tokenCategories = categories
-      ? {
-        categories: categories.map(category => {
-          return T[category]
-        })
-      }
-      : {}
-    const token = createToken({
-      name,
-      pattern: regExpPattern,
-      ...longerAlt,
-      ...groupValue,
-      ...tokenCategories,
-      ...rest
-    })
-    T[name] = token
-    /** Build tokens from bottom to top */
-    tokens.unshift(token)
-  })
+      const longerAlt = longer_alt
+        ? {
+            longer_alt: Array.isArray(longer_alt)
+              ? longer_alt.map(val => T[val])
+              : T[longer_alt]
+          }
+        : {};
+      const groupValue = group === LexerType.SKIPPED
+        ? { group: Lexer.SKIPPED }
+        : group ? { group } : {};
+      const tokenCategories = categories
+        ? {
+            categories: categories.map((category) => {
+              return T[category];
+            })
+          }
+        : {};
+      const token = createToken({
+        name,
+        pattern: regExpPattern,
+        ...longerAlt,
+        ...groupValue,
+        ...tokenCategories,
+        ...rest
+      } as ITokenConfig);
+      T[name] = token;
+      addToken(token);
+    });
+  });
 
   return {
-    tokens,
+    lexer,
     T
-  }
-}
+  };
+};

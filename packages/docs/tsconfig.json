@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@site": ["./"],
+      "@site/*": ["./*"],
+      "@generated": [".docusaurus"],
+      "@generated/*": [".docusaurus/*"],
+
+      /* Your swizzles live here first */
+      "@theme": ["src/theme"],
+      "@theme/*": ["src/theme/*"],
+      "@components": ["src/components"],
+      "@components/*": ["src/components/*"],
+
+      /* Map to the original theme implementation (try lib-next first, then lib) */
+      "@theme-original": [
+        "node_modules/@docusaurus/theme-classic/lib-next/theme",
+        "node_modules/@docusaurus/theme-classic/lib/theme"
+      ],
+      "@theme-original/*": [
+        "node_modules/@docusaurus/theme-classic/lib-next/theme/*",
+        "node_modules/@docusaurus/theme-classic/lib/theme/*"
+      ],
+
+      /* Optional: direct access to docs plugin client helpers */
+      "@docusaurus/plugin-content-docs/client": [
+        "node_modules/@docusaurus/plugin-content-docs/lib-next/client/index",
+        "node_modules/@docusaurus/plugin-content-docs/lib/client/index"
+      ]
+    },
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["dom", "dom.iterable", "es6"]
+  },
+  "include": ["src", "docs", ".docusaurus", "docusaurus.config.ts"]
+}

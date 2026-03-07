@@ -1,19 +1,30 @@
 {
   "compilerOptions": {
-    "composite": true,
     "allowJs": true,
-    "outDir": "./lib",
-    "rootDir": ".",
     "declaration": true,
     "esModuleInterop": true,
-    "module": "commonjs",
-    "target": "es6",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
     "lib": ["es6"],
     "baseUrl": "./packages",
+    "strict": true,
+    "useDefineForClassFields": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "noEmit": true,
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]
-    }
+    },
+    "plugins": [
+  
+    ],
+    "types": [
+      "vitest/globals"
+    ]
   },
-  "exclude": ["node_modules", "lib"]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "lib", "**/*.js"]
 }

@@ -1,0 +1,40 @@
+{
+  "name": "@jesscss/plugin-js",
+  "version": "0.1.0-alpha.1",
+  "description": "Jess plugin for JavaScript/TypeScript module imports with Deno runtime checks",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "dev": "tsc -b tsconfig.json -w",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'",
+    "test": "vitest --run --passWithNoTests"
+  },
+  "dependencies": {
+    "@jesscss/core": "workspace:*",
+    "deno": "^2.6.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

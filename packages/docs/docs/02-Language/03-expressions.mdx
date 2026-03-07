@@ -1,0 +1,112 @@
+---
+title: Expressions
+---
+
+Jess supports expressions, which are used to evaluate values, perform calculations, and more.
+
+All Jess expressions start with `$`. You can think of `$` or `$(` as starting a new "expression context". If Jess encounters a mixin or function call e.g. `func(`, it will start a new "CSS value context" and temporarily exit the expression context. This is best explained with examples below.
+
+Note: all expressions used in interpolation (within strings or identifiers) must be wrapped in `$()`.
+
+## Examples
+
+### 1. Basic arithmetic
+
+```less
+value: $(1 + 2); // 3
+value: $(1 - 2); // -1
+value: $(1 * 2); // 2
+value: $(1 / 2); // 0.5
+value: $(1 % 2); // 1 (modulus)
+```
+
+### 2. String concatenation
+
+```less
+value: $("Hello, " + "world!"); // "Hello, world!"
+```
+
+### 3. Comparison operations
+
+```less
+value: $(1 > 2); // false
+value: $(1 < 2); // true
+value: $(1 >= 2); // false
+value: $(1 <= 2); // true
+```
+
+### 4. Support for unique CSS values
+
+```less
+value: $(#222 / 2); // #111
+```
+
+### 5. Use with Jess variables
+
+```less
+$width: 10px;
+$height: $(width + 10px);
+
+#header {
+  width: $width;
+  height: $height;
+}
+```
+
+## Identifiers in expressions
+
+Identifiers in expressions are evaluated as variable references. Note in the example below, when we call `iscolor`, we enter a new "CSS value context" and temporarily exit the expression context. So if we want to pass in a variable, we need to start a new expression with `$`.
+
+```less
+$color: red;
+value: $(color); // red
+value: $less.iscolor($color); // true
+```
+```less
+$num: 10;
+value: $(num + 1); // 11
+```
+If you need to pass in a keyword argument in an expression context for some reason, Jess allows `~` before an identifier to signify a keyword literal. So, like `~""` for string escapes and `~()` for parentheses escapes, you can think of it as escaping the expression context.
+
+```less
+value: $(~black + #111); // #111
+```
+
+## Other operators
+
+### `?` operator
+
+Jess uses `?` to represent optionality. In many cases, that means that a variable that isn't found will not trigger an error, but will instead return a `nil` node.
+
+```less
+border: 1px solid red;
+color: $some-undefined-variable?; // nil
+background: black;
+```
+→
+```css
+border: 1px solid red;
+background: black;
+```
+
+#### `?` with CSS-like functions
+
+Both Less and Sass allow "function fallbacks". In other words, function calls will look up a respective Less/Sass function, and if it doesn't exist, it will output the function as-is.
+
+Jess supports this with a `?` operator after the function name.
+
+```less
+// If a variable exists named `rgb`, call the variable as a function, passing these values to the function. Otherwise, output the function as-is.
+value: rgb?(10, 20, 30);
+```
+→
+```
+value: rgb(10, 20, 30);
+```
+
+Note that this is distinct from:
+```less
+// If the variable `rgb` does not exist, resolve to `nil`.
+value: $rgb?(10, 20, 30);
+```
+→ (no output)

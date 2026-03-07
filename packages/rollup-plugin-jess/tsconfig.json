@@ -4,6 +4,7 @@
     { "path" : "../jess" }
   ],
   "compilerOptions": {
+    "noEmit": true,
     "outDir": "./lib",
     "rootDir": "./src"
   },

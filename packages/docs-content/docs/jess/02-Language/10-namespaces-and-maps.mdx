@@ -1,0 +1,188 @@
+---
+title: Lists, maps, and collections
+audiences:
+  - jess
+origin: jess
+---
+Probably the best reason to convert your Sass and Less to Jess today is to use its elegant syntax that unifies the concepts of namespaces, collections, maps, and objects.
+
+## A Jess collection
+
+```less
+// theme.jess
+$colors: {
+  primary: #06c;
+  secondary: #e00;
+  tertiary: #000;
+}
+```
+
+```less
+// app.jess
+@-compose "./theme.jess";
+
+.box {
+  color: $theme.colors.primary;
+}
+```
+
+You'll notice that the assigned namespace `theme` acts as a collection of values, and the `colors` variable is just another collection of values. Just like JavaScript objects, you can access the values in the collection using the dot (`.`) syntax.
+
+Speaking of JavaScript objects... did you know you can use them in Jess?
+```js
+// tokens.js
+export const sizes = {
+  small: '10px',
+  medium: '20px',
+  large: '30px'
+}
+```
+
+```less
+@-use "./tokens.js";
+
+.box {
+  padding: $tokens.sizes.small;
+}
+```
+
+### Sub-collections
+
+Collections can contain other collections.
+
+```less
+// theme.jess
+$colors: {
+  primary: #06c;
+  secondary: #e00;
+  tertiary: {
+    light: #06c;
+    dark: #e00;
+  }
+}
+```
+
+```less
+// app.jess
+@-compose "./theme.jess";
+
+.box {
+  color: $theme.colors.tertiary.light;
+}
+```
+
+:::warning[Collections are not anonymous mixins]
+
+You may notice that collections look very similar to anonymous mixins without parameters, which can look like:
+
+```less
+$mixin: @{
+  color: red;
+}
+```
+
+This similarity is on purpose! And, in fact, you can access mixins and rulesets as collections, if you wish. But, the important difference is that collections
+
+1. cannot contain rulesets, mixin definitions, or at-rules, and
+2. are intended for any arbitrary key/value pairs, not CSS properties & values.
+
+:::
+
+
+## Lists and arrays
+
+Jess also borrows the concept of lists and array access from JavaScript.
+
+```less
+// theme.jess
+$sizes: 10px, 20px, 30px;
+
+.box {
+  padding: $sizes[0]; // 10px
+}
+```
+Jess also borrows a convenient syntax some languages use for accessing items from the end of the list, which is to use a negative index.
+
+```less
+.box {
+  padding: $sizes[-1]; // 30px
+}
+```
+
+:::info
+
+You may never need to use it, but Jess also allows numeric indexed access to values of a ruleset or mixin.
+
+```less
+.mixin() {
+  color: #06c;
+  color: #e00;
+}
+
+// Might be useful to access two values with the same key,
+// since `$|.mixin().color` would return the final value.
+.box {
+  color-1: $ > .mixin[0]; // #06c
+  color-2: $ > .mixin[1]; // #e00
+}
+```
+
+:::
+
+## Other language approaches
+
+### Less's approach to maps
+
+Less's innovation is that it allows you to use rulesets and mixins as maps, and Jess takes a lot of inspiration from Less's syntax. Here's a Less example:
+
+```less
+.mixin() {
+  color: #06c;
+  color: #e00;
+}
+
+.box {
+  color: .mixin[primary];
+  color: .mixin[secondary];
+}
+```
+→
+```css
+.box {
+  color: #06c;
+  color: #e00;
+}
+```
+
+There are a few downsides of Less's syntax for maps.
+
+1. There is semantic confusion between a map / collection and a "set of rules". An anonymous ruleset, for example, could contain real CSS properties, or it could contain arbitrary keys the developer has assigned. This makes it impossible for an IDE, for example, to give feedback to the developer about the contents of the ruleset. Is it a mis-typed CSS property? Or is it just a key in a map?
+2. Accessing variables in a map can look unintuitive e.g. `@map[@my-var]`. JavaScript developers may interpret this as saying the _property name_ is variable, and not that it is literally a variable named `@my-var`.
+
+
+### Sass's approach to maps
+
+Sass's approach to maps is a bit of a syntactic mess. Even though CSS has a clearly-defined syntax for assigning values to properties, it opts to a) use quoted strings as property names, and b) separate property / value pairs with commas instead of CSS's standard semi-colon.
+
+```scss
+$font-weights: ("regular": 400, "medium": 500, "bold": 700);
+```
+
+Simiarly, even though Sass added the concept of namespaces, it doesn't use it for maps, instead using the `map-get` (or `map.get`) function.
+
+```scss
+value: map.get($font-weights, "medium"); // 500
+value: map.get($font-weights, "bold"); // 700
+```
+
+Jess's approach makes this much cleaner and look more intuitive to a web developer familiar with CSS and JavaScript.
+```scss
+$font-weights: {
+  regular: 400;
+  medium: 500;
+  bold: 700;
+}
+
+value: $font-weights.regular; // 400
+value: $font-weights.bold; // 700
+```

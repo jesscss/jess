@@ -1,0 +1,181 @@
+.hero {
+  background:
+    radial-gradient(ellipse at 48% -24%, rgb(132 112 255 / 24%) 0%, rgb(132 112 255 / 0%) 56%),
+    radial-gradient(ellipse at 82% 0%, rgb(31 190 182 / 18%) 0%, rgb(31 190 182 / 0%) 52%),
+    linear-gradient(180deg, #231b3f 0%, #1d1735 58%, #17122a 100%);
+  color: #fff;
+  padding: 4.5rem 0 3.5rem;
+  border-bottom: 1px solid rgb(153 134 255 / 24%);
+}
+
+.hero :global(.container) {
+  text-align: center;
+}
+
+.heroBrand {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.logo {
+  width: min(172px, 46vw);
+  max-width: 172px;
+  min-width: 128px;
+  height: auto;
+  margin-bottom: 1rem;
+  image-rendering: auto;
+}
+
+.hero h1 {
+  font-size: clamp(2.1rem, 4vw, 2.9rem);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.65rem;
+}
+
+.tagline {
+  max-width: 46rem;
+  color: #e7e2ff;
+  font-size: 1.12rem;
+  margin: 0 auto 1.5rem;
+  text-align: center;
+  line-height: 1.55;
+}
+
+.quickstart {
+  margin: 1.5rem auto 0;
+  max-width: 44rem;
+  text-align: center;
+  padding: 1rem 1rem 1.15rem;
+  border: 1px solid rgb(157 140 255 / 32%);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgb(45 35 78 / 66%) 0%, rgb(31 24 56 / 56%) 100%);
+  box-shadow: 0 14px 30px rgb(14 10 28 / 30%);
+}
+
+.quickstart p {
+  color: #e4e0ff;
+  margin: 0 0 0.6rem;
+}
+
+.quickstart :global(code) {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0.35rem auto;
+  background: #110d20 !important;
+  color: #f9f8ff !important;
+  border: 1px solid rgb(171 156 255 / 66%) !important;
+  box-shadow: 0 6px 16px rgb(9 6 18 / 42%);
+  padding: 0.46rem 0.78rem;
+  border-radius: 6px;
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.main {
+  padding: 2.3rem 0 3rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-rows: auto 1fr auto;
+  gap: 1.1rem;
+}
+
+.card {
+  border: 1px solid #ddd4ff;
+  background:
+    radial-gradient(ellipse at 90% -30%, rgb(167 153 255 / 20%) 0%, rgb(167 153 255 / 0%) 54%),
+    linear-gradient(180deg, rgb(242 238 255 / 82%) 0%, #ffffff 35%),
+    #ffffff;
+  border-radius: 12px;
+  padding: 1rem 1rem 1.25rem;
+  box-shadow: 0 12px 28px rgb(42 31 86 / 11%);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.4rem;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+@supports (grid-template-rows: subgrid) {
+  .card {
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+  }
+}
+
+.card:nth-child(2n) {
+  background:
+    radial-gradient(ellipse at 90% -30%, rgb(99 214 204 / 17%) 0%, rgb(99 214 204 / 0%) 54%),
+    linear-gradient(180deg, rgb(236 255 252 / 70%) 0%, #ffffff 40%),
+    #ffffff;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #bfaeff;
+  box-shadow: 0 16px 30px rgb(42 31 86 / 16%);
+}
+
+.card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.card p {
+  margin: 0;
+  color: #3f3758;
+}
+
+.card a {
+  align-self: end;
+  font-weight: 600;
+}
+
+.actionsLowKey {
+  margin-top: 2rem;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.actionsLowKey :global(.button) {
+  min-width: 148px;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 600;
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.ctaPrimary {
+  color: #f5f2ff !important;
+  background: linear-gradient(180deg, rgb(104 90 226 / 92%) 0%, rgb(82 68 191 / 92%) 100%) !important;
+  border: 1px solid rgb(177 165 255 / 64%) !important;
+  box-shadow: 0 6px 14px rgb(17 12 36 / 26%);
+}
+
+.ctaPrimary:hover {
+  color: #fff !important;
+  background: linear-gradient(180deg, rgb(114 98 238 / 94%) 0%, rgb(89 74 203 / 94%) 100%) !important;
+  border-color: rgb(196 186 255 / 72%) !important;
+}
+
+.ctaSecondary {
+  color: #ece7ff !important;
+  background: rgb(46 36 80 / 82%) !important;
+  border: 1px solid rgb(146 132 234 / 66%) !important;
+  box-shadow: 0 6px 14px rgb(17 12 36 / 22%);
+}
+
+.ctaSecondary:hover {
+  color: #fff;
+  background: rgb(57 45 99 / 90%) !important;
+  border-color: rgb(165 151 248 / 72%) !important;
+}

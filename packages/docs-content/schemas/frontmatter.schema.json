@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jesscss.dev/schemas/docs-frontmatter.json",
+  "title": "Docs Frontmatter",
+  "type": "object",
+  "required": ["title", "audiences", "origin"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string", "minLength": 1 },
+    "slug": { "type": "string" },
+    "audiences": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["jess", "less", "sass", "shared"]
+      },
+      "minItems": 1
+    },
+    "origin": {
+      "type": "string",
+      "enum": ["jess", "less", "shared"]
+    },
+    "legacy_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "ready", "deprecated"]
+    }
+  },
+  "additionalProperties": true
+}

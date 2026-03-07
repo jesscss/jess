@@ -1,0 +1,13 @@
+---
+description: "Package: @jesscss/language-service (engine + LSP server)"
+globs:
+  - "packages/language-service/**"
+---
+
+# `@jesscss/language-service`
+
+- **Role**: Jess-first language service engine + thin LSP server wrapper.
+- **Docs**: `packages/language-service/README.md`
+- **Build**: `cd packages/language-service && pnpm build`
+- **Tests**: `cd packages/language-service && pnpm test`
+

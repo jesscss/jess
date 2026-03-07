@@ -1,0 +1,13 @@
+---
+description: "Package: rollup-plugin-jess (Rollup bridge to modern jess compiler)"
+globs:
+  - "packages/rollup-plugin-jess/**"
+---
+
+# `rollup-plugin-jess`
+
+- **Role**: Minimal bridge to the modern `jess` compiler; emits CSS as an asset.
+- **Docs**: `packages/rollup-plugin-jess/README.md`
+- **Build**: `cd packages/rollup-plugin-jess && pnpm build`
+- **Tests**: `cd packages/rollup-plugin-jess && pnpm test`
+

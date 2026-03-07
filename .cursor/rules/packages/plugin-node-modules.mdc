@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/plugin-node-modules (node_modules resolver/loader)"
+globs:
+  - "packages/jess-plugin-node-modules/**"
+---
+
+# `@jesscss/plugin-node-modules`
+
+- **Role**: Resolve/load npm packages from `node_modules` for Jess.
+- **Build**: `cd packages/jess-plugin-node-modules && pnpm build`
+- **Lint**: `cd packages/jess-plugin-node-modules && pnpm lint`
+

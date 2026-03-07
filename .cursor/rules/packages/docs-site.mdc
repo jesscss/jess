@@ -1,0 +1,12 @@
+---
+description: "Package: jess-docs (Docusaurus site)"
+globs:
+  - "packages/docs/**"
+---
+
+# `jess-docs`
+
+- **Role**: Docusaurus documentation site.
+- **Dev**: `cd packages/docs && pnpm dev`
+- **Build**: `cd packages/docs && pnpm build`
+

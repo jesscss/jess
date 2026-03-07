@@ -1,0 +1,13 @@
+---
+description: "Package: jess (CLI/app)"
+globs:
+  - "packages/jess/**"
+---
+
+# `jess`
+
+- **Role**: CLI/app and integration tests.
+- **Entrypoint**: `packages/jess/bin/cli.js`
+- **Build**: `cd packages/jess && pnpm build`
+- **Tests**: `cd packages/jess && pnpm test` (Less suite under `test/less`)
+

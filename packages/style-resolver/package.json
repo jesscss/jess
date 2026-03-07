@@ -1,0 +1,29 @@
+{
+  "name": "@jesscss/style-resolver",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "tsc -p tsconfig.build.json",
+    "test": "vitest --watch=false",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.2",
+    "vitest": "^3.2.4"
+  }
+}
+

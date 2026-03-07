@@ -1,12 +1,16 @@
+## TODO
+
+Remove, we have container queries now.
+
 
 *container.jess*
 ```less
-@import {if} from 'jess/helpers';
+@from '@jesscss/fns' import (if);
 
 @let contain: 640;
 
 .box {
-  width: $if(contain < 640, 100, 200)px;
+  width: #(if(contain < 640, 100, 200))px;
 }
 ```
 Interpreted as:

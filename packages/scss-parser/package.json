@@ -1,0 +1,50 @@
+{
+  "name": "@jesscss/scss-parser",
+  "private": true,
+  "description": "",
+  "version": "2.0.0-alpha.1",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build",
+    "build": "pnpm compile",
+    "compile": "pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json",
+    "dev": "pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json -w",
+    "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
+    "test": "vitest --run --passWithNoTests",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "dependencies": {
+    "@jesscss/core": "workspace:*",
+    "@jesscss/css-parser": "workspace:*",
+    "chevrotain": "^11.0.3"
+  },
+  "devDependencies": {
+    "sass-spec": "github:sass/sass-spec"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
+}

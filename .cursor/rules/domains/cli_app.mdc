@@ -1,0 +1,19 @@
+---
+description: "CLI/app (`packages/jess`): Less fixture harness, end-to-end behavior, output/diagnostics"
+globs:
+  - "packages/jess/**"
+---
+
+# CLI/app (`packages/jess`)
+
+## What lives here
+
+- CLI entrypoint: `packages/jess/bin/cli.js`
+- Core app logic: `packages/jess/src/**`
+- Large Less-oriented test suite under `packages/jess/test/less/**`
+
+## Fixture-driven testing
+
+- The Less test harness documentation is in `packages/jess/test/less/README.md`.
+- If you changed `packages/core`, build it first so `packages/jess` tests see updated `@jesscss/core` output.
+

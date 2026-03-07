@@ -1,0 +1,10 @@
+/* Expected output from Less for extend-ancestor-minimal-example.less */
+.a {
+  color: red;
+}
+@media screen {
+  .b {
+    color: red;
+    background: blue;
+  }
+}

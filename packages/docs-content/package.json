@@ -1,0 +1,12 @@
+{
+  "name": "@jesscss/docs-content",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "description": "Canonical docs content source for Jess and Less sites",
+  "scripts": {
+    "migrate:jess": "node ./scripts/migrate-jess-docs.mjs",
+    "import:less": "node ./scripts/import-less-docs.mjs",
+    "normalize": "node ./scripts/normalize-frontmatter.mjs",
+    "validate": "node ./scripts/validate-docs.mjs"
+  }
+}

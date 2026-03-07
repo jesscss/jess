@@ -1,0 +1,36 @@
+{
+  "name": "styles-config",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "2.0.0-alpha.1",
+  "description": "General-purpose configuration for styling frameworks (Jess, Less, Sass, Tailwind, etc.)",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "tsc -p tsconfig.build.json",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@jesscss/core": "workspace:*",
+    "cosmiconfig": "^9.0.0",
+    "picomatch": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/picomatch": "^3.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "author": "Matthew Dean",
+  "license": "MIT"
+}
+

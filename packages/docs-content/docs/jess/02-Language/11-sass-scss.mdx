@@ -1,0 +1,166 @@
+---
+title: Sass (SCSS) compatibility
+sidebar_label: Sass (SCSS)
+audiences:
+  - jess
+origin: jess
+---
+This doc explains how Jess parses and compiles **SCSS** (Sass’s CSS-like syntax), and how Sass-only constructs are mapped into Jess’s AST and (when possible) into Jess-native semantics.
+
+Jess’s goal is to make **Sass input parseable**, while preferring **Jess-native output semantics** where they’re strictly better (for example, maps).
+
+## What SCSS adds beyond CSS
+
+Sass extends CSS with (at least) the following features:
+
+- **Variables**: `$var: value;` ([Sass variables](https://sass-lang.com/documentation/variables/))
+- **Interpolation**: `#{...}` in selectors, property names, and values ([Interpolation](https://sass-lang.com/documentation/interpolation/))
+- **Mixins/includes/content blocks**: `@mixin`, `@include`, `@content`, `using (...)` ([Mixins](https://sass-lang.com/documentation/at-rules/mixin/))
+- **Control directives**: `@if`, `@for`, `@each`, `@while`, `@error`, `@warn`, `@debug` ([Control directives](https://sass-lang.com/documentation/at-rules/control/))
+- **Module system**: `@use`, `@forward`, configuration via `with (...)` ([use](https://sass-lang.com/documentation/at-rules/use/), [forward](https://sass-lang.com/documentation/at-rules/forward/))
+- **Maps and lists**: including built-in helpers like `map.get()` ([Maps](https://sass-lang.com/documentation/values/maps/), [sass:map](https://sass-lang.com/documentation/modules/map/))
+- **Extend + placeholders**: `@extend` and `%placeholders` ([extend](https://sass-lang.com/documentation/at-rules/extend/), [placeholders](https://sass-lang.com/documentation/style-rules/placeholder-selectors/))
+- **@at-root**: explicit control over nesting output ([at-root](https://sass-lang.com/documentation/at-rules/at-root/))
+- **Nested declarations** (“property nesting”) ([declarations](https://sass-lang.com/documentation/style-rules/declarations/))
+
+## At-rule mapping: Sass → Jess
+
+Jess keeps compiler-level at-rules prefixed with `-` to avoid collisions with the evolving CSS standard library.
+
+### `@use` (stylesheets) → `@-compose`
+
+Sass:
+
+```scss
+@use './theme' as theme;
+.box { color: theme.$primary-color; }
+```
+
+Jess equivalent:
+
+```scss
+@-compose './theme' as theme;
+.box { color: $theme.primary-color; }
+```
+
+Jess’s module import node is `StyleImport` (see `packages/core/src/tree/import-style.ts`). It supports namespaces, configuration, and export/protection flags.
+
+### `@use` (scripts) → `@-use`
+
+In Jess, `@-use` is for importing JS/TS/JSON modules (see `packages/core/src/tree/import-js.ts`).
+
+When parsing SCSS, Jess will treat `@use` as a stylesheet import by default, but if the `@use` path clearly targets a script module (for example `./tokens.js`, `./tokens.ts`, `./tokens.json`), it will parse to a JS import node instead.
+
+### `@forward` (SCSS) → `@-export`
+
+Jess models Sass forwarding semantics with `@-export` (see [At-rules](/docs/Language/atrules)).
+
+## Sass maps → Jess collections
+
+Sass maps are syntactically awkward compared to CSS rules. Jess maps them into the `Collection` node, which is a “map-like Rules” structure.
+
+Sass:
+
+```scss
+$font-weights: ("regular": 400, "medium": 500, "bold": 700);
+```
+
+Jess AST shape (conceptual):
+
+```scss
+$font-weights: {
+  regular: 400;
+  medium: 500;
+  bold: 700;
+}
+```
+
+### Key normalization rules
+
+- **Quoted string keys** with no interpolation are treated as plain keys.
+  - `"regular"` becomes `regular` (no quotes) in the corresponding `Declaration` name.
+- More complex Sass map keys (colors, lists, etc.) are supported by Jess collections, but the SCSS mapping rules depend on how the key can be represented as a stable collection key (see [Namespaces, collections, and maps](/docs/Language/namespaces-and-maps)).
+
+## `map-get()` and `map.get()` → Reference lookups
+
+Sass commonly accesses map keys via:
+
+```scss
+@use "sass:map";
+
+.box {
+  font-weight: map.get($font-weights, "medium");
+}
+```
+
+Jess does **not** treat this as a normal function call. Instead, the SCSS parser desugars:
+
+- `map-get($map, $key[, ...])`
+- `map.get($map, $key[, ...])`
+
+into a **Reference lookup chain**:
+
+- Evaluate the map expression (often `$font-weights`)
+- Look up the key(s) as nested property/index accesses
+
+This is the same core mechanism Jess uses for `$theme.colors.primary` and array/map-like access.
+
+## SCSS interpolation mapping
+
+Jess distinguishes:
+
+- `Reference`: `$var`
+- `Expression`: `$(...)`
+- `Reference` with `role: 'ident'`: `$[ident]`
+
+### `#{$...}` in selector/property names
+
+When SCSS interpolation appears in selector or property-name positions:
+
+- `#{$ident}` (single variable reference) maps to `$[ident]`
+- More complex interpolation expressions are rewritten through a generated private temp variable (`_tmp_<n>`), then referenced as `$[_tmp_<n>]`
+
+This keeps selector/property interpolation identifier-only while still supporting complex expressions.
+
+### `#{$...}` in values/strings
+
+In value/string contexts, SCSS interpolation may map to:
+
+- `$[ident]` for simple identifier interpolation
+- `$(...)` for expression interpolation
+
+For example, `#{$color}` can become `$($color)` when expression semantics are needed.
+
+### Interpolation in mixin names
+
+SCSS does not allow interpolation in mixin names. Jess follows that behavior:
+
+- `@include foo-#{$bar}()` is rejected
+- `@mixin foo-#{$bar}` is rejected
+
+## Placeholder selectors (`%foo`)
+
+Sass placeholder selectors don’t emit CSS unless they’re extended.
+
+Jess parses:
+
+- `%foo` as selector name `\foo`
+
+This name conversion makes placeholders syntactically distinguishable from normal selectors while still being a selector-like key in the registry.
+
+### Placeholder visibility (current state)
+
+Sass placeholders are “silent” until extended. In Jess today, placeholder parsing is supported, but full Sass-equivalent placeholder visibility behavior remains partial. Use this area with extra verification in migration-heavy code paths.
+
+### Cross-module behavior
+
+Sass’s module system allows extending placeholders across module boundaries, with private placeholders (leading `_` or `-`) restricted to their defining module (see Sass’s placeholder docs above). Jess aims for parity here, but behavior is still being finalized.
+
+## Variable flags: `!global` and `!default`
+
+Sass supports `!global` and `!default` on variable assignments ([variables](https://sass-lang.com/documentation/variables/)).
+
+Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. Instead, SCSS `!global` will be treated as “set existing / do not shadow” (Jess’s `setDefined` behavior), which is equivalent to `!global` *unless the user has already shadowed the variable in a narrower scope*—in that case, the user must refactor the source for clarity.
+
+`!default` exists in Sass primarily to support module configuration (`@use ... with (...)`). Jess will align with Sass’s `@use` configuration behavior by ensuring configurable variables are explicitly marked and handled accordingly.
+
