@@ -1,0 +1,47 @@
+name: Publish alpha packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish-alpha:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Enforce alpha branch release policy
+        run: |
+          if [ "${{ github.ref_name }}" != "alpha" ]; then
+            echo "This workflow publishes alpha packages and must run on branch 'alpha'."
+            echo "Current branch: ${{ github.ref_name }}"
+            exit 1
+          fi
+
+      - name: Preflight alpha checks
+        run: pnpm run release:alpha:check
+
+      - name: Publish allowlisted alpha packages
+        run: pnpm run release:alpha:publish

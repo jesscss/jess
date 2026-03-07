@@ -1,5 +1,17 @@
 /* eslint no-control-regex: "off" */
-import { rawTokenConfig, LexerType } from './util'
+import { type WritableDeep } from 'type-fest';
+import type { RawModeConfig } from './util/index.js';
+import { LexerType } from './util/index.js';
+import { SKIPPED_LABEL } from './advancedActionsParser.js';
+import {
+  Lexer,
+  createToken,
+  type ITokenConfig,
+  type TokenType,
+  type IMultiModeLexerDefinition,
+  type CustomPatternMatcherFunc
+} from 'chevrotain';
+import { buildFragments, createLexerDefinition } from './util/index.js';
 
 /**
  * references:
@@ -7,274 +19,552 @@ import { rawTokenConfig, LexerType } from './util'
  * https://www.lifewire.com/css2-vs-css3-3466978
  * https://www.w3.org/TR/css-syntax-3/
  *
- * Fragments and Tokens must be defined in order
- * ({{references}} must follow definitions)
+ * @todo
+ * XRegExp should accept an object rather than an array of arrays,
+ * which would make extending easier.
  */
-export const Fragments: [string, string][] = [
+export const rawCssFragments = () => [
   ['newline', '\\n|\\r\\n?|\\f'],
   ['whitespace', '[ ]|\\t|{{newline}}'],
+  /** @todo - use in order to attach newlines to node ends? */
+  ['sepws', '(?:[ ]|\\t)*{{newline}}|(?:[ ]|\\t)+'],
   ['ws', '{{whitespace}}+'],
   ['comment', '\\/\\*[^*]*\\*+(?:[^/*][^*]*\\*+)*\\/'],
   ['hex', '[\\da-fA-F]'],
   ['unicode', '\\\\{{hex}}{1,6}{{whitespace}}?'],
   ['escape', '{{unicode}}|\\\\[^\\r\\n\\f0-9a-fA-F]'],
-  ['string1', '\\"(\\\\"|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
-  ['string2', "\\'(\\\\'|[^\\n\\r\\f\\']|{{newline}}|{{escape}})*\\'"],
   ['nonascii', '[\\u0240-\\uffff]'],
   ['nmstart', '[_a-zA-Z]|{{nonascii}}|{{escape}}'],
   ['nmchar', '[_a-zA-Z0-9-]|{{nonascii}}|{{escape}}'],
   ['ident', '-?{{nmstart}}{{nmchar}}*'],
-
-  /** Reference: https://www.w3.org/TR/css-syntax-3/#consume-url-token */
-  ['url', '(?:[^(\'"]|{{escape}})*'],
+  /**
+   * This diverts from spec -- we narrow units to not contain dashes or numbers
+   * This prevents 6px-1px from being parsed as '6' as number and 'px-1px' as unit,
+   * which causes problems for Less / Sass.
+   */
+  ['unit', '(?:[a-zA-Z]|{{nonascii}}|{{escape}})+'],
+  ['string1', '\\"(\\\\"|\\\\{{newline}}|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
+  ['string2', '\\\'(\\\\\'|\\\\{{newline}}|[^\\n\\r\\f\\\']|{{newline}}|{{escape}})*\\\''],
 
   ['integer', '[+-]?\\d+'],
-  /** Any number that's not simply an integer e.g. 1.1 or 1e+1 */
-  ['number', '[+-]?(?:\\d*\\.\\d+(?:[eE][+-]\\d+)?|\\d+(?:[eE][+-]\\d+))'],
+  /**
+   * Any (signless) number that's not simply an integer e.g. 1.1 or 1e+1
+  */
+  ['number', '(?:\\d*\\.\\d+(?:[eE][+-]\\d+)?|\\d+(?:[eE][+-]\\d+))'],
   ['wsorcomment', '({{ws}})|({{comment}})']
-]
+] as const;
 
-type Match = { value: string; index: number }
+// interface Match { value: string, index: number }
 
-class matchValue implements Match {
-  value: string
-  index: number
+// class MatchValue implements Match {
+//   value: string
+//   index: number
 
-  constructor(str: string, index: number) {
-    this.value = str
-    this.index = index
-  }
-}
+//   constructor(str: string, index: number) {
+//     this.value = str
+//     this.index = index
+//   }
+// }
 
 /**
  * When bound to a Regular Expression, it will aggregrate capture groups onto the payload
  */
 export function groupCapture(this: RegExp, text: string, startOffset: number) {
-  let endOffset = startOffset
-  let match: RegExpExecArray | null
-  let lastMatch: RegExpExecArray | null = null
-  const matches: RegExpExecArray[] = []
+  let endOffset = startOffset;
+  this.lastIndex = startOffset;
 
-  this.lastIndex = startOffset
+  let match = this.exec(text);
+  endOffset = this.lastIndex;
 
-  while ((match = this.exec(text))) {
-    endOffset = this.lastIndex
-    lastMatch = match
-    matches.push(match)
+  const payload = match?.filter((m, i) => {
+    return i !== 0 && typeof m === 'string';
+  });
+  const returnObj: [string] & any = [text.substring(startOffset, endOffset)];
+  if (payload) {
+    returnObj.payload = payload;
+    return returnObj;
   }
-
-  if (lastMatch !== null) {
-    const payload: Match[][] = new Array(lastMatch.length - 1)
-    matches.forEach(match => {
-      match.forEach((group, i) => {
-        if (i > 0 && group) {
-          const item = payload[i - 1]
-          if (item) {
-            item.push(new matchValue(group, match.index))
-          } else {
-            payload[i - 1] = [new matchValue(group, match.index)]
-          }
-        }
-      })
-    })
-
-    const returnObj: [string] & any = [text.substring(startOffset, endOffset)]
-    returnObj.payload = payload
-    return returnObj
-  }
-  return lastMatch
+  return match;
 }
 
 /**
  * Anything that is not 'BlockMarker' will be parsed as a generic 'Value',
  * so 'Value' can be considered `!BlockMarker`
+ *
+ * @todo Change to Map implementation? May allow easier replacement of
+ * tokens, in extended parsers, as well as easier TokenMap.
  */
-export const Tokens: rawTokenConfig[] = [
-  { name: 'Value', pattern: LexerType.NA },
-  { name: 'NonIdent', pattern: LexerType.NA },
-  { name: 'AtName', pattern: LexerType.NA },
-  // This can match anything, so it must be given the lowest priority
-  { name: 'Unknown', pattern: /[\u0000-\uffff]/ },
-  { name: 'BlockMarker', pattern: LexerType.NA },
-  { name: 'ListMarker', pattern: LexerType.NA },
-  { name: 'CompareOperator', pattern: LexerType.NA },
-  { name: 'Selector', pattern: LexerType.NA },
-  { name: 'Combinator', pattern: LexerType.NA },
-  { name: 'Color', pattern: LexerType.NA },
-  { name: 'Function', pattern: LexerType.NA },
-  { name: 'Assign', pattern: LexerType.NA },
-  // TODO: can use string literals for simple patterns (e.g: /\)/ vs ')')
-  { name: 'Gt', pattern: />/, categories: ['CompareOperator', 'Combinator'] },
-  { name: 'Lt', pattern: /</, categories: ['CompareOperator'] },
-  { name: 'GtEq', pattern: />=/, categories: ['CompareOperator'] },
-  { name: 'LtEq', pattern: /<=/, categories: ['CompareOperator'] },
-  { name: 'LCurly', pattern: /{/, categories: ['BlockMarker'] },
-  { name: 'RCurly', pattern: /}/, categories: ['BlockMarker'] },
-  { name: 'LParen', pattern: /\(/, categories: ['BlockMarker'] },
-  { name: 'RParen', pattern: /\)/, categories: ['BlockMarker'] },
-  { name: 'LSquare', pattern: /\[/, categories: ['BlockMarker'] },
-  { name: 'RSquare', pattern: /\]/, categories: ['BlockMarker'] },
-  { name: 'SemiColon', pattern: /;/, categories: ['BlockMarker'] },
-  { name: 'AdditionOperator', pattern: LexerType.NA },
-  { name: 'MultiplicationOperator', pattern: LexerType.NA },
-  { name: 'Plus', pattern: /\+/, categories: ['AdditionOperator', 'Combinator'] },
-  { name: 'Minus', pattern: /-/, categories: ['AdditionOperator'] },
-  { name: 'Divide', pattern: /\//, categories: ['MultiplicationOperator'] },
-  { name: 'Comma', pattern: /,/, categories: ['BlockMarker'] },
-  { name: 'Colon', pattern: /:/, categories: ['BlockMarker', 'Assign'] },
-  { name: 'AttrMatchOperator', pattern: LexerType.NA },
-  // Some tokens have to appear after AttrMatch
-  { name: 'Eq', pattern: /=/, categories: ['CompareOperator', 'AttrMatchOperator'] },
-  { name: 'Star', pattern: /\*/, categories: ['MultiplicationOperator'] },
-  { name: 'Tilde', pattern: /~/, categories: ['Combinator'] },
-  /** a namespace or column combinator */
-  { name: 'Pipe', pattern: /\|\|?/, categories: ['Combinator'] },
-  { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
-  { name: 'Ident', pattern: LexerType.NA },
-  { name: 'PropertyName', pattern: LexerType.NA },
-  { name: 'PlainIdent', pattern: '{{ident}}', categories: ['Ident', 'PropertyName'] },
-  { name: 'CustomProperty', pattern: '--{{ident}}', categories: ['BlockMarker', 'PropertyName'] },
-  { name: 'CDOToken', pattern: /<!--/, group: LexerType.SKIPPED },
-  { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
-  /** Ignore BOM */
-  { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
-  { name: 'AttrFlag', pattern: /[is]/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
-  { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'Only', pattern: /only/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName'] },
-  { name: 'Uri', pattern: LexerType.NA },
-  {
-    name: 'UriString',
-    pattern: 'url\\((:?{{ws}})?({{string1}}|{{string2}})(:?{{ws}})?\\)',
-    line_breaks: true,
-    categories: ['Uri']
-  },
-  {
-    name: 'UriUrl',
-    pattern: 'url\\((:?{{ws}})?{{url}}(:?{{ws}})?\\)',
-    line_breaks: true,
-    categories: ['Uri']
-  },
-  {
-    name: 'StringLiteral',
-    pattern: '{{string1}}|{{string2}}'
-  },
-  {
-    name: 'Important',
-    pattern: '!{{ws}}?important',
-    categories: ['BlockMarker']
-  },
-  {
-    name: 'AtImport',
-    pattern: /@import/,
-    longer_alt: 'AtKeyword',
-    categories: ['BlockMarker', 'AtName']
-  },
-  {
-    name: 'AtMedia',
-    pattern: /@media/,
-    longer_alt: 'AtKeyword',
-    categories: ['BlockMarker', 'AtName']
-  },
-  {
-    name: 'AtSupports',
-    pattern: /@supports/,
-    longer_alt: 'AtKeyword',
-    categories: ['BlockMarker', 'AtName']
-  },
-  {
-    name: 'AtNested',
-    pattern: /@page|@font-face|@keyframes|@viewport|@document/,
-    longer_alt: 'AtKeyword',
-    categories: ['BlockMarker', 'AtName']
-  },
-  {
-    name: 'AtNonNested',
-    pattern: /@charset|@namespace/,
-    longer_alt: 'AtKeyword',
-    categories: ['BlockMarker', 'AtName']
-  },
-  {
-    name: 'UnicodeRange',
-    pattern: /[uU]\+[0-9a-fA-F?]+(-[0-9a-fA-F?]+)?/
-  },
-  {
-    name: 'DotName',
-    pattern: '\\.{{ident}}',
-    categories: ['Selector']
-  },
-  {
-    name: 'HashName',
-    pattern: '#{{ident}}',
-    categories: ['Selector']
-  },
+export const rawCssTokens = () => ({
+  modes: {
+    Default: [
+      { name: 'Value', pattern: LexerType.NA },
+      { name: 'NonIdent', pattern: LexerType.NA },
+      { name: 'AtName', pattern: LexerType.NA },
+      { name: 'MfLt', pattern: LexerType.NA },
+      { name: 'MfGt', pattern: LexerType.NA },
+      // This can match anything, so it must be given the lowest priority
+      { name: 'Unknown', pattern: /[\u0000-\uffff]/ },
+      { name: 'BlockMarker', pattern: LexerType.NA },
+      { name: 'ListMarker', pattern: LexerType.NA },
+      { name: 'CompareOperator', pattern: LexerType.NA },
+      { name: 'Slash', pattern: LexerType.NA },
+      { name: 'Selector', pattern: LexerType.NA },
+      { name: 'Combinator', pattern: LexerType.NA },
+      { name: 'Color', pattern: LexerType.NA },
+      { name: 'FunctionStart', pattern: LexerType.NA },
+      { name: 'FunctionalPseudoClass', pattern: LexerType.NA },
+      { name: 'Assign', pattern: LexerType.NA },
+      { name: 'QuoteStart', pattern: LexerType.NA },
+      // TODO: can use string literals for simple patterns (e.g: /\)/ vs ')')
+      { name: 'Gt', pattern: />/, categories: ['CompareOperator', 'Combinator', 'MfGt'] },
+      { name: 'Lt', pattern: /</, categories: ['CompareOperator', 'MfLt'] },
+      { name: 'GtEq', pattern: />=/, categories: ['CompareOperator', 'MfGt'] },
+      { name: 'LtEq', pattern: /<=/, categories: ['CompareOperator', 'MfGt'] },
+      { name: 'LCurly', pattern: /{/, categories: ['BlockMarker'] },
+      { name: 'RCurly', pattern: /}/, categories: ['BlockMarker'] },
+      { name: 'LParen', pattern: /\(/, categories: ['BlockMarker'] },
+      { name: 'RParen', pattern: /\)/, categories: ['BlockMarker'] },
+      { name: 'LSquare', pattern: /\[/, categories: ['BlockMarker'] },
+      { name: 'RSquare', pattern: /\]/, categories: ['BlockMarker'] },
+      { name: 'Semi', pattern: /;/, categories: ['BlockMarker'] },
+      { name: 'AdditionOperator', pattern: LexerType.NA },
+      { name: 'MultiplicationOperator', pattern: LexerType.NA },
+      { name: 'Plus', pattern: /\+/, categories: ['AdditionOperator', 'Combinator'] },
+      { name: 'Minus', pattern: /-/, categories: ['AdditionOperator'] },
+      { name: 'Divide', pattern: /\//, categories: ['MultiplicationOperator', 'Slash'] },
+      { name: 'Comma', pattern: /,/, categories: ['BlockMarker'] },
+      { name: 'Colon', pattern: /:/, categories: ['BlockMarker', 'Assign'] },
+      { name: 'AttrMatchOperator', pattern: LexerType.NA },
+      // Some tokens have to appear after AttrMatch
+      { name: 'Eq', pattern: /=/, categories: ['CompareOperator', 'AttrMatchOperator'] },
+      { name: 'Star', pattern: /\*/, categories: ['MultiplicationOperator'] },
+      { name: 'Tilde', pattern: /~/, categories: ['Combinator'] },
+      /** a namespace or column combinator */
+      { name: 'Pipe', pattern: /\|/, categories: ['Combinator'] },
+      { name: 'Column', pattern: /\|\|/, categories: ['Combinator'] },
+      { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
+      { name: 'Ident', pattern: LexerType.NA },
+      {
+        name: 'PlainIdent',
+        pattern: '{{ident}}',
+        categories: ['Ident']
+      },
+      { name: 'LegacyPropIdent', pattern: '(?:\\*|_){{ident}}' },
+      {
+        name: 'CustomProperty',
+        pattern: '--{{ident}}',
+        categories: ['BlockMarker']
+      },
+      { name: 'CDOToken', pattern: /<!--/, group: LexerType.SKIPPED },
+      { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
+      /** Ignore BOM */
+      { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
+      { name: 'AttrFlag', pattern: /[is]/i, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
-  {
-    name: 'ColorIntStart',
-    pattern: /#(?:(?:[0-9][0-9a-f]{7})|(?:[0-9][0-9a-f]{5})|(?:[0-9][0-9a-f]{2,3}))/i,
-    categories: ['Color']
-  },
-  // This is in the Selector category because a value may get lexed as a color,
-  // but will be intended as an ID selector. ONLY valid as ID if it doesn't start with a number
-  {
-    name: 'ColorIdentStart',
-    pattern: /#(?:(?:[a-f][0-9a-f]{7})|(?:[a-f][0-9a-f]{5})|(?:[a-f][0-9a-f]{2,3}))/i,
-    longer_alt: 'HashName',
-    categories: ['Color', 'Selector']
-  },
-  /**
-   * CSS syntax says we should identify integers as separate from numbers,
-   * probably because there are parts of the syntax where one is allowed but not the other?
-   */
-  { name: 'Number', pattern: LexerType.NA },
-  { name: 'Dimension', pattern: LexerType.NA },
-  { name: 'Integer', pattern: LexerType.NA },
-  {
-    name: 'DimensionNum',
-    pattern: ['({{number}})({{ident}}|%)', groupCapture],
-    start_chars_hint: [
-      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-      '-', '+'
+      /**
+       * Needs to appear after keywords like `even` which starts with `e`
+       * (Reminder that tokens are in reverse order in this file.)
+       */
+      {
+        name: 'MathConstant',
+        pattern: /pi|e|-?infinity|nan/i,
+        longer_alt: 'PlainIdent',
+        categories: ['Ident']
+      },
+
+      /** Logical Keywords */
+      { name: 'Only', pattern: /only/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      /** Query words */
+      { name: 'Screen', pattern: /screen/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      // Match a generic function start: identifier followed immediately by '('
+      {
+        name: 'GenericFunctionStart',
+        pattern: '{{ident}}\\(',
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+
+      /**
+       * Move these under GenericFunctionStart so that they are not parsed as `and(`
+       * in Less / Jess.
+       */
+      { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      /**
+       * Special function names in CSS
+       */
+      { name: 'Layer', pattern: /layer\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Supports', pattern: /supports\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Var', pattern: /var\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Calc', pattern: /calc\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+
+      /** Keyframe keywords */
+      { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'To', pattern: /to/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName'] },
+      {
+        name: 'UrlStart',
+        pattern: /url\(/i,
+        push_mode: 'Url',
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+      /** Supports the very old alpha(opacity=[number]) */
+      {
+        name: 'LegacyMSFilter',
+        pattern: /alpha\(opacity=\d{1,3}\)|progid:(?:[\w]+\.)*\w+(?:\([^)]*\))?/,
+        categories: ['BlockMarker']
+      },
+      /**
+       * Rather than consume the whole string, we push
+       * a string mode. This makes string parsing
+       * extensible to languages with embedded expressions.
+       */
+      {
+        name: 'SingleQuoteStart',
+        pattern: /'/,
+        push_mode: 'SingleQuoteString',
+        categories: ['BlockMarker', 'QuoteStart']
+      },
+      {
+        name: 'DoubleQuoteStart',
+        pattern: /"/,
+        push_mode: 'DoubleQuoteString',
+        categories: ['BlockMarker', 'QuoteStart']
+      },
+      {
+        name: 'Important',
+        pattern: '!(?:{{ws}}|{{comment}})*important',
+        categories: ['BlockMarker']
+      },
+      {
+        name: 'AtImport',
+        pattern: /@import/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtMedia',
+        pattern: /@media/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtSupports',
+        pattern: /@supports/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtLayer',
+        pattern: /@layer/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtContainer',
+        pattern: /@container/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtScope',
+        pattern: /@scope/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtDocument',
+        pattern: /@(?:-moz-)?document/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtPage',
+        pattern: /@page/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtFontFace',
+        pattern: /@font-face/i,
+        categories: ['BlockMarker', 'AtName']
+      },
+      // Keyframes (standard and vendor-prefixed)
+      { name: 'AtKeyframes', pattern: /@(?:-[a-z]+-)?keyframes/i, longer_alt: 'AtKeyword', categories: ['BlockMarker', 'AtName'] },
+      {
+        name: 'AtNested',
+        pattern: /@starting-style|@property|@counter-style|@viewport|@-ms-viewport|@color-profile|@font-palette-values/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtNonNested',
+        pattern: /@namespace/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      /** Not a rule, but a special token */
+      {
+        name: 'Charset',
+        pattern: '@charset{{ws}}?(?:{{string1}}|{{string2}});'
+      },
+      {
+        name: 'UnicodeRange',
+        pattern: /[uU]\+[0-9a-fA-F?]+(-[0-9a-fA-F?]+)?/
+      },
+      /** Selectors */
+      {
+        name: 'Ampersand',
+        pattern: /&/,
+        categories: ['Selector']
+      },
+      {
+        name: 'DotName',
+        pattern: '\\.{{ident}}',
+        categories: ['Selector']
+      },
+      /** There are some cases where we might need this tokenized separately?  */
+      // {
+      //   name: 'Dot',
+      //   pattern: /\./,
+      //   categories: ['BlockMarker']
+      // },
+      {
+        name: 'HashName',
+        pattern: '#{{ident}}',
+        categories: ['Selector']
+      },
+      {
+        name: 'NthPseudoClass',
+        pattern: /:(?:nth-child|nth-last-child|nth-of-type|nth-last-of-type)\(/i,
+        categories: ['BlockMarker', 'FunctionalPseudoClass']
+      },
+      {
+        name: 'SelectorPseudoClass',
+        pattern: /:(?:is|not|where|has)\(/i,
+        categories: ['BlockMarker', 'FunctionalPseudoClass']
+      },
+
+      /** @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page */
+      {
+        name: 'PagePseudoClassKeywords',
+        pattern: /(?:first|left|right|blank)/i,
+        categories: ['Ident'],
+        longer_alt: 'PlainIdent'
+      },
+
+      /** Nth Keywords */
+      { name: 'NthOdd', pattern: /odd/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'NthEven', pattern: /even/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Of', pattern: /of/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      {
+        name: 'ColorIntStart',
+        pattern: /#(?:(?:[0-9][0-9a-f]{7})|(?:[0-9][0-9a-f]{5})|(?:[0-9][0-9a-f]{2,3}))/i,
+        categories: ['Color']
+      },
+      // This is in the Selector category because a value may get lexed as a color,
+      // but will be intended as an ID selector. ONLY valid as ID if it doesn't start with a number
+      {
+        name: 'ColorIdentStart',
+        pattern: /#(?:(?:[a-f][0-9a-f]{7})|(?:[a-f][0-9a-f]{5})|(?:[a-f][0-9a-f]{2,3}))/i,
+        longer_alt: 'HashName',
+        categories: ['Color', 'Selector']
+      },
+      /**
+       * CSS syntax says we should identify integers as separate from numbers,
+       * probably because there are parts of the syntax where one is allowed but not the other?
+       */
+      { name: 'Number', pattern: LexerType.NA },
+      { name: 'Dimension', pattern: LexerType.NA },
+      { name: 'Integer', pattern: LexerType.NA },
+      { name: 'Signed', pattern: LexerType.NA },
+      {
+        name: 'DimensionNum',
+        pattern: ['({{number}})({{unit}}|%)', groupCapture],
+        start_chars_hint: [
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.'
+        ],
+        line_breaks: false,
+        categories: ['Dimension', 'Selector']
+      },
+      {
+        name: 'DimensionInt',
+        pattern: ['({{integer}})({{unit}}|%)', groupCapture],
+        start_chars_hint: [
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+        ],
+        line_breaks: false,
+        categories: ['Dimension', 'Integer', 'Selector']
+      },
+      {
+        name: 'SignedDimensionNum',
+        pattern: ['([+-]{{number}})({{unit}}|%)', groupCapture],
+        start_chars_hint: ['-', '+'],
+        line_breaks: false,
+        categories: ['Dimension', 'Signed']
+      },
+      {
+        name: 'SignedDimensionInt',
+        pattern: ['([+-]{{integer}})({{unit}}|%)', groupCapture],
+        start_chars_hint: ['-', '+'],
+        line_breaks: false,
+        categories: ['Dimension', 'Integer', 'Signed']
+      },
+      {
+        name: 'SignedInt',
+        pattern: /[+-]\d+/,
+        longer_alt: 'SignedDimensionInt',
+        categories: ['Integer', 'Number', 'Signed']
+      },
+      {
+        name: 'UnsignedInt',
+        pattern: /\d+/,
+        longer_alt: 'DimensionInt',
+        categories: ['Integer', 'Number']
+      },
+      {
+        name: 'SignedNum',
+        pattern: '[+-]{{number}}',
+        longer_alt: 'SignedDimensionNum',
+        categories: ['Integer', 'Number', 'Signed']
+      },
+      {
+        name: 'UnsignedNum',
+        pattern: '{{number}}',
+        longer_alt: 'DimensionNum',
+        categories: ['Number']
+      },
+      /**
+       * This has to be parsed carefully because the plus / minus can
+       * continue into different token types.
+       */
+      {
+        name: 'NthSignedDimension',
+        pattern: /[+-]\dn/,
+        longer_alt: 'SignedDimensionInt',
+        line_breaks: false,
+        categories: ['Dimension', 'Signed']
+      },
+      {
+        name: 'NthUnsignedDimension',
+        pattern: /\dn/,
+        longer_alt: 'DimensionNum',
+        line_breaks: false,
+        categories: ['Dimension']
+      },
+      {
+        name: 'NthSignedPlus',
+        pattern: /[+]n/,
+        line_breaks: false
+      },
+      {
+        name: 'NthIdent',
+        // Only match bare `n`/`-n` forms used by :nth-* grammar.
+        // Without this guard, identifiers like `negation` are tokenized as PlainIdent
+        // via longer_alt, preventing GenericFunctionStart tokenization.
+        pattern: '-?n(?!{{nmchar}})',
+        longer_alt: 'PlainIdent',
+        line_breaks: false,
+        categories: ['Ident']
+      },
+
+      /** Moved under 'n' parsing */
+      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      {
+        name: 'WS',
+        pattern: '{{ws}}',
+        line_breaks: true,
+        label: SKIPPED_LABEL
+      },
+      {
+        name: 'Comment',
+        pattern: '{{comment}}',
+        line_breaks: true,
+        label: SKIPPED_LABEL
+      }
     ],
-    line_breaks: false,
-    categories: ['Dimension']
-  },
-  {
-    name: 'DimensionInt',
-    pattern: ['({{integer}})({{ident}}|%)', groupCapture],
-    start_chars_hint: [
-      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-      '-', '+'
+    SingleQuoteString: [
+      /**
+       * Note that:
+       *  - "\u0022" === `"`
+       *  - "\u0027" === `'`
+       *  - "\u005C" === `\`
+       */
+      {
+        name: 'SingleQuoteStringContents',
+        pattern: '(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\\'|\\\\{{newline}}|{{newline}}|{{escape}})+'
+      },
+      {
+        name: 'SingleQuoteEnd',
+        pattern: /'/,
+        pop_mode: true
+      }
     ],
-    line_breaks: false,
-    categories: ['Dimension', 'Integer']
+    DoubleQuoteString: [
+      {
+        name: 'DoubleQuoteStringContents',
+        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u005B\\u005D-\\uFFFF]|\\\\"|\\\\{{newline}}|{{newline}}|{{escape}})+'
+      },
+      {
+        name: 'DoubleQuoteEnd',
+        pattern: /"/,
+        pop_mode: true
+      }
+    ],
+    Url: [
+      /** Reference: https://www.w3.org/TR/css-syntax-3/#consume-url-token */
+      {
+        name: 'NonQuotedUrl',
+        /**
+         * Equivalent to: /[^)(\'"]+/ but a-lot less clear :(
+         * @see https://chevrotain.io/docs/guide/resolving_lexer_errors.html#COMPLEMENT
+         *
+         * Note that:
+         *  - "\u0022" === `"`
+         *  - "\u0027" === `'`
+         *  - "\u0028" === `(`
+         *  - "\u0029" === `)`
+         *  - "\u005C" === `\`
+         */
+        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u0026\\u002A-\\u005B\\u005D-\\uFFFF]|{{escape}})+'
+      },
+      /**
+       * We need to be careful to think about this token from the URL mode
+       * when we're gating the RParen token for any reason. This is a separate token.
+       */
+      {
+        name: 'UrlEnd',
+        pattern: /\)/,
+        pop_mode: true
+      },
+      'SingleQuoteStart',
+      'DoubleQuoteStart',
+      'WS'
+    ]
   },
-  {
-    name: 'SignedInt',
-    pattern: /[+-]\d+/,
-    longer_alt: 'DimensionInt',
-    categories: ['Integer', 'Number']
-  },
-  {
-    name: 'UnsignedInt',
-    pattern: /\d+/,
-    longer_alt: 'DimensionInt',
-    categories: ['Integer', 'Number']
-  },
-  {
-    name: 'UnitlessNum',
-    pattern: '{{number}}',
-    longer_alt: 'DimensionNum',
-    categories: ['Number']
-  },
-  {
-    name: 'WS',
-    pattern: ['{{wsorcomment}}', groupCapture],
-    start_chars_hint: [' ', '\t', '\n', '\r', '\f', '/'],
-    line_breaks: true,
-    categories: ['BlockMarker']
-  }
-]
+  defaultMode: 'Default'
+}) as const satisfies RawModeConfig;
+
+type TokenModes = ReturnType<typeof rawCssTokens>['modes'];
+
+export type TokenNameMap<T extends readonly any[]> = {
+  [P in keyof T]: T[P] extends { name: string }
+    ? T[P]['name']
+    : T[P]
+};
+export type TokenNames<T extends readonly any[]> = TokenNameMap<T>[number];
+
+/** Join all modes to get strong indexing */
+export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>;
+
+let fragments = rawCssFragments();
+let tokens = rawCssTokens();
+export const cssFragments = buildFragments(fragments);
+export const cssLexer = createLexerDefinition(fragments, tokens);

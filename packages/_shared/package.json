@@ -1,0 +1,10 @@
+{
+  "name": "@jesscss/shared",
+  "private": true,
+  "version": "2.0.0-alpha.1",
+  "description": "Shared constants between packages",
+  "main": "index.ts",
+  "scripts": {},
+  "author": "Matthew Dean",
+  "license": "MIT"
+}

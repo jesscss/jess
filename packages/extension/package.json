@@ -1,0 +1,42 @@
+{
+  "name": "@jesscss/extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/extension.js",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onLanguage:css",
+    "onLanguage:less",
+    "onLanguage:scss"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Jess Language Service",
+      "properties": {
+        "jess.languageService.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Jess language service (CSS/Less/SCSS)."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@jesscss/language-service": "workspace:*",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.15.13",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "typescript": "~5.8.2"
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "watch": "node ./scripts/build.mjs --watch"
+  }
+}
+

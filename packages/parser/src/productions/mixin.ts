@@ -1,7 +1,8 @@
-import { CstChild, CstNode } from '@jesscss/css-parser'
-import type { JessParser } from '../jessParser'
+import type { CstChild } from '@jesscss/css-parser';
+import { CstNode } from '@jesscss/css-parser';
+import type { JessParser } from '../jessParser.js';
 
-export default function (this: JessParser, $: JessParser) {
+export default function(this: JessParser, $: JessParser) {
   $.mixin = $.RULE('mixin',
     () => ({
       name: 'atRule',
@@ -14,48 +15,52 @@ export default function (this: JessParser, $: JessParser) {
         $.SUBRULE($.curlyBlock)
       ]
     })
-  )
+  );
 
   $.mixinPrelude = $.RULE('mixinPrelude', () => {
-    const prelude = [$._()]
+    const prelude = [$._()];
     /** @todo - identify these pieces better */
     $.OR([
-      { ALT: () => {
+      {
+        ALT: () => {
         /** JS ident */
-        prelude.push(
-          $.CONSUME($.T.PlainIdent),
-          $._(1)
-        )
-        $.OPTION3(() => {
           prelude.push(
-            $.CONSUME($.T.LParen),
-            $.SUBRULE($.mixinArgs),
-            $.CONSUME($.T.RParen)
-          )
-        })
-      }},
-      { ALT: () => {
-        prelude.push(
-          $.CONSUME($.T.Function),
-          undefined,
-          undefined,
-          $.SUBRULE2($.mixinArgs),
-          $.CONSUME2($.T.RParen)
-        )
-      }}
-    ])
+            $.CONSUME($.T.PlainIdent),
+            $._(1)
+          );
+          $.OPTION3(() => {
+            prelude.push(
+              $.CONSUME($.T.LParen),
+              $.SUBRULE($.mixinArgs),
+              $.CONSUME($.T.RParen)
+            );
+          });
+        }
+      },
+      {
+        ALT: () => {
+          prelude.push(
+            $.CONSUME($.T.Function),
+            undefined,
+            undefined,
+            $.SUBRULE2($.mixinArgs),
+            $.CONSUME2($.T.RParen)
+          );
+        }
+      }
+    ]);
 
-    $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)))
+    $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)));
 
-    return prelude
-  })
+    return prelude;
+  });
 
   $.mixinArgs = $.RULE('mixinArgs', () => {
     const children: CstChild[] = [
       $._()
-    ]
+    ];
     $.OPTION(() => {
-      children.push($.SUBRULE($.mixinArg))
+      children.push($.SUBRULE($.mixinArg));
       $.MANY(() => {
         children.push(
           {
@@ -66,34 +71,34 @@ export default function (this: JessParser, $: JessParser) {
             ]
           },
           $.SUBRULE2($.mixinArg)
-        )
-      })
-    })
+        );
+      });
+    });
     return {
       name: 'mixinArgs',
       children
-    }
-  })
+    };
+  });
 
   $.mixinArg = $.RULE('mixinArg', () => {
     const children: CstChild[] = [
       /** JS ident */
       $.CONSUME($.T.PlainIdent),
       $._()
-    ]
+    ];
 
     $.OPTION(() => {
       children.push(
         $.CONSUME($.T.Colon),
         $._(1),
         $.SUBRULE($.expression)
-      )
-    })
+      );
+    });
     return {
       name: 'mixinArg',
       children
-    }
-  })
+    };
+  });
 
   $.atInclude = $.RULE('atInclude',
     () => ({
@@ -121,5 +126,5 @@ export default function (this: JessParser, $: JessParser) {
         $.OPTION(() => $.CONSUME($.T.SemiColon))
       ]
     })
-  )
+  );
 }

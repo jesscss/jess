@@ -1,9 +1,9 @@
 :root {
-  --zero-size: {
+  --initial-size: {
     width: 0;
     height: 0;
   };
-  --small-icon: {
+  --icon-sm: {
     width: 16px;
     height: 16px;
   }

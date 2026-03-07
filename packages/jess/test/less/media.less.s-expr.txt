@@ -1,0 +1,2254 @@
+(Rules
+  [
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'var')
+      value: 
+        (Number 42)
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'print')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.class')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                    (Ruleset
+                      selector: 
+                        (BasicSelector '.sub')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'width')
+                              value: 
+                                (Reference
+                                  key: 'var'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.top')
+                    (ComplexSelector
+                      [
+                        (BasicSelector 'header')
+                        (Combinator '>')
+                        (BasicSelector 'h1')
+                      ]
+                    )
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Paren
+                          (Operation
+                            [
+                              (Color
+                                node: '#222'
+                                format: 0
+                              )
+                              (undefined)
+                              (Number 2)
+                            ]
+                          )
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'screen')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (VarDeclaration
+              name: 
+                (Any [role=ident] 'base')
+              value: 
+                (Number 8)
+            )
+            (Ruleset
+              selector: 
+                (BasicSelector '.body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'max-width')
+                      value: 
+                        (Paren
+                          (Operation
+                            [
+                              (Reference
+                                key: 'base'
+                              )
+                              (undefined)
+                              (Number 60)
+                            ]
+                          )
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'ratio_large')
+      value: 
+        (Number 16)
+    )
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'ratio_small')
+      value: 
+        (Number 9)
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'all')
+            (Any [role=keyword] 'and')
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'device-aspect-ratio')
+                    value: 
+                      (Quoted
+                        (Interpolated [role=ident]
+                          source: '%% / %%'
+                          replacements:
+                          [
+                            (Reference [role=ident]
+                              key: 'ratio_large'
+                            )
+                            (Reference [role=ident]
+                              key: 'ratio_small'
+                            )
+                          ]
+                        )
+                      )
+                  )
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'max-width')
+                      value: 
+                        (Dimension
+                          number: 800
+                          unit: 'px'
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'all')
+            (Any [role=keyword] 'and')
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'orientation')
+                    value: 
+                      (Any 'portrait')
+                  )
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector 'aside')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'float')
+                      value: 
+                        (Any 'none')
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (List
+          [
+            (Sequence
+              [
+                (Any [role=keyword] 'handheld')
+                (Any [role=keyword] 'and')
+                (Sequence
+                  [
+                    (Paren
+                      (Declaration
+                        name: 
+                          (Any [role=property] 'min-width')
+                        value: 
+                          (Reference
+                            key: 'var'
+                          )
+                      )
+                    )
+                  ]
+                )
+              ]
+            )
+            (Sequence
+              [
+                (Any [role=keyword] 'screen')
+                (Any [role=keyword] 'and')
+                (Sequence
+                  [
+                    (Paren
+                      (Declaration
+                        name: 
+                          (Any [role=property] 'min-width')
+                        value: 
+                          (Dimension
+                            number: 20
+                            unit: 'em'
+                          )
+                      )
+                    )
+                  ]
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'max-width')
+                      value: 
+                        (Dimension
+                          number: 480
+                          unit: 'px'
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.body')
+      rules: 
+        (Rules
+          [
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (Sequence
+                  [
+                    (Any [role=keyword] 'print')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'padding')
+                      value: 
+                        (Dimension
+                          number: 20
+                          unit: 'px'
+                        )
+                    )
+                    (Ruleset
+                      selector: 
+                        (BasicSelector 'header')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'background-color')
+                              value: 
+                                (Color
+                                  node: 'red'
+                                  format: 0
+                                  rgb:
+                                  [255, 0, 0]
+                                  alpha: 1
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@media')
+                      prelude: 
+                        (Sequence
+                          [
+                            (Paren
+                              (Declaration
+                                name: 
+                                  (Any [role=property] 'orientation')
+                                value: 
+                                  (Any 'landscape')
+                              )
+                            )
+                          ]
+                        )
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin-left')
+                              value: 
+                                (Dimension
+                                  number: 20
+                                  unit: 'px'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'screen')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.sidebar')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'width')
+                      value: 
+                        (Dimension
+                          number: 300
+                          unit: 'px'
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@media')
+                      prelude: 
+                        (Sequence
+                          [
+                            (Paren
+                              (Declaration
+                                name: 
+                                  (Any [role=property] 'orientation')
+                                value: 
+                                  (Any 'landscape')
+                              )
+                            )
+                          ]
+                        )
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'width')
+                              value: 
+                                (Dimension
+                                  number: 500
+                                  unit: 'px'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'a')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.first')
+              rules: 
+                (Rules
+                  [
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@media')
+                      prelude: 
+                        (Sequence
+                          [
+                            (Paren
+                              (Any [role=keyword] 'b')
+                            )
+                          ]
+                        )
+                      rules: 
+                        (Rules
+                          [
+                            (Ruleset
+                              selector: 
+                                (BasicSelector '.second')
+                              rules: 
+                                (Rules
+                                  [
+                                    (Ruleset
+                                      selector: 
+                                        (BasicSelector '.third')
+                                      rules: 
+                                        (Rules
+                                          [
+                                            (Declaration
+                                              name: 
+                                                (Any [role=property] 'width')
+                                              value: 
+                                                (Dimension
+                                                  number: 300
+                                                  unit: 'px'
+                                                )
+                                            )
+                                            (AtRule
+                                              name: 
+                                                (Any [role=atkeyword] '@media')
+                                              prelude: 
+                                                (Sequence
+                                                  [
+                                                    (Paren
+                                                      (Any [role=keyword] 'c')
+                                                    )
+                                                  ]
+                                                )
+                                              rules: 
+                                                (Rules
+                                                  [
+                                                    (Declaration
+                                                      name: 
+                                                        (Any [role=property] 'width')
+                                                      value: 
+                                                        (Dimension
+                                                          number: 500
+                                                          unit: 'px'
+                                                        )
+                                                    )
+                                                  ]
+                                                )
+                                            )
+                                          ]
+                                        )
+                                    )
+                                    (Ruleset
+                                      selector: 
+                                        (BasicSelector '.fourth')
+                                      rules: 
+                                        (Rules
+                                          [
+                                            (Declaration
+                                              name: 
+                                                (Any [role=property] 'width')
+                                              value: 
+                                                (Number 3)
+                                            )
+                                          ]
+                                        )
+                                    )
+                                  ]
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.body')
+      rules: 
+        (Rules
+          [
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (List
+                  [
+                    (Sequence
+                      [
+                        (Any [role=keyword] 'a')
+                      ]
+                    )
+                    (Sequence
+                      [
+                        (Paren
+                          (Any [role=keyword] 'b')
+                        )
+                        (Any [role=keyword] 'and')
+                        (Paren
+                          (Any [role=keyword] 'c')
+                        )
+                      ]
+                    )
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'width')
+                      value: 
+                        (Dimension
+                          number: 95
+                          unit: '%'
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@media')
+                      prelude: 
+                        (List
+                          [
+                            (Sequence
+                              [
+                                (Paren
+                                  (Any [role=keyword] 'x')
+                                )
+                              ]
+                            )
+                            (Sequence
+                              [
+                                (Paren
+                                  (Any [role=keyword] 'y')
+                                )
+                              ]
+                            )
+                          ]
+                        )
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'width')
+                              value: 
+                                (Dimension
+                                  number: 100
+                                  unit: '%'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Mixin
+      name: '.mediaMixin'
+      params: 
+        (List
+          [
+            (VarDeclaration
+              name: 
+                (Any [role=property] 'fallback')
+              value: 
+                (Dimension
+                  number: 200
+                  unit: 'px'
+                )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'background')
+              value: 
+                (Color
+                  node: 'black'
+                  format: 0
+                  rgb:
+                  [0, 0, 0]
+                  alpha: 1
+                )
+            )
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (Sequence
+                  [
+                    (Any [role=keyword] 'handheld')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'white'
+                          format: 0
+                          rgb:
+                          [255, 255, 255]
+                          alpha: 1
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@media')
+                      prelude: 
+                        (Sequence
+                          [
+                            (Paren
+                              (Declaration
+                                name: 
+                                  (Any [role=property] 'max-width')
+                                value: 
+                                  (Reference
+                                    key: 'fallback'
+                                  )
+                              )
+                            )
+                          ]
+                        )
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'background')
+                              value: 
+                                (Color
+                                  node: 'red'
+                                  format: 0
+                                  rgb:
+                                  [255, 0, 0]
+                                  alpha: 1
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.a')
+      rules: 
+        (Rules
+          [
+            (Call
+              name: 
+                (Reference [role=name]
+                  key: 
+                    (BasicSelector '.mediaMixin')
+                )
+              args: 
+                (List
+                  [
+                    (Dimension
+                      number: 100
+                      unit: 'px'
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.b')
+      rules: 
+        (Rules
+          [
+            (Call
+              name: 
+                (Reference [role=name]
+                  key: 
+                    (BasicSelector '.mediaMixin')
+                )
+            )
+          ]
+        )
+    )
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'smartphone')
+      value: 
+        (Quoted
+          (Any [role=any] 'only screen and (max-width: 200px)')
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Reference
+              key: 'smartphone'
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'width')
+                      value: 
+                        (Dimension
+                          number: 480
+                          unit: 'px'
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'print')
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@page')
+              prelude: 
+                (List
+                  [
+                    (BasicSelector ':left')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'margin')
+                      value: 
+                        (Dimension
+                          number: 0.5
+                          unit: 'cm'
+                        )
+                    )
+                  ]
+                )
+            )
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@page')
+              prelude: 
+                (List
+                  [
+                    (BasicSelector ':right')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'margin')
+                      value: 
+                        (Dimension
+                          number: 0.5
+                          unit: 'cm'
+                        )
+                    )
+                  ]
+                )
+            )
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@page')
+              prelude: 
+                (List
+                  [
+                    (BasicSelector 'Test:first')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'margin')
+                      value: 
+                        (Dimension
+                          number: 1
+                          unit: 'cm'
+                        )
+                    )
+                  ]
+                )
+            )
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@page')
+              prelude: 
+                (List
+                  [
+                    (BasicSelector ':first')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'size')
+                      value: 
+                        (Sequence
+                          [
+                            (Dimension
+                              number: 8.5
+                              unit: 'in'
+                            )
+                            (Dimension
+                              number: 11
+                              unit: 'in'
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@top-left')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@top-left-corner')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@top-center')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@top-right')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@top-right-corner')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@bottom-left')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@bottom-left-corner')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@bottom-center')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@bottom-right')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@bottom-right-corner')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@left-top')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@left-middle')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@left-bottom')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@right-top')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@right-middle')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'content')
+                              value: 
+                                (Sequence
+                                  [
+                                    (Quoted
+                                      (Any [role=any] 'Page ')
+                                    )
+                                    (Call
+                                      name: 
+                                        (Reference
+                                          key: 'counter'
+                                        )
+                                      args: 
+                                        (List
+                                          [
+                                            (Any 'page')
+                                          ]
+                                        )
+                                    )
+                                  ]
+                                )
+                            )
+                          ]
+                        )
+                    )
+                    (AtRule
+                      name: 
+                        (Any [role=atkeyword] '@right-bottom')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'margin')
+                              value: 
+                                (Dimension
+                                  number: 1
+                                  unit: 'cm'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (List
+          [
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] '-webkit-min-device-pixel-ratio')
+                    value: 
+                      (Number 2)
+                  )
+                )
+              ]
+            )
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'min--moz-device-pixel-ratio')
+                    value: 
+                      (Number 2)
+                  )
+                )
+              ]
+            )
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] '-o-min-device-pixel-ratio')
+                    value: 
+                      (Quoted
+                        (Any [role=any] '2/1')
+                      )
+                  )
+                )
+              ]
+            )
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'min-resolution')
+                    value: 
+                      (Dimension
+                        number: 2
+                        unit: 'dppx'
+                      )
+                  )
+                )
+              ]
+            )
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'min-resolution')
+                    value: 
+                      (Dimension
+                        number: 128
+                        unit: 'dpcm'
+                      )
+                  )
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.b')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'red'
+                          format: 0
+                          rgb:
+                          [255, 0, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Mixin
+      name: '.bg'
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'background')
+              value: 
+                (Color
+                  node: 'red'
+                  format: 0
+                  rgb:
+                  [255, 0, 0]
+                  alpha: 1
+                )
+            )
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (Sequence
+                  [
+                    (Paren
+                      (Declaration
+                        name: 
+                          (Any [role=property] 'max-width')
+                        value: 
+                          (Dimension
+                            number: 500
+                            unit: 'px'
+                          )
+                      )
+                    )
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'green'
+                          format: 0
+                          rgb:
+                          [0, 128, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.body')
+      rules: 
+        (Rules
+          [
+            (Call
+              name: 
+                (Reference [role=name]
+                  key: 
+                    (BasicSelector '.bg')
+                )
+            )
+          ]
+        )
+    )
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'bpMedium')
+      value: 
+        (Dimension
+          number: 1000
+          unit: 'px'
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Paren
+              (Declaration
+                name: 
+                  (Any [role=property] 'max-width')
+                value: 
+                  (Reference
+                    key: 'bpMedium'
+                  )
+              )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.body')
+              rules: 
+                (Rules
+                  [
+                    (Call
+                      name: 
+                        (Reference [role=name]
+                          key: 
+                            (BasicSelector '.bg')
+                        )
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Paren
+              (Declaration
+                name: 
+                  (Any [role=property] 'max-width')
+                value: 
+                  (Dimension
+                    number: 1200
+                    unit: 'px'
+                  )
+              )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Comment '/* a comment */')
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (Sequence
+                  [
+                    (Paren
+                      (Declaration
+                        name: 
+                          (Any [role=property] 'max-width')
+                        value: 
+                          (Dimension
+                            number: 900
+                            unit: 'px'
+                          )
+                      )
+                    )
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Ruleset
+                      selector: 
+                        (BasicSelector '.body')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'font-size')
+                              value: 
+                                (Dimension
+                                  number: 11
+                                  unit: 'px'
+                                )
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.nav-justified')
+      rules: 
+        (Rules
+          [
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (Sequence
+                  [
+                    (Paren
+                      (Declaration
+                        name: 
+                          (Any [role=property] 'min-width')
+                        value: 
+                          (Dimension
+                            number: 480
+                            unit: 'px'
+                          )
+                      )
+                    )
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Ruleset
+                      selector: 
+                        (ComplexSelector
+                          [
+                            (Combinator '>')
+                            (BasicSelector 'li')
+                          ]
+                        )
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'display')
+                              value: 
+                                (Any 'table-cell')
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.menu')
+      rules: 
+        (Rules
+          [
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (Sequence
+                  [
+                    (Paren
+                      (Declaration
+                        name: 
+                          (Any [role=property] 'min-width')
+                        value: 
+                          (Dimension
+                            number: 768
+                            unit: 'px'
+                          )
+                      )
+                    )
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Call
+                      name: 
+                        (Reference [role=name]
+                          key: 
+                            (BasicSelector '.nav-justified')
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'all')
+      value: 
+        (Quoted
+          (Any [role=any] 'all')
+        )
+    )
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'tv')
+      value: 
+        (Quoted
+          (Any [role=any] '(tv)')
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Reference
+              key: 'all'
+            )
+            (Any [role=keyword] 'and')
+            (Reference
+              key: 'tv'
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.all-and-tv-variables')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'var')
+                      value: 
+                        (Any 'all-and-tv')
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (VarDeclaration
+      name: 
+        (Any [role=ident] 'some-var')
+      value: 
+        (Dimension
+          number: 60
+          unit: 'px'
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'screen')
+            (Any [role=keyword] 'and')
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'min-width')
+                    value: 
+                      (Paren
+                        (Operation
+                          [
+                            (Reference
+                              key: 'some-var'
+                            )
+                            (undefined)
+                            (Number 1)
+                          ]
+                        )
+                      )
+                  )
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.selector')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'foo')
+                      value: 
+                        (Any 'bar')
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (List
+          [
+            (Sequence
+              [
+                (Any [role=keyword] 'screen')
+                (Any [role=keyword] 'and')
+                (Sequence
+                  [
+                    (Paren
+                      (Any [role=keyword] 'color')
+                    )
+                  ]
+                )
+              ]
+            )
+            (Sequence
+              [
+                (Any [role=keyword] 'projection')
+                (Any [role=keyword] 'and')
+                (Sequence
+                  [
+                    (Paren
+                      (Any [role=keyword] 'color')
+                    )
+                  ]
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.selector')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: '#eee'
+                          format: 0
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'not')
+            (Paren
+              (Sequence
+                [
+                  (Any [role=ident] 'width')
+                  (Any [role=keyword] '<=')
+                  (Dimension
+                    number: -100
+                    unit: 'px'
+                  )
+                ]
+              )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector 'body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'green'
+                          format: 0
+                          rgb:
+                          [0, 128, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Paren
+              (Sequence
+                [
+                  (Any [role=ident] 'height')
+                  (Any [role=keyword] '>')
+                  (Dimension
+                    number: -100
+                    unit: 'px'
+                  )
+                ]
+              )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector 'body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'green'
+                          format: 0
+                          rgb:
+                          [0, 128, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'not')
+            (Paren
+              (Declaration
+                name: 
+                  (Any [role=property] 'resolution')
+                value: 
+                  (Dimension
+                    number: -300
+                    unit: 'dpi'
+                  )
+              )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector 'body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'green'
+                          format: 0
+                          rgb:
+                          [0, 128, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Paren
+              (Declaration
+                name: 
+                  (Any [role=property] 'min-orientation')
+                value: 
+                  (Any 'portrait')
+              )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector 'body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'green'
+                          format: 0
+                          rgb:
+                          [0, 128, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Any [role=keyword] 'print')
+            (Any [role=keyword] 'and')
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'min-resolution')
+                    value: 
+                      (Dimension
+                        number: 118
+                        unit: 'dpcm'
+                      )
+                  )
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector 'body')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'background')
+                      value: 
+                        (Color
+                          node: 'green'
+                          format: 0
+                          rgb:
+                          [0, 128, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (Sequence
+          [
+            (Paren
+              (Sequence
+                [
+                  (Dimension
+                    number: 200
+                    unit: 'px'
+                  )
+                  (Any [role=keyword] '<=')
+                  (Any [role=ident] 'width')
+                  (Any [role=keyword] '<=')
+                  (Dimension
+                    number: 500
+                    unit: 'px'
+                  )
+                ]
+              )
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.test-range-syntax')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'padding')
+                      value: 
+                        (Number 0)
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (Ruleset
+      selector: 
+        (BasicSelector '.selector')
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: '#eee'
+                  format: 0
+                )
+            )
+            (AtRule
+              name: 
+                (Any [role=atkeyword] '@media')
+              prelude: 
+                (Sequence
+                  [
+                    (Paren
+                      (Sequence
+                        [
+                          (Dimension
+                            number: 200
+                            unit: 'px'
+                          )
+                          (Any [role=keyword] '<=')
+                          (Any [role=ident] 'width')
+                          (Any [role=keyword] '<=')
+                          (Dimension
+                            number: 500
+                            unit: 'px'
+                          )
+                        ]
+                      )
+                    )
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Ruleset
+                      selector: 
+                        (BasicSelector '.test-range-syntax')
+                      rules: 
+                        (Rules
+                          [
+                            (Declaration
+                              name: 
+                                (Any [role=property] 'padding')
+                              value: 
+                                (Number 0)
+                            )
+                          ]
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+    (AtRule
+      name: 
+        (Any [role=atkeyword] '@media')
+      prelude: 
+        (List
+          [
+            (Sequence
+              [
+                (Any [role=keyword] 'print')
+              ]
+            )
+            (Sequence
+              [
+                (Paren
+                  (Declaration
+                    name: 
+                      (Any [role=property] 'max-width')
+                    value: 
+                      (Dimension
+                        number: 992
+                        unit: 'px'
+                      )
+                  )
+                )
+              ]
+            )
+          ]
+        )
+      rules: 
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector 'div')
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'red'
+                          format: 0
+                          rgb:
+                          [255, 0, 0]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+    )
+  ]
+)

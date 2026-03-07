@@ -1,11 +1,11 @@
-import { CstChild } from '@jesscss/css-parser'
-import type { JessParser } from '../jessParser'
+import type { CstChild } from '@jesscss/css-parser';
+import type { JessParser } from '../jessParser.js';
 
 export default function(this: JessParser, $: JessParser) {
   $.jsExpression = $.RULE('jsExpression', () => {
     const children: CstChild[] = [
       $.CONSUME($.T.JsStart)
-    ]
+    ];
     /**
      * If we follow `$` with parens, then we only allow
      * one paren block.
@@ -15,10 +15,10 @@ export default function(this: JessParser, $: JessParser) {
       DEF: [
         {
           ALT: () => {
-            const blockChildren: CstChild[] = []
-            const start = $.CONSUME($.T.LParen)
-            $.MANY(() => blockChildren.push($.SUBRULE2($.jsTokens)))
-            
+            const blockChildren: CstChild[] = [];
+            const start = $.CONSUME($.T.LParen);
+            $.MANY(() => blockChildren.push($.SUBRULE2($.jsTokens)));
+
             children.push({
               name: 'jsBlock',
               children: [
@@ -30,51 +30,53 @@ export default function(this: JessParser, $: JessParser) {
                 $.CONSUME($.T.RParen),
                 $.OPTION(() => $.CONSUME($.T.Ident))
               ]
-            })
+            });
           }
         },
         {
           ALT: () => {
-            children.push($.SUBRULE($.jsValue))
+            children.push($.SUBRULE($.jsValue));
             $.MANY2(() => {
               $.OPTION2(() => {
-                children.push($.CONSUME($.T.Dot))
-              })
-              children.push($.SUBRULE2($.jsValue))
-            })
+                children.push($.CONSUME($.T.Dot));
+              });
+              children.push($.SUBRULE2($.jsValue));
+            });
           }
         }
       ]
-    })
-    
+    });
+
     return {
       name: 'jsExpression',
       children
-    }
-  })
+    };
+  });
 
   $.jsValue = $.RULE('jsValue',
     () => ({
       name: 'jsValue',
       children: $.OR([
-        { ALT: () => [
-          /** 
-             * JS ident 
+        {
+          ALT: () => [
+          /**
+             * JS ident
              */
-          $.CONSUME($.T.PlainIdent)
-        ]},
-        { ALT: () => [$.CONSUME($.T.StringLiteral)]},
+            $.CONSUME($.T.PlainIdent)
+          ]
+        },
+        { ALT: () => [$.CONSUME($.T.StringLiteral)] },
         /** I guess this can happen? */
-        { ALT: () => [$.CONSUME($.T.UriString)]},
+        { ALT: () => [$.CONSUME($.T.UriString)] },
         // Look for matching blocks
         {
           ALT: () => {
-            const children: CstChild[] = []
+            const children: CstChild[] = [];
             const start: CstChild = $.OR2([
               { ALT: () => $.CONSUME($.T.Function) },
               { ALT: () => $.CONSUME($.T.LParen) }
-            ])
-            $.MANY(() => children.push($.SUBRULE($.jsTokens)))
+            ]);
+            $.MANY(() => children.push($.SUBRULE($.jsTokens)));
 
             return [{
               name: 'jsBlock',
@@ -86,15 +88,15 @@ export default function(this: JessParser, $: JessParser) {
                 },
                 $.CONSUME($.T.RParen)
               ]
-            }]
+            }];
           }
         },
         {
           ALT: () => {
-            const children: CstChild[] = []
-            const start = $.CONSUME($.T.LSquare)
-            $.MANY2(() => children.push($.SUBRULE2($.jsTokens)))
-            
+            const children: CstChild[] = [];
+            const start = $.CONSUME($.T.LSquare);
+            $.MANY2(() => children.push($.SUBRULE2($.jsTokens)));
+
             return [{
               name: 'jsBlock',
               children: [
@@ -105,14 +107,14 @@ export default function(this: JessParser, $: JessParser) {
                 },
                 $.CONSUME($.T.RSquare)
               ]
-            }]
+            }];
           }
         },
         {
           ALT: () => {
-            const children: CstChild[] = []
-            const start = $.CONSUME($.T.LCurly)
-            $.MANY3(() => children.push($.SUBRULE3($.jsTokens)))
+            const children: CstChild[] = [];
+            const start = $.CONSUME($.T.LCurly);
+            $.MANY3(() => children.push($.SUBRULE3($.jsTokens)));
             return [{
               name: 'jsBlock',
               children: [
@@ -123,12 +125,12 @@ export default function(this: JessParser, $: JessParser) {
                 },
                 $.CONSUME($.T.RCurly)
               ]
-            }]
+            }];
           }
         }
       ])
     })
-  )
+  );
 
   /**
    * For now, we'll just tokenize as CSS tokens, instead of specially
@@ -155,5 +157,5 @@ export default function(this: JessParser, $: JessParser) {
       /** Try not to put these in your identifiers, it's confusing */
       { ALT: () => $.CONSUME($.T.JsStart) }
     ])
-  )
+  );
 }

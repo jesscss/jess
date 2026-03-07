@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/style-resolver (style resolution utilities)"
+globs:
+  - "packages/style-resolver/**"
+---
+
+# `@jesscss/style-resolver`
+
+- **Role**: Resolution helpers used by engines/tooling (private workspace package).
+- **Build**: `cd packages/style-resolver && pnpm build`
+- **Tests**: `cd packages/style-resolver && pnpm test`
+

@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/css-parser (base CSS parser)"
+globs:
+  - "packages/css-parser/**"
+---
+
+# `@jesscss/css-parser`
+
+- **Role**: Base CSS parsing; Chevrotain-based.
+- **Build**: `cd packages/css-parser && pnpm build`
+- **Tests**: `cd packages/css-parser && pnpm test`
+

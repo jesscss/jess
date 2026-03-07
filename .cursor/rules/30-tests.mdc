@@ -1,0 +1,29 @@
+---
+description: "Tests & scripts: vitest-first, isolate failures, monorepo execution rules"
+alwaysApply: true
+---
+
+# Tests & scripts (Jess monorepo)
+
+## Test runner
+- Prefer **Vitest** workflows (`pnpm test`, package `pnpm test`, or `pnpm --filter ... test`).
+- When debugging failures, isolate to **one** suite/case using `describe.only()` / `it.only()`. Remove `.only` afterward.
+
+## Debug output in tests
+- Use `syncLog()` for debugging output.
+- Do not use `console.log()` (often suppressed in Vitest output).
+- Log primitives only; avoid `JSON.stringify` and node stringification (see `20-quality-bar.mdc`).
+
+## Monorepo script execution (critical)
+- Run scripts from the **package directory** or via `pnpm --filter <pkg>`.
+- If tests in package **B** depend on package **A** changes, **build A first** so B sees updated `lib/` outputs.
+
+## Commit gate (regression bar)
+- **Baseline** = core tests + less-parser tests + css-parser tests + `packages/jess/test/less/all-less.test.ts`. These must **stay passing**; the bar moves forward (previous passes + newly fixed tests).
+- **Before claiming completion or suggesting commit:** Run `pnpm run verify:baseline`. Do not claim success without running it and confirming exit 0.
+- **Automation:** Pre-push runs `verify:baseline` when any of `packages/core`, `packages/less-parser`, `packages/css-parser`, or `packages/jess` have changes, and **blocks push** if it fails.
+
+## Move the bar up (never down)
+- As we increase stability, **always move the baseline up**: fix failing tests and keep them in the gate; add new suites to `verify:baseline` when they become required for stability.
+- **Do not** relax expectations, remove tests from the baseline, or change assertions to “pass” instead of fixing the cause. The bar is “all previous passes plus what we just fixed or added.”
+- If the baseline is red, the next step is fix-and-verify until green, then commit — not lower the bar.

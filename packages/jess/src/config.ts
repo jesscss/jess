@@ -1,15 +1,132 @@
-import { cosmiconfigSync } from 'cosmiconfig'
+import * as path from 'path';
+import { loadConfigSync, loadConfigSyncWithMeta, type StylesConfig } from 'styles-config';
 
-const explorerSync = cosmiconfigSync('jess', {
-  searchPlaces: [
-    '.jessrc.js',
-    'jess.config.js'
-  ]
-})
+/**
+ * Get configuration from styles.config.* or jess.config.* file, searching from the given directory
+ * up through parent directories.
+ *
+ * @param searchFrom - File or directory path to start searching from (searches up to root)
+ * @returns Configuration object, or empty object if no config found
+ */
+export const getConfig = (searchFrom?: string): StylesConfig => {
+  return loadConfigSync(searchFrom);
+};
 
-let result = explorerSync.search()?.config || { options: {} }
-if ('default' in result) {
-  result = result.default
+export interface ConfigWithMeta {
+  config: StylesConfig;
+  configFilePath?: string;
 }
 
-export default result
+export const getConfigWithMeta = (searchFrom?: string): ConfigWithMeta => {
+  return loadConfigSyncWithMeta(searchFrom);
+};
+
+export interface OutputTestConfig {
+  file: string;
+  config: Partial<StylesConfig>;
+}
+
+/**
+ * Get the expected output CSS file(s) and config(s) for testing.
+ *
+ * Supports:
+ * - No output config: Returns default {name}.css with empty config
+ * - Single output object: `output: { file: "{name}.css", collapseNesting: false, ... }`
+ *   - Returns the file and uses those options for compilation
+ * - Multiple outputs array: `output: [{ file: "{name}.css", ... }, ...]`
+ *   - Returns array of {file, config} objects - test should iterate and test each
+ * - Default options: First object in array without `file` property provides defaults
+ *
+ * @param lessFilePath - Path to the LESS file
+ * @returns Single output config, or array of output configs if multiple outputs defined
+ */
+export function getExpectedOutputFiles(
+  lessFilePath: string
+): OutputTestConfig | OutputTestConfig[] {
+  // getConfig expects a directory, so pass the directory of the less file
+  const config = getConfig(path.dirname(lessFilePath));
+  const outputConfig = config.output;
+  // Preserve non-output config (compile/language/etc.) so fixture-level styles.config
+  // can drive compiler behavior in tests.
+  const { output: ignoredOutput, ...baseConfig } = config as StylesConfig & Record<string, unknown>;
+  void ignoredOutput;
+
+  // Extract file name without extension for {name} replacement
+  const dir = path.dirname(lessFilePath);
+  const name = path.basename(lessFilePath, path.extname(lessFilePath));
+
+  // No output config, default to {name}.css
+  if (!outputConfig) {
+    return {
+      file: path.join(dir, `${name}.css`),
+      config: baseConfig
+    };
+  }
+
+  // Handle single output object
+  if (!Array.isArray(outputConfig)) {
+    const file = outputConfig.file || '{name}.css';
+    const outputFile = file.replace('{name}', name);
+
+    // Extract config options (everything except 'file')
+    const configOptions = Object.fromEntries(
+      Object.entries(outputConfig).filter(([key]) => key !== 'file')
+    );
+    return {
+      file: path.join(dir, outputFile),
+      config: { ...baseConfig, output: configOptions }
+    };
+  }
+
+  // Handle array of outputs
+  if (outputConfig.length === 0) {
+    return {
+      file: path.join(dir, `${name}.css`),
+      config: {}
+    };
+  }
+
+  // First object without 'file' property is default options
+  let defaultOptions: Record<string, any> = {};
+  let startIndex = 0;
+
+  if (outputConfig[0] && !('file' in outputConfig[0])) {
+    defaultOptions = { ...outputConfig[0] };
+    startIndex = 1;
+  }
+
+  // Build array of output configs
+  const outputs: OutputTestConfig[] = [];
+
+  for (let i = startIndex; i < outputConfig.length; i++) {
+    const output = outputConfig[i];
+    if (!output || typeof output !== 'object' || !('file' in output)) {
+      continue;
+    }
+
+    // Merge default options with this output's options
+    const { file: outputFile, ...outputOptions } = output;
+    const mergedOptions = { ...defaultOptions, ...outputOptions };
+
+    const file = outputFile || '{name}.css';
+    const finalFile = file.replace('{name}', name);
+
+    outputs.push({
+      file: path.join(dir, finalFile),
+      config: { ...baseConfig, output: mergedOptions }
+    });
+  }
+
+  // If only one output, return it directly (not as array)
+  if (outputs.length === 1) {
+    return outputs[0]!;
+  }
+
+  // Return array if multiple outputs
+  return outputs.length > 0
+    ? outputs
+    : [{
+        file: path.join(dir, `${name}.css`),
+        config: baseConfig
+      }];
+}

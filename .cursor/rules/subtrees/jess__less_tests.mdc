@@ -1,0 +1,21 @@
+---
+description: "Jess Less test harness + fixtures: custom tests and @less/test-data runner"
+globs:
+  - "packages/jess/test/less/**"
+  - "packages/jess/test/fixtures/**"
+---
+
+# Jess Less tests
+
+## Structure
+
+- Custom per-feature tests: `packages/jess/test/less/*.test.ts`
+- `@less/test-data` runner: `packages/jess/test/less/all-less.test.ts`
+- Harness docs: `packages/jess/test/less/README.md`
+
+## Cross-package caveat
+
+If you changed `@jesscss/core`, build it first so these tests use updated `lib/` output:
+
+- `pnpm --filter @jesscss/core build`
+

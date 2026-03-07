@@ -1,0 +1,20 @@
+---
+description: "Language tooling (language-service + VSCode extension): LSP server, diagnostics, editor integration"
+globs:
+  - "packages/language-service/**"
+  - "packages/vscode/**"
+  - "packages/language-service-tests/**"
+---
+
+# Language tooling
+
+## Packages
+
+- `packages/language-service`: LSP server + engine integration
+- `packages/vscode`: VSCode extension wrapper and grammars
+- `packages/language-service-tests`: non-package harness/docs (no `package.json`)
+
+## Notes
+
+- These packages depend on core/parsers; cross-package build nuances may apply.
+

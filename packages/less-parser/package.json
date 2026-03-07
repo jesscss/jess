@@ -3,28 +3,52 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "",
-  "version": "1.0.8-alpha.6",
-  "main": "lib/index",
-  "types": "lib/index",
+  "version": "2.0.0-alpha.1",
+  "description": "Jess LESS parser",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib"
   ],
   "scripts": {
-    "ci": "yarn build && yarn test",
-    "prepublishOnly": "npm run build",
-    "build": "yarn clean && yarn compile",
-    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build",
+    "build": "pnpm compile",
+    "compile": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json -w",
+    "test": "cross-env TEST=true vitest --watch=false",
+    "test:coverage": "cross-env TEST=true vitest --coverage",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
-  "author": "Matthew Dean",
-  "license": "MIT",
   "dependencies": {
-    "@jesscss/css-parser": "^1.0.8-alpha.6",
-    "chevrotain": "^7.1.0"
+    "@jesscss/core": "workspace:*",
+    "@jesscss/css-parser": "workspace:*",
+    "chevrotain": "^11.0.3",
+    "chevrotain-allstar": "~0.3.0",
+    "known-css-properties": "~0.37.0"
   },
   "devDependencies": {
-    "@less/test-data": "^4.1.0"
-  }
+    "@jesscss/shared": "workspace:*",
+    "@types/node": "^18.19.31"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
 }

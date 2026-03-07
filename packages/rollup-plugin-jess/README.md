@@ -11,6 +11,12 @@
 
 🍣 A Rollup plugin for [Jess](https://jesscss.github.io/)
 
+## Status
+
+This package has been **refreshed to be a minimal bridge to the modern `jess` compiler**.
+Historically, it relied on a legacy “runtime module” architecture; today it compiles `.jess`
+files using `jess`’s `Compiler` and **emits CSS as an asset**.
+
 ## Install
 
 Using npm:
@@ -27,7 +33,7 @@ yarn add rollup-plugin-jess -D
 
 ## Usage
 
-Create a `rollup.config.js` [configuration file](https://www.rollupjs.org/guide/en/#configuration-files) and import the plugin to convert Jess files to runtime modules:
+Create a `rollup.config.js` [configuration file](https://www.rollupjs.org/guide/en/#configuration-files) and import the plugin to compile `.jess` files:
 
 ```js
 import jess from 'rollup-plugin-jess'
@@ -45,7 +51,7 @@ Then call `rollup` either via the [CLI](https://www.rollupjs.org/guide/en/#comma
 
 ## Options
 
-See: https://jesscss.github.io/docs/intro/config#options
+The plugin forwards options to the `jess` compiler. See `jess`’s `ConfigOptions`.
 
 
 ## License

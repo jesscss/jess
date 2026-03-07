@@ -1,26 +1,26 @@
-import type { LocationInfo } from './tree'
+import type { LocationInfo } from '@jesscss/core';
 
 export class OutputCollector {
-  strings: string[] = []
-  map: any[] = []
+  strings: string[] = [];
+  map: any[] = [];
 
   /** @todo - for output tracking */
-  line: number = 0
-  column: number = 0
+  line: number = 0;
+  column: number = 0;
 
   add(str: string, originalLocation?: LocationInfo) {
-    this.strings.push(str)
+    this.strings.push(str);
     /**
      * @todo
      * @see https://hacks.mozilla.org/2013/05/compiling-to-javascript-and-debugging-with-source-maps/
      * @see https://github.com/mozilla/source-map
      */
     if (originalLocation) {
-      this.map.push(originalLocation)
+      this.map.push(originalLocation);
     }
   }
 
   toString() {
-    return this.strings.join('')
+    return this.strings.join('');
   }
 }

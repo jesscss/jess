@@ -1,0 +1,32 @@
+{
+  "name": "jess-plugin",
+  "private": true,
+  "description": "The stylesheet engine for Jess",
+  "version": "2.0.0-alpha.1",
+  "main": "lib/index",
+  "types": "lib/index",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "npm run build",
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "test": "vitest --run --passWithNoTests",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "dependencies": {
+    "@jesscss/core": "workspace:*",
+    "@jesscss/parser": "workspace:*",
+    "chevrotain": "^11.0.3"
+  },
+  "devDependencies": {},
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
+}

@@ -1,17 +1,17 @@
-@mixin domeMixin {
+domeMixin() {
   one: 1;
   two: 2;
 }
-@mixin domeMixin () {
+domeMixin() {
   one: 1;
   two: 2;
 }
-@mixin domeMixin (one, two) {}
-@mixin domeMixin (one, two: 2) {}
-@mixin domeMixin (one: 1, two: 2) {}
+domeMixin($one, $two) when ($two = 2) {}
+domeMixin($one, $two: 2) {}
+domeMixin($one: 1, $two: 2) {}
 
-@include domeMixin();
-@include domeMixin(1);
-@include domeMixin(1, 2);
+$domeMixin();
+$domeMixin(1);
+$domeMixin(1, 2);
 
-@include $iif(!one_1_cond && !one_2_cond, def());
+$if(one_1_cond and one_2_cond) { def() }

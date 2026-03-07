@@ -1,6 +1,6 @@
 {
   "name": "rollup-plugin-jess",
-  "version": "1.0.8-alpha.8",
+  "version": "2.0.0-alpha.1",
   "description": "Rollup plugin for Jess",
   "main": "lib/index",
   "types": "lib/index",
@@ -8,21 +8,23 @@
     "lib"
   ],
   "scripts": {
-    "ci": "yarn build && yarn test",
+    "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
-    "build": "yarn clean && yarn compile",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "compile": "tsc -p tsconfig.build.json",
+    "test": "vitest --run --passWithNoTests",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "jess": "^1.0.8-alpha.8"
+    "jess": "workspace:*"
   },
   "peerDependencies": {
     "rollup": "^2.0.0"
   },
   "devDependencies": {
-    "rollup": "^2.36.2"
+    "rollup": "^3.20.7"
   },
   "author": "Matthew Dean",
   "license": "MIT"

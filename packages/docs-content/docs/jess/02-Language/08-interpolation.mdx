@@ -1,0 +1,162 @@
+---
+title: Interpolation
+audiences:
+  - jess
+origin: jess
+---
+Jess has two interpolation forms:
+
+- `$(...)` for full `Expression` interpolation.
+- `$[key]` for identifier-style interpolation (`Reference` with `role: 'ident'`).
+  - Variable keys serialize as bare identifiers: `$[theme]`
+  - Property lookup keys serialize as quoted literals: `$['--custom-color']`
+
+Use `$[key]` when the interpolation input is a single reference.
+Use `$(...)` when you need an actual expression.
+
+In selector contexts, that single reference may still resolve to a non-identifier selector fragment at runtime.
+
+## Quick guide: which form to use?
+
+- **Selector/property/mixin names**: use `$[ident]`
+- **Strings and custom property values**: use `$[ident]` or `$(...)`
+- **Normal values**: use direct references like `$var` unless you need expression behavior
+
+## Interpolation examples
+
+### 1. Selectors in style rules
+
+```scss
+$side: left;
+.widget-$[side] {
+  float: $side;
+}
+```
+→
+```css
+.widget-left {
+  float: left;
+}
+```
+
+### 2. Property names in declarations
+```scss
+$radius: top-right;
+.card {
+  border-$[radius]-radius: 12px;
+}
+```
+→
+```css
+.card {
+  border-top-right-radius: 12px;
+}
+```
+
+### 3. Custom property values
+```less
+$theme: dark;
+body {
+  --theme-mode: $[theme];
+  custom-color: $['--custom-color'];
+  --theme-mode-fallback: $($theme);
+}
+```
+→
+```css
+body {
+  --theme-mode: dark;
+  custom-color: dark;
+  --theme-mode-fallback: dark;
+}
+```
+
+:::info
+
+Note: in normal property values, you can usually just use `$theme`. In custom property values, use interpolation (`$[theme]` or `$(...)`) so intent is explicit.
+
+:::
+
+### 4. :-extend
+```scss
+$type: $*(.notice); // `*()` can capture a selector
+.notice {
+  color: orange;
+}
+.danger:-extend($(type));
+```
+→
+```css
+.danger, .notice {
+  color: orange;
+}
+```
+
+### 5. Plain CSS @imports
+```scss
+$family: "modern";
+@import url("fonts/$(family).css");
+```
+→
+```css
+@import url("fonts/modern.css");
+```
+
+### 6. Plain CSS function names
+```scss
+$fn: "min";
+$s1: 30vw;
+$s2: 50vw;
+.container {
+  width: $[fn]( $s1, $s2 );
+}
+```
+→
+```css
+.container {
+  width: min(30vw, 50vw);
+}
+```
+
+### 7. Less and SCSS source conversion
+
+```less
+// Less input
+.@{name} { color: red; }
+```
+```scss
+// Jess output shape
+.$[name] { color: red; }
+```
+
+```scss
+// SCSS input (single variable interpolation in selector/property name)
+.btn-#{$name} { color: red; }
+```
+```scss
+// Jess output shape
+.btn-$[name] { color: red; }
+```
+
+### 8. Any plain output
+
+```scss
+$color-name: "red";
+.container {
+  color: ~"$[color-name]";
+}
+```
+→
+```css
+.container {
+  color: red;
+}
+```
+
+## TL;DR
+1. Use `$()` for dynamic bits—selectors, property names, and anything clever you want in output.
+2. Don't wrap variables for no reason; use direct variables unless you need interpolation.
+3. Never interpolate numbers if you want to do math with them.
+4. Escape strings with `~""` for clarity when you want to drop quotes from a string.
+
+Jess is designed to be simple and clear.

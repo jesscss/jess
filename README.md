@@ -3,8 +3,6 @@
 
 
   _Jess is now in Alpha! Star this repo for later updates!_
-
-  [![Ask questions in the Jess Gitter community!](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/jesscss/community)
 </div>
 
 # Jess
@@ -12,22 +10,46 @@
 
 This is the monorepo for Jess, a new, modern CSS pre-processor from the people who brought you Less. [See the docs.](https://jesscss.github.io)
 
+Jess is a language-agnostic, CSS pre-processor replacement for:
+- Less
+- Sass (SCSS)
+- CSS Modules
+- CSS-in-JS
+
 ```less
-@import { width } from './values.ts';
-@import { myMixin } from './mixins.jess';
+$from './values.ts' import (width);
+$from '#less' import (unit);
 
-@let iconWidth: $(width)px;
+$use './variables.less' my-vars;
+$include './bootstrap.scss' with my-vars;
 
-@mixin square(unit: 24px) {
-  width: $unit;
-  height: $unit;
+$use './mixins.jess' (my-mixin);
+$use './mixins.less' (.less-mixin);
+
+$let icon-width: $unit($width, px);
+
+$mixin overloaded() {
+  color: black;
+}
+$mixin overloaded() {
+  background-color: green;
 }
 
-.icon {
-  @include myMixin();
-  @include square($iconWidth);
+// non-overloadable (but replaceable) anonymous mixin
+$let square: _(unit: 24px) {
+  width: $unit;
+  height: $unit;
+};
 
-  color: cornflowerblue;
+$let color: cornflowerblue;
+
+.icon {
+  $ -> my-mixin();
+  $ -> .less-mixin();
+  $ -> square($icon-width);
+  $ -> overloaded();
+
+  color: $color;
 }
 ```
 
