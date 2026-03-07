@@ -303,6 +303,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       },
       ([resolvedTarget, valueKey]) => {
         originalFilter ??= () => true;
+        const isInterpolatedVariable =
+          this.options.type === 'variable'
+          && this.parent?.type === 'Interpolated';
         const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
           let cursor: Node | undefined = activeRules;
           while (cursor) {
@@ -332,7 +335,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             opts.local = true;
           }
 
-          if (this.options.resolution === 'linear') {
+          if (this.options.resolution === 'linear' && !isInterpolatedVariable) {
             // For linear resolution, climb up the parent chain until we find a node with a Rules parent
             // and use that node's index for linear lookup
             let startIndex = this.index;
@@ -359,7 +362,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             if (startIndex !== undefined) {
               opts.start = startIndex;
             }
-          } else if (this.options.resolution === 'call-time') {
+          } else if (this.options.resolution === 'call-time' && !isInterpolatedVariable) {
             // For call-time resolution, use the call site's position (context.callSiteIndex)
             // instead of the definition position. This allows mixins to resolve variables
             // at the time they're called, not when they're defined.

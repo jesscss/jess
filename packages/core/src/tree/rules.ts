@@ -22,7 +22,7 @@ import type { Condition } from './condition.js';
 import { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
 import { Any } from './any.js';
@@ -1184,8 +1184,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Evaluate the built queues in priority order */
   private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
     let rulesToHoist = false;
-    // Track nodes that have been retried to avoid infinite loops
-    const retriedNodes = new Set<Node>();
+    const scheduledPriority = new WeakMap<Node, Priority>();
+    const failuresByPriority = new WeakMap<Node, Map<Priority, number>>();
 
     const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
     const runPriority = (p: Priority): MaybePromise<void> => {
@@ -1193,9 +1193,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!queue) {
         return;
       }
-      const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
-      const runSingleEntry = ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
-        const [idx, rule] = item;
+      const enqueueRetry = (priority: Priority, item: [number, Node], rule: Node): void => {
+        const retryQueue = evalQueue.get(priority) ?? [];
+        retryQueue.push(item);
+        evalQueue.set(priority, retryQueue);
+        scheduledPriority.set(rule, priority);
+      };
+      const countFailure = (rule: Node, priority: Priority): number => {
+        const byPriority = failuresByPriority.get(rule) ?? new Map<Priority, number>();
+        const nextCount = (byPriority.get(priority) ?? 0) + 1;
+        byPriority.set(priority, nextCount);
+        failuresByPriority.set(rule, byPriority);
+        return nextCount;
+      };
+      const runSingleEntry = (q: number): MaybePromise<void | undefined> => {
+        const [idx, rule] = queue[q]!;
 
         /**
          * Var declarations have late evaluation, so they are skipped.
@@ -1205,45 +1217,50 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return;
         }
 
-        // Check if this node should be skipped (already moved to retry queue)
-        // BUT: if we're at Priority.None, we should process it even if it was retried
-        // because this is the retry attempt
-        if (retriedNodes.has(rule) && p > Priority.None) {
+        // Skip stale entries for nodes that were re-queued to a different priority.
+        const expectedPriority = scheduledPriority.get(rule);
+        if (expectedPriority !== undefined && expectedPriority !== p) {
           return;
         }
-        const tryStepResult: () => MaybePromise<Node> =
-        tryStep(() => rule.eval(context), {
-          onError(error) {
-            // At Priority.None, all errors should be thrown - no more retries
-            if (p === Priority.None) {
-              throw error;
-            }
-            // If evaluation failed and we haven't retried this node yet,
-            // retry at Priority.None
-            if (!retriedNodes.has(rule)) {
-              retriedNodes.add(rule);
-              // Move to lowest priority queue for retry
-              const lowQueue = evalQueue.get(Priority.None) || [];
-              lowQueue.push([idx, rule]);
-              evalQueue.set(Priority.None, lowQueue);
-              // Don't throw - let tryStep return the fallback so processing continues
-              return;
-            }
-            // Already retried and still failing - rethrow
+
+        const onEvalError = (error: unknown): Node | undefined => {
+          // Most node failures are semantic failures and should throw immediately.
+          // Retry scheduling is reserved for StyleImport ordering/interpolation cases.
+          if (!isNode(rule, 'StyleImport')) {
             throw error;
-          },
-          // Always rethrow errors from onError
-          rethrow: true,
-          // Return the original rule node as fallback when we skip processing (for retry)
-          fallback: rule
-        }) as () => MaybePromise<Node>;
+          }
+          // Final pass: no retries remain.
+          if (p === Priority.None) {
+            throw error;
+          }
+
+          // Retry policy:
+          // 1) first failure at a priority -> retry once at same priority
+          // 2) second+ failure at that priority -> step down one level
+          const failures = countFailure(rule, p);
+          const nextPriority = failures === 1 ? p : (p - 1) as Priority;
+          enqueueRetry(nextPriority, [idx, rule], rule);
+          return;
+        };
+        const tryStepResult = (): MaybePromise<Node | undefined> => {
+          try {
+            const result = rule.eval(context);
+            if (isThenable(result)) {
+              return (result as Promise<Node>).catch(onEvalError);
+            }
+            return result as Node;
+          } catch (error) {
+            return onEvalError(error);
+          }
+        };
         const stepResult = pipe(
           tryStepResult,
           (result: Node | undefined) => {
-            // If result is undefined (onError returned without throwing), skip processing
+            // Undefined means we re-queued this node for retry.
             if (result === undefined) {
               return;
             }
+            scheduledPriority.delete(rule);
             // Apply the result
             if (result !== rule) {
               rules.value[idx] = result;
@@ -1277,7 +1294,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         return;
       };
-      return serialForEach(entries, runSingleEntry);
+      const runFromIndex = (q: number): MaybePromise<void> => {
+        if (q >= queue.length) {
+          return;
+        }
+        const step = runSingleEntry(q);
+        if (isThenable(step)) {
+          return (step as Promise<void>).then(() => runFromIndex(q + 1));
+        }
+        return runFromIndex(q + 1);
+      };
+      return runFromIndex(0);
     };
     const phaseRun = serialForEach(priorities, runPriority);
 

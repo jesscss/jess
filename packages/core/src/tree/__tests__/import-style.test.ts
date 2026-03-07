@@ -936,21 +936,32 @@ describe('Style import', () => {
       expect(css).toContain('#css { color: yellow; }');
     });
 
-    it('import-interpolation: unresolved interpolated segments fallback to literal tokens', async () => {
-      const interpolatedPath = new Interpolated({
-        source: `import-${INTERPOLATION_PLACEHOLDER}${INTERPOLATION_PLACEHOLDER}.jess`,
-        replacements: [ref('in', { type: 'variable' }), ref('terpolation', { type: 'variable' })]
-      }, { role: 'ident' });
-      const fullPath = resolve(process.cwd(), 'import-interpolation.jess');
-      context.sourceTrees.set(fullPath, rules([
-        vardecl({ name: 'x', value: any('ok') })
+    it('import-interpolation: resolves vars from later imports on retry', async () => {
+      const interpolationImportPath = resolve(process.cwd(), 'import/import-interpolation.jess');
+      const interpolationVarsPath = resolve(process.cwd(), 'import/interpolation-vars.jess');
+
+      context.sourceTrees.set(interpolationImportPath, rules([
+        vardecl({ name: 'interpolationResolved', value: any('ok') })
+      ]));
+      context.sourceTrees.set(interpolationVarsPath, rules([
+        vardecl({ name: 'segmentA', value: any('in') }),
+        vardecl({ name: 'segmentB', value: any('terpolation') })
       ]));
 
+      const interpolatedPath = new Interpolated({
+        source: `import/import-${INTERPOLATION_PLACEHOLDER}${INTERPOLATION_PLACEHOLDER}.jess`,
+        replacements: [ref('segmentA', { type: 'variable' }), ref('segmentB', { type: 'variable' })]
+      }, { role: 'ident' });
+
       const node = rules([
-        style({ path: quoted(interpolatedPath) }, { type: 'import', importOptions: { optional: false } })
+        style({ path: quoted(interpolatedPath) }, { type: 'import', importOptions: { optional: false } }),
+        style({ path: quoted(any('import/interpolation-vars.jess')) }, { type: 'import' })
       ]);
+
       const evald = await node.eval(context);
-      expect(evald.value.length).toBe(1);
+      const resolvedFromInterpolatedImport = getVarWithContext(context, evald, 'interpolationResolved');
+      expect(resolvedFromInterpolatedImport).toBeDefined();
+      expect(`${resolvedFromInterpolatedImport}`).toBe('$interpolationResolved: ok');
     });
 
     it('import-module: context can resolve bare module-like specifiers', async () => {

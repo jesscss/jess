@@ -36,8 +36,13 @@
     "styles-config": "workspace:*",
     "yargs": "^17.7.1"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "@jesscss/plugin-js": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/plugin-js": {
+      "optional": true
+    }
   },
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
@@ -58,6 +63,7 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/lodash-es": "^4.17.8",

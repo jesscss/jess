@@ -757,7 +757,8 @@ export function processExtends(context: Context): void {
     const targetLocation = instruction.target.location;
     const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
     const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
-    const targetFilePath = instruction.target.treeContext?.file?.fullPath;
+    const targetFile = instruction.target.treeContext?.file;
+    const targetFilePath = targetFile?.fullPath;
     const inaccessibleMatchExists = Array.from(context.extendRoots.getAllRoots()).some((root) => {
       if (isInstructionVisibleForRoot(context, root, instruction)) {
         return false;
@@ -771,12 +772,14 @@ export function processExtends(context: Context): void {
     const diagnostic = (
       stats.blockedMatchCount > 0 || inaccessibleMatchExists || blockedProtectedRootExists
         ? WARN.extendNotAccessible({
+            ctx: targetFile ? { file: targetFile } : undefined,
             filePath: targetFilePath,
             line: targetLine,
             column: targetColumn,
             meta: { target }
           })
         : WARN.extendNotFound({
+            ctx: targetFile ? { file: targetFile } : undefined,
             filePath: targetFilePath,
             line: targetLine,
             column: targetColumn,
