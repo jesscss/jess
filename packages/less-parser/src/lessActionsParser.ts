@@ -258,8 +258,10 @@ export class LessActionsParser extends CssActionsParser {
     // Also check tokenMatcher in case the token type name check doesn't work
     if (tokenType.name === 'AtKeyword' || tokenMatcher(token, this.T.AtKeyword)) {
       if (!this.RECORDING_PHASE && ctx?.inCustomPropertyValue) {
+        const atName = token.image;
+        const ident = token.image.slice(1);
         this.warnDeprecation(
-          '@[ident] in custom property values is treated as literal text, not a variable reference. Use @{[ident]} if you want it to be evaluated.',
+          `"${atName}" in custom property values is treated as literal text, not a variable reference. Use "\@{${ident}}" if you want it to be evaluated.`,
           token,
           'variable-in-unknown-value'
         );
@@ -269,8 +271,10 @@ export class LessActionsParser extends CssActionsParser {
     } else if (tokenType.name === 'PropertyReference') {
       if (!this.RECORDING_PHASE) {
         if (ctx?.inCustomPropertyValue) {
+          const atName = token.image;
+          const ident = token.image.slice(1);
           this.warnDeprecation(
-            '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.',
+            `"${atName}" in custom property values is treated as literal text, not a property reference. Use "\${${ident}}" if you want it to be evaluated.`,
             token,
             'property-in-unknown-value'
           );

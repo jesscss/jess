@@ -302,6 +302,28 @@ importers:
         specifier: ~19.1.10
         version: 19.1.17
 
+  packages/extension:
+    dependencies:
+      '@jesscss/language-service':
+        specifier: workspace:*
+        version: link:../language-service
+      vscode-languageclient:
+        specifier: ^9.0.1
+        version: 9.0.1
+    devDependencies:
+      '@types/node':
+        specifier: ^18.15.13
+        version: 18.19.130
+      '@types/vscode':
+        specifier: ^1.85.0
+        version: 1.108.1
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      typescript:
+        specifier: ~5.8.2
+        version: 5.8.3
+
   packages/fns:
     dependencies:
       '@jesscss/awaitable-pipe':
@@ -353,11 +375,10 @@ importers:
       yargs:
         specifier: ^17.7.1
         version: 17.7.2
-    optionalDependencies:
+    devDependencies:
       '@jesscss/plugin-js':
         specifier: workspace:*
         version: link:../jess-plugin-js
-    devDependencies:
       '@jesscss/plugin-less-compat':
         specifier: workspace:*
         version: link:../jess-plugin-less-compat

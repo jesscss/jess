@@ -238,6 +238,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   /**
+   * Defer import-path interpolation to evalNode so unresolved vars can be retried
+   * after later imports/assignments in the same Rules scope have evaluated.
+   */
+  override preEval(_context: Context): MaybePromise<this> {
+    return this;
+  }
+
+  /**
    * @note
    * When imports are evaluated, they should be deeply cloned. The reason is that
    * they can be used in multiple places, and can be evaluated differently

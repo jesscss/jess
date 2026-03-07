@@ -15,6 +15,8 @@ import {
   type Rules,
   AssignmentType,
   VarDeclaration,
+  style,
+  quoted,
   type Declaration,
   type Selector
 } from '../index.js';
@@ -160,6 +162,52 @@ describe('Rules', () => {
           // Synchronous result, no error thrown
           expect(result).toBeDefined();
         }
+      });
+
+      it('retries style imports once at same priority before stepping down', async () => {
+        let attempts = 0;
+        let node = rules([
+          style({ path: quoted(any('retry-target.jess')) }, { type: 'import' })
+        ]);
+        const target = node.at(0);
+        if (!target) {
+          throw new Error('Expected first rule to exist');
+        }
+        target.eval = (() => {
+          attempts += 1;
+          if (attempts <= 8) {
+            throw new Error(`transient-failure-${attempts}`);
+          }
+          return target;
+        }) as typeof target.eval;
+
+        const evald = await node.eval(context);
+        expect(evald).toBeDefined();
+        // StyleImport starts at Priority.Highest:
+        // highest x2, high x2, medium x2, low x2, none x1 (success)
+        expect(attempts).toBe(9);
+      });
+
+      it('hard-throws style import failures at Priority.None', async () => {
+        let attempts = 0;
+        let node = rules([
+          style({ path: quoted(any('retry-target.jess')) }, { type: 'import' })
+        ]);
+        const target = node.at(0);
+        if (!target) {
+          throw new Error('Expected first rule to exist');
+        }
+        target.eval = (() => {
+          attempts += 1;
+          throw new Error('always-fails');
+        }) as typeof target.eval;
+
+        await expect(async () => {
+          await node.eval(context);
+        }).rejects.toThrow('always-fails');
+
+        // highest x2, high x2, medium x2, low x2, none x1 (throw)
+        expect(attempts).toBe(9);
       });
     });
 

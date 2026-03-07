@@ -2436,8 +2436,10 @@ export function varReference(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             // Warn about $ident in custom property values - it's treated as literal text, not a property reference
             if (ctx.inCustomPropertyValue) {
+              const atName = token.image;
+              const ident = token.image.slice(1);
               $.warnDeprecation(
-                '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.',
+                `${atName} in custom property values is treated as literal text, not a property reference. Use \${${ident}} if you want it to be evaluated.`,
                 token,
                 'property-in-unknown-value'
               );
@@ -2475,8 +2477,10 @@ export function varReference(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             // Warn about @ident in custom property values - it's treated as literal text, not a variable reference
             if (ctx.inCustomPropertyValue) {
+              const atName = token.image;
+              const ident = token.image.slice(1);
               $.warnDeprecation(
-                '@[ident] in custom property values is treated as literal text, not a variable reference. Use @{[ident]} if you want it to be evaluated.',
+                `${atName} in custom property values is treated as literal text, not a variable reference. Use @{${ident}} if you want it to be evaluated.`,
                 token,
                 'variable-in-unknown-value'
               );
