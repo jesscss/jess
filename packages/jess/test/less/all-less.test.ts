@@ -24,7 +24,6 @@ const baseCompiler = new Compiler({
 
 // Files that should be tested in specialized test files
 const additionalSkips = [
-  'tests-unit/javascript/javascript.less', // inline backtick JavaScript is intentionally unsupported
   'tests-unit/variables/variable-advanced.less' // infinite loop
 ];
 
@@ -39,7 +38,8 @@ describe('Can render Less files to CSS', () => {
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .filter(value => !additionalSkips.includes(value)) // Skip files tested elsewhere
-    .filter(value => value.startsWith('tests-unit/p'))
+    .filter(value => !value.startsWith('tests-unit/plugin-')) // Keep only plugin/plugin.less, not plugin-* variants
+    .filter(value => value <= 'tests-unit/plugin/plugin.less')
     .sort()
     .forEach((file) => {
       const lessPath = path.join(testData, file);

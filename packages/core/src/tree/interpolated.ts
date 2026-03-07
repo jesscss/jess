@@ -130,6 +130,10 @@ export class Interpolated<
       if (replacement) {
         if (isNode(replacement, 'Reference')) {
           result = '$[' + getInterpolationSlotKey(replacement) + ']';
+        } else if (isNode(replacement, 'Quoted')) {
+          // Interpolated string slots merge raw string content.
+          // Using valueOf() avoids re-emitting inner quote delimiters.
+          result = String(replacement.valueOf());
         } else {
           result = w.capture(() => replacement!.toTrimmedString(printOpts));
         }
