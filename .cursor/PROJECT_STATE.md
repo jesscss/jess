@@ -83,6 +83,14 @@ Use this section for **any** debugging area (extend, mixins, parser, language-se
 - **Last thing we tried:** (Hypothesis, change, result — pass/fail or error.)
 - **Next step:** (Concrete next action so the next session can continue without re-guessing.)
 
+**Less fixture: permissive-parse inclusion in jess all-less (2026-03-03):**
+
+- **Area:** jess Less fixture harness filtering (`packages/jess/test/less/all-less.test.ts`).
+- **Last passing baseline:** `permissive-parse` fixtures were excluded via shared `invalidLess`.
+- **Last thing we tried:** added `forcedIncludes` in `all-less.test.ts` and explicitly included `tests-unit/permissive-parse/permissive-parse.less` before invalidLess filtering.
+- **Result:** fixture now executes in `jess` targeted run and fails with parser error (`parse/unexpected-syntax`) at multiline escaped quoted value (`@this: ~"() => {\`), confirming inclusion works and parser support is still missing.
+- **Next step:** decide whether to (a) keep this forced include while implementing permissive parser support, or (b) gate it behind a dedicated failing test until parser behavior is implemented.
+
 **Less fixture: ampersand template merge forms (2026-03-03):**
 
 - **Area:** less-parser ampersand tokenization + core `Ampersand.evalNode` template merge semantics.
