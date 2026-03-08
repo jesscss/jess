@@ -1,6 +1,6 @@
 {
   "name": "@jesscss/awaitable-pipe",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.2",
   "description": "A tiny, strongly-typed pipe that stays sync when possible and becomes a Promise when needed. With an optional single-point error handler.",
   "type": "module",
   "main": "lib/index.js",

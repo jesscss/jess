@@ -141,7 +141,7 @@ if (options.dryRun) {
   console.log(`\nDry-run summary:`);
   console.log(`- Next alpha version: ${version}`);
   console.log(`- Planned tag: ${tag}`);
-  run('pnpm', ['run', 'release:alpha:dry-run'], rootDir);
+  run('node', [path.join(rootDir, 'scripts/release/publish-alpha.mjs'), '--dry-run', '--tag', 'alpha'], rootDir);
   process.exit(0);
 }
 

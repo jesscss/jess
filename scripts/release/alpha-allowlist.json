@@ -5,8 +5,11 @@
   "@jesscss/less-parser",
   "@jesscss/fns",
   "styles-config",
+  "@jesscss/style-resolver",
+  "@jesscss/plugin-less",
   "@jesscss/plugin-node-modules",
   "@jesscss/plugin-js",
   "@jesscss/plugin-less-compat",
-  "@jesscss/patch-css"
+  "@jesscss/patch-css",
+  "jess"
 ]

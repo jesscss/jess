@@ -64,6 +64,7 @@
     "release:alpha": "node scripts/release/release-alpha.mjs",
     "release:alpha:friendly": "node scripts/release/release-alpha.mjs",
     "release:alpha:friendly:dry-run": "node scripts/release/release-alpha.mjs --dry-run",
+    "release:alpha:ship-no-checks": "node scripts/release/ship-alpha-no-checks.mjs",
     "cleanup:test-data": "node scripts/cleanup-test-data.js",
     "docs:jess:dev": "pnpm --filter jess-docs dev",
     "docs:jess:build": "pnpm --filter jess-docs build",

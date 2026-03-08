@@ -9,7 +9,7 @@ For alpha publishing details and package scope, see `docs/releasing-alpha.md`.
 From repo root:
 
 ```bash
-pnpm run release:alpha:friendly:dry-run
+pnpm run release:alpha:dry-run
 ```
 
 If the dry-run is clean and you are on the `alpha` branch:
@@ -43,7 +43,7 @@ pnpm run release:alpha
 - Preflight only: `pnpm run release:alpha:check`
 - Version only: `pnpm run release:alpha:version`
 - Publish only: `pnpm run release:alpha:publish`
-- Dry-run publish only: `pnpm run release:alpha:dry-run`
+- Dry-run full flow: `pnpm run release:alpha:dry-run`
 
 ## If publish partially fails
 

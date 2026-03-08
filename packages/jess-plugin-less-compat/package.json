@@ -4,7 +4,7 @@
     "access": "public"
   },
   "description": "Less.js compatibility layer for Jess - enables Less plugins and visitors to work with Jess AST",
-  "version": "0.1.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

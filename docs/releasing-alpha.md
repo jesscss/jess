@@ -12,18 +12,19 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 - `@jesscss/less-parser`
 - `@jesscss/fns`
 - `styles-config`
+- `@jesscss/style-resolver`
+- `@jesscss/plugin-less`
 - `@jesscss/plugin-node-modules`
 - `@jesscss/plugin-js`
 - `@jesscss/plugin-less-compat`
 - `@jesscss/patch-css`
+- `jess`
 
 Blocked (do not publish in alpha yet):
 
-- `@jesscss/plugin-less` (runtime dependency on private `@jesscss/style-resolver`)
-- `@jesscss/plugin-scss` (runtime dependencies on private `@jesscss/style-resolver` and `@jesscss/scss-parser`)
-- `@jesscss/parser` (runtime dependency on private `@jesscss/scss-parser`)
-- `jess` (depends on blocked `@jesscss/plugin-less`)
-- `rollup-plugin-jess` (depends on blocked `jess`)
+- `@jesscss/plugin-scss` (runtime dependencies on `@jesscss/style-resolver` and `@jesscss/scss-parser`)
+- `@jesscss/parser` (runtime dependency on `@jesscss/scss-parser`)
+- `rollup-plugin-jess` (depends on `jess`)
 
 ## Branch and version policy
 
@@ -35,7 +36,7 @@ Blocked (do not publish in alpha yet):
   - `--tag alpha` publishes are allowed only from `alpha`.
   - non-alpha tags (future stable releases) are allowed only from `main`.
 
-## Friendly one-command release
+## One-command release
 
 Run this from repo root on branch `alpha`:
 
@@ -56,8 +57,17 @@ What it does for you:
 Practice first without touching git/npm:
 
 ```bash
-pnpm run release:alpha:friendly:dry-run
+pnpm run release:alpha:dry-run
 ```
+
+## First publish (2.0.0-alpha.1)
+
+To publish the current versions as-is without bumping:
+
+- **Option A:** Ensure no changeset files in `.changeset/` (only `README.md`). Then `pnpm run release:alpha`. With no changesets, `changeset version` does nothing and versions stay at 2.0.0-alpha.1.
+- **Option B:** `pnpm run release:alpha -- --skip-version` — skips the version step entirely.
+
+For subsequent releases, add changesets (`pnpm changeset add`) before running `release:alpha`; the version step will bump to 2.0.0-alpha.2, etc.
 
 ## Modular commands (advanced/manual flow)
 
