@@ -819,6 +819,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rules.value[index] = (node as Any).preEval(context);
         return;
       }
+      // Nodes that don't register by name (Call, Expression, etc.) skip
+      // both preEval and dynamic resolution — they're handled by the eval queue.
+      if (!this._isRegisterableType(node)) {
+        node.index = index;
+        return;
+      }
       if (this._hasStaticName(node)) {
         // Pre-evaluate nodes with static names before registration
         // This ensures selectors are evaluated and keySets are available for rulesets
@@ -881,6 +887,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
+   * Check if a node type participates in name-based registration.
+   * Only these node types have names/selectors that _resolveDynamicNodes
+   * needs to resolve. Everything else (Call, Expression, Comment, etc.)
+   * goes straight to the eval queue without preEval.
+   */
+  private _isRegisterableType(node: Node): boolean {
+    return isNode(node, ['VarDeclaration', 'Declaration', 'Mixin', 'Ruleset', 'StyleImport']);
+  }
+
+  /**
    * Check if a node has a static name that can be registered immediately
    */
   private _hasStaticName(node: Node): boolean {
@@ -889,6 +905,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._isStatic(name);
     }
     if (isNode(node, 'Mixin')) {
+      const name = node.value.name;
+      return this._isStatic(name);
+    }
+    if (isNode(node, 'Declaration')) {
       const name = node.value.name;
       return this._isStatic(name);
     }
@@ -913,7 +933,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       return false;
     }
-    // For other node types, assume they can be registered if they have static names
+    // For other registerable node types, check the F_STATIC flag
     return node.hasFlag(F_STATIC);
   }
 
@@ -935,78 +955,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Multi-pass resolution of dynamic nodes with interpolated names
    */
   private _resolveDynamicNodes(rules: Rules, context: Context, saved: any, dynamicNodes: Node[]): MaybePromise<this> {
-    const unresolvedNodes: Node[] = [...dynamicNodes];
     const resolvedNodes: Node[] = [];
-    let firstError: Error | undefined;
-    let resolutionAttempts = 0;
-    const MAX_RESOLUTION_ATTEMPTS = 5;
-    const attemptResolution = (): MaybePromise<this> => {
-      resolutionAttempts++;
-      if (resolutionAttempts > MAX_RESOLUTION_ATTEMPTS) {
-        throw new Error(`Could not resolve node.`);
+
+    const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
+      if (resolvedNode.index === undefined) {
+        resolvedNode.index = node.index;
       }
-      const stillUnresolved: Node[] = [];
-      let madeProgress = false;
-
-      for (const node of unresolvedNodes) {
-        try {
-          // Try to preEval the node
-          const result = node.preEval(context);
-
-          if (isThenable(result)) {
-            // Handle async preEval
-            return (result as Promise<Node>).then((resolvedNode) => {
-              if (resolvedNode.index === undefined) {
-                resolvedNode.index = node.index;
-              }
-              if (!resolvedNode.sourceNode) {
-                resolvedNode.sourceNode = node.sourceNode ?? node;
-              }
-              // Register rulesets after preEval regardless of static name
-              if (resolvedNode.type === 'Ruleset') {
-                // registerNode handles both 'mixin' and 'ruleset' registries
-                rules.registerNode(resolvedNode);
-              }
-              if (isNode(resolvedNode, 'Nil') || this._hasStaticName(resolvedNode)) {
-                resolvedNodes.push(resolvedNode);
-                this._registerNodeIfEligible(rules, resolvedNode, context);
-                madeProgress = true;
-              } else {
-                stillUnresolved.push(resolvedNode);
-              }
-              return attemptResolution();
-            });
-          }
-
-          // Register rulesets after preEval regardless of static name
-          if (result.index === undefined) {
-            result.index = node.index;
-          }
-          if (!result.sourceNode) {
-            result.sourceNode = node.sourceNode ?? node;
-          }
-          if (result.type === 'Ruleset') {
-            // registerNode handles both 'mixin' and 'ruleset' registries
-            rules.registerNode(result);
-          }
-
-          // Check if the node now has a static name
-          if (isNode(result, 'Nil') || this._hasStaticName(result)) {
-            resolvedNodes.push(result);
-            this._registerNodeIfEligible(rules, result, context);
-            madeProgress = true;
-          } else {
-            stillUnresolved.push(result);
-          }
-        } catch (error) {
-          if (!firstError) {
-            firstError = error as Error;
-          }
-          stillUnresolved.push(node);
-        }
+      if (!resolvedNode.sourceNode) {
+        resolvedNode.sourceNode = node.sourceNode ?? node;
       }
+      if (resolvedNode.type === 'Ruleset') {
+        rules.registerNode(resolvedNode);
+      }
+      if (isNode(resolvedNode, 'Nil') || this._hasStaticName(resolvedNode)) {
+        resolvedNodes.push(resolvedNode);
+        this._registerNodeIfEligible(rules, resolvedNode, context);
+        return true; // made progress
+      } else {
+        stillUnresolved.push(resolvedNode);
+        return false;
+      }
+    };
 
-      // Update the rules with resolved nodes
+    const applyResolvedNodes = () => {
       for (let i = 0; i < rules.value.length; i++) {
         const node = rules.value[i]!;
         const resolvedNode = resolvedNodes.find(n => n.index === node.index);
@@ -1015,32 +986,117 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           rules.adopt(resolvedNode);
         }
       }
+    };
 
-      // If we made progress, try again
-      if (madeProgress && stillUnresolved.length > 0) {
-        unresolvedNodes.length = 0;
-        unresolvedNodes.push(...stillUnresolved);
-        return attemptResolution();
-      }
-
-      // If we still have unresolved nodes and we're done with rules evaluation, throw the first error
-      if (stillUnresolved.length > 0 && firstError) {
-        throw firstError;
-      }
-
-      // Restore context after preEval is complete
+    const finishResolution = (): this => {
+      applyResolvedNodes();
       context.rulesContext = saved.rulesContext;
       context.treeRoot = saved.treeRoot;
-      // Only restore context.root if saved.root is defined (not the outermost root)
-      // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
       if (saved.root !== undefined) {
         context.root = saved.root;
       }
-
       return rules as this;
     };
 
-    return attemptResolution();
+    // Separate declarations (whose dynamic names might depend on each other)
+    // from non-declarations (which depend on declaration VALUES, not names,
+    // so retrying during preEval won't help).
+    const isDeclarationType = (n: Node) =>
+      isNode(n, 'VarDeclaration') || isNode(n, 'Declaration');
+
+    const dynamicDeclarations: Node[] = [];
+    const otherDynamic: Node[] = [];
+    for (const node of dynamicNodes) {
+      if (isDeclarationType(node)) {
+        dynamicDeclarations.push(node);
+      } else {
+        otherDynamic.push(node);
+      }
+    }
+
+    // Phase 1: Resolve declarations with dynamic names.
+    // Retry because one declaration's name might depend on another's being registered.
+    const MAX_DECL_RETRIES = 5;
+    let declRetries = 0;
+    const unresolvedDecls: Node[] = [...dynamicDeclarations];
+
+    const resolveDeclarations = (): MaybePromise<void> => {
+      declRetries++;
+      if (declRetries > MAX_DECL_RETRIES || unresolvedDecls.length === 0) {
+        return;
+      }
+      const stillUnresolved: Node[] = [];
+      let madeProgress = false;
+
+      for (let i = 0; i < unresolvedDecls.length; i++) {
+        const node = unresolvedDecls[i]!;
+        try {
+          const result = node.preEval(context);
+
+          if (isThenable(result)) {
+            const remaining = unresolvedDecls.slice(i + 1);
+            return (result as Promise<Node>).then((resolvedNode) => {
+              if (handleResolvedNode(resolvedNode, node, stillUnresolved)) {
+                madeProgress = true;
+              }
+              unresolvedDecls.length = 0;
+              unresolvedDecls.push(...stillUnresolved, ...remaining);
+              if (madeProgress && unresolvedDecls.length > 0) {
+                return resolveDeclarations();
+              }
+            });
+          }
+
+          if (handleResolvedNode(result as Node, node, stillUnresolved)) {
+            madeProgress = true;
+          }
+        } catch {
+          stillUnresolved.push(node);
+        }
+      }
+
+      if (madeProgress && stillUnresolved.length > 0) {
+        unresolvedDecls.length = 0;
+        unresolvedDecls.push(...stillUnresolved);
+        return resolveDeclarations();
+      }
+    };
+
+    // Phase 2: Try non-declarations once. Their interpolated names typically
+    // depend on declaration VALUES (e.g. @infix from breakpoint-infix()),
+    // which aren't evaluated until the eval phase. Retrying won't help.
+    const resolveOtherOnce = (): MaybePromise<void> => {
+      for (let i = 0; i < otherDynamic.length; i++) {
+        const node = otherDynamic[i]!;
+        try {
+          const result = node.preEval(context);
+
+          if (isThenable(result)) {
+            const remaining = otherDynamic.slice(i + 1);
+            return (result as Promise<Node>).then((resolvedNode) => {
+              handleResolvedNode(resolvedNode, node, []);
+              // Continue with remaining nodes
+              otherDynamic.length = 0;
+              otherDynamic.push(...remaining);
+              return resolveOtherOnce();
+            });
+          }
+
+          handleResolvedNode(result as Node, node, []);
+        } catch {
+          // Can't resolve during preEval — leave in place for eval phase
+        }
+      }
+    };
+
+    return pipe(
+      () => resolveDeclarations(),
+      () => {
+        applyResolvedNodes();
+        return resolveOtherOnce();
+      },
+      () => finishResolution()
+    );
   }
 
   /**
@@ -1231,6 +1287,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           // Final pass: no retries remain.
           if (p === Priority.None) {
+            throw error;
+          }
+
+          // Only retry when the import path itself couldn't be resolved
+          // (e.g. @import "@{theme}/file" where @theme isn't available yet).
+          // Path resolution is cheap (no cloning). Content evaluation errors
+          // (after cloning the import tree) are never retried — each retry
+          // would re-clone the entire tree, causing memory blowup.
+          const isPathError = error instanceof Error && (error as any)._isPathResolutionError;
+          if (!isPathError) {
             throw error;
           }
 
@@ -2341,7 +2407,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             Mixin: 'public'
           }
         });
-        candidate.parent!.adopt(outerRules);
+        (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
         outerRules.index = candidate.index;
 
         for (let i = 0; i < params.value.length; i++) {

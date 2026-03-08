@@ -334,6 +334,7 @@ export function processExtends(context: Context): void {
   if (!instructions.length) {
     return;
   }
+
   const instructionStats = new Map(instructions.map(i => [i, { visibleMatchCount: 0, blockedMatchCount: 0 }]));
 
   for (const [rootRules, rulesetSet] of rulesetsByRoot) {

@@ -498,3 +498,69 @@ describe('wouldExtendChange: ComplexSelector find', () => {
     expect(wouldExtendChange(target, find, target, false)).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────
+// :is() AND branch — tail-aware position matching
+// ─────────────────────────────────────────────────
+describe('tail-aware :is() matching', () => {
+  describe('walkAndExtend', () => {
+    it('matches simple find against tail of :is(complex) in compound', () => {
+      // .a:is(.x > .y).b — find .y should match the tail of :is(.x > .y)
+      const target = compound([el('.a'), is(sel([el('.x'), co('>'), el('.y')])), el('.b')]);
+      const find = el('.y');
+      const result = walkAndExtend(target, find, el('.z'), true);
+      // .y matched inside :is(.x > .y), extendWith added as alternative
+      expect(result.valueOf()).not.toBe(target.valueOf());
+      expect(result.valueOf()).toContain('.z');
+    });
+
+    it('does not match ancestral prefix of :is(complex)', () => {
+      // .a:is(.x > .y).b — find .x should NOT match (it's in the prefix)
+      const target = compound([el('.a'), is(sel([el('.x'), co('>'), el('.y')])), el('.b')]);
+      const find = el('.x');
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result).toBe(target); // unchanged
+    });
+
+    it('matches compound find consuming tail of :is(complex)', () => {
+      // .a:is(.x > .y).b — find .a.y should consume .a and tail of :is(.x > .y)
+      const target = compound([el('.a'), is(sel([el('.x'), co('>'), el('.y')])), el('.b')]);
+      const find = compound([el('.a'), el('.y')]);
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).not.toBe(target.valueOf());
+      expect(result.valueOf()).toContain('.z');
+    });
+
+    it('handles :is() with SelectorList — OR of tails', () => {
+      // :is(.p > .q, .r).s — find .q should match tail of first alternative
+      const target = compound([
+        is(sellist([sel([el('.p'), co('>'), el('.q')]), el('.r')])),
+        el('.s')
+      ]);
+      const find = el('.q');
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).not.toBe(target.valueOf());
+      expect(result.valueOf()).toContain('.z');
+    });
+
+    it('handles :is() with simple alternative (no tail extraction needed)', () => {
+      // :is(.a, .b).c — find .a should still match directly
+      const target = compound([is(sellist([el('.a'), el('.b')])), el('.c')]);
+      const find = el('.a');
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).toContain('.z');
+    });
+  });
+
+  describe('wouldExtendChange', () => {
+    it('returns true when find matches tail of :is(complex)', () => {
+      const target = compound([el('.a'), is(sel([el('.x'), co('>'), el('.y')])), el('.b')]);
+      expect(wouldExtendChange(target, el('.y'), el('.z'), true)).toBe(true);
+    });
+
+    it('returns false when find matches only prefix of :is(complex)', () => {
+      const target = compound([el('.a'), is(sel([el('.x'), co('>'), el('.y')])), el('.b')]);
+      expect(wouldExtendChange(target, el('.x'), el('.z'), true)).toBe(false);
+    });
+  });
+});

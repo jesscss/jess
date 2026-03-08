@@ -56,7 +56,6 @@ import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
-import { compoundComponentMatches } from './selector-match-core.js';
 import { createProcessedSelector } from './extend.js';
 
 const { isArray } = Array;
@@ -199,14 +198,78 @@ function areComplexEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
 // ─────────────────────────────────────────────────
 
 /**
+ * Extract what's at the current position from a selector.
+ *
+ * For a ComplexSelector, the last non-combinator component is at the current
+ * position; everything before it is an ancestral prefix. For anything else,
+ * the entire selector is at the current position.
+ *
+ *   .a          → .a
+ *   .a.b        → .a.b
+ *   .x > .y     → .y     (the .x > prefix is an ancestral branch)
+ *   .x > .y.z   → .y.z
+ */
+function tailOf(sel: Selector): Selector {
+  if (isNode(sel, 'ComplexSelector')) {
+    const comps = (sel as ComplexSelector).value;
+    for (let i = comps.length - 1; i >= 0; i--) {
+      if (!isNode(comps[i], 'Combinator')) {
+        return comps[i] as Selector;
+      }
+    }
+  }
+  return sel;
+}
+
+/**
+ * Does `find` match `target` at this compound position?
+ *
+ * Like compoundComponentMatches, but tail-aware: when an :is() alternative
+ * is a ComplexSelector, only its tail (last non-combinator) is at the
+ * current position.
+ *
+ *   .y  vs  :is(.x > .y)  → true (.y is the tail of .x > .y)
+ *   .x  vs  :is(.x > .y)  → false (.x is in the ancestral prefix)
+ */
+function positionSimpleMatches(find: Selector, target: Selector): boolean {
+  if (find.valueOf() === target.valueOf()) {
+    return true;
+  }
+
+  // find is :is() → OR: try each alternative's tail
+  if (isNode(find, 'PseudoSelector') && find.value.name === ':is' && find.value.arg) {
+    const arg = find.value.arg as Selector;
+    if (isNode(arg, 'SelectorList')) {
+      return (arg as SelectorList).value.some(
+        (alt: Selector) => positionSimpleMatches(tailOf(alt), target)
+      );
+    }
+    return positionSimpleMatches(tailOf(arg), target);
+  }
+
+  // target is :is() → OR: try each alternative's tail
+  if (isNode(target, 'PseudoSelector') && target.value.name === ':is' && target.value.arg) {
+    const arg = target.value.arg as Selector;
+    if (isNode(arg, 'SelectorList')) {
+      return (arg as SelectorList).value.some(
+        (alt: Selector) => positionSimpleMatches(find, tailOf(alt))
+      );
+    }
+    return positionSimpleMatches(find, tailOf(arg));
+  }
+
+  return false;
+}
+
+/**
  * Does `targetComp` match `findComp` at this position?
- * Handles :is() as OR alternatives and compound equivalence.
+ * Handles :is() as OR alternatives (tail-aware) and compound equivalence.
  */
 function positionComponentMatches(findComp: Selector, targetComp: Selector): boolean {
   if (isNode(findComp, 'CompoundSelector') && isNode(targetComp, 'CompoundSelector')) {
     return areCompoundsEquivalent(findComp as CompoundSelector, targetComp as CompoundSelector);
   }
-  return compoundComponentMatches(findComp, targetComp);
+  return positionSimpleMatches(findComp, targetComp);
 }
 
 /**
@@ -285,7 +348,7 @@ function consumeSimples(
   const matchIndices: number[] = [];
   let findIdx = 0;
   for (let i = 0; i < targetComps.length && findIdx < findSimples.length; i++) {
-    if (compoundComponentMatches(findSimples[findIdx]!, targetComps[i]! as Selector)) {
+    if (positionSimpleMatches(findSimples[findIdx]!, targetComps[i]! as Selector)) {
       matchIndices.push(i);
       findIdx++;
     }
@@ -664,6 +727,13 @@ function walkPseudoSelector(
 ): Selector {
   const arg = pseudo.value.arg as Selector;
 
+  // When :is() is inside a compound, only the tail of each complex
+  // alternative is at the current position. The ancestral prefix is
+  // a separate branch and should not be walked for matching.
+  if (ctx.parentType === 'CompoundSelector') {
+    return walkPseudoTailAware(pseudo, arg, spec, extendWith, partial, ctx);
+  }
+
   const childCtx: WalkContext = {
     isRoot: false,
     parentType: 'PseudoSelector',
@@ -686,6 +756,132 @@ function walkPseudoSelector(
   }).inherit(pseudo);
   result.generated = pseudo.generated;
   return result as Selector;
+}
+
+/**
+ * Walk :is() alternatives tail-aware: for complex alternatives, only the
+ * last non-combinator component (the tail) is at the current compound
+ * position. The ancestral prefix is not walked.
+ */
+function walkPseudoTailAware(
+  pseudo: PseudoSelector,
+  arg: Selector,
+  spec: FindSpec,
+  extendWith: Selector,
+  partial: boolean,
+  ctx: WalkContext
+): Selector {
+  if (isNode(arg, 'SelectorList')) {
+    const items = (arg as SelectorList).value;
+    let anyChanged = false;
+    const originals: Selector[] = [];
+    const appended: Selector[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const alt = items[i]! as Selector;
+      const extended = walkAlternativeTailAware(alt, spec, extendWith, partial);
+      if (extended === alt) {
+        originals.push(alt);
+      } else if (isNode(extended, 'SelectorList')) {
+        // Decompose: first item stays in position, rest appended at end
+        const extItems = extended.value as Selector[];
+        originals.push(extItems[0]!);
+        for (let j = 1; j < extItems.length; j++) {
+          appended.push(extItems[j]! as Selector);
+        }
+        anyChanged = true;
+      } else {
+        originals.push(extended);
+        anyChanged = true;
+      }
+    }
+
+    if (!anyChanged) {
+      return pseudo;
+    }
+
+    if (!partial && (ctx.hasContentBefore || ctx.hasContentAfter)) {
+      return pseudo;
+    }
+
+    const newList = SelectorList.create([...originals, ...appended]).inherit(arg);
+    const result = PseudoSelector.create({
+      name: pseudo.value.name,
+      arg: newList as any
+    }).inherit(pseudo);
+    result.generated = pseudo.generated;
+    return result as Selector;
+  }
+
+  // Single alternative
+  const extended = walkAlternativeTailAware(arg, spec, extendWith, partial);
+  if (extended === arg) {
+    return pseudo;
+  }
+
+  if (!partial && (ctx.hasContentBefore || ctx.hasContentAfter)) {
+    return pseudo;
+  }
+
+  const result = PseudoSelector.create({
+    name: pseudo.value.name,
+    arg: extended as any
+  }).inherit(pseudo);
+  result.generated = pseudo.generated;
+  return result as Selector;
+}
+
+/**
+ * Walk a single :is() alternative. If it's a ComplexSelector, only walk
+ * the tail (last non-combinator). Otherwise walk normally.
+ */
+function walkAlternativeTailAware(
+  alt: Selector,
+  spec: FindSpec,
+  extendWith: Selector,
+  partial: boolean
+): Selector {
+  if (!isNode(alt, 'ComplexSelector')) {
+    // Simple or compound alternative: walk normally
+    const childCtx: WalkContext = {
+      isRoot: false,
+      parentType: 'PseudoSelector',
+      hasContentBefore: false,
+      hasContentAfter: false
+    };
+    return walkNode(alt, spec, extendWith, partial, childCtx);
+  }
+
+  // Complex alternative: only walk the tail
+  const comps = (alt as ComplexSelector).value;
+  let tailIdx = -1;
+  for (let i = comps.length - 1; i >= 0; i--) {
+    if (!isNode(comps[i], 'Combinator')) {
+      tailIdx = i;
+      break;
+    }
+  }
+  if (tailIdx < 0) {
+    return alt;
+  }
+
+  const tail = comps[tailIdx]! as Selector;
+  // The tail is at the compound position — walk it as if it were a compound child
+  const tailCtx: WalkContext = {
+    isRoot: false,
+    parentType: 'CompoundSelector',
+    hasContentBefore: tailIdx > 0,
+    hasContentAfter: tailIdx < comps.length - 1
+  };
+  const extendedTail = walkNode(tail, spec, extendWith, partial, tailCtx);
+  if (extendedTail === tail) {
+    return alt;
+  }
+
+  // Reconstruct complex with modified tail, keeping prefix intact
+  const newComps = [...comps];
+  newComps[tailIdx] = extendedTail as any;
+  return ComplexSelector.create(newComps).inherit(alt) as Selector;
 }
 
 // ─────────────────────────────────────────────────
@@ -836,6 +1032,11 @@ function wouldMatchNode(
     if (!partial && (ctx.hasContentBefore || ctx.hasContentAfter)) {
       return false;
     }
+    // Tail-aware: when :is() is inside a compound, only the tail of
+    // complex alternatives is at the current position.
+    if (ctx.parentType === 'CompoundSelector') {
+      return wouldMatchPseudoTailAware(pseudo, spec, extendWith, partial);
+    }
     return wouldMatchNode(pseudo.value.arg as Selector, spec, extendWith, partial, {
       isRoot: false,
       parentType: 'PseudoSelector',
@@ -845,6 +1046,44 @@ function wouldMatchNode(
   }
 
   return false;
+}
+
+function wouldMatchPseudoTailAware(
+  pseudo: PseudoSelector,
+  spec: FindSpec,
+  extendWith: Selector,
+  partial: boolean
+): boolean {
+  const arg = pseudo.value.arg as Selector;
+
+  const checkAlt = (alt: Selector): boolean => {
+    if (!isNode(alt, 'ComplexSelector')) {
+      return wouldMatchNode(alt, spec, extendWith, partial, {
+        isRoot: false,
+        parentType: 'PseudoSelector',
+        hasContentBefore: false,
+        hasContentAfter: false
+      });
+    }
+    // Complex: only check the tail
+    const comps = (alt as ComplexSelector).value;
+    for (let i = comps.length - 1; i >= 0; i--) {
+      if (!isNode(comps[i], 'Combinator')) {
+        return wouldMatchNode(comps[i] as Selector, spec, extendWith, partial, {
+          isRoot: false,
+          parentType: 'CompoundSelector',
+          hasContentBefore: i > 0,
+          hasContentAfter: i < comps.length - 1
+        });
+      }
+    }
+    return false;
+  };
+
+  if (isNode(arg, 'SelectorList')) {
+    return (arg as SelectorList).value.some((alt: Selector) => checkAlt(alt));
+  }
+  return checkAlt(arg);
 }
 
 function wouldSimplesMatch(target: CompoundSelector, spec: FindSpec): boolean {

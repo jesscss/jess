@@ -508,7 +508,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
           }
         }
-
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
