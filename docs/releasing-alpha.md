@@ -12,18 +12,19 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 - `@jesscss/less-parser`
 - `@jesscss/fns`
 - `styles-config`
+- `@jesscss/style-resolver`
+- `@jesscss/plugin-less`
 - `@jesscss/plugin-node-modules`
 - `@jesscss/plugin-js`
 - `@jesscss/plugin-less-compat`
 - `@jesscss/patch-css`
+- `jess`
 
 Blocked (do not publish in alpha yet):
 
-- `@jesscss/plugin-less` (runtime dependency on private `@jesscss/style-resolver`)
-- `@jesscss/plugin-scss` (runtime dependencies on private `@jesscss/style-resolver` and `@jesscss/scss-parser`)
-- `@jesscss/parser` (runtime dependency on private `@jesscss/scss-parser`)
-- `jess` (depends on blocked `@jesscss/plugin-less`)
-- `rollup-plugin-jess` (depends on blocked `jess`)
+- `@jesscss/plugin-scss` (runtime dependencies on `@jesscss/style-resolver` and `@jesscss/scss-parser`)
+- `@jesscss/parser` (runtime dependency on `@jesscss/scss-parser`)
+- `rollup-plugin-jess` (depends on `jess`)
 
 ## Branch and version policy
 
