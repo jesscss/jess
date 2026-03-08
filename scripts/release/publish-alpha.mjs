@@ -87,10 +87,27 @@ function packageVersionExists(pkgName, version) {
   }
 }
 
+function assertNpmAuth() {
+  const result = spawnSync('npm', ['whoami'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    console.error('\nnpm is not authenticated. Run `npm login` to sign in, then retry.');
+    console.error('For CI, set NPM_TOKEN in the environment.\n');
+    process.exit(1);
+  }
+}
+
 const options = parseArgs(process.argv);
 const rootDir = process.cwd();
 const allowlistPath = path.join(rootDir, 'scripts/release/alpha-allowlist.json');
 const branch = currentBranch();
+
+if (!options.dryRun) {
+  assertNpmAuth();
+}
 
 if (options.tag === 'alpha') {
   if (branch !== 'alpha') {
