@@ -1,6 +1,6 @@
 {
   "name": "@jesscss/plugin-node-modules",
-  "version": "0.1.0-alpha.1",
+  "version": "2.0.0-alpha.1",
   "description": "Jess plugin for resolving and loading npm packages from node_modules",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
