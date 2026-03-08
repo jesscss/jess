@@ -155,6 +155,12 @@ function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolea
   if (extendOrderMap) {
     return false;
   }
+  // ComplexSelector find is supported by the walk for diagnostics (wouldExtendChange)
+  // but not yet for the actual extend application — the downstream createProcessedSelector
+  // chain produces subtly different output. Restrict to Simple/Compound find for now.
+  if (!isNode(find, 'SimpleSelector') && !isNode(find, 'CompoundSelector')) {
+    return false;
+  }
   if (!canUseWalkAndConsume(target, find)) {
     return false;
   }

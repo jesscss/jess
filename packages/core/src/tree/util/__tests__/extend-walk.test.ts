@@ -24,8 +24,8 @@ describe('canUseWalkAndConsume', () => {
     expect(canUseWalkAndConsume(el('.a'), compound([el('.a'), el('.b')]))).toBe(true);
   });
 
-  it('returns false for ComplexSelector find', () => {
-    expect(canUseWalkAndConsume(el('.a'), sel([el('.a'), co(' '), el('.b')]))).toBe(false);
+  it('returns true for ComplexSelector find', () => {
+    expect(canUseWalkAndConsume(el('.a'), sel([el('.a'), co(' '), el('.b')]))).toBe(true);
   });
 });
 
@@ -365,5 +365,136 @@ describe('wouldExtendChange', () => {
   it('full mode: :is() with siblings → false', () => {
     const target = compound([is(el('.a')), el('.x')]);
     expect(wouldExtendChange(target, el('.a'), el('.b'), false)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────
+// Phase 3: ComplexSelector find
+// ─────────────────────────────────────────────────
+describe('walkAndExtend: ComplexSelector find', () => {
+  describe('full mode (partial: false)', () => {
+    it('matches exact complex selector', () => {
+      const target = sel([el('.a'), co(' '), el('.b')]);
+      const find = sel([el('.a'), co(' '), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), false);
+      expect(result.valueOf()).toBe('.a .b,.z');
+    });
+
+    it('does not match subsequence in full mode', () => {
+      const target = sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]);
+      const find = sel([el('.a'), co(' '), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), false);
+      expect(result).toBe(target); // unchanged
+    });
+
+    it('does not match with different combinator', () => {
+      const target = sel([el('.a'), co(' '), el('.b')]);
+      const find = sel([el('.a'), co('>'), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), false);
+      expect(result).toBe(target); // unchanged
+    });
+
+    it('matches when target has :is() at each position', () => {
+      const target = sel([
+        is(sellist([el('.a'), el('.x')])),
+        co(' '),
+        is(sellist([el('.b'), el('.y')]))
+      ]);
+      const find = sel([el('.a'), co(' '), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), false);
+      expect(result.valueOf()).toBe(':is(.a,.x) :is(.b,.y),.z');
+    });
+  });
+
+  describe('partial mode (partial: true)', () => {
+    it('matches subsequence and wraps in :is()', () => {
+      const target = sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]);
+      const find = sel([el('.a'), co(' '), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).toBe(':is(.a .b,.z) .c');
+    });
+
+    it('matches suffix subsequence', () => {
+      const target = sel([el('.a'), co(' '), el('.b'), co('>'), el('.c')]);
+      const find = sel([el('.b'), co('>'), el('.c')]);
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).toBe('.a :is(.b>.c,.z)');
+    });
+
+    it('matches entire target in partial mode', () => {
+      const target = sel([el('.a'), co(' '), el('.b')]);
+      const find = sel([el('.a'), co(' '), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).toBe('.a .b,.z');
+    });
+
+    it('does not match with mismatched combinator', () => {
+      const target = sel([el('.a'), co('+'), el('.b'), co(' '), el('.c')]);
+      const find = sel([el('.a'), co(' '), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result).toBe(target); // unchanged
+    });
+
+    it('matches through :is() alternatives at each position', () => {
+      const target = sel([
+        is(sellist([el('.a'), el('.x')])),
+        co('>'),
+        is(sellist([el('.b'), el('.y')])),
+        co(' '),
+        el('.c')
+      ]);
+      const find = sel([el('.a'), co('>'), el('.b')]);
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).toBe(':is(:is(.a,.x)>:is(.b,.y),.z) .c');
+    });
+
+    it('matches compound selectors within complex find', () => {
+      const target = sel([compound([el('.a'), el('.b')]), co(' '), el('.c')]);
+      const find = sel([compound([el('.a'), el('.b')]), co(' '), el('.c')]);
+      const result = walkAndExtend(target, find, el('.z'), true);
+      expect(result.valueOf()).toBe('.a.b .c,.z');
+    });
+  });
+});
+
+describe('wouldExtendChange: ComplexSelector find', () => {
+  it('returns true for exact complex match', () => {
+    const target = sel([el('.a'), co(' '), el('.b')]);
+    const find = sel([el('.a'), co(' '), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.z'), false)).toBe(true);
+  });
+
+  it('returns false for subsequence in full mode', () => {
+    const target = sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]);
+    const find = sel([el('.a'), co(' '), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.z'), false)).toBe(false);
+  });
+
+  it('returns true for subsequence in partial mode', () => {
+    const target = sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]);
+    const find = sel([el('.a'), co(' '), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.z'), true)).toBe(true);
+  });
+
+  it('returns false for mismatched combinator', () => {
+    const target = sel([el('.a'), co(' '), el('.b')]);
+    const find = sel([el('.a'), co('>'), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.z'), true)).toBe(false);
+  });
+
+  it('returns true when matching through :is() alternatives', () => {
+    const target = sel([
+      is(sellist([el('.a'), el('.x')])),
+      co(' '),
+      el('.b')
+    ]);
+    const find = sel([el('.a'), co(' '), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.z'), true)).toBe(true);
+  });
+
+  it('returns false for self-extend', () => {
+    const target = sel([el('.a'), co(' '), el('.b')]);
+    const find = sel([el('.a'), co(' '), el('.b')]);
+    expect(wouldExtendChange(target, find, target, false)).toBe(false);
   });
 });
