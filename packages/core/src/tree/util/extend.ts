@@ -158,7 +158,6 @@ function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolea
   if (!canUseWalkAndConsume(target, find)) {
     return false;
   }
-  // Walk-and-consume handles all selector types for SimpleSelector find.
   return true;
 }
 

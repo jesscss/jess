@@ -20,8 +20,8 @@ describe('canUseWalkAndConsume', () => {
     expect(canUseWalkAndConsume(el('.a'), el('.b'))).toBe(true);
   });
 
-  it('returns false for CompoundSelector find', () => {
-    expect(canUseWalkAndConsume(el('.a'), compound([el('.a'), el('.b')]))).toBe(false);
+  it('returns true for CompoundSelector find', () => {
+    expect(canUseWalkAndConsume(el('.a'), compound([el('.a'), el('.b')]))).toBe(true);
   });
 
   it('returns false for ComplexSelector find', () => {
@@ -156,6 +156,101 @@ describe('walkAndExtend partial mode', () => {
 });
 
 // ─────────────────────────────────────────────────
+// Phase 2: CompoundSelector find
+// ─────────────────────────────────────────────────
+describe('walkAndExtend compound find (Phase 2)', () => {
+  it('full: whole compound match at root → SelectorList', () => {
+    const target = compound([el('.a'), el('.b')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.c'), false);
+    const val = result.valueOf();
+    expect(val).toContain('.a.b');
+    expect(val).toContain('.c');
+  });
+
+  it('full: whole compound match order-independent', () => {
+    const target = compound([el('.b'), el('.a')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.c'), false);
+    const val = result.valueOf();
+    expect(val).toContain('.c');
+  });
+
+  it('full: compound subset → no match (non-partial rejects subsets)', () => {
+    const target = compound([el('.a'), el('.b'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.q'), false);
+    expect(result).toBe(target);
+  });
+
+  it('partial: compound subset match → :is(find, extendWith) + remainder', () => {
+    const target = compound([el('.a'), el('.b'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.q'), true);
+    const val = result.valueOf();
+    expect(val).toContain(':is');
+    expect(val).toContain('.q');
+    expect(val).toContain('.c');
+  });
+
+  it('partial: non-contiguous subset → still matches', () => {
+    const target = compound([el('.a'), el('.c'), el('.b')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.q'), true);
+    const val = result.valueOf();
+    expect(val).toContain(':is');
+    expect(val).toContain('.q');
+    expect(val).toContain('.c');
+  });
+
+  it('partial: no subset → no match', () => {
+    const target = compound([el('.a'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.q'), true);
+    expect(result).toBe(target);
+  });
+
+  it('compound find in SelectorList → extends matching items', () => {
+    const target = sellist([
+      compound([el('.a'), el('.b')]),
+      el('.x')
+    ]) as unknown as Selector;
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.c'), false);
+    const val = result.valueOf();
+    expect(val).toContain('.a.b');
+    expect(val).toContain('.c');
+    expect(val).toContain('.x');
+  });
+});
+
+describe('wouldExtendChange compound find (Phase 2)', () => {
+  it('full: returns true for whole compound match', () => {
+    const target = compound([el('.a'), el('.b')]);
+    const find = compound([el('.a'), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.c'), false)).toBe(true);
+  });
+
+  it('full: returns false for compound subset', () => {
+    const target = compound([el('.a'), el('.b'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.q'), false)).toBe(false);
+  });
+
+  it('partial: returns true for compound subset', () => {
+    const target = compound([el('.a'), el('.b'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.q'), true)).toBe(true);
+  });
+
+  it('partial: returns false when no subset match', () => {
+    const target = compound([el('.a'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    expect(wouldExtendChange(target, find, el('.q'), true)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────
 // Equivalence with legacy extendSelector
 // ─────────────────────────────────────────────────
 describe('walkAndExtend vs extendSelector equivalence', () => {
@@ -199,6 +294,20 @@ describe('walkAndExtend vs extendSelector equivalence', () => {
       target: () => sel([el('.a'), co(' '), el('.b')]),
       find: () => el('.b'),
       extendWith: () => el('.c'),
+      partial: true
+    },
+    {
+      name: 'full: .a.b extending .a.b with .c',
+      target: () => compound([el('.a'), el('.b')]),
+      find: () => compound([el('.a'), el('.b')]),
+      extendWith: () => el('.c'),
+      partial: false
+    },
+    {
+      name: 'partial: .a.b.c extending .a.b with .q',
+      target: () => compound([el('.a'), el('.b'), el('.c')]),
+      find: () => compound([el('.a'), el('.b')]),
+      extendWith: () => el('.q'),
       partial: true
     }
   ];
