@@ -47,7 +47,7 @@
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
     "prepublishOnly": "pnpm build && pnpm test:all",
-    "benchmark": "node bin/cli.js benchmark/benchmark.jess",
+    "benchmark": "node bin/cli.js benchmark/benchmark.less",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.json -w",
