@@ -35,7 +35,7 @@ Blocked (do not publish in alpha yet):
   - `--tag alpha` publishes are allowed only from `alpha`.
   - non-alpha tags (future stable releases) are allowed only from `main`.
 
-## Friendly one-command release
+## One-command release
 
 Run this from repo root on branch `alpha`:
 
@@ -56,8 +56,17 @@ What it does for you:
 Practice first without touching git/npm:
 
 ```bash
-pnpm run release:alpha:friendly:dry-run
+pnpm run release:alpha:dry-run
 ```
+
+## First publish (2.0.0-alpha.1)
+
+To publish the current versions as-is without bumping:
+
+- **Option A:** Ensure no changeset files in `.changeset/` (only `README.md`). Then `pnpm run release:alpha`. With no changesets, `changeset version` does nothing and versions stay at 2.0.0-alpha.1.
+- **Option B:** `pnpm run release:alpha -- --skip-version` — skips the version step entirely.
+
+For subsequent releases, add changesets (`pnpm changeset add`) before running `release:alpha`; the version step will bump to 2.0.0-alpha.2, etc.
 
 ## Modular commands (advanced/manual flow)
 
