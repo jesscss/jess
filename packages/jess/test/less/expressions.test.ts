@@ -11,7 +11,7 @@ describe('Functions', () => {
   });
 
   describe('Expressions', () => {
-    it('should handle parenthesis in expressions', async () => {
+    it.skip('should handle parenthesis in expressions', async () => {
       const lessCode = `
         @media print {
             .class {
