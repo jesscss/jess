@@ -114,6 +114,50 @@ export function componentsMatch(a: Selector, b: Selector): boolean {
 }
 
 /**
+ * Compound component semantic equivalence — pointer-based, no object creation.
+ *
+ * Walks the existing AST structure to answer "can `find` occupy this position in `target`?"
+ * without expanding or rewriting either selector.
+ *
+ * Rules (mirrors the walk-and-consume algorithm):
+ *  - Direct match: find.valueOf() === target.valueOf()
+ *  - find is :is(...): any ONE alternative of find matches target  (find provides alternatives)
+ *  - target is :is(...): any ONE alternative of target matches find (target provides alternatives)
+ *  - Both are non-:is() pseudo-selectors: delegate to arePseudoSelectorsEquivalent
+ */
+export function compoundComponentMatches(find: Selector, target: Selector): boolean {
+  // Fast path
+  if (find.valueOf() === target.valueOf()) {
+    return true;
+  }
+
+  // find is :is(...) — walk its alternatives without creating new structures
+  if (isNode(find, 'PseudoSelector') && find.value.name === ':is' && find.value.arg && isSelector(find.value.arg)) {
+    const arg = find.value.arg as Selector;
+    if (isNode(arg, 'SelectorList')) {
+      return arg.value.some((alt: Selector) => compoundComponentMatches(alt, target));
+    }
+    return compoundComponentMatches(arg, target);
+  }
+
+  // target is :is(...) — walk its alternatives
+  if (isNode(target, 'PseudoSelector') && target.value.name === ':is' && target.value.arg && isSelector(target.value.arg)) {
+    const arg = target.value.arg as Selector;
+    if (isNode(arg, 'SelectorList')) {
+      return arg.value.some((alt: Selector) => compoundComponentMatches(find, alt));
+    }
+    return compoundComponentMatches(find, arg);
+  }
+
+  // Both are non-:is() pseudo-selectors
+  if (isNode(find, 'PseudoSelector') && find.value.arg && isSelector(find.value.arg) && isNode(target, 'PseudoSelector')) {
+    return arePseudoSelectorsEquivalent(find, target);
+  }
+
+  return false;
+}
+
+/**
  * Checks pseudo-selector equivalence including argument matching
  * Handles all pseudo-selectors with selector arguments, not just specific ones
  * Extracted from find-extendable-locations.ts with preserved original logic
@@ -181,9 +225,7 @@ function compoundContainsCompoundSubsequence(target: CompoundSelector, find: Com
   if (find.value.length > target.value.length) {
     return false;
   }
-  const eq = (t: any, f: any) => isNode(f, 'PseudoSelector') && f.value.arg && isSelector(f.value.arg)
-    ? arePseudoSelectorsEquivalent(t, f)
-    : t.valueOf() === f.valueOf();
+  const eq = (t: Selector, f: Selector) => compoundComponentMatches(f, t);
   let tIdx = 0;
   for (const fComp of find.value) {
     let found = false;
@@ -207,23 +249,11 @@ export function areCompoundSelectorsEquivalent(a: CompoundSelector, b: CompoundS
     return false;
   }
 
-  // Expand both compounds to handle :is() pseudo-selectors (preserving original expansion logic)
-  const aExpanded = expandCompoundWithPseudoSelectors(a);
-  const bExpanded = expandCompoundWithPseudoSelectors(b);
-
-  // Check if any expanded form of a matches any expanded form of b
-  return aExpanded.some(aComp =>
-    bExpanded.some(bComp =>
-      // All components must match
-      aComp.value.length === bComp.value.length
-      && aComp.value.every(aCompItem =>
-        bComp.value.some(bCompItem =>
-          isNode(aCompItem, 'PseudoSelector') && aCompItem.value.arg && isSelector(aCompItem.value.arg) && isNode(bCompItem, 'PseudoSelector')
-            ? arePseudoSelectorsEquivalent(aCompItem, bCompItem)
-            : aCompItem.valueOf() === bCompItem.valueOf()
-        )
-      )
-    )
+  // Order-independent component matching: two compounds are equivalent if they have the same
+  // multiset of components. Components are small (typically 2-5), so O(N²) is fine.
+  // Uses compoundComponentMatches for :is()-aware pointer walk — no object creation.
+  return a.value.every(aComp =>
+    b.value.some(bComp => compoundComponentMatches(aComp as Selector, bComp as Selector))
   );
 }
 
@@ -1056,9 +1086,7 @@ function trySmallCompoundExtendMatch(
   if (find.value.length <= target.value.length) {
     const isSubset = find.value.every((findComp: any) =>
       target.value.some((targetComp: any) =>
-        isNode(findComp, 'PseudoSelector') && findComp.value.arg && isSelector(findComp.value.arg)
-          ? arePseudoSelectorsEquivalent(targetComp, findComp)
-          : targetComp.valueOf() === findComp.valueOf()
+        compoundComponentMatches(findComp as Selector, targetComp as Selector)
       )
     );
 
@@ -1075,10 +1103,7 @@ function trySmallCompoundExtendMatch(
             match = false;
             break;
           }
-          const eq = isNode(fComp, 'PseudoSelector') && fComp.value.arg && isSelector(fComp.value.arg)
-            ? arePseudoSelectorsEquivalent(tComp, fComp)
-            : tComp.valueOf() === fComp.valueOf();
-          if (!eq) {
+          if (!compoundComponentMatches(fComp as Selector, tComp as Selector)) {
             match = false;
             break;
           }
@@ -1092,9 +1117,7 @@ function trySmallCompoundExtendMatch(
       // Calculate remainder after removing matched components
       const remainderComponents = target.value.filter((targetComp: any) =>
         !find.value.some((findComp: any) =>
-          isNode(findComp, 'PseudoSelector') && findComp.value.arg && isSelector(findComp.value.arg)
-            ? arePseudoSelectorsEquivalent(targetComp, findComp)
-            : targetComp.valueOf() === findComp.valueOf()
+          compoundComponentMatches(findComp as Selector, targetComp as Selector)
         )
       );
 
@@ -1123,10 +1146,7 @@ function trySmallCompoundExtendMatch(
         for (let i = 0; i < target.value.length && findIdx < find.value.length; i++) {
           const tComp = target.value[i]!;
           const fComp = find.value[findIdx]!;
-          const eq = isNode(fComp, 'PseudoSelector') && fComp.value.arg && isSelector(fComp.value.arg)
-            ? arePseudoSelectorsEquivalent(tComp, fComp)
-            : tComp.valueOf() === fComp.valueOf();
-          if (eq) {
+          if (compoundComponentMatches(fComp as Selector, tComp as Selector)) {
             matchIndices.push(i);
             findIdx++;
           }
@@ -1906,9 +1926,13 @@ export function selectorCompare(
   const normalizedA = normalizeSelectorForExtend(a);
   const normalizedB = normalizeSelectorForExtend(b);
   if (isNode(normalizedA, 'SelectorList') && isNode(normalizedB, 'SelectorList')) {
-    const aItems = normalizedA.value.map(item => normalizeSelectorForExtend(item as Selector).valueOf()).slice().sort();
-    const bItems = normalizedB.value.map(item => normalizeSelectorForExtend(item as Selector).valueOf()).slice().sort();
-    const equivalent = aItems.length === bItems.length && aItems.every((v, i) => v === bItems[i]);
+    const aValues = normalizedA.value;
+    const bValues = normalizedB.value;
+    // Use a Set for O(N) order-independent comparison instead of O(N log N) sort
+    const equivalent = aValues.length === bValues.length && (() => {
+      const aSet = new Set(aValues.map(item => normalizeSelectorForExtend(item as Selector).valueOf()));
+      return bValues.every(item => aSet.has(normalizeSelectorForExtend(item as Selector).valueOf()));
+    })();
     if (equivalent) {
       return {
         isEquivalent: true,

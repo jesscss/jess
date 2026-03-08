@@ -428,7 +428,8 @@ describe('Extend Selector Tests', () => {
       const find = el('.b');
       const extendWith = el('.q');
       const result = extendSelector(target, find, extendWith, true);
-      expect(result.valueOf()).toBe('.a:is(.b,.q,.c).d');
+      // Extension appended at the end of the :is() list (not inserted in the middle)
+      expect(result.valueOf()).toBe('.a:is(.b,.c,.q).d');
     });
 
     it('target :is(.foo .bar, .baz), find .bar partial → wrap .bar in each alternative that has it', () => {

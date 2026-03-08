@@ -8,13 +8,34 @@ import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
-import { applyExtendsToSelector } from './extend.js';
+import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
+import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './ruleset-trace.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
+
+/**
+ * Fast check: would applying a single extend instruction change the selector?
+ *
+ * Uses the walk-and-consume dry-run for SimpleSelector find targets (O(depth)),
+ * falls back to the full applyExtendsToSelector + valueOf comparison for complex targets.
+ */
+function wouldInstructionChangeSel(
+  selector: Selector,
+  instruction: ExtendInstruction
+): boolean {
+  const { target, extendWith, partial } = instruction;
+  // Walk-and-consume fast path for SimpleSelector targets
+  if (canUseWalkAndConsume(selector, target)) {
+    return wouldExtendChange(selector, target, extendWith, partial);
+  }
+  // Fallback: full extend + compare
+  const after = applyExtendsToSelector(selector, [instruction]);
+  return after.valueOf() !== selector.valueOf();
+}
 
 export class ExtendRootRegistry {
   private parentRoot = new WeakMap<Rules, Rules>();
@@ -454,9 +475,11 @@ export function processExtends(context: Context): void {
               : null
           );
           const nonPartialDiagnostics = nonPartialOnly.map((instruction) => {
-            const ownAfterSingle = applyExtendsToSelector(ownSelector, [instruction]);
+            // Walk fast path for ownSelector (no implicit ampersand boundary).
+            // Full resolved selector has implicit parent/own boundary that
+            // the walk can't detect, so always use legacy for that.
+            const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
             const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
-            const ownChangedSingle = ownAfterSingle.valueOf() !== ownSelector.valueOf();
             const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
             const parentHasTargetMatch = Boolean(
               parentSelectorForOwnSplit
@@ -511,9 +534,8 @@ export function processExtends(context: Context): void {
               : null
           );
           const nonPartialDiagnostics = nonPartialOnly.map((instruction) => {
-            const ownAfterSingle = applyExtendsToSelector(ownSelector, [instruction]);
+            const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
             const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
-            const ownChangedSingle = ownAfterSingle.valueOf() !== ownSelector.valueOf();
             const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
             const parentHasTargetMatch = Boolean(
               parentSelectorForOwnSplit
@@ -553,7 +575,6 @@ export function processExtends(context: Context): void {
           );
           const ownAfterPartial = applyExtendsToSelector(ownSelector, partialOnly);
           const ownAfterNonPartial = applyExtendsToSelector(ownSelector, nonPartialOnly);
-          const ownAfterAll = applyExtendsToSelector(ownSelector, visibleExtends);
           const fullAfterNonPartial = applyExtendsToSelector(selector, nonPartialOnly);
           const ownChangedByNonPartial = ownAfterNonPartial.valueOf() !== ownSelector.valueOf();
           const fullChangedByNonPartial = fullAfterNonPartial.valueOf() !== selector.valueOf();

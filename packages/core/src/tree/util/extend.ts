@@ -127,6 +127,7 @@ import {
   type SelectorComparisonResult,
   type MatchScope
 } from './selector-compare.js';
+import { canUseWalkAndConsume, walkAndExtend, extendWithNeedsConflictValidation } from './extend-walk.js';
 
 const { isArray } = Array;
 let extendOrderMap: WeakMap<Selector, number> | null = null;
@@ -140,6 +141,45 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
 
 function isSelectorNode(value: unknown): value is Selector {
   return !!value && typeof value === 'object' && (value as any).isSelector === true;
+}
+
+/**
+ * Walk-and-consume eligibility check for extendSelector dispatch.
+ * Returns true only when the walk path is known to produce correct results.
+ *
+ * Currently very conservative: only handles the simplest cases where
+ * walk-and-consume is verified to produce identical output to the legacy path.
+ */
+function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolean {
+  // Walk-and-consume doesn't handle extendOrderMap (dead code, but guard anyway)
+  if (extendOrderMap) {
+    return false;
+  }
+  if (!canUseWalkAndConsume(target, find)) {
+    return false;
+  }
+  // Walk-and-consume handles all selector types for SimpleSelector find.
+  return true;
+}
+
+/**
+ * Bridge: attempt walk-and-consume, return null to fall through to legacy path.
+ * Returns the extended selector, or null if walk couldn't handle it.
+ */
+function walkAndExtendForExtendSelector(
+  target: Selector,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | null {
+  const result = walkAndExtend(target, find, extendWith, partial);
+  // walkAndExtend returns the original target when no match is found.
+  // The legacy path throws ExtendError('NOT_FOUND') in that case.
+  // Return null to let the legacy path handle it (including the throw).
+  if (result === target) {
+    return null;
+  }
+  return result;
 }
 
 /**
@@ -198,6 +238,9 @@ export function applyExtendsToSelector(
   initialSelector: Selector,
   extendsList: ExtendInstruction[]
 ): Selector {
+  if (extendsList.length === 0) {
+    return initialSelector;
+  }
   let selector = initialSelector;
   const instructions = extendsList.slice();
 
@@ -211,6 +254,36 @@ export function applyExtendsToSelector(
         continue;
       }
       const { target, extendWith, partial } = instruction;
+
+      // Batch all same-target non-partial instructions to avoid O(N²) growing-list
+      // scans. Common in Bootstrap-style code where many selectors extend the same base.
+      if (!partial && i + 1 < instructions.length) {
+        const targetVal = target.valueOf();
+        const batchExtendWiths: Selector[] = [extendWith];
+        const batchIndices: number[] = [i];
+        for (let j = i + 1; j < instructions.length; j++) {
+          const next = instructions[j]!;
+          if (!next.partial && next.target.valueOf() === targetVal) {
+            batchExtendWiths.push(next.extendWith);
+            batchIndices.push(j);
+          }
+        }
+        if (batchExtendWiths.length > 1) {
+          const batched = applyBatchedExtend(selector, target, batchExtendWiths);
+          if (batched !== null && batched.valueOf() !== selector.valueOf()) {
+            selector = batched;
+            for (let k = batchIndices.length - 1; k >= 0; k--) {
+              instructions.splice(batchIndices[k]!, 1);
+            }
+            changed = true;
+            break;
+          }
+          // No match — skip over all instructions in this batch group
+          i = batchIndices[batchIndices.length - 1]!;
+          continue;
+        }
+      }
+
       const result = tryExtendSelector(selector, target, extendWith, partial);
       if (result && !result.error) {
         const beforeValue = selector.valueOf();
@@ -226,6 +299,79 @@ export function applyExtendsToSelector(
   }
 
   return selector;
+}
+
+/**
+ * Fast-path for applying multiple non-partial extensions of the SAME target in one pass.
+ *
+ * For a SelectorList target with a SimpleSelector find, this avoids the O(N²) pattern
+ * where each sequential tryExtendSelector call scans a growing SelectorList.
+ *
+ * Returns null if the target is not found (no change), or the new selector if extensions
+ * were applied.
+ *
+ * Falls back to sequential application for complex cases (ComplexSelector find, partial
+ * extends, non-SelectorList targets).
+ */
+function applyBatchedExtend(
+  selector: Selector,
+  find: Selector,
+  extendWithList: Selector[]
+): Selector | null {
+  // Fast path: non-partial SelectorList with a SimpleSelector find.
+  // One scan to find all matching items, then append all extendWiths at once.
+  if (isNode(selector, 'SelectorList') && isNode(find, 'SimpleSelector')) {
+    const searchResult = findExtendableLocations(selector, find);
+    if (!searchResult.hasMatches) {
+      return null;
+    }
+
+    const originalItems: Selector[] = [];
+    const newItems: Selector[] = [];
+    let anyWholeMatch = false;
+
+    for (const item of (selector as SelectorList).value) {
+      const sItem = item as Selector;
+      const itemCompare = selectorCompare(sItem, find);
+      if (!itemCompare.hasWholeMatch) {
+        originalItems.push(sItem);
+        continue;
+      }
+      anyWholeMatch = true;
+      const c = sItem.clone(true) as Selector;
+      c.addFlag(F_EXTENDED);
+      originalItems.push(c);
+      const itemVal = sItem.valueOf();
+      for (const extendWith of extendWithList) {
+        if (extendWith.valueOf() !== itemVal) {
+          const ext = extendWith.clone(true) as Selector;
+          ext.addFlag(F_EXTENDED);
+          newItems.push(ext);
+        }
+      }
+    }
+
+    if (!anyWholeMatch || newItems.length === 0) {
+      return null;
+    }
+
+    const processed = createProcessedSelector([...originalItems, ...newItems], true);
+    const processedArray = isArray(processed) ? processed : [processed];
+    return SelectorList.create(processedArray).inherit(selector) as Selector;
+  }
+
+  // Generic fallback: apply each extendWith sequentially.
+  // This still avoids the per-restart-from-zero overhead by not using the while-loop restart.
+  let result = selector;
+  let anyChanged = false;
+  for (const extendWith of extendWithList) {
+    const single = tryExtendSelector(result, find, extendWith, false);
+    if (!single.error && single.value.valueOf() !== result.valueOf()) {
+      result = single.value;
+      anyChanged = true;
+    }
+  }
+  return anyChanged ? result : null;
 }
 
 /**
@@ -416,6 +562,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       if (extendOrderMap && flattened.length >= 2 && extendOrderByValueOf) {
         const orderMap = extendOrderMap;
         const orderByValue = extendOrderByValueOf;
+        const NO_ORDER = 999999;
         const orderFor = (s: Selector): number => {
           const fromMap = orderMap.get(s);
           if (fromMap !== undefined) {
@@ -429,25 +576,29 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               order = orderByValue.get(lastPart);
             }
           }
-          return order ?? 999999;
+          return order ?? NO_ORDER;
         };
-        const withOrder = flattened.filter(s => orderFor(s) !== 999999);
-        if (withOrder.length >= 2) {
-          const NO_ORDER = 999999;
-          flattened.sort((a, b) => {
-            const oa = orderFor(a);
-            const ob = orderFor(b);
-            if (oa === NO_ORDER && ob === NO_ORDER) {
+        // Pre-compute order keys once — calling orderFor inside the comparator causes
+        // repeated valueOf()/split() on every comparison step (O(N log N) × valueOf cost).
+        const withKeys = flattened.map(s => ({ s, o: orderFor(s) }));
+        const hasOrder = withKeys.filter(x => x.o !== NO_ORDER);
+        if (hasOrder.length >= 2) {
+          withKeys.sort((a, b) => {
+            if (a.o === NO_ORDER && b.o === NO_ORDER) {
               return 0;
             }
-            if (oa === NO_ORDER) {
+            if (a.o === NO_ORDER) {
               return -1;
             }
-            if (ob === NO_ORDER) {
+            if (b.o === NO_ORDER) {
               return 1;
             }
-            return oa - ob;
+            return a.o - b.o;
           });
+          flattened.length = 0;
+          for (const x of withKeys) {
+            flattened.push(x.s);
+          }
         }
       }
       el.value = flattened;
@@ -1006,6 +1157,20 @@ export function extendSelector(
   if (partial && find.valueOf() === extendWith.valueOf()) {
     return target;
   }
+
+  // Walk-and-consume fast path for simple cases (Phase 1).
+  // Only for SimpleSelector find with no ampersands and no extra flags.
+  // Also skip when extendWith contains element/ID selectors that need conflict validation.
+  if (!skipAmpersandCheck && !hasMoreAfterIs
+    && canUseWalkAndConsumeForExtend(target, find)
+    && !(partial && extendWithNeedsConflictValidation(extendWith))) {
+    const walkResult = walkAndExtendForExtendSelector(target, find, extendWith, partial);
+    if (walkResult !== null) {
+      return walkResult;
+    }
+    // Walk path returned null → fall through to legacy path
+  }
+
   // Use the unified ExtendLocation API for all selector matching.
   //
   // IMPORTANT: normalize :is(...) equivalences for matching. In Less output we often materialize
