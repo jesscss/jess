@@ -21,7 +21,7 @@ alwaysApply: true
 ## Commit gate (regression bar)
 - **Baseline** = core tests + less-parser tests + css-parser tests + `packages/jess/test/less/all-less.test.ts`. These must **stay passing**; the bar moves forward (previous passes + newly fixed tests).
 - **Before claiming completion or suggesting commit:** Run `pnpm run verify:baseline`. Do not claim success without running it and confirming exit 0.
-- **Automation:** Pre-push runs `verify:baseline` when any of `packages/core`, `packages/less-parser`, `packages/css-parser`, or `packages/jess` have changes, and **blocks push** if it fails.
+- **Automation:** Pre-push runs `verify:baseline --changed` when any of `packages/core`, `packages/less-parser`, `packages/css-parser`, or `packages/jess` have changes, and **blocks push** if it fails. `--changed` runs only for changed baseline packages and their dependants (faster).
 
 ## Move the bar up (never down)
 - As we increase stability, **always move the baseline up**: fix failing tests and keep them in the gate; add new suites to `verify:baseline` when they become required for stability.
