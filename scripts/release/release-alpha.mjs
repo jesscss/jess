@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaReleasePlan } from './release-utils.mjs';
+import { getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
 
 function parseArgs(argv) {
   const options = {
@@ -131,7 +131,10 @@ if (!options.dryRun) {
 run('pnpm', ['run', 'release:alpha:check'], rootDir);
 
 if (!options.skipVersion) {
-  run('pnpm', ['run', 'release:alpha:version'], rootDir);
+  console.log('\nAuto-incrementing alpha version...');
+  const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
+  console.log(`  ${previousVersion} -> ${nextVersion}`);
+  run('pnpm', ['install', '--lockfile-only'], rootDir);
 }
 
 const { plan, version } = getReleaseState(rootDir);
