@@ -18,7 +18,7 @@
     },
     "./package.json": "./package.json"
   },
-  "bin": "./bin/cli.js",
+  "bin": "./bin/cli.cjs",
   "files": [
     "lib"
   ],
@@ -47,7 +47,7 @@
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
     "prepublishOnly": "pnpm build && pnpm test:all",
-    "benchmark": "node bin/cli.js benchmark/benchmark.jess",
+    "benchmark": "node bin/cli.cjs benchmark/benchmark.jess",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.json -w",
