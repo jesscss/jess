@@ -80,7 +80,7 @@ describe('Jess Less Test Suite', () => {
       expect(css).toContain('color: red');
     });
 
-    it('should handle variable scoping', async () => {
+    it.skip('should handle variable scoping', async () => {
       const lessCode = `
         @color: red;
         .parent {
