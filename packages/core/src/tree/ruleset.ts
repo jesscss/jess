@@ -314,6 +314,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if (renderSelector instanceof Nil) {
         return '';
       }
+      this.value.selector = renderSelector as typeof selector;
+      this.invalidateSelectorValueCache();
     }
     const prevReferenceFilterTargets = options.referenceFilterTargets === true;
     const disableTargetFilteringForTopLevelList = (

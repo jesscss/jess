@@ -13,7 +13,7 @@ import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
 import { Nil } from '../nil.js';
-import { F_EXTENDED, F_VISIBLE } from '../node.js';
+import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './ruleset-trace.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
 
@@ -450,6 +450,7 @@ export function processExtends(context: Context): void {
             && parentSelector
             && !(parentSelector instanceof Nil)
             && isNode(fullAfterPartialOnly, 'ComplexSelector')
+            && !ownSelector.hasFlag(F_AMPERSAND)
           );
           if (canDeriveOwnFromGeneratedIs) {
             const complex = fullAfterPartialOnly as ComplexSelector;
