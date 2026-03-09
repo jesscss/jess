@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, F_NON_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -17,6 +17,11 @@ export interface Expression extends Node<Node> {
 export class Expression extends Node<Node> {
   type = 'Expression' as const;
   shortType = 'expr' as const;
+
+  constructor(value: Node, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.addFlag(F_NON_STATIC);
+  }
 
   override evalNode(context: Context): MaybePromise<Node> {
     const { value } = this;

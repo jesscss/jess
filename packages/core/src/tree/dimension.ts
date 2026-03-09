@@ -2,6 +2,7 @@ import { type Context } from '../context.js';
 import { Color, ColorFormat } from './color.js';
 import {
   Node,
+  F_STATIC,
   type LocationInfo,
   type NodeOptions,
   type TreeContext,
@@ -38,7 +39,11 @@ export interface Dimension extends Node<DimensionValue> {
 export class Dimension extends Node<DimensionValue> {
   type = 'Dimension';
   shortType = 'dimension';
-  // Dimensions are static and don't need evaluation
+
+  constructor(...args: ConstructorParameters<typeof Node<DimensionValue>>) {
+    super(...args);
+    this.addFlag(F_STATIC);
+  }
 
   private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {

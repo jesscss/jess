@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo, type TreeContext } from './node.js';
 
 export type CommentOptions = {
   lineComment?: boolean;
@@ -20,6 +20,7 @@ export class Comment extends Node<string, CommentOptions> {
 
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.addFlag(F_STATIC);
     if (this.options.lineComment || value.startsWith('//')) {
       this.removeFlag(F_VISIBLE);
     }

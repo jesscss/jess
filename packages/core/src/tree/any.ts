@@ -2,7 +2,7 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node-base.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
@@ -47,7 +47,11 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   type = 'Any';
   shortType = 'any';
-  override state = F_VISIBLE | F_STATIC;
+
+  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
+    super(...args);
+    this.addFlag(F_STATIC);
+  }
 
   override preEval(context: Context): this | Nil {
     this.preEvaluated = true;

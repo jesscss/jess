@@ -31,8 +31,6 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   override shortType = 'vardecl';
   override allowRuleRoot = true;
   override allowRoot = true;
-  override state = 0b0000; // 0b0000 means no flags are set
-
   constructor(
     value: DeclarationValue,
     options?: VarDeclarationOptions,
@@ -40,6 +38,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
+    this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
       this.addFlag(F_VISIBLE);

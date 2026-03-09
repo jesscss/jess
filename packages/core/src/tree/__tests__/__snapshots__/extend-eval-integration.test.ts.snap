@@ -1313,7 +1313,11 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
         (Any '@media')
       prelude: 
         (Paren
-          (Keyword [role=keyword] 'tv')
+          (QueryCondition
+            [
+              (Keyword [role=keyword] 'tv')
+            ]
+          )
         )
       rules: 
         (Rules
@@ -1372,7 +1376,11 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                 (Any '@media')
               prelude: 
                 (Paren
-                  (Keyword [role=keyword] 'plasma')
+                  (QueryCondition
+                    [
+                      (Keyword [role=keyword] 'plasma')
+                    ]
+                  )
                 )
               rules: 
                 (Rules

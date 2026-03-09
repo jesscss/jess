@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType } from './node.js';
+import { defineType, F_STATIC } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 
 export interface BasicSelector extends SimpleSelector<string> {
@@ -14,6 +14,11 @@ export interface BasicSelector extends SimpleSelector<string> {
 export class BasicSelector extends SimpleSelector<string> {
   type = 'BasicSelector' as const;
   shortType = 'el' as const;
+
+  constructor(...args: ConstructorParameters<typeof SimpleSelector<string>>) {
+    super(...args);
+    this.addFlag(F_STATIC);
+  }
 
   get isClass() {
     return /^\./.test(this.value);

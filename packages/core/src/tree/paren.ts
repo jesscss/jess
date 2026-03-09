@@ -2,7 +2,7 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType } from './node.js';
+import { Node, defineType, F_NON_STATIC } from './node.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -23,6 +23,13 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 export class Paren extends Node<Node | undefined, ParenOptions> {
   type = 'Paren' as const;
   shortType = 'paren' as const;
+
+  constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    if (options?.escaped) {
+      this.addFlag(F_NON_STATIC);
+    }
+  }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);

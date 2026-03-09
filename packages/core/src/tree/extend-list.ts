@@ -1,4 +1,4 @@
-import { Node, defineType } from './node.js';
+import { Node, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
@@ -18,7 +18,11 @@ export class ExtendList extends Node<Extend[]> {
   shortType = 'extendlist' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
-  override state = 0b0000; // 0b0000 means no flags are set
+
+  constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.removeFlag(F_VISIBLE);
+  }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);

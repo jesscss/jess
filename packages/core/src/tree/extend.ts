@@ -1,4 +1,4 @@
-import { defineType, Node, F_VISIBLE, F_IMPLICIT_AMPERSAND } from './node.js';
+import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
@@ -47,7 +47,12 @@ export interface Extend extends Node<ExtendValue> {
 export class Extend extends Node<ExtendValue> {
   type = 'Extend' as const;
   shortType = 'extend' as const;
-  override state = 0b0000;
+
+  constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.removeFlag(F_VISIBLE);
+    this.addFlag(F_NON_STATIC);
+  }
 
   override valueOf() {
     return `$extend ${this.value.target.valueOf()}`;

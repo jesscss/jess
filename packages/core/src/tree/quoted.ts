@@ -1,6 +1,6 @@
 import { type Interpolated } from './interpolated.js';
 import { Any } from './any.js';
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -21,6 +21,15 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   type = 'Quoted' as const;
   shortType = 'quoted' as const;
+
+  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    if (typeof value === 'string' && !options?.escaped) {
+      this.addFlag(F_STATIC);
+    } else {
+      this.addFlag(F_NON_STATIC);
+    }
+  }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
