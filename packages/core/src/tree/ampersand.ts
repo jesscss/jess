@@ -180,6 +180,42 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     return w.getSince(mark);
   }
 
+  /**
+   * Split a string on commas that aren't inside brackets, parens, or quotes.
+   */
+  private static splitTopLevelCommas(str: string): string[] {
+    const items: string[] = [];
+    let depth = 0;
+    let inQuote: string | null = null;
+    let start = 0;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i]!;
+      if (inQuote) {
+        if (ch === inQuote && str[i - 1] !== '\\') {
+          inQuote = null;
+        }
+      // eslint-disable-next-line @stylistic/quotes
+      } else if (ch === '"' || ch === "'") {
+        inQuote = ch;
+      } else if (ch === '(' || ch === '[') {
+        depth++;
+      } else if (ch === ')' || ch === ']') {
+        depth--;
+      } else if (ch === ',' && depth === 0) {
+        const item = str.slice(start, i).trim();
+        if (item) {
+          items.push(item);
+        }
+        start = i + 1;
+      }
+    }
+    const last = str.slice(start).trim();
+    if (last) {
+      items.push(last);
+    }
+    return items;
+  }
+
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     const { appendValue } = this.value;
@@ -241,7 +277,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             } else if (isNode(baseSelector, 'SelectorList')) {
               baseSelectors.push(...baseSelector.value.map(item => item as Selector));
             } else {
-              baseSelectors.push(baseSelector);
+              // Handle raw comma-separated strings (e.g. from ~'apple, satsuma, banana, pear')
+              // by splitting into individual items so the template distributes across all of them.
+              const selectorStr = baseSelector.toTrimmedString();
+              if (selectorStr.includes(',')) {
+                const items = Ampersand.splitTopLevelCommas(selectorStr);
+                for (const item of items) {
+                  baseSelectors.push(new BasicSelector(item).inherit(baseSelector));
+                }
+              } else {
+                baseSelectors.push(baseSelector);
+              }
             }
             const merged = baseSelectors.map((item) => {
               const value = item.toTrimmedString();

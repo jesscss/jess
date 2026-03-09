@@ -186,6 +186,47 @@ describe('Ampersand', () => {
     await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
   });
 
+  it('should distribute merge template across comma-separated items', async () => {
+    // Simulates ~'apple, satsuma, banana, pear' as parent selector
+    const node = rules([
+      ruleset({
+        selector: el('apple, satsuma, banana, pear'),
+        rules: rules([
+          ruleset({
+            selector: sel([amp('.fruit-quoted-&')]),
+            rules: rules([decl({ name: 'content', value: any('"Quoted"') })])
+          })
+        ])
+      })
+    ]);
+    context = new Context({ collapseNesting: true });
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+    expect(css).toContain('.fruit-quoted-apple');
+    expect(css).toContain('.fruit-quoted-satsuma');
+    expect(css).toContain('.fruit-quoted-banana');
+    expect(css).toContain('.fruit-quoted-pear');
+    // Each item should get the prefix — verify no bare (unprefixed) items
+    expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
+  });
+
+  it('should validate each item individually when distributing template', async () => {
+    // .one starts with '.' and '-' before '&' is ident — invalid head join per item
+    const node = rules([
+      ruleset({
+        selector: el('.one, .two'),
+        rules: rules([
+          ruleset({
+            selector: sel([amp('.fruit-&')]),
+            rules: rules([decl({ name: 'color', value: any('red') })])
+          })
+        ])
+      })
+    ]);
+    context = new Context({ collapseNesting: true });
+    await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
+  });
+
   it('should wrap inner lists in :is()', async () => {
     let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
     context = new Context({ collapseNesting: true });
