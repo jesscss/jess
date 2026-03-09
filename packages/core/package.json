@@ -38,8 +38,8 @@
     "lodash-es": "^4.17.21"
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test:all",
-    "prepublishOnly": "pnpm build && pnpm test:all",
+    "ci": "pnpm build && pnpm test -- --run",
+    "prepublishOnly": "pnpm build && pnpm test -- --run",
     "build": "pnpm compile",
     "visualize": "vite build",
     "compile": "tsc -p tsconfig.build.json",
