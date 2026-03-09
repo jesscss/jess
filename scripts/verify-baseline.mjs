@@ -197,7 +197,7 @@ if (needsCoreBuild) {
 }
 
 if (runCore) {
-  run('pnpm', ['--filter', '@jesscss/core', 'test', '--', '--run', '--exclude', '**/bench*']);
+  run('pnpm', ['--filter', '@jesscss/core', 'test', '--', '--run']);
 }
 if (runLessParser) {
   run('pnpm', ['--filter', '@jesscss/less-parser', 'test']);
