@@ -45,8 +45,8 @@
     }
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test:all",
-    "prepublishOnly": "pnpm build && pnpm test:all",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build && pnpm test",
     "benchmark": "node bin/cli.cjs benchmark/benchmark.jess",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
