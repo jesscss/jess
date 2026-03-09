@@ -1,28 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { createRequire } from 'module';
-import { readFileSync } from 'fs';
-import * as path from 'path';
 import lessPlugin from '@jesscss/plugin-less';
 import { Compiler } from '../../src/index.js';
 
-const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+describe('Less ampersand merge template', () => {
+  const compiler = new Compiler({
+    output: { collapseNesting: true },
+    compile: {
+      plugins: [lessPlugin()]
+    }
+  });
 
-describe('Less eval error fixtures', () => {
-  it.skip('matches ampersand merge template eval error', async () => {
-    const fixtureRelPath = 'tests-error/eval/ampersand-merge-template-invalid.less';
-    const fixturePath = path.join(testData, fixtureRelPath);
-    const expectedPath = fixturePath.replace(/\.less$/, '.txt');
-    const expectedMessage = readFileSync(expectedPath, 'utf8').trim();
-    const compiler = new Compiler({
-      output: { collapseNesting: true },
-      compile: {
-        plugins: [lessPlugin()]
+  it('distributes template across comma-separated list items', async () => {
+    const lessCode = `
+      @list-quoted: ~'apple, satsuma, banana, pear';
+      @{list-quoted} {
+        .fruit-quoted-& {
+          content: "Quoted";
+        }
       }
-    });
+    `;
+    const css = await compiler.renderString(lessCode, { language: 'less' });
+    expect(css).toContain('.fruit-quoted-apple');
+    expect(css).toContain('.fruit-quoted-satsuma');
+    expect(css).toContain('.fruit-quoted-banana');
+    expect(css).toContain('.fruit-quoted-pear');
+  });
 
-    await expect(async () => {
-      await compiler.compile(fixturePath);
-    }).rejects.toThrow(expectedMessage);
+  it('rejects invalid template joins per item', async () => {
+    const lessCode = `
+      .one, .two {
+        .fruit-& {
+          color: red;
+        }
+      }
+    `;
+    await expect(
+      compiler.renderString(lessCode, { language: 'less' })
+    ).rejects.toThrow('Invalid ampersand merge template');
   });
 });
