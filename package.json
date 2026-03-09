@@ -58,7 +58,7 @@
     "test:less:test-data": "pnpm --filter @jesscss/core build && vitest packages/jess/test/less/all-less.test.ts",
     "verify:baseline": "node scripts/verify-baseline.mjs",
     "release:alpha:check": "pnpm run verify:baseline && node scripts/release/validate-alpha-publish-set.mjs && node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
-    "release:alpha:version": "pnpm exec changeset version",
+    "release:alpha:version": "node scripts/release/increment-alpha.mjs",
     "release:alpha:publish": "node scripts/release/publish-alpha.mjs --tag alpha",
     "release:alpha:dry-run": "node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
     "release:alpha": "node scripts/release/release-alpha.mjs",

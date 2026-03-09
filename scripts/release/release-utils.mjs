@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const RUNTIME_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
@@ -94,6 +94,39 @@ function topoSortAllowlist(allowlist, byName) {
     throw new Error(`Cycle detected in allowlisted runtime workspace dependencies: ${unresolved.join(', ')}`);
   }
   return out;
+}
+
+export function parseAlphaVersion(version) {
+  const match = version.match(/^(.+)-alpha\.(\d+)$/);
+  if (!match) return null;
+  return { base: match[1], num: parseInt(match[2], 10) };
+}
+
+export function incrementAlphaVersions({ rootDir = process.cwd(), allowlistPath } = {}) {
+  allowlistPath ??= path.join(rootDir, 'scripts', 'release', 'alpha-allowlist.json');
+  const plan = getAlphaReleasePlan({ rootDir, allowlistPath });
+  if (plan.errors.length > 0) {
+    throw new Error(`Cannot increment: validation failed:\n- ${plan.errors.join('\n- ')}`);
+  }
+  const currentVersion = plan.packages[0]?.manifest.version;
+  if (!currentVersion) {
+    throw new Error('No packages in allowlist');
+  }
+  const parsed = parseAlphaVersion(currentVersion);
+  if (!parsed) {
+    throw new Error(`Current version '${currentVersion}' is not an alpha version (expected X.Y.Z-alpha.N)`);
+  }
+  const nextVersion = `${parsed.base}-alpha.${parsed.num + 1}`;
+
+  const allPackages = listWorkspacePackages(rootDir);
+  for (const [, pkg] of allPackages) {
+    if (pkg.manifest.private) continue;
+    const pkgJson = JSON.parse(readFileSync(pkg.packageJsonPath, 'utf8'));
+    pkgJson.version = nextVersion;
+    writeFileSync(pkg.packageJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
+  }
+
+  return { previousVersion: currentVersion, nextVersion, plan };
 }
 
 export function getAlphaReleasePlan({

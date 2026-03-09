@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaReleasePlan } from './release-utils.mjs';
+import { getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
 
 function parseArgs(argv) {
   const options = {
@@ -110,6 +110,21 @@ function smokeCheck(plan, expectedVersion) {
   console.log(`\nExpected published version: ${expectedVersion}`);
 }
 
+function getNpmAlphaVersion(pkgName) {
+  const result = spawnSync('npm', ['view', `${pkgName}@alpha`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) return null;
+  const raw = (result.stdout ?? '').trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw || null;
+  }
+}
+
 const rootDir = process.cwd();
 const options = parseArgs(process.argv);
 
@@ -125,13 +140,40 @@ if (branch !== 'alpha' && options.dryRun) {
 }
 
 if (!options.dryRun) {
+  // Check npm auth early so we don't waste time on checks/versioning only to fail at publish
+  const whoami = spawnSync('npm', ['whoami'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (whoami.status !== 0) {
+    console.log('\nnpm is not authenticated. Running `npm login`...\n');
+    const login = spawnSync('npm', ['login'], {
+      stdio: 'inherit',
+      shell: process.platform === 'win32'
+    });
+    if (login.status !== 0) {
+      throw new Error('npm login failed. Cannot publish without authentication.');
+    }
+  }
   assertReadyWorkingTree(rootDir);
 }
 
 run('pnpm', ['run', 'release:alpha:check'], rootDir);
 
 if (!options.skipVersion) {
-  run('pnpm', ['run', 'release:alpha:version'], rootDir);
+  // Guard against double-increment: if a previous run already bumped the version
+  // but failed before publishing, don't bump again.
+  const { version: localVersion } = getReleaseState(rootDir);
+  const npmVersion = getNpmAlphaVersion(getAlphaReleasePlan({ rootDir }).allowlist[0]);
+  if (npmVersion && localVersion !== npmVersion) {
+    console.log(`\nVersion already incremented (local: ${localVersion}, npm: ${npmVersion}). Skipping increment.`);
+  } else {
+    console.log('\nAuto-incrementing alpha version...');
+    const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
+    console.log(`  ${previousVersion} -> ${nextVersion}`);
+    run('pnpm', ['install', '--lockfile-only'], rootDir);
+  }
 }
 
 const { plan, version } = getReleaseState(rootDir);

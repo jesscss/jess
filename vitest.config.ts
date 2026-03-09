@@ -66,7 +66,8 @@ export default defineConfig({
             'test/setup.ts',
             'node_modules/**',
             'dist/**',
-            'lib/**'
+            'lib/**',
+            '**/*bench*'
           ]
         }
       }

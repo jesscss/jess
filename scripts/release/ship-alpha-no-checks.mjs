@@ -7,16 +7,12 @@
  * 4. Publish with --ignore-scripts (skips prepublishOnly, etc.)
  * 5. Tag and push tag
  *
- * Usage: node scripts/release/ship-alpha-no-checks.mjs [--dry-run] [--version 2.0.0-alpha.2]
+ * Usage: node scripts/release/ship-alpha-no-checks.mjs [--dry-run]
  */
-import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaReleasePlan } from './release-utils.mjs';
+import { getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
 
-const TARGET_VERSION = process.argv.includes('--version')
-  ? process.argv[process.argv.indexOf('--version') + 1]
-  : '2.0.0-alpha.2';
 const DRY_RUN = process.argv.includes('--dry-run');
 
 function run(command, args, cwd = process.cwd()) {
@@ -70,22 +66,16 @@ if (!DRY_RUN) {
   }
 }
 
-console.log(`Ship alpha ${TARGET_VERSION} (no checks) ${DRY_RUN ? '[DRY-RUN]' : ''}`);
-
-// 1. Bump versions
-for (const pkg of plan.packages) {
-  const pkgJson = JSON.parse(readFileSync(pkg.packageJsonPath, 'utf8'));
-  pkgJson.version = TARGET_VERSION;
-  if (!DRY_RUN) {
-    writeFileSync(pkg.packageJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-  }
-  console.log(`  Bump ${pkg.name} -> ${TARGET_VERSION}`);
-}
-
+// 1. Auto-increment alpha version
+console.log('\nAuto-incrementing alpha version...');
 if (DRY_RUN) {
+  const currentVersion = plan.packages[0]?.manifest.version ?? 'unknown';
+  console.log(`  Current: ${currentVersion} (dry-run: would increment)`);
   console.log('\nDry-run: would bump versions, then pnpm install, commit, push, publish, tag.');
   process.exit(0);
 }
+const { previousVersion, nextVersion: TARGET_VERSION } = incrementAlphaVersions({ rootDir });
+console.log(`  ${previousVersion} -> ${TARGET_VERSION}`);
 
 // 2. pnpm install
 run('pnpm', ['install'], rootDir);
