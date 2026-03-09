@@ -1,6 +1,6 @@
 # Pre-push Check TODOs
 
-Generated: 2026-03-09T18:50:54.027Z
+Generated: 2026-03-09T18:58:31.996Z
 
 These checks failed during `--mode=upstream` and were treated as non-blocking.
 
@@ -33,15 +33,15 @@ packages/parser/src/productions.ts(805,10): error TS2488: Type 'Alt | ({ ALT: ()
 - Exit: `1`
 
 ```
-> @jesscss/parser@2.0.0-alpha.3 build /Users/matthew/git/oss/jess/packages/parser
+> @jesscss/parser@2.0.0-alpha.4 build /Users/matthew/git/oss/jess/packages/parser
 > pnpm clean && pnpm compile
 
 
-> @jesscss/parser@2.0.0-alpha.3 clean /Users/matthew/git/oss/jess/packages/parser
+> @jesscss/parser@2.0.0-alpha.4 clean /Users/matthew/git/oss/jess/packages/parser
 > shx rm -rf ./lib tsconfig.tsbuildinfo
 
 
-> @jesscss/parser@2.0.0-alpha.3 compile /Users/matthew/git/oss/jess/packages/parser
+> @jesscss/parser@2.0.0-alpha.4 compile /Users/matthew/git/oss/jess/packages/parser
 > tsc -p tsconfig.build.json
 
 src/jessActionsParser.ts(97,46): error TS2304: Cannot find name 'Node'.
@@ -56,10 +56,10 @@ src/productions.ts(620,11): error TS2322: Type 'Quoted | Url' is not assignable 
 src/productions.ts(805,10): error TS2488: Type 'Alt | ({ ALT: () => any; GATE?: undefined; } | { GATE: () => boolean; ALT: () => IToken; })[]' must have a '[Symbol.iterator]()' method that returns an iterator.
  ELIFECYCLE  Command failed with exit code 2.
 /Users/matthew/git/oss/jess/packages/parser:
- ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/parser@2.0.0-alpha.3 build: `pnpm clean && pnpm compile`
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/parser@2.0.0-alpha.4 build: `pnpm clean && pnpm compile`
 Exit status 1
 
-(node:55769) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(node:71997) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
 (Use `node --trace-deprecation ...` to show where the warning was created)
 ```
 

@@ -110,6 +110,21 @@ function smokeCheck(plan, expectedVersion) {
   console.log(`\nExpected published version: ${expectedVersion}`);
 }
 
+function getNpmAlphaVersion(pkgName) {
+  const result = spawnSync('npm', ['view', `${pkgName}@alpha`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) return null;
+  const raw = (result.stdout ?? '').trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw || null;
+  }
+}
+
 const rootDir = process.cwd();
 const options = parseArgs(process.argv);
 
@@ -147,10 +162,18 @@ if (!options.dryRun) {
 run('pnpm', ['run', 'release:alpha:check'], rootDir);
 
 if (!options.skipVersion) {
-  console.log('\nAuto-incrementing alpha version...');
-  const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
-  console.log(`  ${previousVersion} -> ${nextVersion}`);
-  run('pnpm', ['install', '--lockfile-only'], rootDir);
+  // Guard against double-increment: if a previous run already bumped the version
+  // but failed before publishing, don't bump again.
+  const { version: localVersion } = getReleaseState(rootDir);
+  const npmVersion = getNpmAlphaVersion(getAlphaReleasePlan({ rootDir }).allowlist[0]);
+  if (npmVersion && localVersion !== npmVersion) {
+    console.log(`\nVersion already incremented (local: ${localVersion}, npm: ${npmVersion}). Skipping increment.`);
+  } else {
+    console.log('\nAuto-incrementing alpha version...');
+    const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
+    console.log(`  ${previousVersion} -> ${nextVersion}`);
+    run('pnpm', ['install', '--lockfile-only'], rootDir);
+  }
 }
 
 const { plan, version } = getReleaseState(rootDir);
