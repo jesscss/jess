@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.3",
+  "version": "2.0.0-alpha.4",
   "description": "General-purpose configuration for styling frameworks (Jess, Less, Sass, Tailwind, etc.)",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
