@@ -90,7 +90,7 @@ describe('Less mixin lookup scope behavior', () => {
     // Expected: Which @color takes precedence?
   });
 
-  it.skip('should test nested mixin calls and lookup scope', async () => {
+  it('should test nested mixin calls and lookup scope', async () => {
     // Test 5: Nested mixin calls
     const test5 = `
       .inner-mixin {
