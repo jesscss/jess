@@ -141,7 +141,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    return serializeRulesContainer(this, options as FinalPrintOptions);
+    const opts = options as FinalPrintOptions;
+    if (
+      opts.referenceMode === true
+      && opts.referenceRenderEnabled !== false
+      && this.hoistToRoot
+    ) {
+      const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+      if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
+        return '';
+      }
+    }
+    return serializeRulesContainer(this, opts);
   }
 
   /**
@@ -240,6 +251,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return node.copy(true) as Selector;
     };
     return materialize(sel as Selector);
+  }
+
+  private static isBareAmpersandSelector(sel: Selector | Nil): boolean {
+    if (!sel || sel instanceof Nil) {
+      return false;
+    }
+    if (isNode(sel, 'Ampersand')) {
+      return true;
+    }
+    if (isNode(sel, 'SelectorList')) {
+      return (sel as SelectorList).value.every(item => isNode(item, 'Ampersand'));
+    }
+    return false;
   }
 
   private static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
