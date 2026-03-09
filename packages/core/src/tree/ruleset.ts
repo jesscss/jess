@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -254,12 +254,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
     if (!isNode(sel, 'SelectorList')) {
-      return sel.hasFlag(F_EXTENDED) ? sel : new Nil();
+      return (sel.hasFlag(F_EXTENDED) && !sel.hasFlag(F_EXTEND_TARGET)) ? sel : new Nil();
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
     for (const item of (sel as SelectorList).value) {
-      if (!item.hasFlag(F_EXTENDED)) {
+      if (!item.hasFlag(F_EXTENDED) || item.hasFlag(F_EXTEND_TARGET)) {
         continue;
       }
       const key = item.valueOf();
@@ -307,7 +307,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
-      && !this.hasFlag(F_EXTENDED)
       && !(renderSelector instanceof Nil)
       && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
     ) {

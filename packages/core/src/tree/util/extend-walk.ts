@@ -494,7 +494,7 @@ function applyWholeMatch(
     return wrapInIs(node, extendWith);
   }
 
-  return makeList(node, extendWith);
+  return makeList(node, extendWith, true);
 }
 
 // ─────────────────────────────────────────────────
@@ -530,6 +530,9 @@ function walkSelectorList(
       const extItems = extended.value as Selector[];
       const first = extItems[0]!;
       first.addFlag(F_EXTENDED);
+      if (partial) {
+        first.addFlag(F_EXTEND_TARGET);
+      }
       originals.push(first);
       for (let j = 1; j < extItems.length; j++) {
         const ext = extItems[j]! as Selector;
@@ -702,7 +705,7 @@ function consumePositionsFromComplex(
   }
 
   if (!hasBefore && !hasAfter) {
-    return makeList(complex, extendWith);
+    return makeList(complex, extendWith, true);
   }
 
   // Wrap the matched segment
@@ -888,9 +891,12 @@ function walkAlternativeTailAware(
 // Helpers
 // ─────────────────────────────────────────────────
 
-function makeList(original: Selector, extendWith: Selector): Selector {
+function makeList(original: Selector, extendWith: Selector, partial: boolean = false): Selector {
   const a = original.clone(true) as Selector;
   a.addFlag(F_EXTENDED);
+  if (partial) {
+    a.addFlag(F_EXTEND_TARGET);
+  }
 
   const extendItems = extractIsArgs(extendWith);
   const items: Selector[] = [a];
