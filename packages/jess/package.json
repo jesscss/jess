@@ -18,9 +18,10 @@
     },
     "./package.json": "./package.json"
   },
-  "bin": "./bin/cli.cjs",
+  "bin": "./bin/cli.mjs",
   "files": [
-    "lib"
+    "lib",
+    "bin"
   ],
   "engines": {
     "node": ">=16"
@@ -30,11 +31,9 @@
     "@jesscss/patch-css": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",
-    "chalk": "^5.2.0",
     "linecraft": "0.2.5",
     "lodash-es": "^4.17.21",
-    "styles-config": "workspace:*",
-    "yargs": "^17.7.1"
+    "styles-config": "workspace:*"
   },
   "peerDependencies": {
     "@jesscss/plugin-js": "workspace:*"
@@ -47,7 +46,7 @@
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build && pnpm test",
-    "benchmark": "node bin/cli.cjs benchmark/benchmark.jess",
+    "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.json -w",
