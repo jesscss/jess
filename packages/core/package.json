@@ -33,12 +33,13 @@
     "@ungap/set-methods": "~0.1.1",
     "chalk": "^5.2.0",
     "combinate": "^1.1.11",
+    "data-structure-typed": "~2.0.0",
     "enhanced-resolve": "~5.18.3",
     "lodash-es": "^4.17.21"
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test -- --run",
-    "prepublishOnly": "pnpm build && pnpm test -- --run",
+    "ci": "pnpm build && pnpm test:all",
+    "prepublishOnly": "pnpm build && pnpm test:all",
     "build": "pnpm compile",
     "visualize": "vite build",
     "compile": "tsc -p tsconfig.build.json",

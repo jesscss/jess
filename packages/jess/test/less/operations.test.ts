@@ -49,7 +49,7 @@ describe('Operations', () => {
       expect(css).toContain('height: 20px');
     });
 
-    it.skip('should handle division', async () => {
+    it('should handle division', async () => {
       const lessCode = `
         .test {
           width: 20px / 2;
@@ -247,7 +247,7 @@ describe('Operations', () => {
       expect(css).toContain('height: 20px');
     });
 
-    it.skip('should handle nested parentheses', async () => {
+    it('should handle nested parentheses', async () => {
       const lessCode = `
         .test {
           width: ((10px + 5px) * 2) + 10px;

@@ -260,7 +260,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
-    const maybePath = path.eval(context);
+    let maybePath;
+    try {
+      maybePath = path.eval(context);
+    } catch (e: any) {
+      // Tag path-resolution errors so the eval-queue retry policy can
+      // distinguish "path interpolation not ready" (cheap, worth retrying)
+      // from "content evaluation failed" (expensive clone, not worth retrying).
+      e._isPathResolutionError = true;
+      throw e;
+    }
     let originalDepth = context.depth;
     context.depth = this.depth;
 

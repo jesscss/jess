@@ -7,7 +7,7 @@ import {
   ref,
   Rules,
   Node
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 
@@ -73,13 +73,13 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       await node.eval(context);
 
-      // When searching from within the private Rules, should NOT find the private variable
-      // and should continue up to find the public one
+      // When searching from within the private Rules (same scope), private does NOT block.
+      // Private only blocks external access (outside looking in via child searches).
       const found = getVar(context, privateRules, 'private-var');
 
-      // Should find the public one from parent, not the private one
+      // Should find the private one — same-scope lookups are not blocked by private visibility
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$private-var: public-value');
+      expect(`${found}`).toBe('$private-var: private-value');
     });
 
     it('should NOT find private variables when searching from outside the Rules', async () => {
@@ -135,7 +135,7 @@ describe('Detached Rulesets - Variable Lookups', () => {
       expect(`${found}`).toBe('$var: public-value');
     });
 
-    it('should skip private variables entirely (not find them at all)', async () => {
+    it('should find private variables from same scope (private only blocks outside-in)', async () => {
       const privateRules = rules([
         vardecl({ name: 'var', value: any('private-value') })
       ], {
@@ -153,9 +153,9 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       const found = getVar(context, privateRules, 'var');
 
-      // Should find the public one (private one should be skipped entirely)
+      // Same-scope lookup: private does NOT block. Should find the private one.
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$var: public-value');
+      expect(`${found}`).toBe('$var: private-value');
     });
 
     it('should return optional variable when no public variable exists', async () => {

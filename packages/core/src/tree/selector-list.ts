@@ -81,18 +81,11 @@ export class SelectorList extends Selector<Selector[]> {
       && options.referenceRenderEnabled === true
       && options.referenceFilterTargets === true
     ) {
-      const hasTargetItems = value.some(item => item.hasFlag(F_EXTEND_TARGET));
-      if (hasTargetItems) {
-        const filtered = value.filter(item => !item.hasFlag(F_EXTEND_TARGET));
-        if (filtered.length > 0) {
-          value.splice(0, value.length, ...filtered);
-        }
-      } else {
-        // Fallback for wrappers that only carry "extended" provenance.
-        const extendedOnly = value.filter(item => item.hasFlag(F_EXTENDED));
-        if (extendedOnly.length > 0) {
-          value.splice(0, value.length, ...extendedOnly);
-        }
+      const extendedOnly = value.filter(item =>
+        item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
+      );
+      if (extendedOnly.length > 0) {
+        value.splice(0, value.length, ...extendedOnly);
       }
     }
     let length = value.length;

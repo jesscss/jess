@@ -166,6 +166,9 @@ importers:
       combinate:
         specifier: ^1.1.11
         version: 1.1.11
+      data-structure-typed:
+        specifier: ~2.0.0
+        version: 2.0.5
       enhanced-resolve:
         specifier: ~5.18.3
         version: 5.18.4
@@ -8294,6 +8297,10 @@ packages:
   /custom-event@1.0.1:
     resolution: {integrity: sha512-GAj5FOq0Hd+RsCGVJxZuKaIDXDf3h6GQoNEjFgbLLI/trgtavwUbSnZ5pVfg27DVCaWjIohryS0JFwIJyT2cMg==}
     dev: true
+
+  /data-structure-typed@2.0.5:
+    resolution: {integrity: sha512-L/huLz6qr+vBdpp1NK4Rp44HHiI3sRughHBfETdO4PgcQ5qkYWPK2G6dBkpphvW4enkl8NSjXFdvTissK3FEaQ==}
+    dev: false
 
   /data-urls@2.0.0:
     resolution: {integrity: sha512-X5eWTSXO/BJmpdIKCRuKUgSCgAN0OwliVK3yPKbwIWU1Tdw5BRajxlzMidvh+gwko9AfQ9zIj52pzF91Q3YAvQ==}

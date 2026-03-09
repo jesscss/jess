@@ -1225,6 +1225,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
     let isPublic = false;
     let {
       searchParents = true,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       local = false,
       start
     } = options ?? {};
@@ -1265,44 +1266,17 @@ export class DeclarationRegistry extends Registry<Declaration> {
         let result = rules.getRegistry('declaration')._findClosestByStart(list, start);
         if (result) {
           newReadonly ||= result.options.readonly;
-          // Respect visibility on the currently searched Rules scope.
-          // - private: never directly visible to lookup
-          // - optional: only returned if no public match is found
-          // - public: immediate candidate
+          // Visibility determines how declarations are found:
+          // - 'private': only visible from INSIDE (children looking up) or same scope,
+          //              NOT from outside looking in (child Rules searches).
+          // - 'optional': fallback only — returned if no public match is found.
+          // - 'public': immediate candidate.
+          //
+          // IMPORTANT: Walking UP the parent chain is always an "inside" lookup — the
+          // search originates from a descendant of this scope, so private does NOT block.
+          // Private only blocks _searchRulesChildren (outside looking in).
           const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
-          if (currentRulesVisibility === 'private') {
-            // Local lookups are allowed to read private declarations in their own scope.
-            // Additionally, targeted reference resolution may set context.rulesContext
-            // to this same Rules scope; allow private reads in that exact in-scope case.
-            const inContextScope = options?.context?.rulesContext === rules;
-            const contextRules = options?.context?.rulesContext;
-            let inContextLineage = false;
-            let contextCursor: Node | undefined = contextRules;
-            while (contextCursor) {
-              if (contextCursor === rules) {
-                inContextLineage = true;
-                break;
-              }
-              contextCursor = contextCursor.parent;
-            }
-            const isParamVar = isNode(result, 'VarDeclaration') && Boolean(result.options?.paramVar);
-            if ((local || inContextScope) && rules === this.rules) {
-              declCandidate.add(result);
-              isPublic = true;
-            } else if (isParamVar && inContextLineage) {
-              // Mixin parameters are lexical bindings and remain visible to descendant
-              // scopes in the same invocation chain, even when declaration visibility is private.
-              declCandidate.add(result);
-              isPublic = true;
-            } else if (options?.hasTarget === true) {
-              // Targeted namespace lookups (e.g. @set[@key]) should still be able to
-              // read private declaration members from the targeted rules.
-              declCandidate.add(result);
-              isPublic = true;
-            }
-          } else if (currentRulesVisibility === 'optional') {
-            // Optional declarations are fallback-only: keep searching for public declarations
-            // through the lookup chain and only return optional candidates if none are found.
+          if (currentRulesVisibility === 'optional') {
             optionalCandidates.add(result);
           } else {
             declCandidate.add(result);

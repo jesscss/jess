@@ -47,12 +47,12 @@
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
     "prepublishOnly": "pnpm build && pnpm test:all",
-    "benchmark": "node bin/cli.js benchmark/benchmark.less",
+    "benchmark": "node bin/cli.js benchmark/benchmark.jess",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "cross-env TEST=true vitest --watch=false",
-    "test:all": "pnpm test",
+    "test:all": "pnpm benchmark && pnpm test",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },

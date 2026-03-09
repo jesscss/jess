@@ -221,8 +221,8 @@ function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyR
 }
 
 function runVerifyBaseline() {
-  console.log('\n==> Running verify:baseline (changed packages + dependants)');
-  run('pnpm', ['run', 'verify:baseline', '--', '--changed'], undefined, { required: true });
+  console.log('\n==> Running verify:baseline (core + parsers + all-less.test.ts)');
+  run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();

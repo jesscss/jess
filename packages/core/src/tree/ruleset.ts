@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -141,7 +141,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    return serializeRulesContainer(this, options as FinalPrintOptions);
+    const opts = options as FinalPrintOptions;
+    if (
+      opts.referenceMode === true
+      && opts.referenceRenderEnabled !== false
+      && this.hoistToRoot
+    ) {
+      const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+      if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
+        return '';
+      }
+    }
+    return serializeRulesContainer(this, opts);
   }
 
   /**
@@ -242,6 +253,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return materialize(sel as Selector);
   }
 
+  private static isBareAmpersandSelector(sel: Selector | Nil): boolean {
+    if (!sel || sel instanceof Nil) {
+      return false;
+    }
+    if (isNode(sel, 'Ampersand')) {
+      return true;
+    }
+    if (isNode(sel, 'SelectorList')) {
+      return (sel as SelectorList).value.every(item => isNode(item, 'Ampersand'));
+    }
+    return false;
+  }
+
   private static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
     if (!sel || sel instanceof Nil) {
       return false;
@@ -254,12 +278,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
     if (!isNode(sel, 'SelectorList')) {
-      return sel.hasFlag(F_EXTENDED) ? sel : new Nil();
+      return (sel.hasFlag(F_EXTENDED) && !sel.hasFlag(F_EXTEND_TARGET)) ? sel : new Nil();
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
     for (const item of (sel as SelectorList).value) {
-      if (!item.hasFlag(F_EXTENDED)) {
+      if (!item.hasFlag(F_EXTENDED) || item.hasFlag(F_EXTEND_TARGET)) {
         continue;
       }
       const key = item.valueOf();
@@ -307,7 +331,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
-      && !this.hasFlag(F_EXTENDED)
       && !(renderSelector instanceof Nil)
       && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
     ) {
@@ -315,6 +338,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if (renderSelector instanceof Nil) {
         return '';
       }
+      this.value.selector = renderSelector as typeof selector;
+      this.invalidateSelectorValueCache();
     }
     const prevReferenceFilterTargets = options.referenceFilterTargets === true;
     const disableTargetFilteringForTopLevelList = (

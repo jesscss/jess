@@ -1,4 +1,4 @@
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
@@ -135,6 +135,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
    * @todo - REWRITE
    */
   override evalNode(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     return pipe(
       () => {
         const node = this;

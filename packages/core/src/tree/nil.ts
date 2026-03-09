@@ -5,6 +5,7 @@
 import {
   Node,
   F_VISIBLE,
+  F_STATIC,
   defineType,
   type LocationInfo,
   type NodeOptions
@@ -30,15 +31,13 @@ export class Nil extends Node<''> {
   shortType = 'nil';
   override allowRoot = true;
   override allowRuleRoot = true;
-  override state = 0b0000; // 0b0000 means no flags are set
-
   constructor(
     value?: any,
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext) {
     super('', options, location, treeContext);
-    // Nil nodes should not be visible (they serialize to empty strings)
+    this.addFlag(F_STATIC);
     this.removeFlag(F_VISIBLE);
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
     this.fullRender = false;

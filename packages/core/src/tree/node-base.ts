@@ -481,6 +481,9 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
+    }
     const entries = [...getEntriesFromNode(this as { value: unknown[] })];
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
@@ -494,6 +497,16 @@ export abstract class Node<
       }
       collection[key] = out as Node;
     });
+  }
+
+  private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
+    let idx = 0;
+    for (const [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
+      if (!(value instanceof Node)) {
+        continue;
+      }
+      collection[key] = func(value, idx++);
+    }
   }
 
   static* nodeAndPrePost(node: Node) {
@@ -799,6 +812,9 @@ export abstract class Node<
    * By default, evals all children
    */
   protected evalNode(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     let out = this.forEachNode((n: Node) => {
       return n.eval(context);
     });
@@ -811,6 +827,14 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
+    if (node.hasFlag(F_STATIC) && node.evaluated) {
+      return node;
+    }
+
+    if (!node.hasFlag(F_MAY_ASYNC)) {
+      return Node._evalStaticSync(node, context);
+    }
+
     let preEvaluatedNode: Node;
 
     return pipe(
@@ -839,6 +863,32 @@ export abstract class Node<
         return evald;
       }
     );
+  }
+
+  private static _evalStaticSync(node: Node, context: Context): Node {
+    let preEvaluatedNode: Node;
+
+    if (!node.preEvaluated) {
+      preEvaluatedNode = node.preEval(context) as Node;
+    } else {
+      preEvaluatedNode = node;
+    }
+    preEvaluatedNode.preEvaluated = true;
+    if (preEvaluatedNode !== node) {
+      preEvaluatedNode.inherit(node);
+    }
+
+    let evald: Node;
+    if (!preEvaluatedNode.evaluated) {
+      evald = preEvaluatedNode.evalNode(context) as Node;
+    } else {
+      evald = preEvaluatedNode;
+    }
+    evald.evaluated = true;
+    if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
+      evald.inherit(preEvaluatedNode);
+    }
+    return evald;
   }
 
   /**

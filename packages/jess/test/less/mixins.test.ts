@@ -263,7 +263,7 @@ describe('Mixins', () => {
   });
 
   describe('Mixin with @arguments', () => {
-    it.skip('should handle mixin with @arguments', async () => {
+    it('should handle mixin with @arguments', async () => {
       const lessCode = `
         .mixin(@color, @size) {
           color: @color;

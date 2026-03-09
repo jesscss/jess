@@ -164,7 +164,7 @@ describe('Rules', () => {
         }
       });
 
-      it('retries style imports once at same priority before stepping down', async () => {
+      it('does not retry style imports when content evaluation fails', async () => {
         let attempts = 0;
         let node = rules([
           style({ path: quoted(any('retry-target.jess')) }, { type: 'import' })
@@ -173,41 +173,21 @@ describe('Rules', () => {
         if (!target) {
           throw new Error('Expected first rule to exist');
         }
+        // Simulate a content evaluation error (not a path resolution error).
+        // Only path resolution errors (tagged with _isPathResolutionError)
+        // should be retried — content errors mean the tree was already cloned
+        // and retrying would wastefully re-clone it.
         target.eval = (() => {
           attempts += 1;
-          if (attempts <= 8) {
-            throw new Error(`transient-failure-${attempts}`);
-          }
-          return target;
-        }) as typeof target.eval;
-
-        const evald = await node.eval(context);
-        expect(evald).toBeDefined();
-        // StyleImport starts at Priority.Highest:
-        // highest x2, high x2, medium x2, low x2, none x1 (success)
-        expect(attempts).toBe(9);
-      });
-
-      it('hard-throws style import failures at Priority.None', async () => {
-        let attempts = 0;
-        let node = rules([
-          style({ path: quoted(any('retry-target.jess')) }, { type: 'import' })
-        ]);
-        const target = node.at(0);
-        if (!target) {
-          throw new Error('Expected first rule to exist');
-        }
-        target.eval = (() => {
-          attempts += 1;
-          throw new Error('always-fails');
+          throw new Error('content-eval-failure');
         }) as typeof target.eval;
 
         await expect(async () => {
           await node.eval(context);
-        }).rejects.toThrow('always-fails');
+        }).rejects.toThrow('content-eval-failure');
 
-        // highest x2, high x2, medium x2, low x2, none x1 (throw)
-        expect(attempts).toBe(9);
+        // Content evaluation errors are not retried — only path resolution errors are
+        expect(attempts).toBe(1);
       });
     });
 

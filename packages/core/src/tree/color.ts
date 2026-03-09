@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeOptions } from './node.js';
+import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -76,8 +76,6 @@ export interface Color extends Node<ColorData, ColorOptions> {
 export class Color extends Node<ColorData, ColorOptions> {
   type = 'Color' as const;
   shortType = 'color' as const;
-  // Color values are static and don't need evaluation
-
   constructor(
     value: ColorData | string | ColorValues,
     options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],
@@ -122,6 +120,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     // Keep value focused on channels/node; rendering intent is held in options.
     colorData.format = undefined;
     super(colorData, colorOptions, location, context);
+    this.addFlag(F_STATIC);
   }
 
   private normalizeChannelValue(value: unknown): ChannelValue {

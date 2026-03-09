@@ -6,9 +6,14 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import nodeModulesPlugin from '@jesscss/plugin-node-modules';
 import * as path from 'path';
 import * as fs from 'fs';
 import { tmpdir } from 'os';
+import { createRequire } from 'module';
+import { readFileSync } from 'fs';
+import { getTestCases } from '../test-utils.js';
+
 
 describe('@plugin directive support', () => {
   it('should process @plugin directive and load plugin from registry', async () => {
@@ -41,7 +46,6 @@ describe('@plugin directive support', () => {
           lessPlugin(),
           lessCompatPlugin({
             pluginRegistry: {
-              /* eslint-disable-next-line @typescript-eslint/naming-convention */
               'test-plugin': testPlugin
             }
           })
@@ -155,7 +159,6 @@ describe('@plugin directive support', () => {
           lessPlugin(),
           lessCompatPlugin({
             pluginRegistry: {
-              /* eslint-disable-next-line @typescript-eslint/naming-convention */
               'dynamic-plugin': dynamicPlugin
             }
           })
@@ -246,5 +249,88 @@ describe('@plugin directive support', () => {
     } finally {
       fs.unlinkSync(tmpFile);
     }
+  });
+
+  // Test actual Less.js test files that use @plugin
+  describe('Less.js @plugin test files', () => {
+    const require = createRequire(import.meta.url);
+    const testData = path.dirname(require.resolve('@less/test-data'));
+
+    // Create node-modules plugin for npm package resolution
+    const nodeModulesPluginInstance = nodeModulesPlugin();
+
+    const baseCompiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [
+          lessPlugin(),
+          nodeModulesPluginInstance,
+          lessCompatPlugin({
+            autoLoadPlugins: true, // Enable auto-loading to use node-modules plugin
+            nodeModulesPlugin: nodeModulesPluginInstance
+          })
+        ]
+      }
+    });
+
+    const pluginTestFiles = [
+      'tests-unit/plugin/plugin.less',
+      'tests-unit/plugin-preeval/plugin-preeval.less',
+      'tests-unit/plugin-module/plugin-module.less'
+    ];
+
+    pluginTestFiles.forEach((file) => {
+      const lessPath = path.join(testData, file);
+
+      try {
+        const testCases = getTestCases(lessPath);
+
+        testCases.forEach((testCase, index) => {
+          const testName = testCases.length > 1 ? `${file} [${index + 1}/${testCases.length}]` : file;
+          const configSuffix = testCases.length > 1 ? ` (${path.basename(testCase.expectedFile)})` : '';
+
+          it(`${testName}${configSuffix}`, async () => {
+            const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
+
+            // Merge test case config with base compiler config
+            // Override plugins to include lessCompatPlugin with config's pluginRegistry if available
+            const testCompiler = new Compiler({
+              ...baseCompiler.opts,
+              ...testCase.config,
+              compile: {
+                ...baseCompiler.opts.compile,
+                ...testCase.config.compile,
+                plugins: [
+                  lessPlugin(),
+                  nodeModulesPluginInstance,
+                  lessCompatPlugin({
+                    autoLoadPlugins: true, // Enable auto-loading to use node-modules plugin
+                    nodeModulesPlugin: nodeModulesPluginInstance
+                  }),
+                  // Include any other plugins from testCase.config.compile.plugins
+                  ...((testCase.config.compile?.plugins || []).filter((p: any) =>
+                    p && typeof p === 'object' && p.name !== 'less-compat' && p.name !== 'node-modules'
+                  ))
+                ]
+              },
+              // Merge output options - testCase.config.output overrides baseCompiler defaults
+              output: {
+                ...baseCompiler.opts.output,
+                ...(testCase.config.output || {})
+              }
+            });
+
+            const context = testCompiler.createContext(lessPath, { outputFile: testCase.expectedFile });
+            const actualCss = await testCompiler.render(lessPath, { outputFile: testCase.expectedFile });
+            expect(actualCss).toBe(expectedCss);
+          }, 10000); // 10 second timeout for plugin tests
+        });
+      } catch (error: any) {
+        // If getTestCases throws (no files found), create a failing test
+        it(`${file}`, () => {
+          throw error;
+        });
+      }
+    });
   });
 });

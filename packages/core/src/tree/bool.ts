@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Bool extends Node<boolean> {
@@ -12,6 +12,11 @@ export interface Bool extends Node<boolean> {
 export class Bool extends Node<boolean> {
   type = 'Bool' as const;
   shortType = 'bool' as const;
+
+  constructor(...args: ConstructorParameters<typeof Node<boolean>>) {
+    super(...args);
+    this.addFlag(F_STATIC);
+  }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
     if (other instanceof Bool) {
