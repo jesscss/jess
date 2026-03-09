@@ -156,10 +156,20 @@ console.log(
   `${options.dryRun ? 'Dry-run' : 'Publishing'} ${plan.publishOrder.length} allowlisted package(s) with npm tag '${options.tag}'.`
 );
 
+if (!options.dryRun) {
+  for (const pkgName of plan.publishOrder) {
+    const pkg = plan.packagesByName.get(pkgName);
+    if (pkg.manifest.scripts?.build) {
+      console.log(`\nBuilding ${pkgName}...`);
+      run('pnpm', ['--filter', pkgName, 'run', 'build'], rootDir);
+    }
+  }
+}
+
 for (const pkgName of plan.publishOrder) {
   const pkg = plan.packagesByName.get(pkgName);
   const version = pkg.manifest.version;
-  const publishArgs = ['publish', '--tag', options.tag, '--no-git-checks'];
+  const publishArgs = ['publish', '--tag', options.tag, '--no-git-checks', '--ignore-scripts'];
   const access = pkg.manifest.publishConfig?.access;
   if (access) {
     publishArgs.push('--access', access);
