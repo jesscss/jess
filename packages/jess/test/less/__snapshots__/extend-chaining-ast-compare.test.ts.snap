@@ -127,7 +127,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -205,7 +204,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -255,7 +253,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -289,7 +286,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'inherit')
+                (Any [role=ident] 'inherit')
             )
           ]
         )
@@ -329,7 +326,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -498,7 +494,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -563,7 +558,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -621,7 +615,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'x')
+                (Any [role=ident] 'x')
             )
           ]
         )
@@ -643,7 +637,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'y')
+                (Any [role=ident] 'y')
             )
           ]
         )
@@ -665,7 +659,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'z')
+                (Any [role=ident] 'z')
             )
           ]
         )
@@ -689,7 +683,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -715,7 +708,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'inherit')
+                (Any [role=ident] 'inherit')
             )
           ]
         )
@@ -737,7 +730,11 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
         (Any [role=atkeyword] '@media')
       prelude: 
         (Paren
-          (Keyword [role=keyword] 'tv')
+          (QueryCondition
+            [
+              (Keyword [role=keyword] 'tv')
+            ]
+          )
         )
       rules: 
         (Rules
@@ -761,7 +758,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
                       value: 
                         (Color
                           node: 'black'
-                          format: 0
                           rgb:
                             [0, 0, 0]
                           alpha: 1
@@ -787,7 +783,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
                       name: 
                         (Any [role=property] 'color')
                       value: 
-                        (Any 'inherit')
+                        (Any [role=ident] 'inherit')
                     )
                   ]
                 )
@@ -797,7 +793,11 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
                 (Any [role=atkeyword] '@media')
               prelude: 
                 (Paren
-                  (Keyword [role=keyword] 'plasma')
+                  (QueryCondition
+                    [
+                      (Keyword [role=keyword] 'plasma')
+                    ]
+                  )
                 )
               rules: 
                 (Rules
@@ -823,7 +823,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
                                   value: 
                                     (Color
                                       node: 'red'
-                                      format: 0
                                       rgb:
                                         [255, 0, 0]
                                       alpha: 1
@@ -885,7 +884,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -963,7 +961,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -990,7 +987,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1019,7 +1015,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'inherit')
+                (Any [role=ident] 'inherit')
             )
           ]
         )
@@ -1051,7 +1047,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1185,7 +1180,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1232,7 +1226,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1277,7 +1270,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'x')
+                (Any [role=ident] 'x')
             )
           ]
         )
@@ -1297,7 +1290,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'y')
+                (Any [role=ident] 'y')
             )
           ]
         )
@@ -1317,7 +1310,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'z')
+                (Any [role=ident] 'z')
             )
           ]
         )
@@ -1335,7 +1328,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               value: 
                 (Color
                   node: 'black'
-                  format: 0
                   rgb:
                     [0, 0, 0]
                   alpha: 1
@@ -1360,7 +1352,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
               name: 
                 (Any [role=property] 'color')
               value: 
-                (Any 'inherit')
+                (Any [role=ident] 'inherit')
             )
           ]
         )
@@ -1442,7 +1434,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
                       value: 
                         (Color
                           node: 'black'
-                          format: 0
                           rgb:
                             [0, 0, 0]
                           alpha: 1
@@ -1461,7 +1452,7 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
                       name: 
                         (Any [role=property] 'color')
                       value: 
-                        (Any 'inherit')
+                        (Any [role=ident] 'inherit')
                     )
                   ]
                 )
@@ -1517,7 +1508,6 @@ exports[`extend-chaining AST: parsed vs constructed (serializeTypes comparison) 
                                   value: 
                                     (Color
                                       node: 'red'
-                                      format: 0
                                       rgb:
                                         [255, 0, 0]
                                       alpha: 1

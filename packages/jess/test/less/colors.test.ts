@@ -8,6 +8,9 @@ const testData = path.dirname(require.resolve('@less/test-data'));
 
 // Test color functions without nesting collapsing
 const colorCompiler = new Compiler({
+  output: {
+    collapseNesting: true
+  },
   compile: {
     plugins: [
       lessPlugin({

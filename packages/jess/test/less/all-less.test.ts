@@ -8,6 +8,7 @@ import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
 import { getTestCases } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { type Rules } from '@jesscss/core';
 
 const require = createRequire(import.meta.url);
@@ -17,7 +18,8 @@ const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
   compile: {
     plugins: [
-      lessPlugin()
+      lessPlugin(),
+      lessCompatPlugin()
     ]
   }
 });
@@ -25,8 +27,7 @@ const baseCompiler = new Compiler({
 // Files that should be tested in specialized test files
 const additionalSkips = [
   'tests-unit/variables/variable-advanced.less', // infinite loop
-  'tests-unit/import/import.less', // @plugin requires plugin-less-compat
-  'tests-unit/plugin/plugin.less', // @plugin requires plugin-less-compat
+  'tests-unit/plugin/plugin.less', // Jess uses nested @media (no query merging), expected CSS has merged queries
   'tests-unit/parse-interpolation/parse-interpolation.less', // formatting differences
   'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', // not yet supported
   'tests-unit/permissive-parse/permissive-parse.less' // syntax error

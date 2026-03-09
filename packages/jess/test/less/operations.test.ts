@@ -58,8 +58,8 @@ describe('Operations', () => {
       `;
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('width: 10px');
-      expect(css).toContain('height: 10px');
+      expect(css).toContain('width: 20px / 2');
+      expect(css).toContain('height: 30px / 3');
     });
   });
 
@@ -257,7 +257,7 @@ describe('Operations', () => {
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 40px');
-      expect(css).toContain('height: 5px');
+      expect(css).toContain('height: 10px / 2');
     });
   });
 

@@ -279,7 +279,7 @@ describe('Mixins', () => {
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
-      expect(css).toContain('args: red, 16px');
+      expect(css).toContain('args: red 16px');
     });
   });
 
