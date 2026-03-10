@@ -1,5 +1,6 @@
 {
   "name": "styles-config",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },

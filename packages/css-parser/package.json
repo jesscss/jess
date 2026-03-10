@@ -1,5 +1,6 @@
 {
   "name": "@jesscss/css-parser",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },

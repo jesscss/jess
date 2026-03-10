@@ -1,5 +1,6 @@
 {
   "name": "@jesscss/plugin-less",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },

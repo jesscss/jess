@@ -1,5 +1,6 @@
 {
   "name": "@jesscss/less-parser",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
