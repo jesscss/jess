@@ -51,7 +51,8 @@ import {
   type Node,
   type Selector,
   type SimpleSelector,
-  isNode
+  isNode,
+  N
 } from '@jesscss/core';
 
 type InterpolationMatch = { start: number; end: number; content: string };
@@ -154,7 +155,7 @@ function processScssStringInterpolation(
     const simpleRef = asSingleVariableReference(parsed);
     if (simpleRef && typeof simpleRef.value.key === 'string') {
       replacements.push(new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, context));
-    } else if (isNode(parsed, 'Reference')) {
+    } else if (isNode(parsed, N.Reference)) {
       replacements.push(new Expression(parsed, undefined, location, context));
     } else {
       replacements.push(parsed);
@@ -173,7 +174,7 @@ function processScssStringInterpolation(
  */
 
 function unwrapSingleSequence(n: Node): Node {
-  if (isNode(n, 'Sequence') && (n as Sequence).value.length === 1) {
+  if (isNode(n, N.Sequence) && (n as Sequence).value.length === 1) {
     return (n as Sequence).value[0]!;
   }
   return n;
@@ -182,7 +183,7 @@ function unwrapSingleSequence(n: Node): Node {
 function asSingleVariableReference(n: Node): Reference | undefined {
   const node = unwrapSingleSequence(n);
   if (
-    isNode(node, 'Reference')
+    isNode(node, N.Reference)
     && node.options?.type === 'variable'
     && !node.value.target
     && typeof node.value.key === 'string'
@@ -243,7 +244,7 @@ function desugarMapLookup(
   }
 
   const argsList = call.value.args;
-  const args = isNode(argsList, 'List') ? (argsList as List).value : [];
+  const args = isNode(argsList, N.List) ? (argsList as List).value : [];
   if (args.length < 2) {
     return call;
   }
@@ -253,9 +254,9 @@ function desugarMapLookup(
 
   // Reference.target only supports Reference or Call today; keep conservative.
   const initialTarget: Reference | Call | undefined =
-    isNode(mapExpr, 'Reference')
+    isNode(mapExpr, N.Reference)
       ? (mapExpr as Reference)
-      : isNode(mapExpr, 'Call')
+      : isNode(mapExpr, N.Call)
         ? (mapExpr as Call)
         : undefined;
 
@@ -785,24 +786,24 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
     if ($.RECORDING_PHASE) {
       return node;
     }
-    if (!isNode(node, 'Call')) {
+    if (!isNode(node, N.Call)) {
       return node as unknown as any;
     }
 
     // First, keep existing Sass map.get() desugaring behavior.
     const mapped = desugarMapLookup(this, node);
-    if (isNode(mapped, 'Reference')) {
+    if (isNode(mapped, N.Reference)) {
       return mapped as unknown as any;
     }
     const call = mapped as Call;
 
     if (typeof call.value.name === 'string' && call.value.name === 'selector.parse') {
-      const args = isNode(call.value.args, 'List') ? call.value.args.value : [];
+      const args = isNode(call.value.args, N.List) ? call.value.args.value : [];
       const firstArg = args[0];
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
-      if (!firstArg || !isNode(firstArg, 'Quoted') || !isNode(firstArg.value, 'Any')) {
+      if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode(firstArg.value, N.Any)) {
         throw new SyntaxError('selector.parse() requires a quoted selector string literal.');
       }
       const selectorText = String(firstArg.value.valueOf());
@@ -2013,7 +2014,7 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
             )
             : vars[0]!;
 
-          const expr = isNode(rawExpr, 'Expression')
+          const expr = isNode(rawExpr, N.Expression)
             ? rawExpr
             : (() => {
                 const innerExpr = $.wrap(rawExpr, 'both');

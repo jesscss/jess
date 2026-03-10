@@ -146,14 +146,13 @@ describe('Simplified Extend Test Cases', () => {
   });
 
   describe('Error conditions', () => {
-    it('should throw when no match is found', () => {
+    it('should return NOT_FOUND when no match is found', () => {
       const selector = el('.a');
       const target = el('.b'); // No match
       const extendWith = el('.c');
 
-      expect(() => {
-        extendSelector(selector, target, extendWith, false);
-      }).toThrow('No match found for target selector');
+      const result = extendSelector(selector, target, extendWith, false);
+      expect(result).toBe('NOT_FOUND');
     });
   });
 });

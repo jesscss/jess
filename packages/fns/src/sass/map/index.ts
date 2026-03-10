@@ -1,9 +1,9 @@
 /**
  * Sass map module (sass:map)
- * 
+ *
  * Re-exports all map functions that are available in the sass:map module.
  * These are the modern, non-deprecated functions.
- * 
+ *
  * Usage:
  * ```typescript
  * import { get, set, merge } from '@jesscss/fns/sass/map';

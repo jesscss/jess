@@ -1,8 +1,9 @@
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
-import { F_EXTENDED } from '../node.js';
+import { F_EXTENDED, type Node } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -42,7 +43,7 @@ function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
   if (!selector || selector instanceof Nil) {
     return false;
   }
-  if (isNode(selector, 'SelectorList')) {
+  if (isNode(selector, N.SelectorList)) {
     return selector.value.some(item => item.hasFlag(F_EXTENDED));
   }
   return selector.hasFlag(F_EXTENDED);
@@ -148,7 +149,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   // for each property, keep the last exact serialized declaration and skip earlier duplicates.
   for (let i = rulesToRender.length - 1; i >= 0; i--) {
     const node = rulesToRender[i]!;
-    if (!isNode(node, 'Declaration') || isNode(node, 'VarDeclaration')) {
+    if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
       continue;
     }
     const declWriter = new OutputWriter();
@@ -179,7 +180,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // in `treeFrames` and cause nested output like:
     //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
     // even though the current node is hoisted to root.
-    const atRulesOnly = treeFrames.filter(f => isNode(f, 'AtRule'));
+    const atRulesOnly = treeFrames.filter(f => isNode(f, N.AtRule));
     treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
     options.inFrames = inFrames = treeFrames;
   } else {
@@ -193,16 +194,16 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   /** Don't output selector yet. Let's see if any child rules need hoisting. */
   for (let idx = 0; idx < rulesToRender.length; idx++) {
     let n = rulesToRender[idx]!;
-    const isContainer = isNode(n, ['Ruleset', 'AtRule', 'Rules']);
+    const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
     if (!n.visible && !n.fullRender) {
       continue;
     }
-    if (isNode(n, 'Comment') && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
+    if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
       continue;
     }
     if (
-      isNode(n, 'Any')
+      isNode(n, N.Any)
       && String(n.valueOf?.() ?? '').trimStart().startsWith('/*')
       && originatesFromReferenceImport(n)
       && !originatesFromCall(n)
@@ -212,12 +213,12 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (inReferenceMode && !renderEnabled && !isContainer) {
       continue;
     }
-    if (isNode(n, 'Declaration') && !isNode(n, 'VarDeclaration') && skippedDuplicateDeclarations.has(n)) {
+    if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(n)) {
       continue;
     }
 
-    if (isNode(n, ['Ruleset', 'AtRule'])) {
-      if (node.type === 'Ruleset' && isNode(n, 'Ruleset')) {
+    if (isNode(n, N.Ruleset | N.AtRule)) {
+      if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
         const parentSelector = String(node.value.selector?.valueOf?.() ?? '');
         const childSelector = String(n.value.selector?.valueOf?.() ?? '');
         const isExpandedDescendant = parentSelector !== '' && (
@@ -238,10 +239,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
           if (!later.visible && !later.fullRender) {
             return false;
           }
-          if (isNode(later, ['Ruleset', 'AtRule', 'Rules'])) {
+          if (isNode(later, N.Ruleset | N.AtRule | N.Rules)) {
             return false;
           }
-          if (isNode(later, 'Declaration') && skippedDuplicateDeclarations.has(later)) {
+          if (isNode(later, N.Declaration) && skippedDuplicateDeclarations.has(later)) {
             return false;
           }
           const ownedByCurrentChild = sourceChainHas(later, (current) => {
@@ -258,7 +259,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         });
         const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
           return otherIdx !== idx
-            && isNode(other, 'Ruleset')
+            && isNode(other, N.Ruleset)
             && String(other.value.selector?.valueOf?.() ?? '') === childSelector;
         });
         if (isExpandedDescendant
@@ -317,24 +318,25 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       w.add(s!);
     }
 
-    // if (isNode(n, 'Declaration')) {
+    // if (isNode(n, N.Declaration)) {
     let idt = indent(options.depth + 1);
-
-    let pre = w.capture(() => n.processPrePost('pre', undefined, options));
+    /** Re-widen type after accumulated isNode narrowing above */
+    const nn = n as Node;
+    let pre = w.capture(() => nn.processPrePost('pre', undefined, options));
     /** normalize pre spacing */
-    let out = isNode(n, 'Declaration')
-      ? (declarationOutputCache.get(n) ?? w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 })))
-      : w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
+    let out = isNode(nn, N.Declaration)
+      ? (declarationOutputCache.get(nn) ?? w.capture(() => nn.toTrimmedString({ ...options, depth: options.depth + 1 })))
+      : w.capture(() => nn.toTrimmedString({ ...options, depth: options.depth + 1 }));
     // Suppress pure-void Any nodes from generating blank output lines.
     if (
-      isNode(n, 'Any')
-      && !n.requiredSemi
+      isNode(nn, N.Any)
+      && !nn.requiredSemi
       && !out.trim()
       && !pre.trim()
     ) {
       continue;
     }
-    if (isNode(n, 'Declaration')) {
+    if (isNode(nn, N.Declaration)) {
       pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
       const declIn = pre + out;
       const hasEmptyValue = /:\s*$/.test(out);
@@ -343,33 +345,33 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
         ? `${idt}${out}`
         : normalizeIndent(declIn, idt, true);
-      if (n.value.name.valueOf().startsWith('--')) {
+      if (nn.value.name.valueOf().startsWith('--')) {
         w.add(idt);
-        w.add(out, n);
+        w.add(out, nn);
       } else {
-        w.add(declNormalized, n);
+        w.add(declNormalized, nn);
       }
-    } else if (isNode(n, 'Rules')) {
+    } else if (isNode(nn, N.Rules)) {
       /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
        * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
        * provided depth, so do not prefix another `idt` here (that would double-indent).
        */
-      w.add(out, n);
+      w.add(out, nn);
     } else {
       w.add(idt);
-      w.add(out, n);
+      w.add(out, nn);
     }
     /** @todo - optionally add semi-colon for compression */
     // if (n.requiredSemi && next) {
     //   w.add(';');
     // }
-    if (n.requiredSemi) {
+    if (nn.requiredSemi) {
       w.add(';');
     }
 
     w.add('\n');
-    let post = w.capture(() => n.processPrePost('post', undefined, options));
+    let post = w.capture(() => nn.processPrePost('post', undefined, options));
 
     if (!/^\s*$/.test(post)) {
       w.add(normalizeIndent(post, idt));

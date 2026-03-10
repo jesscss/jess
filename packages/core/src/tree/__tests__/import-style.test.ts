@@ -20,6 +20,7 @@ import {
   Node
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { resolve } from 'node:path';
@@ -543,7 +544,7 @@ describe('Style import', () => {
       // Test 2: Verify computed values based on injected variables are correct
       // Find the ruleset and its declaration
       const foundRuleset = Array.from(composedRules.value).find(
-        node => isNode(node, 'Ruleset')
+        node => isNode(node, N.Ruleset)
       );
       expect(foundRuleset).toBeDefined();
       const foundDecl = (foundRuleset as any).value.rules.at(0);
@@ -593,7 +594,7 @@ describe('Style import', () => {
       // Test 2: Verify computed values based on injected variables are correct
       // Find the ruleset and its declaration
       const foundRuleset = Array.from(composedRules.value).find(
-        node => isNode(node, 'Ruleset')
+        node => isNode(node, N.Ruleset)
       );
       expect(foundRuleset).toBeDefined();
       const foundDecl = (foundRuleset as any).value.rules.at(0);

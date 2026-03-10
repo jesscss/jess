@@ -29,6 +29,7 @@ import {
   type Selector,
   type Node as JessNode,
   isNode,
+  N,
   Color,
   ColorFormat,
   Interpolated,
@@ -229,7 +230,7 @@ export function jessDollarExpression(this: P, T: TokenMap) {
       const loc = $.endRule();
       // Wrap in Expression node if we're in an expression context
       // This ensures proper serialization (preserves $ prefix)
-      if (result && ctx.wrapInExpression && !isNode(result, 'Expression')) {
+      if (result && ctx.wrapInExpression && !isNode(result, N.Expression)) {
         return new Expression(result, undefined, loc, $.context);
       }
       return result;
@@ -1227,7 +1228,7 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
           DEF: () => $.CONSUME(T.Semi)
         });
         // Wrap in Expression node for proper serialization
-        if (!$.RECORDING_PHASE && dollarExpr && !isNode(dollarExpr, 'Expression')) {
+        if (!$.RECORDING_PHASE && dollarExpr && !isNode(dollarExpr, N.Expression)) {
           return new Expression(dollarExpr, undefined, dollarExpr.location, $.context);
         }
         return dollarExpr;

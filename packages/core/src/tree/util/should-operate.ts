@@ -1,6 +1,7 @@
 import type { MathMode } from '../../types/modes.js';
 import type { Operator } from './calculate.js';
 import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 import type { Node } from '../node.js';
 
 export type MathFrameState = {
@@ -37,7 +38,7 @@ export function shouldOperateWithMathFrames(
 
   if (inCalc) {
     /** Only collapse safe units */
-    if (isNode(left, 'Dimension') && isNode(right, 'Dimension')) {
+    if (isNode(left, N.Dimension) && isNode(right, N.Dimension)) {
       const lUnit = left.value.unit;
       const rUnit = right.value.unit;
       if ((op === '+' || op === '-') && lUnit === rUnit) {

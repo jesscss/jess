@@ -9,6 +9,7 @@ import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { selectorCompare } from './util/compare.js';
 
 /** Constructs */
@@ -47,28 +48,28 @@ export class SelectorList extends Selector<Selector[]> {
     for (const item of this.value) {
       // Flatten `:is(a, b)` selector-list items into `a, b`.
       // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
-      if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
+      if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
         const arg = item.value.arg;
-        if (arg && isNode(arg, 'SelectorList')) {
+        if (arg && isNode(arg, N.SelectorList)) {
           value.push(...arg.value);
           continue;
         }
       }
-      if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
+      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
         const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
           const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
+          if (arg && isNode(arg, N.SelectorList)) {
             value.push(...arg.value);
             continue;
           }
         }
       }
-      if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
+      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
         const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
           const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
+          if (arg && isNode(arg, N.SelectorList)) {
             value.push(...arg.value);
             continue;
           }
@@ -114,7 +115,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override compare(b: Selector): 0 | 1 | -1 | undefined {
-    if (!isNode(b, 'Selector')) {
+    if (!isNode(b, N.Selector)) {
       return super.compare(b as unknown as Selector);
     }
     const semantic = selectorCompare(this, b);
@@ -151,28 +152,28 @@ export class SelectorList extends Selector<Selector[]> {
         // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
         for (const item of value) {
-          if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
+          if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
             const arg = item.value.arg;
-            if (arg && isNode(arg, 'SelectorList')) {
+            if (arg && isNode(arg, N.SelectorList)) {
               flattened.push(...arg.value);
               continue;
             }
           }
-          if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
+          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
             const only = item.value[0]!;
-            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
               const arg = only.value.arg;
-              if (arg && isNode(arg, 'SelectorList')) {
+              if (arg && isNode(arg, N.SelectorList)) {
                 flattened.push(...arg.value);
                 continue;
               }
             }
           }
-          if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
+          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
             const only = item.value[0]!;
-            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
               const arg = only.value.arg;
-              if (arg && isNode(arg, 'SelectorList')) {
+              if (arg && isNode(arg, N.SelectorList)) {
                 flattened.push(...arg.value);
                 continue;
               }

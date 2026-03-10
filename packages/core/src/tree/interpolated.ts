@@ -7,6 +7,7 @@ import type { Selector } from './selector.js';
 import type { Reference } from './reference.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -16,15 +17,15 @@ export const INTERPOLATION_PLACEHOLDER = '%%';
 const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
 
 function shouldWrapSelectorInIs(replacement: Node): boolean {
-  if (isNode(replacement, 'SelectorList')) {
+  if (isNode(replacement, N.SelectorList)) {
     return true;
   }
-  if (isNode(replacement, 'ComplexSelector')) {
+  if (isNode(replacement, N.ComplexSelector)) {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
     const arg = (replacement as { value: Node }).value;
-    return isNode(arg, 'SelectorList') || isNode(arg, 'ComplexSelector');
+    return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
   return str.includes(',');
@@ -108,17 +109,17 @@ export class Interpolated<
       }
       let result = '';
       if (replacement) {
-        if (isNode(replacement, 'Reference')) {
+        if (isNode(replacement, N.Reference)) {
           // Preserve exact interpolation reference syntax (including quoted property keys).
           result = w.capture(() => replacement.toTrimmedString(printOpts));
-        } else if (isNode(replacement, 'Quoted')) {
+        } else if (isNode(replacement, N.Quoted)) {
           // Interpolated string slots merge raw string content.
           // Using valueOf() avoids re-emitting inner quote delimiters.
           result = String(replacement.valueOf());
         } else {
           result = w.capture(() => replacement!.toTrimmedString(printOpts));
         }
-        if (!isNode(replacement, 'Reference')) {
+        if (!isNode(replacement, N.Reference)) {
           result = result.trim();
         }
       }
@@ -157,7 +158,7 @@ export class Interpolated<
       if (!replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
-      if (isNode(replacement, 'Selector')) {
+      if (isNode(replacement, N.Selector)) {
         return replacement.copy(true).inherit(this) as Selector;
       }
       return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);

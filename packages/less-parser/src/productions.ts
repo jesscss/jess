@@ -68,6 +68,7 @@ import {
   INTERPOLATION_PLACEHOLDER,
   type SimpleSelector,
   isNode,
+  N,
   shouldOperateWithMathFrames
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils.js';
@@ -165,7 +166,7 @@ function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | und
   }
 
   // Math expressions: only wrap if this operation would actually be performed.
-  if (isNode(node, 'Operation')) {
+  if (isNode(node, N.Operation)) {
     const [left, op, right] = node.value;
     const mathMode = this.mathMode ?? 'parens-division';
     const shouldOperate = shouldOperateWithMathFrames(
@@ -393,6 +394,35 @@ export function declarationList(this: P, T: TokenMap) {
     let isVariable = isVariableLike.call(this, T);
     return [
       {
+        GATE: () => {
+          let next = $.LA(1).tokenType;
+          return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
+        },
+        ALT: () => {
+          return $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
+        }
+      },
+      {
+        /**
+         * qualifiedRule must come before declaration so that ALL(*)
+         * resolves the ambiguity in favor of qualified rules for
+         * inputs like `a:hover { }`. The declaration rule's ATN
+         * includes a custom-property path that can reach LCurly
+         * (via customValue → customBlock), creating a false ambiguity
+         * with qualifiedRule. By placing qualifiedRule first, the
+         * parser correctly picks it when both paths appear viable.
+         */
+        GATE: () => {
+          let next = $.LA(1).tokenType;
+          return next !== T.DotName
+            && next !== T.HashName
+            && next !== T.ColorIdentStart;
+        },
+        ALT: () => {
+          return $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
+        }
+      },
+      {
         ALT: () => {
           return $.SUBRULE($.declaration, { ARGS: [ctx] });
         }
@@ -416,26 +446,6 @@ export function declarationList(this: P, T: TokenMap) {
       {
         GATE: () => !isVariable,
         ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => {
-          let next = $.LA(1).tokenType;
-          return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
-        },
-        ALT: () => {
-          return $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
-        }
-      },
-      {
-        GATE: () => {
-          let next = $.LA(1).tokenType;
-          return next !== T.DotName
-            && next !== T.HashName
-            && next !== T.ColorIdentStart;
-        },
-        ALT: () => {
-          return $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
-        }
       },
       { ALT: () => $.CONSUME2(T.Semi) }
     ];
@@ -1880,28 +1890,28 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
 
 /** True for a node that could be one item in the old unquoted selector list (e.g. .a or #id). */
 function isSelectorLikeListItem(node: Node): boolean {
-  if (node.type === 'SelectorCapture' || isNode(node, 'Call')) {
+  if (node.type === 'SelectorCapture' || isNode(node, N.Call)) {
     return false;
   }
-  if (isNode(node, 'Reference')) {
+  if (isNode(node, N.Reference)) {
     return node.options.type === 'mixin-ruleset';
   }
-  if (isNode(node, 'List') || isNode(node, 'Sequence')) {
-    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
+  if (isNode(node, N.List | N.Sequence)) {
+    return (node as List).value.length > 0 && (node as List).value.every(isSelectorLikeListItem);
   }
   return false;
 }
 
 /** True only for the legacy unquoted selector-list form (e.g. @var: .a, .b, .c), not @var: .a; */
 function isLegacySelectorLikeValue(node: Node): boolean {
-  if (node.type === 'SelectorCapture' || isNode(node, 'Call')) {
+  if (node.type === 'SelectorCapture' || isNode(node, N.Call)) {
     return false;
   }
-  if (isNode(node, 'Reference')) {
+  if (isNode(node, N.Reference)) {
     return false; // Single mixin reference is valid.
   }
-  if (isNode(node, 'List') || isNode(node, 'Sequence')) {
-    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
+  if (isNode(node, N.List | N.Sequence)) {
+    return (node as List).value.length > 1 && (node as List).value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -2093,6 +2103,7 @@ export function expressionSum(this: P, T: TokenMap) {
             ALT: () => {
               // Consume a signed literal and convert it without rewinding
               const tok = $.CONSUME(T.Signed);
+              let startValue: Node | undefined;
               if (!RECORDING_PHASE) {
                 const str = tok.image;
                 op = str[0];
@@ -2100,16 +2111,19 @@ export function expressionSum(this: P, T: TokenMap) {
                 // Prefer dimension if payload exists, else number, else ident fallback
                 if (tok.payload && tok.payload[1]) {
                   const dim = { number: parseFloat(tok.payload[0]), unit: tok.payload[1] };
-                  right = new Dimension(dim, undefined, $.getLocationInfo(tok), this.context);
+                  startValue = new Dimension(dim, undefined, $.getLocationInfo(tok), this.context);
                 } else {
                   const num = parseFloat(str);
                   if (!Number.isNaN(num)) {
-                    right = new Num(num, undefined, $.getLocationInfo(tok), this.context);
+                    startValue = new Num(num, undefined, $.getLocationInfo(tok), this.context);
                   } else {
-                    right = $.processValueToken(tok);
+                    startValue = $.processValueToken(tok);
                   }
                 }
               }
+              // Delegate to expressionProduct for any trailing * / %
+              // e.g. 6px-1px*2 → 6px - (1px * 2)
+              right = $.SUBRULE3($.expressionProduct, { ARGS: [{ ...ctx, startValue }] });
             }
           }
         ]);
@@ -2149,7 +2163,7 @@ export function expressionProduct(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let left = $.SUBRULE($.expressionValue, { ARGS: [ctx] });
+    let left = ctx.startValue ?? $.SUBRULE($.expressionValue, { ARGS: [ctx] });
 
     $.MANY(() => {
       let op = $.OR(opAlt);
@@ -2577,7 +2591,7 @@ export function functionCall(this: P, T: TokenMap) {
       return false;
     }
     const firstArg = args.value[0];
-    return Boolean(isNode(firstArg, 'Sequence') && firstArg.value.length >= 2);
+    return Boolean(isNode(firstArg, N.Sequence) && firstArg.value.length >= 2);
   };
 
   let funcAlt = (ctx: RuleContext = {}) => [
@@ -3391,7 +3405,7 @@ export function mixinName(this: P, T: TokenMap) {
         if (asReference) {
           // For interpolated keys, we can't merge into array easily, so keep nested structure
           // But we still check type to ensure consistency
-          if (isNode(ctx.node, 'Reference') && ctx.node.options.type === 'mixin-ruleset') {
+          if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
             // Keep nested structure for interpolated keys
             nameNode = new Reference({ target: ctx.node, key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
           } else {
@@ -3401,7 +3415,7 @@ export function mixinName(this: P, T: TokenMap) {
       } else {
         if (asReference) {
           // If target is a Reference with matching type, merge keys instead of nesting
-          if (isNode(ctx.node, 'Reference') && ctx.node.options.type === 'mixin-ruleset') {
+          if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
             const existingKey = ctx.node.value.key;
             let mergedKeys: string[];
             if (Array.isArray(existingKey)) {
@@ -3553,9 +3567,9 @@ export function lookupOrCall(this: P, T: TokenMap) {
 
               // Only merge keys for mixin, mixin-ruleset, or ruleset types
               // For variable and property types, keep them nested (target.key structure)
-              const targetType = isNode(target, 'Reference') ? target.options.type : undefined;
+              const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
               const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
-              if (isNode(target, 'Reference') && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
+              if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
                 const existingKey = target.value.key;
                 let mergedKeys: string[];
                 if (Array.isArray(existingKey)) {

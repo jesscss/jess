@@ -2,6 +2,7 @@ import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 type ColorValues = [number, number, number, number] | number[];
@@ -127,7 +128,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     if (typeof value === 'number') {
       return value;
     }
-    if (isNode(value, 'Dimension')) {
+    if (isNode(value, N.Dimension)) {
       const { number, unit } = value.value;
       return unit ? [number, unit] : number;
     }
@@ -543,7 +544,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     let newColorValues: [number, number, number];
     let newAlpha = this._alpha;
 
-    if (isNode(b, 'Dimension')) {
+    if (isNode(b, N.Dimension)) {
       const { number: bVal, unit: bUnit } = b.value;
       const unitMode = context?.opts?.unitMode ?? 'loose';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';

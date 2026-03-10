@@ -1,6 +1,7 @@
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -10,6 +11,7 @@ import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
+import type { AtRule } from './at-rule.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -125,13 +127,13 @@ export class Call extends Node<CallValue, CallOptions> {
   makeImportant(rules: Rules): Rules {
     let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
     for (const rule of rules.value) {
-      if (isNode(rule, 'Declaration')) {
+      if (isNode(rule, N.Declaration)) {
         rule.value.important = important;
-      } else if (isNode(rule, 'Rules')) {
+      } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
-      } else if (isNode(rule, ['AtRule', 'Ruleset'])) {
-        if (rule.value.rules) {
-          this.makeImportant(rule.value.rules);
+      } else if (isNode(rule, N.AtRule | N.Ruleset)) {
+        if ((rule as AtRule).value.rules) {
+          this.makeImportant((rule as AtRule).value.rules!);
         }
       }
     }
@@ -165,7 +167,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
     let n = typeof name === 'string' ? name : await name.eval(context);
     // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
-    if (isNode(n, 'Reference') && n.options?.type === 'mixin-ruleset') {
+    if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
       n = await n.eval(context);
     }
     // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
@@ -173,27 +175,27 @@ export class Call extends Node<CallValue, CallOptions> {
     // to prevent surprising behavior for plain CSS function-like calls.
     // If the evaluated name is a Call node, execute it directly
     // This handles cases like @alias: .something(foo); @alias();
-    if (isNode(n, 'Call')) {
+    if (isNode(n, N.Call)) {
       // Execute the inner Call node (it will handle its own callStack push/pop)
       const result = await n.eval(context);
       // Apply markImportant if needed
-      if (markImportant && isNode(result, 'Rules')) {
+      if (markImportant && isNode(result, N.Rules)) {
         this.makeImportant(result);
       }
       // Always pop the outer call's stack entries
       context.callStack.pop();
       context.parenFrames.pop();
       return result;
-    } else if (isNode(n, 'Mixin') || isNode(n, 'Ruleset') || Array.isArray(n)) {
+    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
       n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
-    } else if (isNode(n, 'Func')) {
+    } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await evalArgNodes(args) ?? list([]);
       const result = await (n as any).evalCall(context, argNodes);
       context.callStack.pop();
       context.parenFrames.pop();
       return result;
-    } else if (isNode(n, 'Collection')) {
+    } else if (isNode(n, N.Collection)) {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
@@ -221,7 +223,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return rules;
     }
 
-    let fn = isNode(n, 'JsFunction') ? n.value : n;
+    let fn = isNode(n, N.JsFunction) ? n.value : n;
     if (typeof fn === 'function') {
       const originalCaller = context.caller;
       context.caller = this;
@@ -235,9 +237,9 @@ export class Call extends Node<CallValue, CallOptions> {
             // (e.g. $list-1) can walk back to call-site Rules.
             // Also anchor copied Mixin callback args to call-site source scope
             // so callback bodies can resolve surrounding variables.
-            if (isNode(copied, 'Reference') && copied.options?.type === 'property') {
+            if (isNode(copied, N.Reference) && copied.options?.type === 'property') {
               copied.sourceParent = this;
-            } else if (isNode(copied, 'Mixin')) {
+            } else if (isNode(copied, N.Mixin)) {
               copied.sourceParent = this;
             }
             copied.frozen = true;
@@ -261,18 +263,18 @@ export class Call extends Node<CallValue, CallOptions> {
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
-            if (markImportant && isNode(evald, 'Rules')) {
+            if (markImportant && isNode(evald, N.Rules)) {
               this.makeImportant(evald);
             }
             return adoptCallWhitespace(evald);
           }
-          if (markImportant && isNode(evald, 'Rules')) {
+          if (markImportant && isNode(evald, N.Rules)) {
             this.makeImportant(evald);
           }
           return adoptCallWhitespace(evald);
         }
         let castResult = cast(result);
-        if (isNode(castResult, 'Rules') && castResult.value.length === 1) {
+        if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
           return adoptCallWhitespace(castResult.value[0]!);
         }
         return adoptCallWhitespace(castResult);
@@ -283,7 +285,7 @@ export class Call extends Node<CallValue, CallOptions> {
           if (this.parent?.type === 'SelectorCapture') {
             return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
           }
-          if (isNode(name, 'Reference')) {
+          if (isNode(name, N.Reference)) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
           }
           throw e;
@@ -294,20 +296,20 @@ export class Call extends Node<CallValue, CallOptions> {
         let newCall = this.clone().inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
-        newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
+        newCall.value.name = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
           : String(n.valueOf());
         newCall.value.args = await evalArgNodes(args);
         newCall.value.args?.value.forEach((arg, argIndex) => {
           // Normalize fallback-call arg spacing to Less-style call serialization.
           arg.pre = argIndex === 0 ? 0 : 1;
-          if (isNode(arg, 'Sequence')) {
+          if (isNode(arg, N.Sequence)) {
             arg.value.forEach((child, childIndex) => {
               child.pre = childIndex === 0 ? 0 : 1;
             });
-          } else if (isNode(arg, 'List')) {
+          } else if (isNode(arg, N.List)) {
             arg.value.forEach((child) => {
-              if (isNode(child, 'Sequence')) {
+              if (isNode(child, N.Sequence)) {
                 child.value.forEach((nested, nestedIndex) => {
                   nested.pre = nestedIndex === 0 ? 0 : 1;
                 });
@@ -339,7 +341,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs.value[0], 'Dimension')) {
+        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
           return evaluatedArgs.value[0]!;
         } else if (context.calcFrames !== 0) {
           return new Paren(evaluatedArgs.value[0]!);

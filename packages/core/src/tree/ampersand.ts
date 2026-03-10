@@ -6,6 +6,7 @@ import { PseudoSelector } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
 import { BasicSelector } from './selector-basic.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -108,7 +109,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   override get keySet() {
     const stored = this._storedSelector;
     const current = this._selectorContainer?.selector;
-    if (!current || isNode(current, 'Nil')) {
+    if (!current || isNode(current, N.Nil)) {
       return new Set(['&']);
     }
     let keySet = this._keySet;
@@ -147,7 +148,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    */
   getResolvedSelector(): Selector | Nil | undefined {
     const selector = this._selectorContainer?.selector;
-    if (selector && isNode(selector, 'SelectorList') && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
+    if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
       wrapped.generated = true;
       return wrapped;
@@ -230,14 +231,14 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         return new Nil();
       }
       // Never mutate the frame selector in-place for append forms (&-foo / &()).
-      if (appendValue !== undefined && !isNode(selector, 'Nil')) {
+      if (appendValue !== undefined && !isNode(selector, N.Nil)) {
         selector = selector.clone(true) as Selector;
       }
       /** Remove any surrounding whitespace */
       selector.pre = undefined;
       selector.post = undefined;
 
-      if (appendValue && !isNode(selector, 'Nil')) {
+      if (appendValue && !isNode(selector, N.Nil)) {
         const isTemplateMerge = appendValue.includes('&');
         if (isTemplateMerge) {
           const isIdentJoinChar = (char: string | undefined): boolean => {
@@ -268,13 +269,13 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           const mergeTemplate = (baseSelector: Selector): Selector => {
             const baseSelectors: Selector[] = [];
             if (
-              isNode(baseSelector, 'PseudoSelector')
+              isNode(baseSelector, N.PseudoSelector)
               && baseSelector.value.name === ':is'
               && baseSelector.value.arg
-              && isNode(baseSelector.value.arg, 'SelectorList')
+              && isNode(baseSelector.value.arg, N.SelectorList)
             ) {
               baseSelectors.push(...baseSelector.value.arg.value.map(item => item as Selector));
-            } else if (isNode(baseSelector, 'SelectorList')) {
+            } else if (isNode(baseSelector, N.SelectorList)) {
               baseSelectors.push(...baseSelector.value.map(item => item as Selector));
             } else {
               // Handle raw comma-separated strings (e.g. from ~'apple, satsuma, banana, pear')
@@ -299,11 +300,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             }
             return new SelectorList(merged).inherit(baseSelector);
           };
-          if (isNode(selector, 'SelectorList')) {
+          if (isNode(selector, N.SelectorList)) {
             const mergedItems: Selector[] = [];
             for (const item of selector.value) {
               const merged = mergeTemplate(item as Selector);
-              if (isNode(merged, 'SelectorList')) {
+              if (isNode(merged, N.SelectorList)) {
                 mergedItems.push(...merged.value);
               } else {
                 mergedItems.push(merged);
@@ -318,7 +319,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             let appended = false;
             for (let s of n.nodes(true)) {
               /** Find the last simple selector and attempt to append */
-              if (isNode(s, 'SimpleSelector')) {
+              if (isNode(s, N.SimpleSelector)) {
                 if (typeof s.value === 'string') {
                   s.value += appendValue;
                   appended = true;
@@ -332,7 +333,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             }
           };
 
-          if (isNode(selector, 'SelectorList')) {
+          if (isNode(selector, N.SelectorList)) {
             selector.value.forEach(doAppendValue);
           } else {
             doAppendValue(selector);
@@ -341,8 +342,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
 
       let result: Selector | Nil;
-      const shouldWrapSelectorList = isNode(selector, 'SelectorList') && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
-      const shouldWrapComplexSelector = isNode(selector, 'ComplexSelector');
+      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
+      const shouldWrapComplexSelector = isNode(selector, N.ComplexSelector);
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
         result = PseudoSelector.create({ name: ':is', arg: selector });

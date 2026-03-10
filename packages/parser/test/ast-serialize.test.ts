@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializeTypes, isNode, VarDeclaration, Reference, Mixin, Call, If, StyleImport, JsImport, Collection } from '@jesscss/core';
+import { serializeTypes, isNode, N, VarDeclaration, Reference, Mixin, Call, If, StyleImport, JsImport, Collection } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 import { assertValidTree } from './assert-valid-tree.js';
 
@@ -33,12 +33,12 @@ describe('jess-parser (ast serialize)', () => {
         name:
           (Any [role=property] 'foo')
       `);
-    const rules = isNode(tree, 'Rules') ? tree : null;
+    const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const varDecl = rules.value.find(n => isNode(n, 'VarDeclaration'));
-      expect(varDecl && isNode(varDecl, 'VarDeclaration')).toBe(true);
-      if (varDecl && isNode(varDecl, 'VarDeclaration')) {
+      const varDecl = rules.value.find(n => isNode(n, N.VarDeclaration));
+      expect(varDecl && isNode(varDecl, N.VarDeclaration)).toBe(true);
+      if (varDecl && isNode(varDecl, N.VarDeclaration)) {
         expect(varDecl.value.name.valueOf()).toBe('foo');
       }
     }
@@ -99,12 +99,12 @@ describe('jess-parser (ast serialize)', () => {
       (Mixin
         name: 'mixin'
       `);
-    const rules = isNode(tree, 'Rules') ? tree : null;
+    const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const mixin = rules.value.find(n => isNode(n, 'Mixin'));
-      expect(mixin && isNode(mixin, 'Mixin')).toBe(true);
-      if (mixin && isNode(mixin, 'Mixin')) {
+      const mixin = rules.value.find(n => isNode(n, N.Mixin));
+      expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
+      if (mixin && isNode(mixin, N.Mixin)) {
         expect(mixin.value.name).toBe('mixin');
       }
     }
@@ -126,11 +126,11 @@ describe('jess-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(If');
     expect(String(tree)).toContain('$if');
-    const rules = isNode(tree, 'Rules') ? tree : null;
+    const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const ifNode = rules.value.find(n => isNode(n, 'If'));
-      expect(ifNode && isNode(ifNode, 'If')).toBe(true);
+      const ifNode = rules.value.find(n => n.type === 'If');
+      expect(ifNode && ifNode.type === 'If').toBe(true);
     }
   });
 
@@ -219,11 +219,11 @@ describe('jess-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Mixin');
     // Guard should be present
-    const rules = isNode(tree, 'Rules') ? tree : null;
+    const rules = isNode(tree, N.Rules) ? tree : null;
     if (rules) {
-      const mixin = rules.value.find(n => isNode(n, 'Mixin'));
-      expect(mixin && isNode(mixin, 'Mixin')).toBe(true);
-      if (mixin && isNode(mixin, 'Mixin')) {
+      const mixin = rules.value.find(n => isNode(n, N.Mixin));
+      expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
+      if (mixin && isNode(mixin, N.Mixin)) {
         expect(mixin.value.guard).toBeDefined();
       }
     }

@@ -8,6 +8,7 @@ import { Any } from './any.js';
 import { quoted } from './quoted.js';
 import { pipe, isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -48,7 +49,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
             if (rules) {
               const found = rules.find('declaration', key, 'VarDeclaration');
               const decl = Array.isArray(found) ? found[0] : found;
-              if (decl && isNode(decl, 'VarDeclaration')) {
+              if (decl && isNode(decl, N.VarDeclaration)) {
                 const out = decl.value.value.eval(context);
                 if (isThenable(out)) {
                   return (out as Promise<Node>).then((evaluated) => {

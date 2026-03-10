@@ -3,6 +3,14 @@ import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { Ampersand } from './ampersand.js';
+import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
+import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
+import { Interpolated } from './interpolated.js';
+import { Nil } from './nil.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -19,22 +27,15 @@ function registerInnerExtendRootIfHoisted(
     return;
   }
   const first = wrapperRules.value[0];
-  if (!isNode(first, 'Ruleset')) {
+  if (!isNode(first, N.Ruleset)) {
     return;
   }
   const innerRules = first.value.rules;
-  if (!innerRules || !isNode(innerRules, 'Rules')) {
+  if (!innerRules || !isNode(innerRules, N.Rules)) {
     return;
   }
   context.extendRoots.registerRoot(innerRules, wrapperRules, { layerName });
 }
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { Ampersand } from './ampersand.js';
-import { isNode } from './util/is-node.js';
-import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
-import { Interpolated } from './interpolated.js';
-import { Nil } from './nil.js';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -143,7 +144,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         const nodeLoc = node.location?.join(':') ?? '';
         const nodeSig = `${node.value.name.valueOf?.() ?? node.value.name}:${node.value.prelude?.valueOf?.() ?? ''}`;
         const alreadyQueued = topImports.some((queuedNode) => {
-          if (!isNode(queuedNode, 'AtRule')) {
+          if (!isNode(queuedNode, N.AtRule)) {
             return false;
           }
           const queued = queuedNode as AtRule;
@@ -217,7 +218,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         let parentLayerName: string | undefined;
         for (let i = context.frames.length - 2; i >= 0; i--) {
           const frame = context.frames[i]!;
-          if (isNode(frame, 'AtRule') && frame.value.name?.toTrimmedString?.() === '@layer' && frame.value.rules?.value?.includes(node)) {
+          if (isNode(frame, N.AtRule) && frame.value.name?.toTrimmedString?.() === '@layer' && frame.value.rules?.value?.includes(node)) {
             parentLayerName = context.extendRoots.getLayerName(frame);
             if (parentLayerName) {
               break;
@@ -297,7 +298,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // when nested inside a Ruleset. Use hoistToRoot for in-place rendering.
     let shouldClearRulesetFrames = false;
     if (context.bubbleRootAtRules && node.isRootOnly()) {
-      const hasRulesetParent = context.frames.some(f => isNode(f, 'Ruleset'));
+      const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
       if (hasRulesetParent) {
         // Mark for hoisting - this will render at root level but in-place
         node.hoistToRoot = true;
@@ -331,7 +332,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return;
       }
       const only = visible[0]!;
-      if (!isNode(only, 'AtRule') || (only as AtRule).value.name?.valueOf?.() !== '@media') {
+      if (!isNode(only, N.AtRule) || (only as AtRule).value.name?.valueOf?.() !== '@media') {
         return;
       }
       const inner = only as AtRule;
@@ -368,11 +369,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           const savedRulesContext = context.rulesContext;
           let liftedRulesContext = savedRulesContext;
           // If our current rulesContext is a Rules whose parent is an AtRule, lift to the enclosing Rules.
-          if (liftedRulesContext && isNode(liftedRulesContext, 'Rules')) {
+          if (liftedRulesContext && isNode(liftedRulesContext, N.Rules)) {
             let cursor: any = liftedRulesContext;
             let depth = 0;
             while (cursor?.parent && depth++ < 10) {
-              if (isNode(cursor.parent, 'AtRule') && isNode(cursor.parent.parent, 'Rules')) {
+              if (isNode(cursor.parent, N.AtRule) && isNode(cursor.parent.parent, N.Rules)) {
                 cursor = cursor.parent.parent;
                 continue;
               }
@@ -443,14 +444,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 if (shouldClearRulesetFrames) {
                   context.rulesetFrames = [];
                 }
-                const onlyRuleSetChild = isNode(bodyToEval.value[0], 'Ruleset');
+                const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
                 const evalOut = bodyToEval.eval(context);
                 const doRegister = (r: Rules) => {
                   if (savedRulesetFrames !== undefined) {
                     context.rulesetFrames = savedRulesetFrames;
                   }
                   const finalRules =
-                    onlyRuleSetChild && isNode(r.value[0], 'Rules') ? r.value[0] : r;
+                    onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
                   node.value.rules = finalRules;
                   tryMergeNestedMedia();
                   context.extendRoots.popExtendRoot();
@@ -461,6 +462,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   });
                   registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
                   if (finalRules !== bodyToEval) {
+                    context.extendRoots.registerRoot(finalRules as Rules, bodyToEval, { layerName });
                     registerInnerExtendRootIfHoisted(finalRules, context, layerName);
                   }
                   context.extendRoots.pushExtendRoot(bodyToEval);
@@ -478,7 +480,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             pushedExtendRoot = true;
           }
 
-          let onlyRuleSetChild = isNode(bodyToEval.value[0], 'Ruleset');
+          let onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
 
           // For root-only at-rules that are hoisted, clear rulesetFrames
           // so internal rulesets don't inherit parent selectors
@@ -496,7 +498,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               }
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
-              const finalRules = onlyRuleSetChild && isNode(r.value[0], 'Rules') ? r.value[0] : r;
+              const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               node.value.rules = finalRules;
               tryMergeNestedMedia();
 
@@ -509,6 +511,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 });
                 registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
                 if (finalRules !== bodyToEval) {
+                  context.extendRoots.registerRoot(finalRules as Rules, bodyToEval, { layerName });
                   registerInnerExtendRootIfHoisted(finalRules, context, layerName);
                 }
                 context.extendRoots.pushExtendRoot(bodyToEval);
@@ -524,7 +527,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           }
 
           const finalRules =
-            onlyRuleSetChild && isNode(out.value[0], 'Rules') ? out.value[0] : out;
+            onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
           node.value.rules = finalRules;
           tryMergeNestedMedia();
 
@@ -535,6 +538,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             context.extendRoots.registerRoot(bodyToEval, parent as Rules | undefined, { layerName });
             registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
             if (finalRules !== bodyToEval) {
+              context.extendRoots.registerRoot(finalRules as Rules, bodyToEval, { layerName });
               registerInnerExtendRootIfHoisted(finalRules, context, layerName);
             }
             context.extendRoots.pushExtendRoot(bodyToEval);

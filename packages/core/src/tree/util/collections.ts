@@ -21,6 +21,7 @@
 import type { ConditionalExcept } from 'type-fest';
 import isPlainObject from 'lodash-es/isPlainObject.js';
 import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 import type { Mixin } from '../mixin.js';
 import type { Rules } from '../rules.js';
 import type { Ruleset } from '../ruleset.js';
@@ -108,23 +109,23 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
         yield [value, key, collection] as GetEntriesOf<T>;
       }
     }
-  } else if (isNode(collection, ['Mixin', 'Ruleset', 'Rules'])) {
+  } else if (isNode(collection, N.Mixin | N.Ruleset | N.Rules)) {
     let rules: Node[];
-    if (collection.type === 'Mixin') {
+    if ((collection as Node).type === 'Mixin') {
       if ((collection as Mixin).value.params?.length) {
         throw new Error('We can\'t iterate over a mixin with parameters');
       }
       rules = (collection as Mixin).value.rules.value;
-    } else if (collection.type === 'Ruleset') {
+    } else if ((collection as Node).type === 'Ruleset') {
       rules = (collection as Ruleset).value.rules.value;
-    } else if (collection.type === 'Rules') {
+    } else if ((collection as Node).type === 'Rules') {
       rules = (collection as Rules).value;
     }
     for (let [, value] of rules!.entries()) {
       if (value.type === 'Comment') {
         continue;
       }
-      if (!isNode(value, 'Declaration')) {
+      if (!isNode(value, N.Declaration)) {
         throw new Error('We can\'t iterate over rules with non-declarations');
       }
       yield [value.value.value, value.value.name, rules!] as unknown as GetEntriesOf<T>;
@@ -132,7 +133,7 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
   } else if (isNode(collection) && isArray((collection as Node).value)) {
     yield* getEntries((collection as Node).value as unknown[], reverse) as Generator<GetEntriesOf<T>>;
   } else {
-    yield [collection, 'value', collection] as GetEntriesOf<T>;
+    yield [collection, 'value', collection] as unknown as GetEntriesOf<T>;
   }
 }
 

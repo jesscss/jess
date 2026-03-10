@@ -11,11 +11,10 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
-import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './ruleset-trace.js';
-import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
 
 /**
  * Fast check: would applying a single extend instruction change the selector?
@@ -35,6 +34,52 @@ function wouldInstructionChangeSel(
   // Fallback: full extend + compare
   const after = applyExtendsToSelector(selector, [instruction]);
   return after.valueOf() !== selector.valueOf();
+}
+
+interface NonPartialAnalysis {
+  nonPartialOwnOnly: ExtendInstruction[];
+  hasAncestorDrivenNonPartial: boolean;
+  hasParentMatchedOwnOnlyNonPartial: boolean;
+}
+
+function analyzeNonPartialExtends(
+  ownSelector: Selector,
+  selector: Selector,
+  nonPartialOnly: ExtendInstruction[],
+  parentSelector: Selector | null
+): NonPartialAnalysis {
+  const perInstruction = nonPartialOnly.map((instruction) => {
+    const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
+    const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
+    const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
+    const parentHasTargetMatch = Boolean(
+      parentSelector
+      && !(parentSelector instanceof Nil)
+      && findExtendableLocations(parentSelector, instruction.target).hasMatches
+    );
+    return { instruction, ownChangedSingle, fullChangedSingle, parentHasTargetMatch };
+  });
+  const fullChangedExtendWith = new Set(
+    perInstruction.filter(d => d.fullChangedSingle).map(d => d.instruction.extendWith.valueOf())
+  );
+  const withInclusion = perInstruction.map(d => ({
+    ...d,
+    includeOwnOnly: (
+      d.ownChangedSingle
+      && !d.fullChangedSingle
+      && !d.parentHasTargetMatch
+      && !fullChangedExtendWith.has(d.instruction.extendWith.valueOf())
+    )
+  }));
+  return {
+    nonPartialOwnOnly: withInclusion.filter(x => x.includeOwnOnly).map(x => x.instruction),
+    hasAncestorDrivenNonPartial: withInclusion.some(d =>
+      !d.ownChangedSingle && d.fullChangedSingle && d.parentHasTargetMatch
+    ),
+    hasParentMatchedOwnOnlyNonPartial: withInclusion.some(d =>
+      d.ownChangedSingle && !d.fullChangedSingle && d.parentHasTargetMatch
+    )
+  };
 }
 
 export class ExtendRootRegistry {
@@ -142,24 +187,6 @@ export class ExtendRootRegistry {
         }
       }
 
-      if (currentRoot.value?.length) {
-        for (const node of currentRoot.value) {
-          if (node && isNode(node, 'Ruleset') && node.value?.rules && isNode(node.value.rules, 'Rules')) {
-            const innerRules = node.value.rules as Rules;
-            if (!visited.has(innerRules)) {
-              accessible.add(innerRules);
-              traverseChildren(innerRules);
-            }
-          } else if (node && isNode(node, 'Rules')) {
-            const innerRules = node as Rules;
-            if (!visited.has(innerRules)) {
-              accessible.add(innerRules);
-              traverseChildren(innerRules);
-            }
-          }
-        }
-      }
-
       const layer = this.layerName.get(currentRoot);
       if (layer) {
         const sameLayerRoots = this.rootsByLayerName.get(layer);
@@ -232,14 +259,6 @@ export class ExtendRootRegistry {
 
 const rulesetsByRoot = new Map<Rules, Set<Ruleset>>();
 
-function getSourceNodeTraceId(ruleset: Ruleset): number | null {
-  const sourceNode = ruleset.sourceNode as Ruleset | undefined;
-  if (!sourceNode) {
-    return null;
-  }
-  return getOptionalRulesetTraceId(sourceNode) ?? null;
-}
-
 export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
   if (!root || !ruleset) {
     return;
@@ -250,7 +269,6 @@ export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
     rulesetsByRoot.set(root, set);
   }
   set.add(ruleset);
-  const sourceNode = ruleset.sourceNode;
 }
 
 function isInstructionVisibleForRoot(
@@ -259,13 +277,13 @@ function isInstructionVisibleForRoot(
   instruction: {
     extendRoot?: Rules;
     fromReferenceScope: boolean;
-  }
+  },
+  getCachedVisibleRoots?: (root: Rules) => Set<Rules>
 ): boolean {
   if (!instruction.extendRoot) {
     return false;
   }
   if (instruction.fromReferenceScope === true) {
-    // Less parity: extends declared while evaluating a reference import are non-side-effecting.
     return false;
   }
   if (context.extendRoots.isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
@@ -277,48 +295,10 @@ function isInstructionVisibleForRoot(
   if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
     return true;
   }
-  const visibleRoots = context.extendRoots.getVisibleRoots(instruction.extendRoot);
+  const visibleRoots = getCachedVisibleRoots
+    ? getCachedVisibleRoots(instruction.extendRoot)
+    : context.extendRoots.getVisibleRoots(instruction.extendRoot);
   return visibleRoots.has(rootRules);
-}
-
-function rootHasTargetMatch(root: Rules, target: Selector, partial: boolean): boolean {
-  const targetValue = target.valueOf();
-  const stack: unknown[] = [...root.value];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== 'object') {
-      continue;
-    }
-    if (isNode(node, 'Ruleset')) {
-      const selector = (node as Ruleset).value.selector as Selector | undefined;
-      if (!selector || isNode(selector, 'Nil')) {
-        continue;
-      }
-      const selectorValue = selector.valueOf();
-      if (selectorValue.includes(targetValue)) {
-        return true;
-      }
-      if (findExtendableLocations(selector, target).hasMatches) {
-        return true;
-      }
-      const rules = (node as Ruleset).value.rules;
-      if (rules && isNode(rules, 'Rules')) {
-        stack.push(...rules.value);
-      }
-      continue;
-    }
-    if (isNode(node, 'Rules')) {
-      stack.push(...(node as Rules).value);
-      continue;
-    }
-    if (isNode(node, 'AtRule')) {
-      const value = (node as any).value;
-      if (value && isNode(value, 'Rules')) {
-        stack.push(...(value as Rules).value);
-      }
-    }
-  }
-  return false;
 }
 
 export function processExtends(context: Context): void {
@@ -335,65 +315,53 @@ export function processExtends(context: Context): void {
     return;
   }
 
-  const instructionStats = new Map(instructions.map(i => [i, { visibleMatchCount: 0, blockedMatchCount: 0 }]));
+  const instructionMatched = new Set<typeof instructions[0]>();
+
+  const visibleRootsCache = new Map<Rules, Set<Rules>>();
+  const getCachedVisibleRoots = (extendRoot: Rules): Set<Rules> => {
+    let cached = visibleRootsCache.get(extendRoot);
+    if (!cached) {
+      cached = context.extendRoots.getVisibleRoots(extendRoot);
+      visibleRootsCache.set(extendRoot, cached);
+    }
+    return cached;
+  };
 
   for (const [rootRules, rulesetSet] of rulesetsByRoot) {
     if (!rootRules) {
       continue;
     }
-    const visibleExtendSet = new Set(instructions.filter(instruction =>
-      isInstructionVisibleForRoot(context, rootRules, instruction)
-    ));
-    for (const instruction of instructions) {
-      const selectorDiagnostics: Array<{ selector: string; hasMatches: boolean }> = [];
-      const matchedInRoot = Array.from(rulesetSet).some((ruleset) => {
-        const selector = ruleset.value.selector as Selector | undefined;
-        if (!selector || isNode(selector, 'Nil')) {
-          return false;
-        }
-        const locations = findExtendableLocations(selector, instruction.target);
-        if (instruction.target.valueOf() === '.base') {
-          selectorDiagnostics.push({ selector: selector.valueOf(), hasMatches: locations.hasMatches });
-        }
-        return locations.hasMatches;
-      });
-      if (!matchedInRoot) {
-        continue;
-      }
-      const stats = instructionStats.get(instruction);
-      if (!stats) {
-        continue;
-      }
-      if (visibleExtendSet.has(instruction)) {
-        stats.visibleMatchCount += 1;
-      } else {
-        stats.blockedMatchCount += 1;
-      }
-    }
-    const visibleExtends = Array.from(visibleExtendSet);
+    const visibleExtends = instructions.filter(instruction =>
+      isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
+    );
     if (!visibleExtends.length) {
       continue;
     }
-    const activatingExtends = visibleExtends;
     for (const ruleset of rulesetSet) {
       const selector = ruleset.value.selector as Selector | undefined;
-      if (!selector || isNode(selector, 'Nil')) {
+      if (!selector || isNode(selector, N.Nil)) {
         ruleset.removeFlag(F_EXTENDED);
         continue;
       }
-      const isActivatedByVisibleExtend = activatingExtends.some(instruction =>
-        (
-          !instruction.partial
-          || instruction.target.valueOf() === instruction.extendWith.valueOf()
-        )
-        && findExtendableLocations(selector, instruction.target).hasMatches
-      );
+      let isActivatedByVisibleExtend = false;
+      for (const instruction of visibleExtends) {
+        const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
+        if (isSelfExtend) {
+          if (findExtendableLocations(selector, instruction.target).hasMatches) {
+            instructionMatched.add(instruction);
+            isActivatedByVisibleExtend = true;
+          }
+        } else if (wouldInstructionChangeSel(selector, instruction)) {
+          instructionMatched.add(instruction);
+          if (!instruction.partial) {
+            isActivatedByVisibleExtend = true;
+          }
+        }
+      }
       if (isActivatedByVisibleExtend) {
         ruleset.addFlag(F_EXTENDED);
-        // If a reference-scoped/import-scoped ruleset is externally extended, it must become
-        // visible in output so the merged selector can render.
         ruleset.addFlag(F_VISIBLE);
-        if (isNode(selector, 'SelectorList')) {
+        if (isNode(selector, N.SelectorList)) {
           for (const item of (selector as SelectorList).value) {
             item.addFlag(F_EXTENDED);
             item.addFlag(F_VISIBLE);
@@ -440,7 +408,7 @@ export function processExtends(context: Context): void {
           const ownChangedByPartialOnly = ownAfterPartialOnly.valueOf() !== ownSelector.valueOf();
           const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
           const parentSelector = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
+            ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
               ? (ruleset.parent.parent as Ruleset).value.selector
               : null
           );
@@ -449,7 +417,7 @@ export function processExtends(context: Context): void {
             && fullChangedByPartialOnly
             && parentSelector
             && !(parentSelector instanceof Nil)
-            && isNode(fullAfterPartialOnly, 'ComplexSelector')
+            && isNode(fullAfterPartialOnly, N.ComplexSelector)
             && !ownSelector.hasFlag(F_AMPERSAND)
           );
           if (canDeriveOwnFromGeneratedIs) {
@@ -457,10 +425,10 @@ export function processExtends(context: Context): void {
             const last = complex.value.at(-1);
             if (
               last
-              && isNode(last, 'PseudoSelector')
+              && isNode(last, N.PseudoSelector)
               && (last as PseudoSelector).value.name === ':is'
               && (last as PseudoSelector).value.arg
-              && isNode((last as PseudoSelector).value.arg!, 'SelectorList')
+              && isNode((last as PseudoSelector).value.arg!, N.SelectorList)
             ) {
               const derivedOwn = ((last as PseudoSelector).value.arg as SelectorList).copy(true) as Selector;
               ruleset.value.selector = derivedOwn;
@@ -470,172 +438,72 @@ export function processExtends(context: Context): void {
             }
           }
         }
-        if (partialOnly.length === 0 && nonPartialOnly.length > 0) {
+        if (nonPartialOnly.length > 0) {
           const parentSelectorForOwnSplit = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-              ? (ruleset.parent.parent as Ruleset).value.selector
+            ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
+              ? (ruleset.parent.parent as Ruleset).value.selector as Selector
               : null
           );
-          const nonPartialDiagnostics = nonPartialOnly.map((instruction) => {
-            // Walk fast path for ownSelector (no implicit ampersand boundary).
-            // Full resolved selector has implicit parent/own boundary that
-            // the walk can't detect, so always use legacy for that.
-            const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
-            const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
-            const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
-            const parentHasTargetMatch = Boolean(
-              parentSelectorForOwnSplit
-              && !(parentSelectorForOwnSplit instanceof Nil)
-              && findExtendableLocations(
-                parentSelectorForOwnSplit as Selector,
-                instruction.target
-              ).hasMatches
-            );
-            return {
-              instruction,
-              ownChangedSingle,
-              fullChangedSingle,
-              parentHasTargetMatch
-            };
-          });
-          const fullChangedExtendWith = new Set(
-            nonPartialDiagnostics
-              .filter(d => d.fullChangedSingle)
-              .map(d => d.instruction.extendWith.valueOf())
-          );
-          const nonPartialWithInclusion = nonPartialDiagnostics.map((d) => {
-            const includeOwnOnly = (
-              d.ownChangedSingle
-              && !d.fullChangedSingle
-              && !d.parentHasTargetMatch
-              && !fullChangedExtendWith.has(d.instruction.extendWith.valueOf())
-            );
-            return { ...d, includeOwnOnly };
-          });
-          const nonPartialOwnOnly = nonPartialWithInclusion
-            .filter(x => x.includeOwnOnly)
-            .map(x => x.instruction);
-          const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
-          const hasAncestorDrivenNonPartial = nonPartialWithInclusion.some(d =>
-            !d.ownChangedSingle
-            && d.fullChangedSingle
-            && d.parentHasTargetMatch
-          );
-          if (hasAncestorDrivenNonPartial) {
-            // Parent already carries this non-partial effect; keep nested selector local.
-            ruleset.value.selector = ownAfterOwnOnly;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
-            ruleset.invalidateSelectorValueCache();
-            continue;
-          }
-        }
-        if (partialOnly.length > 0 && nonPartialOnly.length > 0) {
-          const parentSelectorForOwnSplit = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-              ? (ruleset.parent.parent as Ruleset).value.selector
-              : null
-          );
-          const nonPartialDiagnostics = nonPartialOnly.map((instruction) => {
-            const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
-            const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
-            const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
-            const parentHasTargetMatch = Boolean(
-              parentSelectorForOwnSplit
-              && !(parentSelectorForOwnSplit instanceof Nil)
-              && findExtendableLocations(
-                parentSelectorForOwnSplit as Selector,
-                instruction.target
-              ).hasMatches
-            );
-            return {
-              instruction,
-              ownChangedSingle,
-              fullChangedSingle,
-              parentHasTargetMatch
-            };
-          });
-          const fullChangedExtendWith = new Set(
-            nonPartialDiagnostics
-              .filter(d => d.fullChangedSingle)
-              .map(d => d.instruction.extendWith.valueOf())
-          );
-          const nonPartialWithInclusion = nonPartialDiagnostics.map((d) => {
-            const includeOwnOnly = (
-              d.ownChangedSingle
-              && !d.fullChangedSingle
-              && !d.parentHasTargetMatch
-              && !fullChangedExtendWith.has(d.instruction.extendWith.valueOf())
-            );
-            return { ...d, includeOwnOnly };
-          });
-          const nonPartialOwnOnly = nonPartialWithInclusion
-            .filter(x => x.includeOwnOnly)
-            .map(x => x.instruction);
-          const ownAfterPartialAndOwnOnlyNonPartial = applyExtendsToSelector(
-            ownSelector,
-            [...partialOnly, ...nonPartialOwnOnly]
-          );
-          const ownAfterPartial = applyExtendsToSelector(ownSelector, partialOnly);
-          const ownAfterNonPartial = applyExtendsToSelector(ownSelector, nonPartialOnly);
-          const fullAfterNonPartial = applyExtendsToSelector(selector, nonPartialOnly);
-          const ownChangedByNonPartial = ownAfterNonPartial.valueOf() !== ownSelector.valueOf();
-          const fullChangedByNonPartial = fullAfterNonPartial.valueOf() !== selector.valueOf();
-          const nonPartialBoundaryOnly = !ownChangedByNonPartial && fullChangedByNonPartial;
-          const ownChangedByPartial = ownAfterPartial.valueOf() !== ownSelector.valueOf();
-          const hasAncestorDrivenNonPartial = nonPartialWithInclusion.some(d =>
-            !d.ownChangedSingle
-            && d.fullChangedSingle
-            && d.parentHasTargetMatch
-          );
-          const shouldDeferToParentForNonPartial = Boolean(
-            !ownChangedByPartial
-            && nonPartialOwnOnly.length === 0
-            && hasAncestorDrivenNonPartial
-          );
-          const hasParentMatchedOwnOnlyNonPartial = nonPartialWithInclusion.some(d =>
-            d.ownChangedSingle
-            && !d.fullChangedSingle
-            && d.parentHasTargetMatch
-          );
-          // When non-partial extends match only the full (cross-product) selector and not
-          // the own selector, and partial extends would incorrectly alter the own selector,
-          // the non-partial extend takes precedence. Applying partial extends to the own
-          // selector here blocks cross-product de-distribution (`:is(parent) :is(own), .rep_ace`).
-          if (nonPartialBoundaryOnly && (ownChangedByPartial || nonPartialOwnOnly.length > 0)) {
-            const newSel = applyExtendsToSelector(selector, nonPartialOnly);
-            if (newSel.valueOf() !== selector.valueOf()) {
-              newSel.hoistToRoot = true;
-              ruleset.value.selector = newSel;
+          const {
+            nonPartialOwnOnly,
+            hasAncestorDrivenNonPartial,
+            hasParentMatchedOwnOnlyNonPartial
+          } = analyzeNonPartialExtends(ownSelector, selector, nonPartialOnly, parentSelectorForOwnSplit);
+
+          if (partialOnly.length === 0) {
+            if (hasAncestorDrivenNonPartial) {
+              const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
+              ruleset.value.selector = ownAfterOwnOnly;
+              (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
               ruleset.invalidateSelectorValueCache();
-              ruleset.hoistToRoot = true;
+              continue;
             }
-            continue;
-          }
-          // For nested rulesets, apply partial (`all`) updates to own selector, but do not
-          // fold non-partial changes into own selector. Non-partial changes are handled
-          // through full-selector assignment path below when needed.
-          if (ownChangedByPartial || nonPartialOwnOnly.length > 0) {
-            ruleset.value.selector = ownAfterPartialAndOwnOnlyNonPartial;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartialAndOwnOnlyNonPartial;
-            ruleset.invalidateSelectorValueCache();
-            continue;
-          }
-          if (hasParentMatchedOwnOnlyNonPartial) {
-            // Less parity: exact extends that only match nested own selector while parent already
-            // carries the target should remain parent-scoped (do not inject extender into child selector).
-            ruleset.value.selector = ownAfterPartial;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
-            ruleset.invalidateSelectorValueCache();
-            continue;
-          }
-          if (shouldDeferToParentForNonPartial) {
-            // Parent selector already carries the non-partial extend effect.
-            // Keep this nested ruleset relative to its own selector to avoid
-            // re-materializing parent prefixes inside nested blocks.
-            ruleset.value.selector = ownAfterPartial;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
-            ruleset.invalidateSelectorValueCache();
-            continue;
+          } else {
+            const ownAfterPartial = applyExtendsToSelector(ownSelector, partialOnly);
+            const ownAfterNonPartial = applyExtendsToSelector(ownSelector, nonPartialOnly);
+            const fullAfterNonPartial = applyExtendsToSelector(selector, nonPartialOnly);
+            const ownChangedByNonPartial = ownAfterNonPartial.valueOf() !== ownSelector.valueOf();
+            const fullChangedByNonPartial = fullAfterNonPartial.valueOf() !== selector.valueOf();
+            const nonPartialBoundaryOnly = !ownChangedByNonPartial && fullChangedByNonPartial;
+            const ownChangedByPartial = ownAfterPartial.valueOf() !== ownSelector.valueOf();
+
+            if (nonPartialBoundaryOnly && (ownChangedByPartial || nonPartialOwnOnly.length > 0)) {
+              const newSel = applyExtendsToSelector(selector, nonPartialOnly);
+              if (newSel.valueOf() !== selector.valueOf()) {
+                newSel.hoistToRoot = true;
+                ruleset.value.selector = newSel;
+                ruleset.invalidateSelectorValueCache();
+                ruleset.hoistToRoot = true;
+              }
+              continue;
+            }
+            if (ownChangedByPartial || nonPartialOwnOnly.length > 0) {
+              const ownAfterBoth = applyExtendsToSelector(
+                ownSelector,
+                [...partialOnly, ...nonPartialOwnOnly]
+              );
+              ruleset.value.selector = ownAfterBoth;
+              (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterBoth;
+              ruleset.invalidateSelectorValueCache();
+              continue;
+            }
+            if (hasParentMatchedOwnOnlyNonPartial) {
+              ruleset.value.selector = ownAfterPartial;
+              (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
+              ruleset.invalidateSelectorValueCache();
+              continue;
+            }
+            const shouldDeferToParentForNonPartial = Boolean(
+              !ownChangedByPartial
+              && nonPartialOwnOnly.length === 0
+              && hasAncestorDrivenNonPartial
+            );
+            if (shouldDeferToParentForNonPartial) {
+              ruleset.value.selector = ownAfterPartial;
+              (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
+              ruleset.invalidateSelectorValueCache();
+              continue;
+            }
           }
         }
       }
@@ -654,7 +522,7 @@ export function processExtends(context: Context): void {
           && ownAfterRelevant.valueOf() !== ownSelector.valueOf()
         );
         const parentRuleset = (
-          ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
+          ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
             ? (ruleset.parent.parent as Ruleset)
             : null
         );
@@ -665,7 +533,7 @@ export function processExtends(context: Context): void {
           && (() => {
             try {
               for (const n of (parentSelectorForBoundary as Selector).nodes()) {
-                if (isNode(n, 'Combinator')) {
+                if (isNode(n, N.Combinator)) {
                   return true;
                 }
               }
@@ -684,12 +552,12 @@ export function processExtends(context: Context): void {
         );
         if (parentHoistedBoundaryCompose) {
           const parentSelector = parentRuleset?.value.selector;
-          if (parentSelector && !(parentSelector instanceof Nil) && isNode(parentSelector, 'SelectorList')) {
+          if (parentSelector && !(parentSelector instanceof Nil) && isNode(parentSelector, N.SelectorList)) {
             const parentItems = (parentSelector as SelectorList).value;
-            const complexItems = parentItems.filter(item => isNode(item, 'ComplexSelector')) as ComplexSelector[];
+            const complexItems = parentItems.filter(item => isNode(item, N.ComplexSelector)) as ComplexSelector[];
             if (complexItems.length === parentItems.length && complexItems.length >= 2) {
               const first = complexItems[0]!;
-              const allTri = complexItems.every(c => c.value.length === 3 && isNode(c.value[1], 'Combinator'));
+              const allTri = complexItems.every(c => c.value.length === 3 && isNode(c.value[1], N.Combinator));
               if (allTri) {
                 const leftKey = first.value[0]!.valueOf();
                 const combKey = first.value[1]!.valueOf();
@@ -710,7 +578,7 @@ export function processExtends(context: Context): void {
                     (first.value[1] as Combinator).copy(true),
                     middleIs
                   ]);
-                  const ownArg = isNode(ownSelectorNode, 'SelectorList')
+                  const ownArg = isNode(ownSelectorNode, N.SelectorList)
                     ? SelectorList.create((ownSelectorNode as SelectorList).value.map(s => s.copy(true) as Selector))
                     : SelectorList.create([ownSelectorNode.copy(true) as Selector]);
                   const ownIs = PseudoSelector.create({ name: ':is', arg: ownArg });
@@ -733,7 +601,7 @@ export function processExtends(context: Context): void {
           && parentHasCombinatorContext
           && !(
             ruleset.parent?.parent
-            && isNode(ruleset.parent.parent, 'Ruleset')
+            && isNode(ruleset.parent.parent, N.Ruleset)
             && Boolean((ruleset.parent.parent as Ruleset).hoistToRoot)
           )
           && !newSelector.hoistToRoot
@@ -745,9 +613,9 @@ export function processExtends(context: Context): void {
         if (beforeValue === finalAfterValue) {
           continue;
         }
-        if (hasOnlyPartialExtends && isNode(newSelector, 'SelectorList')) {
+        if (hasOnlyPartialExtends && isNode(newSelector, N.SelectorList)) {
           const previousValues = new Set<string>();
-          if (isNode(selector, 'SelectorList')) {
+          if (isNode(selector, N.SelectorList)) {
             for (const item of (selector as SelectorList).value) {
               previousValues.add(item.valueOf());
             }
@@ -768,12 +636,12 @@ export function processExtends(context: Context): void {
       }
     }
   }
+  // Emit warnings for unmatched extend instructions
   for (const instruction of instructions) {
-    const stats = instructionStats.get(instruction);
-    if (!stats || instruction.fromReferenceScope === true) {
+    if (instruction.fromReferenceScope === true) {
       continue;
     }
-    if (stats.visibleMatchCount > 0) {
+    if (instructionMatched.has(instruction)) {
       continue;
     }
     const target = instruction.target.valueOf();
@@ -782,18 +650,24 @@ export function processExtends(context: Context): void {
     const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
     const targetFile = instruction.target.treeContext?.file;
     const targetFilePath = targetFile?.fullPath;
-    const inaccessibleMatchExists = Array.from(context.extendRoots.getAllRoots()).some((root) => {
-      if (isInstructionVisibleForRoot(context, root, instruction)) {
+    const blockedProtectedRootExists = Array.from(rulesetsByRoot.keys()).some((root) => {
+      if (!root) {
         return false;
       }
-      return rootHasTargetMatch(root, instruction.target, instruction.partial);
+      if (isInstructionVisibleForRoot(context, root, instruction, getCachedVisibleRoots)) {
+        return false;
+      }
+      const rulesets = rulesetsByRoot.get(root);
+      if (!rulesets) {
+        return false;
+      }
+      return Array.from(rulesets).some((ruleset) => {
+        const sel = ruleset.value.selector as Selector | undefined;
+        return sel && !isNode(sel, N.Nil) && wouldInstructionChangeSel(sel, instruction);
+      });
     });
-    const blockedProtectedRootExists = Array.from(context.extendRoots.getAllRoots()).some(root =>
-      !isInstructionVisibleForRoot(context, root, instruction)
-      && context.extendRoots.isProtectedRoot(root)
-    );
     const diagnostic = (
-      stats.blockedMatchCount > 0 || inaccessibleMatchExists || blockedProtectedRootExists
+      blockedProtectedRootExists
         ? WARN.extendNotAccessible({
             ctx: targetFile ? { file: targetFile } : undefined,
             filePath: targetFilePath,

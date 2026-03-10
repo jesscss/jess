@@ -13,6 +13,7 @@ import { Reference } from './reference.js';
 import { List } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
+import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -87,7 +88,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return !isNode(this.value.value, 'Collection') && !isNode(this.value.value, 'Mixin');
+    return !isNode(this.value.value, N.Collection) && !isNode(this.value.value, N.Mixin);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
@@ -129,7 +130,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Ensure exactly one space after ':' by adding one space
       w.add(' ');
       w.add(normalizedValue, value);
-      if (!isNode(value, 'Collection')) {
+      if (!isNode(value, N.Collection)) {
         if (important) {
           let imp = w.capture(() => important.toString(options));
           imp = imp.replace(/^\s+|\s+$/g, '');
@@ -271,7 +272,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          if (!isListMergedAssign || !isNode(node.value.value, 'List')) {
+          if (!isListMergedAssign || !isNode(node.value.value, N.List)) {
             return;
           }
           const listValue = node.value.value.value;
@@ -280,8 +281,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const first = listValue[0]!;
           const isEmptyPlaceholder = (
-            isNode(first, 'Nil')
-            || (isNode(first, 'List') && first.value.length === 0)
+            isNode(first, N.Nil)
+            || (isNode(first, N.List) && first.value.length === 0)
             || String(first.valueOf?.() ?? '') === ''
           );
           if (!isEmptyPlaceholder) {

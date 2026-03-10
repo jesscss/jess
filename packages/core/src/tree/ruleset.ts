@@ -7,6 +7,7 @@ import type { Condition } from './condition.js';
 import type { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { Ampersand } from './ampersand.js';
 import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
@@ -81,7 +82,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     sharedValue: RulesetValue
   ): void {
     const rules = ruleset.value?.rules;
-    if (!rules || !isNode(rules, 'Rules')) {
+    if (!rules || !isNode(rules, N.Rules)) {
       return;
     }
     const children = (rules as Rules).value;
@@ -89,7 +90,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return;
     }
     for (const child of children) {
-      if (!isNode(child, 'Ruleset')) {
+      if (!isNode(child, N.Ruleset)) {
         continue;
       }
       const rs = child as Ruleset;
@@ -166,13 +167,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return;
     }
     const n = sel as Node;
-    if (isNode(sel, 'Ampersand') && n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+    if (isNode(sel, N.Ampersand) && n.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return;
     }
     if (!n.hasFlag(F_VISIBLE)) {
       n.addFlag(F_VISIBLE);
     }
-    if (isNode(sel, 'SelectorList')) {
+    if (isNode(sel, N.SelectorList)) {
       const list = sel as SelectorList;
       if (Array.isArray(list.value)) {
         for (const item of list.value) {
@@ -181,7 +182,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       return;
     }
-    if (isNode(sel, 'ComplexSelector')) {
+    if (isNode(sel, N.ComplexSelector)) {
       const comps = (sel as ComplexSelector).value;
       if (Array.isArray(comps)) {
         for (const c of comps) {
@@ -203,7 +204,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return sel;
     }
     const materialize = (node: Selector): Selector => {
-      if (isNode(node, 'Ampersand')) {
+      if (isNode(node, N.Ampersand)) {
         const amp = node as Ampersand;
         const n = amp as unknown as Node;
         if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -214,22 +215,22 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         return node.copy(true) as Selector;
       }
-      if (isNode(node, 'SelectorList')) {
+      if (isNode(node, N.SelectorList)) {
         const list = node as SelectorList;
         return SelectorList.create(list.value.map(item => materialize(item as Selector))).inherit(node) as Selector;
       }
-      if (isNode(node, 'ComplexSelector')) {
+      if (isNode(node, N.ComplexSelector)) {
         const complex = node as ComplexSelector;
         const parts: ComplexSelectorComponent[] = [];
         for (const part of complex.value) {
-          if (isNode(part, 'Ampersand')) {
+          if (isNode(part, N.Ampersand)) {
             const amp = part as Ampersand;
             const n = amp as unknown as Node;
             if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
               const resolved = amp.getResolvedSelector();
               if (resolved && !(resolved instanceof Nil)) {
                 const repl = materialize(resolved as Selector);
-                if (isNode(repl, 'ComplexSelector')) {
+                if (isNode(repl, N.ComplexSelector)) {
                   parts.push(...(repl as ComplexSelector).value.map(c => c.copy(true) as ComplexSelectorComponent));
                 } else {
                   parts.push(repl as ComplexSelectorComponent);
@@ -257,11 +258,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!sel || sel instanceof Nil) {
       return false;
     }
-    if (isNode(sel, 'Ampersand')) {
+    if (isNode(sel, N.Ampersand)) {
       return true;
     }
-    if (isNode(sel, 'SelectorList')) {
-      return (sel as SelectorList).value.every(item => isNode(item, 'Ampersand'));
+    if (isNode(sel, N.SelectorList)) {
+      return (sel as SelectorList).value.every(item => isNode(item, N.Ampersand));
     }
     return false;
   }
@@ -270,14 +271,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!sel || sel instanceof Nil) {
       return false;
     }
-    if (isNode(sel, 'SelectorList')) {
+    if (isNode(sel, N.SelectorList)) {
       return (sel as SelectorList).value.some(item => item.hasFlag(F_EXTENDED));
     }
     return (sel as Selector).hasFlag(F_EXTENDED);
   }
 
   private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
-    if (!isNode(sel, 'SelectorList')) {
+    if (!isNode(sel, N.SelectorList)) {
       return (sel.hasFlag(F_EXTENDED) && !sel.hasFlag(F_EXTEND_TARGET)) ? sel : new Nil();
     }
     const seen = new Set<string>();
@@ -345,7 +346,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const disableTargetFilteringForTopLevelList = (
       this.hasFlag(F_EXTENDED)
       && !(renderSelector instanceof Nil)
-      && isNode(renderSelector as Selector, 'SelectorList')
+      && isNode(renderSelector as Selector, N.SelectorList)
     );
     options.referenceFilterTargets = (
       options.referenceMode === true
@@ -391,7 +392,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         // Check frames after the parent ruleset for any root-only at-rules
         for (let i = parentRulesetIndex + 1; i < context.frames.length; i++) {
           const frame = context.frames[i];
-          if (isNode(frame, 'AtRule') && (frame as AtRule).isRootOnly()) {
+          if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
             shouldInheritSelector = false;
             break;
           }
@@ -409,8 +410,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         let selectorForImplicit = selector;
         const shouldCanonicalizeSelectorList = (
           !context.opts.collapseNesting
-          && isNode(selector, 'SelectorList')
-          && (selector as SelectorList).value.some(item => isNode(item, 'ComplexSelector'))
+          && isNode(selector, N.SelectorList)
+          && (selector as SelectorList).value.some(item => isNode(item, N.ComplexSelector))
         );
         if (shouldCanonicalizeSelectorList) {
           const synthetic = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
@@ -447,16 +448,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           const childRules = node.value.rules;
           if (childRules && !childRules.preEvaluated) {
             context.rulesetFrames.push(node as Ruleset);
+            if (extendRoot) {
+              context.extendRoots.registerRoot(childRules, extendRoot);
+            }
             const preEvaldRules = childRules.preEval(context);
             if (isThenable(preEvaldRules)) {
               return (preEvaldRules as Promise<Rules>).then((rules) => {
                 context.rulesetFrames.pop();
                 node.value.rules = rules;
+                if (extendRoot && rules !== childRules) {
+                  context.extendRoots.registerRoot(rules, extendRoot);
+                }
                 return node;
               });
             }
             context.rulesetFrames.pop();
             node.value.rules = preEvaldRules as Rules;
+            if (extendRoot && preEvaldRules !== childRules) {
+              context.extendRoots.registerRoot(preEvaldRules as Rules, extendRoot);
+            }
           }
           return node;
         }

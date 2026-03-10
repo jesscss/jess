@@ -6,10 +6,12 @@ import { Url } from './url.js';
 import { type Context } from '../context.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
+import type { Sequence } from './sequence.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -213,13 +215,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         nodeOptions.referenceMode = true;
         const maybeRulesValue = node.value as { rules?: Node } | undefined;
         const rules = maybeRulesValue?.rules;
-        if (rules && isNode(rules, 'Rules')) {
+        if (rules && isNode(rules, N.Rules)) {
           markReferenceMode(rules);
         }
         const children = node.value;
         if (Array.isArray(children)) {
           for (const child of children) {
-            if (isNode(child, ['Rules', 'Ruleset', 'AtRule'])) {
+            if (isNode(child, N.Rules | N.Ruleset | N.AtRule)) {
               markReferenceMode(child as Node);
             }
           }
@@ -372,10 +374,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           let modifiedRules = rules.clone(true) as Rules;
           // withValues.node might be a Reference, so evaluate it first to get Rules
           let withRulesNode = withValues.node;
-          if (isNode(withRulesNode, 'Reference')) {
+          if (isNode(withRulesNode, N.Reference)) {
           // Evaluate the reference to get the actual Rules
             const evaluated = await withRulesNode.eval(context);
-            if (!isNode(evaluated, 'Collection')) {
+            if (!isNode(evaluated, N.Collection)) {
               throw new Error('with/set node must evaluate to a Collection');
             }
             withRulesNode = evaluated;
@@ -404,14 +406,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // - For linear lookup: injected vars come first, so they're found first
           // - For scope lookup: original is replaced, so injected value wins
           for (const injectedNode of withRules.value) {
-            if (isNode(injectedNode, 'VarDeclaration')) {
+            if (isNode(injectedNode, N.VarDeclaration)) {
               const varName = injectedNode.value.name?.toString();
               if (varName) {
               // Use the registry for efficient lookup instead of linear search
                 const declarations = declarationRegistry.index.get(varName);
                 if (declarations) {
                 // Find the first VarDeclaration in the set (sorted by index)
-                  const existingDecl = Array.from(declarations).find(decl => isNode(decl, 'VarDeclaration'));
+                  const existingDecl = Array.from(declarations).find(decl => isNode(decl, N.VarDeclaration));
 
                   if (existingDecl) {
                   // Remove the old declaration from the registry
@@ -602,7 +604,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           if (shouldReRegisterLocalRootRulesets) {
             const finalRulesRegistry = finalRules.getRegistry('ruleset');
             for (const maybeRuleset of finalRules.nodes()) {
-              if (isNode(maybeRuleset, 'Ruleset')) {
+              if (isNode(maybeRuleset, N.Ruleset)) {
                 finalRulesRegistry.add(maybeRuleset as Ruleset);
               }
             }
@@ -642,13 +644,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     let wrapped: Node = sourceNode;
-    const postludeNodes = isNode(postlude, ['Sequence', 'List']) ? postlude.value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? (postlude as Sequence).value : [postlude];
 
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       const body = Rules.create([wrapped]);
 
-      if (isNode(current, 'Call')) {
+      if (isNode(current, N.Call)) {
         const callName = String(current.value.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
           const args = current.value.args?.value ?? [];
@@ -682,11 +684,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return rules;
     }
-    const postludeNodes = isNode(postlude, ['Sequence', 'List']) ? postlude.value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? (postlude as Sequence).value : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
-      if (isNode(current, 'Call')) {
+      if (isNode(current, N.Call)) {
         const callName = String(current.value.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
           const args = current.value.args?.value ?? [];

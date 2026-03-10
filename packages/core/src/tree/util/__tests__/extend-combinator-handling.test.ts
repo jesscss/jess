@@ -1,6 +1,7 @@
 import { extendSelector, tryExtendSelector } from '../extend.js';
 import { el, sel, compound, co, sellist, rules, ruleset, extend, ExtendFlag } from '../../../index.js';
 import { isNode } from '../is-node.js';
+import { N } from '../../node-type.js';
 import { type Combinator, type Combinators } from '../../combinator.js';
 import { Context } from '../../../context.js';
 
@@ -26,10 +27,10 @@ describe('Combinator Preservation in Extensions', () => {
       const result = extendSelector(complexSelector, target, extendWith, true);
 
       // Verify the result contains the original combinator
-      expect(isNode(result, 'ComplexSelector')).toBe(true);
-      if (isNode(result, 'ComplexSelector')) {
+      expect(isNode(result, N.ComplexSelector)).toBe(true);
+      if (isNode(result, N.ComplexSelector)) {
         const components = result.value;
-        const foundCombinator = components.find(c => isNode(c, 'Combinator'));
+        const foundCombinator = components.find(c => isNode(c, N.Combinator));
         expect(foundCombinator).toBeDefined();
         expect(foundCombinator?.value).toBe(combinator);
       }
@@ -70,10 +71,10 @@ describe('Combinator Preservation in Extensions', () => {
       const result = extendSelector(complexSelector, target, extendWith, true);
 
       // Verify both combinators are preserved
-      expect(isNode(result, 'ComplexSelector')).toBe(true);
-      if (isNode(result, 'ComplexSelector')) {
+      expect(isNode(result, N.ComplexSelector)).toBe(true);
+      if (isNode(result, N.ComplexSelector)) {
         const components = result.value;
-        const combinators = components.filter(c => isNode(c, 'Combinator')) as Combinator[];
+        const combinators = components.filter(c => isNode(c, N.Combinator)) as Combinator[];
         expect(combinators).toHaveLength(2);
         expect(combinators[0]?.value).toBe('>');
         expect(combinators[1]?.value).toBe('+');
@@ -90,7 +91,7 @@ describe('Combinator Preservation in Extensions', () => {
       const result = extendSelector(selector1, selector2, el('.extended'), false);
 
       // Should create a selector list with both original and extended
-      expect(isNode(result, 'SelectorList')).toBe(true);
+      expect(isNode(result, N.SelectorList)).toBe(true);
     });
 
     it('should NOT match complex selectors with different combinators', () => {
@@ -98,9 +99,8 @@ describe('Combinator Preservation in Extensions', () => {
       const selector1 = sel([el('.parent'), co('>'), el('.child')]);
       const selector2 = sel([el('.parent'), co('+'), el('.child')]);
 
-      expect(() => {
-        extendSelector(selector1, selector2, el('.extended'), false);
-      }).toThrow('No match found for target selector');
+      const result = extendSelector(selector1, selector2, el('.extended'), false);
+      expect(result).toBe('NOT_FOUND');
     });
 
     it('should NOT match with tryExtendSelector when combinators differ (space vs +)', () => {

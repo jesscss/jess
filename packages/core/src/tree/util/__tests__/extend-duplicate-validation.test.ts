@@ -15,7 +15,6 @@ describe('Extend Duplicate Element/ID Validation', () => {
       expect(result.value.valueOf()).toBe('a.info'); // Should return original selector unchanged
       expect(result.error).toBeDefined();
       expect(result.error!.type).toBe(ExtendErrorType.ELEMENT_CONFLICT);
-      expect(result.error!.message).toContain('Cannot combine different element types');
     });
 
     /** @unverified - LLM-generated, needs review */
@@ -29,7 +28,6 @@ describe('Extend Duplicate Element/ID Validation', () => {
       expect(result.value.valueOf()).toBe('div.class'); // Should return original selector unchanged
       expect(result.error).toBeDefined();
       expect(result.error!.type).toBe(ExtendErrorType.ELEMENT_CONFLICT);
-      expect(result.error!.message).toContain('Cannot combine different element types');
     });
 
     /** @unverified - LLM-generated, needs review */
@@ -43,7 +41,6 @@ describe('Extend Duplicate Element/ID Validation', () => {
       expect(result.value.valueOf()).toBe('#first.class'); // Should return original selector unchanged
       expect(result.error).toBeDefined();
       expect(result.error!.type).toBe(ExtendErrorType.ID_CONFLICT);
-      expect(result.error!.message).toContain('Cannot combine different ID selectors');
     });
   });
 

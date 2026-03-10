@@ -5,6 +5,7 @@ import {
 import { SimpleSelector } from './selector-simple.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
@@ -43,7 +44,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const { name, arg } = this.value;
 
     // Check if this is a pseudo-selector that contains selectors
-    const hasSelectorListArg = isNode(arg, 'SelectorList');
+    const hasSelectorListArg = isNode(arg, N.SelectorList);
     const hasSelectorArg = isSelectorNode(arg);
 
     if (hasSelectorArg || hasSelectorListArg) {
@@ -80,7 +81,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const w = options.writer!;
     let { name, arg } = this.value;
     const mark = w.mark();
-    if (this.generated && name === ':is' && arg && isNode(arg, 'SelectorList')) {
+    if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
       out = out.replace(/\n\s*/g, ' ');
       if (!out.includes(',')) {
@@ -96,7 +97,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     w.add(name, this);
     if (arg) {
       w.add('(');
-      if (isNode(arg, 'SelectorList')) {
+      if (isNode(arg, N.SelectorList)) {
         let out = w.capture(() => arg.toString(options));
         out = out.replace(/\n\s*/g, ' ');
         w.add(out, arg);
@@ -117,8 +118,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   //   let keys = this._keys
   //   if (!keys) {
   //     let { arg } = this
-  //     if (arg && (arg instanceof Selector || isNode(arg, 'SelectorList'))) {
-  //       if (isNode(arg, 'SelectorList')) {
+  //     if (arg && (arg instanceof Selector || isNode(arg, N.SelectorList))) {
+  //       if (isNode(arg, N.SelectorList)) {
   //         /**
   //          * If an :is starts with an ampersand with no eval'd selector,
   //          * it's relative, and can't be flattened.

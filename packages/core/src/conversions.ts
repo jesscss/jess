@@ -1,5 +1,6 @@
 import { Dimension, Num, Sequence, Operation, List } from './tree/index.js';
 import { isNode } from './tree/util/is-node.js';
+import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -243,7 +244,7 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
 export const splitSequence = (): PreprocessParams => {
   return (args: any[], context: Context): any[] => {
     // Only process if we have exactly one argument that is a Sequence
-    if (args.length !== 1 || !isNode(args[0], 'Sequence')) {
+    if (args.length !== 1 || !isNode(args[0], N.Sequence)) {
       return args;
     }
 

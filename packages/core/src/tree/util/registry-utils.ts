@@ -2,6 +2,7 @@ import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 import type { Mixin } from '../mixin.js';
 import { Nil } from '../nil.js';
 import { Node } from '../node.js';
@@ -326,7 +327,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
    * Add a ruleset to be indexed later
    */
   override add(ruleset: Ruleset) {
-    if (isNode(ruleset.value.selector, 'Selector')) {
+    if (isNode(ruleset.value.selector, N.Selector)) {
       this.pendingItems.add(ruleset);
     }
   }
@@ -385,7 +386,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
     let keySet = keys instanceof Set ? keys : new Set(keys);
     for (const c of candidates) {
       let sel = c.selector;
-      if (!sel || isNode(sel, 'Nil')) {
+      if (!sel || isNode(sel, N.Nil)) {
         continue;
       }
       // Avoid Set.prototype.isSubsetOf (not available in our TS lib target)
@@ -495,19 +496,19 @@ export class MixinRegistry extends Registry<
 
   override indexPendingItems() {
     for (const mixin of this.pendingItems) {
-      if (isNode(mixin, 'Ruleset')) {
+      if (isNode(mixin, N.Ruleset)) {
         // Use the ruleset's own selector, not the implicit selector with parent context
         // This ensures nested rulesets are indexed by their local keys, not parent keys
         // If the selector has been evaluated/flattened, use sourceNode which has the original
         let selector = mixin.value.selector;
-        if (isNode(selector, 'Nil')) {
+        if (isNode(selector, N.Nil)) {
           continue;
         }
         // `&` rulesets are structural nesting selectors, not callable mixins.
         // Determine callability from ownSelector (before implicit selector resolution) when available.
         const ownSelector = (mixin.options as { ownSelector?: Selector } | undefined)?.ownSelector;
-        const callableSelector = ownSelector && !isNode(ownSelector, 'Nil') ? ownSelector : selector;
-        if (isNode(callableSelector, 'Ampersand')) {
+        const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
+        if (isNode(callableSelector, N.Ampersand)) {
           continue;
         }
         // Prefer evaluated selector keys; they resolve interpolations (e.g. .@{a0} -> .\123).
@@ -519,7 +520,7 @@ export class MixinRegistry extends Registry<
             : (sourceSelector?.visibleKeySet?.size ? sourceSelector : selector)
         ) as Selector;
         let keySetToUse: Set<string> | undefined;
-        if (isNode(selectorToIndex, 'SelectorList')) {
+        if (isNode(selectorToIndex, N.SelectorList)) {
           /** Selector list's selectors are individually registered */
           for (const sel of selectorToIndex.value) {
             this._indexSelectorStart(mixin, sel.visibleKeySet);
@@ -535,15 +536,15 @@ export class MixinRegistry extends Registry<
           keySetToUse
           && keySetToUse.size > 0
           && ownSelector
-          && !isNode(ownSelector, 'Nil')
+          && !isNode(ownSelector, N.Nil)
         ) {
           const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
           const ownKeys = Array.from((ownSelector as Selector).visibleKeySet ?? []);
-          const parentSelector = isNode(mixin.parent?.parent, 'Ruleset')
+          const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).value.selector
             : undefined;
           const parentKeys = (
-            parentSelector && !isNode(parentSelector, 'Nil')
+            parentSelector && !isNode(parentSelector, N.Nil)
               ? Array.from(parentSelector.visibleKeySet ?? [])
               : []
           );
@@ -564,7 +565,7 @@ export class MixinRegistry extends Registry<
           if (
             keySetToUse.size === 0
             && ownSelector
-            && !isNode(ownSelector, 'Nil')
+            && !isNode(ownSelector, N.Nil)
           ) {
             const ownKeySet = (ownSelector as Selector).visibleKeySet;
             if (ownKeySet?.size) {
@@ -607,12 +608,12 @@ export class MixinRegistry extends Registry<
 
     // Get the selector's keySet and extract indexable keys (same as _indexSelectorStart)
     let indexableKeys: string[] = [];
-    if (isNode(value, 'Ruleset')) {
+    if (isNode(value, N.Ruleset)) {
       const selector = value.value.selector;
-      if (isNode(selector, 'Nil')) {
+      if (isNode(selector, N.Nil)) {
         return false;
       }
-      if (isNode(selector, 'SelectorList')) {
+      if (isNode(selector, N.SelectorList)) {
         // For selector lists, check if any selector matches
         return selector.value.some((sel) => {
           const selKeys = Array.from(sel.keySet).filter(key =>
@@ -714,16 +715,16 @@ export class MixinRegistry extends Registry<
         return true;
       }
       for (const param of params.value) {
-        if (isNode(param, 'Rest')) {
+        if (param.type === 'Rest') {
           continue;
         }
-        if (isNode(param, 'VarDeclaration')) {
+        if (isNode(param, N.VarDeclaration)) {
           if (param.value.value instanceof Nil) {
             return false;
           }
           continue;
         }
-        if (isNode(param, 'Any') && param.options.role === 'property') {
+        if (isNode(param, N.Any) && param.options.role === 'property') {
           return false;
         }
         return false;
@@ -758,7 +759,7 @@ export class MixinRegistry extends Registry<
             hasTarget,
             filter: options?.filter
           } as FindOptions);
-          if (isNode(maybeVar, 'VarDeclaration')) {
+          if (isNode(maybeVar, N.VarDeclaration)) {
             const resolvedValue = String(maybeVar.value.value.valueOf?.() ?? maybeVar.value.value ?? '');
             if (resolvedValue === startKey) {
               resolvedInterpolatedStartEntries.push(...indexedEntries);
@@ -816,8 +817,8 @@ export class MixinRegistry extends Registry<
           // NOTE: We should search inside #theme even if we're not adding it as a candidate (for compound paths)
           if (search.length > 0 && (arraysEqual(match, [startKey!]) || match.length === 0)) {
             if (
-              (isNode(value, 'Ruleset'))
-              || (isNode(value, 'Mixin') && mixinHasNoRequiredParams(value as Mixin))
+              (isNode(value, N.Ruleset))
+              || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
@@ -857,8 +858,8 @@ export class MixinRegistry extends Registry<
               continue;
             }
             if (
-              (isNode(value, 'Ruleset'))
-              || (isNode(value, 'Mixin') && mixinHasNoRequiredParams(value as Mixin))
+              (isNode(value, N.Ruleset))
+              || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
@@ -905,8 +906,8 @@ export class MixinRegistry extends Registry<
           const candidateNode = candidate as Mixin | Ruleset;
           // Only check candidates that were added by _searchRulesChildren (not in allEntriesToCheck)
           if (!candidatesBeforeChildren.has(candidateNode)) {
-            const isMixin = isNode(candidateNode, 'Mixin');
-            const isRuleset = isNode(candidateNode, 'Ruleset');
+            const isMixin = isNode(candidateNode, N.Mixin);
+            const isRuleset = isNode(candidateNode, N.Ruleset);
             const hasNoParams = isMixin && mixinHasNoRequiredParams(candidateNode as Mixin);
             // Check if this candidate matches the startKey.
             // For rulesets discovered via child-search, key-set membership is the reliable signal.
@@ -915,8 +916,8 @@ export class MixinRegistry extends Registry<
               : (isRuleset ? candidateNode.value.selector.valueOf?.() : '');
             const matchesStartKey = isRuleset
               ? (
-                  (!isNode(candidateNode.value.selector, 'Nil') && candidateNode.value.selector.visibleKeySet.has(startKey!))
-                  || (!isNode(candidateNode.value.selector, 'Nil') && candidateNode.value.selector.keySet.has(startKey!))
+                  (!isNode(candidateNode.value.selector, N.Nil) && candidateNode.value.selector.visibleKeySet.has(startKey!))
+                  || (!isNode(candidateNode.value.selector, N.Nil) && candidateNode.value.selector.keySet.has(startKey!))
                 )
               : candidateKey === startKey;
 
@@ -962,7 +963,7 @@ export class MixinRegistry extends Registry<
          * which means these rules can reach into the parent file that imports
          * this one.
          */
-        if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
+        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
         }
@@ -1037,7 +1038,7 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
         /**
          * If we reach an import boundary, skip the scope until we get to the top level.
          */
-        if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
+        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           findRoot = true;
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
@@ -1347,7 +1348,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
          * which means these rules can reach into the parent file that imports
          * this one.
          */
-        if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
+        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
         }

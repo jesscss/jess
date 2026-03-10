@@ -23,6 +23,7 @@ import {
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 
 let context: Context;
 
@@ -307,7 +308,7 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, 'VarDeclaration') && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -391,7 +392,7 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, 'VarDeclaration') && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -632,7 +633,7 @@ describe('Rules', () => {
         // Structure after eval: [vardecl (0), mixin (1), boxRuleset (2), box2Ruleset (3), box3Ruleset (4)]
         // Access rulesets directly by index
         let boxRuleset = node.at(2);
-        if (!boxRuleset || !isNode(boxRuleset, 'Ruleset')) {
+        if (!boxRuleset || !isNode(boxRuleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
         // After evaluation, rulesets are still Rulesets, access via .value.rules
@@ -641,7 +642,7 @@ describe('Rules', () => {
           throw new Error('Expected .box ruleset to have rules');
         }
         // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
-        if (!isNode(boxRules, 'Rules')) {
+        if (!isNode(boxRules, N.Rules)) {
           throw new Error(`Expected Rules, got ${(boxRules as any)?.type || 'undefined'}`);
         }
         expect(boxRules.value.length).toBe(2);
@@ -657,7 +658,7 @@ describe('Rules', () => {
         }
         let boxMixinResult = await boxMixinCall.eval(context);
         // Mixin call returns Rules containing the mixin's rules
-        if (!isNode(boxMixinResult, 'Rules')) {
+        if (!isNode(boxMixinResult, N.Rules)) {
           throw new Error('Expected mixin call to return Rules');
         }
         let boxMixinRules = boxMixinResult;
@@ -667,14 +668,14 @@ describe('Rules', () => {
 
         // Find the .box3 ruleset (index 4)
         let box3Ruleset = node.at(4);
-        if (!box3Ruleset || !isNode(box3Ruleset, 'Ruleset')) {
+        if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
         let box3Rules = box3Ruleset.value.rules;
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
-        if (!isNode(box3Rules, 'Rules')) {
+        if (!isNode(box3Rules, N.Rules)) {
           throw new Error(`Expected Rules, got ${(box3Rules as any)?.type || 'undefined'}`);
         }
         expect(box3Rules.value.length).toBe(2);
@@ -689,7 +690,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call at index 1');
         }
         let box3MixinResult = await box3MixinCall.eval(context);
-        if (!isNode(box3MixinResult, 'Rules')) {
+        if (!isNode(box3MixinResult, N.Rules)) {
           throw new Error('Expected mixin call to return Rules');
         }
         let box3MixinRules = box3MixinResult;

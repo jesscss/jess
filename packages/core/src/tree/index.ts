@@ -16,6 +16,7 @@ import { TreeContext } from '../context.js';
 import { compare } from './util/compare.js';
 
 export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
+export { N } from './node-type.js';
 
 import { Selector } from './selector.js';
 

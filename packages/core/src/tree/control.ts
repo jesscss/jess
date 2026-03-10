@@ -7,11 +7,13 @@ import { Num } from './number.js';
 import { AssignmentType } from './declaration.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { Range } from './range.js';
 import { List } from './list.js';
+import type { Mixin } from './mixin.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -57,11 +59,11 @@ type LegacyLoopValue = {
 };
 
 function parsePatternNode(patternNode: Node): ForPattern {
-  if (isNode(patternNode, 'VarDeclaration')) {
+  if (isNode(patternNode, N.VarDeclaration)) {
     return { kind: 'single', value: patternNode };
   }
-  if (isNode(patternNode, 'Block') && patternNode.options?.type === 'square' && isNode(patternNode.value, 'List')) {
-    const values = patternNode.value.value.filter((entry): entry is VarDeclaration => isNode(entry, 'VarDeclaration'));
+  if (patternNode.type === 'Block' && patternNode.options?.type === 'square' && isNode(patternNode.value, N.List)) {
+    const values = patternNode.value.value.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
     if (values.length === 1) {
       return { kind: 'single', value: values[0]! };
     }
@@ -69,8 +71,8 @@ function parsePatternNode(patternNode: Node): ForPattern {
       return { kind: 'tuple', values: values as [VarDeclaration, ...VarDeclaration[]] };
     }
   }
-  if (isNode(patternNode, ['List', 'Sequence'])) {
-    const values = patternNode.value.filter((entry): entry is VarDeclaration => isNode(entry, 'VarDeclaration'));
+  if (isNode(patternNode, N.List | N.Sequence)) {
+    const values = (patternNode as List).value.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
     if (values.length === 1) {
       return { kind: 'single', value: values[0]! };
     }
@@ -86,13 +88,13 @@ function parseLegacyHeader(header: Sequence): {
   iterable: ForIterable;
 } {
   const headerNode = header.value[0];
-  const inner = isNode(headerNode, 'Paren') && headerNode.value
+  const inner = isNode(headerNode, N.Paren) && headerNode.value
     ? headerNode.value
     : headerNode;
-  const sequence = isNode(inner, 'Sequence')
+  const sequence = isNode(inner, N.Sequence)
     ? inner.value
     : [inner].filter(Boolean) as Node[];
-  const ofIndex = sequence.findIndex(node => isNode(node, 'Any') && node.valueOf() === 'of');
+  const ofIndex = sequence.findIndex(node => isNode(node, N.Any) && node.valueOf() === 'of');
   if (ofIndex <= 0 || ofIndex >= sequence.length - 1) {
     throw new Error('Invalid $for header: expected "<pattern> of <iterable>"');
   }
@@ -105,7 +107,7 @@ function parseLegacyHeader(header: Sequence): {
     ? iterableParts[0]!
     : new Sequence(iterableParts);
   let iterable: ForIterable;
-  if (isNode(iterableNode, 'Range')) {
+  if (isNode(iterableNode, N.Range)) {
     iterable = {
       kind: 'range',
       start: iterableNode.value.start,
@@ -158,37 +160,37 @@ function iterableToNode(iterable: ForIterable): Node {
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
-  if (isNode(input, 'Expression')) {
+  if (isNode(input, N.Expression)) {
     yield* resolveEntries(await input.value.eval(context), context);
     return;
   }
-  if (isNode(input, 'Call')) {
+  if (isNode(input, N.Call)) {
     const evald = await input.eval(context);
-    if (isNode(evald, 'Call')) {
+    if (isNode(evald, N.Call)) {
       yield [evald, 0];
       return;
     }
     yield* resolveEntries(evald, context);
     return;
   }
-  if ((isNode(input, 'Sequence') || isNode(input, 'List')) && Array.isArray(input.value)) {
+  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.value)) {
     for (let key = 0; key < input.value.length; key++) {
       const value = input.value[key]!;
       yield [value, key];
     }
     return;
   }
-  if (isNode(input, ['Rules', 'Ruleset', 'Mixin'])) {
-    const rules = isNode(input, 'Rules')
+  if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
+    const rules = isNode(input, N.Rules)
       ? input.value
-      : isNode(input, 'Ruleset')
+      : isNode(input, N.Ruleset)
         ? (input.value.rules?.value ?? [])
-        : (input.value.rules?.value ?? []);
+        : ((input as Mixin).value.rules?.value ?? []);
     for (const rule of rules) {
-      if (!rule || isNode(rule, 'Comment')) {
+      if (!rule || isNode(rule, N.Comment)) {
         continue;
       }
-      if (!isNode(rule, 'Declaration')) {
+      if (!isNode(rule, N.Declaration)) {
         continue;
       }
       yield [rule.value.value, rule.value.name];
@@ -341,9 +343,9 @@ export class For extends Node<StructuredLoopValue> {
         }
         counter++;
         const result = await loopRules.eval(context);
-        if (isNode(result, 'Rules')) {
+        if (isNode(result, N.Rules)) {
           for (const outNode of result.value) {
-            if (isNode(outNode, 'Declaration')) {
+            if (isNode(outNode, N.Declaration)) {
               const normalizedFromAssign = outNode.options.normalizedFromAssign;
               const outName = String(outNode.value.name);
               const isMergedAssignment =
@@ -357,24 +359,24 @@ export class For extends Node<StructuredLoopValue> {
                 let firstMatch = -1;
                 for (let i = 0; i < accumulatedNodes.length; i++) {
                   const prev = accumulatedNodes[i]!;
-                  if (isNode(prev, 'Declaration') && String(prev.value.name) === outName) {
+                  if (isNode(prev, N.Declaration) && String(prev.value.name) === outName) {
                     firstMatch = i;
                     break;
                   }
                 }
                 if (firstMatch >= 0) {
                   const prev = accumulatedNodes[firstMatch]!;
-                  if (isNode(prev, 'Declaration')) {
+                  if (isNode(prev, N.Declaration)) {
                     const prevValue = prev.value.value;
                     const nextValue = outNode.value.value;
                     if (
                       normalizedFromAssign === AssignmentType.Add
                       || normalizedFromAssign === AssignmentType.MergeList
                     ) {
-                      const prevItems = isNode(prevValue, 'List')
+                      const prevItems = isNode(prevValue, N.List)
                         ? prevValue.value
                         : [prevValue];
-                      const nextItems = isNode(nextValue, 'List')
+                      const nextItems = isNode(nextValue, N.List)
                         ? nextValue.value
                         : [nextValue];
                       const nextAlreadyIncludesPrev =
@@ -385,10 +387,10 @@ export class For extends Node<StructuredLoopValue> {
                         : [...prevItems, ...nextItems];
                       outNode.value.value = new List(mergedItems).inherit(outNode.value.value);
                     } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
-                      const prevItems = isNode(prevValue, 'Sequence')
+                      const prevItems = isNode(prevValue, N.Sequence)
                         ? prevValue.value
                         : [prevValue];
-                      const nextItems = isNode(nextValue, 'Sequence')
+                      const nextItems = isNode(nextValue, N.Sequence)
                         ? nextValue.value
                         : [nextValue];
                       const nextAlreadyIncludesPrev =
@@ -403,7 +405,7 @@ export class For extends Node<StructuredLoopValue> {
                   accumulatedNodes[firstMatch] = outNode;
                   for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
                     const prev = accumulatedNodes[i]!;
-                    if (isNode(prev, 'Declaration') && String(prev.value.name) === outName) {
+                    if (isNode(prev, N.Declaration) && String(prev.value.name) === outName) {
                       accumulatedNodes.splice(i, 1);
                     }
                   }
@@ -413,7 +415,7 @@ export class For extends Node<StructuredLoopValue> {
                 // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
                 let firstNestedRuleset = -1;
                 for (let i = 0; i < accumulatedNodes.length; i++) {
-                  if (isNode(accumulatedNodes[i]!, ['Ruleset', 'Rules'])) {
+                  if (isNode(accumulatedNodes[i]!, N.Ruleset | N.Rules)) {
                     firstNestedRuleset = i;
                     break;
                   }

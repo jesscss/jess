@@ -8,6 +8,7 @@ import {
 import type { Context } from '../context.js';
 import { type Nil } from './nil.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
@@ -53,7 +54,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
     for (const component of this.value) {
       // Skip combinators - they don't contribute keys
-      if (isNode(component, 'Combinator')) {
+      if (isNode(component, N.Combinator)) {
         continue;
       }
 
@@ -95,9 +96,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
       /** Add some combinator spacing */
-      if (isNode(component, 'Combinator')) {
+      if (isNode(component, N.Combinator)) {
         /** Skip spacing if the previous node is a Nil */
-        if (isNode(value[i - 1], 'Nil')) {
+        if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
         let co = component.value;

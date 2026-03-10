@@ -4,6 +4,7 @@ import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 
@@ -49,7 +50,7 @@ export class Operation extends Node<OperationValue> {
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, 'Operation') || isNode(r, 'Operation')) {
+        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
           n.value = [l, op, r];
@@ -59,7 +60,7 @@ export class Operation extends Node<OperationValue> {
         const isPreserveMode = unitMode === 'preserve';
 
         // In preserve mode, catch unit errors and return calc() call
-        if (isPreserveMode && isNode(l, 'Dimension') && isNode(r, 'Dimension')) {
+        if (isPreserveMode && isNode(l, N.Dimension) && isNode(r, N.Dimension)) {
           try {
             let out = l.operate(r, op, context);
             out.pre = left.pre;

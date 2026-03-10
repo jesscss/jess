@@ -198,8 +198,11 @@ export class CssActionsParser extends AdvancedActionsParser {
     const defaultConfig: CssParserConfig = {
       maxLookahead: 1,
       lookaheadStrategy: new LLStarLookaheadStrategy({
-        // suppress ambiguity logging
-        // logging() {}
+        logging(message: string) {
+          if (process.env.TEST === 'true') {
+            console.log(message);
+          }
+        }
       })
     };
 

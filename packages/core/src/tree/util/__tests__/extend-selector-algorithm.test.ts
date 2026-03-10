@@ -1,6 +1,7 @@
 import { el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
 import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
 import { isNode } from '../is-node.js';
+import { N } from '../../node-type.js';
 import { getImplicitSelector } from '../selector-utils.js';
 
 describe('Extend Selector Tests', () => {
@@ -289,7 +290,7 @@ describe('Extend Selector Tests', () => {
 
       expect(rootResultStr).toBe('.g,.i.j');
       // Extract the :is() argument to compare
-      if (isNode(isResult, 'PseudoSelector')) {
+      if (isNode(isResult, N.PseudoSelector)) {
         const pseudo = isResult as PseudoSelector;
         if (pseudo.value && typeof pseudo.value === 'object' && 'name' in pseudo.value && pseudo.value.name === ':is' && 'arg' in pseudo.value && pseudo.value.arg) {
           const isArgStr = (pseudo.value.arg as Selector).valueOf();
@@ -795,7 +796,7 @@ describe('Extend Selector Tests', () => {
     describe('(a)-(d) ampersand present, valueOf uses it, exact .bb does not match', () => {
       it('(a) implicit ampersand is present on selector (first component is Ampersand with stored selector)', () => {
         const withImplicit = getImplicitSelector(el('.bb'), el('.bb'), false);
-        expect(isNode(withImplicit, 'ComplexSelector')).toBe(true);
+        expect(isNode(withImplicit, N.ComplexSelector)).toBe(true);
         const first = (withImplicit as any).value?.[0];
         expect(first?.type).toBe('Ampersand');
         expect(first?.getResolvedSelector?.()).toBeDefined();
@@ -848,7 +849,7 @@ describe('Extend Selector Tests', () => {
       expect(out).toContain('.x');
       expect(out).toContain('.b');
       // Should preserve structure (implicit & not materialized in serialization when same context)
-      expect(isNode(result, 'ComplexSelector')).toBe(true);
+      expect(isNode(result, N.ComplexSelector)).toBe(true);
       const first = (result as any).value?.[0];
       expect(first?.type).toBe('Ampersand');
     });
@@ -863,7 +864,7 @@ describe('Extend Selector Tests', () => {
 
       const result = tryExtendSelector(target, el('.replace'), el('.rep_ace'), true);
       expect(result.error).toBeUndefined();
-      expect(isNode(result.value, 'SelectorList')).toBe(true);
+      expect(isNode(result.value, N.SelectorList)).toBe(true);
       const list = result.value as SelectorList;
       expect(list.value.length).toBeGreaterThanOrEqual(2);
       const str = result.value.valueOf();

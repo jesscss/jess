@@ -3,6 +3,7 @@ import { type Quoted } from './quoted.js';
 import { type Any } from './any.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 
 /**
  * e.g. url('foo.png')
@@ -15,7 +16,7 @@ export class Url extends Node<Quoted | Any> {
    */
   override valueOf(): string {
     let value: Node | string = this.value;
-    if (isNode(value, 'Quoted')) {
+    if (isNode(value, N.Quoted)) {
       value = value.value;
       if (isNode(value)) {
         return String(value.value);

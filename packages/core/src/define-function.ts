@@ -1,6 +1,7 @@
 import isPlainObject from 'lodash-es/isPlainObject.js';
 import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node.js';
+import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
@@ -310,7 +311,7 @@ export function defineFunction<
 
 /** This will be called internally by Jess to functions created with defineFunction */
 export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
-  const listArg = args.length === 1 && isNode(args[0], 'List')
+  const listArg = args.length === 1 && isNode(args[0], N.List)
     ? args[0] as List
     : undefined;
   args = listArg ? [...listArg.value] : args;
@@ -738,10 +739,10 @@ async function buildCallWithContextPositionalArgs(
         // Validate AFTER evaluation but BEFORE conversion
         validateArgumentIfNeeded(processedValue, def, 'Argument');
 
-        const callerName = context.caller && isNode(context.caller, 'Call')
+        const callerName = context.caller && isNode(context.caller, N.Call)
           ? (typeof context.caller.value.name === 'string'
               ? context.caller.value.name
-              : (isNode(context.caller.value.name, 'Reference')
+              : (isNode(context.caller.value.name, N.Reference)
                   ? String(context.caller.value.name.value.key?.valueOf?.() ?? '')
                   : ''))
           : '';

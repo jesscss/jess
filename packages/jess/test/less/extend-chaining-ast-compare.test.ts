@@ -36,7 +36,8 @@ import {
   sellist,
   sel,
   Context,
-  isNode
+  isNode,
+  N
 } from '@jesscss/core';
 
 const require = createRequire(import.meta.url);
@@ -125,7 +126,9 @@ describe('extend-chaining AST: parsed vs constructed (serializeTypes comparison)
     let rulesetSet: unknown[] = [];
     for (const searchRoot of accessibleRoots) {
       const found = searchRoot.find('ruleset', singleTarget.keySet);
-      if (found && found.length > 0) rulesetSet.push(...found);
+      if (found && found.length > 0) {
+        rulesetSet.push(...found);
+      }
     }
     expect(rulesetSet.length).toBeGreaterThan(0);
   });
@@ -150,7 +153,7 @@ describe('extend-chaining AST: parsed vs constructed (serializeTypes comparison)
     expect(extendRoot).not.toBe(context.root);
     const parent = (extendRoot as import('@jesscss/core').Rules).parent;
     expect(parent).toBeDefined();
-    expect(isNode(parent, 'AtRule')).toBe(true);
+    expect(isNode(parent, N.AtRule)).toBe(true);
   });
 
   it('logs few lines when collapseNesting extend chain runs', async () => {

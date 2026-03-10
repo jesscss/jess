@@ -9,6 +9,7 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 // Some build targets for core do not include Node typings; keep debug gating type-safe.
 declare const process: { env: Record<string, string | undefined> };
 
@@ -50,12 +51,12 @@ export function addImplicitAmpersand(
   if (!collapseNesting) {
     comb.removeFlag(F_VISIBLE);
   }
-  if (isNode(selector, 'ComplexSelector')) {
+  if (isNode(selector, N.ComplexSelector)) {
     const complex = selector;
     // Avoid moving live nodes from the existing selector into a new selector
     // (which would reparent them). Work with a copy instead.
     const complexCopy = complex.copy(true) as ComplexSelector;
-    if (isNode(complexCopy.value[0], 'Combinator')) {
+    if (isNode(complexCopy.value[0], N.Combinator)) {
       return ComplexSelector.create([amp, ...complexCopy.value]).inherit(selector);
     }
     return ComplexSelector.create([amp, comb, ...complexCopy.value]).inherit(selector);
@@ -71,7 +72,7 @@ export function addImplicitAmpersand(
  */
 function snapshotParentSource(parentSelector: Selector, collapseNesting: boolean): ParentSource {
   const parentCopy = parentSelector.copy(true);
-  const sel: Selector | Nil | undefined = !collapseNesting && isNode(parentCopy, 'SelectorList')
+  const sel: Selector | Nil | undefined = !collapseNesting && isNode(parentCopy, N.SelectorList)
     ? PseudoSelector.create({ name: ':is', arg: parentCopy })
     : parentCopy;
   const container: SelectorContainer = { selector: sel };
@@ -92,13 +93,13 @@ export function getImplicitSelector(
   parent: ParentSource | Selector,
   collapseNesting: boolean = false
 ): Selector {
-  if (isNode(selector, 'Nil')) {
+  if (isNode(selector, N.Nil)) {
     return selector;
   }
-  const parentSource: ParentSource | undefined = isNode(parent, 'Ruleset')
+  const parentSource: ParentSource | undefined = isNode(parent, N.Ruleset)
     ? (parent as Ruleset)
     : snapshotParentSource(parent as Selector, collapseNesting);
-  if (isNode(selector, 'SelectorList')) {
+  if (isNode(selector, N.SelectorList)) {
     let mutated = false;
     const value = selector.value;
     for (let i = 0; i < value.length; i++) {

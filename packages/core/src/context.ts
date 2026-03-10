@@ -15,6 +15,7 @@ import type { PluginInterface } from './plugin.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
+import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
 import type { Call } from './tree/call.js';
@@ -655,7 +656,7 @@ export class Context {
     if (parseResult.tree) {
       // Set context.root so preEval visitors can check if this is the root
       // parseResult.tree should be a Rules node (the root of the parsed tree)
-      if (!this.root && isNode(parseResult.tree, 'Rules')) {
+      if (!this.root && isNode(parseResult.tree, N.Rules)) {
         this.root = parseResult.tree;
       }
 

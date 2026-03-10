@@ -12,6 +12,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
+import { nodeTypeBits } from './node-type.js';
 export type { TreeContext };
 
 const { isArray } = Array;
@@ -72,10 +73,6 @@ export type LocationInfo = [
  */
 export type GeneratedNodeValue<T> = T extends object ? T & { generated: true } : T;
 
-/**
- * @todo I think the only utility for this now is we collect
- * the types of nodes in the tree at first evaluation time.
- */
 export const defineType = <
   V = never,
   T extends AbstractClass<Node> = AbstractClass<Node>,
@@ -89,12 +86,18 @@ export const defineType = <
   (Clazz as any).type = type;
   (Clazz as any).shortType = shortType;
 
+  /** Build nodeType bitmask by OR-ing bits for each type in the prototype chain */
+  let nodeType = 0;
   let proto: any = Clazz;
-  let types = proto.types = new Set();
   while (proto?.type) {
-    types.add(proto.type);
+    const bit = nodeTypeBits[proto.type];
+    if (bit !== undefined) {
+      nodeType |= bit;
+    }
     proto = Object.getPrototypeOf(proto);
   }
+  /** Set on the prototype so ALL instances (including `new Foo()`) inherit it */
+  Clazz.prototype.nodeType = nodeType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args) => {
@@ -169,9 +172,14 @@ export abstract class Node<
    */
   abstract type: string;
   abstract shortType: string;
-  get types(): Set<string> {
-    return (this.constructor as any).types;
-  }
+
+  /**
+   * Bitmask of this node's type and all ancestor types.
+   * Set on the prototype by defineType. Used by isNode for O(1) type checking.
+   * DO NOT initialize here — an `= 0` would create an own property that
+   * shadows the prototype value set by defineType.
+   */
+  declare nodeType: number;
 
   /**
    * Whitespace or comments before or after a Node.
@@ -726,17 +734,7 @@ export abstract class Node<
     const nilish = new Node();
     nilish.type = 'Nil';
     nilish.shortType = 'nil';
-    // Override the types getter on this instance to return a Set
-    // The types getter normally reads from this.constructor.types
-    // We use a get descriptor to override the prototype getter
-    const typesSet = new Set(['Nil', 'Node']);
-    Object.defineProperty(nilish, 'types', {
-      get() {
-        return typesSet;
-      },
-      enumerable: false,
-      configurable: false
-    });
+    nilish.nodeType = nodeTypeBits['Nil']!;
     nilish.removeFlag(F_VISIBLE);
     nilish.value = '';
     return nilish;

@@ -4,6 +4,7 @@ import { List } from './list.js';
 import type { Context } from '../context.js';
 import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -106,7 +107,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     let newSequence = this.maybeClone(context);
     if (b instanceof List) {
       return new List([newSequence, ...b.value]).inherit(this);
-    } else if (isNode(b, 'Sequence')) {
+    } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
       const values = b.value.map(v => v.maybeClone(context));
       if (values.length) {
