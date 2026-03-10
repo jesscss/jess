@@ -1,12 +1,12 @@
 # Pre-push Check TODOs
 
-Generated: 2026-03-09T18:58:31.996Z
+Generated: 2026-03-09T21:36:18.282Z
 
 These checks failed during `--mode=upstream` and were treated as non-blocking.
 
 ## TODO Items
 1. [ ] `packages/parser` - `pnpm -w exec tsc -p packages/parser/tsconfig.build.json --noEmit` (exit 2)
-2. [ ] `packages/parser` - `pnpm --filter ./packages/parser build` (exit 1)
+2. [ ] `packages/parser` - `pnpm --filter ./packages/parser build` (exit 2)
 
 ## Failure Details
 ### 1) packages/parser
@@ -30,7 +30,7 @@ packages/parser/src/productions.ts(805,10): error TS2488: Type 'Alt | ({ ALT: ()
 ### 2) packages/parser
 
 - Command: `pnpm --filter ./packages/parser build`
-- Exit: `1`
+- Exit: `2`
 
 ```
 > @jesscss/parser@2.0.0-alpha.4 build /Users/matthew/git/oss/jess/packages/parser
@@ -57,9 +57,6 @@ src/productions.ts(805,10): error TS2488: Type 'Alt | ({ ALT: () => any; GATE?: 
  ELIFECYCLE  Command failed with exit code 2.
 /Users/matthew/git/oss/jess/packages/parser:
  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/parser@2.0.0-alpha.4 build: `pnpm clean && pnpm compile`
-Exit status 1
-
-(node:71997) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
-(Use `node --trace-deprecation ...` to show where the warning was created)
+Exit status 2
 ```
 
