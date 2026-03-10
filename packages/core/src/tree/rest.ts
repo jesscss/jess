@@ -7,10 +7,11 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
  * It's used by lists to merge values. Sequences already bubble
  * lists / sequences, so this is mostly for serialization.
  */
+export interface Rest {
+  type: 'Rest';
+  shortType: 'rest';
+}
 export class Rest extends Node<Node | string | undefined> {
-  type = 'Rest' as const;
-  shortType = 'rest' as const;
-
   get name(): string {
     let { value } = this;
     if (value) {

@@ -11,10 +11,12 @@ import { Sequence } from './sequence.js';
  *
  * @todo - add more structure?
  */
-export class QueryCondition extends Sequence {
-  override type = 'QueryCondition';
-  override shortType = 'query';
+export interface QueryCondition {
+  type: 'QueryCondition';
+  shortType: 'query';
+}
 
+export class QueryCondition extends Sequence {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;

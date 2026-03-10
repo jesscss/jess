@@ -185,7 +185,7 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
 
   // Special-case Number plain object: print compact form
-  if (typeName === 'Number' && isPlainObject(value)) {
+  if (typeName === 'Num' && isPlainObject(value)) {
     const num = (value as any).number;
     const keys = Object.keys(value as Record<string, unknown>).filter(k => (value as any)[k] !== undefined);
     if (typeof num === 'number' && (keys.length === 1 || (keys.length === 0))) {

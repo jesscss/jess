@@ -24,10 +24,11 @@ export type SequenceOptions = {
  * an expression will yield a value, and a CSS value can
  * actually be a sequence of values (like for shorthand)
  */
+export interface Sequence {
+  type: 'Sequence' | 'QueryCondition';
+  shortType: 'seq' | 'query';
+}
 export class Sequence extends Node<Node[], SequenceOptions> {
-  type = 'Sequence';
-  shortType = 'seq';
-
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';

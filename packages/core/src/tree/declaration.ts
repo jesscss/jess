@@ -81,9 +81,12 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
+export interface Declaration {
+  type: 'Declaration' | 'VarDeclaration';
+  shortType: 'decl' | 'vardecl';
+}
+
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
-  override type = 'Declaration';
-  override shortType = 'decl';
   override allowRuleRoot = true;
 
   /** If the value has curly braces, a semi-colon is not required */
@@ -193,7 +196,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            node.value.value = value;
+            node.setValue('value', value);
             break;
           }
           case AssignmentType.Add: {
@@ -201,7 +204,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              node.value.value = new List([
+              node.setValue('value', new List([
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
@@ -210,23 +213,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   filter: n => n !== node
                 }),
                 value
-              ]);
+              ]));
             } else {
-              node.value.value =
-                new Operation([
-                  new Reference({ key }, { type }),
-                  '+',
-                  value
-                ]);
+              node.setValue('value', new Operation([
+                new Reference({ key }, { type }),
+                '+',
+                value
+              ]));
             }
             break;
           }
           case AssignmentType.CondAssign: {
-            node.value.value =
-              new Reference({ key }, {
-                type,
-                fallbackValue: value
-              });
+            node.setValue('value', new Reference({ key }, {
+              type,
+              fallbackValue: value
+            }));
             break;
           }
         }
@@ -236,11 +237,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const out = node.value.value.preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          node.value.value = value;
+          node.setValue('value', value);
           return node;
         });
       }
-      node.value.value = out;
+      node.setValue('value', out);
       return node;
     };
 
@@ -248,12 +249,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          node.value.name = key;
+          node.setValue('name', key);
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      node.value.name = key;
+      node.setValue('name', key);
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);
@@ -290,14 +291,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            node.value.value = new Nil();
+            node.setValue('value', new Nil());
             return;
           }
           if (rest.length === 1) {
-            node.value.value = rest[0]!.copy(true);
+            node.setValue('value', rest[0]!.copy(true));
             return;
           }
-          node.value.value = new List(rest.map(item => item.copy(true)));
+          node.setValue('value', new List(rest.map(item => item.copy(true))));
         };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
@@ -322,11 +323,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              node.value.value = newValue;
+              node.setValue('value', newValue);
               normalizeMergedLeadingPlaceholder();
               // Merge !important from referenced declarations
               if (context.hasImportantSource && !node.value.important) {
-                node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+                node.setValue('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
               }
               // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
@@ -339,11 +340,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          node.value.value = maybeNewValue as Node;
+          node.setValue('value', maybeNewValue as Node);
           normalizeMergedLeadingPlaceholder();
           // Merge !important from referenced declarations
           if (context.hasImportantSource && !node.value.important) {
-            node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+            node.setValue('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
           }
           // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {

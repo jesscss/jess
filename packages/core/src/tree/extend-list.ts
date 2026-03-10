@@ -10,12 +10,12 @@ import type { Context } from '../context.js';
  *  .a:extend(.b), .c:extend(.d);
  */
 export interface ExtendList extends Node<Extend[]> {
+  type: 'ExtendList';
+  shortType: 'extendlist';
   eval(context: Context): ExtendList;
 }
 
 export class ExtendList extends Node<Extend[]> {
-  type = 'ExtendList' as const;
-  shortType = 'extendlist' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 

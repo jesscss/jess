@@ -24,10 +24,12 @@ export type RangeOptions = {
  * - `1> to 3`        (exclusive start)
  * - `1> to <10 step 2`
  */
-export class Range extends Node<RangeValue, RangeOptions> {
-  type = 'Range' as const;
-  shortType = 'range' as const;
+export interface Range {
+  type: 'Range';
+  shortType: 'range';
+}
 
+export class Range extends Node<RangeValue, RangeOptions> {
   override evalNode(_context: Context): Range {
     // Parsing-only for now; semantics can be implemented later.
     return this;
@@ -71,4 +73,3 @@ export const range = defineType(Range, 'Range', 'range') as (
   location?: RangeParams[2],
   treeContext?: RangeParams[3]
 ) => Range;
-

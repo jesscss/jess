@@ -8,9 +8,12 @@ import { N } from './node-type.js';
 /**
  * e.g. url('foo.png')
  */
+export interface Url {
+  type: 'Url';
+  shortType: 'url';
+}
+
 export class Url extends Node<Quoted | Any> {
-  type = 'Url';
-  shortType = 'url';
   /**
    * @todo - enable URL rewriting
    */

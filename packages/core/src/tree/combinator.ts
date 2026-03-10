@@ -5,13 +5,12 @@ import { Selector } from './selector.js';
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
 
 export interface Combinator extends Selector<Combinators> {
+  type: 'Combinator';
+  shortType: 'co';
   eval(context: Context): Combinator;
 }
 
 export class Combinator extends Selector<Combinators> {
-  type = 'Combinator' as const;
-  shortType = 'co' as const;
-
   constructor(...args: ConstructorParameters<typeof Selector<Combinators>>) {
     super(...args);
     this.addFlag(F_STATIC);

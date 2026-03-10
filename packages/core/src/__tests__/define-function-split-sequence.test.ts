@@ -417,7 +417,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should work because Num extends Dimension
         const result = (dimensionFunc as any)(num);
-        expect(result).toBe('received: Number');
+        expect(result).toBe('received: Num');
       });
 
       it('should validate primitive types correctly', () => {
@@ -473,7 +473,7 @@ describe('defineFunction - splitSequence', () => {
         // This should work
         const num = new Num(10);
         const result = func(num);
-        expect(result).toBe('received: Number');
+        expect(result).toBe('received: Num');
       });
     });
 

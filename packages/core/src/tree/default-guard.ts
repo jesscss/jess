@@ -4,13 +4,12 @@ import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface DefaultGuard extends Node<string> {
+  type: 'DefaultGuard';
+  shortType: 'defaultguard';
   eval(context: Context): Bool;
 }
 
 export class DefaultGuard extends Node<string> {
-  type = 'DefaultGuard' as const;
-  shortType = 'defaultguard' as const;
-
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;

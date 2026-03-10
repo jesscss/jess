@@ -34,10 +34,12 @@ export type FuncOptions = {
   returnName?: string;
 };
 
-export class Func extends Node<FuncValue, FuncOptions> {
-  type = 'Func' as const;
-  shortType = 'fn' as const;
+export interface Func {
+  type: 'Func';
+  shortType: 'fn';
+}
 
+export class Func extends Node<FuncValue, FuncOptions> {
   constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Like mixins/functions in source languages: not emitted directly.

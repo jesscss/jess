@@ -30,9 +30,11 @@ export type ComplexSelectorValue = ComplexSelectorComponent[];
  * @note A complex selector may not always start with a selector. We also use this for a
  * relative selector, which means it may start with a combinator.
  */
+export interface ComplexSelector {
+  type: 'ComplexSelector';
+  shortType: 'sel';
+}
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  type = 'ComplexSelector';
-  shortType = 'sel';
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators

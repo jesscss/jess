@@ -67,6 +67,8 @@ export interface ColorOptions extends NodeOptions {
 }
 
 export interface Color extends Node<ColorData, ColorOptions> {
+  type: 'Color';
+  shortType: 'color';
   eval(context: Context): Color;
 }
 
@@ -75,8 +77,8 @@ export interface Color extends Node<ColorData, ColorOptions> {
  * Conversion only happens when modifying colors or when explicitly requested.
  */
 export class Color extends Node<ColorData, ColorOptions> {
-  type = 'Color' as const;
-  shortType = 'color' as const;
+  // type = 'Color' as const;
+  // shortType = 'color' as const;
   constructor(
     value: ColorData | string | ColorValues,
     options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],
@@ -281,19 +283,19 @@ export class Color extends Node<ColorData, ColorOptions> {
 
       // Convert from 0-1 to 0-255 range
       const rgb = [r * 255, g * 255, b * 255] as [number, number, number];
-      this.value.rgb = rgb;
+      this._value.rgb = rgb;
       // Clear HSL - computed RGB might not match existing HSL
-      this.value.hsl = undefined;
+      this._value.hsl = undefined;
       return rgb;
     }
 
     // If value has a node that's a string, parse it as hex
     if (this.value.node && typeof this.value.node === 'string') {
       const { rgb, alpha } = parseHexString(this.value.node);
-      this.value.rgb = rgb;
-      this.value.alpha = alpha;
+      this._value.rgb = rgb;
+      this._value.alpha = alpha;
       // Clear HSL - parsed RGB might not match existing HSL
-      this.value.hsl = undefined;
+      this._value.hsl = undefined;
       return rgb;
     }
 
@@ -301,9 +303,9 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   set rgb(rgb: [number, number, number] | RGBChannels) {
-    this.value.rgb = rgb;
+    this._value.rgb = rgb;
     // Clear HSL since new RGB might not match the old HSL
-    this.value.hsl = undefined;
+    this._value.hsl = undefined;
   }
 
   /**
@@ -370,16 +372,16 @@ export class Color extends Node<ColorData, ColorOptions> {
     }
 
     const hsl = [h! * 360, s, l] as [number, number, number];
-    this.value.hsl = hsl;
+    this._value.hsl = hsl;
     // Clear RGB - computed HSL might not match existing RGB
-    this.value.rgb = undefined;
+    this._value.rgb = undefined;
     return hsl;
   }
 
   set hsl(hsl: [number, number, number] | HSLChannels) {
-    this.value.hsl = hsl;
+    this._value.hsl = hsl;
     // Clear RGB since new HSL might not match the old RGB
-    this.value.rgb = undefined;
+    this._value.rgb = undefined;
   }
 
   /**
@@ -401,7 +403,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   set alpha(alpha: AlphaValue) {
-    this.value.alpha = alpha;
+    this._value.alpha = alpha;
   }
 
   /**
@@ -414,10 +416,10 @@ export class Color extends Node<ColorData, ColorOptions> {
 
   set rgba(rgba: ColorValues) {
     const [r, g, b, a] = rgba as [number, number, number, number];
-    this.value.rgb = [r, g, b];
-    this.value.alpha = a;
+    this._value.rgb = [r, g, b];
+    this._value.alpha = a;
     // Clear HSL since new RGB might not match the old HSL
-    this.value.hsl = undefined;
+    this._value.hsl = undefined;
   }
 
   /**
@@ -430,10 +432,10 @@ export class Color extends Node<ColorData, ColorOptions> {
 
   set hsla(hsla: [number, number, number, number]) {
     const [h, s, l, a] = hsla;
-    this.value.hsl = [h, s, l];
-    this.value.alpha = a;
+    this._value.hsl = [h, s, l];
+    this._value.alpha = a;
     // Clear RGB since new HSL might not match the old RGB
-    this.value.rgb = undefined;
+    this._value.rgb = undefined;
   }
 
   toHSL(): [number, number, number] {

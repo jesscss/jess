@@ -12,11 +12,13 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorCompare } from './util/compare.js';
 
+export interface SelectorList {
+  type: 'SelectorList';
+  shortType: 'sellist';
+}
+
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  type = 'SelectorList';
-  shortType = 'sellist';
-
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();

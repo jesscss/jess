@@ -16,6 +16,8 @@ export type ListOptions = {
 };
 
 export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+  type: 'List';
+  shortType: 'list';
   eval(context: Context): Promise<this>;
 }
 
@@ -27,9 +29,6 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  type = 'List';
-  shortType = 'list';
-
   get length() {
     return this.value.length;
   }

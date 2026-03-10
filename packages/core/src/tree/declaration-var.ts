@@ -26,9 +26,12 @@ export type VarDeclarationOptions = DeclarationOptions & {
  * @todo Support destructuring
  * e.g. `$(var1, var2): 1 2`
  */
+export interface VarDeclaration {
+  type: 'VarDeclaration';
+  shortType: 'vardecl';
+}
+
 export class VarDeclaration extends Declaration<VarDeclarationOptions> {
-  override type = 'VarDeclaration';
-  override shortType = 'vardecl';
   override allowRuleRoot = true;
   override allowRoot = true;
   constructor(

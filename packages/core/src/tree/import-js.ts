@@ -26,10 +26,11 @@ export type JsImportValue = {
   imports?: JsImportSpecifier[];
 };
 
+export interface JsImport {
+  type: 'JsImport';
+  shortType: 'js';
+}
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
-  type = 'JsImport' as const;
-  shortType = 'js' as const;
-
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // JS imports are always non-static and may be async

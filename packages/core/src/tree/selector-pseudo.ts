@@ -29,10 +29,11 @@ export type PseudoSelectorValue = {
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
+export interface PseudoSelector {
+  type: 'PseudoSelector';
+  shortType: 'pseudo';
+}
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
-  type = 'PseudoSelector';
-  shortType = 'pseudo';
-
   override get keySet(): Set<string> {
     if (this._keySet === undefined) {
       this._computeKeySetAndFastReject();
@@ -189,7 +190,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        node.value.arg = evaluatedArg;
+        node.setValue('arg', evaluatedArg);
         return node;
       }
     );

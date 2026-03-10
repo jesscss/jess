@@ -6,9 +6,11 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
  * A rules container that emits its content verbatim inside braces,
  * without parent-managed newlines or indentation.
  */
+export interface RawRules {
+  type: 'RawRules';
+  shortType: 'rules-raw';
+}
 export class RawRules extends Rules {
-  override type = 'RawRules' as const;
-  override shortType = 'rules-raw' as const;
   override allowRuleRoot = true;
 
   // Do not add newlines/indent; emit children exactly as-is

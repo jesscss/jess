@@ -26,10 +26,12 @@ export type AttributeSelectorValue = {
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
  *   e.g. [id="foo"]
 */
-export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  type = 'AttributeSelector' as const;
-  shortType = 'attr' as const;
+export interface AttributeSelector {
+  type: 'AttributeSelector';
+  shortType: 'attr';
+}
 
+export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   override evalNode(context: Context): MaybePromise<this> {
     return pipe(
       () => {
@@ -53,7 +55,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                 const out = decl.value.value.eval(context);
                 if (isThenable(out)) {
                   return (out as Promise<Node>).then((evaluated) => {
-                    this.value.value = quoted(String(evaluated.valueOf()));
+                    this.setValue('value', quoted(String(evaluated.valueOf())));
                     this._valueOf = undefined;
                     this._keySet = undefined;
                     this._visibleKeySet = undefined;
@@ -61,7 +63,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                     return this;
                   });
                 }
-                this.value.value = quoted(String((out as Node).valueOf()));
+                this.setValue('value', quoted(String((out as Node).valueOf())));
                 this._valueOf = undefined;
                 this._keySet = undefined;
                 this._visibleKeySet = undefined;

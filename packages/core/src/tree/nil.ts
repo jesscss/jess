@@ -13,6 +13,8 @@ import {
 import type { Context, TreeContext } from '../context.js';
 
 export interface Nil extends Node<''> {
+  type: 'Nil';
+  shortType: 'nil';
   valueOf(): '';
   eval(context: Context): Nil;
 }
@@ -27,8 +29,6 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
-  type = 'Nil';
-  shortType = 'nil';
   override allowRoot = true;
   override allowRuleRoot = true;
   constructor(

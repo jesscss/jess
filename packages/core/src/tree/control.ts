@@ -218,9 +218,13 @@ export type IfValue = {
  *
  * This is language-agnostic: it’s the canonical Jess control node.
  */
+export interface If extends Node<IfValue> {
+  type: 'If';
+  shortType: 'if';
+}
 export class If extends Node<IfValue> {
-  type = 'If' as const;
-  shortType = 'if' as const;
+  // type = 'If' as const;
+  // shortType = 'if' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
@@ -267,12 +271,16 @@ export type StructuredLoopValue = {
 
 export type LoopValue = StructuredLoopValue | LegacyLoopValue;
 
+export interface For extends Node<StructuredLoopValue> {
+  type: 'For';
+  shortType: 'for';
+}
 /**
  * `$for <header> { ... }`
  */
 export class For extends Node<StructuredLoopValue> {
-  type = 'For' as const;
-  shortType = 'for' as const;
+  // type = 'For' as const;
+  // shortType = 'for' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
@@ -336,10 +344,12 @@ export class For extends Node<StructuredLoopValue> {
         }
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
         for (let i = Math.min(bindingNames.length, bindings.length) - 1; i >= 0; i--) {
-          loopRules.value.unshift(new VarDeclaration({
+          const varDecl = new VarDeclaration({
             name: new Any(bindingNames[i]!, { role: 'property' }),
             value: bindings[i]!
-          }));
+          });
+          loopRules.mutableValue.unshift(varDecl);
+          loopRules.adopt(varDecl);
         }
         counter++;
         const result = await loopRules.eval(context);
@@ -385,7 +395,7 @@ export class For extends Node<StructuredLoopValue> {
                       const mergedItems = nextAlreadyIncludesPrev
                         ? [...nextItems]
                         : [...prevItems, ...nextItems];
-                      outNode.value.value = new List(mergedItems).inherit(outNode.value.value);
+                      outNode.setValue('value', new List(mergedItems).inherit(outNode.value.value));
                     } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
                       const prevItems = isNode(prevValue, N.Sequence)
                         ? prevValue.value
@@ -399,7 +409,7 @@ export class For extends Node<StructuredLoopValue> {
                       const mergedItems = nextAlreadyIncludesPrev
                         ? [...nextItems]
                         : [...prevItems, ...nextItems];
-                      outNode.value.value = new Sequence(mergedItems).inherit(outNode.value.value);
+                      outNode.setValue('value', new Sequence(mergedItems).inherit(outNode.value.value));
                     }
                   }
                   accumulatedNodes[firstMatch] = outNode;
@@ -456,9 +466,13 @@ export class For extends Node<StructuredLoopValue> {
 /**
  * `$each <header> { ... }`
  */
+export interface Each extends Node<LegacyLoopValue> {
+  type: 'Each';
+  shortType: 'each';
+}
 export class Each extends Node<LegacyLoopValue> {
-  type = 'Each' as const;
-  shortType = 'each' as const;
+  // type = 'Each' as const;
+  // shortType = 'each' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
@@ -487,9 +501,11 @@ export type WhileValue = {
 /**
  * `$while (<condition>) { ... }`
  */
+export interface While {
+  type: 'While';
+  shortType: 'while';
+}
 export class While extends Node<WhileValue> {
-  type = 'While' as const;
-  shortType = 'while' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 

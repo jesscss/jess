@@ -74,10 +74,12 @@ export type MixinOptions = {
  *
  * @todo - Even though we allow a selector as a name.
  */
-export class Mixin extends Node<MixinValue, MixinOptions> {
-  type = 'Mixin';
-  shortType = 'mixin';
+export interface Mixin {
+  type: 'Mixin';
+  shortType: 'mixin';
+}
 
+export class Mixin extends Node<MixinValue, MixinOptions> {
   constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
     super(value, options, location, context);
     this.removeFlag(F_VISIBLE);
@@ -150,11 +152,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          node.value.name = key;
+          node.setValue('name', key);
           return node;
         });
       }
-      node.value.name = maybeKey as Any<'name'>;
+      node.setValue('name', maybeKey as Any<'name'>);
     }
     return node;
   }

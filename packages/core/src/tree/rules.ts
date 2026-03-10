@@ -130,9 +130,11 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
  *   (Declaration background-color: white;)
  * ]
  */
+export interface Rules {
+  type: 'Rules' | 'RawRules' | 'Collection';
+  shortType: 'rules' | 'rules-raw' | 'coll';
+}
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  type = 'Rules';
-  shortType = 'rules';
   override allowRuleRoot = true;
   override allowRoot = true;
 
@@ -308,7 +310,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
               if (!isThenable(maybePrelude)) {
-                importRule.value.prelude = maybePrelude as Node;
+                importRule.setValue('prelude', maybePrelude as Node);
               }
             }
           }
@@ -676,10 +678,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // This ensures it shadows the original and is evaluated after it
           const foundIndex = foundRules.value.indexOf(result);
           if (foundIndex !== -1) {
-            foundRules.value.splice(foundIndex + 1, 0, newDeclaration);
+            foundRules._value.splice(foundIndex + 1, 0, newDeclaration);
           } else {
             // If not found in array, add at the beginning
-            foundRules.value.unshift(newDeclaration);
+            foundRules._value.unshift(newDeclaration);
           }
 
           // Register it via registerNode to ensure it's properly indexed
@@ -707,7 +709,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   push(...nodes: Node[]) {
     for (let node of nodes) {
       this.adopt(node);
-      this.value.push(node);
+      this._value.push(node);
       this.registerNode(node);
     }
   }
@@ -817,7 +819,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
-        rules.value[index] = (node as Any).preEval(context);
+        rules._value[index] = (node as Any).preEval(context);
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
@@ -832,7 +834,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const preEvald = node.preEval(context);
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
-            rules.value[index] = preEvaldNode;
+            rules._value[index] = preEvaldNode;
             (preEvaldNode as Node).index = index;
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
@@ -843,7 +845,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           });
         }
-        rules.value[index] = preEvald as Node;
+        rules._value[index] = preEvald as Node;
         (preEvald as Node).index = index;
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
@@ -983,7 +985,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const node = rules.value[i]!;
         const resolvedNode = resolvedNodes.find(n => n.index === node.index);
         if (resolvedNode && resolvedNode !== node) {
-          rules.value[i] = resolvedNode.inherit(node);
+          rules._value[i] = resolvedNode.inherit(node);
           rules.adopt(resolvedNode);
         }
       }
@@ -1114,7 +1116,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return result.then((resolvedNode) => {
           // Update the node if preEval returned a different instance
           if (resolvedNode !== node) {
-            rules.value[i] = resolvedNode;
+            rules._value[i] = resolvedNode;
             rules.adopt(resolvedNode);
           }
 
@@ -1130,7 +1132,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       // Update the node if preEval returned a different instance
       if (result !== node) {
-        rules.value[i] = result;
+        rules._value[i] = result;
         rules.adopt(result);
       }
 
@@ -1330,7 +1332,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             scheduledPriority.delete(rule);
             // Apply the result
             if (result !== rule) {
-              rules.value[idx] = result;
+              rules._value[idx] = result;
               queue[q] = [idx, result];
               // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
               // so variables from the import can be found by the parent
@@ -1404,11 +1406,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const priorValue = prior.value.value.copy(true, freezeChildren);
       const nextValue = decl.value.value.copy(true, freezeChildren);
-      decl.value.value = assign === '&_:'
+      decl.setValue('value', assign === '&_:'
         ? spaced([priorValue, nextValue])
-        : new List([priorValue, nextValue]);
+        : new List([priorValue, nextValue]));
       if (!decl.value.important && prior.value.important) {
-        decl.value.important = prior.value.important;
+        decl.setValue('important', prior.value.important);
       }
     };
     const normalizeMergedDeclarationValue = (node: Node): void => {
@@ -1438,14 +1440,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       if (rest.length === 0) {
-        node.value.value = new Nil();
+        node.setValue('value', new Nil());
         return;
       }
       if (rest.length === 1) {
-        node.value.value = rest[0]!.copy(true, freezeChildren);
+        node.setValue('value', rest[0]!.copy(true, freezeChildren));
         return;
       }
-      node.value.value = new List(rest.map(item => item.copy(true, freezeChildren)));
+      node.setValue('value', new List(rest.map(item => item.copy(true, freezeChildren))));
     };
 
     const lastVisibleByName = new Map<string, Node>();
@@ -1490,9 +1492,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const existingAnchor = mergedAnchorByName.get(name);
       if (existingAnchor && existingAnchor !== node && isNode(existingAnchor, N.Declaration)) {
-        existingAnchor.value.value = node.value.value.copy(true);
+        existingAnchor.setValue('value', node.value.value.copy(true));
         if (!existingAnchor.value.important && node.value.important) {
-          existingAnchor.value.important = node.value.important;
+          existingAnchor.setValue('important', node.value.important);
         }
         node.removeFlag(F_VISIBLE);
         if (existingAnchor.visible) {
@@ -1548,7 +1550,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     const remainder = afterNested.filter(n => !shouldMove(n));
-    rules.value = [...beforeNested, ...moved, ...remainder];
+    rules._value = [...beforeNested, ...moved, ...remainder];
   }
 
   /**
@@ -1981,7 +1983,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
             normalizeBoundLeadingItemWhitespace(boundValue);
-            param.value.value = boundValue;
+            param.setValue('value', boundValue);
           } else if (isNode(param, N.Any) && param.options.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             const boundValue = argValue.copy(true, freezeChildren);
@@ -1991,7 +1993,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               name: param as Any<'property'>,
               value: boundValue
             }, { paramVar: true });
-            params.value[i] = varDecl;
+            params.mutableValue[i] = varDecl;
+            params.adopt(varDecl);
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
             const rest = nodeArgs.slice(argPos).map((restArg) => {
@@ -2000,10 +2003,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               return cloned;
             });
             /** Create a new variable with the rest name */
-            params.value[i] = new VarDeclaration({
+            const restVarDecl = new VarDeclaration({
               name: new Any(param.value ? `${param.value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
               value: new Sequence(rest)
             });
+            params.mutableValue[i] = restVarDecl;
+            params.adopt(restVarDecl);
             /** Check a pattern-matching node */
           } else {
             if (param.compare(argValue) !== 0) {
@@ -2035,7 +2040,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           let originalMixin = mixin;
           mixin = mixin.copy();
           originalMixin.parent!.adopt(mixin);
-          (mixin as Mixin).value.params = params;
+          (mixin as Mixin).setValue('params', params);
           mixinCandidates.push(mixin);
         }
       }
@@ -2197,8 +2202,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         if (sourceSelector && isNode(sourceSelector)) {
           // Recover definition-time selector shape (e.g. raw `&`) so call-site
           // preEval can rebuild selectors in the caller's frame.
-          rulesetNode.value.selector = sourceSelector.copy(true) as Selector | Nil;
-          rulesetNode.value.selector.sourceNode = sourceSelector;
+          const copiedSelector = sourceSelector.copy(true) as Selector | Nil;
+          copiedSelector.sourceNode = sourceSelector;
+          rulesetNode.setValue('selector', copiedSelector);
         }
       }
       if (isNode(node, N.Ampersand)) {
@@ -2448,7 +2454,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             }, { paramVar: true });
 
             // Replace Rest with VarDeclaration in params
-            params.value[i] = restVarDecl;
+            params.mutableValue[i] = restVarDecl;
+            params.adopt(restVarDecl);
             param = restVarDecl;
           }
 

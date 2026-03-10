@@ -11,6 +11,8 @@ export type QuotedOptions = {
 };
 
 export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+  type: 'Quoted';
+  shortType: 'quoted';
   eval(context: Context): Promise<Quoted | Any | Interpolated>;
 }
 
@@ -19,9 +21,6 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
  * to avoid conflict with the built-in `String` class.
  */
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
-  type = 'Quoted' as const;
-  shortType = 'quoted' as const;
-
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     if (typeof value === 'string' && !options?.escaped) {

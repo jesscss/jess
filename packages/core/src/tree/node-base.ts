@@ -98,12 +98,12 @@ export const defineType = <
   }
   /** Set on the prototype so ALL instances (including `new Foo()`) inherit it */
   Clazz.prototype.nodeType = nodeType;
+  Clazz.prototype.type = type;
+  Clazz.prototype.shortType = shortType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args) => {
     const node = new (Clazz as any)(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never;
-    (node as any).type = type;
-    (node as any).shortType = shortType;
     return node;
   };
 };
@@ -168,10 +168,12 @@ export abstract class Node<
   }
 
   /**
-   * Assigned on the prototype, make sure we don't initialize
+   * Assigned on the prototype by defineType — do NOT initialize in subclasses
+   * (an `= 'X'` would create an own property that shadows the prototype value).
+   * Use interface merging to declare the literal type per node class.
    */
-  abstract type: string;
-  abstract shortType: string;
+  declare type: string;
+  declare shortType: string;
 
   /**
    * Bitmask of this node's type and all ancestor types.
@@ -279,14 +281,24 @@ export abstract class Node<
   protected _value: Data;
 
   /**
+   * Keys in the value object that hold child Nodes.
+   * Override per node type for fast iteration.
+   * - `string[]` — object-valued nodes: only these keys are checked
+   * - `null` (default) — use generic iteration (arrays, single values)
+   */
+  static childNodeKeys: string[] | null = null;
+
+  /**
    * This is the internal `data` of the node.
+   * Prefer setValue() for mutations to ensure proper parent adoption.
    */
   get value(): Data {
     return this._value;
   }
 
   set value(val: Data) {
-    this._value = this._tryProxyWrap(val);
+    this._value = val;
+    this._adoptChildren();
     // Invalidate memoized valueOf() on selector-like nodes after mutation.
     if ('_valueOf' in this) {
       (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
@@ -294,43 +306,36 @@ export abstract class Node<
   }
 
   /**
-   * This wraps the value in a proxy if it's an object or array.
-   * We do this so that assignment to the sub-nodes will properly
-   * set the parent of the sub-nodes.
+   * Set the whole value, or a named property on the value.
    *
-   * @todo - Test parent setting for objects / arrays.
+   * @example
+   *   this.set(newSelectors)           // replace the whole value
+   *   this.set('selector', selector)   // set a named property
    */
-  private _tryProxyWrap<T>(value: T): T {
-    if (isPlainObject(value) || isArray(value)) {
-      value = this._processNodes(value);
-      return new Proxy(value as object, {
-        get: (target, prop) => {
-          if (prop === IS_PROXY) {
-            return true;
-          }
-          const returnVal = Reflect.get(target, prop);
-          if (isPlainObject(returnVal) || isArray(returnVal)) {
-            if (returnVal[IS_PROXY]) {
-              /** Already a proxy so don't re-wrap it */
-              return returnVal;
-            }
-            return this._tryProxyWrap(returnVal);
-          }
-          return returnVal;
-        },
-        set: (target, prop, newValue) => {
-          if (isPlainObject(newValue) || isArray(newValue)) {
-            newValue = this._processNodes(newValue);
-          }
-          if (newValue instanceof Node) {
-            this.adopt(newValue);
-          }
-          return Reflect.set(target, prop, newValue);
-        }
-      }) as T;
+  setValue(val: Data): void;
+  setValue<K extends keyof Data>(key: K, val: Data[K]): void;
+  setValue(...args: any[]): void {
+    if (args.length === 1) {
+      this.value = args[0];
+      return;
     }
+    const [key, val] = args;
+    (this._value as any)[key] = val;
+    if (val instanceof Node) {
+      this.adopt(val);
+    }
+    if ('_valueOf' in this) {
+      (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
+    }
+  }
 
-    return this._processNodes(value);
+  /**
+   * Get mutable access to the internal value.
+   * Use when you need direct array/object mutation (push, splice, etc.)
+   * and will handle adopt() yourself.
+   */
+  get mutableValue(): Data {
+    return this._value;
   }
 
   /**
@@ -392,16 +397,26 @@ export abstract class Node<
   }
 
   /**
-   * Assign parent to sub-nodes
-   * @note - This will not process the children nodes of children nodes.
+   * Adopt all child Nodes in the value.
+   * Uses static childNodeKeys when available for fast path.
    */
-  private _processNodes<T>(value: T): T {
-    for (let val of getValues(value)) {
-      if (val instanceof Node) {
-        this.adopt(val);
+  private _adoptChildren(): void {
+    const keys = (this.constructor as typeof Node).childNodeKeys;
+    if (keys) {
+      const val = this._value as Record<string, unknown>;
+      for (let i = 0; i < keys.length; i++) {
+        const child = val[keys[i]!];
+        if (child instanceof Node) {
+          this.adopt(child);
+        }
+      }
+    } else {
+      for (let val of getValues(this._value)) {
+        if (val instanceof Node) {
+          this.adopt(val);
+        }
       }
     }
-    return value;
   }
 
   constructor(
@@ -431,7 +446,8 @@ export abstract class Node<
         configurable: false
       }
     });
-    this._value = this._tryProxyWrap(value);
+    this._value = value;
+    this._adoptChildren();
     this._treeContext = treeContext;
     this._location = location;
     this._options = options;
@@ -492,7 +508,7 @@ export abstract class Node<
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
     }
-    const entries = [...getEntriesFromNode(this as { value: unknown[] })];
+    const entries = [...getEntriesFromNode({ value: this._value } as { value: unknown[] })];
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -509,7 +525,7 @@ export abstract class Node<
 
   private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
     let idx = 0;
-    for (const [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
+    for (const [value, key, collection] of getEntriesFromNode({ value: this._value } as { value: unknown[] })) {
       if (!(value instanceof Node)) {
         continue;
       }
@@ -552,15 +568,33 @@ export abstract class Node<
    * @todo - Replace `walkNodes` with this?
    */
   * children(deep?: boolean, reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
-    for (let nodeVal of getValues(this.value, reverse)) {
-      if (nodeVal instanceof Node) {
-        if (includePrePost) {
-          yield* Node.nodeAndPrePost(nodeVal);
-        } else {
-          yield nodeVal;
+    const keys = (this.constructor as typeof Node).childNodeKeys;
+    if (keys) {
+      const val = this._value as Record<string, unknown>;
+      for (let i = 0; i < keys.length; i++) {
+        const nodeVal = val[keys[i]!];
+        if (nodeVal instanceof Node) {
+          if (includePrePost) {
+            yield* Node.nodeAndPrePost(nodeVal);
+          } else {
+            yield nodeVal;
+          }
+          if (deep) {
+            yield* nodeVal.children(deep, reverse, includePrePost);
+          }
         }
-        if (deep) {
-          yield* nodeVal.children(deep, reverse, includePrePost);
+      }
+    } else {
+      for (let nodeVal of getValues(this._value, reverse)) {
+        if (nodeVal instanceof Node) {
+          if (includePrePost) {
+            yield* Node.nodeAndPrePost(nodeVal);
+          } else {
+            yield nodeVal;
+          }
+          if (deep) {
+            yield* nodeVal.children(deep, reverse, includePrePost);
+          }
         }
       }
     }
@@ -679,8 +713,8 @@ export abstract class Node<
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>;
-    let originalValue = this.value;
-    let newValue = { value: originalValue };
+    let originalValue = this._value;
+    let newValue = { value: originalValue as Data };
     /**
      * Create new array objects and plain objects
      */
@@ -959,7 +993,7 @@ export abstract class Node<
     let value = this.value;
     let type = typeof value;
     if (primitives.includes(type)) {
-      return value as Primitive;
+      return value as unknown as Primitive;
     }
     let values = [...getValues(value)];
     if (values.length === 1) {

@@ -388,7 +388,7 @@ export function processExtends(context: Context): void {
           const fullBefore = selector.valueOf();
           const fullAfter = fullNewSelector.valueOf();
           if (ownNewSelector !== ownSelector && ownAfter !== ownBefore) {
-            ruleset.value.selector = ownNewSelector;
+            ruleset.setValue('selector', ownNewSelector);
             (ruleset.options as { ownSelector?: Selector }).ownSelector = ownNewSelector;
             ruleset.invalidateSelectorValueCache();
             if (ownNewSelector.hoistToRoot) {
@@ -432,7 +432,7 @@ export function processExtends(context: Context): void {
                 && isNode((last as PseudoSelector).value.arg!, N.SelectorList)
               ) {
                 const derivedOwn = ((last as PseudoSelector).value.arg as SelectorList).copy(true) as Selector;
-                ruleset.value.selector = derivedOwn;
+                ruleset.setValue('selector', derivedOwn);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = derivedOwn;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -454,7 +454,7 @@ export function processExtends(context: Context): void {
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
                 const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
-                ruleset.value.selector = ownAfterOwnOnly;
+                ruleset.setValue('selector', ownAfterOwnOnly);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -472,7 +472,7 @@ export function processExtends(context: Context): void {
                 const newSel = applyExtendsToSelector(selector, nonPartialOnly);
                 if (newSel.valueOf() !== selector.valueOf()) {
                   newSel.hoistToRoot = true;
-                  ruleset.value.selector = newSel;
+                  ruleset.setValue('selector', newSel);
                   ruleset.invalidateSelectorValueCache();
                   ruleset.hoistToRoot = true;
                 }
@@ -483,13 +483,13 @@ export function processExtends(context: Context): void {
                   ownSelector,
                   [...partialOnly, ...nonPartialOwnOnly]
                 );
-                ruleset.value.selector = ownAfterBoth;
+                ruleset.setValue('selector', ownAfterBoth);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterBoth;
                 ruleset.invalidateSelectorValueCache();
                 continue;
               }
               if (hasParentMatchedOwnOnlyNonPartial) {
-                ruleset.value.selector = ownAfterPartial;
+                ruleset.setValue('selector', ownAfterPartial);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -500,7 +500,7 @@ export function processExtends(context: Context): void {
                 && hasAncestorDrivenNonPartial
               );
               if (shouldDeferToParentForNonPartial) {
-                ruleset.value.selector = ownAfterPartial;
+                ruleset.setValue('selector', ownAfterPartial);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -629,7 +629,7 @@ export function processExtends(context: Context): void {
               }
             }
           }
-          ruleset.value.selector = newSelector;
+          ruleset.setValue('selector', newSelector);
           ruleset.invalidateSelectorValueCache();
           if (newSelector.hoistToRoot) {
             ruleset.hoistToRoot = true;

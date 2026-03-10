@@ -29,6 +29,8 @@ export type AnyOptions<T extends string> = NodeOptions & {
 export interface Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
+  type: 'Any' | 'Keyword';
+  shortType: 'any' | 'keyword';
   eval(context: Context): Any<Role>;
   valueOf(): string;
 }
@@ -45,9 +47,6 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  type = 'Any';
-  shortType = 'any';
-
   constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
     super(...args);
     this.addFlag(F_STATIC);
@@ -79,7 +78,7 @@ export class Any<
     if (other.type === 'Any' || other.type === 'Keyword') {
       return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
     }
-    if (other.type === 'Number' || other.type === 'Dimension') {
+    if (other.type === 'Num' || other.type === 'Dimension') {
       const text = this.value.trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
@@ -128,10 +127,12 @@ defineType(Anonymous, 'Anonymous');
  * Note: In Jess, boolean values ('true', 'false') are represented as Bool nodes,
  * not Keyword nodes, unlike Less.js where they are Keyword instances.
  */
-export class Keyword extends Any<'keyword'> {
-  override type = 'Keyword' as const;
-  override shortType = 'keyword';
+export interface Keyword {
+  type: 'Keyword';
+  shortType: 'keyword';
+}
 
+export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,

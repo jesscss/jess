@@ -125,6 +125,8 @@ export type StyleImportValue = {
 };
 
 export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  type: 'StyleImport';
+  shortType: 'style';
   eval(context: Context): MaybePromise<Rules>;
 }
 /**
@@ -137,9 +139,6 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
-  type = 'StyleImport' as const;
-  shortType = 'style' as const;
-
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
@@ -422,8 +421,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                     const index = modifiedRules.value.indexOf(existingDecl);
                     if (index !== -1) {
                     // Adopt the new node and replace in array
+                      modifiedRules.mutableValue[index] = injectedNode;
                       modifiedRules.adopt(injectedNode);
-                      modifiedRules.value[index] = injectedNode;
                       // Add the new declaration to the registry
                       declarations.add(injectedNode);
                       // Register the new node so it's properly indexed
@@ -455,13 +454,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const finalRules = Rules.create([]);
           // First, add new injected variables that weren't found in imported rules (at the top)
           for (const newNode of newVariables) {
+            finalRules.mutableValue.push(newNode);
             finalRules.adopt(newNode);
-            finalRules.value.push(newNode);
           }
           // Then, add all nodes from the modified imported rules (flattened, with replacements)
           for (const node of modifiedRules.value) {
+            finalRules.mutableValue.push(node);
             finalRules.adopt(node);
-            finalRules.value.push(node);
           }
           rules = finalRules;
         }

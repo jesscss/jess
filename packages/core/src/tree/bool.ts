@@ -3,6 +3,8 @@ import { Node, F_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Bool extends Node<boolean> {
+  type: 'Bool';
+  shortType: 'bool';
   eval(context: Context): Bool;
 }
 
@@ -10,9 +12,6 @@ export interface Bool extends Node<boolean> {
  * A boolean. Named `Bool` to avoid conflict with the built-in `Boolean` class.
  */
 export class Bool extends Node<boolean> {
-  type = 'Bool' as const;
-  shortType = 'bool' as const;
-
   constructor(...args: ConstructorParameters<typeof Node<boolean>>) {
     super(...args);
     this.addFlag(F_STATIC);

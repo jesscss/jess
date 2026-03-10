@@ -72,9 +72,12 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
+export interface Call {
+  type: 'Call';
+  shortType: 'call';
+}
+
 export class Call extends Node<CallValue, CallOptions> {
-  type = 'Call' as const;
-  shortType = 'call' as const;
   override _requiredSemi = true;
 
   constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
@@ -128,7 +131,7 @@ export class Call extends Node<CallValue, CallOptions> {
     let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
     for (const rule of rules.value) {
       if (isNode(rule, N.Declaration)) {
-        rule.value.important = important;
+        rule.setValue('important', important);
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
       } else if (isNode(rule, N.AtRule | N.Ruleset)) {
@@ -296,10 +299,10 @@ export class Call extends Node<CallValue, CallOptions> {
         let newCall = this.clone().inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
-        newCall.value.name = isNode(name, N.Reference) && name.options.fallbackValue === true
+        newCall.setValue('name', isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
-          : String(n.valueOf());
-        newCall.value.args = await evalArgNodes(args);
+          : String(n.valueOf()));
+        newCall.setValue('args', await evalArgNodes(args));
         newCall.value.args?.value.forEach((arg, argIndex) => {
           // Normalize fallback-call arg spacing to Less-style call serialization.
           arg.pre = argIndex === 0 ? 0 : 1;
@@ -347,8 +350,8 @@ export class Call extends Node<CallValue, CallOptions> {
           return new Paren(evaluatedArgs.value[0]!);
         }
       }
-      node.value.name = n;
-      node.value.args = evaluatedArgs;
+      node.setValue('name', n);
+      node.setValue('args', evaluatedArgs);
       return adoptCallWhitespace(node);
     };
   }

@@ -18,10 +18,11 @@ import type { PrintOptions } from './util/print.js';
  */
 /** Anything other than type (element) or universal, which must come first */
 const nonElementRegex = /^[.#:[]/;
+export interface CompoundSelector {
+  type: 'CompoundSelector';
+  shortType: 'compound';
+}
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  type = 'CompoundSelector' as const;
-  shortType = 'compound' as const;
-
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();

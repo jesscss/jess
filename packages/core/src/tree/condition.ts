@@ -20,13 +20,12 @@ export type ConditionOptions = {
 };
 
 export interface Condition extends Node<ConditionValue, ConditionOptions> {
+  type: 'Condition';
+  shortType: 'condition';
   eval(context: Context): MaybePromise<Bool>;
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  type = 'Condition' as const;
-  shortType = 'condition' as const;
-
   constructor(value: ConditionValue, options?: ConditionOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Conditions are always non-static, but can inherit may_async from children

@@ -91,10 +91,11 @@ function isInsideSelectorCapture(node: Node | undefined): boolean {
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
+export interface Reference {
+  type: 'Reference';
+  shortType: 'ref';
+}
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
-  type = 'Reference';
-  shortType = 'ref';
-
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
       value = { key: value };

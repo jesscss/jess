@@ -60,9 +60,12 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
  *   color: black;
  * }
  */
+export interface Ruleset {
+  type: 'Ruleset';
+  shortType: 'ruleset';
+}
+
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
-  type = 'Ruleset';
-  shortType = 'ruleset';
   override allowRuleRoot = true;
   override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
@@ -318,7 +321,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const normalizedSelector = Array.isArray(normalizedResult)
       ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
       : (normalizedResult as Selector);
-    this.value.selector = normalizedSelector as typeof selector;
+    this.setValue('selector', normalizedSelector as typeof selector);
     this.invalidateSelectorValueCache();
 
     let renderSelector = withoutComments ? (this.value.selector.copy(true) as typeof selector) : this.value.selector;
@@ -339,7 +342,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if (renderSelector instanceof Nil) {
         return '';
       }
-      this.value.selector = renderSelector as typeof selector;
+      this.setValue('selector', renderSelector as typeof selector);
       this.invalidateSelectorValueCache();
     }
     const prevReferenceFilterTargets = options.referenceFilterTargets === true;
@@ -430,7 +433,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // their own value before we overwrite value.selector so they keep their selector.
           Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, node.value);
           // Store the evaluated selector - this is what will be in the frame
-          node.value.selector = sel as Selector | Nil;
+          node.setValue('selector', sel as Selector | Nil);
           if (sel.hoistToRoot) {
             node.hoistToRoot = true;
           }
@@ -455,7 +458,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             if (isThenable(preEvaldRules)) {
               return (preEvaldRules as Promise<Rules>).then((rules) => {
                 context.rulesetFrames.pop();
-                node.value.rules = rules;
+                node.setValue('rules', rules);
                 if (extendRoot && rules !== childRules) {
                   context.extendRoots.registerRoot(rules, extendRoot);
                 }
@@ -463,7 +466,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               });
             }
             context.rulesetFrames.pop();
-            node.value.rules = preEvaldRules as Rules;
+            node.setValue('rules', preEvaldRules as Rules);
             if (extendRoot && preEvaldRules !== childRules) {
               context.extendRoots.registerRoot(preEvaldRules as Rules, extendRoot);
             }
@@ -486,7 +489,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override copy(deep?: boolean): this {
     const node = super.copy(deep);
     const selectorSourceNode = this.value.selector.sourceNode;
-    node.value.selector = selectorSourceNode.copy(true) as Selector | Nil;
+    node.setValue('selector', selectorSourceNode.copy(true) as Selector | Nil);
     node.value.selector.sourceNode = selectorSourceNode;
     return node;
   }
@@ -531,11 +534,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               }
               if (!guardPasses) {
                 // Guard failed - mark as Nil and return it
-                this.value.guard = new Nil();
+                this.setValue('guard', new Nil() as Condition | Nil);
                 return new Nil();
               }
               // Guard passed - clear it and continue with selector evaluation
-              this.value.guard = undefined;
+              this.setValue('guard', undefined as Condition | Nil | undefined);
               return undefined;
             }
           );
@@ -558,22 +561,22 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // This allows rules to be output even when there's no selector context
           // We don't push frames because there's no selector context
           // Store Nil in selector so next step can detect this case
-          this.value.selector = selector;
+          this.setValue('selector', selector as Selector | Nil);
           const evaluatedRules = this.value.rules.eval(context);
           // Update this.value.rules to point to evaluated Rules to prevent circular reference
           // when debug code traverses the AST
           if (isThenable(evaluatedRules)) {
             return (evaluatedRules as Promise<Rules>).then((rules) => {
-              this.value.rules = rules;
+              this.setValue('rules', rules);
               return rules;
             });
           }
-          this.value.rules = evaluatedRules as Rules;
+          this.setValue('rules', evaluatedRules as Rules);
           return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
-        this.value.selector = selector;
+        this.setValue('selector', selector as Selector | Nil);
         // Restore the sourceNode on the new selector so it's available when copying
         if (preservedSourceNode && this.value.selector) {
           this.value.selector.sourceNode = preservedSourceNode;
@@ -609,7 +612,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
 
-        this.value.rules = evaluatedRules;
+        this.setValue('rules', evaluatedRules as Rules);
         const rules = this.value.rules;
 
         if (rules.visibleRules().length === 0) {
