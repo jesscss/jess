@@ -545,14 +545,14 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
                 flattened.push(sel);
               }
             }
-            el.value.arg = SelectorList.create(flattened);
+            el.setValue('arg', SelectorList.create(flattened));
           } else {
             // Single selector result - check if it's a generated :is() to unwrap
             if (isNode(result, N.PseudoSelector) && result.value.name === ':is' && result.generated) {
               // Unwrap - use the argument directly
-              el.value.arg = result.value.arg as Selector;
+              el.setValue('arg', result.value.arg as Selector);
             } else {
-              el.value.arg = result;
+              el.setValue('arg', result);
             }
           }
         }
@@ -1569,7 +1569,7 @@ export function extendSelector(
                 return extendedArg;
               }
               if (component.generated) {
-                component.value.arg = extendedArg as any;
+                component.setValue('arg', extendedArg as any);
               } else {
                 newComponents[idx] = PseudoSelector.create({
                   name: component.value.name,
@@ -2133,7 +2133,7 @@ function extendSelectorList(
           ]).inherit(m.parentArg);
           const updatedSel = m.selector.copy(true) as ComplexSelector;
           const updatedPseudo = updatedSel.value[0] as PseudoSelector;
-          updatedPseudo.value.arg = updatedArg;
+          updatedPseudo.setValue('arg', updatedArg);
           next[m.idx] = updatedSel;
           mutationCount++;
         }
@@ -2726,7 +2726,7 @@ function handleFullExtend(
         }
         // If the original selector was generated, we can mutate it in place for performance
         if (target.generated) {
-          target.value.arg = newArg;
+          target.setValue('arg', newArg);
           return target;
         } else {
           // For authored selectors, create a new one to preserve the original
@@ -2744,7 +2744,7 @@ function handleFullExtend(
 
         // If the original selector was generated, we can mutate it in place for performance
         if (target.generated) {
-          target.value.arg = newArg;
+          target.setValue('arg', newArg);
           return target;
         } else {
           // For authored selectors, create a new one to preserve the original
@@ -3171,12 +3171,12 @@ function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Se
         // Remove from compound/complex selector
         const idx = parent.value.indexOf(node as any);
         if (idx >= 0) {
-          parent.value.splice(idx, 1);
+          parent.mutableValue.splice(idx, 1);
           // If we removed a leading ampersand in a complex selector, also remove a following combinator
           // (implicit nesting uses `&` + generated whitespace combinator).
           const next = parent.value[idx];
           if (isNode(next, N.Combinator) && next.value === ' ') {
-            parent.value.splice(idx, 1);
+            parent.mutableValue.splice(idx, 1);
           }
         }
       }
@@ -3319,12 +3319,13 @@ function replaceNodeInParent(parent: any, oldNode: any, newNode: any): void {
   if (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
     for (let i = 0; i < parent.value.length; i++) {
       if (parent.value[i] === oldNode) {
-        parent.value[i] = newNode;
+        parent.mutableValue[i] = newNode;
+        parent.adopt(newNode);
         break;
       }
     }
   } else if (isNode(parent, N.PseudoSelector) && parent.value.arg === oldNode) {
-    parent.value.arg = newNode;
+    parent.setValue('arg', newNode);
   }
 }
 

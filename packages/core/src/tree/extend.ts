@@ -42,13 +42,12 @@ export type ExtendValue = {
  * registers selectors by a string code.
  */
 export interface Extend extends Node<ExtendValue> {
+  type: 'Extend';
+  shortType: 'extend';
   eval(context: Context): MaybePromise<Selector>;
 }
 
 export class Extend extends Node<ExtendValue> {
-  type = 'Extend' as const;
-  shortType = 'extend' as const;
-
   constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
