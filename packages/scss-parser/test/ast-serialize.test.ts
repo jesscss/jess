@@ -36,13 +36,13 @@ describe('scss-parser (ast serialize)', () => {
             name:
               (Any [role=property] 'regular')
             value:
-              (Number 400)
+              (Num 400)
           )
           (Declaration
             name:
               (Any [role=property] 'medium')
             value:
-              (Number 500)
+              (Num 500)
           )
         ]
       )

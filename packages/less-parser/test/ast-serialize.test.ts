@@ -354,9 +354,9 @@ test('static rgb() is preserved as Call node', () => {
         args: 
           (List
             [
-              (Number 255)
-              (Number 0)
-              (Number 0)
+              (Num 255)
+              (Num 0)
+              (Num 0)
             ]
           )
       )
@@ -368,18 +368,18 @@ test('rgb() with variable creates Call node', () => {
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference
             key: 'rgb'
           )
-        args: 
+        args:
           (List
             [
               (Reference
                 key: 'r'
               )
-              (Number 0)
-              (Number 0)
+              (Num 0)
+              (Num 0)
             ]
           )
       )
@@ -398,7 +398,7 @@ test('static hsl() is preserved as Call node', () => {
         args: 
           (List
             [
-              (Number 120)
+              (Num 120)
               (Dimension
                 number: 50
                 unit: '%'

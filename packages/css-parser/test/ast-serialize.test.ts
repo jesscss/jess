@@ -118,7 +118,7 @@ describe('serializeTypes coverage', () => {
         name:
           (Any [role=property] 'z')
         value:
-          (Number 2)
+          (Num 2)
     `);
   });
 
@@ -132,9 +132,9 @@ describe('serializeTypes coverage', () => {
         value:
           (List
             [
-              (Number 1)
-              (Number 2)
-              (Number 3)
+              (Num 1)
+              (Num 2)
+              (Num 3)
             ]
           )
     `);
@@ -145,9 +145,9 @@ describe('serializeTypes coverage', () => {
         value:
           (Sequence
             [
-              (Number 1)
-              (Number 2)
-              (Number 3)
+              (Num 1)
+              (Num 2)
+              (Num 3)
             ]
           )
     `);
