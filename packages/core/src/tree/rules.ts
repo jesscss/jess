@@ -2490,10 +2490,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             .map(p => p.value.value);
           const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
           for (const argNode of argumentNodes) {
-            // If a Rest param collected args into a Sequence, spread its items
-            // so @arguments reflects the actual argument count
-            if (isNode(argNode, N.Sequence)) {
-              for (const item of (argNode as { value: Node[] }).value) {
+            /** If a Rest param collected args into a Sequence, spread
+             *  its items so @arguments reflects the actual arg count. */
+            if (isNode(argNode, N.Sequence) && (argNode as Sequence).value.length > 1) {
+              for (const item of (argNode as Sequence).value) {
                 const cloned = item.copy(true, freezeChildren);
                 cloned.frozen = true;
                 argumentsArgs.push(cloned);
