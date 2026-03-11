@@ -1,10 +1,10 @@
 /**
- * Parser benchmark: Chevrotain (CssActionsParser) vs hand-written (CssRecursiveParser)
+ * Parser benchmark: Chevrotain ALL(*) vs hand-written recursive-descent
  *
  * Usage:
  *   npx tsx test/bench.ts
  *   npx tsx test/bench.ts --profile    # generates V8 CPU profile
- *   npx tsx test/bench.ts --heap       # generates V8 heap snapshot
+ *   npx tsx test/bench.ts --per-file   # per-file breakdown
  *
  * With GC stats:
  *   node --expose-gc --import tsx test/bench.ts
@@ -158,8 +158,31 @@ function bench(name: string, fn: (tokens: any[]) => number): BenchResult {
   };
 }
 
-function formatResult(r: BenchResult): string {
-  return `avg=${r.avg.toFixed(2)}ms  median=${r.median.toFixed(2)}ms  min=${r.min.toFixed(2)}ms  p95=${r.p95.toFixed(2)}ms  errors=${r.errors}`;
+function fmt(ms: number): string {
+  return ms.toFixed(2).padStart(8) + 'ms';
+}
+
+function formatTable(results: { name: string; r: BenchResult }[]): void {
+  const nameW = Math.max(...results.map(x => x.name.length));
+  console.log(
+    'Parser'.padEnd(nameW) + '    median       avg       min       p95    errors'
+  );
+  console.log('─'.repeat(nameW + 56));
+  for (const { name, r } of results) {
+    console.log(
+      `${name.padEnd(nameW)}  ${fmt(r.median)}  ${fmt(r.avg)}  ${fmt(r.min)}  ${fmt(r.p95)}  ${String(r.errors).padStart(6)}`
+    );
+  }
+
+  // Speedup comparison
+  const baseline = results[0]!.r;
+  const rec = results[1]!.r;
+  const medianX = baseline.median / rec.median;
+  const avgX = baseline.avg / rec.avg;
+  console.log('');
+  console.log(
+    `Speedup: ${medianX.toFixed(2)}x median, ${avgX.toFixed(2)}x avg`
+  );
 }
 
 // ── Memory measurement ───────────────────────────────────────────────
@@ -189,47 +212,61 @@ function measureMemory(fn: (tokens: any[]) => number): { heapDelta: number; rss:
 
 console.log(`\n── Parse speed (${ITERATIONS} iterations) ──\n`);
 
-const chevResult = bench('Chevrotain', parseChevrotain);
-console.log(`Chevrotain:  ${formatResult(chevResult)}`);
+const allResults: { name: string; r: BenchResult }[] = [];
+
+const chevResult = bench('Chev ALL(*)', parseChevrotain);
+allResults.push({ name: 'Chev ALL(*)', r: chevResult });
 
 const recResult = bench('Recursive', parseRecursive);
-console.log(`Recursive:   ${formatResult(recResult)}`);
+allResults.push({ name: 'Recursive', r: recResult });
 
-const speedup = chevResult.median / recResult.median;
-const avgSpeedup = chevResult.avg / recResult.avg;
-console.log(`\nSpeedup:     ${speedup.toFixed(2)}x median, ${avgSpeedup.toFixed(2)}x avg`);
+formatTable(allResults);
 
 // Memory
-console.log(`\n── Memory (${ITERATIONS} iterations) ──\n`);
-const chevMem = measureMemory(parseChevrotain);
-const recMem = measureMemory(parseRecursive);
-console.log(`Chevrotain:  heap=${(chevMem.heapDelta / 1024).toFixed(0)}KB  rss=${(chevMem.rss / 1024).toFixed(0)}KB`);
-console.log(`Recursive:   heap=${(recMem.heapDelta / 1024).toFixed(0)}KB  rss=${(recMem.rss / 1024).toFixed(0)}KB`);
+if (global.gc) {
+  console.log(`\n── Memory (${ITERATIONS} iterations, GC enabled) ──\n`);
+  const chevMem = measureMemory(parseChevrotain);
+  const recMem = measureMemory(parseRecursive);
+  console.log(`Chev ALL(*): heap=${(chevMem.heapDelta / 1024).toFixed(0)}KB  rss=${(chevMem.rss / 1024).toFixed(0)}KB`);
+  console.log(`Recursive:   heap=${(recMem.heapDelta / 1024).toFixed(0)}KB  rss=${(recMem.rss / 1024).toFixed(0)}KB`);
+} else {
+  console.log('\n(Run with --expose-gc for memory stats)');
+}
 
 // Per-file breakdown (optional)
 if (process.argv.includes('--per-file')) {
   console.log(`\n── Per-file breakdown ──\n`);
+  const nameW = Math.max(...corpus.map(f => f.name.length), 10);
+  console.log(
+    'File'.padEnd(nameW) + '   tokens  ALL(*)     Rec   Speedup'
+  );
+  console.log('─'.repeat(nameW + 42));
+
   for (const file of corpus) {
     const fileLex = lexer.tokenize(file.css);
     if (fileLex.errors.length > 0) {
       continue;
     }
+    const N = 100;
 
     const t1 = performance.now();
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < N; i++) {
       parseChevrotain(fileLex.tokens);
     }
-    const chevTime = (performance.now() - t1) / 100;
+    const chevTime = (performance.now() - t1) / N;
 
     const t2 = performance.now();
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < N; i++) {
       parseRecursive(fileLex.tokens);
     }
-    const recTime = (performance.now() - t2) / 100;
+    const recTime = (performance.now() - t2) / N;
 
     const ratio = chevTime / recTime;
-    const bar = ratio > 1 ? '█'.repeat(Math.min(20, Math.round(ratio * 5))) : '░'.repeat(Math.min(20, Math.round((1 / ratio) * 5)));
-    console.log(`  ${ratio > 1 ? '✓' : '✗'} ${ratio.toFixed(2)}x  ${bar}  ${file.name} (${fileLex.tokens.length} tok)`);
+    console.log(
+      `${file.name.padEnd(nameW)} ${String(fileLex.tokens.length).padStart(7)}  `
+      + `${chevTime.toFixed(2).padStart(6)}  ${recTime.toFixed(2).padStart(6)}  `
+      + `${ratio.toFixed(2).padStart(7)}x`
+    );
   }
 }
 
