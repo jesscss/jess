@@ -41,40 +41,99 @@ describe('CSS error parsing', () => {
   }
 });
 
-describe('CSS error location accuracy', () => {
-  it('points to the correct line and column for a missing semicolon', () => {
+describe('CSS error location regression', () => {
+  it('missing semicolon: error at correct line/col', () => {
     const css = 'a { color: red\n  font-size: 12px; }';
     const { errors } = cssParser.parse(css);
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
     const err = errors[0];
-    expect(err.token.startLine).toBeGreaterThanOrEqual(1);
+    expect(err.token.startLine).toBe(2);
+    expect(err.token.startColumn).toBe(12);
+    expect(err.token.startOffset).toBe(26);
+    expect(err.ruleStack).toContain('qualifiedRule');
   });
 
-  it('points to the correct token for an invalid selector', () => {
+  it('invalid selector (123): error at start', () => {
     const css = '123 { color: red; }';
     const { errors } = cssParser.parse(css);
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    const err = errors[0];
+    expect(err.token.startLine).toBe(1);
+    expect(err.token.startColumn).toBe(1);
+    expect(err.token.startOffset).toBe(0);
+    expect(err.ruleStack).toContain('qualifiedRule');
   });
 
-  it('includes rule stack showing parse context', () => {
+  it('empty block in @media: error inside media block', () => {
     const css = '@media screen { {} }';
     const { errors } = cssParser.parse(css);
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
     const err = errors[0];
-    expect(err.ruleStack.length).toBeGreaterThan(0);
+    expect(err.token.startLine).toBe(1);
+    expect(err.token.startColumn).toBe(17);
+    expect(err.token.startOffset).toBe(16);
+    expect(err.ruleStack).toContain('mediaAtRule');
   });
 
-  it('multiple errors are reported for multiple issues', () => {
+  it('multiple empty blocks: reports errors at each block', () => {
     const css = '{}\n{}\n{}';
     const { errors } = cssParser.parse(css);
     expect(errors.length).toBeGreaterThanOrEqual(2);
+    expect(errors[0].token.startLine).toBe(1);
+    expect(errors[0].token.startOffset).toBe(0);
+    // Subsequent errors on subsequent lines
+    if (errors.length >= 2) {
+      expect(errors[1].token.startLine).toBeGreaterThanOrEqual(2);
+    }
   });
 
-  it('valid CSS with recovery produces no errors', () => {
+  it('no selector (bare {}): error at opening brace', () => {
+    const css = '{}\n';
+    const { errors } = cssParser.parse(css);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    const err = errors[0];
+    expect(err.token.startLine).toBe(1);
+    expect(err.token.startColumn).toBe(1);
+    expect(err.token.startOffset).toBe(0);
+  });
+
+  it('root declaration: error at property name', () => {
+    const css = 'one: 1;';
+    const { errors } = cssParser.parse(css);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    const err = errors[0];
+    expect(err.token.startLine).toBe(1);
+    expect(err.token.startOffset).toBeLessThanOrEqual(5);
+  });
+
+  it('atrule missing semicolon: error at end of at-rule', () => {
+    // @media screen {@content}
+    const css = '/** Invalid inner at-rule */\n@media screen {@content}\n';
+    const { errors } = cssParser.parse(css);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    const err = errors[0];
+    expect(err.token.startLine).toBe(2);
+    expect(err.token.startColumn).toBe(24);
+    expect(err.token.startOffset).toBe(52);
+  });
+
+  it('valid CSS produces no errors', () => {
     const { errors } = cssParser.parse('a { color: red; }');
-    for (const e of errors) {
-      console.log('  err:', e.message, '| ruleStack:', e.ruleStack, '| token:', e.token?.image);
-    }
+    expect(errors.length).toBe(0);
+  });
+
+  it('valid multi-rule CSS produces no errors', () => {
+    const { errors } = cssParser.parse('a { color: red; }\nb { font-size: 12px; }');
+    expect(errors.length).toBe(0);
+  });
+
+  it('valid @media produces no errors', () => {
+    const { errors } = cssParser.parse('@media screen { a { color: red; } }');
+    expect(errors.length).toBe(0);
+  });
+
+  it('valid nested CSS produces no errors', () => {
+    const { errors } = cssParser.parse('a { color: red; b { font-size: 12px; } }');
     expect(errors.length).toBe(0);
   });
 });

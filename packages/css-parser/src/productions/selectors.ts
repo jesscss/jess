@@ -45,8 +45,8 @@ export function stylesheet(this: P, options: Record<string, any> = {}) {
 
 export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => this.qualifiedRule() },
-    { ALT: () => this.atRule() }
+    { GATE: () => tokenMatches(this.la(1), this.T.AtName), ALT: () => this.atRule() },
+    { ALT: () => this.qualifiedRule() }
   ];
 
   const isRoot = !!ctx.isRoot;
@@ -62,10 +62,17 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
    * so that's why this gate is here.
    */
   this.many({
-    GATE: () => !requiredSemi || (requiredSemi && (
-      this.la(1).tokenType === this.T.Semi
-      || this.la(0).tokenType === this.T.Semi
-    )),
+    GATE: () => {
+      const next = this.la(1);
+      // Stop at RCurly (belongs to parent block) or end of input
+      if (next.tokenType === this.T.RCurly || next.tokenType.name === 'EOF') {
+        return false;
+      }
+      return !requiredSemi || (requiredSemi && (
+        next.tokenType === this.T.Semi
+        || this.la(0).tokenType === this.T.Semi
+      ));
+    },
     DEF: () => {
       const localAlt = typeof alt === 'function' ? alt(ctx) : alt!;
       let value = this.or(localAlt);
@@ -612,8 +619,8 @@ export function declarationList(this: P, ctx: RuleContext = {}, alt?: AltContext
    */
 
   alt ??= (ctx: RuleContext = {}) => [
+    { GATE: () => tokenMatches(this.la(1), this.T.AtName), ALT: () => this.innerAtRule({ ...ctx, inner: true }) },
     { ALT: () => this.declaration(ctx) },
-    { ALT: () => this.innerAtRule({ ...ctx, inner: true }) },
     { ALT: () => this.qualifiedRule({ ...ctx, inner: true }) },
     { ALT: () => this.consume(this.T.Semi) }
   ];

@@ -485,9 +485,11 @@ export class RecursiveDescentParser {
     const savedErrors = this.errors.length;
     try {
       const result = def();
-      // If DEF didn't advance pos, it didn't match (recovery may
-      // have inserted virtual tokens). Undo and return undefined.
-      if (this.pos === prevPos) {
+      // option() is speculative: if DEF didn't advance pos, or if
+      // recovery added errors (the optional content wasn't really there),
+      // undo everything.
+      if (this.pos === prevPos || this.errors.length > savedErrors) {
+        this.pos = prevPos;
         this.locationStack.length = savedLocStackLen;
         this.ruleStack.length = savedRuleStackLen;
         this.errors.length = savedErrors;

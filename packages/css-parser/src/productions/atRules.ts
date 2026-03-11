@@ -21,19 +21,20 @@ function resolvePreludeRule(parser: P, preludeRule: PreludeRule): unknown {
 }
 
 export function atRule(this: P, ctx: RuleContext = {}) {
+  const la1 = this.la(1);
   return this.or([
-    { ALT: () => this.containerAtRule(ctx) },
-    { ALT: () => this.scopeAtRule(ctx) },
-    { ALT: () => this.documentAtRule(ctx) },
-    { ALT: () => this.layerAtRule(ctx) },
-    { ALT: () => this.keyframesAtRule(ctx) },
-    { ALT: () => this.importAtRule(ctx) },
-    { ALT: () => this.mediaAtRule(ctx) },
-    { ALT: () => this.pageAtRule(ctx) },
-    { ALT: () => this.fontFaceAtRule(ctx) },
-    { ALT: () => this.supportsAtRule(ctx) },
-    { ALT: () => this.nestedAtRule(ctx) },
-    { ALT: () => this.nonNestedAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtContainer), ALT: () => this.containerAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtScope), ALT: () => this.scopeAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtDocument), ALT: () => this.documentAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtLayer), ALT: () => this.layerAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtKeyframes), ALT: () => this.keyframesAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtImport), ALT: () => this.importAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtMedia), ALT: () => this.mediaAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtPage), ALT: () => this.pageAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtFontFace), ALT: () => this.fontFaceAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtSupports), ALT: () => this.supportsAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtNested), ALT: () => this.nestedAtRule(ctx) },
+    { GATE: () => tokenMatches(la1, this.T.AtNonNested), ALT: () => this.nonNestedAtRule(ctx) },
     { ALT: () => this.unknownAtRule(ctx) }
   ]);
 }
@@ -43,15 +44,16 @@ export function atRule(this: P, ctx: RuleContext = {}) {
   instead of a main block within {}
 */
 export function innerAtRule(this: P, ctx: RuleContext = {}): Node {
+  const la1 = this.la(1);
   return this.or([
-    { ALT: () => this.containerAtRule({ ...ctx, inner: true }) },
-    { ALT: () => this.scopeAtRule({ ...ctx, inner: true }) },
-    { ALT: () => this.documentAtRule({ ...ctx, inner: true }) },
-    { ALT: () => this.layerAtRule({ ...ctx, inner: true }) },
-    { ALT: () => this.keyframesAtRule({ ...ctx, inner: true }) },
-    { ALT: () => this.mediaAtRule({ ...ctx, inner: true }) },
-    { ALT: () => this.supportsAtRule({ ...ctx, inner: true }) },
-    { ALT: () => this.nestedAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtContainer), ALT: () => this.containerAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtScope), ALT: () => this.scopeAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtDocument), ALT: () => this.documentAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtLayer), ALT: () => this.layerAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtKeyframes), ALT: () => this.keyframesAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtMedia), ALT: () => this.mediaAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtSupports), ALT: () => this.supportsAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches(la1, this.T.AtNested), ALT: () => this.nestedAtRule({ ...ctx, inner: true }) },
     { ALT: () => this.unknownAtRule({ ...ctx, inner: true }) }
   ]);
 }

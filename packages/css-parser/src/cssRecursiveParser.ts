@@ -261,7 +261,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
         result = new Any(tokValue, { role: 'ident' }, this.getLocationInfo(token), this.context);
       }
     } else if (tokenMatches(token, T.Dimension)) {
-      dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
+      dimValue = { number: parseFloat(token.payload?.[0] ?? '0'), unit: token.payload?.[1] ?? '' };
       result = getDimension(dimValue);
     } else if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
