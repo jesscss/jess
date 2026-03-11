@@ -36,7 +36,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     const needsParens = Boolean(right || this.options?.negate);
     if (this.options?.negate) {
       w.add('not ');
@@ -59,7 +59,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   static getBool(node: Node, negated: boolean): Bool {
     if (node instanceof Bool) {
-      return new Bool(negated ? !node.value : node.value);
+      return new Bool(negated ? !node.data : node.data);
     }
     // Less guards treat only explicit booleans as truthy.
     // Any non-boolean (number, quoted, keyword, list, nil, etc.) is false.
@@ -68,8 +68,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
     switch (op) {
-      case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
-      case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
+      case 'and': return Condition.getBool(a, false).data && Condition.getBool(b, false).data;
+      case 'or': return Condition.getBool(a, false).data || Condition.getBool(b, false).data;
       default:
         switch (a.compare(b)) {
           case -1:
@@ -85,7 +85,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     let negated = !!this.options?.negate;
 
     return pipe(

@@ -47,7 +47,7 @@ export class Log extends Node<LogValue, NodeOptions> {
 
   override evalNode(context: Context): MaybePromise<Nil> {
     // Evaluate the message expression
-    const messageResult = this.value.message.eval(context);
+    const messageResult = this.data.message.eval(context);
 
     // Handle async evaluation if needed
     if (messageResult && typeof (messageResult as any).then === 'function') {
@@ -64,7 +64,7 @@ export class Log extends Node<LogValue, NodeOptions> {
 
   private _logMessage(message: Node): void {
     const messageStr = String(message);
-    const { level } = this.value;
+    const { level } = this.data;
 
     switch (level) {
       case 'debug':

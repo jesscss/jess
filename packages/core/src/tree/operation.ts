@@ -36,7 +36,7 @@ export class Operation extends Node<OperationValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     let leftStr = w.capture(() => left.toString(options));
     let rightStr = w.capture(() => right.toString(options));
     w.add(leftStr.trimEnd(), left);
@@ -47,14 +47,14 @@ export class Operation extends Node<OperationValue> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     let n = this;
-    let [left, op, right] = n.value;
+    let [left, op, right] = n.data;
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (context.shouldOperate(op, l, r)) {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          n.value = [l, op, r];
+          n.data = [l, op, r];
           return n;
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -71,7 +71,7 @@ export class Operation extends Node<OperationValue> {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
               // Update the existing operation with evaluated nodes and mark as evaluated
-              n.value = [l, op, r];
+              n.data = [l, op, r];
               n.evaluated = true;
               // Mark child nodes as evaluated too
               l.evaluated = true;
@@ -96,7 +96,7 @@ export class Operation extends Node<OperationValue> {
         out.post = right.post;
         return out;
       }
-      n.value = [l, op, r];
+      n.data = [l, op, r];
       return n;
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {

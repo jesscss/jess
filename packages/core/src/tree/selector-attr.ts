@@ -38,12 +38,12 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         return super.evalNode(context) as any;
       },
       () => {
-        const { value } = this.value;
+        const { value } = this.data;
         // Handle Less interpolation that the parser may have left as a raw token in selectors:
         //   [data=@{attr-data}]
         // In Less semantics this should resolve to the variable value and be serialized quoted.
-        if (value instanceof Any && typeof value.value === 'string') {
-          const raw = value.value.trim();
+        if (value instanceof Any && typeof value.data === 'string') {
+          const raw = value.data.trim();
           const m = raw.match(/^@\{([^}]+)\}$/);
           if (m) {
             const key = m[1]!;
@@ -52,10 +52,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
               const found = rules.find('declaration', key, 'VarDeclaration');
               const decl = Array.isArray(found) ? found[0] : found;
               if (decl && isNode(decl, N.VarDeclaration)) {
-                const out = decl.value.value.eval(context);
+                const out = decl.data.value.eval(context);
                 if (isThenable(out)) {
                   return (out as Promise<Node>).then((evaluated) => {
-                    this.setValue('value', quoted(String(evaluated.valueOf())));
+                    this.setData('value', quoted(String(evaluated.valueOf())));
                     this._valueOf = undefined;
                     this._keySet = undefined;
                     this._visibleKeySet = undefined;
@@ -63,7 +63,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                     return this;
                   });
                 }
-                this.setValue('value', quoted(String((out as Node).valueOf())));
+                this.setData('value', quoted(String((out as Node).valueOf())));
                 this._valueOf = undefined;
                 this._keySet = undefined;
                 this._visibleKeySet = undefined;
@@ -81,7 +81,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, op, value, mod } = this.value;
+    const { name, op, value, mod } = this.data;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);
@@ -105,7 +105,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   override valueOf() {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, op, value, mod } = this.value;
+      let { name, op, value, mod } = this.data;
       /** Attributes are case-insensitive */
       let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
       if (!op) {

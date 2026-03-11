@@ -368,8 +368,8 @@ describe('Color Node', () => {
       }, { format: ColorFormat.RGB });
 
       expect(color.options.format).toBe(ColorFormat.RGB);
-      expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('rgb');
+      expect(color.data.node).toBeInstanceOf(Call);
+      expect((color.data.node as Call).data.name).toBe('rgb');
       expect(color.alpha).toBe(1);
     });
 
@@ -388,8 +388,8 @@ describe('Color Node', () => {
       }, { format: ColorFormat.HSL });
 
       expect(color.options.format).toBe(ColorFormat.HSL);
-      expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('hsl');
+      expect(color.data.node).toBeInstanceOf(Call);
+      expect((color.data.node as Call).data.name).toBe('hsl');
       expect(color.alpha).toBe(1);
     });
   });

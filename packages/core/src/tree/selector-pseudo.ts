@@ -42,7 +42,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   protected override _computeKeySetAndFastReject(): void {
-    const { name, arg } = this.value;
+    const { name, arg } = this.data;
 
     // Check if this is a pseudo-selector that contains selectors
     const hasSelectorListArg = isNode(arg, N.SelectorList);
@@ -53,7 +53,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         // SelectorList argument - union all selector keySets
         let combinedKeySet = new Set<string>();
         let combinedVisibleKeySet = new Set<string>();
-        for (const selector of arg.value) {
+        for (const selector of arg.data) {
           combinedKeySet = combinedKeySet.union(selector.keySet);
           combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
         }
@@ -80,7 +80,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, arg } = this.value;
+    let { name, arg } = this.data;
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
@@ -160,7 +160,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override valueOf(): string {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, arg } = this.value;
+      let { name, arg } = this.data;
       // For :is() with SelectorList, use valueOf() to avoid newlines
 
       /**
@@ -178,7 +178,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
-    const currentArg = this.value.arg;
+    const currentArg = this.data.arg;
     const node = this;
     if (!currentArg) {
       return node;
@@ -190,7 +190,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        node.setValue('arg', evaluatedArg);
+        node.setData('arg', evaluatedArg);
         return node;
       }
     );

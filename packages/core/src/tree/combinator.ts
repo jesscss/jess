@@ -18,13 +18,13 @@ export class Combinator extends Selector<Combinators> {
 
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {
-  //   const val = this.value
+  //   const val = this.data
   //   out.add(val === ' ' ? val : ` ${val} `, this.location)
   // }
 
   /** @todo move to visitor */
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add(`$J.co("${this.value}")`)
+  //   out.add(`$J.co("${this.data}")`)
   // }
 }
 export const co = defineType(Combinator, 'Combinator', 'co');

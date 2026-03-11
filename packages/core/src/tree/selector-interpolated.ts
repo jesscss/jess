@@ -29,11 +29,11 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    return this.value.evalToSelector(context);
+    return this.data.evalToSelector(context);
   }
 
   override valueOf(): string {
-    return this.value.valueOf();
+    return this.data.valueOf();
   }
 }
 

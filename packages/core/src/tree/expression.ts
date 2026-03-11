@@ -23,7 +23,7 @@ export class Expression extends Node<Node> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { value } = this;
+    const value = this.data;
     const out = value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
@@ -38,7 +38,7 @@ export class Expression extends Node<Node> {
     const mark = w.mark();
     w.add('$', this);
     w.add('(');
-    this.value.toString(options);
+    this.data.toString(options);
     w.add(')');
     return w.getSince(mark);
   }

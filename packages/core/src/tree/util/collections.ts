@@ -59,13 +59,13 @@ type GetEntriesOf<T> = T extends readonly any[]
       ? RecordValue extends readonly any[]
         ? [RecordValue[number], number, RecordValue]
         : [RecordValue, keyof ConditionalExcept<T, readonly any[]>, T]
-      : [T, 'value', T];
+      : [T, 'data', T];
 
 // type Test = GetEntriesOf<Node<string>>
 // type Test2 = GetEntriesOf<Node<string[]>>
 // type Test3 = GetEntriesOf<Node<{ selector: Node[], foo: 'string' }>>
 
-export function* getValues<T>(collection: T, reverse = false): Generator<GetEntriesOf<{ value: T }>[0]> {
+export function* getValues<T>(collection: T, reverse = false): Generator<GetEntriesOf<{ data: T }>[0]> {
   if (isArray(collection)) {
     if (reverse) {
       for (let i = collection.length - 1; i >= 0; i--) {
@@ -115,14 +115,14 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
   } else if (isNode(collection, N.Mixin | N.Ruleset | N.Rules)) {
     let rules: Node[];
     if ((collection as Node).type === 'Mixin') {
-      if ((collection as Mixin).value.params?.length) {
+      if ((collection as Mixin).data.params?.length) {
         throw new Error('We can\'t iterate over a mixin with parameters');
       }
-      rules = (collection as Mixin).value.rules.value;
+      rules = (collection as Mixin).data.rules.data;
     } else if ((collection as Node).type === 'Ruleset') {
-      rules = (collection as Ruleset).value.rules.value;
+      rules = (collection as Ruleset).data.rules.data;
     } else if ((collection as Node).type === 'Rules') {
-      rules = (collection as Rules).value;
+      rules = (collection as Rules).data;
     }
     for (let [, value] of rules!.entries()) {
       if (value.type === 'Comment') {
@@ -131,38 +131,38 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       if (!isNode(value, N.Declaration)) {
         throw new Error('We can\'t iterate over rules with non-declarations');
       }
-      yield [value.value.value, value.value.name, rules!] as unknown as GetEntriesOf<T>;
+      yield [value.data.value, value.data.name, rules!] as unknown as GetEntriesOf<T>;
     }
-  } else if (isNode(collection) && isArray((collection as Node).value)) {
-    yield* getEntries((collection as Node).value as unknown[], reverse) as Generator<GetEntriesOf<T>>;
+  } else if (isNode(collection) && isArray((collection as Node).data)) {
+    yield* getEntries((collection as Node).data as unknown[], reverse) as Generator<GetEntriesOf<T>>;
   } else {
-    yield [collection, 'value', collection] as unknown as GetEntriesOf<T>;
+    yield [collection, 'data', collection] as unknown as GetEntriesOf<T>;
   }
 }
 
 /**
- * We use { value: unknown } as the type for the node so that
- * we can easily override the value type when calling.
+ * We use { data: unknown } as the type for the node so that
+ * we can easily override the data type when calling.
  */
-export function* getValuesFromNode<T extends { value: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>[0]> {
-  let value = node.value;
-  if (isArray(value) || isPlainObject(value)) {
-    yield* getValues(value, reverse) as Generator<GetEntriesOf<T>[0]>;
+export function* getValuesFromNode<T extends { data: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>[0]> {
+  let data = node.data;
+  if (isArray(data) || isPlainObject(data)) {
+    yield* getValues(data, reverse) as Generator<GetEntriesOf<T>[0]>;
   } else {
-    yield value;
+    yield data;
   }
 }
 
 /**
- * This is especially useful, because we don't have to care about what the Node's `value` is,
+ * This is especially useful, because we don't have to care about what the Node's data is,
  * we can just iterate over it and get the entries, and replace as necessary.
  */
-export function* getEntriesFromNode<T extends { value: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>> {
-  let value = node.value;
-  if (isArray(value) || isPlainObject(value)) {
-    yield* getEntries(value, reverse) as Generator<GetEntriesOf<T>[0]>;
+export function* getEntriesFromNode<T extends { data: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>> {
+  let data = node.data;
+  if (isArray(data) || isPlainObject(data)) {
+    yield* getEntries(data, reverse) as Generator<GetEntriesOf<T>[0]>;
   } else {
-    yield [value, 'value', node] as GetEntriesOf<T>;
+    yield [data, 'data', node] as GetEntriesOf<T>;
   }
 }
 

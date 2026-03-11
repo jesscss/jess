@@ -308,7 +308,7 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
+        const thirdVar = node.data.find(n => isNode(n, N.VarDeclaration) && n.data.name.valueOf() === 'var' && n.data.value.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -392,7 +392,7 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
+        const thirdVar = node.data.find(n => isNode(n, N.VarDeclaration) && n.data.name.valueOf() === 'var' && n.data.value.valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -637,7 +637,7 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
         // After evaluation, rulesets are still Rulesets, access via .value.rules
-        let boxRules = boxRuleset.value.rules;
+        let boxRules = boxRuleset.data.rules;
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
@@ -645,7 +645,7 @@ describe('Rules', () => {
         if (!isNode(boxRules, N.Rules)) {
           throw new Error(`Expected Rules, got ${(boxRules as any)?.type || 'undefined'}`);
         }
-        expect(boxRules.value.length).toBe(2);
+        expect(boxRules.data.length).toBe(2);
 
         // First declaration: color: $color
         let boxDecl1 = await boxRules.at(0)!.eval(context);
@@ -662,7 +662,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let boxMixinRules = boxMixinResult;
-        expect(boxMixinRules.value.length).toBeGreaterThan(0);
+        expect(boxMixinRules.data.length).toBeGreaterThan(0);
         let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
         expect(`${boxMixinDecl}`).toBe('color: red');
 
@@ -671,14 +671,14 @@ describe('Rules', () => {
         if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.value.rules;
+        let box3Rules = box3Ruleset.data.rules;
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, N.Rules)) {
           throw new Error(`Expected Rules, got ${(box3Rules as any)?.type || 'undefined'}`);
         }
-        expect(box3Rules.value.length).toBe(2);
+        expect(box3Rules.data.length).toBe(2);
 
         // First declaration: color: $color
         let box3Decl1 = await box3Rules.at(0)!.eval(context);
@@ -694,7 +694,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let box3MixinRules = box3MixinResult;
-        expect(box3MixinRules.value.length).toBeGreaterThan(0);
+        expect(box3MixinRules.data.length).toBeGreaterThan(0);
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
         // With call-time resolution ($~color), the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)

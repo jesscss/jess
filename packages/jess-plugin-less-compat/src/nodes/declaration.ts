@@ -58,7 +58,7 @@ export function transformDeclarationToLess(
     if (prop === 'accept') {
       return function(visitor: any) {
         // Declaration's accept only traverses its value (children)
-        // Base Node.accept() pattern: visitor.visit(this.value)
+        // Base Node.accept() pattern: visitor.visit(this.data)
         const value = decl.value.value;
         if (value instanceof Node) {
           const lessValue = toLessNode(value, { cache });

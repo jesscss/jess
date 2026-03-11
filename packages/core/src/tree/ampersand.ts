@@ -169,7 +169,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { appendValue } = this.value;
+    const { appendValue } = this.data;
     if (appendValue) {
       w.add('&(');
       if (appendValue) {
@@ -220,7 +220,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
-    const { appendValue } = this.value;
+    const { appendValue } = this.data;
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
     // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
@@ -271,13 +271,13 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             const baseSelectors: Selector[] = [];
             if (
               isNode(baseSelector, N.PseudoSelector)
-              && baseSelector.value.name === ':is'
-              && baseSelector.value.arg
-              && isNode(baseSelector.value.arg, N.SelectorList)
+              && baseSelector.data.name === ':is'
+              && baseSelector.data.arg
+              && isNode(baseSelector.data.arg, N.SelectorList)
             ) {
-              baseSelectors.push(...baseSelector.value.arg.value.map(item => item as Selector));
+              baseSelectors.push(...baseSelector.data.arg.data.map(item => item as Selector));
             } else if (isNode(baseSelector, N.SelectorList)) {
-              baseSelectors.push(...baseSelector.value.map(item => item as Selector));
+              baseSelectors.push(...baseSelector.data.map(item => item as Selector));
             } else {
               // Handle raw comma-separated strings (e.g. from ~'apple, satsuma, banana, pear')
               // by splitting into individual items so the template distributes across all of them.
@@ -303,10 +303,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           };
           if (isNode(selector, N.SelectorList)) {
             const mergedItems: Selector[] = [];
-            for (const item of selector.value) {
+            for (const item of selector.data) {
               const merged = mergeTemplate(item as Selector);
               if (isNode(merged, N.SelectorList)) {
-                mergedItems.push(...merged.value);
+                mergedItems.push(...merged.data);
               } else {
                 mergedItems.push(merged);
               }
@@ -321,8 +321,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             for (let s of n.nodes(true)) {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
-                if (typeof s.value === 'string') {
-                  s.value += appendValue;
+                if (typeof s.data === 'string') {
+                  s.data += appendValue;
                   appended = true;
                   break;
                 }
@@ -335,7 +335,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           };
 
           if (isNode(selector, N.SelectorList)) {
-            selector.value.forEach(doAppendValue);
+            selector.data.forEach(doAppendValue);
           } else {
             doAppendValue(selector);
           }

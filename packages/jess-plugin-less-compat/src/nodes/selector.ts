@@ -92,7 +92,7 @@ function flattenSelectorToElements(
               return function(visitor: any) {
                 // Less Element's accept() ONLY traverses children (combinator and value)
                 // It does NOT call visitor.visit() on itself - that's already been done
-                // Less.js Element.accept() pattern: visitor.visit(this.combinator) and visitor.visit(this.value)
+                // Less.js Element.accept() pattern: visitor.visit(this.combinator) and visitor.visit(this.data)
                 const lessCombinator = toLessNode(elementCombinator, { cache });
                 if (lessCombinator && visitor.visit) {
                   visitor.visit(lessCombinator);

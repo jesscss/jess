@@ -60,7 +60,7 @@ export abstract class Registry<
       return;
     }
     for (const item of this.pendingItems) {
-      let key = String((item as any).value);
+      let key = String((item as any).data);
       let set = this.index.get(key);
       if (set && set instanceof Set) {
         set.add(item);
@@ -303,7 +303,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
    * Add a ruleset to be indexed later
    */
   override add(ruleset: Ruleset) {
-    if (isNode(ruleset.value.selector, N.Selector)) {
+    if (isNode(ruleset.data.selector, N.Selector)) {
       this.pendingItems.add(ruleset);
     }
   }
@@ -482,7 +482,7 @@ export class MixinRegistry extends Registry<
         // Use the ruleset's own selector, not the implicit selector with parent context
         // This ensures nested rulesets are indexed by their local keys, not parent keys
         // If the selector has been evaluated/flattened, use sourceNode which has the original
-        let selector = mixin.value.selector;
+        let selector = mixin.data.selector;
         if (isNode(selector, N.Nil)) {
           continue;
         }
@@ -504,7 +504,7 @@ export class MixinRegistry extends Registry<
         let keySetToUse: Set<string> | undefined;
         if (isNode(selectorToIndex, N.SelectorList)) {
           /** Selector list's selectors are individually registered */
-          for (const sel of selectorToIndex.value) {
+          for (const sel of selectorToIndex.data) {
             this._indexSelectorStart(mixin, sel.visibleKeySet);
           }
           keySetToUse = undefined; // already indexed above
@@ -523,7 +523,7 @@ export class MixinRegistry extends Registry<
           const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
           const ownKeys = Array.from((ownSelector as Selector).visibleKeySet ?? []);
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
-            ? (mixin.parent.parent as Ruleset).value.selector
+            ? (mixin.parent.parent as Ruleset).data.selector
             : undefined;
           const parentKeys = (
             parentSelector && !isNode(parentSelector, N.Nil)
@@ -591,13 +591,13 @@ export class MixinRegistry extends Registry<
     // Get the selector's keySet and extract indexable keys (same as _indexSelectorStart)
     let indexableKeys: string[] = [];
     if (isNode(value, N.Ruleset)) {
-      const selector = value.value.selector;
+      const selector = value.data.selector;
       if (isNode(selector, N.Nil)) {
         return false;
       }
       if (isNode(selector, N.SelectorList)) {
         // For selector lists, check if any selector matches
-        return selector.value.some((sel) => {
+        return selector.data.some((sel) => {
           const selKeys = Array.from(sel.keySet).filter(key =>
             typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
           );
@@ -692,16 +692,16 @@ export class MixinRegistry extends Registry<
       hasTarget = false
     } = options ?? {};
     const mixinHasNoRequiredParams = (mixinNode: Mixin): boolean => {
-      const params = mixinNode.value.params;
+      const params = mixinNode.data.params;
       if (!params || params.length === 0) {
         return true;
       }
-      for (const param of params.value) {
+      for (const param of params.data) {
         if (param.type === 'Rest') {
           continue;
         }
         if (isNode(param, N.VarDeclaration)) {
-          if (param.value.value instanceof Nil) {
+          if (param.data.value instanceof Nil) {
             return false;
           }
           continue;
@@ -743,7 +743,7 @@ export class MixinRegistry extends Registry<
             filter: options?.filter
           } as FindOptions);
           if (isNode(maybeVar, N.VarDeclaration)) {
-            const resolvedValue = String(maybeVar.value.value.valueOf?.() ?? maybeVar.value.value ?? '');
+            const resolvedValue = String(maybeVar.data.value.valueOf?.() ?? maybeVar.data.value ?? '');
             if (resolvedValue === startKey) {
               resolvedInterpolatedStartEntries.push(...indexedEntries);
             }
@@ -794,7 +794,7 @@ export class MixinRegistry extends Registry<
               (isNode(value, N.Ruleset))
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
-              let subRules = value.value.rules;
+              let subRules = value.data.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
               // With the new indexing, nested rulesets are indexed by their local visible keys
@@ -835,7 +835,7 @@ export class MixinRegistry extends Registry<
               (isNode(value, N.Ruleset))
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
-              let subRules = value.value.rules;
+              let subRules = value.data.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
               subMixinRegistry.find(searchKeys, filterType, {
@@ -892,12 +892,12 @@ export class MixinRegistry extends Registry<
             // Check if this candidate matches the startKey.
             // For rulesets discovered via child-search, key-set membership is the reliable signal.
             const candidateKey = isMixin
-              ? candidateNode.value.name?.valueOf?.()
-              : (isRuleset ? candidateNode.value.selector.valueOf?.() : '');
+              ? candidateNode.data.name?.valueOf?.()
+              : (isRuleset ? candidateNode.data.selector.valueOf?.() : '');
             const matchesStartKey = isRuleset
               ? (
-                  (!isNode(candidateNode.value.selector, N.Nil) && candidateNode.value.selector.visibleKeySet.has(startKey!))
-                  || (!isNode(candidateNode.value.selector, N.Nil) && candidateNode.value.selector.keySet.has(startKey!))
+                  (!isNode(candidateNode.data.selector, N.Nil) && candidateNode.data.selector.visibleKeySet.has(startKey!))
+                  || (!isNode(candidateNode.data.selector, N.Nil) && candidateNode.data.selector.keySet.has(startKey!))
                 )
               : candidateKey === startKey;
 
@@ -909,7 +909,7 @@ export class MixinRegistry extends Registry<
 
             // Search inside the candidate if it matches startKey and we have remaining search keys
             if (matchesStartKey && search.length > 0 && (isRuleset || hasNoParams)) {
-              let subRules = candidateNode.value.rules;
+              let subRules = candidateNode.data.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
               subMixinRegistry.find(search, filterType, {
@@ -1180,7 +1180,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       return;
     }
     for (const item of this.pendingItems) {
-      let key = item.value.name.valueOf();
+      let key = item.data.name.valueOf();
       let set = this.index.get(key);
       if (set && set instanceof Set) {
         set.add(item);

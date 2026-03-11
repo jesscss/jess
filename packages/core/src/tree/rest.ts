@@ -13,7 +13,7 @@ export interface Rest {
 }
 export class Rest extends Node<Node | string | undefined> {
   get name(): string {
-    let { value } = this;
+    let value = this.data;
     if (value) {
       if (isNode(value)) {
         return value.toString();

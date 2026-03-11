@@ -96,8 +96,8 @@ describe('CSS Nesting Collapse', () => {
 
     const evald = await node.eval(context);
 
-    if (evald.value[0] && evald.value[0].type === 'Ruleset') {
-      const firstRuleset = evald.value[0] as any;
+    if (evald.data[0] && evald.data[0].type === 'Ruleset') {
+      const firstRuleset = evald.data[0] as any;
     }
     const css = evald.toString({ collapseNesting: true });
 

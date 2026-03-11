@@ -19,7 +19,7 @@ export class Bool extends Node<boolean> {
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
     if (other instanceof Bool) {
-      return this.value === other.value ? 0 : undefined;
+      return this.data === other.data ? 0 : undefined;
     }
     return undefined;
   }
@@ -28,7 +28,7 @@ export class Bool extends Node<boolean> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    w.add(this.value ? 'true' : 'false', this);
+    w.add(this.data ? 'true' : 'false', this);
     return w.getSince(mark);
   }
 }

@@ -20,43 +20,43 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   get isClass() {
-    return /^\./.test(this.value);
+    return /^\./.test(this.data);
   }
 
   get isId() {
-    return /^#/.test(this.value);
+    return /^#/.test(this.data);
   }
 
   /** A tag-type selector */
   get isTag() {
-    return /^[^.#*]/.test(this.value);
+    return /^[^.#*]/.test(this.data);
   }
 
   override evalNode(context: Context): BasicSelector {
     const node = super.evalNode(context) as BasicSelector;
     if (node.isClass) {
-      context.hashClass(node.value);
+      context.hashClass(node.data);
     }
     return node;
   }
 
   override valueOf(): string {
-    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value));
+    return (this._dataOf ??= (this.isTag ? this.data.toLowerCase() : this.data));
   }
 
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   if (this.isClass) {
-  //     out.add(context.hashClass(this.value.value), this.location)
+  //     out.add(context.hashClass(this.data.value), this.location)
   //   } else {
-  //     out.add(this.value.value, this.location)
+  //     out.add(this.data.value, this.location)
   //   }
   // }
 
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.el(', loc)
-  //   this.value.toModule(context, out)
+  //   this.data.toModule(context, out)
   //   out.add(')')
   // }
 }

@@ -9,7 +9,7 @@ describe('Node mutation methods', () => {
       const a = any('a');
       const b = any('b');
       const s = seq([a]);
-      s.setValue(0, b);
+      s.setData(0, b);
       expect(b.parent).toBe(s);
     });
 
@@ -17,8 +17,8 @@ describe('Node mutation methods', () => {
       const a = any('a');
       const b = any('b');
       const s = seq([a]);
-      s.setValue(0, b);
-      expect(s.value[0]).toBe(b);
+      s.setData(0, b);
+      expect(s.data[0]).toBe(b);
     });
   });
 
@@ -28,7 +28,7 @@ describe('Node mutation methods', () => {
       const value = any('red');
       const newValue = any('blue');
       const d = decl({ name, value });
-      d.setValue('value', newValue);
+      d.setData('value', newValue);
       expect(newValue.parent).toBe(d);
     });
   });
@@ -40,8 +40,8 @@ describe('Node mutation methods', () => {
       const s = seq([a]);
       s.push(b);
       expect(b.parent).toBe(s);
-      expect(s.value.length).toBe(2);
-      expect(s.value[1]).toBe(b);
+      expect(s.data.length).toBe(2);
+      expect(s.data[1]).toBe(b);
     });
 
     it('sets parent on multiple pushed nodes', () => {
@@ -63,8 +63,8 @@ describe('Node mutation methods', () => {
       const s = seq([b]);
       s.unshift(a);
       expect(a.parent).toBe(s);
-      expect(s.value[0]).toBe(a);
-      expect(s.value[1]).toBe(b);
+      expect(s.data[0]).toBe(a);
+      expect(s.data[1]).toBe(b);
     });
   });
 
@@ -76,7 +76,7 @@ describe('Node mutation methods', () => {
       const s = seq([a, c]);
       s.splice(1, 0, b);
       expect(b.parent).toBe(s);
-      expect(s.value[1]).toBe(b);
+      expect(s.data[1]).toBe(b);
     });
 
     it('returns removed nodes', () => {
@@ -85,7 +85,7 @@ describe('Node mutation methods', () => {
       const s = seq([a, b]);
       const removed = s.splice(0, 1);
       expect(removed).toEqual([a]);
-      expect(s.value.length).toBe(1);
+      expect(s.data.length).toBe(1);
     });
   });
 
@@ -95,7 +95,7 @@ describe('Node mutation methods', () => {
       const b = el('.b');
       const compound = CompoundSelector.create([a]);
       expect(compound.valueOf()).toBe('.a');
-      compound.setValue(0, b);
+      compound.setData(0, b);
       expect(compound.valueOf()).toBe('.b');
     });
 
@@ -134,7 +134,7 @@ describe('Node mutation methods', () => {
       const b = el('.b');
       const compound = CompoundSelector.create([a]);
       expect(compound.keySet).toEqual(new Set(['.a']));
-      compound.setValue(0, b);
+      compound.setData(0, b);
       expect(compound.keySet).toEqual(new Set(['.b']));
     });
 

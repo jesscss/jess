@@ -17,7 +17,7 @@ export interface SelectorCapture extends Node<Selector> {
  */
 export class SelectorCapture extends Node<Selector> {
   override valueOf(): string {
-    return String(this.value.valueOf());
+    return String(this.data.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -25,13 +25,13 @@ export class SelectorCapture extends Node<Selector> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('*[', this);
-    this.value.toString(options);
+    this.data.toString(options);
     w.add(']', this);
     return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.value.eval(context);
+    const out = this.data.eval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then((selector) => {
         return selector;

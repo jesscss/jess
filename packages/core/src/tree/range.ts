@@ -39,7 +39,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { start, end, step } = this.value;
+    const { start, end, step } = this.data;
     const includeStart = this.options?.includeStart !== false;
     const includeEnd = this.options?.includeEnd !== false;
 

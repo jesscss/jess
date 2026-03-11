@@ -91,13 +91,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return !isNode(this.value.value, N.Collection) && !isNode(this.value.value, N.Mixin);
+    return !isNode(this.data.value, N.Collection) && !isNode(this.data.value, N.Mixin);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const { name, value, important } = this.value;
+    const { name, value, important } = this.data;
     const { assign = ':', setDefined } = this.options;
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -158,7 +158,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
-    let { name, value } = node.value;
+    let { name, value } = node.data;
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
@@ -196,7 +196,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            node.setValue('value', value);
+            node.setData('value', value);
             break;
           }
           case AssignmentType.Add: {
@@ -204,7 +204,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              node.setValue('value', new List([
+              node.setData('value', new List([
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
@@ -215,7 +215,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 value
               ]));
             } else {
-              node.setValue('value', new Operation([
+              node.setData('value', new Operation([
                 new Reference({ key }, { type }),
                 '+',
                 value
@@ -224,7 +224,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             break;
           }
           case AssignmentType.CondAssign: {
-            node.setValue('value', new Reference({ key }, {
+            node.setData('value', new Reference({ key }, {
               type,
               fallbackValue: value
             }));
@@ -234,14 +234,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         node.options.normalizedFromAssign = normalizedAssign;
         node.options.assign = AssignmentType.Default;
       }
-      const out = node.value.value.preEval(context);
+      const out = node.data.value.preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          node.setValue('value', value);
+          node.setData('value', value);
           return node;
         });
       }
-      node.setValue('value', out);
+      node.setData('value', out);
       return node;
     };
 
@@ -249,12 +249,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          node.setValue('name', key);
+          node.setData('name', key);
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      node.setValue('name', key);
+      node.setData('name', key);
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);
@@ -273,17 +273,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          if (!isListMergedAssign || !isNode(node.value.value, N.List)) {
+          if (!isListMergedAssign || !isNode(node.data.value, N.List)) {
             return;
           }
-          const listValue = node.value.value.value;
+          const listValue = node.data.value.data;
           if (listValue.length === 0) {
             return;
           }
           const first = listValue[0]!;
           const isEmptyPlaceholder = (
             isNode(first, N.Nil)
-            || (isNode(first, N.List) && first.value.length === 0)
+            || (isNode(first, N.List) && first.data.length === 0)
             || String(first.valueOf?.() ?? '') === ''
           );
           if (!isEmptyPlaceholder) {
@@ -291,20 +291,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            node.setValue('value', new Nil());
+            node.setData('value', new Nil());
             return;
           }
           if (rest.length === 1) {
-            node.setValue('value', rest[0]!.copy(true));
+            node.setData('value', rest[0]!.copy(true));
             return;
           }
-          node.setValue('value', new List(rest.map(item => item.copy(true))));
+          node.setData('value', new List(rest.map(item => item.copy(true))));
         };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
           return node;
         }
-        const { name, value } = node.value;
+        const { name, value } = node.data;
         if (value instanceof Node) {
           const isCustomProperty = name.valueOf().startsWith('--');
           if (isCustomProperty) {
@@ -323,11 +323,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              node.setValue('value', newValue);
+              node.setData('value', newValue);
               normalizeMergedLeadingPlaceholder();
               // Merge !important from referenced declarations
-              if (context.hasImportantSource && !node.value.important) {
-                node.setValue('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
+              if (context.hasImportantSource && !node.data.important) {
+                node.setData('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
               }
               // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
@@ -340,11 +340,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          node.setValue('value', maybeNewValue as Node);
+          node.setData('value', maybeNewValue as Node);
           normalizeMergedLeadingPlaceholder();
           // Merge !important from referenced declarations
-          if (context.hasImportantSource && !node.value.important) {
-            node.setValue('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
+          if (context.hasImportantSource && !node.data.important) {
+            node.setData('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
           }
           // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {
@@ -360,7 +360,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   // toCSS(context: Context, out: OutputCollector) {
   //   this.name.toCSS(context, out)
   //   out.add(': ')
-  //   context.cast(this.value).toCSS(context, out)
+  //   context.cast(this.data).toCSS(context, out)
   //   if (this.important) {
   //     out.add(' ')
   //     this.important.toCSS(context, out)
@@ -376,7 +376,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   //   out.add(`  ${pre}name: `)
   //   this.name.toModule(context, out)
   //   out.add(`,\n  ${pre}value: `)
-  //   this.value.toModule(context, out)
+  //   this.data.toModule(context, out)
   //   if (this.important) {
   //     out.add(`,\n  ${pre}important: `)
   //     this.important.toModule(context, out)

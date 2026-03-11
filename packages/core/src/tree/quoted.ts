@@ -46,7 +46,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override valueOf(): string {
-    const { value } = this;
+    const value = this.data;
     return value instanceof Node ? value.valueOf() : value;
   }
 
@@ -63,7 +63,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    let { value } = this;
+    let value = this.data;
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
       value = v as any;
       if (this.options.escaped) {
@@ -73,7 +73,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
         return new Any(value as string);
       }
       let quoted = this.maybeClone(context);
-      quoted.value = value as any;
+      quoted.data = value as any;
       return quoted;
     };
     if (value instanceof Node) {

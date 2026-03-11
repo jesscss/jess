@@ -76,7 +76,7 @@ export function transformListToLess(
     // Map 'children' method to return filtered, converted items
     // This prevents undefined items from being accessed when Jess core's accept() calls children()
     // children() is a generator function that yields Node instances
-    // CRITICAL: When Jess core's accept() calls children(), it uses getValues(this.value)
+    // CRITICAL: When Jess core's accept() calls children(), it uses getValues(this.data)
     // We need to ensure the value property returns clean items, and children() filters them
     if (prop === 'children') {
       return function* (deep?: boolean, reverse?: boolean, includePrePost?: boolean) {

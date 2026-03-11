@@ -30,17 +30,17 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   get length() {
-    return this.value.length;
+    return this.data.length;
   }
 
   * [Symbol.iterator]() {
-    yield* this.value.entries();
+    yield* this.data.entries();
   }
 
   private _valueOf: string | undefined;
 
   override valueOf() {
-    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
+    return (this._dataOf ??= this.data.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -74,7 +74,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.value, other.value, equalityMode);
+      const result = compareNodeArray(this.data, other.data, equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -92,10 +92,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     let newList = this.maybeClone(context);
     if (b instanceof List) {
-      newList.value.push(...b.value);
+      newList.data.push(...b.data);
     } else {
       /** @todo - do we need to verify the list type? */
-      newList.value.push(b as T);
+      newList.data.push(b as T);
     }
     return newList;
   }
@@ -106,10 +106,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   /** @todo move to ToCssVisitor */
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add('', this.location)
-  //   const length = this.value.length - 1
+  //   const length = this.data.length - 1
   //   const pre = context.pre
   //   const cast = context.cast
-  //   this.value.forEach((node, i) => {
+  //   this.data.forEach((node, i) => {
   //     const val = cast(node)
   //     val.toCSS(context, out)
 
@@ -128,8 +128,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   //   out.add('$J.list([\n', this.location)
   //   context.indent++
   //   let pre = context.pre
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
+  //   const length = this.data.length - 1
+  //   this.data.forEach((node, i) => {
   //     out.add(pre)
   //     if (node instanceof Node) {
   //       node.toModule(context, out)

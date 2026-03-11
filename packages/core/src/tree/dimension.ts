@@ -58,7 +58,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   override valueOf() {
-    let { number, unit } = this.value;
+    let { number, unit } = this.data;
     return unit ? `${number}${unit}` : number;
   }
 
@@ -68,7 +68,7 @@ export class Dimension extends Node<DimensionValue> {
     }
     let unitToGroup = this.unitToGroup;
     if (b instanceof Color) {
-      let { number, unit } = this.value;
+      let { number, unit } = this.data;
       const unitMode = context?.opts?.unitMode ?? 'loose';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (unit && isStrictLikeMode) {
@@ -80,8 +80,8 @@ export class Dimension extends Node<DimensionValue> {
       ).inherit(this);
       return thisColor.operate(b, op, context).inherit(this);
     }
-    let { number: aVal, unit: aUnit } = this.value;
-    let { number: bVal, unit: bUnit } = b.value;
+    let { number: aVal, unit: aUnit } = this.data;
+    let { number: bVal, unit: bUnit } = b.data;
     let unitMode = context?.opts.unitMode ?? 'loose';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
@@ -167,11 +167,11 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String((b as any).value ?? '').trim();
+      const text = String((b as any).data ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      return this.value.number === Number(text) ? 0 : undefined;
+      return this.data.number === Number(text) ? 0 : undefined;
     }
     if (b.type === 'Quoted') {
       return undefined;
@@ -186,7 +186,7 @@ export class Dimension extends Node<DimensionValue> {
     let unitMode = context?.opts?.unitMode ?? 'loose';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
-    let { number: aVal, unit: aUnit } = this.value;
+    let { number: aVal, unit: aUnit } = this.data;
 
     /** Normalize percentages to a number for numerical comparison */
     if (aUnit === '%') {
@@ -206,7 +206,7 @@ export class Dimension extends Node<DimensionValue> {
       let thisColor = new Color({ rgb: [aVal, aVal, aVal] }, { format: ColorFormat.RGB }).inherit(this);
       return thisColor.compare(b);
     }
-    let { number: bVal, unit: bUnit } = b.value;
+    let { number: bVal, unit: bUnit } = b.data;
     if (bUnit === '%') {
       bVal = bVal / 100;
       bUnit = undefined;
@@ -251,7 +251,7 @@ export class Dimension extends Node<DimensionValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { number, unit = '' } = this.value;
+    let { number, unit = '' } = this.data;
 
     // Check if unit is compound (contains '/', '*', or '±')
     const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));
@@ -314,7 +314,7 @@ export class Dimension extends Node<DimensionValue> {
   // toModule(context: Context, out: OutputCollector) {
   //   const pre = context.pre
   //   out.add('$J.num({\n' +
-  //     `  ${pre}value: ${this.value},\n` +
+  //     `  ${pre}value: ${this.data},\n` +
   //     `  ${pre}unit: "${this.unit ?? ''}"\n` +
   //     `${pre}})`
   //   , this.location)
