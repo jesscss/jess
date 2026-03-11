@@ -47,7 +47,7 @@ function assertNoParentCycles(node: unknown) {
  * - no circular parent chains
  * - all child nodes have correct `.parent`
  *
- * This is intentionally generic: it traverses `node.value` plus other own
+ * This is intentionally generic: it traverses `node.data` plus other own
  * enumerable fields, looking for nested Nodes within arrays/objects.
  */
 export function assertValidTree(root: unknown) {
