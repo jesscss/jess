@@ -386,24 +386,6 @@ export abstract class Node<
   }
 
   /**
-   * Get mutable access to the internal data.
-   * Use when you need direct array/object mutation (push, splice, etc.)
-   * and will handle adopt() yourself.
-   *
-   * @note - I don't like that the LLMs did this. If there is a real use case,
-   * we should be exposing specific getters / setters like `setData(1, node)`.
-   * This is a stupid pattern. And why would we have downstream setters manage
-   * adopt themselves? When are we adding nodes we don't want to adopt?
-   *
-   * If this is about valueOf() / keySet() invalidation, then that should be
-   * handled by the setter as an extra parameter, or by the node with the setter.
-   * This is a really stupid pattern.
-   */
-  get mutableData(): Data {
-    return this._data;
-  }
-
-  /**
    * Add a flag to the node's state
    * Handles STATIC/NON_STATIC exclusivity automatically
    */

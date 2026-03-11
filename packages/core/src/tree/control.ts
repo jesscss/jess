@@ -348,8 +348,7 @@ export class For extends Node<StructuredLoopValue> {
             name: new Any(bindingNames[i]!, { role: 'property' }),
             value: bindings[i]!
           });
-          loopRules.mutableData.unshift(varDecl);
-          loopRules.adopt(varDecl);
+          loopRules.unshift(varDecl);
         }
         counter++;
         const result = await loopRules.eval(context);

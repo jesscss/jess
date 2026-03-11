@@ -1970,8 +1970,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               name: param as Any<'property'>,
               value: boundValue
             }, { paramVar: true });
-            params.mutableData[i] = varDecl;
-            params.adopt(varDecl);
+            params.setData(i, varDecl);
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
             const rest = nodeArgs.slice(argPos).map((restArg) => {
@@ -1984,8 +1983,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               name: new Any(param.data ? `${param.data}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
               value: new Sequence(rest)
             });
-            params.mutableData[i] = restVarDecl;
-            params.adopt(restVarDecl);
+            params.setData(i, restVarDecl);
             /** Check a pattern-matching node */
           } else {
             if (param.compare(argValue) !== 0) {
@@ -2384,8 +2382,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             }, { paramVar: true });
 
             // Replace Rest with VarDeclaration in params
-            params.mutableData[i] = restVarDecl;
-            params.adopt(restVarDecl);
+            params.setData(i, restVarDecl);
             param = restVarDecl;
           }
 

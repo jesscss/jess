@@ -3171,12 +3171,12 @@ function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Se
         // Remove from compound/complex selector
         const idx = parent.data.indexOf(node as any);
         if (idx >= 0) {
-          parent.mutableData.splice(idx, 1);
+          parent.splice(idx, 1);
           // If we removed a leading ampersand in a complex selector, also remove a following combinator
           // (implicit nesting uses `&` + generated whitespace combinator).
           const next = parent.data[idx];
           if (isNode(next, N.Combinator) && next.data === ' ') {
-            parent.mutableData.splice(idx, 1);
+            parent.splice(idx, 1);
           }
         }
       }
@@ -3319,8 +3319,7 @@ function replaceNodeInParent(parent: any, oldNode: any, newNode: any): void {
   if (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
     for (let i = 0; i < parent.data.length; i++) {
       if (parent.data[i] === oldNode) {
-        parent.mutableData[i] = newNode;
-        parent.adopt(newNode);
+        parent.setData(i, newNode);
         break;
       }
     }

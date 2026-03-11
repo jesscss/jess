@@ -401,8 +401,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                     const index = modifiedRules.data.indexOf(existingDecl);
                     if (index !== -1) {
                     // Adopt the new node and replace in array
-                      modifiedRules.mutableData[index] = injectedNode;
-                      modifiedRules.adopt(injectedNode);
+                      modifiedRules.setData(index, injectedNode);
                       // Add the new declaration to the registry
                       declarations.add(injectedNode);
                       // Register the new node so it's properly indexed
@@ -434,13 +433,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const finalRules = Rules.create([]);
           // First, add new injected variables that weren't found in imported rules (at the top)
           for (const newNode of newVariables) {
-            finalRules.mutableData.push(newNode);
-            finalRules.adopt(newNode);
+            finalRules.push(newNode);
           }
           // Then, add all nodes from the modified imported rules (flattened, with replacements)
           for (const node of modifiedRules.data) {
-            finalRules.mutableData.push(node);
-            finalRules.adopt(node);
+            finalRules.push(node);
           }
           rules = finalRules;
         }
