@@ -89,6 +89,30 @@ export interface Declaration {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   override allowRuleRoot = true;
 
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: DeclarationValue['name']) {
+    this.setData('name', val);
+  }
+
+  get value() {
+    return this.data.value;
+  }
+
+  set value(val: DeclarationValue['value']) {
+    this.setData('value', val);
+  }
+
+  get important() {
+    return this.data.important;
+  }
+
+  set important(val: DeclarationValue['important']) {
+    this.setData('important', val as any);
+  }
+
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
     return !isNode(this.data.value, N.Collection) && !isNode(this.data.value, N.Mixin);

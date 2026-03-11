@@ -19,6 +19,10 @@ export interface SelectorList {
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
+  get length() {
+    return this.data.length;
+  }
+
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();

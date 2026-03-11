@@ -72,6 +72,30 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   frames: (Ruleset | AtRule)[] | undefined;
 
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: AtRuleValue['name']) {
+    this.setData('name', val);
+  }
+
+  get prelude() {
+    return this.data.prelude;
+  }
+
+  set prelude(val: AtRuleValue['prelude']) {
+    this.setData('prelude', val as any);
+  }
+
+  get rules() {
+    return this.data.rules;
+  }
+
+  set rules(val: AtRuleValue['rules']) {
+    this.setData('rules', val as any);
+  }
+
   protected _valueOf: string | undefined;
 
   /** Used for equality comparison with other at-rules */

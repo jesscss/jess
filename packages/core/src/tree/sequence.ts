@@ -29,6 +29,10 @@ export interface Sequence {
   shortType: 'seq' | 'query';
 }
 export class Sequence extends Node<Node[], SequenceOptions> {
+  get length() {
+    return this.data.length;
+  }
+
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';

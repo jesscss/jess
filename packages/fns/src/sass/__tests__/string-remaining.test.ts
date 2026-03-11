@@ -81,14 +81,14 @@ describe('Sass remaining string functions', () => {
       const substring = new Quoted('ll');
       const result = strIndex(str, substring);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(3);
+      expect((result as Dimension).data.number).toBe(3);
     });
 
     it('returns 1 for first character', () => {
       const str = new Quoted('Hello');
       const substring = new Quoted('H');
       const result = strIndex(str, substring);
-      expect((result as Dimension).value.number).toBe(1);
+      expect((result as Dimension).data.number).toBe(1);
     });
 
     it('returns null when substring is not found', () => {
@@ -102,7 +102,7 @@ describe('Sass remaining string functions', () => {
       const str = new Quoted('Hello Hello');
       const substring = new Quoted('ll');
       const result = strIndex(str, substring);
-      expect((result as Dimension).value.number).toBe(3);
+      expect((result as Dimension).data.number).toBe(3);
     });
   });
 

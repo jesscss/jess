@@ -32,6 +32,30 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  get left() {
+    return this.data[0];
+  }
+
+  set left(val: Node) {
+    (this.data as ConditionValue)[0] = val;
+  }
+
+  get operator() {
+    return this.data[1];
+  }
+
+  set operator(val: ConditionOperator | undefined) {
+    (this.data as ConditionValue)[1] = val as any;
+  }
+
+  get right() {
+    return this.data[2];
+  }
+
+  set right(val: Node | undefined) {
+    (this.data as ConditionValue)[2] = val as any;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;

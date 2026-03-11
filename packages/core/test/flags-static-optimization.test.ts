@@ -16,9 +16,13 @@ function findNodeByType(node: any, type: string): any {
         }
       }
     } else if (typeof node.data === 'object') {
-      const found = findNodeByType(node.data, type);
-      if (found) {
-        return found;
+      for (const val of Object.values(node.data)) {
+        if (val && typeof val === 'object' && 'type' in (val as any)) {
+          const found = findNodeByType(val, type);
+          if (found) {
+            return found;
+          }
+        }
       }
     }
   }

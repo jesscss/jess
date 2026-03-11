@@ -36,6 +36,22 @@ export class Log extends Node<LogValue, NodeOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
+  get level() {
+    return this.data.level;
+  }
+
+  set level(val: LogLevel) {
+    this.setData('level', val);
+  }
+
+  get message() {
+    return this.data.message;
+  }
+
+  set message(val: Node) {
+    this.setData('message', val);
+  }
+
   override toTrimmedString() {
     // Log nodes serialize to empty string since they're not supported in Jess syntax
     return '';

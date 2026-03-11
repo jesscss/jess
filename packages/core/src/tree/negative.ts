@@ -19,6 +19,14 @@ export class Negative extends Node<Node> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  get value() {
+    return this.data as Node;
+  }
+
+  set value(val: Node) {
+    this.data = val;
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
     return pipe(
       () => this.data.eval(context),

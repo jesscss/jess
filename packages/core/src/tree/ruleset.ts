@@ -75,6 +75,26 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this.data.selector;
   }
 
+  set selector(val: NarrowRulesetValue<T>['selector']) {
+    this.setData('selector', val);
+  }
+
+  get rules() {
+    return this.data.rules;
+  }
+
+  set rules(val: NarrowRulesetValue<T>['rules']) {
+    this.setData('rules', val);
+  }
+
+  get guard() {
+    return this.data.guard;
+  }
+
+  set guard(val: NarrowRulesetValue<T>['guard']) {
+    this.setData('guard', val as any);
+  }
+
   /**
    * If this ruleset shares its value object with a descendant ruleset, give those
    * descendants their own value so mutating this ruleset's value.selector does not

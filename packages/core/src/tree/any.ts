@@ -52,6 +52,14 @@ export class Any<
     this.addFlag(F_STATIC);
   }
 
+  get value() {
+    return this.data;
+  }
+
+  set value(val: string) {
+    this.data = val;
+  }
+
   override preEval(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules

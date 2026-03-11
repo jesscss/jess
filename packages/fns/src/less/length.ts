@@ -1,11 +1,11 @@
 import { defineFunction, Node, List, Sequence, Dimension } from '@jesscss/core';
 
 function getItems(value: Node): Node[] {
-  if (value instanceof List && value.length === 1 && value.value[0] instanceof Sequence) {
-    return value.value[0].value;
+  if (value instanceof List && value.length === 1 && value.data[0] instanceof Sequence) {
+    return value.data[0].data;
   }
   if (value instanceof List || value instanceof Sequence) {
-    return value.value;
+    return value.data;
   }
   return [value];
 }

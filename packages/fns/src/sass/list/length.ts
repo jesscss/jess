@@ -1,8 +1,8 @@
 /**
  * Sass list.length() function
- * 
+ *
  * Returns the length of a list.
- * 
+ *
  * @example
  * length(1 2 3) // 3
  * length([a, b, c]) // 3

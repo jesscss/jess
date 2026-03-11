@@ -109,7 +109,7 @@ describe('processLeadingIs', () => {
       context.rulesetFrames.push(frameRuleset);
       const evaled = await innerSelector.eval(context);
       expect(isNode(evaled, N.CompoundSelector)).toBe(true);
-      const first = (evaled as { value: Selector[] }).value[0];
+      const first = (evaled as { data: Selector[] }).data[0];
       expect(isNode(first, N.PseudoSelector)).toBe(true);
       expect((first as PseudoSelector).generated, 'ampersand path must set .generated so processLeadingIs unwraps').toBe(true);
       const result = processLeadingIs(evaled as Selector);

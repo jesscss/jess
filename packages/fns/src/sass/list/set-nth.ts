@@ -1,8 +1,8 @@
 /**
  * Sass list.set-nth() function
- * 
+ *
  * Sets the nth element of a list (1-based indexing).
- * 
+ *
  * @example
  * set-nth(1 2 3, 2, 99) // 1 99 3
  */
@@ -21,8 +21,8 @@ const setNth = defineFunction(
     // Convert to 0-based index
     const zeroBasedIndex = sassIndex - 1;
     // Clone the list and set the value
-    const newList = new List([...list.value], list.options);
-    newList.value[zeroBasedIndex] = value;
+    const newList = new List([...list.data], list.options);
+    newList.data[zeroBasedIndex] = value;
     return newList;
   },
   {

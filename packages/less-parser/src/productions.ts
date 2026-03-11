@@ -111,20 +111,20 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
       return true;
     }
     if (current.type === 'Call') {
-      const callName = (current as Call).value.name;
+      const callName = (current as Call).data.name;
       const callNameStr = String(
         (callName as any)?.valueOf?.() ?? callName ?? ''
       );
       if (callNameStr === 'default' || callNameStr === '??') {
         return true;
       }
-      const key = (callName as any)?.value?.key;
+      const key = (callName as any)?.data?.key;
       const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
       if (keyStr === 'default' || keyStr === '??') {
         return true;
       }
     }
-    const value = (current as any).value;
+    const value = (current as any).data;
     if (Array.isArray(value)) {
       queue.push(...value);
     } else if (value && typeof value === 'object') {
@@ -138,12 +138,12 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
   if (!node || node.type !== 'Call') {
     return false;
   }
-  const callName = (node as Call).value.name;
+  const callName = (node as Call).data.name;
   const callNameStr = String((callName as any)?.valueOf?.() ?? callName ?? '');
   if (callNameStr === 'default' || callNameStr === '??') {
     return true;
   }
-  const key = (callName as any)?.value?.key;
+  const key = (callName as any)?.data?.key;
   const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
   return keyStr === 'default' || keyStr === '??';
 }
@@ -167,7 +167,7 @@ function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | und
 
   // Math expressions: only wrap if this operation would actually be performed.
   if (isNode(node, N.Operation)) {
-    const [left, op, right] = node.value;
+    const [left, op, right] = node.data;
     const mathMode = this.mathMode ?? 'parens-division';
     const shouldOperate = shouldOperateWithMathFrames(
       {
@@ -224,7 +224,7 @@ export function stylesheet(this: P, T: TokenMap) {
     let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
-      let rules = root?.value as any[];
+      let rules = root?.data as any[];
 
       if (charset) {
         let loc = $.getLocationInfo(charset);
@@ -738,13 +738,13 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           /** For extends inside rulesets (not bubbled), selector should be undefined
            * so it defaults to ampersand and resolves to the ruleset's selector */
           for (let e of extend) {
-            e.value.selector = undefined;
+            e.data.selector = undefined;
           }
-          rules.value = [...extend, ...rules.value];
+          rules.data = [...extend, ...rules.data];
           ctx.extendNodes = undefined;
         } else {
           const selectorList = selector as SelectorList;
-          const selectorCount = selectorList.value.length;
+          const selectorCount = selectorList.data.length;
           const extendCount = extend.length;
 
           // Determine if extends should bubble up:
@@ -762,8 +762,8 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
               // All extends have same target and flag - can be inside ruleset
               let extendNodes = finalExtends[0]!;
               let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
-              finalExtend.value.selector = undefined;
-              rules.value = [finalExtend, ...rules.value];
+              finalExtend.data.selector = undefined;
+              rules.data = [finalExtend, ...rules.data];
               ctx.extendNodes = undefined;
             } else {
               // Multiple extend groups (different targets/flags) - bubble up
@@ -849,8 +849,8 @@ export function qualifiedRule(this: P, _T: TokenMap, altContext?: AltContext) {
       // Set the Extend nodes' selector to the ruleset's selector (not &)
       // This allows the extends to work correctly when evaluated in the wrapper Rules context
       for (const extendNode of ctx.extendNodes) {
-        if (extendNode.value.selector === undefined || (extendNode.value.selector as any).type === 'Ampersand') {
-          extendNode.value.selector = selector;
+        if (extendNode.data.selector === undefined || (extendNode.data.selector as any).type === 'Ampersand') {
+          extendNode.data.selector = selector;
         }
       }
       /** Prepend a rules block */
@@ -889,19 +889,19 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
   // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
   const convertArgsForDefinition = (args: List<Node> | undefined) => {
-    if (!args || !args.value) {
+    if (!args || !args.data) {
       return;
     }
 
-    for (let i = 0; i < args.value.length; i++) {
-      const node = args.value[i]!;
+    for (let i = 0; i < args.data.length; i++) {
+      const node = args.data[i]!;
       const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
       // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
       if (node instanceof Any && node.options?.role === 'name') {
         // Reuse the existing Any node but change its role to 'property' for the name
         node.options.role = 'property';
-        args.value[i] = new VarDeclaration({
+        args.data[i] = new VarDeclaration({
           name: node,
           value: new Nil(undefined, undefined, location, this.context)
         }, { paramVar: true }, location, this.context);
@@ -912,20 +912,20 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
   // Helper function to convert Any nodes to Reference nodes for mixin call arguments
   const convertArgsForCall = (args: List<Node> | undefined) => {
-    if (!args || !args.value) {
+    if (!args || !args.data) {
       return;
     }
 
-    for (let i = 0; i < args.value.length; i++) {
-      const node = args.value[i]!;
+    for (let i = 0; i < args.data.length; i++) {
+      const node = args.data[i]!;
       const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
       // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
       if (node instanceof Any && node.options?.role === 'name') {
-        args.value[i] = new Reference({ key: node.value }, { type: 'variable' }, location, this.context);
-      } else if (node instanceof Rest && typeof node.value === 'string') {
+        args.data[i] = new Reference({ key: node.data }, { type: 'variable' }, location, this.context);
+      } else if (node instanceof Rest && typeof node.data === 'string') {
         // If it's a Rest node with a string value, convert it to Rest with Reference for mixin call arguments
-        args.value[i] = new Rest(new Reference({ key: node.value }, { type: 'variable' }, location, this.context), undefined, location, this.context);
+        args.data[i] = new Rest(new Reference({ key: node.data }, { type: 'variable' }, location, this.context), undefined, location, this.context);
       }
     }
   };
@@ -1013,7 +1013,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         if (
           (s instanceof BasicSelector && (s.isClass || s.isId))
           || (s instanceof InterpolatedSelector && (s.isClass || s.isId))
-          || (s instanceof Combinator && (s.value === '>' || s.value === ' '))
+          || (s instanceof Combinator && (s.data === '>' || s.data === ' '))
         ) {
           continue;
         }
@@ -1106,8 +1106,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             // Set the Extend nodes' selector to the ruleset's selector (not &)
             // This allows the extends to work correctly when evaluated in the wrapper Rules context
             for (const extendNode of ctx.extendNodes) {
-              if (extendNode.value.selector === undefined || (extendNode.value.selector as any).type === 'Ampersand') {
-                extendNode.value.selector = selector;
+              if (extendNode.data.selector === undefined || (extendNode.data.selector as any).type === 'Ampersand') {
+                extendNode.data.selector = selector;
               }
             }
             rule = new Rules([
@@ -1158,16 +1158,16 @@ export function relativeSelector(this: P, T: TokenMap) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             let targetNode =
               node instanceof Extend
-                ? node.value.selector
+                ? node.data.selector
                 : node;
             if (targetNode instanceof ComplexSelector) {
-              targetNode.value.unshift(combinator);
-              targetNode._location = $.getLocationFromNodes(targetNode.value);
+              targetNode.data.unshift(combinator);
+              targetNode._location = $.getLocationFromNodes(targetNode.data);
             } else {
               let nodes = [combinator, targetNode as ComplexSelectorComponent];
               let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
               if (node instanceof Extend) {
-                node.value.selector = complex;
+                node.data.selector = complex;
                 let location = node.location;
                 location[0] = co.startOffset;
                 location[1] = co.startLine;
@@ -1287,8 +1287,8 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext.value.target;
-    let flag = ext.value.flag ?? 1; // ExtendFlag.Exact = 1
+    let target = ext.data.target;
+    let flag = ext.data.flag ?? 1; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -1328,11 +1328,11 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      let target = currentNode.value.target;
+      let target = currentNode.data.target;
       if (!(target instanceof SelectorList)) {
-        currentNode.value.target = new SelectorList([target, ext.target], undefined, location, context);
+        currentNode.data.target = new SelectorList([target, ext.target], undefined, location, context);
       } else {
-        target.value.push(ext.target);
+        target.data.push(ext.target);
       }
     } else {
       if (!extendNodes || !extendNodes.includes(currentNode)) {
@@ -1574,7 +1574,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         // Check if this should be parsed as Collection or Rules
         const shouldBeCollection = (() => {
           let properties: Declaration[] = [];
-          for (const node of rules.value) {
+          for (const node of rules.data) {
             if (node.type === 'Declaration') {
               properties.push(node);
             } else if (node.type === 'Comment' || node.type === 'VarDeclaration') {
@@ -1591,7 +1591,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
           }
 
           const validPropertyCount = properties.filter((decl) => {
-            const name = decl.value.name;
+            const name = decl.data.name;
             const propName = typeof name === 'string' ? name : name.valueOf();
             // Skip custom properties (--*)
             if (propName.startsWith('--')) {
@@ -1613,7 +1613,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
           || usage === 'default-param';
         const shouldBeCollectionFinal = shouldBeCollection && !forceMixinForDynamicUsage;
         if (shouldBeCollectionFinal) {
-          return new Collection(rules.value, rules.options, $.endRule(), this.context);
+          return new Collection(rules.data, rules.options, $.endRule(), this.context);
         }
       }
 
@@ -1897,7 +1897,7 @@ function isSelectorLikeListItem(node: Node): boolean {
     return node.options.type === 'mixin-ruleset';
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 0 && (node as List).value.every(isSelectorLikeListItem);
+    return (node as List).data.length > 0 && (node as List).data.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -1911,7 +1911,7 @@ function isLegacySelectorLikeValue(node: Node): boolean {
     return false; // Single mixin reference is valid.
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 1 && (node as List).value.every(isSelectorLikeListItem);
+    return (node as List).data.length > 1 && (node as List).data.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -2352,7 +2352,7 @@ export function ifFunction(this: P, T: TokenMap) {
 
           let node: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
           if (!RECORDING_PHASE) {
-            const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
+            const condNode = node instanceof Paren && node.data instanceof Node ? node.data : node;
             args = new List([condNode]);
           }
 
@@ -2362,13 +2362,13 @@ export function ifFunction(this: P, T: TokenMap) {
                 $.CONSUME(T.Semi);
                 node = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                 if (!RECORDING_PHASE) {
-                  args.value.push(node);
+                  args.data.push(node);
                 }
                 $.OPTION(() => {
                   $.CONSUME2(T.Semi);
                   node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                   if (!RECORDING_PHASE) {
-                    args.value.push(node);
+                    args.data.push(node);
                   }
                 });
               }
@@ -2378,13 +2378,13 @@ export function ifFunction(this: P, T: TokenMap) {
                 $.CONSUME(T.Comma);
                 node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                 if (!RECORDING_PHASE) {
-                  args.value.push(node);
+                  args.data.push(node);
                 }
                 $.OPTION2(() => {
                   $.CONSUME2(T.Comma);
                   node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                   if (!RECORDING_PHASE) {
-                    args.value.push(node);
+                    args.data.push(node);
                   }
                 });
               }
@@ -2418,7 +2418,7 @@ export function booleanFunction(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      const conditionNode = arg instanceof Paren && arg.value instanceof Node ? arg.value : arg;
+      const conditionNode = arg instanceof Paren && arg.data instanceof Node ? arg.data : arg;
       const exprNode = new Expression(conditionNode, { parens: true }, location, this.context);
       return exprNode;
     }
@@ -2587,11 +2587,11 @@ export function functionCall(this: P, T: TokenMap) {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    if (!args || args.value.length !== 1) {
+    if (!args || args.data.length !== 1) {
       return false;
     }
-    const firstArg = args.value[0];
-    return Boolean(isNode(firstArg, N.Sequence) && firstArg.value.length >= 2);
+    const firstArg = args.data[0];
+    return Boolean(isNode(firstArg, N.Sequence) && firstArg.data.length >= 2);
   };
 
   let funcAlt = (ctx: RuleContext = {}) => [
@@ -2627,12 +2627,12 @@ export function functionCall(this: P, T: TokenMap) {
         if (!$.RECORDING_PHASE) {
           const location = $.endRule();
           const nameValue = fnNameForCtx;
-          if (nameValue === 'unit' && args?.value[1] instanceof Any) {
-            const unitArg = args.value[1];
+          if (nameValue === 'unit' && args?.data[1] instanceof Any) {
+            const unitArg = args.data[1];
             const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, this.context);
             quotedUnit.pre = unitArg.pre;
             quotedUnit.post = unitArg.post;
-            args.value[1] = quotedUnit;
+            args.data[1] = quotedUnit;
           }
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
           /** Less / Sass functions we try to call that throw just get turned into calls. */
@@ -3416,7 +3416,7 @@ export function mixinName(this: P, T: TokenMap) {
         if (asReference) {
           // If target is a Reference with matching type, merge keys instead of nesting
           if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
-            const existingKey = ctx.node.value.key;
+            const existingKey = ctx.node.data.key;
             let mergedKeys: string[];
             if (Array.isArray(existingKey)) {
               mergedKeys = [...existingKey];
@@ -3570,7 +3570,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
               const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
               const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
               if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
-                const existingKey = target.value.key;
+                const existingKey = target.data.key;
                 let mergedKeys: string[];
                 if (Array.isArray(existingKey)) {
                   mergedKeys = [...existingKey];
@@ -3745,12 +3745,12 @@ export function mixinArgList(this: P, T: TokenMap) {
                     let [first, ...rest] = commaNodes;
                     let hasDeclarations = false;
                     if (first instanceof VarDeclaration) {
-                      const nodes = [first.value.value, ...rest];
+                      const nodes = [first.data.value, ...rest];
                       /**
                        * If we still have declarations, we need to push an error.
                        */
                       hasDeclarations = rest.some(n => n instanceof VarDeclaration);
-                      first.value.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
+                      first.data.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
                       semiNodes.push(first);
                     } else {
                       hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);

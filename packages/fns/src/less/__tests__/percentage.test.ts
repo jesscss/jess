@@ -7,7 +7,7 @@ describe('percentage()', () => {
     const fromNumber = percentage(0.25);
     const fromDimension = percentage(new Dimension({ number: 0.5, unit: 'px' }));
 
-    expect(fromNumber.value).toEqual({ number: 25, unit: '%' });
-    expect(fromDimension.value).toEqual({ number: 50, unit: '%' });
+    expect(fromNumber.data).toEqual({ number: 25, unit: '%' });
+    expect(fromDimension.data).toEqual({ number: 50, unit: '%' });
   });
 });

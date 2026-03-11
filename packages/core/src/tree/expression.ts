@@ -22,6 +22,14 @@ export class Expression extends Node<Node> {
     this.addFlag(F_NON_STATIC);
   }
 
+  get value() {
+    return this.data as Node;
+  }
+
+  set value(val: Node) {
+    this.data = val;
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
     const value = this.data;
     const out = value.eval(context);

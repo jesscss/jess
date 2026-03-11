@@ -107,6 +107,14 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.addFlag(F_AMPERSAND);
   }
 
+  get appendValue() {
+    return this.data.appendValue;
+  }
+
+  set appendValue(val: string | undefined) {
+    this.setData('appendValue', val as any);
+  }
+
   override get keySet() {
     const stored = this._storedSelector;
     const current = this._selectorContainer?.selector;

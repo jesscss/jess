@@ -33,6 +33,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
   }
 
+  get value() {
+    return this.data as Node | undefined;
+  }
+
+  set value(val: Node | undefined) {
+    this.data = val;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;

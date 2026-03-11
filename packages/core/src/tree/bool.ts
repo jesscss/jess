@@ -17,6 +17,14 @@ export class Bool extends Node<boolean> {
     this.addFlag(F_STATIC);
   }
 
+  get value() {
+    return this.data;
+  }
+
+  set value(val: boolean) {
+    this.data = val;
+  }
+
   override compare(other: Node): 0 | 1 | -1 | undefined {
     if (other instanceof Bool) {
       return this.data === other.data ? 0 : undefined;

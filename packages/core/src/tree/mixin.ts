@@ -85,6 +85,38 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: MixinValue['name']) {
+    this.setData('name', val as any);
+  }
+
+  get rules() {
+    return this.data.rules;
+  }
+
+  set rules(val: MixinValue['rules']) {
+    this.setData('rules', val);
+  }
+
+  get params() {
+    return this.data.params;
+  }
+
+  set params(val: MixinValue['params']) {
+    this.setData('params', val as any);
+  }
+
+  get guard() {
+    return this.data.guard;
+  }
+
+  set guard(val: MixinValue['guard']) {
+    this.setData('guard', val as any);
+  }
+
   // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
 
   /** Return a selector-like keySet */

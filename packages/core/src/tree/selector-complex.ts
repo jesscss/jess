@@ -35,6 +35,10 @@ export interface ComplexSelector {
   shortType: 'sel';
 }
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
+  get length() {
+    return this.data.length;
+  }
+
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators

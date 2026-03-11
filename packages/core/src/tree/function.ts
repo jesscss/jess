@@ -46,6 +46,30 @@ export class Func extends Node<FuncValue, FuncOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: FuncValue['name']) {
+    this.setData('name', val as any);
+  }
+
+  get params() {
+    return this.data.params;
+  }
+
+  set params(val: FuncValue['params']) {
+    this.setData('params', val as any);
+  }
+
+  get body() {
+    return this.data.body;
+  }
+
+  set body(val: FuncValue['body']) {
+    this.setData('body', val);
+  }
+
   get nameKey(): string | undefined {
     const { name } = this.data;
     if (!name) {

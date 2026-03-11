@@ -23,30 +23,30 @@ export function parseRelativeColorSyntax(rawArgs: List): {
   channels: Node[];
   alpha?: Node;
 } | null {
-  if (!rawArgs || !rawArgs.value || rawArgs.value.length === 0) {
+  if (!rawArgs || !rawArgs.data || rawArgs.data.length === 0) {
     return null;
   }
 
-  const firstArg = rawArgs.value[0];
+  const firstArg = rawArgs.data[0];
 
   // Check if first argument is a Sequence starting with "from"
-  if (firstArg instanceof Sequence && firstArg.value && firstArg.value.length > 0) {
-    const firstItem = firstArg.value[0];
+  if (firstArg instanceof Sequence && firstArg.data && firstArg.data.length > 0) {
+    const firstItem = firstArg.data[0];
 
     // Check if first item is "from" keyword
-    if (firstItem instanceof Any && firstItem.value.toLowerCase() === 'from') {
+    if (firstItem instanceof Any && firstItem.data.toLowerCase() === 'from') {
       // This is relative color syntax
-      if (firstArg.value.length < 2) {
+      if (firstArg.data.length < 2) {
         throw new Error('Relative color syntax requires an origin color after "from"');
       }
 
-      const originColor = firstArg.value[1]!;
-      const channels = firstArg.value.slice(2) || [];
+      const originColor = firstArg.data[1]!;
+      const channels = firstArg.data.slice(2) || [];
 
-      // Check if there's an alpha value separated by / (rawArgs.value[1] when sep is '/')
+      // Check if there's an alpha value separated by / (rawArgs.data[1] when sep is '/')
       let alpha: Node | undefined;
-      if (rawArgs.value.length > 1 && rawArgs.options?.sep === '/') {
-        alpha = rawArgs.value[1];
+      if (rawArgs.data.length > 1 && rawArgs.options?.sep === '/') {
+        alpha = rawArgs.data[1];
       }
 
       return {
@@ -87,8 +87,8 @@ function substituteChannelVariables(
   format: 'rgb' | 'hsl'
 ): Node {
   // If it's an Any node representing a channel variable, replace it with a Dimension
-  if (node instanceof Any && typeof node.value === 'string') {
-    const channelName = node.value.toLowerCase();
+  if (node instanceof Any && typeof node.data === 'string') {
+    const channelName = node.data.toLowerCase();
     // Handle location - it can be undefined, empty array, or proper LocationInfo
     // TypeScript needs explicit narrowing to avoid [] type
     let location: any = undefined;
@@ -128,23 +128,23 @@ function substituteChannelVariables(
   }
 
   // If it's a Call node (like calc()), recursively substitute in its arguments
-  if (node instanceof Call && node.value.args) {
+  if (node instanceof Call && node.data.args) {
     const cloned = node.clone();
     // Recursively substitute in arguments
-    if (cloned.value.args) {
-      const substitutedArgs = node.value.args.value.map(arg =>
+    if (cloned.data.args) {
+      const substitutedArgs = node.data.args.data.map(arg =>
         substituteChannelVariables(arg, channelValues, format)
       );
-      cloned.value.args.value = substitutedArgs;
+      cloned.data.args.data = substitutedArgs;
     }
     return cloned;
   }
 
   // If it's an Operation, recursively substitute in its operands
-  if (node instanceof Operation && node.value) {
+  if (node instanceof Operation && node.data) {
     const cloned = node.clone();
-    const [left, op, right] = node.value;
-    cloned.value = [
+    const [left, op, right] = node.data;
+    cloned.data = [
       substituteChannelVariables(left, channelValues, format),
       op as Operator,
       substituteChannelVariables(right, channelValues, format)
@@ -153,9 +153,9 @@ function substituteChannelVariables(
   }
 
   // If it's a Sequence or List, recursively substitute in its values
-  if ('value' in node && Array.isArray((node as any).value)) {
+  if ('data' in node && Array.isArray((node as any).data)) {
     const cloned = node.clone();
-    (cloned as any).value = (node as any).value.map((item: Node) =>
+    (cloned as any).data = (node as any).data.map((item: Node) =>
       substituteChannelVariables(item, channelValues, format)
     );
     return cloned;
@@ -178,8 +178,8 @@ export async function evaluateRGBChannelReference(
   const channelValues = getRGBChannelValues(originColor);
 
   // Check if channel is a simple identifier (r, g, b, alpha)
-  if (channel instanceof Any && typeof channel.value === 'string') {
-    const channelName = channel.value.toLowerCase();
+  if (channel instanceof Any && typeof channel.data === 'string') {
+    const channelName = channel.data.toLowerCase();
 
     switch (channelName) {
       case 'r':
@@ -203,7 +203,7 @@ export async function evaluateRGBChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const value = evaluated.value.number;
+      const value = evaluated.data.number;
       // Clamp to 0-255 range for RGB
       return Math.max(0, Math.min(255, value));
     }
@@ -214,7 +214,7 @@ export async function evaluateRGBChannelReference(
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
-    return Math.max(0, Math.min(255, evaluated.value.number));
+    return Math.max(0, Math.min(255, evaluated.data.number));
   }
 
   throw new Error(`Channel reference must be an identifier or evaluate to a Dimension, got ${channel.type}`);
@@ -251,8 +251,8 @@ export async function evaluateHSLChannelReference(
   const channelValues = getHSLChannelValues(originColor);
 
   // Check if channel is a simple identifier (h, s, l, alpha)
-  if (channel instanceof Any && typeof channel.value === 'string') {
-    const channelName = channel.value.toLowerCase();
+  if (channel instanceof Any && typeof channel.data === 'string') {
+    const channelName = channel.data.toLowerCase();
 
     switch (channelName) {
       case 'h':
@@ -275,8 +275,8 @@ export async function evaluateHSLChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const value = evaluated.value.number;
-      const unit = evaluated.value.unit;
+      const value = evaluated.data.number;
+      const unit = evaluated.data.unit;
 
       // Handle different units for hue (deg, turn, rad, grad)
       if (unit === 'deg' || unit === '' || unit === undefined) {
@@ -303,8 +303,8 @@ export async function evaluateHSLChannelReference(
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
-    const value = evaluated.value.number;
-    const unit = evaluated.value.unit;
+    const value = evaluated.data.number;
+    const unit = evaluated.data.unit;
 
     // Handle percentage units for s/l
     if (unit === '%') {

@@ -32,6 +32,30 @@ export class Operation extends Node<OperationValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  get left() {
+    return this.data[0];
+  }
+
+  set left(val: Node) {
+    (this.data as OperationValue)[0] = val;
+  }
+
+  get operator() {
+    return this.data[1];
+  }
+
+  set operator(val: Operator) {
+    (this.data as OperationValue)[1] = val;
+  }
+
+  get right() {
+    return this.data[2];
+  }
+
+  set right(val: Node) {
+    (this.data as OperationValue)[2] = val;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;

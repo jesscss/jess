@@ -34,6 +34,22 @@ export interface PseudoSelector {
   shortType: 'pseudo';
 }
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: string) {
+    this.setData('name', val);
+  }
+
+  get arg() {
+    return this.data.arg;
+  }
+
+  set arg(val) {
+    this.setData('arg', val as any);
+  }
+
   override get keySet(): Set<string> {
     if (this._keySet === undefined) {
       this._computeKeySetAndFastReject();

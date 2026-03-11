@@ -86,6 +86,30 @@ export class Call extends Node<CallValue, CallOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: CallValue['name']) {
+    this.setData('name', val);
+  }
+
+  get args() {
+    return this.data.args;
+  }
+
+  set args(val: CallValue['args']) {
+    this.setData('args', val as any);
+  }
+
+  get contentNode() {
+    return this.data.contentNode;
+  }
+
+  set contentNode(val: CallValue['contentNode']) {
+    this.setData('contentNode', val as any);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     const { silentFail } = this.options;
     options = getPrintOptions(options);

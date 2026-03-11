@@ -25,5 +25,13 @@ export class Comment extends Node<string, CommentOptions> {
       this.removeFlag(F_VISIBLE);
     }
   }
+
+  get value() {
+    return this.data;
+  }
+
+  set value(val: string) {
+    this.data = val;
+  }
 }
 export const comment = defineType(Comment, 'Comment');

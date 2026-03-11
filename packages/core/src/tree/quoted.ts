@@ -30,6 +30,18 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     }
   }
 
+  get quote() {
+    return this.options?.quote;
+  }
+
+  get value() {
+    return this.data as string | Any | Interpolated;
+  }
+
+  set value(val: string | Any | Interpolated) {
+    this.data = val;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;

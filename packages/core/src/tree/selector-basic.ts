@@ -19,6 +19,14 @@ export class BasicSelector extends SimpleSelector<string> {
     this.addFlag(F_STATIC);
   }
 
+  get value() {
+    return this.data;
+  }
+
+  set value(val: string) {
+    this.data = val;
+  }
+
   get isClass() {
     return /^\./.test(this.data);
   }

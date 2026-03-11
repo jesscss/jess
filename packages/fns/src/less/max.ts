@@ -21,8 +21,8 @@ const unitGroups: UnitGroup[] = [{
 }];
 
 function toCanonical(node: Dimension, forcedUnit?: string) {
-  const number = node.value.number;
-  const unit = node.value.unit || forcedUnit || '';
+  const number = node.data.number;
+  const unit = node.data.unit || forcedUnit || '';
   if (!unit) {
     return { number, unit: '' };
   }
@@ -49,20 +49,20 @@ export default defineFunction(
     for (let i = 0; i < args.length; i++) {
       let current = args[i] as unknown;
       if (!(current instanceof Dimension)) {
-        if (current && typeof current === 'object' && Array.isArray((current as any).value)) {
-          args.push(...((current as any).value as Node[]));
+        if (current && typeof current === 'object' && Array.isArray((current as any).data)) {
+          args.push(...((current as any).data as Node[]));
           continue;
         }
         throw new TypeError('incompatible types');
       }
 
-      const currentUnified = toCanonical(current, current.value.unit ? undefined : unitClone);
+      const currentUnified = toCanonical(current, current.data.unit ? undefined : unitClone);
       const unit = currentUnified.unit === '' && unitStatic !== undefined ? unitStatic : currentUnified.unit;
       if (unit !== '' && (unitStatic === undefined || toCanonical(order[0]!, unitClone).unit === '')) {
         unitStatic = unit;
       }
       if (unit !== '' && unitClone === undefined) {
-        unitClone = current.value.unit || unit;
+        unitClone = current.data.unit || unit;
       }
       const j = values[''] !== undefined && unit !== '' && unit === unitStatic ? values[''] : values[unit];
       if (j === undefined) {
@@ -73,7 +73,7 @@ export default defineFunction(
         order.push(current);
         continue;
       }
-      const referenceUnified = toCanonical(order[j]!, order[j]!.value.unit ? undefined : unitClone);
+      const referenceUnified = toCanonical(order[j]!, order[j]!.data.unit ? undefined : unitClone);
       if (currentUnified.number > referenceUnified.number) {
         order[j] = current;
       }

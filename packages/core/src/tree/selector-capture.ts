@@ -16,6 +16,14 @@ export interface SelectorCapture extends Node<Selector> {
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
 export class SelectorCapture extends Node<Selector> {
+  get value() {
+    return this.data;
+  }
+
+  set value(val: Selector) {
+    this.data = val;
+  }
+
   override valueOf(): string {
     return String(this.data.valueOf());
   }

@@ -16,6 +16,14 @@ export class Combinator extends Selector<Combinators> {
     this.addFlag(F_STATIC);
   }
 
+  get value() {
+    return this.data;
+  }
+
+  set value(val: Combinators) {
+    this.data = val;
+  }
+
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {
   //   const val = this.data

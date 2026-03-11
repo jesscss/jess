@@ -36,10 +36,10 @@ describe('jess-parser (ast serialize)', () => {
     const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const varDecl = rules.value.find(n => isNode(n, N.VarDeclaration));
+      const varDecl = rules.data.find(n => isNode(n, N.VarDeclaration));
       expect(varDecl && isNode(varDecl, N.VarDeclaration)).toBe(true);
       if (varDecl && isNode(varDecl, N.VarDeclaration)) {
-        expect(varDecl.value.name.valueOf()).toBe('foo');
+        expect(varDecl.data.name.valueOf()).toBe('foo');
       }
     }
   });
@@ -102,10 +102,10 @@ describe('jess-parser (ast serialize)', () => {
     const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const mixin = rules.value.find(n => isNode(n, N.Mixin));
+      const mixin = rules.data.find(n => isNode(n, N.Mixin));
       expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
       if (mixin && isNode(mixin, N.Mixin)) {
-        expect(mixin.value.name).toBe('mixin');
+        expect(mixin.data.name).toBe('mixin');
       }
     }
   });
@@ -129,7 +129,7 @@ describe('jess-parser (ast serialize)', () => {
     const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const ifNode = rules.value.find(n => n.type === 'If');
+      const ifNode = rules.data.find(n => n.type === 'If');
       expect(ifNode && ifNode.type === 'If').toBe(true);
     }
   });
@@ -221,10 +221,10 @@ describe('jess-parser (ast serialize)', () => {
     // Guard should be present
     const rules = isNode(tree, N.Rules) ? tree : null;
     if (rules) {
-      const mixin = rules.value.find(n => isNode(n, N.Mixin));
+      const mixin = rules.data.find(n => isNode(n, N.Mixin));
       expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
       if (mixin && isNode(mixin, N.Mixin)) {
-        expect(mixin.value.guard).toBeDefined();
+        expect(mixin.data.guard).toBeDefined();
       }
     }
   });

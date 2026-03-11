@@ -54,6 +54,38 @@ export class Extend extends Node<ExtendValue> {
     this.addFlag(F_NON_STATIC);
   }
 
+  get selector() {
+    return this.data.selector;
+  }
+
+  set selector(val: ExtendValue['selector']) {
+    this.setData('selector', val as any);
+  }
+
+  get target() {
+    return this.data.target;
+  }
+
+  set target(val: ExtendValue['target']) {
+    this.setData('target', val);
+  }
+
+  get namespace() {
+    return this.data.namespace;
+  }
+
+  set namespace(val: ExtendValue['namespace']) {
+    this.setData('namespace', val as any);
+  }
+
+  get flag() {
+    return this.data.flag;
+  }
+
+  set flag(val: ExtendValue['flag']) {
+    this.setData('flag', val as any);
+  }
+
   override valueOf() {
     return `$extend ${this.data.target.valueOf()}`;
   }

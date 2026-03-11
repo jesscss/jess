@@ -23,6 +23,10 @@ export interface CompoundSelector {
   shortType: 'compound';
 }
 export class CompoundSelector extends Selector<SimpleSelector[]> {
+  get length() {
+    return this.data.length;
+  }
+
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();

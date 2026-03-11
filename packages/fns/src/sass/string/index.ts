@@ -1,9 +1,9 @@
 /**
  * Sass string module (sass:string)
- * 
+ *
  * Re-exports all string functions that are available in the sass:string module.
  * These are the modern, non-deprecated functions.
- * 
+ *
  * Usage:
  * ```typescript
  * import { length, unquote, quote } from '@jesscss/fns/sass/string';

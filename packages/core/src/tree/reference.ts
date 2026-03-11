@@ -105,6 +105,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
   }
 
+  get target() {
+    return this.data.target;
+  }
+
+  set target(val) {
+    this.setData('target', val as any);
+  }
+
+  get key() {
+    return this.data.key;
+  }
+
+  set key(val) {
+    this.setData('key', val);
+  }
+
   override valueOf() {
     return '';
   }

@@ -11,9 +11,9 @@ export default defineFunction(
   'lighten',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
     const [h, s, l] = color._hsl;
-    let adjustAmount = amount.value.number / 100;
+    let adjustAmount = amount.data.number / 100;
 
-    if (method && method.value === 'relative') {
+    if (method && method.data === 'relative') {
       adjustAmount = l * adjustAmount;
     }
 

@@ -44,6 +44,22 @@ export class Dimension extends Node<DimensionValue> {
     this.addFlag(F_STATIC);
   }
 
+  get number() {
+    return this.data.number;
+  }
+
+  set number(val: number) {
+    this.setData('number', val);
+  }
+
+  get unit() {
+    return this.data.unit;
+  }
+
+  set unit(val: string | undefined) {
+    this.setData('unit', val as any);
+  }
+
   private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {
     let unitToGroup = this._unitToGroup;

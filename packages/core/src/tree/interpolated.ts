@@ -88,6 +88,22 @@ export class Interpolated<
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  get source() {
+    return this.data.source;
+  }
+
+  set source(val: string) {
+    this.setData('source', val);
+  }
+
+  get replacements() {
+    return this.data.replacements;
+  }
+
+  set replacements(val: Node[]) {
+    this.setData('replacements', val);
+  }
+
   override valueOf(): string {
     return this.data.source;
   }

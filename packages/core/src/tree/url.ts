@@ -14,6 +14,14 @@ export interface Url {
 }
 
 export class Url extends Node<Quoted | Any> {
+  get value() {
+    return this.data as Quoted | Any;
+  }
+
+  set value(val: Quoted | Any) {
+    this.data = val;
+  }
+
   /**
    * @todo - enable URL rewriting
    */
