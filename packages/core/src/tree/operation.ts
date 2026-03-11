@@ -16,15 +16,16 @@ export type OperationValue = [
   right: Node
 ];
 
+export interface Operation {
+  type: 'Operation';
+  shortType: 'op';
+}
 /**
  * A math operation OR a value with a slash. CSS is ambiguous
  * in syntax about which is which, so we just classify `value / value`
  * as an operation.
  */
 export class Operation extends Node<OperationValue> {
-  type = 'Operation' as const;
-  shortType = 'op' as const;
-
   constructor(value: OperationValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Operations are always non-static, but can inherit may_async from children

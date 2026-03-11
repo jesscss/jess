@@ -706,7 +706,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  push(...nodes: Node[]) {
+  override push(...nodes: Node[]) {
     for (let node of nodes) {
       this.adopt(node);
       this._value.push(node);

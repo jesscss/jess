@@ -299,34 +299,84 @@ export abstract class Node<
   set value(val: Data) {
     this._value = val;
     this._adoptChildren();
-    // Invalidate memoized valueOf() on selector-like nodes after mutation.
-    if ('_valueOf' in this) {
-      (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
-    }
+    this._invalidateValueOf();
   }
 
   /**
-   * Set the whole value, or a named property on the value.
+   * Set the whole value, a named property on the value, or an array index.
    *
    * @example
-   *   this.set(newSelectors)           // replace the whole value
-   *   this.set('selector', selector)   // set a named property
+   *   this.setValue(newSelectors)           // replace the whole value
+   *   this.setValue('selector', selector)   // set a named property
+   *   this.setValue(0, node)               // set array index
    */
   setValue(val: Data): void;
   setValue<K extends keyof Data>(key: K, val: Data[K]): void;
+  setValue(index: number, val: any): void;
   setValue(...args: any[]): void {
     if (args.length === 1) {
       this.value = args[0];
       return;
     }
     const [key, val] = args;
+    const prev = (this._value as any)[key];
+    if (prev === val) {
+      return;
+    }
     (this._value as any)[key] = val;
     if (val instanceof Node) {
       this.adopt(val);
     }
-    if ('_valueOf' in this) {
-      (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
+    this._invalidateValueOf();
+  }
+
+  private _invalidateValueOf() {
+    const self = this as unknown as Record<string, unknown>;
+    if ('_valueOf' in self) {
+      self._valueOf = undefined;
     }
+    if ('_keySet' in self) {
+      self._keySet = undefined;
+      self._visibleKeySet = undefined;
+      self._canFastReject = undefined;
+    }
+  }
+
+  /** Push items onto an array-valued node. */
+  push(...items: any[]): void {
+    const arr = this._value as unknown as any[];
+    arr.push(...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
+    this._invalidateValueOf();
+  }
+
+  /** Remove and/or insert items in an array-valued node. */
+  splice(start: number, deleteCount: number, ...items: any[]): any[] {
+    const arr = this._value as unknown as any[];
+    const removed = arr.splice(start, deleteCount, ...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
+    this._invalidateValueOf();
+    return removed;
+  }
+
+  /** Prepend items to an array-valued node. */
+  unshift(...items: any[]): void {
+    const arr = this._value as unknown as any[];
+    arr.unshift(...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
+    this._invalidateValueOf();
   }
 
   /**
@@ -516,10 +566,20 @@ export abstract class Node<
       const out = func(value, idx);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          collection[key] = result;
+          if (result !== value) {
+            collection[key] = result;
+            if (result instanceof Node) {
+              this.adopt(result);
+            }
+            this._invalidateValueOf();
+          }
         });
       }
-      collection[key] = out as Node;
+      if (out !== value) {
+        collection[key] = out as Node;
+        this.adopt(out as Node);
+        this._invalidateValueOf();
+      }
     });
   }
 
@@ -529,7 +589,12 @@ export abstract class Node<
       if (!(value instanceof Node)) {
         continue;
       }
-      collection[key] = func(value, idx++);
+      const result = func(value, idx++);
+      if (result !== value) {
+        collection[key] = result;
+        this.adopt(result);
+        this._invalidateValueOf();
+      }
     }
   }
 
