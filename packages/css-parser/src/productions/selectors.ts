@@ -45,6 +45,7 @@ export function stylesheet(this: P, options: Record<string, any> = {}) {
 
 export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
   alt ??= (ctx: RuleContext = {}) => [
+    /** GATE kept: @ commits to atRule for correct error reporting */
     { GATE: () => tokenMatches(this.la(1), this.T.AtName), ALT: () => this.atRule() },
     { ALT: () => this.qualifiedRule() }
   ];
@@ -619,6 +620,7 @@ export function declarationList(this: P, ctx: RuleContext = {}, alt?: AltContext
    */
 
   alt ??= (ctx: RuleContext = {}) => [
+    /** GATE kept: @ commits to innerAtRule for correct error reporting */
     { GATE: () => tokenMatches(this.la(1), this.T.AtName), ALT: () => this.innerAtRule({ ...ctx, inner: true }) },
     { ALT: () => this.declaration(ctx) },
     { ALT: () => this.qualifiedRule({ ...ctx, inner: true }) },

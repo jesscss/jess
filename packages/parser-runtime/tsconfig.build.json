@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": "./src",
-    "noEmit": false
+    "noEmit": false,
+    "composite": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "lib", "**/__tests__/**/*"]

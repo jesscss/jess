@@ -110,6 +110,22 @@ export interface ManySepOptions<T = void> {
   DEF: () => T;
 }
 
+// ── Speculative failure sentinel ──────────────────────────────────────
+//
+// When or() tries a non-last alternative speculatively, consume() throws
+// this frozen singleton instead of creating an Error object. Because it's
+// a plain frozen object (not an Error), V8 does NOT capture a stack trace,
+// making the throw+catch nearly free. or() catches it by reference
+// equality (===), restores parser state, and tries the next alternative.
+//
+// This is the key mechanism that makes backtracking zero-cost:
+// - No Error object allocation
+// - No stack trace capture
+// - No message string formatting
+// - Caught by === check, not instanceof
+//
+export const SPEC_FAIL: unique symbol = Symbol('SPEC_FAIL');
+
 // ── Error types ──────────────────────────────────────────────────────
 
 /**

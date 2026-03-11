@@ -1,7 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser-runtime';
-import { tokenMatches } from '@jesscss/parser-runtime';
 import {
   Node, Any, AtRule, Ruleset, Rules, Sequence, List, Block,
   QueryCondition, Keyword, Paren, Call, Url, RawRules,
@@ -111,7 +110,6 @@ export function supportsAtRule(this: P, ctx: RuleContext = {}) {
 export function supportsCondition(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     {
-      GATE: () => this.la(1).tokenType === this.T.Not,
       ALT: () => {
         this.startRule();
         let keyword = this.consume(this.T.Not);
@@ -125,7 +123,6 @@ export function supportsCondition(this: P, ctx: RuleContext = {}): Node {
       }
     },
     {
-      GATE: () => this.la(1).tokenType !== this.T.Not,
       ALT: () => {
         let start = this.startRule();
         let [startOffset, startLine, startColumn] = start ?? [];
@@ -270,27 +267,9 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
   };
 
   return this.or([
+    { ALT: () => this.ifFunction(ctx) },
+    { ALT: () => this.knownFunctions(ctx) },
     {
-      GATE: () => tokenMatches(this.la(1), this.T.FunctionStart) && this.la(1).image.slice(0, -1).toLowerCase() === 'if',
-      ALT: () => this.ifFunction(ctx)
-    },
-    {
-      // Disambiguate known functions by their dedicated tokens
-      GATE: () => {
-        let tokenType = this.la(1).tokenType;
-        return tokenType === this.T.UrlStart
-          || tokenType === this.T.Var
-          || tokenType === this.T.Calc;
-      },
-      ALT: () => this.knownFunctions(ctx)
-    },
-    {
-      GATE: () => {
-        let tokenType = this.la(1).tokenType;
-        return tokenType !== this.T.UrlStart
-          && tokenType !== this.T.Var
-          && tokenType !== this.T.Calc;
-      },
       ALT: () => {
         this.startRule();
 
