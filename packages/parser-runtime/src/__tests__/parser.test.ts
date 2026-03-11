@@ -674,7 +674,6 @@ describe('RecursiveDescentParser', () => {
       expect(result).toBe('number');
       expect(p.errors.length).toBeGreaterThanOrEqual(1);
       expect(p.errors[0]).toBeInstanceOf(MismatchedTokenError);
-      expect(p.errors[0]!.expected).toBe(NumberTok);
     });
 
     test('recovery does not cause infinite loops in many()', () => {

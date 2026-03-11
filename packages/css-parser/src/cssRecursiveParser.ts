@@ -400,7 +400,14 @@ const proto = CssRecursiveParser.prototype as any;
 for (const mod of [selectors, values, atRules, misc]) {
   for (const [name, fn] of Object.entries(mod)) {
     if (typeof fn === 'function') {
-      proto[name] = fn;
+      // Wrap each production to auto-push/pop ruleStack for error context.
+      // No try/finally needed: or() saves/restores ruleStack.length on backtrack.
+      proto[name] = function(this: CssRecursiveParser, ...args: any[]) {
+        this.ruleStack.push(name);
+        const result = fn.apply(this, args);
+        this.ruleStack.pop();
+        return result;
+      };
     }
   }
 }

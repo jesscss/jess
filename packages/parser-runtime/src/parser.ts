@@ -71,8 +71,10 @@ export class RecursiveDescentParser {
 
   /** Accumulated parse errors */
   errors: ParseError[] = [];
+  /** Accumulated parse warnings */
+  warnings: ParseError[] = [];
   /** Rule name stack for error messages and content assist */
-  protected ruleStack: string[] = [];
+  ruleStack: string[] = [];
   /** Location stack for startRule/endRule */
   locationStack: LocationInfo[] = [];
 
@@ -158,6 +160,7 @@ export class RecursiveDescentParser {
     this.tokens = inputTokens;
     this.pos = 0;
     this.errors = [];
+    this.warnings = [];
     this.ruleStack = [];
     this.locationStack = [];
 
@@ -200,6 +203,24 @@ export class RecursiveDescentParser {
   /** Check if token at lookahead offset matches the given type */
   checkAt(offset: number, tokenType: TokenType): boolean {
     return tokenMatches(this.la(offset), tokenType);
+  }
+
+  // ── Error / warning API ──────────────────────────────────────────
+
+  /** Push a custom parse error from a production rule */
+  pushError(message: string, token?: IToken): void {
+    const tok = token ?? this.la(1);
+    this.errors.push(new ParseError(message, tok, {
+      ruleStack: [...this.ruleStack]
+    }));
+  }
+
+  /** Push a custom parse warning from a production rule */
+  pushWarning(message: string, token?: IToken): void {
+    const tok = token ?? this.la(1);
+    this.warnings.push(new ParseError(message, tok, {
+      ruleStack: [...this.ruleStack]
+    }));
   }
 
   // ── DSL: consume ─────────────────────────────────────────────────
@@ -280,54 +301,65 @@ export class RecursiveDescentParser {
       if (alt.GATE && !alt.GATE()) {
         continue;
       }
-      if (alt.GATE || i === alternatives.length - 1) {
-        // GATE passed or last alt — commit without backtracking
+      if (alt.GATE) {
+        // GATE confirmed this is the right alt — commit.
+        // Errors inside are real parse errors, not alternative mismatches.
         return alt.ALT();
       }
-      // No GATE and not last: try with backtracking.
-      // Temporarily disable recovery so consume() throws on mismatch
-      // instead of inserting virtual tokens (which would make every
-      // alt appear to succeed, causing infinite loops).
+      // No GATE: try with backtracking.
       const savedPos = this.pos;
       const savedLocStackLen = this.locationStack.length;
-      const savedRecovery = this.recoveryEnabled;
+      const savedRuleStackLen = this.ruleStack.length;
       const savedErrors = this.errors.length;
+      if (i === alternatives.length - 1) {
+        // Last alt — commit (with or without recovery).
+        // If recovery is on, consume() inserts virtual tokens and records
+        // errors. The caller (many/option) uses pos-check to detect if
+        // nothing real was consumed and undoes recovery artifacts.
+        return alt.ALT();
+      }
+      // Not last alt: throw-based backtracking with recovery disabled.
+      const savedRecovery = this.recoveryEnabled;
       this.recoveryEnabled = false;
       try {
         const result = alt.ALT();
         this.recoveryEnabled = savedRecovery;
         return result;
       } catch (e) {
-        // Restore parser state and try next alternative
         this.recoveryEnabled = savedRecovery;
-        this.pos = savedPos;
-        this.locationStack.length = savedLocStackLen;
-        this.errors.length = savedErrors;
-        lastError = e;
+        if (e instanceof ParseError) {
+          this.pos = savedPos;
+          this.locationStack.length = savedLocStackLen;
+          this.ruleStack.length = savedRuleStackLen;
+          this.errors.length = savedErrors;
+          lastError = e;
+        } else {
+          throw e;
+        }
       }
     }
 
     // No alternative matched
-    if (lastError) {
-      if (this.recoveryEnabled) {
-        // Convert the last backtracking error into a recorded error
-        // and let parsing continue
-        if (lastError instanceof ParseError) {
-          this.errors.push(lastError);
-        } else {
-          const tok = this.la(1);
-          this.errors.push(new NoViableAltError(tok, [...this.ruleStack]));
-        }
-        return undefined as T;
-      }
-      throw lastError;
-    }
-    const tok = this.la(1);
     if (this.recoveryEnabled) {
-      this.errors.push(new NoViableAltError(tok, [...this.ruleStack]));
+      // Report the error
+      const tok = this.la(1);
+      if (lastError instanceof ParseError) {
+        this.errors.push(lastError);
+      } else {
+        this.errors.push(new NoViableAltError(tok, [...this.ruleStack]));
+      }
+      // Skip one token so the caller (many/atLeastOne) can detect
+      // progress and continue parsing. Without this, the loop would
+      // undo the error because pos didn't advance.
+      if (this.pos < this.tokens.length) {
+        this.pos++;
+      }
       return undefined as T;
     }
-    throw new NoViableAltError(tok, [...this.ruleStack]);
+    if (lastError) {
+      throw lastError;
+    }
+    throw new NoViableAltError(this.la(1), [...this.ruleStack]);
   }
 
   /** Alias — Chevrotain compatibility */
@@ -357,20 +389,27 @@ export class RecursiveDescentParser {
         break;
       }
       const prevPos = this.pos;
+      const savedLocStackLen = this.locationStack.length;
+      const savedRuleStackLen = this.ruleStack.length;
+      const savedErrors = this.errors.length;
       try {
         def();
       } catch (e) {
         if (e instanceof ParseError) {
-          // DEF's consume() threw because it couldn't match.
-          // That error object was created by consume() — we didn't create
-          // it speculatively. Restore position and exit loop.
           this.pos = prevPos;
+          this.locationStack.length = savedLocStackLen;
+          this.ruleStack.length = savedRuleStackLen;
+          this.errors.length = savedErrors;
           break;
         }
         throw e;
       }
-      // Infinite loop detection: if DEF didn't advance, stop
+      // No progress means DEF didn't match (possibly only inserted
+      // virtual tokens via recovery). Undo any recovery errors and stop.
       if (this.pos === prevPos) {
+        this.locationStack.length = savedLocStackLen;
+        this.ruleStack.length = savedRuleStackLen;
+        this.errors.length = savedErrors;
         break;
       }
     }
@@ -392,24 +431,34 @@ export class RecursiveDescentParser {
     const gate = typeof defOrOpts === 'function' ? undefined : defOrOpts.GATE;
     const def = typeof defOrOpts === 'function' ? defOrOpts : defOrOpts.DEF;
 
-    // First iteration is mandatory — let it throw if it fails
+    // First iteration is mandatory — let it throw/recover normally
     def();
 
+    // Subsequent iterations are speculative — use pos-check
     while (true) {
       if (gate && !gate()) {
         break;
       }
       const prevPos = this.pos;
+      const savedLocStackLen = this.locationStack.length;
+      const savedRuleStackLen = this.ruleStack.length;
+      const savedErrors = this.errors.length;
       try {
         def();
       } catch (e) {
         if (e instanceof ParseError) {
           this.pos = prevPos;
+          this.locationStack.length = savedLocStackLen;
+          this.ruleStack.length = savedRuleStackLen;
+          this.errors.length = savedErrors;
           break;
         }
         throw e;
       }
       if (this.pos === prevPos) {
+        this.locationStack.length = savedLocStackLen;
+        this.ruleStack.length = savedRuleStackLen;
+        this.errors.length = savedErrors;
         break;
       }
     }
@@ -431,11 +480,26 @@ export class RecursiveDescentParser {
    */
   option<T>(def: () => T): T | undefined {
     const prevPos = this.pos;
+    const savedLocStackLen = this.locationStack.length;
+    const savedRuleStackLen = this.ruleStack.length;
+    const savedErrors = this.errors.length;
     try {
-      return def();
+      const result = def();
+      // If DEF didn't advance pos, it didn't match (recovery may
+      // have inserted virtual tokens). Undo and return undefined.
+      if (this.pos === prevPos) {
+        this.locationStack.length = savedLocStackLen;
+        this.ruleStack.length = savedRuleStackLen;
+        this.errors.length = savedErrors;
+        return undefined;
+      }
+      return result;
     } catch (e) {
       if (e instanceof ParseError) {
         this.pos = prevPos;
+        this.locationStack.length = savedLocStackLen;
+        this.ruleStack.length = savedRuleStackLen;
+        this.errors.length = savedErrors;
         return undefined;
       }
       throw e;
@@ -463,16 +527,30 @@ export class RecursiveDescentParser {
       return;
     }
     const prevPos = this.pos;
+    const savedLocStackLen = this.locationStack.length;
+    const savedRuleStackLen = this.ruleStack.length;
+    const savedErrors = this.errors.length;
     try {
       DEF();
     } catch (e) {
       if (e instanceof ParseError) {
         this.pos = prevPos;
+        this.locationStack.length = savedLocStackLen;
+        this.ruleStack.length = savedRuleStackLen;
+        this.errors.length = savedErrors;
         return;
       }
       throw e;
     }
-    // Continue with separator + element (separator check is zero-cost)
+    // First element didn't advance — undo recovery artifacts and exit
+    if (this.pos === prevPos) {
+      this.locationStack.length = savedLocStackLen;
+      this.ruleStack.length = savedRuleStackLen;
+      this.errors.length = savedErrors;
+      return;
+    }
+    // Continue with separator + element. After consuming a separator,
+    // the DEF() call is committed — recovery stays enabled.
     while (this.tryConsume(SEP)) {
       DEF();
     }
