@@ -1,4 +1,4 @@
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isPlainObject } from './util/collections.js';
 import {
   type TreeContext,
   type Context

@@ -9,7 +9,7 @@ import { Dimension } from './dimension.js';
 import { Color } from './color.js';
 import { type Context } from '../context.js';
 import { type Operator } from './util/calculate.js';
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isPlainObject } from './util/collections.js';
 
 /**
  * A number. Named `Num` to avoid conflict with the built-in `Number` class.
