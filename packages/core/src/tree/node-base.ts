@@ -450,21 +450,29 @@ export abstract class Node<
    * Uses static childNodeKeys when available for fast path.
    */
   private _adoptChildren(): void {
-    const keys = (this.constructor as typeof Node).childNodeKeys;
-    if (keys) {
-      const val = this._value as Record<string, unknown>;
-      for (let i = 0; i < keys.length; i++) {
-        const child = val[keys[i]!];
-        if (child instanceof Node) {
-          this.adopt(child);
+    const value = this._value;
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        if (value[i] instanceof Node) {
+          this.adopt(value[i] as Node);
         }
       }
-    } else {
-      for (let val of getValues(this._value)) {
-        if (val instanceof Node) {
-          this.adopt(val);
+    } else if (typeof value === 'object' && value !== null && (value as any).constructor === Object) {
+      const vals = Object.values(value as Record<string, unknown>);
+      for (let i = 0; i < vals.length; i++) {
+        const v = vals[i];
+        if (v instanceof Node) {
+          this.adopt(v);
+        } else if (Array.isArray(v)) {
+          for (let j = 0; j < v.length; j++) {
+            if (v[j] instanceof Node) {
+              this.adopt(v[j] as Node);
+            }
+          }
         }
       }
+    } else if (value instanceof Node) {
+      this.adopt(value);
     }
   }
 
@@ -566,13 +574,50 @@ export abstract class Node<
 
   private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
     let idx = 0;
-    for (const [value, key, collection] of getEntriesFromNode({ value: this._value } as { value: unknown[] })) {
-      if (!(value instanceof Node)) {
-        continue;
+    const data = this._value;
+    if (Array.isArray(data)) {
+      for (let i = 0; i < data.length; i++) {
+        if (!(data[i] instanceof Node)) {
+          continue;
+        }
+        const result = func(data[i] as Node, idx++);
+        if (result !== data[i]) {
+          data[i] = result;
+          this.adopt(result);
+          this._invalidateValueOf();
+        }
       }
-      const result = func(value, idx++);
-      if (result !== value) {
-        collection[key] = result;
+    } else if (typeof data === 'object' && data !== null && (data as any).constructor === Object) {
+      const record = data as Record<string, unknown>;
+      const keys = Object.keys(record);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]!;
+        const v = record[k];
+        if (v instanceof Node) {
+          const result = func(v, idx++);
+          if (result !== v) {
+            record[k] = result;
+            this.adopt(result);
+            this._invalidateValueOf();
+          }
+        } else if (Array.isArray(v)) {
+          for (let j = 0; j < v.length; j++) {
+            if (!(v[j] instanceof Node)) {
+              continue;
+            }
+            const result = func(v[j] as Node, idx++);
+            if (result !== v[j]) {
+              v[j] = result;
+              this.adopt(result);
+              this._invalidateValueOf();
+            }
+          }
+        }
+      }
+    } else if (data instanceof Node) {
+      const result = func(data, idx++);
+      if (result !== data) {
+        this._value = result as Data;
         this.adopt(result);
         this._invalidateValueOf();
       }
