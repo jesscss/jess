@@ -1,6 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 // This file is a temporary build artifact for assembly
-import type { CssRecursiveParser, RuleContext } from './cssRecursiveParser.js';
+import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
 import type { IToken, OrAlternative } from '@jesscss/parser-runtime';
 import { tokenMatches } from '@jesscss/parser-runtime';
 import {
@@ -110,7 +110,7 @@ export function qualifiedRule(this: P, ctx: RuleContext = {}, selectorAlt?: AltC
   let selector = this.or(selectorAlt(ctx));
 
   this.consume(this.T.LCurly);
-  let rules: Rules = this.declarationList();
+  let rules = this.declarationList() as Rules;
   this.consume(this.T.RCurly);
 
   let location = this.endRule();
@@ -466,7 +466,7 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
         }
         combinator.pre = pre;
       }
-      let compound: CompoundSelector = this.compoundSelector(ctx);
+      let compound = this.compoundSelector(ctx) as CompoundSelector;
       selectors.push(
         combinator!,
         compound
@@ -542,9 +542,9 @@ export function forgivingSelectorList(this: P, ctx: RuleContext = {}) {
       i++;
       if (i === 1 && ctx.qualifiedRule) {
         // Only attach post; leave pre for the parent Rules to lift comments
-        sequences.push(this.wrap(selector, true));
+        sequences.push(this.wrap(selector, true) as ComplexSelector);
       } else {
-        sequences.push(this.wrap(selector, i === 1 ? true : 'both'));
+        sequences.push(this.wrap(selector, i === 1 ? true : 'both') as ComplexSelector);
       }
     }
   });
@@ -573,9 +573,9 @@ export function selectorList(this: P, ctx: RuleContext = {}) {
       // so that pre-rule comments remain available to be lifted to Rules.
       if (i === 1 && ctx.qualifiedRule) {
         // Only attach post; leave pre for the parent Rules to lift comments
-        sequences.push(this.wrap(sel, true));
+        sequences.push(this.wrap(sel, true) as ComplexSelector);
       } else {
-        sequences.push(this.wrap(sel, i === 1 ? true : 'both'));
+        sequences.push(this.wrap(sel, i === 1 ? true : 'both') as ComplexSelector);
       }
     }
   });
@@ -588,7 +588,7 @@ export function selectorList(this: P, ctx: RuleContext = {}) {
   return new SelectorList(sequences!, undefined, location, this.context);
 }
 
-export function declarationList(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+export function declarationList(this: P, ctx: RuleContext = {}, alt?: AltContext): Node {
   /** * Declarations ***/
   // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
   // declarationList

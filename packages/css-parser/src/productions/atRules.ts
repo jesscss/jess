@@ -1,6 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
+import type { IToken, LocationInfo } from '@jesscss/parser-runtime';
 import { tokenMatches } from '@jesscss/parser-runtime';
 import {
   Node, Any, AtRule, Rules, Sequence, List,
@@ -42,7 +42,7 @@ export function atRule(this: P, ctx: RuleContext = {}) {
   Inner rules are mostly the same except they have a declarationList
   instead of a main block within {}
 */
-export function innerAtRule(this: P, ctx: RuleContext = {}) {
+export function innerAtRule(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     { ALT: () => this.containerAtRule({ ...ctx, inner: true }) },
     { ALT: () => this.scopeAtRule({ ...ctx, inner: true }) },
@@ -59,7 +59,7 @@ export function innerAtRule(this: P, ctx: RuleContext = {}) {
 /**
  * @see https://www.w3.org/TR/css-nesting-1/#conditionals
  */
-export function atRuleBody(this: P, ctx: RuleContext = {}) {
+export function atRuleBody(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     {
       GATE: () => !ctx.inner,
@@ -81,7 +81,7 @@ export function mediaAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Prelud
     ? (resolvedPreludeRule as any).call(this, ctx)
     : this.mediaQueryList(ctx);
   this.consume(this.T.LCurly);
-  rules = this.atRuleBody(ctx);
+  rules = this.atRuleBody(ctx) as Rules;
   this.consume(this.T.RCurly);
 
   let location = this.endRule();
@@ -167,7 +167,7 @@ export function mediaType(this: P, ctx: RuleContext = {}) {
   return this.wrap(new Keyword(token.image, undefined, this.getLocationInfo(token), this.context), 'both');
 }
 
-export function mediaCondition(this: P, ctx: RuleContext = {}) {
+export function mediaCondition(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     { ALT: () => this.mediaNot(ctx) },
     {
@@ -222,7 +222,7 @@ export function mediaConditionWithoutOr(this: P, ctx: RuleContext = {}) {
   ]);
 }
 
-export function mediaNot(this: P, ctx: RuleContext = {}) {
+export function mediaNot(this: P, ctx: RuleContext = {}): Node {
   this.startRule();
 
   let token = this.consume(this.T.Not);
@@ -256,7 +256,7 @@ export function mediaOr(this: P, ctx: RuleContext = {}) {
   ];
 }
 
-export function mediaInParens(this: P, ctx: RuleContext = {}) {
+export function mediaInParens(this: P, ctx: RuleContext = {}): Node {
   this.startRule();
   this.consume(this.T.LParen);
 
@@ -311,18 +311,18 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
               }
             },
             {
-              ALT: () => {
+              ALT: (): Node => {
                 let seq = this.mediaRange(ctx);
                 let [startOffset, startLine, startColumn] = this.endRule();
                 seq.value.unshift(this.wrap(new Any(ident.image, { role: 'ident' }, this.getLocationInfo(ident), this.context)));
-                seq.location[0] = startOffset;
-                seq.location[1] = startLine;
-                seq.location[2] = startColumn;
-                return new QueryCondition(seq.value, undefined, seq.location, this.context);
+                seq.location[0] = startOffset!;
+                seq.location[1] = startLine!;
+                seq.location[2] = startColumn!;
+                return new QueryCondition(seq.value, undefined, seq.location as LocationInfo, this.context);
               }
             },
             {
-              ALT: () => {
+              ALT: (): Node => {
                 let op = this.mfComparison(ctx);
                 let value = this.mfNonIdentifierValue(ctx);
 
@@ -351,6 +351,19 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
         return this.or([
           {
             ALT: () => {
+              // Try range first: `value < ident < value` or `value < ident`
+              let seq = this.mediaRange({ ...ctx });
+              let [startOffset, startLine, startColumn] = this.endRule();
+              seq.value.unshift(rule1);
+              seq.location[0] = startOffset!;
+              seq.location[1] = startLine!;
+              seq.location[2] = startColumn!;
+              return new QueryCondition(seq.value, undefined, seq.location as LocationInfo, this.context);
+            }
+          },
+          {
+            ALT: () => {
+              // Simple comparison: `value = ident`  (Eq not handled by mediaRange)
               let op = this.mfComparison({ ...ctx });
               let value = this.consume(this.T.Ident);
               let location = this.endRule();
@@ -359,17 +372,6 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
                 this.wrap(new Any(op.image, { role: 'operator' }, this.getLocationInfo(op), this.context)),
                 this.wrap(new Any(value.image, { role: 'ident' }, this.getLocationInfo(value), this.context), 'both')
               ], undefined, location, this.context);
-            }
-          },
-          {
-            ALT: () => {
-              let seq = this.mediaRange({ ...ctx });
-              let [startOffset, startLine, startColumn] = this.endRule();
-              seq.value.unshift(rule1);
-              seq.location[0] = startOffset;
-              seq.location[1] = startLine;
-              seq.location[2] = startColumn;
-              return new QueryCondition(seq.value, undefined, seq.location, this.context);
             }
           }
         ]);
@@ -418,7 +420,7 @@ export function mediaRange(this: P, ctx: RuleContext = {}) {
     }
   ]);
 
-  ([op1!, val1!, op2, val2] = val);
+  ([op1!, val1!, op2, val2] = val as any);
 
   let location = this.endRule();
   let nodes: Node[] = [
@@ -495,7 +497,7 @@ export function pageAtRule(this: P, ctx: RuleContext = {}) {
     DEF: () => selector.push(this.pageSelector(ctx))
   });
   this.consume(this.T.LCurly);
-  let rules = this.declarationList(ctx);
+  let rules = this.declarationList(ctx) as Rules;
   this.consume(this.T.RCurly);
 
   let location = this.endRule();
@@ -528,7 +530,7 @@ export function fontFaceAtRule(this: P, ctx: RuleContext = {}) {
 
   let name = this.consume(this.T.AtFontFace);
   this.consume(this.T.LCurly);
-  let rules = this.declarationList(ctx);
+  let rules = this.declarationList(ctx) as Rules;
   this.consume(this.T.RCurly);
 
   let location = this.endRule();
@@ -545,7 +547,7 @@ export function keyframesAtRule(this: P, ctx: RuleContext = {}) {
   // prelude: a single animation name
   let preludeNode: Node | undefined = this.keyframesName(ctx);
   this.consume(this.T.LCurly);
-  const rules = this.declarationList(ctx);
+  const rules = this.declarationList(ctx) as Rules;
   this.consume(this.T.RCurly);
 
   return new AtRule({
@@ -562,15 +564,19 @@ export function keyframesAtRule(this: P, ctx: RuleContext = {}) {
  */
 export function keyframesName(this: P, ctx: RuleContext = {}) {
   let node: Node | undefined;
-  this.or({
-    DEF: [
-      { ALT: () => {
+  this.or([
+    {
+      ALT: () => {
         const tok = this.consume(this.T.Ident);
         node = this.wrap(this.processValueToken(tok));
-      } },
-      { ALT: () => node = this.string(ctx) }
-    ]
-  });
+      }
+    },
+    {
+      ALT: () => {
+        node = this.string(ctx);
+      }
+    }
+  ]);
   return node!;
 }
 
@@ -579,7 +585,7 @@ export function keyframesName(this: P, ctx: RuleContext = {}) {
  *
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@container
  */
-export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: PreludeRule) {
+export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: PreludeRule): Node {
   this.startRule();
   const name = this.consume(this.T.AtContainer);
   let prelude: Node | undefined;
@@ -623,7 +629,7 @@ export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Pr
   }
 
   this.consume(this.T.LCurly);
-  const rules = this.atRuleBody(ctx);
+  const rules = this.atRuleBody(ctx) as Rules;
   this.consume(this.T.RCurly);
 
   let preludeNodes: Node[] = [];
@@ -678,7 +684,7 @@ export function containerQueryList(this: P, ctx: RuleContext = {}) {
  * Container query: a container condition or container query type function
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@container#container-query
  */
-export function containerQuery(this: P, ctx: RuleContext = {}) {
+export function containerQuery(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     {
       // Container query type function: any FunctionStart token
@@ -757,7 +763,7 @@ export function containerQuery(this: P, ctx: RuleContext = {}) {
           let rule = this.or([
             { ALT: () => this.containerAnd(ctx) },
             { ALT: () => this.containerOr(ctx) }
-          ]);
+          ]) as Node[];
           nodes!.push(...rule);
         });
 
@@ -777,7 +783,7 @@ export function containerQuery(this: P, ctx: RuleContext = {}) {
  * Container condition: similar to media condition but without mediaType variant
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@container#container-query
  */
-export function containerCondition(this: P, ctx: RuleContext = {}) {
+export function containerCondition(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     {
       // Handle `not` followed by a container query type function (e.g., `not scroll-state(...)`)
@@ -815,7 +821,7 @@ export function containerCondition(this: P, ctx: RuleContext = {}) {
           let rule = this.or([
             { ALT: () => this.containerAnd(ctx) },
             { ALT: () => this.containerOr(ctx) }
-          ]);
+          ]) as Node[];
           nodes!.push(...rule);
         });
         if (nodes!.length === 1) {
@@ -1060,7 +1066,7 @@ export function scopeAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Prelud
       : undefined;
   }
   this.consume(this.T.LCurly);
-  const rules = this.atRuleBody(ctx);
+  const rules = this.atRuleBody(ctx) as Rules;
   this.consume(this.T.RCurly);
   return new AtRule({
     name: this.wrap(new Any(name.image, { role: 'atkeyword' }, this.getLocationInfo(name), this.context), true),
@@ -1076,7 +1082,7 @@ export function documentAtRule(this: P, ctx: RuleContext = {}) {
   const preludeNodes: Node[] = [];
   this.many(() => preludeNodes.push(this.wrap(this.anyOuterValue(ctx))));
   this.consume(this.T.LCurly);
-  const rules = this.atRuleBody(ctx);
+  const rules = this.atRuleBody(ctx) as Rules;
   this.consume(this.T.RCurly);
   return new AtRule({
     name: this.wrap(new Any(name.image, { role: 'atkeyword' }, this.getLocationInfo(name), this.context), true),

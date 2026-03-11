@@ -251,7 +251,9 @@ export class RecursiveDescentParser {
   }
 
   /** Alias — Chevrotain compatibility */
-  CONSUME(expected: TokenType): IToken { return this.consume(expected); }
+  CONSUME(expected: TokenType): IToken {
+    return this.consume(expected);
+  }
 
   // ── DSL: or ──────────────────────────────────────────────────────
 
@@ -272,24 +274,54 @@ export class RecursiveDescentParser {
       }
     }
 
+    let lastError: any;
     for (let i = 0; i < alternatives.length; i++) {
       const alt = alternatives[i]!;
       if (alt.GATE && !alt.GATE()) {
         continue;
       }
-      // If no GATE, this alternative is the default fallback.
-      // With a GATE, the GATE already confirmed we should enter.
-      // Either way, try it.
       if (alt.GATE || i === alternatives.length - 1) {
+        // GATE passed or last alt — commit without backtracking
         return alt.ALT();
       }
-      // No GATE and not last: need a way to decide. If the alternative
-      // has no GATE and there are more alternatives, it acts as default.
-      // But typically, all non-last alternatives should have a GATE.
-      return alt.ALT();
+      // No GATE and not last: try with backtracking.
+      // Temporarily disable recovery so consume() throws on mismatch
+      // instead of inserting virtual tokens (which would make every
+      // alt appear to succeed, causing infinite loops).
+      const savedPos = this.pos;
+      const savedLocStackLen = this.locationStack.length;
+      const savedRecovery = this.recoveryEnabled;
+      const savedErrors = this.errors.length;
+      this.recoveryEnabled = false;
+      try {
+        const result = alt.ALT();
+        this.recoveryEnabled = savedRecovery;
+        return result;
+      } catch (e) {
+        // Restore parser state and try next alternative
+        this.recoveryEnabled = savedRecovery;
+        this.pos = savedPos;
+        this.locationStack.length = savedLocStackLen;
+        this.errors.length = savedErrors;
+        lastError = e;
+      }
     }
 
     // No alternative matched
+    if (lastError) {
+      if (this.recoveryEnabled) {
+        // Convert the last backtracking error into a recorded error
+        // and let parsing continue
+        if (lastError instanceof ParseError) {
+          this.errors.push(lastError);
+        } else {
+          const tok = this.la(1);
+          this.errors.push(new NoViableAltError(tok, [...this.ruleStack]));
+        }
+        return undefined as T;
+      }
+      throw lastError;
+    }
     const tok = this.la(1);
     if (this.recoveryEnabled) {
       this.errors.push(new NoViableAltError(tok, [...this.ruleStack]));
@@ -299,7 +331,9 @@ export class RecursiveDescentParser {
   }
 
   /** Alias — Chevrotain compatibility */
-  OR<T>(alternatives: OrAlternative<T>[]): T { return this.or(alternatives); }
+  OR<T>(alternatives: OrAlternative<T>[]): T {
+    return this.or(alternatives);
+  }
 
   // ── DSL: many ────────────────────────────────────────────────────
 
@@ -343,7 +377,9 @@ export class RecursiveDescentParser {
   }
 
   /** Alias — Chevrotain compatibility */
-  MANY(defOrOpts: (() => void) | ManyOptions): void { this.many(defOrOpts); }
+  MANY(defOrOpts: (() => void) | ManyOptions): void {
+    this.many(defOrOpts);
+  }
 
   // ── DSL: atLeastOne ──────────────────────────────────────────────
 
@@ -380,7 +416,9 @@ export class RecursiveDescentParser {
   }
 
   /** Alias — Chevrotain compatibility */
-  AT_LEAST_ONE(defOrOpts: (() => void) | ManyOptions): void { this.atLeastOne(defOrOpts); }
+  AT_LEAST_ONE(defOrOpts: (() => void) | ManyOptions): void {
+    this.atLeastOne(defOrOpts);
+  }
 
   // ── DSL: option ──────────────────────────────────────────────────
 
@@ -405,7 +443,9 @@ export class RecursiveDescentParser {
   }
 
   /** Alias — Chevrotain compatibility */
-  OPTION<T>(def: () => T): T | undefined { return this.option(def); }
+  OPTION<T>(def: () => T): T | undefined {
+    return this.option(def);
+  }
 
   // ── DSL: separated lists ─────────────────────────────────────────
 
@@ -439,7 +479,9 @@ export class RecursiveDescentParser {
   }
 
   /** Alias — Chevrotain compatibility */
-  MANY_SEP<T>(opts: ManySepOptions<T>): void { this.manySep(opts); }
+  MANY_SEP<T>(opts: ManySepOptions<T>): void {
+    this.manySep(opts);
+  }
 
   /**
    * One or more occurrences separated by a token.
@@ -456,7 +498,9 @@ export class RecursiveDescentParser {
   }
 
   /** Alias — Chevrotain compatibility */
-  AT_LEAST_ONE_SEP<T>(opts: ManySepOptions<T>): void { this.atLeastOneSep(opts); }
+  AT_LEAST_ONE_SEP<T>(opts: ManySepOptions<T>): void {
+    this.atLeastOneSep(opts);
+  }
 
   /**
    * Override point: can the next token start a separated list element?
@@ -586,7 +630,9 @@ export class RecursiveDescentParser {
     let found = false;
 
     for (const item of nodes) {
-      if (!item) continue;
+      if (!item) {
+        continue;
+      }
       if ('tokenType' in item) {
         // IToken
         if (item.startOffset < startOffset) {
@@ -617,7 +663,9 @@ export class RecursiveDescentParser {
       }
     }
 
-    if (!found) return undefined;
+    if (!found) {
+      return undefined;
+    }
     return [startOffset, startLine, startColumn, endOffset, endLine, endColumn];
   }
 
@@ -630,7 +678,9 @@ export class RecursiveDescentParser {
   hasWS(): boolean {
     const startOffset = this.la(1).startOffset;
     const skipped = this.preSkippedTokenMap.get(startOffset);
-    if (!skipped) return false;
+    if (!skipped) {
+      return false;
+    }
     return skipped.some(t => t.tokenType.name === WS_NAME);
   }
 
@@ -688,7 +738,9 @@ export class RecursiveDescentParser {
       if (tok.tokenType.name === 'LCurly') {
         depth++;
       } else if (tok.tokenType.name === 'RCurly') {
-        if (depth === 0) break;
+        if (depth === 0) {
+          break;
+        }
         depth--;
       } else if (depth === 0 && syncTokens.some(t => tokenMatches(tok, t))) {
         break;
@@ -733,7 +785,7 @@ export class RecursiveDescentParser {
   }
 
   /** Collect a suggestion from a consume() call site */
-  protected collectAssistSuggestion(expected: TokenType): void {
+  protected collectAssistSuggestion(_expected: TokenType): void {
     // Don't throw — just record and keep parsing so we collect
     // suggestions from multiple call sites in sequence
     // (this is a no-op for now; suggestions are collected in or())
@@ -743,7 +795,9 @@ export class RecursiveDescentParser {
   protected collectOrAssistSuggestions<T>(alternatives: OrAlternative<T>[]): void {
     const suggestions: ContentAssistSuggestion[] = [];
     for (const alt of alternatives) {
-      if (alt.GATE && !alt.GATE()) continue;
+      if (alt.GATE && !alt.GATE()) {
+        continue;
+      }
       // Try each alternative in a mini-backtrack to find its first consume()
       const savedPos = this.pos;
       const savedAssist = this.assistMode;

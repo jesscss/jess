@@ -1,5 +1,5 @@
 // Methods to be mixed into CssRecursiveParser
-import type { CssRecursiveParser, RuleContext } from './cssRecursiveParser.js';
+import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser-runtime';
 import { tokenMatches } from '@jesscss/parser-runtime';
 import {
@@ -37,7 +37,7 @@ export function layerAtRule(this: P, ctx: RuleContext = {}) {
           preludeNodes.push(this.wrap(nameNode));
         });
         this.consume(this.T.LCurly);
-        const rules = this.atRuleBody(ctx);
+        const rules = this.atRuleBody(ctx) as Rules;
         this.consume(this.T.RCurly);
         return new AtRule({
           name: this.wrap(new Any(atTok.image, { role: 'atkeyword' }, this.getLocationInfo(atTok), this.context), true),
@@ -96,7 +96,7 @@ export function supportsAtRule(this: P, ctx: RuleContext = {}) {
   let name = this.consume(this.T.AtSupports);
   const prelude: Node = this.supportsCondition(ctx);
   this.consume(this.T.LCurly);
-  let rules = this.atRuleBody(ctx);
+  let rules = this.atRuleBody(ctx) as Rules;
   this.consume(this.T.RCurly);
 
   let location = this.endRule();
@@ -108,7 +108,7 @@ export function supportsAtRule(this: P, ctx: RuleContext = {}) {
 }
 
 /** spec-compliant but simplified */
-export function supportsCondition(this: P, ctx: RuleContext = {}) {
+export function supportsCondition(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     {
       GATE: () => this.la(1).tokenType === this.T.Not,
@@ -177,10 +177,10 @@ export function supportsCondition(this: P, ctx: RuleContext = {}) {
   ]);
 }
 
-export function supportsInParens(this: P, ctx: RuleContext = {}) {
+export function supportsInParens(this: P, ctx: RuleContext = {}): Node {
   return this.or([
     {
-      ALT: () => {
+      ALT: (): Node => {
         this.startRule();
         /** Function-like call */
         let name = this.consume(this.T.Ident);
@@ -190,7 +190,7 @@ export function supportsInParens(this: P, ctx: RuleContext = {}) {
             GATE: this.noSep.bind(this),
             ALT: () => {
               this.consume(this.T.LParen);
-              args = this.valueList(ctx);
+              args = this.valueList(ctx) as List;
               this.consume(this.T.RParen);
             }
           }
@@ -204,7 +204,7 @@ export function supportsInParens(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      ALT: () => {
+      ALT: (): Node => {
         this.startRule();
         let values: Node[] = [];
         this.consume(this.T.LParen);
@@ -212,9 +212,9 @@ export function supportsInParens(this: P, ctx: RuleContext = {}) {
          * Intentionally omits "generalEnclosed" from spec.
          * See the note on media queries.
          */
-        let value = this.or([
-          { ALT: () => this.supportsCondition(ctx) },
-          { ALT: () => this.declaration(ctx) }
+        let value: Node = this.or([
+          { ALT: (): Node => this.supportsCondition(ctx) },
+          { ALT: (): Node => this.declaration(ctx) }
         ]);
         this.consume(this.T.RParen);
 
@@ -357,7 +357,7 @@ export function functionCallArgs(this: P, ctx: RuleContext = {}) {
           } else {
             semiNodes.push(commaNodes[0]!);
           }
-          node = this.valueList(ctx);
+          node = this.valueList(ctx) as Node;
           semiNodes.push(this.wrap(node, true));
         }
       }
@@ -472,7 +472,7 @@ export function nestedAtRule(this: P, ctx: RuleContext = {}) {
   });
   this.consume(this.T.LCurly);
   // All known nested at-rules use declaration lists in their blocks
-  rules = this.declarationList(ctx);
+  rules = this.declarationList(ctx) as Rules;
   this.consume(this.T.RCurly);
 
   return new AtRule({
@@ -571,7 +571,7 @@ export function unknownAtRule(this: P, ctx: RuleContext = {}) {
           {
             GATE: () => assumeDeclList,
             ALT: () => {
-              declRules = this.atRuleBody({ ...ctx, inner: true });
+              declRules = this.atRuleBody({ ...ctx, inner: true }) as Rules;
             }
           },
           {

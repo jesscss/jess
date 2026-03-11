@@ -112,7 +112,16 @@ export interface ManySepOptions<T = void> {
 
 // ── Error types ──────────────────────────────────────────────────────
 
-export class ParseError extends Error {
+/**
+ * Lightweight parse error — does NOT extend Error to avoid
+ * V8's expensive `Error.captureStackTrace()` on every construction.
+ * Parse errors use `ruleStack` for context instead of JS stack traces.
+ *
+ * Can still be caught with `catch(e)` and checked with `instanceof ParseError`.
+ */
+export class ParseError {
+  name: string = 'ParseError';
+  message: string;
   token: IToken;
   expected?: TokenType;
   previousToken?: IToken;
@@ -123,8 +132,7 @@ export class ParseError extends Error {
     previousToken?: IToken;
     ruleStack?: string[];
   }) {
-    super(message);
-    this.name = 'ParseError';
+    this.message = message;
     this.token = token;
     this.expected = init?.expected;
     this.previousToken = init?.previousToken;

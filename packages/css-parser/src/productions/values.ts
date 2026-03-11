@@ -1,5 +1,5 @@
 // Methods to be mixed into CssRecursiveParser
-import type { CssRecursiveParser, RuleContext } from './cssRecursiveParser.js';
+import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser-runtime';
 import { tokenMatches } from '@jesscss/parser-runtime';
 import {
@@ -500,8 +500,8 @@ export function ifFunctionArgs(this: P, ctx: RuleContext = {}) {
       this.consume(this.T.Assign);
       const value = this.valueList({ ...ctx, inner: true });
       const sep = this.wrap(new Any(':', { role: 'operator' }, undefined, this.context), true);
-      const loc = this.getLocationFromNodes([condition as Node, value as Node]);
-      branches.push(new Sequence([this.wrap(condition!, true), sep, this.wrap(value!, true)], undefined, loc, this.context));
+      const loc = this.getLocationFromNodes([condition as Node, value as Node].filter(Boolean));
+      branches.push(new Sequence([this.wrap(condition as Node, true), sep, this.wrap(value as Node, true)], undefined, loc, this.context));
     }
   });
   this.option(() => this.consume(this.T.Semi));
