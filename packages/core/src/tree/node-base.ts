@@ -238,7 +238,6 @@ export abstract class Node<
   /**
    * Track the original source when cloned / copied,
    * rather than keeping the entire tree
-   * Note: This property is defined in constructor as non-enumerable
    */
   declare sourceNode: Node;
 
@@ -475,27 +474,9 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    // Make some props non-enumerable to avoid JSON serialization issues
-    Object.defineProperties(this, {
-      sourceNode: {
-        value: this,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      parent: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      sourceParent: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      }
-    });
+    (this as any).sourceNode = this;
+    (this as any).parent = undefined;
+    (this as any).sourceParent = undefined;
     this._value = value;
     this._adoptChildren();
     this._treeContext = treeContext;

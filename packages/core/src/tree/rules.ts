@@ -18,7 +18,7 @@ import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
-import { atIndex } from './util/collections.js';
+import { atIndex, isPlainObject } from './util/collections.js';
 import type { Condition } from './condition.js';
 import { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
@@ -2075,9 +2075,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
         return false;
       }
-      if (value && typeof value === 'object') {
-        const record = value as Record<string, unknown>;
-        for (const item of Object.values(record)) {
+      if (isPlainObject(value)) {
+        for (const item of Object.values(value)) {
           if (isNode(item) && guardContainsDefault(item)) {
             return true;
           }
@@ -2223,9 +2222,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
         return;
       }
-      if (value && typeof value === 'object') {
-        const record = value as Record<string, unknown>;
-        for (const propValue of Object.values(record)) {
+      if (isPlainObject(value)) {
+        for (const propValue of Object.values(value)) {
           if (isNode(propValue)) {
             resetEvalStateDeep(propValue);
             continue;

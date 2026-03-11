@@ -14,6 +14,7 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { F_IMPLICIT_AMPERSAND, type Node } from '../node.js';
 import { Nil } from '../nil.js';
+import { isPlainObject } from './collections.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 
@@ -77,8 +78,8 @@ export function processLeadingIs(
       }
       return false;
     }
-    if (value && typeof value === 'object') {
-      for (const item of Object.values(value as Record<string, unknown>)) {
+    if (isPlainObject(value)) {
+      for (const item of Object.values(value)) {
         if (item && typeof item === 'object' && 'type' in (item as Record<string, unknown>)) {
           if (hasEscapedQuoted(item as Node, seen)) {
             return true;
