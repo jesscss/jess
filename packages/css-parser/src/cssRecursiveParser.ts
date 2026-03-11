@@ -36,6 +36,8 @@ import colors from 'color-name';
 
 import { type CssTokenType } from './cssTokens.js';
 
+type TokenMap = Record<CssTokenType, TokenType>;
+
 // ── Import production rule implementations ──────────────────────────
 import * as selectors from './productions/selectors.js';
 import * as values from './productions/values.js';
@@ -46,9 +48,7 @@ const { isArray } = Array;
 
 // ── Types ────────────────────────────────────────────────────────────
 
-export type TokenMap = Record<CssTokenType, TokenType>;
-
-export type RuleContext = {
+type RuleContext = {
   /** Inside a declaration list */
   inner?: boolean;
   /** Determine if this is the first selector in the list */

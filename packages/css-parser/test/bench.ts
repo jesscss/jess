@@ -12,7 +12,8 @@
 import { Lexer } from 'chevrotain';
 import { cssLexer } from '../src/cssTokens.js';
 import { CssActionsParser } from '../src/cssActionsParser.js';
-import { CssRecursiveParser, type TokenMap } from '../src/cssRecursiveParser.js';
+import { CssRecursiveParser } from '../src/cssRecursiveParser.js';
+import { type TokenMap } from '../src/cssActionsParser.js';
 import type { IToken } from '@jesscss/parser-runtime';
 import * as fs from 'fs';
 import * as path from 'path';
