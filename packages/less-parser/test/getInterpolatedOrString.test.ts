@@ -26,7 +26,7 @@ describe('getInterpolatedOrString', () => {
         const replacement = result.data.replacements[0];
         if (replacement instanceof Reference) {
           expect(replacement.data.key).toBeInstanceOf(Quoted);
-          expect((replacement.data.key as Quoted).value).toBe('key');
+          expect((replacement.data.key as Quoted).data).toBe('key');
           expect(replacement.options.type).toBe('property');
         }
       }
@@ -41,7 +41,7 @@ describe('getInterpolatedOrString', () => {
         const replacement = result.data.replacements[0];
         if (replacement instanceof Reference) {
           expect(replacement.data.key).toBeInstanceOf(Quoted);
-          expect((replacement.data.key as Quoted).value).toBe('key');
+          expect((replacement.data.key as Quoted).data).toBe('key');
           expect(replacement.options.type).toBe('property');
         }
       }
@@ -72,7 +72,7 @@ describe('getInterpolatedOrString', () => {
         const replacement = result.data.replacements[0];
         if (replacement instanceof Reference) {
           expect(replacement.data.key).toBeInstanceOf(Quoted);
-          expect((replacement.data.key as Quoted).value).toBe('property');
+          expect((replacement.data.key as Quoted).data).toBe('property');
           expect(replacement.options.type).toBe('property');
         }
       }
