@@ -29,10 +29,10 @@ describe('Combinator Preservation in Extensions', () => {
       // Verify the result contains the original combinator
       expect(isNode(result, N.ComplexSelector)).toBe(true);
       if (isNode(result, N.ComplexSelector)) {
-        const components = result.value;
+        const components = result.data;
         const foundCombinator = components.find(c => isNode(c, N.Combinator));
         expect(foundCombinator).toBeDefined();
-        expect(foundCombinator?.value).toBe(combinator);
+        expect(foundCombinator?.data).toBe(combinator);
       }
     });
   }
@@ -73,11 +73,11 @@ describe('Combinator Preservation in Extensions', () => {
       // Verify both combinators are preserved
       expect(isNode(result, N.ComplexSelector)).toBe(true);
       if (isNode(result, N.ComplexSelector)) {
-        const components = result.value;
+        const components = result.data;
         const combinators = components.filter(c => isNode(c, N.Combinator)) as Combinator[];
         expect(combinators).toHaveLength(2);
-        expect(combinators[0]?.value).toBe('>');
-        expect(combinators[1]?.value).toBe('+');
+        expect(combinators[0]?.data).toBe('>');
+        expect(combinators[1]?.data).toBe('+');
       }
     });
   });
@@ -222,9 +222,9 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ruleset = evald.value[0];
-      const nestedRuleset = ext8Ruleset?.value?.rules?.value?.[0];
-      const nestedSel = nestedRuleset?.value?.selector?.valueOf() ?? '';
+      const ext8Ruleset = evald.data[0];
+      const nestedRuleset = ext8Ruleset?.data?.rules?.data?.[0];
+      const nestedSel = nestedRuleset?.data?.selector?.valueOf() ?? '';
       // Nested has descendant .ext8 .ext9 only; must NOT get .zap (which extends .ext8 + .ext9)
       expect(nestedSel).not.toContain('.zap');
       expect(nestedSel).toContain('.ext9');
@@ -249,8 +249,8 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ext9Ruleset = evald.value[0];
-      const selectorStr = ext8Ext9Ruleset?.value?.selector?.valueOf() ?? '';
+      const ext8Ext9Ruleset = evald.data[0];
+      const selectorStr = ext8Ext9Ruleset?.data?.selector?.valueOf() ?? '';
       expect(selectorStr).toBe('.ext8 .ext9');
       expect(selectorStr).not.toContain('.zoo');
     });
@@ -296,10 +296,10 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      const nested = evald.value[1]?.value?.rules?.value?.[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toContain('.zap');
-      const nestedSel = nested?.value?.selector?.valueOf() ?? '';
+      const firstRuleset = evald.data[0];
+      const nested = evald.data[1]?.data?.rules?.data?.[0];
+      expect(firstRuleset?.data?.selector?.valueOf()).toContain('.zap');
+      const nestedSel = nested?.data?.selector?.valueOf() ?? '';
       expect(nestedSel).not.toContain('.zap');
       expect(nestedSel).toContain('.buu');
     });

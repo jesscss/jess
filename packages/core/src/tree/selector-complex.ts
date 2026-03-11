@@ -46,7 +46,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       // Use _value directly to avoid triggering the setter / _invalidateValueOf.
       (this as any)._value = [(this as any)._value];
     }
-    return (this._dataOf ??= this.data.map(n => n.valueOf()).join(''));
+    return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
   }
 
   protected override _computeKeySetAndFastReject(): void {

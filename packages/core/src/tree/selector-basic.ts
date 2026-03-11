@@ -41,7 +41,7 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   override valueOf(): string {
-    return (this._dataOf ??= (this.isTag ? this.data.toLowerCase() : this.data));
+    return (this._valueOf ??= (this.isTag ? this.data.toLowerCase() : this.data));
   }
 
   /** @todo - move to visitors */

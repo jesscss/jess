@@ -51,8 +51,8 @@ describe('Extend ampersand boundary behavior', () => {
 
     const context = new Context();
     const evald = await root.eval(context);
-    const headerRuleset = evald.value[0];
-    const innerRuleset = headerRuleset?.value?.rules?.value?.[0];
+    const headerRuleset = evald.data[0];
+    const innerRuleset = headerRuleset?.data?.rules?.data?.[0];
     expect(innerRuleset?.hoistToRoot).toBe(true);
   });
 

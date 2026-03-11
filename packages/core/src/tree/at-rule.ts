@@ -76,7 +76,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
-    return (this._dataOf ??= (this.data.name.toString() + (this.data.prelude ? ' ' + this.data.prelude.valueOf() : '')));
+    return (this._valueOf ??= (this.data.name.toString() + (this.data.prelude ? ' ' + this.data.prelude.valueOf() : '')));
   }
 
   /**

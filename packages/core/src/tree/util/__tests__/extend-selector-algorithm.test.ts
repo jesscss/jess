@@ -292,8 +292,8 @@ describe('Extend Selector Tests', () => {
       // Extract the :is() argument to compare
       if (isNode(isResult, N.PseudoSelector)) {
         const pseudo = isResult as PseudoSelector;
-        if (pseudo.value && typeof pseudo.value === 'object' && 'name' in pseudo.value && pseudo.value.name === ':is' && 'arg' in pseudo.value && pseudo.value.arg) {
-          const isArgStr = (pseudo.value.arg as Selector).valueOf();
+        if (pseudo.data && typeof pseudo.data === 'object' && 'name' in pseudo.data && pseudo.data.name === ':is' && 'arg' in pseudo.data && pseudo.data.arg) {
+          const isArgStr = (pseudo.data.arg as Selector).valueOf();
           expect(isArgStr).toBe('.g,.i.j');
         } else {
           throw new Error(`Expected :is() selector, got ${isResult.type}`);
@@ -797,7 +797,7 @@ describe('Extend Selector Tests', () => {
       it('(a) implicit ampersand is present on selector (first component is Ampersand with stored selector)', () => {
         const withImplicit = getImplicitSelector(el('.bb'), el('.bb'), false);
         expect(isNode(withImplicit, N.ComplexSelector)).toBe(true);
-        const first = (withImplicit as any).value?.[0];
+        const first = (withImplicit as any).data?.[0];
         expect(first?.type).toBe('Ampersand');
         expect(first?.getResolvedSelector?.()).toBeDefined();
       });
@@ -811,7 +811,7 @@ describe('Extend Selector Tests', () => {
       it('(c) ampersand retains stored selector (copy of parent at build time)', () => {
         const parent = el('.bb');
         const withImplicit = getImplicitSelector(el('.bb'), parent, false);
-        const first = (withImplicit as any).value?.[0];
+        const first = (withImplicit as any).data?.[0];
         expect(first?.getResolvedSelector?.()).toBeDefined();
         expect(first.getResolvedSelector?.()?.valueOf()).toBe('.bb');
       });
@@ -850,7 +850,7 @@ describe('Extend Selector Tests', () => {
       expect(out).toContain('.b');
       // Should preserve structure (implicit & not materialized in serialization when same context)
       expect(isNode(result, N.ComplexSelector)).toBe(true);
-      const first = (result as any).value?.[0];
+      const first = (result as any).data?.[0];
       expect(first?.type).toBe('Ampersand');
     });
 
@@ -866,7 +866,7 @@ describe('Extend Selector Tests', () => {
       expect(result.error).toBeUndefined();
       expect(isNode(result.value, N.SelectorList)).toBe(true);
       const list = result.value as SelectorList;
-      expect(list.value.length).toBeGreaterThanOrEqual(2);
+      expect(list.data.length).toBeGreaterThanOrEqual(2);
       const str = result.value.valueOf();
       expect(str).toContain('.replace');
       expect(str).toContain('.rep_ace');

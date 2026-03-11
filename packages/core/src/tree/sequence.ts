@@ -51,7 +51,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const { value } = this;
+    const value = this.data;
     const length = value.length;
 
     if (length === 0) {

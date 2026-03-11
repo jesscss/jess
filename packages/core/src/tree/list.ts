@@ -40,14 +40,14 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   private _valueOf: string | undefined;
 
   override valueOf() {
-    return (this._dataOf ??= this.data.map(v => v.valueOf()).join(';'));
+    return (this._valueOf ??= this.data.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let { value } = this;
+    let value = this.data;
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
