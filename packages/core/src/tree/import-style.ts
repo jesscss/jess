@@ -208,26 +208,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       referenceMode: isReferenceMode,
       readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
     };
-    if (isReferenceMode) {
-      const markReferenceMode = (node: Node): void => {
-        const nodeOptions = node.options as { referenceMode?: boolean };
-        nodeOptions.referenceMode = true;
-        const maybeRulesValue = node.value as { rules?: Node } | undefined;
-        const rules = maybeRulesValue?.rules;
-        if (rules && isNode(rules, N.Rules)) {
-          markReferenceMode(rules);
-        }
-        const children = node.value;
-        if (Array.isArray(children)) {
-          for (const child of children) {
-            if (isNode(child, N.Rules | N.Ruleset | N.AtRule)) {
-              markReferenceMode(child as Node);
-            }
-          }
-        }
-      };
-      markReferenceMode(out as unknown as Node);
-    }
     // Forwarded modules should never render output at this scope.
     if (isForward) {
       out.removeFlag(F_VISIBLE);
@@ -487,7 +467,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the rules have not been evaluated yet
        * - the import type is `import`
       */
-        let evaluatedInImplicitReferenceMode = false;
         if (withValues || !evaldRules || type === 'import') {
           const preserveOriginalNodes = context.preserveOriginalNodes;
           context.preserveOriginalNodes = true;
@@ -499,7 +478,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             && !importOptions!.multiple
           );
           if (isImplicitReferenceModeForEval) {
-            evaluatedInImplicitReferenceMode = true;
             // Dedupe re-imports behave like an implicit reference traversal:
             // evaluate for symbol availability, but avoid outward extend side effects.
             context.pushImportScope({ reference: true });
@@ -566,13 +544,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.extendRoots.popExtendRoot();
         }
 
-        if (evaluatedInImplicitReferenceMode) {
-          (rules.options as { referenceMode?: boolean }).referenceMode = false;
-        }
         let finalRules = node.getFinalRules(rules);
-        if (evaluatedInImplicitReferenceMode) {
-          (finalRules.options as { referenceMode?: boolean }).referenceMode = false;
-        }
         if (importOptions!.postlude && !isInlineImport) {
           finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
         }

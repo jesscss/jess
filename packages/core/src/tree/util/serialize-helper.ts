@@ -65,29 +65,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const mark = w.mark();
   const previousReferenceMode = options.referenceMode === true;
   const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
-  const isInMixinOutputScope = (): boolean => {
-    const seen = new Set<any>();
-    const queue: any[] = [(node as any).parent, (node as any).sourceParent];
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (!current || seen.has(current)) {
-        continue;
-      }
-      seen.add(current);
-      if (current.options?.isMixinOutput === true) {
-        return true;
-      }
-      queue.push(current.parent, current.sourceParent);
-    }
-    return false;
-  };
-  const parentIsMixinOutput = isInMixinOutputScope();
-  const ownReferenceMode = Boolean(
-    (node as any).options?.referenceMode === true
-    && !parentIsMixinOutput
-  );
-  const inReferenceMode = previousReferenceMode || ownReferenceMode;
-  const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
+  const inReferenceMode = previousReferenceMode;
+  const enteringReferenceMode = false;
   const nodeExtendsReference = node.type === 'Ruleset' && rulesetHasExtendedTopLevelSelector(node as Ruleset);
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
@@ -128,15 +107,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       queue.push(current.sourceNode, current.sourceParent, current.parent);
     }
     return false;
-  };
-  const originatesFromReferenceImport = (n: any): boolean => {
-    return sourceChainHas(n, (current) => {
-      if (current?.type !== 'StyleImport') {
-        return false;
-      }
-      const importOptions = current.options?.importOptions;
-      return importOptions?.reference === true || importOptions?._dedupe === true;
-    });
   };
   const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
   if (rulesToRender.length === 0) {
@@ -199,17 +169,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (!n.visible && !n.fullRender) {
       continue;
     }
-    if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
-      continue;
-    }
-    if (
-      isNode(n, N.Any)
-      && String(n.valueOf?.() ?? '').trimStart().startsWith('/*')
-      && originatesFromReferenceImport(n)
-      && !originatesFromCall(n)
-    ) {
-      continue;
-    }
     if (inReferenceMode && !renderEnabled && !isContainer) {
       continue;
     }
@@ -217,6 +176,25 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       continue;
     }
 
+    if (isNode(n, N.Rules)) {
+      // Reference-mode Rules preserved by flatRules — serialize with referenceMode cascading
+      const ownRefMode = (n as any).options?.referenceMode === true;
+      const childRefMode = inReferenceMode || ownRefMode;
+      const entering = !inReferenceMode && ownRefMode;
+      const childRenderEnabled = childRefMode
+        ? (entering ? false : renderEnabled)
+        : true;
+      const childOptions = {
+        ...options,
+        referenceMode: childRefMode,
+        referenceRenderEnabled: childRenderEnabled
+      } as FinalPrintOptions;
+      const childOut = w.capture(() => n.toTrimmedString(childOptions));
+      if (childOut) {
+        w.add(childOut, n);
+      }
+      continue;
+    }
     if (isNode(n, N.Ruleset | N.AtRule)) {
       if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
         const parentSelector = String(node.value.selector?.valueOf?.() ?? '');

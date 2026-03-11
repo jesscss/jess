@@ -447,27 +447,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let emittedCount = 0;
     let lastEmittedType: string | undefined;
     let lastEmittedWasInlineSourceRules = false;
-    const isInMixinOutputScope = (node: Node): boolean => {
-      const seen = new Set<Node>();
-      const queue: Node[] = [node];
-      while (queue.length > 0) {
-        const current = queue.shift()!;
-        if (seen.has(current)) {
-          continue;
-        }
-        seen.add(current);
-        if ((current.options as any)?.isMixinOutput === true) {
-          return true;
-        }
-        if (current.parent) {
-          queue.push(current.parent);
-        }
-        if (current.sourceParent && isNode(current.sourceParent)) {
-          queue.push(current.sourceParent);
-        }
-      }
-      return false;
-    };
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
@@ -502,15 +481,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? { ...options, depth }
         : { ...options, depth };
       if (isChildRules) {
-        const inMixinOutputScope = isInMixinOutputScope(n);
-        const sourceIsCall = (
-          (n.sourceParent as any)?.type === 'Call'
-          || (n.sourceNode as any)?.sourceParent?.type === 'Call'
-        );
-        const ownReferenceMode = (
-          (n.options as any)?.referenceMode === true
-          && (!inMixinOutputScope || !sourceIsCall)
-        );
+        const ownReferenceMode = (n.options as any)?.referenceMode === true;
         const childReferenceMode = referenceMode || ownReferenceMode;
         const enteringReferenceMode = !referenceMode && ownReferenceMode;
         const childReferenceRenderEnabled = childReferenceMode
@@ -550,7 +521,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const iterateRules = (rules: Rules) => {
       for (let n of rules.value) {
         if (isNode(n, N.Rules)) {
-          iterateRules(n);
+          // Preserve reference-mode Rules as containers so the serializer
+          // can detect the referenceMode flag and suppress output.
+          if ((n.options as RulesOptions)?.referenceMode === true) {
+            finalRules.push(n);
+          } else {
+            iterateRules(n);
+          }
           continue;
         }
         if (!visibleOnly || n.visible || n.fullRender) {
@@ -2152,45 +2129,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let outputRules: Rules[] = [];
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const originatesFromReferenceImport = (node: Node): boolean => {
-      const queue: any[] = [node, node.sourceNode, node.sourceParent];
-      const seen = new Set<any>();
-      while (queue.length > 0) {
-        const current = queue.shift();
-        if (!current || seen.has(current)) {
-          continue;
-        }
-        seen.add(current);
-        if (current.type === 'StyleImport') {
-          const importOptions = current.options?.importOptions;
-          if (importOptions?.reference === true || importOptions?._dedupe === true) {
-            return true;
-          }
-        }
-        queue.push(current.sourceNode, current.sourceParent, current.parent);
-      }
-      return false;
-    };
-    const clearReferenceModeForMixinOutput = (node: Node): void => {
-      if (originatesFromReferenceImport(node)) {
-        return;
-      }
-      if ((node.options as any)?.referenceMode === true) {
-        (node.options as any).referenceMode = false;
-      }
-      const nestedRules = (node as any).value?.rules;
-      if (nestedRules && isNode(nestedRules, N.Rules)) {
-        clearReferenceModeForMixinOutput(nestedRules as Node);
-      }
-      const children = (node as any).value;
-      if (Array.isArray(children)) {
-        for (const child of children) {
-          if (isNode(child, N.Rules | N.Ruleset | N.AtRule)) {
-            clearReferenceModeForMixinOutput(child as Node);
-          }
-        }
-      }
-    };
     const resetEvalStateDeep = (node: Node): void => {
       node.preEvaluated = false;
       node.evaluated = false;
@@ -2300,8 +2238,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Ensure the registry is indexed before checking
         // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
-        newRules.options.referenceMode = false;
-        clearReferenceModeForMixinOutput(newRules as unknown as Node);
         if (thisContext.treeContext?.file) {
           /**
            * NOTE (debug policy):
@@ -2361,8 +2297,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark output Rules as mixin output - accessible only when lookup has a target
         rules.options.isMixinOutput = restrictMixinOutputLookup;
-        rules.options.referenceMode = false;
-        clearReferenceModeForMixinOutput(rules as unknown as Node);
         outputRules.push(rules);
         continue;
       }
@@ -2377,8 +2311,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
         unlocked.options.isMixinOutput = restrictMixinOutputLookup;
-        unlocked.options.referenceMode = false;
-        clearReferenceModeForMixinOutput(unlocked as unknown as Node);
         unlocked.index = candidate.index;
         outputRules.push(unlocked);
         continue;
@@ -2631,8 +2563,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       output = outputRules[0]!;
       // Ensure single output rule is marked as mixin output
       output.options.isMixinOutput = restrictMixinOutputLookup;
-      output.options.referenceMode = false;
-      clearReferenceModeForMixinOutput(output as unknown as Node);
     } else {
       /**
        * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
@@ -2645,8 +2575,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           VarDeclaration: 'public',
           Mixin: 'public'
         },
-        isMixinOutput: restrictMixinOutputLookup,
-        referenceMode: false
+        isMixinOutput: restrictMixinOutputLookup
       });
       /**
        * Add rules but keep their original parents for further lazy lookups.

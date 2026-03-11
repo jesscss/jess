@@ -182,13 +182,7 @@ export class Extend extends Node<ExtendValue> {
         resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
-        const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
-        // Extends declared while traversing a reference branch are tagged so the
-        // extend resolver can keep them non-side-effecting outside that branch.
-        const fromReferenceScope = (
-          context.inReferenceImportScope
-          || extendRootOptions.referenceMode === true
-        );
+        const fromReferenceScope = context.inReferenceImportScope;
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
         return new Nil();
       });
@@ -261,12 +255,7 @@ export class Extend extends Node<ExtendValue> {
     resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
     const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame as Ruleset : undefined;
     const docOrder = getDocumentOrderForExtend(rs, context);
-    const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
-    // Same reference-scope tagging for sync path.
-    const fromReferenceScope = (
-      context.inReferenceImportScope
-      || extendRootOptions.referenceMode === true
-    );
+    const fromReferenceScope = context.inReferenceImportScope;
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
     return new Nil();
   }
