@@ -203,9 +203,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/parser-runtime':
-        specifier: workspace:*
-        version: link:../parser-runtime
       chevrotain:
         specifier: ^11.0.3
         version: 11.1.0
@@ -586,8 +583,6 @@ importers:
       '@types/color-name':
         specifier: ^1.1.1
         version: 1.1.5
-
-  packages/parser-runtime: {}
 
   packages/patch-css: {}
 
