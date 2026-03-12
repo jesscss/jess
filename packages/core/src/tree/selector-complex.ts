@@ -46,9 +46,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    */
   override valueOf() {
     if (!Array.isArray(this.data)) {
-      // Repair a malformed ComplexSelector that holds a single component directly.
-      // Use _value directly to avoid triggering the setter / _invalidateValueOf.
-      (this as any)._value = [(this as any)._value];
+      this.setData([this.data as unknown as ComplexSelectorComponent]);
     }
     return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
   }
