@@ -344,11 +344,11 @@ export function nthValue(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) 
   let tokenValues = '';
   for (let i = 0; i < origLength; i++) {
     let token = origTokens[i]!;
-    if (token.startOffset >= startTokenOffset!) {
-      tokenValues += token.image;
-    }
     if (token.startOffset > endTokenOffset) {
       break;
+    }
+    if (token.startOffset >= startTokenOffset!) {
+      tokenValues += token.image;
     }
   }
   return this.wrap(new Any(tokenValues, { role: 'any' }, location, this.context), 'both');
@@ -451,18 +451,28 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
       this.option(() => {
         co = this.consume(this.T.Combinator);
       });
+      /** Capture the startOffset BEFORE compoundSelector, so we can
+       *  retroactively attach pre-tokens to the whitespace combinator
+       *  only after compoundSelector succeeds. This prevents eagerly
+       *  consuming skipped tokens (comments) that belong to the
+       *  previous selector's post when compoundSelector fails. */
+      let wsCombinatorOffset: number | undefined;
       if (co) {
         combinator = this.wrap(new Combinator(co.image as Combinators, undefined, this.getLocationInfo(co), this.context), 'both');
       } else {
         /** Whitespace combinators are special */
-        let startOffset = this.la(1).startOffset;
+        wsCombinatorOffset = this.la(1).startOffset;
         /**
          * Technically, a whitespace combinator may not actually _include_
          * a literal space (it can be a newline, for example), but we'll just use a
          * space for now.
          */
         combinator = new Combinator(' ', undefined, undefined, this.context);
-        let pre = this.getPrePost(startOffset);
+      }
+      let compound = this.compoundSelector(ctx) as CompoundSelector;
+      /** Now that compoundSelector succeeded, attach pre-tokens to the WS combinator */
+      if (wsCombinatorOffset !== undefined) {
+        let pre = this.getPrePost(wsCombinatorOffset);
         if (pre === 1) {
           pre = 0;
         } else if (pre) {
@@ -474,7 +484,6 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
         }
         combinator.pre = pre;
       }
-      let compound = this.compoundSelector(ctx) as CompoundSelector;
       selectors.push(
         combinator!,
         compound

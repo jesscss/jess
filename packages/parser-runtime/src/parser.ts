@@ -428,6 +428,10 @@ export class RecursiveDescentParser {
       const savedLocStack = this.locationStack.slice();
       const savedRuleStack = this.ruleStack.slice();
       const savedErrors = this.errors.length;
+      // Snapshot usedSkippedTokens so speculative alts that call
+      // wrap()/getPrePost() don't permanently consume skipped tokens
+      // (WS/comments) when they later fail and backtrack.
+      const savedUsedSkipped = new Set(this.usedSkippedTokens);
       const wasSpeculating = this.speculating;
       this.speculating = true;
       try {
@@ -448,6 +452,7 @@ export class RecursiveDescentParser {
           this.ruleStack.length = 0;
           this.ruleStack.push(...savedRuleStack);
           this.errors.length = savedErrors;
+          this.usedSkippedTokens = savedUsedSkipped;
           continue;
         }
         // Non-parse errors bubble up
@@ -501,6 +506,7 @@ export class RecursiveDescentParser {
       const savedLocStack = this.locationStack.slice();
       const savedRuleStack = this.ruleStack.slice();
       const savedErrors = this.errors.length;
+      const savedUsedSkipped = new Set(this.usedSkippedTokens);
       try {
         def();
       } catch (e) {
@@ -509,6 +515,7 @@ export class RecursiveDescentParser {
           this.restoreStack(this.locationStack, savedLocStack);
           this.restoreStack(this.ruleStack, savedRuleStack);
           this.errors.length = savedErrors;
+          this.usedSkippedTokens = savedUsedSkipped;
           break;
         }
         throw e;
@@ -519,6 +526,7 @@ export class RecursiveDescentParser {
         this.restoreStack(this.locationStack, savedLocStack);
         this.restoreStack(this.ruleStack, savedRuleStack);
         this.errors.length = savedErrors;
+        this.usedSkippedTokens = savedUsedSkipped;
         break;
       }
     }
