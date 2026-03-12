@@ -285,13 +285,13 @@ function findSubsequence(
   const findComps: any[] = [];
   for (let p = 0; p < spec.positions.length; p++) {
     if (p > 0) {
-      findComps.push({ type: 'Combinator', value: spec.combinators[p - 1] });
+      findComps.push({ type: 'Combinator', data: spec.combinators[p - 1] });
     }
     const simples = spec.positions[p]!;
     if (simples.length === 1) {
       findComps.push(simples[0]);
     } else {
-      findComps.push({ type: 'CompoundSelector', value: simples, _isVirtual: true, simples });
+      findComps.push({ type: 'CompoundSelector', data: simples, _isVirtual: true, simples });
     }
   }
 
