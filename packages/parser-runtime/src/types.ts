@@ -2,10 +2,9 @@
  * @jesscss/parser-runtime — Type definitions
  *
  * Token and error types are inspired by Chevrotain's interfaces but
- * simplified for a hand-coded recursive-descent parser. The category
- * matching in tokenMatches() is limited to two levels of nesting
- * (sufficient for CSS/Less/SCSS grammars) to avoid the overhead of
- * Chevrotain's full category resolution.
+ * simplified for a hand-coded recursive-descent parser. Category
+ * matching in tokenMatches() uses O(1) MATCH_SET lookups when
+ * buildTokenMatchSets() has been called during parser initialization.
  */
 
 // ── Location info ────────────────────────────────────────────────────
@@ -30,6 +29,7 @@ export type LocationInfo = [
  * A token type definition. Unlike Chevrotain's `createToken`, this is
  * just a plain object with a name and optional metadata.
  */
+/** Token type with optional precomputed match set for O(1) lookups */
 export interface TokenType {
   name: string;
   /** Human-readable label for error messages and content assist */
@@ -40,10 +40,68 @@ export interface TokenType {
    * Enables `tokenMatches(tok, T.CompareOperator)` to match `Gt`.
    */
   CATEGORIES?: TokenType[];
+  /**
+   * Precomputed set of all types this token matches (self + categories transitively).
+   * Populated by buildTokenMatchSets() for O(1) tokenMatches() lookups.
+   */
+  MATCH_SET?: Set<TokenType>;
   /** Pattern (kept for lexer compatibility, not used by parser) */
   PATTERN?: RegExp | string;
   /** Chevrotain compat: tokens labeled 'Skipped' are filtered out */
   tokenTypeIdx?: number;
+}
+
+/** Helper: get categories from token type (Chevrotain uses lowercase `categories`) */
+function getCategories(tt: TokenType): TokenType[] | undefined {
+  const t = tt as TokenType & { categories?: TokenType[] };
+  return t.CATEGORIES ?? t.categories;
+}
+
+/**
+ * Precompute MATCH_SET on each token type for O(1) tokenMatches() lookups.
+ * Call during parser initialization with all token types (e.g. Object.values(T)).
+ * Idempotent: safe to call multiple times.
+ */
+export function buildTokenMatchSets(tokenTypes: TokenType[]): void {
+  const visiting = new Set<TokenType>();
+  const built = new Set<TokenType>();
+
+  function computeMatchSet(tokenType: TokenType): Set<TokenType> {
+    if (tokenType.MATCH_SET) {
+      return tokenType.MATCH_SET;
+    }
+
+    if (visiting.has(tokenType)) {
+      return new Set([tokenType]);
+    }
+
+    visiting.add(tokenType);
+
+    const matchSet = new Set<TokenType>();
+    matchSet.add(tokenType);
+
+    const categories = getCategories(tokenType);
+    if (categories) {
+      for (const category of categories) {
+        matchSet.add(category);
+        const categorySet = computeMatchSet(category);
+        for (const t of categorySet) {
+          matchSet.add(t);
+        }
+      }
+    }
+
+    visiting.delete(tokenType);
+    (tokenType as TokenType & { MATCH_SET: Set<TokenType> }).MATCH_SET = matchSet;
+    built.add(tokenType);
+    return matchSet;
+  }
+
+  for (const tokenType of tokenTypes) {
+    if (!built.has(tokenType)) {
+      computeMatchSet(tokenType);
+    }
+  }
 }
 
 /**
@@ -65,29 +123,21 @@ export interface IToken {
 
 /**
  * Check if a token matches a given token type, respecting categories.
+ * Requires buildTokenMatchSets() to have been called with all token types
+ * before parsing. Throws if token types are not initialized.
  */
 export function tokenMatches(token: IToken, expected: TokenType): boolean {
-  if (token.tokenType === expected) {
+  const tt = token.tokenType;
+  if (tt === expected) {
     return true;
   }
-  const cats = token.tokenType.CATEGORIES;
-  if (cats) {
-    for (let i = 0; i < cats.length; i++) {
-      if (cats[i] === expected) {
-        return true;
-      }
-      // Check one level of category nesting (categories of categories)
-      const parentCats = cats[i]!.CATEGORIES;
-      if (parentCats) {
-        for (let j = 0; j < parentCats.length; j++) {
-          if (parentCats[j] === expected) {
-            return true;
-          }
-        }
-      }
-    }
+  const matchSet = tt.MATCH_SET;
+  if (!matchSet) {
+    throw new Error(
+      'Token types not initialized. Call buildTokenMatchSets(Object.values(T)) before parsing.'
+    );
   }
-  return false;
+  return matchSet.has(expected);
 }
 
 // ── DSL types ────────────────────────────────────────────────────────

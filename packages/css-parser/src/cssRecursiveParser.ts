@@ -12,6 +12,8 @@
  */
 import {
   RecursiveDescentParser,
+  buildTokenMatchSets,
+  EOF_TOKEN_TYPE,
   type IToken,
   type TokenType,
   type LocationInfo,
@@ -86,6 +88,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
     });
     this.T = T;
     this.legacyMode = config.legacyMode ?? true;
+    buildTokenMatchSets([...Object.values(T), EOF_TOKEN_TYPE]);
   }
 
   override get context(): TreeContext {

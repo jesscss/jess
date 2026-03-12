@@ -1,7 +1,9 @@
 import { describe, test, expect } from 'vitest';
 import {
   RecursiveDescentParser,
+  buildTokenMatchSets,
   tokenMatches,
+  EOF_TOKEN_TYPE,
   ParseError,
   MismatchedTokenError,
   NoViableAltError,
@@ -44,6 +46,27 @@ function tok(type: TokenType, image: string, offset: number): IToken {
   };
 }
 
+buildTokenMatchSets([
+  NumberTok,
+  Plus,
+  Minus,
+  Star,
+  LParen,
+  RParen,
+  Semi,
+  Comma,
+  Ident,
+  Colon,
+  LCurly,
+  RCurly,
+  WS,
+  Comment,
+  Operator,
+  PlusOp,
+  MinusOp,
+  EOF_TOKEN_TYPE
+]);
+
 // ── tokenMatches ─────────────────────────────────────────────────────
 
 describe('tokenMatches', () => {
@@ -58,6 +81,21 @@ describe('tokenMatches', () => {
     expect(tokenMatches(t, Operator)).toBe(true);
     expect(tokenMatches(t, PlusOp)).toBe(true);
     expect(tokenMatches(t, NumberTok)).toBe(false);
+  });
+
+  test('buildTokenMatchSets enables O(1) lookups and supports deep nesting', () => {
+    const ArithmeticOp: TokenType = { name: 'ArithmeticOp' };
+    const AddOp: TokenType = { name: 'AddOp', CATEGORIES: [ArithmeticOp] };
+    const MulOp: TokenType = { name: 'MulOp', CATEGORIES: [ArithmeticOp] };
+    const PlusOp2: TokenType = { name: 'PlusOp2', CATEGORIES: [AddOp] };
+    const MinusOp2: TokenType = { name: 'MinusOp2', CATEGORIES: [AddOp] };
+    buildTokenMatchSets([PlusOp2, MinusOp2, MulOp, AddOp, ArithmeticOp]);
+
+    const t = tok(PlusOp2, '+', 0);
+    expect(tokenMatches(t, PlusOp2)).toBe(true);
+    expect(tokenMatches(t, AddOp)).toBe(true);
+    expect(tokenMatches(t, ArithmeticOp)).toBe(true);
+    expect(tokenMatches(t, MulOp)).toBe(false);
   });
 });
 
