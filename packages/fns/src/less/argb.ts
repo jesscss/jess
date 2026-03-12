@@ -6,10 +6,10 @@ export default defineFunction(
     let newColor = color.clone();
     const values = color.rgb;
     values.unshift(Math.round(color.alpha * 255));
-    newColor.data.node = '#' + values.map(function(c) {
+    newColor.setData('node', '#' + values.map(function(c) {
       let hex = c.toString(16);
       return hex.length === 1 ? '0' + hex : hex;
-    }).join('');
+    }).join(''));
     return newColor;
   },
   {

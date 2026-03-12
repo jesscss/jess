@@ -640,7 +640,7 @@ export function relativeSelector(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
-              complex.data.unshift(combinator);
+              complex.unshift(combinator);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -1498,7 +1498,7 @@ export function varFunction(this: C, T: TokenMap) {
         args = new List([propNode], undefined, $.getLocationInfo(prop), this.context);
       } else {
         let { startOffset, startLine, startColumn } = prop;
-        args.data.unshift(propNode);
+        args.unshift(propNode);
         args.location[0] = startOffset;
         args.location[1] = startLine!;
         args.location[2] = startColumn!;

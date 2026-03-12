@@ -135,7 +135,7 @@ function substituteChannelVariables(
       const substitutedArgs = node.data.args.data.map(arg =>
         substituteChannelVariables(arg, channelValues, format)
       );
-      cloned.data.args.data = substitutedArgs;
+      cloned.data.args.setData(substitutedArgs);
     }
     return cloned;
   }
@@ -144,11 +144,11 @@ function substituteChannelVariables(
   if (node instanceof Operation && node.data) {
     const cloned = node.clone();
     const [left, op, right] = node.data;
-    cloned.data = [
+    cloned.setData([
       substituteChannelVariables(left, channelValues, format),
       op as Operator,
       substituteChannelVariables(right, channelValues, format)
-    ];
+    ]);
     return cloned;
   }
 

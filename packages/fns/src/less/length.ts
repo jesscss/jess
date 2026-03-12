@@ -1,6 +1,6 @@
 import { defineFunction, Node, List, Sequence, Dimension } from '@jesscss/core';
 
-function getItems(value: Node): Node[] {
+function getItems(value: Node): readonly Node[] {
   if (value instanceof List && value.length === 1 && value.data[0] instanceof Sequence) {
     return value.data[0].data;
   }

@@ -738,7 +738,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           /** For extends inside rulesets (not bubbled), selector should be undefined
            * so it defaults to ampersand and resolves to the ruleset's selector */
           for (let e of extend) {
-            e.data.selector = undefined;
+            e.selector = undefined;
           }
           rules.data = [...extend, ...rules.data];
           ctx.extendNodes = undefined;
@@ -762,7 +762,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
               // All extends have same target and flag - can be inside ruleset
               let extendNodes = finalExtends[0]!;
               let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
-              finalExtend.data.selector = undefined;
+              finalExtend.selector = undefined;
               rules.data = [finalExtend, ...rules.data];
               ctx.extendNodes = undefined;
             } else {
@@ -849,8 +849,8 @@ export function qualifiedRule(this: P, _T: TokenMap, altContext?: AltContext) {
       // Set the Extend nodes' selector to the ruleset's selector (not &)
       // This allows the extends to work correctly when evaluated in the wrapper Rules context
       for (const extendNode of ctx.extendNodes) {
-        if (extendNode.data.selector === undefined || (extendNode.data.selector as any).type === 'Ampersand') {
-          extendNode.data.selector = selector;
+        if (extendNode.selector === undefined || (extendNode.selector as any).type === 'Ampersand') {
+          extendNode.selector = selector;
         }
       }
       /** Prepend a rules block */
@@ -901,10 +901,10 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       if (node instanceof Any && node.options?.role === 'name') {
         // Reuse the existing Any node but change its role to 'property' for the name
         node.options.role = 'property';
-        args.data[i] = new VarDeclaration({
+        args.setData(i, new VarDeclaration({
           name: node,
           value: new Nil(undefined, undefined, location, this.context)
-        }, { paramVar: true }, location, this.context);
+        }, { paramVar: true }, location, this.context));
       }
       // Rest nodes with string values can stay as-is for mixin definitions
     }
@@ -922,10 +922,10 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
       // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
       if (node instanceof Any && node.options?.role === 'name') {
-        args.data[i] = new Reference({ key: node.data }, { type: 'variable' }, location, this.context);
+        args.setData(i, new Reference({ key: node.data }, { type: 'variable' }, location, this.context));
       } else if (node instanceof Rest && typeof node.data === 'string') {
         // If it's a Rest node with a string value, convert it to Rest with Reference for mixin call arguments
-        args.data[i] = new Rest(new Reference({ key: node.data }, { type: 'variable' }, location, this.context), undefined, location, this.context);
+        args.setData(i, new Rest(new Reference({ key: node.data }, { type: 'variable' }, location, this.context), undefined, location, this.context));
       }
     }
   };
@@ -1106,8 +1106,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             // Set the Extend nodes' selector to the ruleset's selector (not &)
             // This allows the extends to work correctly when evaluated in the wrapper Rules context
             for (const extendNode of ctx.extendNodes) {
-              if (extendNode.data.selector === undefined || (extendNode.data.selector as any).type === 'Ampersand') {
-                extendNode.data.selector = selector;
+              if (extendNode.selector === undefined || (extendNode.selector as any).type === 'Ampersand') {
+                extendNode.selector = selector;
               }
             }
             rule = new Rules([
@@ -1161,13 +1161,13 @@ export function relativeSelector(this: P, T: TokenMap) {
                 ? node.data.selector
                 : node;
             if (targetNode instanceof ComplexSelector) {
-              targetNode.data.unshift(combinator);
-              targetNode._location = $.getLocationFromNodes(targetNode.data);
+              targetNode.unshift(combinator);
+              targetNode._location = $.getLocationFromNodes([...targetNode.data]);
             } else {
               let nodes = [combinator, targetNode as ComplexSelectorComponent];
               let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
               if (node instanceof Extend) {
-                node.data.selector = complex;
+                node.selector = complex;
                 let location = node.location;
                 location[0] = co.startOffset;
                 location[1] = co.startLine;
@@ -1328,11 +1328,11 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      let target = currentNode.data.target;
+      let target = currentNode.target;
       if (!(target instanceof SelectorList)) {
-        currentNode.data.target = new SelectorList([target, ext.target], undefined, location, context);
+        currentNode.target = new SelectorList([target, ext.target], undefined, location, context);
       } else {
-        target.data.push(ext.target);
+        target.push(ext.target);
       }
     } else {
       if (!extendNodes || !extendNodes.includes(currentNode)) {
@@ -2362,13 +2362,13 @@ export function ifFunction(this: P, T: TokenMap) {
                 $.CONSUME(T.Semi);
                 node = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                 if (!RECORDING_PHASE) {
-                  args.data.push(node);
+                  args.push(node);
                 }
                 $.OPTION(() => {
                   $.CONSUME2(T.Semi);
                   node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                   if (!RECORDING_PHASE) {
-                    args.data.push(node);
+                    args.push(node);
                   }
                 });
               }
@@ -2378,13 +2378,13 @@ export function ifFunction(this: P, T: TokenMap) {
                 $.CONSUME(T.Comma);
                 node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                 if (!RECORDING_PHASE) {
-                  args.data.push(node);
+                  args.push(node);
                 }
                 $.OPTION2(() => {
                   $.CONSUME2(T.Comma);
                   node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
                   if (!RECORDING_PHASE) {
-                    args.data.push(node);
+                    args.push(node);
                   }
                 });
               }
@@ -2632,7 +2632,7 @@ export function functionCall(this: P, T: TokenMap) {
             const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, this.context);
             quotedUnit.pre = unitArg.pre;
             quotedUnit.post = unitArg.post;
-            args.data[1] = quotedUnit;
+            args.setData(1, quotedUnit);
           }
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
           /** Less / Sass functions we try to call that throw just get turned into calls. */
@@ -3750,7 +3750,7 @@ export function mixinArgList(this: P, T: TokenMap) {
                        * If we still have declarations, we need to push an error.
                        */
                       hasDeclarations = rest.some(n => n instanceof VarDeclaration);
-                      first.data.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
+                      first.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
                       semiNodes.push(first);
                     } else {
                       hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);

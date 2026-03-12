@@ -222,7 +222,7 @@ const rgb = defineFunction(
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.RGB;
       cloned.options.modernSyntax = modernSyntax;
-      cloned.data.node = undefined;
+      cloned.setData('node', undefined);
       return cloned;
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
       // [Color, Dimension?] - clone color, set format to RGB, and optionally set alpha
@@ -230,13 +230,13 @@ const rgb = defineFunction(
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.RGB;
       cloned.options.modernSyntax = modernSyntax;
-      cloned.data.node = undefined;
+      cloned.setData('node', undefined);
 
       if (args[1] !== undefined) {
         // args[1] is already converted by percentOf(1), toNumber() conversion plugins
         const alpha = args[1] as number;
         const normalizedAlpha = Math.max(0, Math.min(1, alpha));
-        cloned.data.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
+        cloned.setData('alpha', getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined));
       }
 
       return cloned;

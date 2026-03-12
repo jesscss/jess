@@ -22,7 +22,7 @@ const setNth = defineFunction(
     const zeroBasedIndex = sassIndex - 1;
     // Clone the list and set the value
     const newList = new List([...list.data], list.options);
-    newList.data[zeroBasedIndex] = value;
+    newList.setData(zeroBasedIndex, value);
     return newList;
   },
   {

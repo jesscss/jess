@@ -46,7 +46,7 @@ export function transformListToLess(
       if (data !== undefined && data !== null) {
         if (data && typeof data === 'object' && 'type' in data) {
           // Check if it's a Node-like object
-          const lessValue = toLessNode(data as Node, { cache });
+          const lessValue = toLessNode(data as unknown as Node, { cache });
           return lessValue ? [lessValue] : [];
         }
         return [data];
