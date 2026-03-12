@@ -451,6 +451,14 @@ export function processExtends(context: Context): void {
               hasParentMatchedOwnOnlyNonPartial
             } = analyzeNonPartialExtends(ownSelector, selector, nonPartialOnly, parentSelectorForOwnSplit);
 
+            // For nested selectors, exact extends that match only the own selector
+            // should NOT be applied. In Less/CSS semantics, exact extend (.a) should
+            // only match selectors whose full resolved path is exactly .a, not nested
+            // .a that resolves to e.g. .parent .a. The own selector matches, but the
+            // full path doesn't, so discard these "ownOnly" instructions.
+            if (hasResolvedNestedSelector) {
+              nonPartialOwnOnly.length = 0;
+            }
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
                 const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);

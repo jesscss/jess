@@ -1846,7 +1846,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           try {
             const evald = await arg.clonedEval(thisContext);
             if (evald.type === 'Rest') {
-              const restValue = evald.data;
+              let restValue = evald.data;
+              // Rest's sync evalNode may not resolve an async inner Reference.
+              // Explicitly evaluate the inner node if it's still a Reference.
+              if (isNode(restValue as Node) && !isNode(restValue as Node, N.Sequence | N.List)) {
+                restValue = await (restValue as Node).eval(thisContext);
+              }
               if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
                 for (const restArg of restValue.data) {
                   const frozenRestArg = restArg.copy(true, freezeChildren);
