@@ -22,7 +22,7 @@ export class Bool extends Node<boolean> {
   }
 
   set value(val: boolean) {
-    this.data = val;
+    this.setData(val);
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

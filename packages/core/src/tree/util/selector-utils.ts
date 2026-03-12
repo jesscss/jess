@@ -110,7 +110,7 @@ export function getImplicitSelector(
         if (!mutated) {
           selector = selector.clone(true);
         }
-        (selector as SelectorList).data[i] = result;
+        (selector as SelectorList).setData(i, result);
         mutated = true;
       }
     }

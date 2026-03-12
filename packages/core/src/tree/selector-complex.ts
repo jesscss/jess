@@ -45,7 +45,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    *
    */
   override valueOf() {
-    if (!Array.isArray(this._data)) {
+    if (!Array.isArray(this.data)) {
       // Repair a malformed ComplexSelector that holds a single component directly.
       // Use _value directly to avoid triggering the setter / _invalidateValueOf.
       (this as any)._value = [(this as any)._value];
@@ -137,16 +137,16 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return pipe(
       () => {
         const selector = this;
-        let { data } = selector;
+        const { data } = selector;
         const maybe = serialForEach(Array.from(getEntries(data)), ([sel, i]) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
-              data[i] = res as ComplexSelectorComponent;
+              selector.setData(i, res as ComplexSelectorComponent);
               return undefined;
             });
           }
-          data[i] = out as ComplexSelectorComponent;
+          selector.setData(i, out as ComplexSelectorComponent);
           return undefined;
         });
         if (isThenable(maybe)) {

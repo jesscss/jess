@@ -27,7 +27,7 @@ export class Expression extends Node<Node> {
   }
 
   set value(val: Node) {
-    this.data = val;
+    this.setData(val);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

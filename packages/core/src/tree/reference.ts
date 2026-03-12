@@ -303,7 +303,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * it needs to be called first, and that it has no arguments.
          */
         if (isNode(resolvedTarget, N.JsFunction)) {
-          const jsResult = resolvedTarget.data.call(context);
+          const jsResult = (resolvedTarget.data as (...args: any[]) => any).call(context);
           if (isThenable(jsResult)) {
             return (jsResult as Promise<any>).then((result) => {
               return [result, valueKey] as [any, string | string[]];

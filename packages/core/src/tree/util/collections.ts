@@ -118,11 +118,11 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       if ((collection as Mixin).data.params?.length) {
         throw new Error('We can\'t iterate over a mixin with parameters');
       }
-      rules = (collection as Mixin).data.rules.data;
+      rules = [...(collection as Mixin).data.rules.data];
     } else if ((collection as Node).type === 'Ruleset') {
-      rules = (collection as Ruleset).data.rules.data;
+      rules = [...(collection as Ruleset).data.rules.data];
     } else if ((collection as Node).type === 'Rules') {
-      rules = (collection as Rules).data;
+      rules = [...(collection as Rules).data];
     }
     for (let [, value] of rules!.entries()) {
       if (value.type === 'Comment') {

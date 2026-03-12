@@ -36,7 +36,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.data, other.data, equalityMode);
+      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -118,11 +118,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       if (values.length) {
         values[0]!.pre = 1;
       }
-      newSequence.data.push(...values);
+      newSequence.push(...values);
     } else {
       b = b.maybeClone(context);
       b.pre = 1;
-      newSequence.data.push(b);
+      newSequence.push(b);
     }
     return newSequence;
   }
@@ -151,10 +151,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
-              node.data[i] = res;
+              node.setData(i, res);
             });
           }
-          node.data[i] = out as Node;
+          node.setData(i, out as Node);
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => node);
@@ -162,7 +162,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         return node;
       },
       (node) => {
-        node.data = node.data.filter(n => n && !(n instanceof Nil));
+        node.setData(node.data.filter(n => n && !(n instanceof Nil)) as any);
         if (node.data.length === 1 && !node.options.preserveWhitespace) {
           return node.data[0]!;
         }

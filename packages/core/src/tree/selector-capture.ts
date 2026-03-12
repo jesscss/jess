@@ -17,11 +17,11 @@ export interface SelectorCapture extends Node<Selector> {
  */
 export class SelectorCapture extends Node<Selector> {
   get value() {
-    return this.data;
+    return this.data as Selector;
   }
 
   set value(val: Selector) {
-    this.data = val;
+    this.setData(val);
   }
 
   override valueOf(): string {

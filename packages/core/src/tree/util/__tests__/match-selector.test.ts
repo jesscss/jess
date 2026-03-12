@@ -32,7 +32,7 @@ describe('Selector match tests', () => {
       // compound selectors can be matched in any order
       const target = sel([el('.a'), co('>'), compound([el('.d'), el('.b')]), co('>'), el('.c')]);
       const find = sel([el('.a'), co('>'), compound([el('.b'), el('.d')]), co('>'), el('.c')]);
-      const result = matchSelectors(target, find);
+      const result = matchSelectors(target as any, find as any);
       expect(result.hasMatch).toBe(true);
       expect(result.hasFullMatch).toBe(true);
       expect(result.hasPartialMatch).toBe(false);
@@ -122,7 +122,7 @@ describe('Selector match tests', () => {
       const target = sel([compound([el('.a'), el('.b')]), co('>'), el('.c')]);
       const find = sel([el('.b'), co('>'), el('.c')]);
 
-      const result = matchSelectors(target, find, true);
+      const result = matchSelectors(target as any, find as any, true);
       expect(result.hasMatch).toBe(true);
       expect(result.hasPartialMatch).toBe(true);
     });
@@ -132,7 +132,7 @@ describe('Selector match tests', () => {
       // Matches .a.b completely, leaves > .c as remainder
       const target = sel([compound([el('.a'), el('.b')]), co('>'), el('.c')]);
       const find = compound([el('.a'), el('.b')]);
-      const result = matchSelectors(target, find, true);
+      const result = matchSelectors(target as any, find as any, true);
       expect(result.hasMatch).toBe(true);
       expect(result.hasPartialMatch).toBe(true);
       // Updated: real matchSelectors doesn't track matched parts, only remainders
@@ -145,7 +145,7 @@ describe('Selector match tests', () => {
       // Matches .b > .c, leaves .a > as remainder
       const target = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
       const find = sel([el('.b'), co('>'), el('.c')]);
-      const result = matchSelectors(target, find, true);
+      const result = matchSelectors(target as any, find as any, true);
       expect(result.hasMatch).toBe(true);
       expect(result.hasPartialMatch).toBe(true);
       // Updated: real matchSelectors doesn't track matched parts, only remainders
@@ -161,7 +161,7 @@ describe('Selector match tests', () => {
       // We should be able to create: .a > .b > .c, .a > .d
       const target = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
       const find = sel([el('.b'), co('>'), el('.c')]);
-      const result = matchSelectors(target, find, true);
+      const result = matchSelectors(target as any, find as any, true);
 
       if (result.hasMatch && result.hasPartialMatch) {
         // The result should provide enough info to:
@@ -222,7 +222,7 @@ describe('Selector match tests', () => {
           arg: sellist([el('b'), el('c')])  // :is(b, c)
         })
       ]);
-      const result = matchSelectors(target, find);
+      const result = matchSelectors(target, find as any);
 
       expect(result.hasMatch).toBe(true);
       expect(result.hasFullMatch).toBe(true);
@@ -249,12 +249,12 @@ describe('Selector match tests', () => {
       const target = sel([
         el('.x'),
         co('+'),
-        compound([is(sel([el('.a'), co('>'), el('.b')])), el('.d')]),
+        compound([is(sel([el('.a'), co('>'), el('.b')]) as any), el('.d')]),
         co('>'),
         el('.c')
       ]);
       const find = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
-      const result = matchSelectors(target, find, true);
+      const result = matchSelectors(target as any, find as any, true);
       expect(result.hasMatch).toBe(true);
       expect(result.hasPartialMatch).toBe(true);
     });
@@ -270,12 +270,12 @@ describe('Selector match tests', () => {
       const target = sel([
         el('.x'),
         co('+'),
-        compound([is(sel([el('.a'), co('>'), el('.d')])), el('.b')]),
+        compound([is(sel([el('.a'), co('>'), el('.d')]) as any), el('.b')]),
         co('>'),
         el('.c')
       ]);
       const find = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
-      const result = matchSelectors(target, find, true);
+      const result = matchSelectors(target as any, find as any, true);
 
       // With improved structural semantics, this SHOULD match because .d.b contains .b
       expect(result.hasMatch).toBe(true);
@@ -442,22 +442,22 @@ describe('Selector match tests', () => {
         // Case 1: :is() with path continuation (should work)
         const targetWithIs = compound([
           el('.element'),
-          pseudo({ name: ':is', arg: sel([el('.context'), co('>'), el('.child')]) })
+          pseudo({ name: ':is', arg: sel([el('.context'), co('>'), el('.child')]) as any }) as any
         ]);
         const findIs = sel([el('.context'), co('>'), el('.child'), co(' '), el('.element')]);
-        const resultIs = matchSelectors(targetWithIs, findIs, true);
+        const resultIs = matchSelectors(targetWithIs, findIs as any, true);
 
         // Case 2: :where() should not support the same level of path continuation
         const targetWithWhere = compound([
           el('.element'),
           where(sel([el('.context'), co('>'), el('.child')]))
         ]);
-        const resultWhere = matchSelectors(targetWithWhere, findIs, true);
+        const resultWhere = matchSelectors(targetWithWhere, findIs as any, true);
 
         // Both should handle basic matching, but :is() may support more complex scenarios
         // The key difference is in the sophistication of backtracking algorithms
-        expect(targetWithIs.valueOf()).toContain(':is');
-        expect(targetWithWhere.valueOf()).toContain(':where');
+        expect((targetWithIs as any).valueOf()).toContain(':is');
+        expect((targetWithWhere as any).valueOf()).toContain(':where');
       });
 
       it('should show :not() does internal matching without path continuation', () => {

@@ -47,7 +47,7 @@ function makeForHeader(pattern: any, iterable: any) {
       pattern,
       new Any('of', { role: 'any' }),
       iterable
-    ]))
+    ])) as any
   ]);
 }
 
@@ -128,7 +128,7 @@ describe('Control Nodes', () => {
     const iterableRules = rules([
       decl({ name: 'one', value: new Any('red') }),
       ruleset({
-        selector: sel([el('.skip')]),
+        selector: sel([el('.skip')]) as any,
         rules: rules([decl({ name: 'x', value: new Any('nope') })])
       }),
       decl({ name: 'two', value: new Any('blue') })
@@ -191,7 +191,7 @@ describe('Control Nodes', () => {
 
   it('throws for invalid $for header', async () => {
     const badHeader = new Sequence([
-      new Paren(new Sequence([makePattern(['value'], 'single'), new Any('from', { role: 'any' }), list([new Any('a')])]))
+      new Paren(new Sequence([makePattern(['value'], 'single'), new Any('from', { role: 'any' }), list([new Any('a')])])) as any
     ]);
     expect(() => new For({ header: badHeader, rules: rules([]) })).toThrow('Invalid $for header');
   });

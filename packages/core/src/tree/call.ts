@@ -232,7 +232,7 @@ export class Call extends Node<CallValue, CallOptions> {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       const Rules = await getRules();
-      let rules = Rules.create(n.data, n.options);
+      let rules = Rules.create([...n.data], n.options);
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
@@ -274,14 +274,15 @@ export class Call extends Node<CallValue, CallOptions> {
           args = copiedArgs;
         }
         const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
+        const fnCallable = fn as (...args: any[]) => any;
         const result = await (
           args
             ? (
                 shouldPassListArgs
-                  ? callWithContext(context, fn, args)
-                  : callWithContext(context, fn, ...args.data)
+                  ? callWithContext(context, fnCallable, args)
+                  : callWithContext(context, fnCallable, ...[...args.data])
               )
-            : callWithContext(context, fn)
+            : callWithContext(context, fnCallable)
         );
         context.caller = originalCaller;
         context.callStack.pop();

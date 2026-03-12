@@ -359,7 +359,7 @@ describe('Color Node', () => {
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
-      const callNode = new Call({ name: 'rgb', args });
+      const callNode = new Call({ name: 'rgb', args: args as any });
 
       const color = new Color({
         node: callNode,
@@ -379,7 +379,7 @@ describe('Color Node', () => {
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
-      const callNode = new Call({ name: 'hsl', args });
+      const callNode = new Call({ name: 'hsl', args: args as any });
 
       const color = new Color({
         node: callNode,

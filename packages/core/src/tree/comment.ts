@@ -31,7 +31,7 @@ export class Comment extends Node<string, CommentOptions> {
   }
 
   set value(val: string) {
-    this.data = val;
+    this.setData(val);
   }
 }
 export const comment = defineType(Comment, 'Comment');

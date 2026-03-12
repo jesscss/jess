@@ -95,7 +95,7 @@ export function processLeadingIs(
       return item.copy(true) as Selector;
     }
     const itemComplex = item as ComplexSelector;
-    const firstVisualIndex = getFirstVisualIndex(itemComplex.data);
+    const firstVisualIndex = getFirstVisualIndex([...itemComplex.data]);
     if (firstVisualIndex < 0) {
       return item.copy(true) as Selector;
     }
@@ -304,7 +304,7 @@ export function processLeadingIs(
       }
     }
 
-    const value = complex.data;
+    const value = [...complex.data];
     const firstSelIndex = getFirstVisualIndex(value);
     if (firstSelIndex < 0) {
       return selector;

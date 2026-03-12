@@ -20,7 +20,7 @@ describe.skip('Extend', () => {
         selector: extend({
           selector: el('.b'),
           target: el('.a')
-        }),
+        }) as any,
         rules: rules([])
       })
     ]);

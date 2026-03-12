@@ -21,7 +21,7 @@ export class Combinator extends Selector<Combinators> {
   }
 
   set value(val: Combinators) {
-    this.data = val;
+    this.setData(val);
   }
 
   /** @todo move to visitor */

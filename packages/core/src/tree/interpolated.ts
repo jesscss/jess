@@ -24,7 +24,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = (replacement as { data: Node }).data;
+    const arg = (replacement as unknown as { data: Node }).data;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -33,7 +33,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    return (replacement as { data: Node }).data;
+    return (replacement as unknown as { data: Node }).data;
   }
   return replacement;
 }

@@ -118,11 +118,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       const rs = child as Ruleset;
       if (rs.data === sharedValue) {
-        rs.data = {
+        rs.setData({
           selector: rs.data.selector,
           rules: rs.data.rules,
           ...(rs.data.guard !== undefined && { guard: rs.data.guard })
-        };
+        });
       }
       Ruleset.ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
     }
@@ -441,7 +441,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           synthetic.generated = true;
           selectorForImplicit = synthetic;
         }
-        selector = getImplicitSelectorUtil(selectorForImplicit, parentRuleset as Ruleset, context.opts.collapseNesting);
+        selector = getImplicitSelectorUtil(selectorForImplicit as Selector, parentRuleset as Ruleset, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins

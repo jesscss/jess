@@ -658,7 +658,7 @@ function consumeSimplesFromCompound(
   spec: FindSpec,
   extendWith: Selector
 ): Selector {
-  const targetComps = compound.data;
+  const targetComps = [...compound.data];
   const findSimples = spec.positions[0]!;
 
   const matchIndices = consumeSimples(targetComps, findSimples);
@@ -692,7 +692,7 @@ function consumePositionsFromComplex(
   partial: boolean,
   _ctx: WalkContext
 ): Selector {
-  const targetComps = complex.data;
+  const targetComps = [...complex.data];
   const start = findSubsequence(targetComps, spec);
   if (start < 0) {
     return complex;
@@ -1100,7 +1100,7 @@ function wouldMatchPseudoTailAware(
 }
 
 function wouldSimplesMatch(target: CompoundSelector, spec: FindSpec): boolean {
-  return consumeSimples(target.data, spec.positions[0]!) !== null;
+  return consumeSimples([...target.data], spec.positions[0]!) !== null;
 }
 
 function wouldSubsequenceMatch(
@@ -1108,7 +1108,7 @@ function wouldSubsequenceMatch(
   spec: FindSpec,
   partial: boolean
 ): boolean {
-  const start = findSubsequence(target.data, spec);
+  const start = findSubsequence([...target.data], spec);
   if (start < 0) {
     return false;
   }

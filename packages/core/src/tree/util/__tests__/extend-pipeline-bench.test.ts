@@ -67,7 +67,7 @@ describe('Pipeline benchmark', () => {
         ...Array.from({ length: N }, (_, i) =>
           ruleset({
             selector: sellist([sel([el(`.child-${i}`)])]),
-            rules: rules([extend({ target: el('.base'), all: true })])
+            rules: rules([extend({ target: el('.base') })])
           })
         )
       ]);
@@ -107,7 +107,7 @@ describe('Pipeline benchmark', () => {
         ...Array.from({ length: N }, (_, i) =>
           ruleset({
             selector: sellist([sel([el(`.child-${i}`)])]),
-            rules: rules([extend({ target: el('.a0'), all: true })])
+            rules: rules([extend({ target: el('.a0') })])
           })
         )
       ]);

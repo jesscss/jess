@@ -330,7 +330,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
                 if (typeof s.data === 'string') {
-                  s.data += appendValue;
+                  s.setData(s.data + appendValue);
                   appended = true;
                   break;
                 }

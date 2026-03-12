@@ -24,7 +24,7 @@ describe('Combinator Preservation in Extensions', () => {
       const target = el('.foo');
       const extendWith = el('.bar');
 
-      const result = extendSelector(complexSelector, target, extendWith, true);
+      const result = extendSelector(complexSelector as any, target, extendWith, true);
 
       // Verify the result contains the original combinator
       expect(isNode(result, N.ComplexSelector)).toBe(true);
@@ -68,7 +68,7 @@ describe('Combinator Preservation in Extensions', () => {
       const target = el('.foo');
       const extendWith = el('.bar');
 
-      const result = extendSelector(complexSelector, target, extendWith, true);
+      const result = extendSelector(complexSelector as any, target, extendWith, true);
 
       // Verify both combinators are preserved
       expect(isNode(result, N.ComplexSelector)).toBe(true);
@@ -88,7 +88,7 @@ describe('Combinator Preservation in Extensions', () => {
       const selector1 = sel([el('.parent'), co('>'), el('.child')]);
       const selector2 = sel([el('.parent'), co('>'), el('.child')]);
 
-      const result = extendSelector(selector1, selector2, el('.extended'), false);
+      const result = extendSelector(selector1 as any, selector2 as any, el('.extended'), false);
 
       // Should create a selector list with both original and extended
       expect(isNode(result, N.SelectorList)).toBe(true);
@@ -99,7 +99,7 @@ describe('Combinator Preservation in Extensions', () => {
       const selector1 = sel([el('.parent'), co('>'), el('.child')]);
       const selector2 = sel([el('.parent'), co('+'), el('.child')]);
 
-      const result = extendSelector(selector1, selector2, el('.extended'), false);
+      const result = extendSelector(selector1 as any, selector2 as any, el('.extended'), false);
       expect(result).toBe('NOT_FOUND');
     });
 
@@ -109,7 +109,7 @@ describe('Combinator Preservation in Extensions', () => {
       const find = sel([el('.ext8'), co('+'), el('.ext9')]);
       const extendWith = el('.zap');
 
-      const result = tryExtendSelector(target, find, extendWith, true);
+      const result = tryExtendSelector(target as any, find as any, extendWith, true);
 
       expect(result.error).toBeDefined();
       expect(result.error?.type).toBe('NOT_FOUND');
@@ -122,7 +122,7 @@ describe('Combinator Preservation in Extensions', () => {
       const find = sel([el('.ext8'), co('>'), el('.ext9')]);
       const extendWith = el('.zoo');
 
-      const result = tryExtendSelector(target, find, extendWith, true);
+      const result = tryExtendSelector(target as any, find as any, extendWith, true);
 
       expect(result.error).toBeDefined();
       expect(result.error?.type).toBe('NOT_FOUND');
@@ -136,7 +136,7 @@ describe('Combinator Preservation in Extensions', () => {
       const find = sel([el('.ext8'), co('+'), el('.ext9')]);
       const extendWith = el('.zap');
 
-      const result = tryExtendSelector(target, find, extendWith, true);
+      const result = tryExtendSelector(target as any, find as any, extendWith, true);
 
       expect(result.error).toBeDefined();
       expect(result.error?.type).toBe('NOT_FOUND');
@@ -169,7 +169,7 @@ describe('Combinator Preservation in Extensions', () => {
       const find = sel([el('.ext8'), co('+'), el('.ext9')]);  // .ext8 + .ext9 (adjacent sibling)
       const extendWith = el('.zap');
 
-      const result = tryExtendSelector(selectorList, find, extendWith, true);
+      const result = tryExtendSelector(selectorList, find as any, extendWith, true);
 
       // Should NOT match - combinators differ
       expect(result.error).toBeDefined();
@@ -189,7 +189,7 @@ describe('Combinator Preservation in Extensions', () => {
       const find = sel([el('.ext8'), co('>'), el('.ext9')]);  // .ext8 > .ext9 (child)
       const extendWith = el('.zoo');
 
-      const result = tryExtendSelector(selectorList, find, extendWith, true);
+      const result = tryExtendSelector(selectorList, find as any, extendWith, true);
 
       // Should NOT match - combinators differ
       expect(result.error).toBeDefined();
@@ -202,7 +202,7 @@ describe('Combinator Preservation in Extensions', () => {
       // Parser-built: .ext8 { .ext9 { } } and .zap:extend(.ext8 + .ext9 all) {}
       // Nested has selector .ext8 .ext9 (descendant). .zap extends .ext8 + .ext9 (adjacent) should NOT match nested.
       const nestedExt9 = ruleset({
-        selector: sel([el('.ext8'), co(' '), el('.ext9')]),
+        selector: sel([el('.ext8'), co(' '), el('.ext9')]) as any,
         rules: rules([])
       });
       const root = rules([
@@ -222,7 +222,7 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ruleset = evald.data[0];
+      const ext8Ruleset = evald.data[0] as any;
       const nestedRuleset = ext8Ruleset?.data?.rules?.data?.[0];
       const nestedSel = nestedRuleset?.data?.selector?.valueOf() ?? '';
       // Nested has descendant .ext8 .ext9 only; must NOT get .zap (which extends .ext8 + .ext9)
@@ -234,7 +234,7 @@ describe('Combinator Preservation in Extensions', () => {
       // Parser-built: .ext8 .ext9 { } and .zoo:extend(.ext8 > .ext9 all) {}
       const root = rules([
         ruleset({
-          selector: sel([el('.ext8'), co(' '), el('.ext9')]),
+          selector: sel([el('.ext8'), co(' '), el('.ext9')]) as any,
           rules: rules([])
         }),
         ruleset({
@@ -249,7 +249,7 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ext9Ruleset = evald.data[0];
+      const ext8Ext9Ruleset = evald.data[0] as any;
       const selectorStr = ext8Ext9Ruleset?.data?.selector?.valueOf() ?? '';
       expect(selectorStr).toBe('.ext8 .ext9');
       expect(selectorStr).not.toContain('.zoo');
@@ -267,7 +267,7 @@ describe('Combinator Preservation in Extensions', () => {
         rules: ruleset1Body
       });
       const nestedRuleset = ruleset({
-        selector: sel([el('.ext8'), co(' '), el('.ext9')]),
+        selector: sel([el('.ext8'), co(' '), el('.ext9')]) as any,
         rules: rules([])
       });
       const ext8Body = rules([nestedRuleset]);
@@ -296,8 +296,8 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.data[0];
-      const nested = evald.data[1]?.data?.rules?.data?.[0];
+      const firstRuleset = evald.data[0] as any;
+      const nested = (evald.data[1] as any)?.data?.rules?.data?.[0];
       expect(firstRuleset?.data?.selector?.valueOf()).toContain('.zap');
       const nestedSel = nested?.data?.selector?.valueOf() ?? '';
       expect(nestedSel).not.toContain('.zap');

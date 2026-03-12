@@ -38,7 +38,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   set value(val: Node | undefined) {
-    this.data = val;
+    this.setData(val);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -64,7 +64,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let value = this.data;
+    let value = this.data as Node | undefined;
     if (value) {
       let isOp = isOpOrExpression(value);
       if (isOp) {
@@ -87,7 +87,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
          * on output.
          */
         while (value instanceof Paren && value.data) {
-          value = value.data;
+          value = value.data as Node;
         }
         if (value instanceof Bool || value instanceof Dimension) {
           return value;
@@ -96,7 +96,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           return value;
         }
         let node = this.maybeClone(context);
-        node.data = value;
+        node.setData(value);
         return node;
       };
       if (isThenable(maybeEvald)) {
@@ -105,7 +105,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       return after(maybeEvald as Node);
     }
     let node = this;
-    node.data = value;
+    node.setData(value);
     return node;
   }
 

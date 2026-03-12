@@ -140,11 +140,11 @@ export class SelectorList extends Selector<Selector[]> {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector>).then((res) => {
-              data[i] = res as Selector;
+              list.setData(i, res as Selector);
               return undefined;
             });
           }
-          data[i] = out as Selector;
+          list.setData(i, out as Selector);
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -188,7 +188,7 @@ export class SelectorList extends Selector<Selector[]> {
           flattened.push(item);
         }
         if (flattened.length !== data.length) {
-          list.data = flattened;
+          list.setData(flattened);
         }
         if (data.length === 1) {
           return data[0]!;

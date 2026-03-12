@@ -61,7 +61,7 @@ describe('Node mutation methods', () => {
       const a = any('a');
       const b = any('b');
       const s = seq([b]);
-      s.unshift(a);
+      (s as any).unshift(a);
       expect(a.parent).toBe(s);
       expect(s.data[0]).toBe(a);
       expect(s.data[1]).toBe(b);
@@ -74,7 +74,7 @@ describe('Node mutation methods', () => {
       const b = any('b');
       const c = any('c');
       const s = seq([a, c]);
-      s.splice(1, 0, b);
+      (s as any).splice(1, 0, b);
       expect(b.parent).toBe(s);
       expect(s.data[1]).toBe(b);
     });
@@ -83,7 +83,7 @@ describe('Node mutation methods', () => {
       const a = any('a');
       const b = any('b');
       const s = seq([a, b]);
-      const removed = s.splice(0, 1);
+      const removed = (s as any).splice(0, 1);
       expect(removed).toEqual([a]);
       expect(s.data.length).toBe(1);
     });
@@ -93,7 +93,7 @@ describe('Node mutation methods', () => {
     it('recomputes valueOf after setValue by index', () => {
       const a = el('.a');
       const b = el('.b');
-      const compound = CompoundSelector.create([a]);
+      const compound = (CompoundSelector as any).create([a]);
       expect(compound.valueOf()).toBe('.a');
       compound.setData(0, b);
       expect(compound.valueOf()).toBe('.b');
@@ -102,7 +102,7 @@ describe('Node mutation methods', () => {
     it('recomputes valueOf after push', () => {
       const a = el('.a');
       const b = el('.b');
-      const compound = CompoundSelector.create([a]);
+      const compound = (CompoundSelector as any).create([a]);
       expect(compound.valueOf()).toBe('.a');
       compound.push(b);
       expect(compound.valueOf()).toBe('.a.b');
@@ -112,18 +112,18 @@ describe('Node mutation methods', () => {
       const a = el('.a');
       const b = el('.b');
       const c = el('.c');
-      const compound = CompoundSelector.create([a, b, c]);
+      const compound = (CompoundSelector as any).create([a, b, c]);
       expect(compound.valueOf()).toBe('.a.b.c');
-      compound.splice(1, 1);
+      (compound as any).splice(1, 1);
       expect(compound.valueOf()).toBe('.a.c');
     });
 
     it('recomputes valueOf after unshift', () => {
       const a = el('.a');
       const b = el('.b');
-      const compound = CompoundSelector.create([b]);
+      const compound = (CompoundSelector as any).create([b]);
       expect(compound.valueOf()).toBe('.b');
-      compound.unshift(a);
+      (compound as any).unshift(a);
       expect(compound.valueOf()).toBe('.a.b');
     });
   });
@@ -132,37 +132,37 @@ describe('Node mutation methods', () => {
     it('recomputes keySet after setValue by index', () => {
       const a = el('.a');
       const b = el('.b');
-      const compound = CompoundSelector.create([a]);
-      expect(compound.keySet).toEqual(new Set(['.a']));
+      const compound = (CompoundSelector as any).create([a]);
+      expect((compound as any).keySet).toEqual(new Set(['.a']));
       compound.setData(0, b);
-      expect(compound.keySet).toEqual(new Set(['.b']));
+      expect((compound as any).keySet).toEqual(new Set(['.b']));
     });
 
     it('recomputes keySet after push', () => {
       const a = el('.a');
       const b = el('.b');
-      const compound = CompoundSelector.create([a]);
-      expect(compound.keySet).toEqual(new Set(['.a']));
+      const compound = (CompoundSelector as any).create([a]);
+      expect((compound as any).keySet).toEqual(new Set(['.a']));
       compound.push(b);
-      expect(compound.keySet).toEqual(new Set(['.a', '.b']));
+      expect((compound as any).keySet).toEqual(new Set(['.a', '.b']));
     });
 
     it('recomputes keySet after splice removal', () => {
       const a = el('.a');
       const b = el('.b');
-      const compound = CompoundSelector.create([a, b]);
-      expect(compound.keySet).toEqual(new Set(['.a', '.b']));
-      compound.splice(0, 1);
-      expect(compound.keySet).toEqual(new Set(['.b']));
+      const compound = (CompoundSelector as any).create([a, b]);
+      expect((compound as any).keySet).toEqual(new Set(['.a', '.b']));
+      (compound as any).splice(0, 1);
+      expect((compound as any).keySet).toEqual(new Set(['.b']));
     });
 
     it('recomputes keySet on SelectorList after push', () => {
       const a = el('.a');
       const b = el('.b');
-      const list = SelectorList.create([a]);
-      expect(list.keySet.has('.a')).toBe(true);
+      const list = (SelectorList as any).create([a]);
+      expect((list as any).keySet.has('.a')).toBe(true);
       list.push(b);
-      expect(list.keySet.has('.b')).toBe(true);
+      expect((list as any).keySet.has('.b')).toBe(true);
     });
   });
 });

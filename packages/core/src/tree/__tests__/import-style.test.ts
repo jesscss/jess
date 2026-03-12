@@ -520,7 +520,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'primaryColor', value: any('purple') })
-            ]),
+            ]) as any,
             type: 'with'
           }
         }, {
@@ -570,7 +570,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'primaryColor', value: any('orange') })
-            ]),
+            ]) as any,
             type: 'set'
           }
         }, {
@@ -618,7 +618,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'baseColor', value: any('blue') })
-            ]),
+            ]) as any,
             type: 'with'
           }
         }, {
@@ -658,7 +658,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'baseColor', value: any('green') })
-            ]),
+            ]) as any,
             type: 'with'
           }
         }, {
@@ -698,7 +698,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'baseColor', value: any('yellow') })
-            ]),
+            ]) as any,
             type: 'set'
           }
         }, {
@@ -738,7 +738,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'baseColor', value: any('cyan') })
-            ]),
+            ]) as any,
             type: 'set'
           }
         }, {
@@ -784,7 +784,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'var', value: any('first') })
-            ]),
+            ]) as any,
             type: 'set'
           }
         }, {
@@ -801,7 +801,7 @@ describe('Style import', () => {
           with: {
             node: rules([
               vardecl({ name: 'var', value: any('second') })
-            ]),
+            ]) as any,
             type: 'set'
           }
         }, {
@@ -918,7 +918,7 @@ describe('Style import', () => {
         call({ name: 'layer', args: list([any('theme')]) }),
         call({ name: 'supports', args: list([any('(display: grid)')]) }),
         any('screen and (min-width: 600px)')
-      ], { sep: ' ' });
+      ], { sep: ' ' as any });
 
       const node = rules([
         style({ path: quoted(any('inline-postlude.css')) }, {

@@ -39,7 +39,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   set value(val: string | Any | Interpolated) {
-    this.data = val;
+    this.setData(val);
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -59,7 +59,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   override valueOf(): string {
     const value = this.data;
-    return value instanceof Node ? value.valueOf() : value;
+    return value instanceof Node ? value.valueOf() : value as string;
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
@@ -85,7 +85,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
         return new Any(value as string);
       }
       let quoted = this.maybeClone(context);
-      quoted.data = value as any;
+      quoted.setData(value as any);
       return quoted;
     };
     if (value instanceof Node) {
@@ -95,7 +95,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       }
       return cont(out as Node | Any | Interpolated);
     }
-    return cont(value);
+    return cont(value as string | Any | Interpolated);
   }
 }
 export const quoted = defineType(Quoted, 'Quoted');

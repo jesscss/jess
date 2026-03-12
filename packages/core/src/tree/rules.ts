@@ -655,10 +655,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // This ensures it shadows the original and is evaluated after it
           const foundIndex = foundRules.data.indexOf(result);
           if (foundIndex !== -1) {
-            foundRules._data.splice(foundIndex + 1, 0, newDeclaration);
+            foundRules.splice(foundIndex + 1, 0, newDeclaration);
           } else {
             // If not found in array, add at the beginning
-            foundRules._data.unshift(newDeclaration);
+            foundRules.unshift(newDeclaration);
           }
 
           // Register it via registerNode to ensure it's properly indexed
@@ -686,7 +686,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override push(...nodes: Node[]) {
     for (let node of nodes) {
       this.adopt(node);
-      this._data.push(node);
+      (this.data as Node[]).push(node);
       this.registerNode(node);
     }
   }
@@ -796,7 +796,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
-        rules._data[index] = (node as Any).preEval(context);
+        rules.setData(index, (node as Any).preEval(context));
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
@@ -811,7 +811,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const preEvald = node.preEval(context);
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
-            rules._data[index] = preEvaldNode;
+            rules.setData(index, preEvaldNode);
             (preEvaldNode as Node).index = index;
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
@@ -822,7 +822,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           });
         }
-        rules._data[index] = preEvald as Node;
+        rules.setData(index, preEvald as Node);
         (preEvald as Node).index = index;
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
@@ -962,7 +962,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const node = rules.data[i]!;
         const resolvedNode = resolvedNodes.find(n => n.index === node.index);
         if (resolvedNode && resolvedNode !== node) {
-          rules._data[i] = resolvedNode.inherit(node);
+          rules.setData(i, resolvedNode.inherit(node));
           rules.adopt(resolvedNode);
         }
       }
@@ -1093,7 +1093,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return result.then((resolvedNode) => {
           // Update the node if preEval returned a different instance
           if (resolvedNode !== node) {
-            rules._data[i] = resolvedNode;
+            rules.setData(i, resolvedNode);
             rules.adopt(resolvedNode);
           }
 
@@ -1109,7 +1109,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       // Update the node if preEval returned a different instance
       if (result !== node) {
-        rules._data[i] = result;
+        rules.setData(i, result);
         rules.adopt(result);
       }
 
@@ -1309,7 +1309,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             scheduledPriority.delete(rule);
             // Apply the result
             if (result !== rule) {
-              rules._data[idx] = result;
+              rules.setData(idx, result);
               queue[q] = [idx, result];
               // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
               // so variables from the import can be found by the parent
@@ -1527,7 +1527,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     const remainder = afterNested.filter(n => !shouldMove(n));
-    rules._data = [...beforeNested, ...moved, ...remainder];
+    rules.setData([...beforeNested, ...moved, ...remainder]);
   }
 
   /**

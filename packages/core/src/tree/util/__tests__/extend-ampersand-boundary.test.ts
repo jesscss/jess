@@ -10,27 +10,27 @@ import {
   amp,
   compound,
   pseudo,
-  F_IMPLICIT_AMPERSAND,
   F_VISIBLE,
   ExtendFlag
 } from '../../index.js';
+import { F_IMPLICIT_AMPERSAND } from '../../node.js';
 import { tryExtendSelector } from '../extend.js';
 
 describe('Extend ampersand boundary behavior', () => {
   it('hoists a nested ruleset when extending crosses an implicit ampersand boundary', async () => {
     // Parser-built structure: .header { .header-nav { } } and .footer-nav { &:extend(.header .header-nav all) }
     // Inner selector is & .header-nav (implicit ampersand resolving to .header)
-    const implicitAmp = amp({ selector: el('.header') });
-    implicitAmp.generated = true;
-    implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);
-    implicitAmp.removeFlag(F_VISIBLE);
+    const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
+    (implicitAmp as any).generated = true;
+    (implicitAmp as any).addFlag(F_IMPLICIT_AMPERSAND);
+    (implicitAmp as any).removeFlag(F_VISIBLE);
     const implicitSpace = co(' ');
     implicitSpace.generated = true;
     implicitSpace.removeFlag(F_VISIBLE);
 
     const headerNavBody = rules([]);
     const headerNav = ruleset({
-      selector: sel([implicitAmp, implicitSpace, el('.header-nav')]),
+      selector: sel([implicitAmp, implicitSpace, el('.header-nav')]) as any,
       rules: headerNavBody
     });
     const headerBody = rules([headerNav]);
@@ -39,7 +39,7 @@ describe('Extend ampersand boundary behavior', () => {
     const root = rules([
       header,
       ruleset({
-        selector: sel([el('.footer'), co(' '), el('.footer-nav')]),
+        selector: sel([el('.footer'), co(' '), el('.footer-nav')]) as any,
         rules: rules([
           extend({
             target: sel([el('.header'), co(' '), el('.header-nav')]),
@@ -51,7 +51,7 @@ describe('Extend ampersand boundary behavior', () => {
 
     const context = new Context();
     const evald = await root.eval(context);
-    const headerRuleset = evald.data[0];
+    const headerRuleset = evald.data[0] as any;
     const innerRuleset = headerRuleset?.data?.rules?.data?.[0];
     expect(innerRuleset?.hoistToRoot).toBe(true);
   });
@@ -59,13 +59,13 @@ describe('Extend ampersand boundary behavior', () => {
   it('does not extend selectors that only match within an ampersand (e.g. &:before)', () => {
     // Unit test of tryExtendSelector: &:before should not match .header .header-nav extend
     const resolvedParent = sel([el('.header'), co(' '), el('.header-nav')]);
-    const ampersand = amp({ selector: resolvedParent });
+    const ampersand = amp({ selectorContainer: { selector: resolvedParent } });
     const beforeSelector = compound([ampersand, pseudo({ name: ':before' })]);
 
     const target = sel([el('.header'), co(' '), el('.header-nav')]);
     const extendWith = sel([el('.footer'), co(' '), el('.footer-nav')]);
 
-    const result = tryExtendSelector(beforeSelector, target, extendWith, true);
+    const result = tryExtendSelector(beforeSelector, target as any, extendWith as any, true);
 
     expect(result.error).toBeDefined();
     expect(result.value.toString()).toBe('&:before');

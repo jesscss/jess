@@ -24,7 +24,7 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   set value(val: string) {
-    this.data = val;
+    this.setData(val);
   }
 
   get isClass() {

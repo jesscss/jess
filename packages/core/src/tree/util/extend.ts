@@ -622,7 +622,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           }
         }
       }
-      el.data = flattened;
+      el.setData(flattened);
       push(el);
     } else if (isNode(el, N.CompoundSelector)) {
       // CRITICAL: Compound selectors can have duplicate components (e.g., .v.w.v)
@@ -631,22 +631,22 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       if (typeof compoundProcessed === 'string') {
         return compoundProcessed;
       }
-      el.data = compoundProcessed as Selector[];
+      el.setData(compoundProcessed as Selector[]);
       push(el);
     } else if (isNode(el, N.ComplexSelector)) {
-      let components = el.data;
+      let components = [...el.data];
       let complexProcessed = createProcessedSelector(components);
       if (typeof complexProcessed === 'string') {
         return complexProcessed;
       }
       let result = complexProcessed as Selector[];
-      el.data = result;
+      el.setData(result);
       let [first, second] = components;
       /** Remove invisibility on combinator if it's a generated */
       if (first?.type === 'Ampersand') {
         /** Implicit ampersand was kept for nested output (don't resolve to parent selector here). */
         if (first.hasFlag(F_IMPLICIT_AMPERSAND) && result[0] === first) {
-          el.data = result;
+          el.setData(result);
           // Fall through; no throw, no slice
         } else if (isNode(result[0], N.Selector)) {
           if (first.generated) {
@@ -655,9 +655,9 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         } else if (first.generated) {
           /** Silent removal if generated and no selector was resolved */
           if (second?.type === 'Combinator' && second.generated) {
-            el.data = result.slice(2);
+            el.setData(result.slice(2));
           } else {
-            el.data = result.slice(1);
+            el.setData(result.slice(1));
           }
         } else {
           return ExtendErrorType.AMPERSAND_BOUNDARY;
@@ -840,7 +840,7 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
     const arg = selector.data.arg;
     if (arg && isNode(arg, N.SelectorList)) {
       // Extract all selectors from the :is() argument
-      return arg.data;
+      return [...arg.data];
     } else if (arg) {
       // Single selector argument
       return [arg as Selector];
@@ -3424,7 +3424,7 @@ function validateCompoundSelector(components: any[]): {
       }
     } else if (isNode(component, N.CompoundSelector)) {
       // Recursively check nested compounds
-      const nestedValidation = validateCompoundSelector(component.data);
+      const nestedValidation = validateCompoundSelector([...component.data]);
       if (!nestedValidation.isValid) {
         return nestedValidation;
       }
@@ -3497,7 +3497,7 @@ export function findChainedExtends(
 
       // Check if otherTarget matches selectorInList
       const otherTargetSelectors: Selector[] = isNode(otherTarget, N.SelectorList)
-        ? otherTarget.data
+        ? [...otherTarget.data]
         : [otherTarget];
 
       for (const otherSingleTarget of otherTargetSelectors) {
@@ -3818,7 +3818,7 @@ function applyExtension(
       if (typeof wrapOrdered === 'string') {
         return wrapOrdered;
       }
-      const wrapSelectors = wrapOrdered.data;
+      const wrapSelectors = [...wrapOrdered.data];
       return createValidatedIsWrapperWithErrors(
         wrapSelectors,
         current,

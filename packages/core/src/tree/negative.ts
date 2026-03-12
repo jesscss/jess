@@ -24,7 +24,7 @@ export class Negative extends Node<Node> {
   }
 
   set value(val: Node) {
-    this.data = val;
+    this.setData(val);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

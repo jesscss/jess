@@ -296,7 +296,7 @@ describe('expandSelectorWithIs', () => {
 
   it('delegates to expandComplexSelectorWithIs for complex selectors', () => {
     const s = sel([is(sellist([el('.x'), el('.y')])), co(' '), el('.a')]) as ComplexSelector;
-    const result = expandSelectorWithIs(s);
+    const result = expandSelectorWithIs(s as any);
     expect(result).toHaveLength(2);
   });
 
@@ -381,13 +381,13 @@ describe('isStructurallyEqual', () => {
   it('matches complex selectors component-by-component', () => {
     const a = sel([el('.a'), co('>'), el('.b')]);
     const b = sel([el('.a'), co('>'), el('.b')]);
-    expect(isStructurallyEqual(a, b)).toBe(true);
+    expect(isStructurallyEqual(a as any, b as any)).toBe(true);
   });
 
   it('rejects complex selectors with different components', () => {
     const a = sel([el('.a'), co('>'), el('.b')]);
     const b = sel([el('.a'), co('>'), el('.c')]);
-    expect(isStructurallyEqual(a, b)).toBe(false);
+    expect(isStructurallyEqual(a as any, b as any)).toBe(false);
   });
 
   it('matches compound selectors with same components in same order', () => {
@@ -417,7 +417,7 @@ describe('selectorMatchesExtendTarget', () => {
   it('matches complex selectors (non-partial)', () => {
     const a = sel([el('.a'), co('>'), el('.b')]);
     const b = sel([el('.a'), co('>'), el('.b')]);
-    expect(selectorMatchesExtendTarget(a, b, false)).toBe(true);
+    expect(selectorMatchesExtendTarget(a as any, b as any, false)).toBe(true);
   });
 
   it('rejects when find is not in target (non-partial)', () => {
@@ -439,7 +439,7 @@ describe('normalizeSelectorForExtend', () => {
   it('normalizes selector for extend matching', () => {
     // Basic sanity — should not crash and should return a selector
     const s = sel([el('.a'), co(' '), el('.b')]);
-    const result = normalizeSelectorForExtend(s);
+    const result = normalizeSelectorForExtend(s as any);
     expect(result).toBeTruthy();
     expect(typeof result.valueOf()).toBe('string');
   });

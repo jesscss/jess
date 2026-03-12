@@ -12,7 +12,7 @@ describe('Basic Ruleset Rendering', () => {
   it('should render a basic ruleset correctly', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.test')]),
+        selector: sel([el('.test')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) })
         ])
@@ -32,7 +32,7 @@ describe('Basic Ruleset Rendering', () => {
   it('should render a basic ruleset without collapseNesting', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.test')]),
+        selector: sel([el('.test')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) })
         ])
@@ -60,7 +60,7 @@ describe('Basic Ruleset Rendering', () => {
   it('should render a basic ruleset correctly', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.test')]),
+        selector: sel([el('.test')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) })
         ])
@@ -80,7 +80,7 @@ describe('Basic Ruleset Rendering', () => {
   it('should render a basic ruleset without collapseNesting', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.test')]),
+        selector: sel([el('.test')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) })
         ])

@@ -146,7 +146,7 @@ describe('OOM stress: findExtendableLocations on large selector lists', () => {
     // Bootstrap 4 has ~5000; we use 500 for CI safety.
     const items: Selector[] = Array.from({ length: 500 }, (_, i) =>
       sel([el(`.col-${i}`)])
-    );
+    ) as any;
     const target = sellist(items);
     const find = el('.col-42');
 
@@ -167,7 +167,7 @@ describe('OOM stress: findExtendableLocations on large selector lists', () => {
 
     const selectors: Selector[] = Array.from({ length: N_SELECTORS }, (_, i) =>
       sel([el(`.item-${i}`)])
-    );
+    ) as any;
     const instructions: ExtendInstruction[] = Array.from({ length: N_INSTRUCTIONS }, (_, i) => ({
       target: el(`.item-${i * 10}`),
       extendWith: el(`.replacement-${i}`),
@@ -215,7 +215,7 @@ describe('OOM stress: applyExtendsToSelector restart loop', () => {
     console.info(`applyExtendsToSelector(50 instructions) took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
     // All 50 targets should have been extended, so the result should differ from the input.
-    expect(result!.valueOf()).not.toBe(baseSelector.valueOf());
+    expect(result!.valueOf()).not.toBe((baseSelector as any).valueOf());
   });
 
   it('handles 200 instructions on a single-selector target within budget', () => {
@@ -237,7 +237,7 @@ describe('OOM stress: applyExtendsToSelector restart loop', () => {
 
     let result: Selector;
     const ms = timeMs(() => {
-      result = applyExtendsToSelector(targetSelector, instructions);
+      result = applyExtendsToSelector(targetSelector as any, instructions);
     });
 
     console.info(`applyExtendsToSelector(200 instructions, 1 match) took ${ms.toFixed(1)}ms`);
@@ -367,7 +367,7 @@ describe('OOM stress: selectorCompare SelectorList normalization', () => {
     // item and then sorts the resulting string arrays. With 200 items this should
     // still be fast.
     const N = 200;
-    const itemsA: Selector[] = Array.from({ length: N }, (_, i) => sel([el(`.item-${i}`)]));
+    const itemsA: Selector[] = Array.from({ length: N }, (_, i) => sel([el(`.item-${i}`)])) as any;
     const itemsB: Selector[] = [...itemsA].reverse(); // same items, reversed order
 
     const listA = sellist(itemsA);

@@ -174,7 +174,7 @@ describe('extend integration (eval -> toString)', () => {
             rules: rules([
               decl({ name: 'background', value: any('red') }),
               ruleset({
-                selector: sel([amp({}), pseudo({ name: ':before' })]),
+                selector: sel([amp({}), pseudo({ name: ':before' })]) as any,
                 rules: rules([
                   decl({ name: 'background', value: any('blue') })
                 ])
@@ -1027,7 +1027,7 @@ describe('extend integration (eval -> toString)', () => {
             rules: rules([
               decl({ name: 'background', value: any('red') }),
               ruleset({
-                selector: sel([amp({}), pseudo({ name: ':before' })]),
+                selector: sel([amp({}), pseudo({ name: ':before' })]) as any,
                 rules: rules([decl({ name: 'background', value: any('blue') })])
               })
             ])

@@ -24,13 +24,13 @@ describe('selectorCompare', () => {
   it('exposes partial match metadata when selectors differ by a suffix', () => {
     const target = sel([el('.foo'), co('>'), el('.bar')]);
     const shorter = el('.bar');
-    const result = selectorCompare(target, shorter);
+    const result = selectorCompare(target as any, shorter);
     expect(result.isEquivalent).toBe(false);
     expect(result.hasPartialMatch).toBe(true);
   });
 
   it('handles :is() alternatives as expected', () => {
-    const list = is(sel([el('.a'), el('.b')]));
+    const list = is(sel([el('.a'), el('.b')]) as any);
     const child = el('.b');
     const result = selectorCompare(list, child);
     expect(result.isEquivalent).toBe(false);
@@ -56,9 +56,9 @@ describe('selectorCompare', () => {
   it('handles implicit ampersand selectors', () => {
     const parent = el('.parent');
     const nested = sel([parent, co(' '), el('.child')]);
-    const implicitAmp = amp({ selector: parent });
+    const implicitAmp = amp({ selectorContainer: { selector: parent } });
     const implicit = compound([implicitAmp, el('.child')]);
-    const result = selectorCompare(nested, implicit);
+    const result = selectorCompare(nested as any, implicit);
     expect(Array.isArray(result.locations)).toBe(true);
     expect(result.isEquivalent).toBe(false);
   });
@@ -75,7 +75,7 @@ describe('selectorCompare', () => {
       )
     ]);
     const complexB = sel([el('.foo'), co(' '), el('.bar')]);
-    const result = selectorCompare(complexA, complexB);
+    const result = selectorCompare(complexA as any, complexB as any);
     expect(result.hasPartialMatch).toBe(true);
   });
 
@@ -88,7 +88,7 @@ describe('selectorCompare', () => {
       is(sellist([el('.c'), el('.z')]))
     ]);
     const find = sel([el('.a'), co('>'), el('.b'), co('>'), el('.z')]);
-    const result = selectorCompare(target, find);
+    const result = selectorCompare(target as any, find as any);
     expect(result.hasWholeMatch || result.hasPartialMatch).toBe(true);
     expect(result.locations.length).toBeGreaterThan(0);
   });
@@ -113,7 +113,7 @@ describe('selectorCompare parity with matchSelectors', () => {
     },
     {
       desc: 'implicit ampersand expands to parent selector',
-      target: compound([amp({ selector: el('.parent') }), el('.child')]),
+      target: compound([amp({ selectorContainer: { selector: el('.parent') } }), el('.child')]),
       find: sel([el('.parent'), co(' '), el('.child')])
     },
     {
@@ -145,8 +145,8 @@ describe('selectorCompare parity with matchSelectors', () => {
 
   cases.forEach(({ desc, target, find }) => {
     it(`matches legacy matchSelectors for ${desc}`, () => {
-      const legacy = matchSelectors(target, find);
-      const comparison = selectorCompare(target, find);
+      const legacy = matchSelectors(target as any, find as any);
+      const comparison = selectorCompare(target as any, find as any);
       expect(comparison.locations.length > 0).toBe(legacy.hasMatch);
       if (comparison.hasWholeMatch) {
         expect(legacy.hasFullMatch).toBe(true);

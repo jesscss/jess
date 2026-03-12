@@ -114,7 +114,7 @@ describe('tryExtendSelector', () => {
   it('handles partial extend (all keyword)', () => {
     // .a .b target, extend .b with .c (partial=true)
     const target = sel([el('.a'), co(' '), el('.b')]);
-    const result = tryExtendSelector(target, el('.b'), el('.c'), true);
+    const result = tryExtendSelector(target as any, el('.b'), el('.c'), true);
     expect(result.error).toBeUndefined();
     const val = result.value.valueOf();
     expect(val).toContain('.c');
@@ -225,7 +225,7 @@ describe('extendSelector integration pins', () => {
 
   it('partial: .a .b extending .b with .c → creates :is() wrapper', () => {
     const target = sel([el('.a'), co(' '), el('.b')]);
-    const result = extendSelector(target, el('.b'), el('.c'), true);
+    const result = extendSelector(target as any, el('.b'), el('.c'), true);
     const val = result.valueOf();
     // Partial mode wraps the matched component in :is()
     expect(val).toContain(':is');

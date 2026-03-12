@@ -74,7 +74,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.data, other.data, equalityMode);
+      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -92,10 +92,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     let newList = this.maybeClone(context);
     if (b instanceof List) {
-      newList.data.push(...b.data);
+      newList.push(...b.data);
     } else {
       /** @todo - do we need to verify the list type? */
-      newList.data.push(b as T);
+      newList.push(b as T);
     }
     return newList;
   }

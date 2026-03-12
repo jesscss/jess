@@ -57,7 +57,7 @@ export class Any<
   }
 
   set value(val: string) {
-    this.data = val;
+    this.setData(val);
   }
 
   override preEval(context: Context): this | Nil {

@@ -77,7 +77,7 @@ describe('Extend Duplicate Element/ID Validation', () => {
     it('should allow extending across different selector contexts', () => {
       // This should be allowed: div:is(a > .foo) - the 'div' and 'a' are in different contexts
       const complexInner = sel([el('a'), el('>'), el('.foo')]);
-      const pseudoSelector = compound([el('div'), is(complexInner)]);
+      const pseudoSelector = compound([el('div'), is(complexInner as any)]);
       const target = el('.foo');
       const extendWith = el('.bar');
 
@@ -95,7 +95,7 @@ describe('Extend Duplicate Element/ID Validation', () => {
       const extendWith = compound([el('span'), el('.other')]);
 
       expect(() => {
-        extendSelector(selector, target, extendWith, false);
+        extendSelector(selector as any, target, extendWith, false);
       }).not.toThrow();
     });
 

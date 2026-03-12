@@ -88,16 +88,16 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return pipe(
       () => {
         const sel = this;
-        let { data } = sel;
+        const { data } = sel;
         const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<SimpleSelector>).then((res) => {
-              data[i] = res as SimpleSelector;
+              sel.setData(i, res as SimpleSelector);
               return undefined;
             });
           }
-          data[i] = out as SimpleSelector;
+          sel.setData(i, out as SimpleSelector);
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -106,9 +106,8 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         return sel;
       },
       (sel) => {
-        let { data } = sel;
-        data = data.filter(n => n && !(n instanceof Nil));
-        data = data.sort((a, b) => {
+        let data: SimpleSelector[] = [...sel.data].filter(n => n && !(n instanceof Nil));
+        data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
           let aIsElement = !nonElementRegex.test(a.valueOf());
           let bIsElement = !nonElementRegex.test(b.valueOf());
           if (aIsElement && bIsElement) {
@@ -127,7 +126,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         for (let i = 0; i < data.length - 1; i++) {
           (data[i] as any).post = undefined;
         }
-        sel.data = data;
+        sel.setData([...data]);
         return sel;
       }
     );
