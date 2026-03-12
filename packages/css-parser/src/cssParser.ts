@@ -1,7 +1,6 @@
 import { Lexer } from 'chevrotain';
 import { cssLexer } from './cssTokens.js';
 import { CssRecursiveParser, type CssRecursiveParserConfig } from './cssRecursiveParser.js';
-import { type TokenMap } from './cssActionsParser.js';
 import { type Node, type Rules, type IParseResult } from '@jesscss/core';
 import type { IToken } from '@jesscss/parser-runtime';
 
@@ -29,14 +28,14 @@ export class CssParser {
    * linting and language services.
    */
   constructor(
-    config: CssParserConfig = {}
+    config: CssRecursiveParserConfig = {}
   ) {
     const { lexer, T } = cssLexer;
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new CssRecursiveParser(T as TokenMap, config);
+    this.parser = new CssRecursiveParser(T as any, config);
   }
 
   parse(text: string): IParseResult<Rules>;

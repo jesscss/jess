@@ -2,7 +2,7 @@
 import { type WritableDeep } from 'type-fest';
 import type { RawModeConfig } from './util/index.js';
 import { LexerType } from './util/index.js';
-import { SKIPPED_LABEL } from './advancedActionsParser.js';
+export const SKIPPED_LABEL = 'Skipped';
 import {
   Lexer,
   createToken,

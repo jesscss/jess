@@ -505,7 +505,9 @@ export function pageAtRule(this: P, ctx: RuleContext = {}) {
   let location = this.endRule();
   return new AtRule({
     name: this.wrap(new Any(name.image, { role: 'atkeyword' }, this.getLocationInfo(name), this.context), true),
-    prelude: selector.length ? this.wrap(new List(selector, undefined, this.getLocationFromNodes(selector), this.context), true) : undefined,
+    prelude: selector.length && String(selector[0]!.valueOf()) !== ''
+      ? this.wrap(new List(selector, undefined, this.getLocationFromNodes(selector), this.context), true)
+      : undefined,
     rules
   }, undefined, location, this.context);
 }

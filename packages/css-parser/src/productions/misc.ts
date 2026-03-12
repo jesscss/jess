@@ -25,12 +25,10 @@ export function layerAtRule(this: P, ctx: RuleContext = {}) {
   this.startRule();
   const atTok = this.consume(this.T.AtLayer);
 
-  // Optional single layer-name before a block, or first of a comma list in statement form
-  const preludeNodes: Node[] = [];
-
   return this.or([
     {
       ALT: () => {
+        const preludeNodes: Node[] = [];
         this.option(() => {
           const nameNode: Node = this.layerName(ctx);
           preludeNodes.push(this.wrap(nameNode));
@@ -47,6 +45,7 @@ export function layerAtRule(this: P, ctx: RuleContext = {}) {
     },
     {
       ALT: () => {
+        const preludeNodes: Node[] = [];
         this.manySep({
           SEP: this.T.Comma,
           DEF: () => {

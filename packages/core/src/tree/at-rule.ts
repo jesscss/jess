@@ -266,7 +266,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       out += finalPreludeOut;
       if (rules) {
-        const preludeEndsWithSpace = /\s$/.test(preludeOut);
+        const preludeEndsWithSpace = /\s$/.test(finalPreludeOut);
         if (!preludeEndsWithSpace) {
           out += ' ';
         }

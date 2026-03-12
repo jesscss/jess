@@ -406,27 +406,27 @@ export class RecursiveDescentParser {
       if (alt.GATE && !alt.GATE()) {
         continue;
       }
-      if (alt.GATE || i === lastIdx) {
-        // GATE passed or last alt — commit (don't try other alts).
-        //
-        // We do NOT force `speculating = false` here. The outer speculating
-        // state propagates through: if an outer or() is speculating, consume()
-        // keeps throwing SPEC_FAIL on mismatch (instead of creating Error
-        // objects or invoking recovery). "Committed" means "this IS the right
-        // alt, don't backtrack to siblings" — it does NOT mean "produce real
-        // errors", because an ancestor may still need to backtrack.
-        //
-        // When the outermost context is non-speculative (the default),
-        // consume() naturally throws ParseError or recovers, producing
-        // real error messages for user-facing diagnostics.
+      if (i === lastIdx) {
+        // Last alt — commit (no more siblings to try).
+        return alt.ALT();
+      }
+      // In recovery mode, a passing GATE means we should commit to this
+      // alt rather than speculating — recovery will handle any errors
+      // inside, giving better error locations than falling through to
+      // a wrong alt (e.g. qualifiedRule for @media input).
+      if (alt.GATE && this.recoveryEnabled && !this.speculating) {
         return alt.ALT();
       }
       // Non-last alt without GATE: speculative execution via SPEC_FAIL.
       // consume() throws the SPEC_FAIL symbol on mismatch — no Error
       // object, no stack trace. We catch it by === check and restore.
       const savedPos = this.pos;
-      const savedLocStackLen = this.locationStack.length;
-      const savedRuleStackLen = this.ruleStack.length;
+      // Snapshot stacks so we can fully restore on failure.
+      // A simple .length save/restore doesn't work when ALTs pop
+      // elements (e.g. endRule() during speculation) — setting
+      // .length back up fills with `undefined`, not the original items.
+      const savedLocStack = this.locationStack.slice();
+      const savedRuleStack = this.ruleStack.slice();
       const savedErrors = this.errors.length;
       const wasSpeculating = this.speculating;
       this.speculating = true;
@@ -443,8 +443,10 @@ export class RecursiveDescentParser {
           // that threw a real error). From the outer speculative
           // perspective, either way the alt failed.
           this.pos = savedPos;
-          this.locationStack.length = savedLocStackLen;
-          this.ruleStack.length = savedRuleStackLen;
+          this.locationStack.length = 0;
+          this.locationStack.push(...savedLocStack);
+          this.ruleStack.length = 0;
+          this.ruleStack.push(...savedRuleStack);
           this.errors.length = savedErrors;
           continue;
         }
@@ -496,16 +498,16 @@ export class RecursiveDescentParser {
         break;
       }
       const prevPos = this.pos;
-      const savedLocStackLen = this.locationStack.length;
-      const savedRuleStackLen = this.ruleStack.length;
+      const savedLocStack = this.locationStack.slice();
+      const savedRuleStack = this.ruleStack.slice();
       const savedErrors = this.errors.length;
       try {
         def();
       } catch (e) {
         if (e instanceof ParseError || e === SPEC_FAIL) {
           this.pos = prevPos;
-          this.locationStack.length = savedLocStackLen;
-          this.ruleStack.length = savedRuleStackLen;
+          this.restoreStack(this.locationStack, savedLocStack);
+          this.restoreStack(this.ruleStack, savedRuleStack);
           this.errors.length = savedErrors;
           break;
         }
@@ -514,8 +516,8 @@ export class RecursiveDescentParser {
       // No progress means DEF didn't match (possibly only inserted
       // virtual tokens via recovery). Undo any recovery errors and stop.
       if (this.pos === prevPos) {
-        this.locationStack.length = savedLocStackLen;
-        this.ruleStack.length = savedRuleStackLen;
+        this.restoreStack(this.locationStack, savedLocStack);
+        this.restoreStack(this.ruleStack, savedRuleStack);
         this.errors.length = savedErrors;
         break;
       }
@@ -547,24 +549,24 @@ export class RecursiveDescentParser {
         break;
       }
       const prevPos = this.pos;
-      const savedLocStackLen = this.locationStack.length;
-      const savedRuleStackLen = this.ruleStack.length;
+      const savedLocStack = this.locationStack.slice();
+      const savedRuleStack = this.ruleStack.slice();
       const savedErrors = this.errors.length;
       try {
         def();
       } catch (e) {
         if (e instanceof ParseError || e === SPEC_FAIL) {
           this.pos = prevPos;
-          this.locationStack.length = savedLocStackLen;
-          this.ruleStack.length = savedRuleStackLen;
+          this.restoreStack(this.locationStack, savedLocStack);
+          this.restoreStack(this.ruleStack, savedRuleStack);
           this.errors.length = savedErrors;
           break;
         }
         throw e;
       }
       if (this.pos === prevPos) {
-        this.locationStack.length = savedLocStackLen;
-        this.ruleStack.length = savedRuleStackLen;
+        this.restoreStack(this.locationStack, savedLocStack);
+        this.restoreStack(this.ruleStack, savedRuleStack);
         this.errors.length = savedErrors;
         break;
       }
@@ -588,8 +590,8 @@ export class RecursiveDescentParser {
    */
   option<T>(def: () => T): T | undefined {
     const prevPos = this.pos;
-    const savedLocStackLen = this.locationStack.length;
-    const savedRuleStackLen = this.ruleStack.length;
+    const savedLocStack = this.locationStack.slice();
+    const savedRuleStack = this.ruleStack.slice();
     const savedErrors = this.errors.length;
     try {
       const result = def();
@@ -598,8 +600,8 @@ export class RecursiveDescentParser {
       // undo everything.
       if (this.pos === prevPos || this.errors.length > savedErrors) {
         this.pos = prevPos;
-        this.locationStack.length = savedLocStackLen;
-        this.ruleStack.length = savedRuleStackLen;
+        this.restoreStack(this.locationStack, savedLocStack);
+        this.restoreStack(this.ruleStack, savedRuleStack);
         this.errors.length = savedErrors;
         return undefined;
       }
@@ -607,8 +609,8 @@ export class RecursiveDescentParser {
     } catch (e) {
       if (e instanceof ParseError || e === SPEC_FAIL) {
         this.pos = prevPos;
-        this.locationStack.length = savedLocStackLen;
-        this.ruleStack.length = savedRuleStackLen;
+        this.restoreStack(this.locationStack, savedLocStack);
+        this.restoreStack(this.ruleStack, savedRuleStack);
         this.errors.length = savedErrors;
         return undefined;
       }
@@ -637,16 +639,16 @@ export class RecursiveDescentParser {
       return;
     }
     const prevPos = this.pos;
-    const savedLocStackLen = this.locationStack.length;
-    const savedRuleStackLen = this.ruleStack.length;
+    const savedLocStack = this.locationStack.slice();
+    const savedRuleStack = this.ruleStack.slice();
     const savedErrors = this.errors.length;
     try {
       DEF();
     } catch (e) {
       if (e instanceof ParseError || e === SPEC_FAIL) {
         this.pos = prevPos;
-        this.locationStack.length = savedLocStackLen;
-        this.ruleStack.length = savedRuleStackLen;
+        this.restoreStack(this.locationStack, savedLocStack);
+        this.restoreStack(this.ruleStack, savedRuleStack);
         this.errors.length = savedErrors;
         return;
       }
@@ -654,8 +656,8 @@ export class RecursiveDescentParser {
     }
     // First element didn't advance — undo recovery artifacts and exit
     if (this.pos === prevPos) {
-      this.locationStack.length = savedLocStackLen;
-      this.ruleStack.length = savedRuleStackLen;
+      this.restoreStack(this.locationStack, savedLocStack);
+      this.restoreStack(this.ruleStack, savedRuleStack);
       this.errors.length = savedErrors;
       return;
     }
@@ -737,6 +739,18 @@ export class RecursiveDescentParser {
 
     this.ruleStack.pop();
     return result;
+  }
+
+  // ── Stack restore helper ─────────────────────────────────────────
+
+  /**
+   * Restore an array to a previous snapshot. Avoids sparse holes
+   * that `arr.length = savedLen` would create when elements were
+   * popped during speculation.
+   */
+  private restoreStack<T>(arr: T[], saved: T[]): void {
+    arr.length = 0;
+    arr.push(...saved);
   }
 
   // ── Backtracking ─────────────────────────────────────────────────

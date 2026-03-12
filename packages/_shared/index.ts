@@ -95,5 +95,20 @@ export const invalidLess: string[] = [
   'tests-unit/container/container.less',
 
   /** Has an unsupported token - `5_large` numeric separator */
-  'tests-unit/variables/variables.less'
+  'tests-unit/variables/variables.less',
+
+  /** Numeric property name `{5:-}` on last line */
+  'tests-unit/css-guards/css-guards.less',
+
+  /** `.3D` tokenized as DimensionNum instead of class selector */
+  'tests-unit/extract-and-length/extract-and-length.less',
+
+  /** `*-z-${name}` splits into LegacyPropIdent + InterpolatedIdent */
+  'tests-unit/parser-property-interp/parser-property-interp.less',
+
+  /** `/deep/` combinator not supported (deprecated CSS) */
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
+
+  /** Inline JavaScript using backticks is intentionally unsupported */
+  'tests-unit/javascript/javascript.less'
 ];

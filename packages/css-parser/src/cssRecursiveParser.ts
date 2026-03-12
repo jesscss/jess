@@ -48,7 +48,7 @@ const { isArray } = Array;
 
 // ── Types ────────────────────────────────────────────────────────────
 
-type RuleContext = {
+export type RuleContext = {
   /** Inside a declaration list */
   inner?: boolean;
   /** Determine if this is the first selector in the list */
