@@ -1,9 +1,9 @@
 /**
  * Sass invert() function
- * 
+ *
  * Inverts a color or passes through CSS filter function.
  * Available in both global namespace and color module.
- * 
+ *
  * @example
  * invert(rgb(255, 0, 0)) // inverts the color
  * invert(100%) // CSS filter function passthrough

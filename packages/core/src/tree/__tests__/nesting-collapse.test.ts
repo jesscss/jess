@@ -1,7 +1,7 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   compound, type SimpleSelector, type Selector, amp, co
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
 
 describe('CSS Nesting Collapse', () => {
@@ -14,11 +14,11 @@ describe('CSS Nesting Collapse', () => {
   it('should collapse basic nested rulesets', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
-            selector: sel([el('.child')]),
+            selector: sel([el('.child')]) as any,
             rules: rules([
               decl({ name: 'background', value: spaced([el('blue')]) })
             ])
@@ -43,15 +43,15 @@ describe('CSS Nesting Collapse', () => {
   it('should collapse multiple nested levels', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
-            selector: sel([el('.child')]),
+            selector: sel([el('.child')]) as any,
             rules: rules([
               decl({ name: 'background', value: spaced([el('blue')]) }),
               ruleset({
-                selector: sel([el('.grandchild')]),
+                selector: sel([el('.grandchild')]) as any,
                 rules: rules([
                   decl({ name: 'border', value: spaced([el('1px solid black')]) })
                 ])
@@ -81,11 +81,11 @@ describe('CSS Nesting Collapse', () => {
   it('should handle compound selectors correctly', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent'), el('.container')]),
+        selector: sel([el('.parent'), el('.container')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
-            selector: sel([el('.child'), el('.item')]),
+            selector: sel([el('.child'), el('.item')]) as any,
             rules: rules([
               decl({ name: 'background', value: spaced([el('blue')]) })
             ])
@@ -96,8 +96,8 @@ describe('CSS Nesting Collapse', () => {
 
     const evald = await node.eval(context);
 
-    if (evald.value[0] && evald.value[0].type === 'Ruleset') {
-      const firstRuleset = evald.value[0] as any;
+    if (evald.data[0] && evald.data[0].type === 'Ruleset') {
+      const firstRuleset = evald.data[0] as any;
     }
     const css = evald.toString({ collapseNesting: true });
 
@@ -121,7 +121,7 @@ describe('CSS Nesting Collapse', () => {
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
-            selector: sel([el('.child')]),
+            selector: sel([el('.child')]) as any,
             rules: rules([
               decl({ name: 'background', value: spaced([el('blue')]) })
             ])
@@ -147,11 +147,11 @@ describe('CSS Nesting Collapse', () => {
   it('should handle explicit ampersands correctly', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
-            selector: sel([amp(), co(' '), el('.child')]), // & .child
+            selector: sel([amp(), co(' '), el('.child')]) as any,
             rules: rules([
               decl({ name: 'background', value: spaced([el('blue')]) })
             ])
@@ -176,11 +176,11 @@ describe('CSS Nesting Collapse', () => {
   it('should handle ampersand with space combinator', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
-            selector: sel([amp('-modifier'), co(' '), el('.child')]), // &-modifier .child
+            selector: sel([amp('-modifier'), co(' '), el('.child')]) as any,
             rules: rules([
               decl({ name: 'background', value: spaced([el('blue')]) })
             ])
@@ -205,7 +205,7 @@ describe('CSS Nesting Collapse', () => {
   it('should handle ampersand without space combinator', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
@@ -235,7 +235,7 @@ describe('CSS Nesting Collapse', () => {
   it('should bubble @media rules to root level', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
@@ -243,7 +243,7 @@ describe('CSS Nesting Collapse', () => {
             prelude: any('(max-width: 768px)'),
             rules: rules([
               ruleset({
-                selector: sel([el('.child')]),
+                selector: sel([el('.child')]) as any,
                 rules: rules([
                   decl({ name: 'background', value: spaced([el('blue')]) })
                 ])
@@ -272,7 +272,7 @@ describe('CSS Nesting Collapse', () => {
   it('should bubble @supports rules to root level', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
@@ -280,7 +280,7 @@ describe('CSS Nesting Collapse', () => {
             prelude: any('(display: grid)'),
             rules: rules([
               ruleset({
-                selector: sel([el('.child')]),
+                selector: sel([el('.child')]) as any,
                 rules: rules([
                   decl({ name: 'display', value: spaced([el('grid')]) })
                 ])
@@ -309,7 +309,7 @@ describe('CSS Nesting Collapse', () => {
   it('should merge multiple hoisted @media rules', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
@@ -322,7 +322,7 @@ describe('CSS Nesting Collapse', () => {
                 prelude: any('(max-width: 480px)'),
                 rules: rules([
                   ruleset({
-                    selector: sel([el('.child')]),
+                    selector: sel([el('.child')]) as any,
                     rules: rules([
                       decl({ name: 'background', value: spaced([el('blue')]) })
                     ])
@@ -358,7 +358,7 @@ describe('CSS Nesting Collapse', () => {
   it('should handle rulesets nested inside at-rules', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
@@ -367,11 +367,11 @@ describe('CSS Nesting Collapse', () => {
             rules: rules([
               decl({ name: 'font-size', value: spaced([el('14px')]) }),
               ruleset({
-                selector: sel([el('.child')]),
+                selector: sel([el('.child')]) as any,
                 rules: rules([
                   decl({ name: 'background', value: spaced([el('blue')]) }),
                   ruleset({
-                    selector: sel([el('.grandchild')]),
+                    selector: sel([el('.grandchild')]) as any,
                     rules: rules([
                       decl({ name: 'border', value: spaced([el('1px solid')]) })
                     ])
@@ -408,7 +408,7 @@ describe('CSS Nesting Collapse', () => {
   it('should handle multiple at-rules with nested rulesets', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.parent')]),
+        selector: sel([el('.parent')]) as any,
         rules: rules([
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
@@ -416,7 +416,7 @@ describe('CSS Nesting Collapse', () => {
             prelude: any('(max-width: 768px)'),
             rules: rules([
               ruleset({
-                selector: sel([el('.mobile-child')]),
+                selector: sel([el('.mobile-child')]) as any,
                 rules: rules([
                   decl({ name: 'display', value: spaced([el('block')]) })
                 ])
@@ -428,7 +428,7 @@ describe('CSS Nesting Collapse', () => {
             prelude: any('(display: flex)'),
             rules: rules([
               ruleset({
-                selector: sel([el('.flex-child')]),
+                selector: sel([el('.flex-child')]) as any,
                 rules: rules([
                   decl({ name: 'display', value: spaced([el('flex')]) })
                 ])
@@ -462,7 +462,7 @@ describe('CSS Nesting Collapse', () => {
   it('should handle complex nested at-rule scenarios', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('.container')]),
+        selector: sel([el('.container')]) as any,
         rules: rules([
           decl({ name: 'padding', value: spaced([el('20px')]) }),
           atrule({
@@ -475,7 +475,7 @@ describe('CSS Nesting Collapse', () => {
                 prelude: any('(display: grid)'),
                 rules: rules([
                   ruleset({
-                    selector: sel([el('.grid-item')]),
+                    selector: sel([el('.grid-item')]) as any,
                     rules: rules([
                       decl({ name: 'grid-column', value: spaced([el('span 2')]) })
                     ])
@@ -483,7 +483,7 @@ describe('CSS Nesting Collapse', () => {
                 ])
               }),
               ruleset({
-                selector: sel([el('.mobile-item')]),
+                selector: sel([el('.mobile-item')]) as any,
                 rules: rules([
                   decl({ name: 'margin', value: spaced([el('5px')]) })
                 ])

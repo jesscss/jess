@@ -1,8 +1,8 @@
 /**
  * Sass string.length() function
- * 
+ *
  * Returns the length of a string in Unicode code points.
- * 
+ *
  * @example
  * string.length("hello") // 5
  * string.length("😊")    // 1 (not 2, as it's one code point)

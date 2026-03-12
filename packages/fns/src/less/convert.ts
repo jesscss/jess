@@ -25,14 +25,14 @@ const unitConversions: Record<string, Record<string, number>> = {
 export default defineFunction(
   'convert',
   function(value: Dimension, unit: Any<'keyword'> | Quoted) {
-    const from = value.value.unit;
+    const from = value.data.unit;
     const target = unit.valueOf();
     if (!from || !target || from === target) {
       return value;
     }
     for (const group of Object.values(unitConversions)) {
       if (group[from] !== undefined && group[target] !== undefined) {
-        const converted = value.value.number * (group[from] / group[target]);
+        const converted = value.data.number * (group[from] / group[target]);
         return new Dimension({ number: converted, unit: target });
       }
     }

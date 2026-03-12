@@ -244,19 +244,19 @@ describe.skip('Selector Performance Benchmarks', () => {
 
     for (const testCase of testCases) {
       const withFastPath = runBenchmark(`${testCase.name} (with fast path)`, () => {
-        findExtendableLocations(testCase.target, testCase.find);
+        findExtendableLocations(testCase.target as any, testCase.find as any);
       }, 50000);
 
       const withoutFastPath = runBenchmark(`${testCase.name} (no fast path)`, () => {
-        findExtendableLocationsNoFastPath(testCase.target, testCase.find);
+        findExtendableLocationsNoFastPath(testCase.target as any, testCase.find as any);
       }, 50000);
 
       const speedup = withFastPath.opsPerSec / withoutFastPath.opsPerSec;
       console.log(`   🚀 ${testCase.name} speedup: ${speedup.toFixed(1)}x`);
 
       // Verify correctness (optimization might produce different location counts but same hasMatches)
-      const result1 = findExtendableLocations(testCase.target, testCase.find);
-      const result2 = findExtendableLocationsNoFastPath(testCase.target, testCase.find);
+      const result1 = findExtendableLocations(testCase.target as any, testCase.find as any);
+      const result2 = findExtendableLocationsNoFastPath(testCase.target as any, testCase.find as any);
       expect(result1.hasMatches).toBe(result2.hasMatches);
       // Note: Optimizations might find different numbers of locations but should agree on hasMatches
     }
@@ -394,11 +394,11 @@ describe.skip('Selector Performance Benchmarks', () => {
       console.log(`\n📊 ${scenario.name}:`);
 
       const optimized = runBenchmark(`${scenario.name} (ALL optimizations)`, () => {
-        findExtendableLocations(scenario.target, scenario.find);
+        findExtendableLocations(scenario.target as any, scenario.find as any);
       }, scenario.iterations);
 
       const unoptimized = runBenchmark(`${scenario.name} (NO optimizations)`, () => {
-        findExtendableLocationsNoOptimizations(scenario.target, scenario.find);
+        findExtendableLocationsNoOptimizations(scenario.target as any, scenario.find as any);
       }, scenario.iterations);
 
       const speedup = optimized.opsPerSec / unoptimized.opsPerSec;
@@ -408,8 +408,8 @@ describe.skip('Selector Performance Benchmarks', () => {
       console.log(`   📈 Improvement: ${improvement.toFixed(1)}%`);
 
       // Verify correctness
-      const result1 = findExtendableLocations(scenario.target, scenario.find);
-      const result2 = findExtendableLocationsNoOptimizations(scenario.target, scenario.find);
+      const result1 = findExtendableLocations(scenario.target as any, scenario.find as any);
+      const result2 = findExtendableLocationsNoOptimizations(scenario.target as any, scenario.find as any);
       expect(result1.hasMatches).toBe(result2.hasMatches);
       expect(result1.locations.length).toBe(result2.locations.length);
 
@@ -455,19 +455,19 @@ describe.skip('Selector Performance Benchmarks', () => {
 
     for (const testCase of nonMatchingCases) {
       const withOptimizations = runBenchmark(`${testCase.name} (optimized)`, () => {
-        findExtendableLocations(testCase.target, testCase.find);
+        findExtendableLocations(testCase.target as any, testCase.find as any);
       }, 100000);
 
       const withoutOptimizations = runBenchmark(`${testCase.name} (unoptimized)`, () => {
-        findExtendableLocationsNoOptimizations(testCase.target, testCase.find);
+        findExtendableLocationsNoOptimizations(testCase.target as any, testCase.find as any);
       }, 100000);
 
       const speedup = withOptimizations.opsPerSec / withoutOptimizations.opsPerSec;
       console.log(`   🚀 ${testCase.name} speedup: ${speedup.toFixed(1)}x`);
 
       // Verify correctness - should not match
-      const result1 = findExtendableLocations(testCase.target, testCase.find);
-      const result2 = findExtendableLocationsNoOptimizations(testCase.target, testCase.find);
+      const result1 = findExtendableLocations(testCase.target as any, testCase.find as any);
+      const result2 = findExtendableLocationsNoOptimizations(testCase.target as any, testCase.find as any);
       expect(result1.hasMatches).toBe(false);
       expect(result2.hasMatches).toBe(false);
       expect(result1.hasMatches).toBe(result2.hasMatches);
@@ -489,11 +489,11 @@ describe.skip('Selector Performance Benchmarks', () => {
     const nestedIsFind = sel([el('.a'), co('>'), el('.b'), co('>'), el('.x')]);
 
     const nestedIsWithOpt = runBenchmark('Nested :is() backtracking (optimized)', () => {
-      findExtendableLocations(nestedIsTarget, nestedIsFind);
+      findExtendableLocations(nestedIsTarget, nestedIsFind as any);
     }, 10000);
 
     const nestedIsWithoutOpt = runBenchmark('Nested :is() backtracking (unoptimized)', () => {
-      findExtendableLocationsNoOptimizations(nestedIsTarget, nestedIsFind);
+      findExtendableLocationsNoOptimizations(nestedIsTarget, nestedIsFind as any);
     }, 10000);
 
     const nestedSpeedup = nestedIsWithOpt.opsPerSec / nestedIsWithoutOpt.opsPerSec;
@@ -520,8 +520,8 @@ describe.skip('Selector Performance Benchmarks', () => {
     console.log(`   🚀 Deep nesting speedup: ${deepSpeedup.toFixed(1)}x`);
 
     // Verify correctness for all edge cases (focus on hasMatches which should be consistent)
-    const result1 = findExtendableLocations(nestedIsTarget, nestedIsFind);
-    const result2 = findExtendableLocationsNoOptimizations(nestedIsTarget, nestedIsFind);
+    const result1 = findExtendableLocations(nestedIsTarget, nestedIsFind as any);
+    const result2 = findExtendableLocationsNoOptimizations(nestedIsTarget, nestedIsFind as any);
     // Note: Complex scenarios may have different optimization paths but should agree on whether matches exist
     console.log(`   Nested :is() - Optimized hasMatches: ${result1.hasMatches}, Unoptimized hasMatches: ${result2.hasMatches}`);
 

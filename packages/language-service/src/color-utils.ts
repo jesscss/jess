@@ -193,7 +193,7 @@ function isColorKeyword(node: Node): boolean {
   }
   const anyNode = node as Any;
   // Any nodes have value as a string
-  const text = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
+  const text = typeof anyNode.data === 'string' ? anyNode.data.toLowerCase() : String(anyNode.data ?? '').toLowerCase();
   if (!text || text === 'none') {
     return false;
   }
@@ -205,13 +205,13 @@ function isColorKeyword(node: Node): boolean {
  */
 function isColorFunction(call: Call): boolean {
   let name: string | null = null;
-  
-  if (typeof call.value.name === 'string') {
-    name = call.value.name.toLowerCase();
-  } else if (call.value.name) {
+
+  if (typeof call.data.name === 'string') {
+    name = call.data.name.toLowerCase();
+  } else if (call.data.name) {
     // Name is a Node - try multiple ways to extract the string value
-    const nameNode = call.value.name as any;
-    
+    const nameNode = call.data.name as any;
+
     // Try valueOf first (works for most Node types)
     if (typeof nameNode.valueOf === 'function') {
       try {
@@ -220,32 +220,32 @@ function isColorFunction(call: Call): boolean {
         // valueOf failed, try other methods
       }
     }
-    
+
     // If valueOf didn't work, try type-specific extraction
     if (!name) {
       if (nameNode.type === 'Any') {
-        // Any node - extract the value
-        const value = typeof nameNode.value === 'string' ? nameNode.value : String(nameNode.value ?? '');
+        // Any node - extract the data
+        const value = typeof nameNode.data === 'string' ? nameNode.data : String(nameNode.data ?? '');
         name = value.toLowerCase();
       } else if (nameNode.type === 'Reference') {
         // Reference node - try to get the key
-        const key = nameNode.value?.key;
+        const key = nameNode.data?.key;
         if (typeof key === 'string') {
           name = key.toLowerCase();
         } else if (key && typeof key.valueOf === 'function') {
           name = String(key.valueOf()).toLowerCase();
         }
-      } else if (typeof nameNode.value === 'string') {
-        // Generic node with string value
-        name = nameNode.value.toLowerCase();
+      } else if (typeof nameNode.data === 'string') {
+        // Generic node with string data
+        name = nameNode.data.toLowerCase();
       }
     }
   }
-  
+
   if (!name) {
     return false;
   }
-  
+
   const colorFunctions = ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch'];
   return colorFunctions.includes(name);
 }
@@ -257,11 +257,11 @@ function isColorFunction(call: Call): boolean {
 async function createEvaluationContext(): Promise<Context> {
   const context = new ContextClass();
   const tree = RulesClass.create([]);
-  
+
   try {
     // Dynamically import functions
     const lessFunctions = await import('@jesscss/fns');
-    
+
     // Register all Less functions (including color functions like rgb, hsl, etc.)
     for (const [key, value] of Object.entries(lessFunctions)) {
       if (typeof value === 'function' || (value && typeof (value as any).default === 'function')) {
@@ -273,18 +273,18 @@ async function createEvaluationContext(): Promise<Context> {
     // If import fails, we'll just skip function evaluation
     // This is okay - we'll still detect Color nodes and keywords
   }
-  
+
   // Set up context properties needed for evaluation
   context.treeContext = new TreeContext();
   context.rulesContext = tree;
   context.root = tree;
   context.treeRoot = tree;
   context.allRoots = [tree];
-  
+
   // Note: extendRoots is initialized in Context constructor
   // callStack and parenFrames are getters that return arrays
   // They will be initialized automatically when accessed
-  
+
   return context;
 }
 
@@ -301,12 +301,12 @@ async function tryEvaluateColorCall(call: Call, context?: Context): Promise<Colo
     // Use provided context or create a minimal one
     const evalContext = context || await createEvaluationContext();
     const result = await call.eval(evalContext);
-    
+
     // Check if the result is a Color node
     if (result && result.type === 'Color') {
       return result as Color;
     }
-    
+
     return null;
   } catch (e) {
     // Evaluation failed - this might be due to missing variables, invalid args, etc.
@@ -341,7 +341,7 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     // Check if this is a color keyword (Any node with color keyword text)
     if (isColorKeyword(node)) {
       const anyNode = node as Any;
-      const keyword = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
+      const keyword = typeof anyNode.data === 'string' ? anyNode.data.toLowerCase() : String(anyNode.data ?? '').toLowerCase();
       if (keyword && keyword in colorKeywords) {
         const hexValue = colorKeywords[keyword];
         if (hexValue) {
@@ -365,7 +365,7 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     }
 
     // Traverse children
-    const value = (node as any).value;
+    const value = (node as any).data;
     for (const child of getValues(value)) {
       if (isNode(child)) {
         stack.push(child as Node);
@@ -643,14 +643,14 @@ function rgbToOKLAB(r: number, g: number, b: number): { l: number; a: number; b:
   const s = 0.0482003018 * xyz.x + 0.2643662691 * xyz.y + 0.6338517070 * xyz.z;
 
   // Apply non-linearity
-  const l_ = Math.cbrt(l);
-  const m_ = Math.cbrt(m);
-  const s_ = Math.cbrt(s);
+  const lCbrt = Math.cbrt(l);
+  const mCbrt = Math.cbrt(m);
+  const sCbrt = Math.cbrt(s);
 
   // Convert to OKLab
   return {
-    l: 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
-    a: 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
-    b: 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    l: 0.2104542553 * lCbrt + 0.7936177850 * mCbrt - 0.0040720468 * sCbrt,
+    a: 1.9779984951 * lCbrt - 2.4285922050 * mCbrt + 0.4505937099 * sCbrt,
+    b: 0.0259040371 * lCbrt + 0.7827717662 * mCbrt - 0.8086757660 * sCbrt
   };
 }

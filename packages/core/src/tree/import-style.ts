@@ -237,7 +237,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { path, with: withValues } = node.value;
+    const { path, with: withValues } = node.data;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
@@ -367,7 +367,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Build the declaration registry for efficient lookups
           // This avoids O(n*m) complexity when we have many injected variables
           // First, register all nodes in modifiedRules so they're in the registry
-          for (const node of modifiedRules.value) {
+          for (const node of modifiedRules.data) {
             modifiedRules.registerNode(node);
           }
           const declarationRegistry = modifiedRules.getRegistry('declaration');
@@ -384,9 +384,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Works correctly for both scope lookup ($var) and linear lookup ($^var):
           // - For linear lookup: injected vars come first, so they're found first
           // - For scope lookup: original is replaced, so injected value wins
-          for (const injectedNode of withRules.value) {
+          for (const injectedNode of withRules.data) {
             if (isNode(injectedNode, N.VarDeclaration)) {
-              const varName = injectedNode.value.name?.toString();
+              const varName = injectedNode.data.name?.toString();
               if (varName) {
               // Use the registry for efficient lookup instead of linear search
                 const declarations = declarationRegistry.index.get(varName);
@@ -398,11 +398,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                   // Remove the old declaration from the registry
                     declarations.delete(existingDecl);
                     // Find its index in the array and replace it
-                    const index = modifiedRules.value.indexOf(existingDecl);
+                    const index = modifiedRules.data.indexOf(existingDecl);
                     if (index !== -1) {
                     // Adopt the new node and replace in array
-                      modifiedRules.mutableValue[index] = injectedNode;
-                      modifiedRules.adopt(injectedNode);
+                      modifiedRules.setData(index, injectedNode);
                       // Add the new declaration to the registry
                       declarations.add(injectedNode);
                       // Register the new node so it's properly indexed
@@ -434,13 +433,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const finalRules = Rules.create([]);
           // First, add new injected variables that weren't found in imported rules (at the top)
           for (const newNode of newVariables) {
-            finalRules.mutableValue.push(newNode);
-            finalRules.adopt(newNode);
+            finalRules.push(newNode);
           }
           // Then, add all nodes from the modified imported rules (flattened, with replacements)
-          for (const node of modifiedRules.value) {
-            finalRules.mutableValue.push(node);
-            finalRules.adopt(node);
+          for (const node of modifiedRules.data) {
+            finalRules.push(node);
           }
           rules = finalRules;
         }
@@ -615,17 +612,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     let wrapped: Node = sourceNode;
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? (postlude as Sequence).value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).data] : [postlude];
 
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       const body = Rules.create([wrapped]);
 
       if (isNode(current, N.Call)) {
-        const callName = String(current.value.name).toLowerCase();
+        const callName = String(current.data.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.value.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.value.args;
+          const args = current.data.args?.data ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.data.args;
           if (prelude) {
             wrapped = new AtRule({
               name: new Any(`@${callName}`, { role: 'atkeyword' }),
@@ -655,15 +652,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return rules;
     }
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? (postlude as Sequence).value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).data] : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       if (isNode(current, N.Call)) {
-        const callName = String(current.value.name).toLowerCase();
+        const callName = String(current.data.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.value.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.value.args;
+          const args = current.data.args?.data ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.data.args;
           if (prelude) {
             const wrappedAtRule = new AtRule({
               name: new Any(`@${callName}`, { role: 'atkeyword' }),

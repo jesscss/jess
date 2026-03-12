@@ -284,7 +284,7 @@ export function createMultipleRules(ruleNodes: Node[] = []) {
     ];
   }
 
-  return rules(ruleNodes.flatMap(rule => (rule as any).value));
+  return rules(ruleNodes.flatMap(rule => (rule as any).data));
 }
 
 // Flag assertion helpers
@@ -422,15 +422,15 @@ export const getNestedNode = (tree: Node, path: number[]): Node => {
   let current = tree;
   for (const index of path) {
     // Handle different node types
-    if (current && typeof current === 'object' && 'value' in current) {
-      const value = (current as any).value;
-      if (Array.isArray(value)) {
-        current = value[index]!;
-      } else if (value && typeof value === 'object' && 'rules' in value) {
+    if (current && typeof current === 'object' && 'data' in current) {
+      const data = (current as any).data;
+      if (Array.isArray(data)) {
+        current = data[index]!;
+      } else if (data && typeof data === 'object' && 'rules' in data) {
         // For ruleset nodes, access the rules
-        current = value.rules.value[index]!;
+        current = data.rules.data[index]!;
       } else {
-        current = value[index]!;
+        current = data[index]!;
       }
     } else {
       throw new Error(`Cannot access index ${index} on node: ${current}`);

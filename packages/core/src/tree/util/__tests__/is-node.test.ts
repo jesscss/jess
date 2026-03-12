@@ -16,7 +16,7 @@ describe('is-node', () => {
   });
 
   test('compound selector', () => {
-    let node = compound(el('.foo'), el('.bar'));
+    let node = compound([el('.foo'), el('.bar')]);
     expect(isNode(node, N.CompoundSelector)).toBe(true);
     expect(isNode(node, N.Selector)).toBe(true);
     expect(isNode(node, N.BasicSelector)).toBe(false);
@@ -24,7 +24,7 @@ describe('is-node', () => {
   });
 
   test('complex selector', () => {
-    let node = sel(el('.foo'), co('>'), el('.bar'));
+    let node = sel([el('.foo'), co('>'), el('.bar')]);
     expect(isNode(node, N.ComplexSelector)).toBe(true);
     expect(isNode(node, N.Selector)).toBe(true);
     expect(isNode(node, N.CompoundSelector)).toBe(false);
@@ -38,7 +38,7 @@ describe('is-node', () => {
   });
 
   test('selector list', () => {
-    let node = sellist(el('.a'), el('.b'));
+    let node = sellist([el('.a'), el('.b')]);
     expect(isNode(node, N.SelectorList)).toBe(true);
     expect(isNode(node, N.Selector)).toBe(true);
     expect(isNode(node, N.ComplexSelector)).toBe(false);
@@ -50,7 +50,7 @@ describe('is-node', () => {
     let mask = N.BasicSelector | N.Combinator;
     expect(isNode(basic, mask)).toBe(true);
     expect(isNode(combinator, mask)).toBe(true);
-    expect(isNode(compound(el('.a'), el('.b')), mask)).toBe(false);
+    expect(isNode(compound([el('.a'), el('.b')]), mask)).toBe(false);
   });
 
   test('isNode with no type arg is a type guard for Node', () => {

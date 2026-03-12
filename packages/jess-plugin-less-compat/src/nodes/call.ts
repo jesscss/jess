@@ -28,14 +28,14 @@ export function transformCallToLess(
 
     // Map 'name' property
     if (prop === 'name') {
-      return call.value.name;
+      return call.data.name;
     }
 
     // Map 'args' property
     if (prop === 'args') {
-      const args = call.value.args;
+      const args = call.data.args;
       if (args) {
-        return args.value.map((arg: any) => {
+        return args.data.map((arg: any) => {
           if (arg instanceof Node) {
             return toLessNode(arg, { cache });
           }
@@ -61,9 +61,9 @@ export function transformCallToLess(
         // But we don't call visitor.visit() here to avoid infinite loops
         // The visitor's visit() method will handle traversal
         // If args exist, we should traverse them using visitArray
-        const args = call.value.args;
-        if (args && args.value.length > 0) {
-          const lessArgs = args.value
+        const args = call.data.args;
+        if (args && args.data.length > 0) {
+          const lessArgs = args.data
             .map((arg: any) => {
               if (arg instanceof Node) {
                 return toLessNode(arg, { cache });

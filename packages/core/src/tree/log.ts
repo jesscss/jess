@@ -36,6 +36,22 @@ export class Log extends Node<LogValue, NodeOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
+  get level() {
+    return this.data.level;
+  }
+
+  set level(val: LogLevel) {
+    this.setData('level', val);
+  }
+
+  get message() {
+    return this.data.message;
+  }
+
+  set message(val: Node) {
+    this.setData('message', val);
+  }
+
   override toTrimmedString() {
     // Log nodes serialize to empty string since they're not supported in Jess syntax
     return '';
@@ -47,7 +63,7 @@ export class Log extends Node<LogValue, NodeOptions> {
 
   override evalNode(context: Context): MaybePromise<Nil> {
     // Evaluate the message expression
-    const messageResult = this.value.message.eval(context);
+    const messageResult = this.data.message.eval(context);
 
     // Handle async evaluation if needed
     if (messageResult && typeof (messageResult as any).then === 'function') {
@@ -64,7 +80,7 @@ export class Log extends Node<LogValue, NodeOptions> {
 
   private _logMessage(message: Node): void {
     const messageStr = String(message);
-    const { level } = this.value;
+    const { level } = this.data;
 
     switch (level) {
       case 'debug':

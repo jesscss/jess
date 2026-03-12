@@ -21,7 +21,7 @@ export class JsExpression extends Node<string> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('`', this);
-    w.add(this.value);
+    w.add(this.data);
     w.add('`');
     return w.getSince(mark);
   }
@@ -32,7 +32,7 @@ export class JsExpression extends Node<string> {
    */
   override evalNode(context: Context): Promise<Node> {
     return (async () => {
-      const result = await eval(this.value);
+      const result = await eval(this.data);
       return cast(result);
     })();
   }

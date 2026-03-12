@@ -28,7 +28,7 @@ export function transformOperationToLess(
     // Map 'op' property (operator)
     if (prop === 'op') {
       // Jess stores as [left, op, right], extract op
-      const value = op.value;
+      const value = op.data;
       if (Array.isArray(value) && value.length >= 2) {
         return value[1]; // Operator is in the middle
       }
@@ -37,7 +37,7 @@ export function transformOperationToLess(
 
     // Map 'operands' property
     if (prop === 'operands') {
-      const value = op.value;
+      const value = op.data;
       if (Array.isArray(value)) {
         // Extract left and right operands, skip operator
         const operands: Node[] = [];

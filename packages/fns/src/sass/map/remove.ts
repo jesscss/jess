@@ -22,9 +22,9 @@ const remove = defineFunction(
     const keysToRemove = new Set(keys.map(k => String(k.valueOf())));
 
     // Filter out declarations with keys to remove
-    const newRules = map.value.filter((node) => {
+    const newRules = map.data.filter((node) => {
       if (isNode(node, N.Declaration)) {
-        const keyStr = String(node.value.name.valueOf());
+        const keyStr = String(node.data.name.valueOf());
         return !keysToRemove.has(keyStr);
       }
       return true; // Keep non-declaration nodes

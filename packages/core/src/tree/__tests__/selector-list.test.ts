@@ -1,4 +1,4 @@
-import { sel, sellist, el, co } from '..';
+import { sel, sellist, el, co } from '../index.js';
 
 /**
  * @todo - add tests for list bubbling
@@ -34,8 +34,8 @@ describe('Selector list', () => {
         ])
       ]);
 
-      expect(sel1.compare(sel2)).toBe(0);
-      expect(sel2.compare(sel1)).toBe(0);
+      expect((sel1 as any).compare(sel2)).toBe(0);
+      expect((sel2 as any).compare(sel1)).toBe(0);
     });
   });
 });

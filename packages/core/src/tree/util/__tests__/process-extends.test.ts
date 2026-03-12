@@ -30,8 +30,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo,.bar');
+      const firstRuleset = evald.data[0] as any;
+      expect(firstRuleset?.data?.selector?.valueOf()).toBe('.foo,.bar');
     });
 
     it('should handle multiple extends on same target', async () => {
@@ -48,8 +48,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo,.bar,.baz');
+      const firstRuleset = evald.data[0] as any;
+      expect(firstRuleset?.data?.selector?.valueOf()).toBe('.foo,.bar,.baz');
     });
 
     it('should skip self-referencing extends', async () => {
@@ -61,8 +61,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo');
+      const firstRuleset = evald.data[0] as any;
+      expect(firstRuleset?.data?.selector?.valueOf()).toBe('.foo');
     });
   });
 
@@ -81,8 +81,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo,.bar,.baz');
+      const firstRuleset = evald.data[0] as any;
+      expect(firstRuleset?.data?.selector?.valueOf()).toBe('.foo,.bar,.baz');
     });
   });
 
@@ -100,8 +100,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.a:is(.b,.c)');
+      const firstRuleset = evald.data[0] as any;
+      expect(firstRuleset?.data?.selector?.valueOf()).toBe('.a:is(.b,.c)');
     });
 
     it('should extend every instance of a class when partial is true (Less `all`)', async () => {
@@ -126,13 +126,13 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const outerRuleset = evald.value[0];
-      const nestedRuleset = outerRuleset?.value?.rules?.value?.[0];
-      expect(outerRuleset?.value?.selector?.valueOf()).toBe(
+      const outerRuleset = evald.data[0] as any;
+      const nestedRuleset = outerRuleset?.data?.rules?.data?.[0];
+      expect(outerRuleset?.data?.selector?.valueOf()).toBe(
         ':is(.replace,.rep_ace):is(.replace,.rep_ace),.c:is(.replace,.rep_ace)+:is(.replace,.rep_ace)'
       );
       // Selector list order may vary; all three must be present
-      const nestedSel = nestedRuleset?.value?.selector?.valueOf() ?? '';
+      const nestedSel = nestedRuleset?.data?.selector?.valueOf() ?? '';
       expect(nestedSel).toContain('.replace');
       expect(nestedSel).toContain('.c');
       expect(nestedSel).toContain('.rep_ace');
@@ -148,7 +148,7 @@ describe('processExtends function (eval flow)', () => {
           rules: rules([])
         }),
         ruleset({
-          selector: sel([el('.ext1'), co(' '), el('.ext2')]),
+          selector: sel([el('.ext1'), co(' '), el('.ext2')]) as any,
           rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
         }),
         ruleset({
@@ -158,8 +158,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe(
+      const firstRuleset = evald.data[0] as any;
+      expect(firstRuleset?.data?.selector?.valueOf()).toBe(
         ':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz'
       );
     });
@@ -176,8 +176,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo');
+      const firstRuleset = evald.data[0] as any;
+      expect(firstRuleset?.data?.selector?.valueOf()).toBe('.foo');
     });
   });
 
@@ -196,10 +196,10 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const fooRuleset = evald.value[0];
-      const barRuleset = evald.value[1];
-      expect(fooRuleset?.value?.selector?.valueOf()).toContain('.bar');
-      expect(barRuleset?.value?.selector?.valueOf()).toContain('.baz');
+      const fooRuleset = evald.data[0] as any;
+      const barRuleset = evald.data[1] as any;
+      expect(fooRuleset?.data?.selector?.valueOf()).toContain('.bar');
+      expect(barRuleset?.data?.selector?.valueOf()).toContain('.baz');
     });
   });
 });

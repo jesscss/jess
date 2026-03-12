@@ -33,6 +33,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
   }
 
+  get value() {
+    return this.data as Node | undefined;
+  }
+
+  set value(val: Node | undefined) {
+    this.setData(val);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -42,7 +50,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       w.add(escapeChar, this);
     }
     w.add('(');
-    let value = this.value;
+    let value = this.data;
     if (value) {
       if (value instanceof Node) {
         let out = w.capture(() => value.toString(options));
@@ -56,7 +64,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let { value } = this;
+    let value = this.data as Node | undefined;
     if (value) {
       let isOp = isOpOrExpression(value);
       if (isOp) {
@@ -78,8 +86,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
          * so it's really just a DX tool that can be ignored
          * on output.
          */
-        while (value instanceof Paren && value.value) {
-          value = value.value;
+        while (value instanceof Paren && value.data) {
+          value = value.data as Node;
         }
         if (value instanceof Bool || value instanceof Dimension) {
           return value;
@@ -88,7 +96,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           return value;
         }
         let node = this.maybeClone(context);
-        node.value = value;
+        node.setData(value);
         return node;
       };
       if (isThenable(maybeEvald)) {
@@ -97,20 +105,20 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       return after(maybeEvald as Node);
     }
     let node = this;
-    node.value = value;
+    node.setData(value);
     return node;
   }
 
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add('(')
-  //   this.value.toCSS(context, out)
+  //   this.data.toCSS(context, out)
   //   out.add(')')
   // }
 
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.paren(', loc)
-  //   this.value.toModule(context, out)
+  //   this.data.toModule(context, out)
   //   out.add(')')
   // }
 }

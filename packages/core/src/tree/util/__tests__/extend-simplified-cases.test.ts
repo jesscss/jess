@@ -41,7 +41,7 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('.b');
       const extendWith = el('.c');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector as any, target, extendWith, true);
       expect(result.valueOf()).toBe('.a>:is(.b,.c)');
     });
 
@@ -51,7 +51,7 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('.b');
       const extendWith = el('.d');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector as any, target, extendWith, true);
       expect(result.valueOf()).toBe('.a>:is(.b,.d).c');
     });
   });
@@ -119,7 +119,7 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('.parent');
       const extendWith = el('.container');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector as any, target, extendWith, true);
       expect(result.valueOf()).toBe(':is(.parent,.container)>.child');
     });
 
@@ -140,7 +140,7 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('.bar');
       const extendWith = is(sellist([el('.ext3'), el('.ext4')]));
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector as any, target, extendWith, true);
       expect(result.valueOf()).toBe('.foo :is(.bar,.ext3,.ext4)');
     });
   });

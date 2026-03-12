@@ -1,10 +1,10 @@
-import { el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
+import { el, sel, sellist, compound, is, co, comment, amp, type Selector } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../extend.js';
 
 // Helper to create ampersand with resolved selector (snapshot container for tests)
 function ampWithSelector(selector: any): Ampersand {
-  return Ampersand.create({ selectorContainer: { selector } }) as Ampersand;
+  return (Ampersand as any).create({ selectorContainer: { selector } }) as Ampersand;
 }
 
 describe('Extend Ampersand Handling Tests', () => {
@@ -23,7 +23,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const extendWith = el('.a'); // .a
 
       // This should cross the ampersand boundary since target matches the resolved ampersand + .bar
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector, target, extendWith, true) as Selector;
 
       // Should be hoisted to root because we crossed the boundary
       expect(result.hoistToRoot).toBe(true);
@@ -46,7 +46,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const target = el('.bar'); // Just .bar, doesn't match the full resolved .foo.bar
       const extendWith = el('.a'); // .a
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector, target, extendWith, true) as Selector;
 
       // Should NOT be hoisted since we didn't cross the boundary
       expect(result.hoistToRoot).toBeFalsy();
@@ -69,7 +69,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const target = compound([el('.foo'), el('.baz')]); // .foo.baz
       const extendWith = el('.extended');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector, target, extendWith, true) as Selector;
 
       // Should handle properly and hoist
       expect(result.hoistToRoot).toBe(true);
@@ -84,7 +84,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const target = compound([el('.parent'), el('.child')]); // .parent.child
       const extendWith = el('.extended');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector as any, target, extendWith, true) as Selector;
 
       // Should resolve and hoist
       expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
@@ -105,7 +105,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const target = compound([el('.foo'), el('.bar')]);
       const extendWith = el('.a');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector, target, extendWith, true) as Selector;
 
       // Should produce the resolved selector with extension
       // Verify hoisting flag
@@ -128,7 +128,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const target = compound([el('.container'), el('.item')]);
       const extendWith = el('.new-item');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector as any, target, extendWith, true) as Selector;
       const output = result.toTrimmedString();
 
       expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
@@ -150,7 +150,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const target = el('.bar');
       const extendWith = el('.extended');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector, target, extendWith, true) as Selector;
       const output = result.toTrimmedString();
 
       // Should not be hoisted
@@ -170,7 +170,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const target = el('.suffix'); // Only matches suffix, no boundary crossing
       const extendWith = el('.extended');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = extendSelector(selector, target, extendWith, true) as Selector;
       const output = result.toTrimmedString();
 
       // Should not hoist since no boundary was crossed
@@ -181,11 +181,11 @@ describe('Extend Ampersand Handling Tests', () => {
 
   it('does not insert a second implicit ampersand when a visible ampersand already exists', () => {
     const parentSelector = el('.parent');
-    const selector = compound([amp({ selector: parentSelector }), el('.keep')]);
+    const selector = compound([amp({ selectorContainer: { selector: parentSelector } }), el('.keep')]);
     const target = el('.keep');
     const extendWith = el('.extra');
 
-    const result = extendSelector(selector, target, extendWith, true);
+    const result = extendSelector(selector, target, extendWith, true) as Selector;
     const output = result.toTrimmedString();
 
     expect(output).toContain('&');

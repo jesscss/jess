@@ -46,7 +46,7 @@ export const REMOVE: unique symbol = Symbol('REMOVE');
 export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
 export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
-export const DEFAULT_DATA = 'value';
+export const DEFAULT_DATA = 'data';
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
@@ -89,6 +89,10 @@ export const defineType = <
   /** Build nodeType bitmask by OR-ing bits for each type in the prototype chain */
   let nodeType = 0;
   let proto: any = Clazz;
+  /**
+   * @todo - We shouldn't have to crawl the prototype at runtime.
+   *         We should be setting this explicitly in a parameter to defineType.
+   */
   while (proto?.type) {
     const bit = nodeTypeBits[proto.type];
     if (bit !== undefined) {
@@ -146,7 +150,7 @@ export const F_DEFAULT = F_VISIBLE;
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Data = unknown,
+  Data = NodeValue,
   O extends NodeOptions = NodeOptions
 > {
   _location: LocationInfo | [] | undefined;
@@ -277,10 +281,8 @@ export abstract class Node<
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
 
-  protected _value: Data;
-
   /**
-   * Keys in the value object that hold child Nodes.
+   * Keys in the data object that hold child Nodes.
    * Override per node type for fast iteration.
    * - `string[]` — object-valued nodes: only these keys are checked
    * - `null` (default) — use generic iteration (arrays, single values)
@@ -288,43 +290,52 @@ export abstract class Node<
   static childNodeKeys: string[] | null = null;
 
   /**
-   * This is the internal `data` of the node.
-   * Prefer setValue() for mutations to ensure proper parent adoption.
+   * The internal data of the node.
+   * Prefer setData() for mutations to ensure proper parent adoption.
    */
-  get value(): Data {
-    return this._value;
-  }
-
-  set value(val: Data) {
-    this._value = val;
-    this._adoptChildren();
-    this._invalidateValueOf();
-  }
+  // Note to LLM - STOP removing Readonly to try to fix type errors. Make
+  // this a strong readonly contract. Otherwise we will miss type errors
+  // for things like code mutating arrays that are assigned to data.
+  readonly data!: Readonly<Data>;
 
   /**
-   * Set the whole value, a named property on the value, or an array index.
+   * Set the whole data, a named property on the data, or an array index.
    *
    * @example
-   *   this.setValue(newSelectors)           // replace the whole value
-   *   this.setValue('selector', selector)   // set a named property
-   *   this.setValue(0, node)               // set array index
+   *   this.setData(newSelectors)           // replace the whole data
+   *   this.setData('selector', selector)   // set a named property
+   *   this.setData(0, node)               // set array index
    */
-  setValue(val: Data): void;
-  setValue<K extends keyof Data>(key: K, val: Data[K]): void;
-  setValue(index: number, val: any): void;
-  setValue(...args: any[]): void {
+  setData(val: NodeValue): void;
+  setData(key: string | number, val: unknown): void;
+  setData(...args: unknown[]): void {
     if (args.length === 1) {
-      this.value = args[0];
+      const val = args[0];
+      (this as unknown as { data: Data }).data = val as Data;
+      if (isArray(val)) {
+        for (const item of val) {
+          if (item instanceof Node) {
+            this.adopt(item);
+          }
+        }
+      }
       return;
     }
-    const [key, val] = args;
-    const prev = (this._value as any)[key];
+    const key = args[0] as string | number;
+    const val = args[1];
+    const prev = (this.data as any)[key];
     if (prev === val) {
       return;
     }
-    (this._value as any)[key] = val;
+    (this.data as any)[key] = val;
     if (val instanceof Node) {
       this.adopt(val);
+    } else if (isArray(val)) {
+      for (const item of val) {
+        if (item instanceof Node) {
+          this.adopt(item);
+        }
+      }
     }
     this._invalidateValueOf();
   }
@@ -343,7 +354,7 @@ export abstract class Node<
 
   /** Push items onto an array-valued node. */
   push(...items: any[]): void {
-    const arr = this._value as unknown as any[];
+    const arr = this.data as unknown as any[];
     arr.push(...items);
     for (const item of items) {
       if (item instanceof Node) {
@@ -355,7 +366,7 @@ export abstract class Node<
 
   /** Remove and/or insert items in an array-valued node. */
   splice(start: number, deleteCount: number, ...items: any[]): any[] {
-    const arr = this._value as unknown as any[];
+    const arr = this.data as unknown as any[];
     const removed = arr.splice(start, deleteCount, ...items);
     for (const item of items) {
       if (item instanceof Node) {
@@ -368,7 +379,7 @@ export abstract class Node<
 
   /** Prepend items to an array-valued node. */
   unshift(...items: any[]): void {
-    const arr = this._value as unknown as any[];
+    const arr = this.data as unknown as any[];
     arr.unshift(...items);
     for (const item of items) {
       if (item instanceof Node) {
@@ -376,15 +387,6 @@ export abstract class Node<
       }
     }
     this._invalidateValueOf();
-  }
-
-  /**
-   * Get mutable access to the internal value.
-   * Use when you need direct array/object mutation (push, splice, etc.)
-   * and will handle adopt() yourself.
-   */
-  get mutableValue(): Data {
-    return this._value;
   }
 
   /**
@@ -450,7 +452,7 @@ export abstract class Node<
    * Uses static childNodeKeys when available for fast path.
    */
   private _adoptChildren(): void {
-    const value = this._value;
+    const value = this.data;
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         if (value[i] instanceof Node) {
@@ -485,7 +487,7 @@ export abstract class Node<
     (this as any).sourceNode = this;
     (this as any).parent = undefined;
     (this as any).sourceParent = undefined;
-    this._value = value;
+    (this as unknown as { data: Data }).data = value;
     this._adoptChildren();
     this._treeContext = treeContext;
     this._location = location;
@@ -547,7 +549,7 @@ export abstract class Node<
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
     }
-    const entries = [...getEntriesFromNode({ value: this._value } as { value: unknown[] })];
+    const entries = [...getEntriesFromNode({ data: this.data } as unknown as { data: unknown[] })];
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -574,7 +576,7 @@ export abstract class Node<
 
   private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
     let idx = 0;
-    const data = this._value;
+    const data = this.data;
     if (Array.isArray(data)) {
       for (let i = 0; i < data.length; i++) {
         if (!(data[i] instanceof Node)) {
@@ -617,7 +619,7 @@ export abstract class Node<
     } else if (data instanceof Node) {
       const result = func(data, idx++);
       if (result !== data) {
-        this._value = result as Data;
+        (this as unknown as { data: Data }).data = result as Data;
         this.adopt(result);
         this._invalidateValueOf();
       }
@@ -661,7 +663,7 @@ export abstract class Node<
   * children(deep?: boolean, reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
     const keys = (this.constructor as typeof Node).childNodeKeys;
     if (keys) {
-      const val = this._value as Record<string, unknown>;
+      const val = this.data as Record<string, unknown>;
       for (let i = 0; i < keys.length; i++) {
         const nodeVal = val[keys[i]!];
         if (nodeVal instanceof Node) {
@@ -676,7 +678,7 @@ export abstract class Node<
         }
       }
     } else {
-      for (let nodeVal of getValues(this._value, reverse)) {
+      for (let nodeVal of getValues(this.data, reverse)) {
         if (nodeVal instanceof Node) {
           if (includePrePost) {
             yield* Node.nodeAndPrePost(nodeVal);
@@ -804,35 +806,32 @@ export abstract class Node<
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>;
-    let originalValue = this._value;
-    let newValue = { value: originalValue as Data };
+    let originalData = this.data;
+    let newData = { data: originalData as Data };
     /**
      * Create new array objects and plain objects
      */
-    if (isArray(originalValue)) {
-      newValue.value = [...originalValue] as Data;
-    } else if (isPlainObject(originalValue)) {
-      let map = new Map(Object.entries(originalValue as Record<string, unknown>));
-      for (let [key, value] of map.entries()) {
-        if (isArray(value)) {
-          map.set(key, [...value]);
-        }
-      }
-      newValue.value = Object.fromEntries(map) as Data;
+    if (isArray(originalData)) {
+      newData.data = [...originalData] as Data;
+    } else if (isPlainObject(originalData)) {
+      newData.data = Object.fromEntries(
+        Object.entries(originalData as Record<string, unknown>).map(([key, value]) =>
+          [key, isArray(value) ? [...value] : value]
+        )
+      ) as Data;
     }
 
     cloneFn ??= n => n.clone(deep);
 
     if (deep) {
-      /** I think GetEntriesOf is not typed correctly, thus neither is getEntriesFromNode */
-      for (let [value, key, collection] of getEntriesFromNode(newValue as { value: unknown[] })) {
+      for (let [value, key, collection] of getEntriesFromNode(newData as { data: unknown[] })) {
         if (value instanceof Node) {
           collection[key] = cloneFn(value);
         }
       }
     }
 
-    let newNode = new Class(newValue.value, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
+    let newNode = new Class(newData.data, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
     newNode.inherit(this);
 
     return newNode;
@@ -861,7 +860,7 @@ export abstract class Node<
     nilish.shortType = 'nil';
     nilish.nodeType = nodeTypeBits['Nil']!;
     nilish.removeFlag(F_VISIBLE);
-    nilish.value = '';
+    nilish.data = '';
     return nilish;
   }
 
@@ -1081,12 +1080,12 @@ export abstract class Node<
    * normalization algorithms.
    */
   valueOf(): Primitive {
-    let value = this.value;
-    let type = typeof value;
+    let data = this.data;
+    let type = typeof data;
     if (primitives.includes(type)) {
-      return value as unknown as Primitive;
+      return data as unknown as Primitive;
     }
-    let values = [...getValues(value)];
+    let values = [...getValues(data)];
     if (values.length === 1) {
       return `${values[0]}`;
     }
@@ -1179,7 +1178,7 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (let value of getValues(this.value)) {
+    for (let value of getValues(this.data)) {
       if (value instanceof Node) {
         value.toString(options);
       } else {

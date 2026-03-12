@@ -153,8 +153,8 @@ function processScssStringInterpolation(
 
     const parsed = parseInterpolationExpression(match.content.trim());
     const simpleRef = asSingleVariableReference(parsed);
-    if (simpleRef && typeof simpleRef.value.key === 'string') {
-      replacements.push(new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, context));
+    if (simpleRef && typeof simpleRef.data.key === 'string') {
+      replacements.push(new Reference({ key: simpleRef.data.key }, { type: 'variable', role: 'ident' }, location, context));
     } else if (isNode(parsed, N.Reference)) {
       replacements.push(new Expression(parsed, undefined, location, context));
     } else {
@@ -174,8 +174,8 @@ function processScssStringInterpolation(
  */
 
 function unwrapSingleSequence(n: Node): Node {
-  if (isNode(n, N.Sequence) && (n as Sequence).value.length === 1) {
-    return (n as Sequence).value[0]!;
+  if (isNode(n, N.Sequence) && (n as Sequence).data.length === 1) {
+    return (n as Sequence).data[0]!;
   }
   return n;
 }
@@ -185,8 +185,8 @@ function asSingleVariableReference(n: Node): Reference | undefined {
   if (
     isNode(node, N.Reference)
     && node.options?.type === 'variable'
-    && !node.value.target
-    && typeof node.value.key === 'string'
+    && !node.data.target
+    && typeof node.data.key === 'string'
   ) {
     return node as Reference;
   }
@@ -213,8 +213,8 @@ function toNameInterpolationReplacement(
   location?: LocationInfo
 ): Node {
   const simpleRef = asSingleVariableReference(expr);
-  if (simpleRef && typeof simpleRef.value.key === 'string') {
-    return new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, parser.context);
+  if (simpleRef && typeof simpleRef.data.key === 'string') {
+    return new Reference({ key: simpleRef.data.key }, { type: 'variable', role: 'ident' }, location, parser.context);
   }
   const tmpName = parser.nextTempVarName();
   parser.enqueuePendingNode(makePrivateTempVarDecl(parser, tmpName, expr, location));
@@ -235,7 +235,7 @@ function desugarMapLookup(
   parser: ScssActionsParser,
   call: Call
 ): Node {
-  const name = call.value.name;
+  const name = call.data.name;
   if (typeof name !== 'string') {
     return call;
   }
@@ -243,8 +243,8 @@ function desugarMapLookup(
     return call;
   }
 
-  const argsList = call.value.args;
-  const args = isNode(argsList, N.List) ? (argsList as List).value : [];
+  const argsList = call.data.args;
+  const args = isNode(argsList, N.List) ? (argsList as List).data : [];
   if (args.length < 2) {
     return call;
   }
@@ -306,7 +306,7 @@ function makeNamespacedReference(
 }
 
 function desugarNamespacedCall(parser: ScssActionsParser, call: Call): Call {
-  const { name } = call.value;
+  const { name } = call.data;
   if (typeof name !== 'string') {
     return call;
   }
@@ -322,7 +322,7 @@ function desugarNamespacedCall(parser: ScssActionsParser, call: Call): Call {
     return call;
   }
   const ref = makeNamespacedReference(parser, parts, 'function');
-  return new Call({ name: ref, args: call.value.args }, call.options, call.location, parser.context);
+  return new Call({ name: ref, args: call.data.args }, call.options, call.location, parser.context);
 }
 
 function looksLikeMapLiteral(la: (k: number) => IToken, T: ScssTokenMap): boolean {
@@ -797,16 +797,16 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
     }
     const call = mapped as Call;
 
-    if (typeof call.value.name === 'string' && call.value.name === 'selector.parse') {
-      const args = isNode(call.value.args, N.List) ? call.value.args.value : [];
+    if (typeof call.data.name === 'string' && call.data.name === 'selector.parse') {
+      const args = isNode(call.data.args, N.List) ? call.data.args.data : [];
       const firstArg = args[0];
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
-      if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode(firstArg.value, N.Any)) {
+      if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode(firstArg.data, N.Any)) {
         throw new SyntaxError('selector.parse() requires a quoted selector string literal.');
       }
-      const selectorText = String(firstArg.value.valueOf());
+      const selectorText = String(firstArg.data.valueOf());
       const selector = parseSelectorListExpression(selectorText);
       return new SelectorCapture(selector, undefined, loc, $.context);
     }
@@ -823,12 +823,12 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
     // Plain Sass/Less-style function call: `foo(...)`
     // Parse as Call(name: Reference(type='function', fallbackValue: true)) so evaluation tries function registry,
     // but still serializes safely if unresolved.
-    if (typeof call.value.name === 'string') {
+    if (typeof call.data.name === 'string') {
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
       const ref = new Reference(
-        { key: call.value.name },
+        { key: call.data.name },
         { type: 'function', fallbackValue: true },
         loc,
         $.context
@@ -838,7 +838,7 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
       const { silentFail: silentFailIgnored, ...rest } = call.options ?? {};
       void silentFailIgnored;
       const nextOptions = Object.keys(rest).length > 0 ? rest : undefined;
-      return new Call({ name: ref, args: call.value.args }, nextOptions, loc, $.context);
+      return new Call({ name: ref, args: call.data.args }, nextOptions, loc, $.context);
     }
     return call;
   };
@@ -1449,12 +1449,12 @@ export function scssExtendAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       // For placeholder targets (tokenized as `\\foo`), we set `allNamespaces: true` so extend lookup
       // searches all file roots, regardless of namespace scoping.
       const isPlaceholderTarget = (sel: Selector): boolean => {
-        if (sel instanceof BasicSelector && typeof sel.value === 'string') {
-          return sel.value.startsWith('\\');
+        if (sel instanceof BasicSelector && typeof sel.data === 'string') {
+          return sel.data.startsWith('\\');
         }
-        if (sel instanceof ComplexSelector && sel.value.length === 1) {
-          const only = sel.value[0];
-          return only instanceof BasicSelector && typeof only.value === 'string' && only.value.startsWith('\\');
+        if (sel instanceof ComplexSelector && sel.data.length === 1) {
+          const only = sel.data[0];
+          return only instanceof BasicSelector && typeof only.data === 'string' && only.data.startsWith('\\');
         }
         return false;
       };

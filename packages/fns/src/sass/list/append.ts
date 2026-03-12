@@ -1,8 +1,8 @@
 /**
  * Sass list.append() function
- * 
+ *
  * Appends a value to a list.
- * 
+ *
  * @example
  * append(1 2, 3) // 1 2 3
  * append(1, 2, comma) // 1, 2
@@ -14,7 +14,7 @@ const append = defineFunction(
   function(list: List, val: Node, separator?: Quoted): List {
     // Determine separator
     let sep: ',' | ';' | '/' | undefined = list.options?.sep;
-    
+
     if (separator) {
       const sepStr = separator.valueOf();
       if (sepStr === 'comma') {
@@ -30,9 +30,9 @@ const append = defineFunction(
         throw new Error(`$separator: Must be "space", "comma", "slash", or "auto".`);
       }
     }
-    
+
     // Create new list with appended value
-    const newList = new List([...list.value, val], { sep });
+    const newList = new List([...list.data, val], { sep });
     return newList;
   },
   {

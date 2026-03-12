@@ -435,7 +435,7 @@ describe('Style import extend behavior', () => {
           el('.class'),
           el('#id'),
           el('[attr=i32]'),
-          pseudo({ name: ':not', arg: el('.one') as Selector })
+          pseudo({ name: ':not', arg: el('.one') as any }) as any
         ])]),
         rules: rules([
           decl({ name: 'color', value: spaced([any('inherit')]) })

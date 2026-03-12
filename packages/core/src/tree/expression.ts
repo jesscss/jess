@@ -22,8 +22,16 @@ export class Expression extends Node<Node> {
     this.addFlag(F_NON_STATIC);
   }
 
+  get value() {
+    return this.data as Node;
+  }
+
+  set value(val: Node) {
+    this.setData(val);
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
-    const { value } = this;
+    const value = this.data;
     const out = value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
@@ -38,7 +46,7 @@ export class Expression extends Node<Node> {
     const mark = w.mark();
     w.add('$', this);
     w.add('(');
-    this.value.toString(options);
+    this.data.toString(options);
     w.add(')');
     return w.getSince(mark);
   }

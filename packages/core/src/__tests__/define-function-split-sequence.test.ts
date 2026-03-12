@@ -10,7 +10,7 @@ describe('defineFunction - splitSequence', () => {
       const func = defineFunction(
         'probe',
         function(value: Sequence) {
-          return `type:${value.type};len:${value.value.length}`;
+          return `type:${value.type};len:${value.data.length}`;
         },
         {
           params: [

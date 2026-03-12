@@ -23,12 +23,16 @@ export interface CompoundSelector {
   shortType: 'compound';
 }
 export class CompoundSelector extends Selector<SimpleSelector[]> {
+  get length() {
+    return this.data.length;
+  }
+
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();
     let canFastReject = true;
 
-    for (const selector of this.value) {
+    for (const selector of this.data) {
       // Union each child's keySet
       combinedKeySet = combinedKeySet.union(selector.keySet);
       combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
@@ -47,7 +51,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     let value = this._valueOf;
     if (!value) {
       // Convert selectors to strings
-      const components = this.value.map(n => n.valueOf());
+      const components = this.data.map(n => n.valueOf());
 
       // Find element selectors (those that don't start with .#:[)
       const elementSelectors: string[] = [];
@@ -73,9 +77,9 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     // Components in a compound selector are joined without spaces.
     // However, parser/copy/extend pipelines can preserve `post=1` (single space) on components,
     // which would serialize `.e.e` as `.e .e`. Normalize here as a final guard.
-    const value = this.value;
-    for (let i = 0; i < value.length - 1; i++) {
-      (value[i] as any).post = undefined;
+    const data = this.data;
+    for (let i = 0; i < data.length - 1; i++) {
+      (data[i] as any).post = undefined;
     }
     return super.toTrimmedString(options);
   }
@@ -84,16 +88,16 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return pipe(
       () => {
         const sel = this;
-        let { value } = sel;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
+        const { data } = sel;
+        const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<SimpleSelector>).then((res) => {
-              value[i] = res as SimpleSelector;
+              sel.setData(i, res as SimpleSelector);
               return undefined;
             });
           }
-          value[i] = out as SimpleSelector;
+          sel.setData(i, out as SimpleSelector);
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -102,9 +106,8 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         return sel;
       },
       (sel) => {
-        let { value } = sel;
-        value = value.filter(n => n && !(n instanceof Nil));
-        value = value.sort((a, b) => {
+        let data: SimpleSelector[] = [...sel.data].filter(n => n && !(n instanceof Nil));
+        data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
           let aIsElement = !nonElementRegex.test(a.valueOf());
           let bIsElement = !nonElementRegex.test(b.valueOf());
           if (aIsElement && bIsElement) {
@@ -112,18 +115,18 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           }
           return aIsElement ? -1 : bIsElement ? 1 : 0;
         });
-        if (value.length === 0) {
+        if (data.length === 0) {
           return (new Nil()).inherit(this);
         }
-        if (value.length === 1) {
-          return value[0]!.inherit(this) as Selector;
+        if (data.length === 1) {
+          return data[0]!.inherit(this) as Selector;
         }
         // Clear post on all components except the last one
         // Components in a compound selector are joined without spaces
-        for (let i = 0; i < value.length - 1; i++) {
-          (value[i] as any).post = undefined;
+        for (let i = 0; i < data.length - 1; i++) {
+          (data[i] as any).post = undefined;
         }
-        sel.value = value;
+        sel.setData([...data]);
         return sel;
       }
     );
@@ -131,13 +134,13 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
-  //   this.value.forEach(node => node.toCSS(context, out))
+  //   this.data.forEach(node => node.toCSS(context, out))
   // }
 
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.sel([', this.location)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
+  //   const length = this.data.length - 1
+  //   this.data.forEach((node, i) => {
   //     node.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')

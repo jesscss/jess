@@ -10,8 +10,8 @@ describe('length()', () => {
     const sequence = new Sequence([new Any('x'), new Any('y')]);
     const single = new Any('z');
 
-    expect(length(listWithSingleSequence).value.number).toBe(3);
-    expect(length(sequence).value.number).toBe(2);
-    expect(length(single).value.number).toBe(1);
+    expect(length(listWithSingleSequence).data.number).toBe(3);
+    expect(length(sequence).data.number).toBe(2);
+    expect(length(single).data.number).toBe(1);
   });
 });

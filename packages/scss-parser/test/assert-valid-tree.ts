@@ -8,18 +8,24 @@ function isRecord(value: unknown): value is AnyRecord {
 
 function* deepValues(value: unknown): Generator<unknown> {
   if (Array.isArray(value)) {
-    for (const v of value) yield* deepValues(v);
+    for (const v of value) {
+      yield* deepValues(v);
+    }
     return;
   }
   if (isRecord(value)) {
-    for (const v of Object.values(value)) yield* deepValues(v);
+    for (const v of Object.values(value)) {
+      yield* deepValues(v);
+    }
     return;
   }
   yield value;
 }
 
 function assertNoParentCycles(node: unknown) {
-  if (!isNode(node)) return;
+  if (!isNode(node)) {
+    return;
+  }
   // Walk parent chain, ensure no repeats and no self-parent.
   const seen = new Set<unknown>();
   let cur: unknown = node;
@@ -41,7 +47,7 @@ function assertNoParentCycles(node: unknown) {
  * - no circular parent chains
  * - all child nodes have correct `.parent`
  *
- * This is intentionally generic: it traverses `node.value` plus other own
+ * This is intentionally generic: it traverses `node.data` plus other own
  * enumerable fields, looking for nested Nodes within arrays/objects.
  */
 export function assertValidTree(root: unknown) {
@@ -52,8 +58,12 @@ export function assertValidTree(root: unknown) {
   const visited = new Set<unknown>();
 
   const visit = (value: unknown, expectedParent: unknown | undefined) => {
-    if (!isNode(value)) return;
-    if (visited.has(value)) return;
+    if (!isNode(value)) {
+      return;
+    }
+    if (visited.has(value)) {
+      return;
+    }
     visited.add(value);
 
     // Basic invariants
@@ -71,25 +81,29 @@ export function assertValidTree(root: unknown) {
     }
 
     // Traverse children:
-    // - always include `.value` (the canonical child container for most nodes)
+    // - always include `.data` (the canonical child container for most nodes)
     // - also include other own enumerable fields (for nodes with direct child fields)
     const childRoots: unknown[] = [];
-    childRoots.push(Reflect.get(value, 'value'));
+    childRoots.push(Reflect.get(value, 'data'));
 
     for (const key of Object.keys(value)) {
       // Avoid infinite recursion / unrelated references.
       if (
-        key === 'parent' ||
-        key === 'sourceParent' ||
-        key === 'treeContext' ||
-        key === 'sourceNode'
-      ) continue;
+        key === 'parent'
+        || key === 'sourceParent'
+        || key === 'treeContext'
+        || key === 'sourceNode'
+      ) {
+        continue;
+      }
       childRoots.push((value as AnyRecord)[key]);
     }
 
     for (const childRoot of childRoots) {
       for (const maybeChild of deepValues(childRoot)) {
-        if (isNode(maybeChild)) visit(maybeChild, value);
+        if (isNode(maybeChild)) {
+          visit(maybeChild, value);
+        }
       }
     }
   };
@@ -98,4 +112,3 @@ export function assertValidTree(root: unknown) {
   assertNoParentCycles(root);
   visit(root, undefined);
 }
-

@@ -29,10 +29,14 @@ export interface Sequence {
   shortType: 'seq' | 'query';
 }
 export class Sequence extends Node<Node[], SequenceOptions> {
+  get length() {
+    return this.data.length;
+  }
+
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.value, other.value, equalityMode);
+      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -51,7 +55,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const { value } = this;
+    const value = this.data;
     const length = value.length;
 
     if (length === 0) {
@@ -107,18 +111,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     let newSequence = this.maybeClone(context);
     if (b instanceof List) {
-      return new List([newSequence, ...b.value]).inherit(this);
+      return new List([newSequence, ...b.data]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.value.map(v => v.maybeClone(context));
+      const values = b.data.map(v => v.maybeClone(context));
       if (values.length) {
         values[0]!.pre = 1;
       }
-      newSequence.value.push(...values);
+      newSequence.push(...values);
     } else {
       b = b.maybeClone(context);
       b.pre = 1;
-      newSequence.value.push(b);
+      newSequence.push(b);
     }
     return newSequence;
   }
@@ -143,14 +147,14 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return pipe(
       () => {
         const node = this;
-        const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
+        const maybe = serialForEach(node.data.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
-              node.value[i] = res;
+              node.setData(i, res);
             });
           }
-          node.value[i] = out as Node;
+          node.setData(i, out as Node);
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => node);
@@ -158,9 +162,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         return node;
       },
       (node) => {
-        node.value = node.value.filter(n => n && !(n instanceof Nil));
-        if (node.value.length === 1 && !node.options.preserveWhitespace) {
-          return node.value[0]!;
+        node.setData(node.data.filter(n => n && !(n instanceof Nil)) as any);
+        if (node.data.length === 1 && !node.options.preserveWhitespace) {
+          return node.data[0]!;
         }
         return node;
       }
@@ -170,7 +174,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector): void {
   //   const cast = context.cast
-  //   this.value.forEach(n => {
+  //   this.data.forEach(n => {
   //     const val = cast(n)
   //     val.toCSS(context, out)
   //   })
@@ -179,8 +183,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.expr([', loc)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((n, i) => {
+  //   const length = this.data.length - 1
+  //   this.data.forEach((n, i) => {
   //     n.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')

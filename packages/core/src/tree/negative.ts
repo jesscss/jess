@@ -19,9 +19,17 @@ export class Negative extends Node<Node> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  get value() {
+    return this.data as Node;
+  }
+
+  set value(val: Node) {
+    this.setData(val);
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
     return pipe(
-      () => this.value.eval(context),
+      () => this.data.eval(context),
       tryStep((value: Node) => {
         if (!value.operate) {
           throw new TypeError(`Cannot operate on ${value.type}`);

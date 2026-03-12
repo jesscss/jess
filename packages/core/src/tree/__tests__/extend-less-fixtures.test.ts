@@ -206,7 +206,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         ])
       }),
       ruleset({
-        selector: sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]),
+        selector: sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]) as any,
         rules: rules([decl({ name: 'prop', value: any('not_effected') })])
       }),
       ruleset({
@@ -400,7 +400,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         ])
       }),
       ruleset({
-        selector: sel([el('.button2'), co(' '), el(':hover')]),
+        selector: sel([el('.button2'), co(' '), el(':hover')]) as any,
         rules: rules([decl({ name: 'notnested', value: any('black') })])
       }),
       ruleset({
@@ -417,14 +417,14 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
               el('.amp-test-c'),
               co(' '),
               compound([amp(), el('.amp-test-d'), amp(), el('.amp-test-e')])
-            ]),
+            ]) as any,
             rules: rules([
               ruleset({
                 selector: sel([
                   compound([el('.amp-test-f'), amp()]),
                   co('+'),
                   compound([amp(), el('.amp-test-g')])
-                ]),
+                ]) as any,
                 rules: rules([extend({ target: el('.amp-test-h') })])
               })
             ])
@@ -496,7 +496,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         rules: rules([decl({ name: 'display', value: any('none') })])
       }),
       ruleset({
-        selector: sel([el('.ext1'), co(' '), el('.ext2')]),
+        selector: sel([el('.ext1'), co(' '), el('.ext2')]) as any,
         rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
       }),
       ruleset({
@@ -615,7 +615,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
             rules: rules([
               extend({ target: el('.issue-2586-bordered') }),
               ruleset({
-                selector: sel([amp(), co('>'), el('span')]),
+                selector: sel([amp(), co('>'), el('span')]) as any,
                 rules: rules([decl({ name: 'margin-bottom', value: any('10px') })])
               })
             ])

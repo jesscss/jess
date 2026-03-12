@@ -30,6 +30,30 @@ export interface Range {
 }
 
 export class Range extends Node<RangeValue, RangeOptions> {
+  get start() {
+    return this.data.start;
+  }
+
+  set start(val: Node) {
+    this.setData('start', val);
+  }
+
+  get end() {
+    return this.data.end;
+  }
+
+  set end(val: Node) {
+    this.setData('end', val);
+  }
+
+  get step() {
+    return this.data.step;
+  }
+
+  set step(val: Node | undefined) {
+    this.setData('step', val as any);
+  }
+
   override evalNode(_context: Context): Range {
     // Parsing-only for now; semantics can be implemented later.
     return this;
@@ -39,7 +63,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { start, end, step } = this.value;
+    const { start, end, step } = this.data;
     const includeStart = this.options?.includeStart !== false;
     const includeEnd = this.options?.includeEnd !== false;
 

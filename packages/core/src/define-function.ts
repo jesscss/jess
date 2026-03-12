@@ -314,7 +314,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   const listArg = args.length === 1 && isNode(args[0], N.List)
     ? args[0] as List
     : undefined;
-  args = listArg ? [...listArg.value] : args;
+  args = listArg ? [...listArg.data] : args;
   // Only reject record-based calls (plain objects) when there's no params metadata
   // Collections are allowed as positional arguments even without params metadata
   // (e.g., detached rulesets passed to mixins)
@@ -740,10 +740,10 @@ async function buildCallWithContextPositionalArgs(
         validateArgumentIfNeeded(processedValue, def, 'Argument');
 
         const callerName = context.caller && isNode(context.caller, N.Call)
-          ? (typeof context.caller.value.name === 'string'
-              ? context.caller.value.name
-              : (isNode(context.caller.value.name, N.Reference)
-                  ? String(context.caller.value.name.value.key?.valueOf?.() ?? '')
+          ? (typeof context.caller.data.name === 'string'
+              ? context.caller.data.name
+              : (isNode(context.caller.data.name, N.Reference)
+                  ? String(context.caller.data.name.data.key?.valueOf?.() ?? '')
                   : ''))
           : '';
         // Apply conversion plugins if defined

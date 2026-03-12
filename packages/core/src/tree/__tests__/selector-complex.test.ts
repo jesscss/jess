@@ -1,4 +1,4 @@
-import { sel, compound, el, co, pseudo, sellist } from '..';
+import { sel, compound, el, co, pseudo, sellist } from '../index.js';
 
 describe('Complex selector', () => {
   describe('keys', () => {
@@ -18,7 +18,7 @@ describe('Complex selector', () => {
         compound([
           pseudo({ name: ':is', arg: el('a') }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([co('>'), compound([el('.two'), el('.one')])]) })
+          pseudo({ name: ':is', arg: sel([co('>'), compound([el('.two'), el('.one')])]) as any }) as any
         ])
       ]);
       expect([...sel2.keySet]).toEqual(['a', '#id', '.two', '.one']);
@@ -28,7 +28,7 @@ describe('Complex selector', () => {
         compound([
           pseudo({ name: ':is', arg: el('a') }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
         ])
       ]);
       expect([...sel2.keySet]).toEqual(['a', '#id', '.two', '.one']);
@@ -38,7 +38,7 @@ describe('Complex selector', () => {
         compound([
           pseudo({ name: ':is', arg: sellist([el('a'), el('b')]) }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
         ])
       ]);
       expect([...sel2.keySet]).toEqual(['a', 'b', '#id', '.two', '.one']);
@@ -55,7 +55,7 @@ describe('Complex selector', () => {
             ])
           }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
         ])
       ]);
       expect([...sel2.keySet]).toEqual(['a', 'b', 'c', 'd', '#id', '.two', '.one']);

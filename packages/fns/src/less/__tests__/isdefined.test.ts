@@ -15,8 +15,8 @@ describe('isdefined()', () => {
       throw new ReferenceError('missing');
     });
 
-    expect(definedResult.value).toBe(true);
-    expect(undefinedResult.value).toBe(false);
+    expect(definedResult.data).toBe(true);
+    expect(undefinedResult.data).toBe(false);
 
     await expect(isdefinedInternal(() => {
       throw new TypeError('boom');

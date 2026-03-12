@@ -1,4 +1,4 @@
-import { compound, sel, el, pseudo, type SimpleSelector } from '..';
+import { compound, sel, el, pseudo, type SimpleSelector } from '../index.js';
 
 /**
  * @todo - add tests for list bubbling
@@ -6,16 +6,16 @@ import { compound, sel, el, pseudo, type SimpleSelector } from '..';
 describe('Compound Selector', () => {
   describe('equality', () => {
     test('same value', () => {
-      let sel1 = compound([
+      let sel1 = (compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]).valueOf();
-      let sel2 = compound([
+      ]) as any).valueOf();
+      let sel2 = (compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]).valueOf();
+      ]) as any).valueOf();
       expect(sel1).toEqual(sel2);
     });
   });
@@ -27,7 +27,7 @@ describe('Compound Selector', () => {
         el('#id'),
         el('.class')
       ]);
-      expect([...sel1.keySet]).toEqual(['a', '#id', '.class']);
+      expect([...(sel1 as any).keySet]).toEqual(['a', '#id', '.class']);
     });
 
     test('nested compound', () => {
@@ -40,7 +40,7 @@ describe('Compound Selector', () => {
       ]);
 
       expect([...sel1.keySet]).toEqual(['a']);
-      expect([...sel2.keySet]).toEqual(['a', '#id', '.two', '.one']);
+      expect([...(sel2 as any).keySet]).toEqual(['a', '#id', '.two', '.one']);
     });
   });
 });

@@ -1,8 +1,8 @@
 /**
  * Sass list.index() function
- * 
+ *
  * Returns the index of a value in a list (1-based), or null if not found.
- * 
+ *
  * @example
  * index(1 2 3, 2) // 2
  * index([a, b, c], d) // null
@@ -13,7 +13,7 @@ const index = defineFunction(
   'index',
   function(list: List, value: Node): Dimension | null {
     // Find the index of the value in the list
-    const listValue = list.value;
+    const listValue = list.data;
     for (let i = 0; i < listValue.length; i++) {
       const item = listValue[i];
       // Compare nodes - use compare method if available
