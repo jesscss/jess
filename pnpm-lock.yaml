@@ -612,6 +612,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
+      '@jesscss/parser-runtime':
+        specifier: workspace:*
+        version: link:../parser-runtime
       chevrotain:
         specifier: ^11.0.3
         version: 11.1.0
