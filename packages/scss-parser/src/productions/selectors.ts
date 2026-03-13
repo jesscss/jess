@@ -26,31 +26,32 @@ type AltContext = (ctx?: RuleContext) => Alt;
  * Override CSS `simpleSelector` to add placeholder selector support (`%foo`).
  */
 export function simpleSelector(this: P, ctx: RuleContext = {}, selectorAlt?: AltContext) {
+  const $ = this;
   selectorAlt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => this.consume(this.T.Ident) },
-    { GATE: () => !!ctx.inner, ALT: () => this.consume(this.T.Ampersand) },
-    { ALT: () => this.classSelector(ctx) },
-    { ALT: () => this.idSelector(ctx) },
+    { ALT: () => $.CONSUME($.T.Ident) },
+    { GATE: () => !!ctx.inner, ALT: () => $.CONSUME($.T.Ampersand) },
+    { ALT: () => $.classSelector(ctx) },
+    { ALT: () => $.idSelector(ctx) },
     // Placeholder selector: `%foo`
-    { ALT: () => this.consume(this.T.PlaceholderSelector) },
-    { ALT: () => this.consume(this.T.Star) },
-    { ALT: () => this.pseudoSelector(ctx) },
-    { ALT: () => this.attributeSelector(ctx) },
-    { ALT: () => this.consume(this.T.DimensionInt) },
-    { ALT: () => this.consume(this.T.DimensionNum) }
+    { ALT: () => $.CONSUME($.T.PlaceholderSelector) },
+    { ALT: () => $.CONSUME($.T.Star) },
+    { ALT: () => $.pseudoSelector(ctx) },
+    { ALT: () => $.attributeSelector(ctx) },
+    { ALT: () => $.CONSUME($.T.DimensionInt) },
+    { ALT: () => $.CONSUME($.T.DimensionNum) }
   ];
 
-  const selector = this.or(selectorAlt(ctx));
+  const selector = $.OR(selectorAlt(ctx));
 
-  if (this.isToken(selector)) {
+  if ($.isToken(selector)) {
     if (selector.tokenType.name === 'Ampersand') {
-      return new Ampersand(undefined, undefined, this.getLocationInfo(selector), this.context);
+      return new Ampersand(undefined, undefined, $.getLocationInfo(selector), $.context);
     }
     if (selector.tokenType.name === 'PlaceholderSelector') {
       const name = `\\${selector.image.slice(1)}`;
-      return new BasicSelector(name, undefined, this.getLocationInfo(selector), this.context);
+      return new BasicSelector(name, undefined, $.getLocationInfo(selector), $.context);
     }
-    return new BasicSelector(selector.image, undefined, this.getLocationInfo(selector), this.context);
+    return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), $.context);
   }
   return selector as unknown as Node;
 }
@@ -59,41 +60,42 @@ export function simpleSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
  * Override CSS `main` to allow root-level SCSS variable declarations (`$x: ...;`).
  */
 export function main(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     // Allow root-level SCSS variable declarations ($x: ...)
-    { ALT: () => this.declaration(ctx) },
-    { ALT: () => this.qualifiedRule() },
-    { ALT: () => this.atRule() },
+    { ALT: () => $.declaration(ctx) },
+    { ALT: () => $.qualifiedRule() },
+    { ALT: () => $.atRule() },
     // Allow stray semicolons at root.
-    { ALT: () => this.consume(this.T.Semi) }
+    { ALT: () => $.CONSUME($.T.Semi) }
   ];
 
   if (ctx.isRoot) {
-    this.resetGeneratedState();
+    $.resetGeneratedState();
   }
 
   let rules: Node[] = [];
   let requiredSemi = false;
   let lastRule: Node | undefined;
 
-  this.many({
+  $.MANY({
     GATE: () => !requiredSemi || (requiredSemi && (
-      this.la(1).tokenType === this.T.Semi
-      || this.la(0).tokenType === this.T.Semi
+      $.la(1).tokenType === $.T.Semi
+      || $.la(0).tokenType === $.T.Semi
     )),
     DEF: () => {
       const localAlt = typeof alt === 'function' ? alt(ctx) : alt!;
-      const value = this.or(localAlt);
+      const value = $.OR(localAlt);
       if (!(value instanceof Node)) {
         if (lastRule) {
           lastRule.options.semi = true;
         } else {
-          rules.push(new Any(';', { role: 'semi' }, this.getLocationInfo(this.la(1)), this.context));
+          rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.la(1)), $.context));
         }
         return;
       }
 
-      const pending = this.consumePendingNodes();
+      const pending = $.consumePendingNodes();
       if (pending.length) {
         rules.push(...pending);
       }
@@ -103,8 +105,8 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     }
   });
 
-  const withComments = this.getRulesWithComments(rules, this.getLocationInfo(this.la(1)));
-  return this.wrap(withComments, true);
+  const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.la(1)));
+  return $.wrap(withComments, true);
 }
 
 /**
@@ -113,14 +115,15 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext) {
  * Example: `.foo-#{$bar}` becomes an `Interpolated` selector value.
  */
 export function compoundSelector(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
 
   let selectors: SimpleSelector[] = [];
   let source = '';
   const replacements: Node[] = [];
 
   const appendTokenSpan = (startTokenOffset: number, endTokenOffset: number) => {
-    const origTokens = this.originalInput as IToken[];
+    const origTokens = $.originalInput as IToken[];
     let out = '';
     for (const tok of origTokens) {
       if (tok.startOffset < startTokenOffset) {
@@ -135,22 +138,22 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
   };
 
   // First atom is required.
-  this.or([
+  $.OR([
     {
-      GATE: () => this.la(1).tokenType === this.T.InterpolationStart,
+      GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
       ALT: () => {
-        this.consume(this.T.InterpolationStart);
-        const expr = this.valueSequence(ctx) as unknown as Node;
-        this.consume(this.T.RCurly);
+        $.CONSUME($.T.InterpolationStart);
+        const expr = $.valueSequence(ctx) as unknown as Node;
+        $.CONSUME($.T.RCurly);
         source += INTERPOLATION_PLACEHOLDER;
-        replacements.push(toNameInterpolationReplacement(this, expr, this.getLocationFromNodes([expr])));
+        replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
       }
     },
     {
       ALT: () => {
-        const startTokenOffset = this.la(1).startOffset;
-        const sel = this.simpleSelector(ctx) as unknown as SimpleSelector;
-        const endTokenOffset = this.la(0).startOffset;
+        const startTokenOffset = $.la(1).startOffset;
+        const sel = $.simpleSelector(ctx) as unknown as SimpleSelector;
+        const endTokenOffset = $.la(0).startOffset;
         selectors.push(sel);
         appendTokenSpan(startTokenOffset, endTokenOffset);
       }
@@ -158,25 +161,25 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
   ]);
 
   // Additional atoms only when there's no whitespace.
-  this.many({
-    GATE: () => !this.hasWS(),
+  $.MANY({
+    GATE: () => !$.hasWS(),
     DEF: () => {
-      this.or([
+      $.OR([
         {
-          GATE: () => this.la(1).tokenType === this.T.InterpolationStart,
+          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
-            this.consume(this.T.InterpolationStart);
-            const expr = this.valueSequence(ctx) as unknown as Node;
-            this.consume(this.T.RCurly);
+            $.CONSUME($.T.InterpolationStart);
+            const expr = $.valueSequence(ctx) as unknown as Node;
+            $.CONSUME($.T.RCurly);
             source += INTERPOLATION_PLACEHOLDER;
-            replacements.push(toNameInterpolationReplacement(this, expr, this.getLocationFromNodes([expr])));
+            replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
           }
         },
         {
           ALT: () => {
-            const startTokenOffset = this.la(1).startOffset;
-            const sel = this.simpleSelector(ctx) as unknown as SimpleSelector;
-            const endTokenOffset = this.la(0).startOffset;
+            const startTokenOffset = $.la(1).startOffset;
+            const sel = $.simpleSelector(ctx) as unknown as SimpleSelector;
+            const endTokenOffset = $.la(0).startOffset;
             selectors.push(sel);
             appendTokenSpan(startTokenOffset, endTokenOffset);
           }
@@ -185,14 +188,14 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
     }
   });
 
-  const location = this.endRule();
+  const location = $.endRule();
   if (replacements.length > 0) {
-    return new Interpolated({ source, replacements }, { role: 'ident' }, location, this.context);
+    return new Interpolated({ source, replacements }, { role: 'ident' }, location, $.context);
   }
   if (selectors.length === 1) {
     return selectors[0]!;
   }
-  return new CompoundSelector(selectors, undefined, location, this.context);
+  return new CompoundSelector(selectors, undefined, location, $.context);
 }
 
 /**
@@ -201,7 +204,8 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
  * Example: `foo-#{$bar}` becomes an `Interpolated` node.
  */
 export function layerName(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
   let source: string | undefined;
   let replacements: Node[] | undefined;
 
@@ -218,21 +222,21 @@ export function layerName(this: P, ctx: RuleContext = {}) {
   };
 
   // First segment
-  this.or([
+  $.OR([
     {
-      GATE: () => this.la(1).tokenType === this.T.InterpolationStart,
+      GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
       ALT: () => {
-        this.consume(this.T.InterpolationStart);
-        const expr = this.valueSequence(ctx) as unknown as Node;
-        this.consume(this.T.RCurly);
+        $.CONSUME($.T.InterpolationStart);
+        const expr = $.valueSequence(ctx) as unknown as Node;
+        $.CONSUME($.T.RCurly);
         takeInterpolation(expr);
       }
     },
     {
       ALT: () => {
-        const tok = this.or([
-          { GATE: () => this.la(1).tokenType === this.T.Ident, ALT: () => this.consume(this.T.Ident) },
-          { ALT: () => this.consume(this.T.PlainIdent) }
+        const tok = $.OR([
+          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         takeIdent(tok);
       }
@@ -240,29 +244,29 @@ export function layerName(this: P, ctx: RuleContext = {}) {
   ]);
 
   // Additional segments with no whitespace (e.g. `foo-#{$bar}`)
-  this.many({
+  $.MANY({
     GATE: () =>
-      !this.hasWS()
-      && this.la(1).tokenType !== this.T.LCurly
-      && this.la(1).tokenType !== this.T.Comma
-      && this.la(1).tokenType !== this.T.Semi
-      && this.la(1).tokenType.name !== 'EOF',
+      !$.hasWS()
+      && $.la(1).tokenType !== $.T.LCurly
+      && $.la(1).tokenType !== $.T.Comma
+      && $.la(1).tokenType !== $.T.Semi
+      && $.la(1).tokenType.name !== 'EOF',
     DEF: () => {
-      this.or([
+      $.OR([
         {
-          GATE: () => this.la(1).tokenType === this.T.InterpolationStart,
+          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
-            this.consume(this.T.InterpolationStart);
-            const expr = this.valueSequence(ctx) as unknown as Node;
-            this.consume(this.T.RCurly);
+            $.CONSUME($.T.InterpolationStart);
+            const expr = $.valueSequence(ctx) as unknown as Node;
+            $.CONSUME($.T.RCurly);
             takeInterpolation(expr);
           }
         },
         {
           ALT: () => {
-            const tok = this.or([
-              { GATE: () => this.la(1).tokenType === this.T.Ident, ALT: () => this.consume(this.T.Ident) },
-              { ALT: () => this.consume(this.T.PlainIdent) }
+            const tok = $.OR([
+              { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+              { ALT: () => $.CONSUME($.T.PlainIdent) }
             ]) as unknown as IToken;
             takeIdent(tok);
           }
@@ -271,9 +275,9 @@ export function layerName(this: P, ctx: RuleContext = {}) {
     }
   });
 
-  const loc = this.endRule();
+  const loc = $.endRule();
   if (replacements?.length) {
-    return new Interpolated({ source: source ?? '', replacements }, { role: 'any' }, loc, this.context);
+    return new Interpolated({ source: source ?? '', replacements }, { role: 'any' }, loc, $.context);
   }
-  return new Any(source ?? '', { role: 'ident' }, loc, this.context);
+  return new Any(source ?? '', { role: 'ident' }, loc, $.context);
 }

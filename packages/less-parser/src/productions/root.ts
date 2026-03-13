@@ -280,28 +280,29 @@ function groupExtendsByTargetAndFlag(
 
 /** Charset moved within `main` (explained in that rule) */
 export function stylesheet(this: P, options: Record<string, any> = {}) {
+  const $ = this;
   let context: TreeContext;
   if (options.context) {
-    context = this.context = options.context;
+    context = $.context = options.context;
   } else {
-    context = this.context;
+    context = $.context;
   }
 
   let charset: IToken | undefined;
 
-  if (!this.looseMode) {
-    this.option(() => {
-      charset = this.consume(this.T.Charset);
+  if (!$.looseMode) {
+    $.OPTION(() => {
+      charset = $.CONSUME($.T.Charset);
     });
   }
 
   const ctx: RuleContext = { isRoot: true } as any;
-  let root: Node = this.main(ctx);
+  let root: Node = $.main(ctx);
 
   let rules = root?.value as any[];
 
   if (charset) {
-    let charsetLoc = this.getLocationInfo(charset);
+    let charsetLoc = $.getLocationInfo(charset);
     let rootLoc = root.location;
     rules.unshift(new Any(charset.image, { role: 'charset' }, charsetLoc, context!));
     rootLoc[0] = charsetLoc[0];
@@ -320,34 +321,35 @@ export function stylesheet(this: P, options: Record<string, any> = {}) {
  */
 
 export function main(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   const ruleAlt = (ctx: RuleContext = {}): Alt => {
     let isVariable = isVariableLike.call(this);
     return [
-      { ALT: () => this.functionCall(ctx) },
-      { ALT: () => this.ampersandExtend(ctx) },
+      { ALT: () => $.functionCall(ctx) },
+      { ALT: () => $.ampersandExtend(ctx) },
       {
         GATE: () => {
-          let next = this.la(1).tokenType;
-          return next === this.T.DotName || next === this.T.HashName || next === this.T.ColorIdentStart;
+          let next = $.la(1).tokenType;
+          return next === $.T.DotName || next === $.T.HashName || next === $.T.ColorIdentStart;
         },
-        ALT: () => this.mixinOrQualifiedRule(ctx)
+        ALT: () => $.mixinOrQualifiedRule(ctx)
       },
       {
         GATE: () => {
-          let next = this.la(1).tokenType;
-          return next !== this.T.DotName
-            && next !== this.T.HashName
-            && next !== this.T.ColorIdentStart;
+          let next = $.la(1).tokenType;
+          return next !== $.T.DotName
+            && next !== $.T.HashName
+            && next !== $.T.ColorIdentStart;
         },
-        ALT: () => this.qualifiedRule(ctx)
+        ALT: () => $.qualifiedRule(ctx)
       },
       {
         GATE: () => isVariable,
-        ALT: () => this.varDeclarationOrCall(ctx)
+        ALT: () => $.varDeclarationOrCall(ctx)
       },
       {
         GATE: () => !isVariable,
-        ALT: () => this.atRule(ctx)
+        ALT: () => $.atRule(ctx)
       },
 
       /**
@@ -359,14 +361,14 @@ export function main(this: P, ctx: RuleContext = {}) {
        * @see https://github.com/less/less.js/issues/2126
        */
       {
-        GATE: () => this.looseMode,
-        ALT: () => this.consume(this.T.Charset)
+        GATE: () => $.looseMode,
+        ALT: () => $.CONSUME($.T.Charset)
       },
-      { ALT: () => this.consume(this.T.Semi) }
+      { ALT: () => $.CONSUME($.T.Semi) }
     ];
   };
 
-  let context: TreeContext = this.context;
+  let context: TreeContext = $.context;
   let rules: Node[] = [];
 
   let requiredSemi = false;
@@ -377,33 +379,33 @@ export function main(this: P, ctx: RuleContext = {}) {
    * but this is repurposed by declarationList and by Less / Sass,
    * so that's why this gate is here.
    */
-  this.many({
+  $.MANY({
     GATE: () => {
-      const next = this.la(1);
+      const next = $.la(1);
       // Stop at RCurly (belongs to parent block) or end of input
-      if (next.tokenType === this.T.RCurly || next.tokenType.name === 'EOF') {
+      if (next.tokenType === $.T.RCurly || next.tokenType.name === 'EOF') {
         return false;
       }
       return !requiredSemi || (requiredSemi && (
-        next.tokenType === this.T.Semi
-        || this.la(0).tokenType === this.T.Semi
+        next.tokenType === $.T.Semi
+        || $.la(0).tokenType === $.T.Semi
       ));
     },
     DEF: () => {
       const localAlt = ruleAlt(ctx);
-      let value: Node | IToken = this.or(localAlt);
+      let value: Node | IToken = $.OR(localAlt);
       /** @todo - When do we not have a value? */
       if (value) {
         if (!(value instanceof Node)) {
           /** This is a semi-colon or charset token */
           let tok = value as IToken;
           if (tok.image.includes('@charset')) {
-            rules.push(new Any(tok.image, { role: 'charset' }, this.getLocationInfo(tok), context));
+            rules.push(new Any(tok.image, { role: 'charset' }, $.getLocationInfo(tok), context));
           } else {
             if (lastRule) {
               lastRule.options.semi = true;
             } else {
-              rules.push(new Any(';', { role: 'semi' }, this.getLocationInfo(this.la(1)), context));
+              rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.la(1)), context));
             }
           }
         } else {
@@ -422,24 +424,25 @@ export function main(this: P, ctx: RuleContext = {}) {
     rules = [...ctx.extendNodes, ...filteredRules];
     ctx.extendNodes = undefined;
   }
-  let returnNode = this.getRulesWithComments(rules!, this.getLocationInfo(this.la(1)));
+  let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.la(1)));
   // Attaches remaining whitespace at the end of rules
-  const wrapped = this.wrap(returnNode!, true);
+  const wrapped = $.wrap(returnNode!, true);
 
   return wrapped;
 }
 
 export function declarationList(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let ruleAlt = (ctx: RuleContext = {}): Alt => {
     let isVariable = isVariableLike.call(this);
     return [
       {
         GATE: () => {
-          let next = this.la(1).tokenType;
-          return next === this.T.DotName || next === this.T.HashName || next === this.T.ColorIdentStart;
+          let next = $.la(1).tokenType;
+          return next === $.T.DotName || next === $.T.HashName || next === $.T.ColorIdentStart;
         },
         ALT: () => {
-          return this.mixinOrQualifiedRule({ ...ctx, inner: true });
+          return $.mixinOrQualifiedRule({ ...ctx, inner: true });
         }
       },
       {
@@ -453,24 +456,24 @@ export function declarationList(this: P, ctx: RuleContext = {}) {
          * parser correctly picks it when both paths appear viable.
          */
         GATE: () => {
-          let next = this.la(1).tokenType;
-          return next !== this.T.DotName
-            && next !== this.T.HashName
-            && next !== this.T.ColorIdentStart;
+          let next = $.la(1).tokenType;
+          return next !== $.T.DotName
+            && next !== $.T.HashName
+            && next !== $.T.ColorIdentStart;
         },
         ALT: () => {
-          return this.qualifiedRule({ ...ctx, inner: true });
+          return $.qualifiedRule({ ...ctx, inner: true });
         }
       },
       {
         ALT: () => {
-          return this.declaration(ctx);
+          return $.declaration(ctx);
         }
       },
-      { ALT: () => this.ampersandExtend(ctx) },
+      { ALT: () => $.ampersandExtend(ctx) },
       {
         ALT: () => {
-          const fnCall = this.functionCall(ctx);
+          const fnCall = $.functionCall(ctx);
           if (fnCall instanceof Call) {
             // Less allows function calls like `each(...){...}` in declaration lists
             // without a required trailing semicolon.
@@ -481,13 +484,13 @@ export function declarationList(this: P, ctx: RuleContext = {}) {
       },
       {
         GATE: () => isVariable,
-        ALT: () => this.varDeclarationOrCall(ctx)
+        ALT: () => $.varDeclarationOrCall(ctx)
       },
       {
         GATE: () => !isVariable,
-        ALT: () => this.innerAtRule(ctx)
+        ALT: () => $.innerAtRule(ctx)
       },
-      { ALT: () => this.consume(this.T.Semi) }
+      { ALT: () => $.CONSUME($.T.Semi) }
     ];
   };
 
@@ -495,34 +498,35 @@ export function declarationList(this: P, ctx: RuleContext = {}) {
 }
 
 export function declaration(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let ruleAlt = (ctx: RuleContext = {}): Alt => [
     {
       ALT: () => {
         let name: IToken;
-        this.or([
+        $.OR([
           {
             ALT: () => {
-              name = this.consume(this.T.Ident);
+              name = $.CONSUME($.T.Ident);
             }
           },
           {
-            GATE: () => this.legacyMode,
-            ALT: () => name = this.consume(this.T.LegacyPropIdent)
+            GATE: () => $.legacyMode,
+            ALT: () => name = $.CONSUME($.T.LegacyPropIdent)
           }
         ]);
-        let assign = this.consume(this.T.Assign);
-        let value = this.valueList(ctx);
+        let assign = $.CONSUME($.T.Assign);
+        let value = $.valueList(ctx);
         let important: IToken | undefined;
 
-        this.option(() => {
-          important = this.consume(this.T.Important);
+        $.OPTION(() => {
+          important = $.CONSUME($.T.Important);
         });
         let nameNode: Node;
         let nameValue = name!.image;
         if (nameValue.includes('@') || nameValue.includes('$')) {
-          nameNode = getInterpolated(nameValue, this.getLocationInfo(name!), this.context);
+          nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), $.context);
         } else {
-          nameNode = this.wrap(new Any(name!.image, { role: 'property' }, this.getLocationInfo(name!), this.context), true);
+          nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context), true);
         }
         return [nameNode, assign, value, important];
       }
@@ -530,25 +534,25 @@ export function declaration(this: P, ctx: RuleContext = {}) {
     {
       ALT: () => {
         let nodes: Node[] = [];
-        let name = this.or([
-          { ALT: () => this.consume(this.T.InterpolatedCustomProperty) },
-          { ALT: () => this.consume(this.T.CustomProperty) }
+        let name = $.OR([
+          { ALT: () => $.CONSUME($.T.InterpolatedCustomProperty) },
+          { ALT: () => $.CONSUME($.T.CustomProperty) }
         ]);
-        let assign = this.consume(this.T.Assign);
-        this.startRule();
-        this.many(() => {
-          let val = this.customValue({ ...ctx, inCustomPropertyValue: true });
+        let assign = $.CONSUME($.T.Assign);
+        $.startRule();
+        $.MANY(() => {
+          let val = $.customValue({ ...ctx, inCustomPropertyValue: true });
           nodes!.push(val);
         });
-        let location = this.endRule();
+        let location = $.endRule();
         let nameNode: Node;
         let nameValue = name.image;
         if (nameValue.includes('@') || nameValue.includes('$')) {
-          nameNode = getInterpolated(nameValue, this.getLocationInfo(name), this.context);
+          nameNode = getInterpolated(nameValue, $.getLocationInfo(name), $.context);
         } else {
-          nameNode = this.wrap(new Any(name.image, { role: 'property' }, this.getLocationInfo(name), this.context), true);
+          nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
         }
-        let value = new Sequence(nodes!, undefined, location, this.context);
+        let value = new Sequence(nodes!, undefined, location, $.context);
         return [nameNode, assign, value];
       }
     }
@@ -558,9 +562,10 @@ export function declaration(this: P, ctx: RuleContext = {}) {
 }
 
 export function mediaInParens(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let isEscaped = isEscapedString.bind(this);
 
-  return this.or([
+  return $.OR([
     /**
      * It's up to the Less author to validate that this will produce
      * valid media queries.
@@ -568,7 +573,7 @@ export function mediaInParens(this: P, ctx: RuleContext = {}) {
     {
       /** Allow escaped strings */
       GATE: isEscaped,
-      ALT: () => this.string(ctx)
+      ALT: () => $.string(ctx)
     },
     /**
      * After Less evaluation, should throw an error
@@ -576,7 +581,7 @@ export function mediaInParens(this: P, ctx: RuleContext = {}) {
      */
     {
       ALT: () => {
-        return this.valueReference({ ...ctx, requireAccessorsAfterMixinCall: true });
+        return $.valueReference({ ...ctx, requireAccessorsAfterMixinCall: true });
       }
     },
     {
@@ -586,11 +591,13 @@ export function mediaInParens(this: P, ctx: RuleContext = {}) {
 }
 
 export function containerInParens(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   // Reuse mediaInParens which already handles variables
-  return this.mediaInParens(ctx);
+  return $.mediaInParens(ctx);
 }
 
 export function mfValue(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   /**
    * Like the original Less Parser, we're
    * going to allow any value expression,
@@ -598,54 +605,57 @@ export function mfValue(this: P, ctx: RuleContext = {}) {
    * if it's valid.
    */
   const exprCtx: RuleContext = { ...ctx, wrapInExpression: true };
-  const node = this.expressionSum(exprCtx);
+  const node = $.expressionSum(exprCtx);
   return wrapOuterExpressionIfNeeded.call(this, node, exprCtx);
 }
 
 export function mfNonIdentifierValue(this: P, ctx: RuleContext = {}) {
-  return this.or([
+  const $ = this;
+  return $.OR([
     {
       GATE: () => {
-        const next = this.la(1);
-        return next.tokenType === this.T.AtKeyword || next.tokenType === this.T.PropertyReference || next.tokenType === this.T.NestedReference;
+        const next = $.la(1);
+        return next.tokenType === $.T.AtKeyword || next.tokenType === $.T.PropertyReference || next.tokenType === $.T.NestedReference;
       },
-      ALT: () => this.valueReference({ ...ctx, requireAccessorsAfterMixinCall: true })
+      ALT: () => $.valueReference({ ...ctx, requireAccessorsAfterMixinCall: true })
     },
     {
       ALT: () => {
-        this.startRule();
-        let num1 = this.consume(this.T.Number);
+        $.startRule();
+        let num1 = $.CONSUME($.T.Number);
         let num2: IToken | undefined;
-        this.option(() => {
-          this.consume(this.T.Slash);
-          num2 = this.consume(this.T.Number);
+        $.OPTION(() => {
+          $.CONSUME($.T.Slash);
+          num2 = $.CONSUME($.T.Number);
         });
-        let location = this.endRule();
-        let num1Node = this.wrap(this.processValueToken(num1), 'both');
+        let location = $.endRule();
+        let num1Node = $.wrap($.processValueToken(num1), 'both');
         if (!num2) {
           return num1Node;
         }
-        let num2Node = this.wrap(this.processValueToken(num2), 'both');
-        return new List([num1Node, num2Node], { sep: '/' }, location, this.context);
+        let num2Node = $.wrap($.processValueToken(num2), 'both');
+        return new List([num1Node, num2Node], { sep: '/' }, location, $.context);
       }
     },
     {
       ALT: () => {
-        let dim = this.consume(this.T.Dimension);
-        return this.wrap(this.processValueToken(dim), 'both');
+        let dim = $.CONSUME($.T.Dimension);
+        return $.wrap($.processValueToken(dim), 'both');
       }
     }
   ]);
 }
 
 export function wrappedDeclarationList(this: P, ctx: RuleContext = {}) {
-  this.consume(this.T.LCurly);
-  let rules = this.declarationList(ctx);
-  this.consume(this.T.RCurly);
+  const $ = this;
+  $.CONSUME($.T.LCurly);
+  let rules = $.declarationList(ctx);
+  $.CONSUME($.T.RCurly);
   return rules;
 }
 
 export function qualifiedRuleBody(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let selector!: Selector;
   let isSelectorList: boolean | undefined;
   selector = ctx.selector as Selector;
@@ -653,17 +663,17 @@ export function qualifiedRuleBody(this: P, ctx: RuleContext = {}) {
 
   let guard: Condition | undefined;
   if (!isSelectorList) {
-    this.option(() => {
-      guard = this.guard(ctx) as Condition;
+    $.OPTION(() => {
+      guard = $.guard(ctx) as Condition;
     });
   }
-  this.consume(this.T.LCurly);
+  $.CONSUME($.T.LCurly);
   // Save extendNodes before parsing declarationList, so nested rulesets don't inherit them
   // Make a copy of the array (not just a reference) so mutations during nested parsing don't affect it
   let savedExtendNodes: Extend[] | undefined = ctx.extendNodes ? [...ctx.extendNodes] : undefined;
   ctx.extendNodes = undefined;
-  let rules = this.declarationList(ctx);
-  let end = this.consume(this.T.RCurly);
+  let rules = $.declarationList(ctx);
+  let end = $.CONSUME($.T.RCurly);
   // After declarationList, check if new extends were added (e.g., by ampersandExtend)
   // If so, merge them with the saved extends; otherwise restore the saved extends
   const newExtends = ctx.extendNodes as Extend[] | undefined;
@@ -730,7 +740,7 @@ export function qualifiedRuleBody(this: P, ctx: RuleContext = {}) {
       }
     }
   }
-  let node = new Ruleset({ selector, rules, guard }, undefined, undefined, this.context);
+  let node = new Ruleset({ selector, rules, guard }, undefined, undefined, $.context);
   let [startOffset, startLine, startColumn] = selector.location!;
   let { endOffset, endLine, endColumn } = end;
   node._location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
@@ -739,6 +749,7 @@ export function qualifiedRuleBody(this: P, ctx: RuleContext = {}) {
 }
 
 export function qualifiedRule(this: P, ctx: RuleContext = {}, altContext?: AltContext) {
+  const $ = this;
   let selectorAlt = altContext ?? ((ctx: RuleContext) => [
     {
       GATE: () => !ctx.inner,
@@ -746,7 +757,7 @@ export function qualifiedRule(this: P, ctx: RuleContext = {}, altContext?: AltCo
         let initialQualifiedRule = ctx.qualifiedRule;
         ctx.qualifiedRule = true;
         try {
-          return this.selectorList(ctx);
+          return $.selectorList(ctx);
         } finally {
           ctx.qualifiedRule = initialQualifiedRule;
         }
@@ -760,7 +771,7 @@ export function qualifiedRule(this: P, ctx: RuleContext = {}, altContext?: AltCo
         ctx.firstSelector = true;
         ctx.qualifiedRule = true;
         try {
-          return this.forgivingSelectorList(ctx);
+          return $.forgivingSelectorList(ctx);
         } finally {
           ctx.qualifiedRule = initialQualifiedRule;
           ctx.firstSelector = initialFirstSelector;
@@ -776,14 +787,14 @@ export function qualifiedRule(this: P, ctx: RuleContext = {}, altContext?: AltCo
   // Set extendNodes to a fresh empty array upon entry to this qualifiedRule
   // so nested rulesets don't inherit extends from parent rulesets
   ctx.extendNodes = undefined;
-  let selector: Selector = this.or(selectorAlt(ctx));
+  let selector: Selector = $.OR(selectorAlt(ctx));
   // Use the same context object so modifications propagate back
   ctx.selector = selector;
   // Now extendNodes may have been set by extend() during selector parsing
   // Save it for this ruleset, then clear it so nested rulesets don't see it
   let thisExtendNodes = ctx.extendNodes ? [...ctx.extendNodes] : undefined;
   ctx.extendNodes = undefined;
-  let rule: Node = this.qualifiedRuleBody(ctx);
+  let rule: Node = $.qualifiedRuleBody(ctx);
   // After qualifiedRuleBody returns, ctx.extendNodes may contain:
   // 1. Extends that should bubble up (from nested rulesets or this ruleset that didn't match)
   // 2. Nothing (if all extends were processed)
@@ -832,6 +843,7 @@ export function qualifiedRule(this: P, ctx: RuleContext = {}, altContext?: AltCo
  * will end up here, and everything else will be shunted to the qualified rule.
  */
 export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
   const convertArgsForDefinition = (args: List<Node> | undefined) => {
     if (!args || !args.value) {
@@ -848,8 +860,8 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
         node.options.role = 'property';
         args.value[i] = new VarDeclaration({
           name: node,
-          value: new Nil(undefined, undefined, location, this.context)
-        }, { paramVar: true }, location, this.context);
+          value: new Nil(undefined, undefined, location, $.context)
+        }, { paramVar: true }, location, $.context);
       }
       // Rest nodes with string values can stay as-is for mixin definitions
     }
@@ -867,10 +879,10 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
 
       // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
       if (node instanceof Any && node.options?.role === 'name') {
-        args.value[i] = new Reference({ key: node.value }, { type: 'variable' }, location, this.context);
+        args.value[i] = new Reference({ key: node.value }, { type: 'variable' }, location, $.context);
       } else if (node instanceof Rest && typeof node.value === 'string') {
         // If it's a Rest node with a string value, convert it to Rest with Reference for mixin call arguments
-        args.value[i] = new Rest(new Reference({ key: node.value }, { type: 'variable' }, location, this.context), undefined, location, this.context);
+        args.value[i] = new Rest(new Reference({ key: node.value }, { type: 'variable' }, location, $.context), undefined, location, $.context);
       }
     }
   };
@@ -878,16 +890,16 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
   // qualifiedRule
   //   : selectorList WS* LCURLY declarationList RCURLY
   //   ;
-  this.startRule();
+  $.startRule();
 
-  let selector = this.or([
+  let selector = $.OR([
     {
       GATE: () => !ctx.inner,
       ALT: () => {
         let initialQualifiedRule = ctx.qualifiedRule;
         ctx.qualifiedRule = true;
         try {
-          return this.selectorList(ctx);
+          return $.selectorList(ctx);
         } finally {
           ctx.qualifiedRule = initialQualifiedRule;
         }
@@ -901,7 +913,7 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
         ctx.firstSelector = true;
         ctx.qualifiedRule = true;
         try {
-          return this.forgivingSelectorList(ctx);
+          return $.forgivingSelectorList(ctx);
         } finally {
           ctx.qualifiedRule = initialQualifiedRule;
           ctx.firstSelector = initialFirstSelector;
@@ -928,19 +940,19 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
       || selector instanceof BasicSelector
     )) {
       // Create a single Reference with the selector instance as the key
-      leftNode = new Reference({ key: selector }, { type: 'mixin-ruleset', role: 'name' }, undefined, this.context);
+      leftNode = new Reference({ key: selector }, { type: 'mixin-ruleset', role: 'name' }, undefined, $.context);
     } else {
       // For other cases (like SelectorList or when we need nested references),
       // iterate through selector nodes and create nested references
       for (let s of selector.nodes()) {
         if (s instanceof BasicSelector) {
-          leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin-ruleset', role: 'name' }, undefined, this.context);
+          leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin-ruleset', role: 'name' }, undefined, $.context);
         }
       }
     }
 
     /** Finally, pass this reference into a call */
-    leftNode = new Call({ name: leftNode, args }, { markImportant: !!important }, location, this.context);
+    leftNode = new Call({ name: leftNode, args }, { markImportant: !!important }, location, $.context);
     return leftNode;
   };
 
@@ -964,27 +976,27 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
       break;
     }
   }
-  return this.or([
+  return $.OR([
     {
       GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
       ALT: () => {
-        args = this.mixinArgs(ctx);
-        let next = this.la(1).tokenType;
-        if (next === this.T.LCurly || next === this.T.When) {
+        args = $.mixinArgs(ctx);
+        let next = $.la(1).tokenType;
+        if (next === $.T.LCurly || next === $.T.When) {
           isPossibleMixinCall = false;
         }
-        return this.or([
+        return $.OR([
           {
             GATE: () => isPossibleMixinDefinition,
             /** Mixin definition */
             ALT: () => {
-              this.option(() => {
-                guard = this.guard(ctx) as Condition;
+              $.OPTION(() => {
+                guard = $.guard(ctx) as Condition;
               });
-              this.consume(this.T.LCurly);
+              $.CONSUME($.T.LCurly);
 
-              let rules = this.declarationList(ctx);
-              this.consume(this.T.RCurly);
+              let rules = $.declarationList(ctx);
+              $.CONSUME($.T.RCurly);
               // Convert Any nodes to VarDeclaration nodes for mixin definition parameters
               convertArgsForDefinition(args);
               const guardText = String(guard?.toString?.() ?? '');
@@ -992,8 +1004,8 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
               const node = new Mixin(
                 { name: selector.valueOf() as any, params: args, rules, guard },
                 hasDefault ? { hasDefault: true } : undefined,
-                this.endRule(),
-                this.context
+                $.endRule(),
+                $.context
               );
               ctx.hasDefault = false;
               return node;
@@ -1003,19 +1015,19 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
             GATE: () => isPossibleMixinCall,
             /** Mixin call */
             ALT: () => {
-              this.option(() => {
-                important = this.consume(this.T.Important);
+              $.OPTION(() => {
+                important = $.CONSUME($.T.Important);
               });
-              let location: LocationInfo = this.endRule();
+              let location: LocationInfo = $.endRule();
               // Convert Any nodes to Reference nodes for mixin call arguments
               convertArgsForCall(args);
               let result: Node | undefined;
               {
                 /** in Less legacy mode, mixin calls can happen without a space. */
-                let noSpace = this.noSep();
-                let next = this.la(1).tokenType;
-                if ((noSpace && next === this.T.LSquare) || ((noSpace || this.looseMode) && next === this.T.LParen)) {
-                  result = this.option(() => this.lookupOrCall({ ...ctx, node: createMixinCall(location) }));
+                let noSpace = $.noSep();
+                let next = $.la(1).tokenType;
+                if ((noSpace && next === $.T.LSquare) || ((noSpace || $.looseMode) && next === $.T.LParen)) {
+                  result = $.OPTION(() => $.lookupOrCall({ ...ctx, node: createMixinCall(location) }));
                 }
               }
               // Note: Mixin calls without parentheses are handled in the semicolon-terminated ALT below
@@ -1028,14 +1040,14 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
     {
       /** Parse as qualified rule */
       ALT: () => {
-        this.endRule();
+        $.endRule();
         let initialSelector = ctx.selector;
         let initialIsSelectorList = ctx.isSelectorList;
         ctx.selector = selector;
         ctx.isSelectorList = isSelectorList;
         let rule: Node;
         try {
-          rule = this.qualifiedRuleBody(ctx);
+          rule = $.qualifiedRuleBody(ctx);
         } finally {
           ctx.selector = initialSelector;
           ctx.isSelectorList = initialIsSelectorList;
@@ -1064,10 +1076,10 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
       GATE: () => isPossibleMixinCall,
       ALT: () => {
         // Call terminated by a semi-colon and not parens, deprecated
-        const semi = this.consume(this.T.Semi);
-        const location = this.endRule();
+        const semi = $.CONSUME($.T.Semi);
+        const location = $.endRule();
         // Mixin call without parentheses - deprecated
-        this.warnDeprecation(
+        $.warnDeprecation(
           'Calling a mixin without parentheses is deprecated',
           semi,
           'mixin-call-no-parens'

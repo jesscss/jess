@@ -89,6 +89,14 @@ export const SKIPPED_LABEL = 'Skipped';
 /** Token name for whitespace */
 export const WS_NAME = 'WS';
 
+type ParserSavepoint = {
+  pos: number;
+  errorsLength: number;
+  locationStack: LocationInfo[];
+  ruleStack: string[];
+  usedSkippedMark: number;
+};
+
 /**
  * Recursive-descent parser base class.
  *
@@ -391,12 +399,20 @@ export class RecursiveDescentParser {
 
   /** Check if the next token matches the given type */
   check(tokenType: TokenType): boolean {
-    return tokenMatches(this.la(1), tokenType);
+    const idx = this.pos;
+    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
+    return tokenMatches(tok, tokenType);
   }
 
   /** Check if token at lookahead offset matches the given type */
   checkAt(offset: number, tokenType: TokenType): boolean {
-    return tokenMatches(this.la(offset), tokenType);
+    if (offset === 0) {
+      const tok = this.pos > 0 ? this.tokens[this.pos - 1]! : this.eofToken;
+      return tokenMatches(tok, tokenType);
+    }
+    const idx = this.pos + offset - 1;
+    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
+    return tokenMatches(tok, tokenType);
   }
 
   // ── Error / warning API ──────────────────────────────────────────
@@ -434,7 +450,8 @@ export class RecursiveDescentParser {
    * the parser runtime decides the cheapest failure path.
    */
   consume(expected: TokenType): IToken {
-    const tok = this.la(1);
+    const idx = this.pos;
+    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
 
     // Content assist: if we've reached the assist offset, report this
     // expected token and keep parsing
@@ -443,7 +460,7 @@ export class RecursiveDescentParser {
     }
 
     if (tokenMatches(tok, expected)) {
-      this.pos++;
+      this.pos = idx + 1;
       return tok;
     }
 
@@ -469,9 +486,10 @@ export class RecursiveDescentParser {
    * creating thousands of throwaway ParseError objects.
    */
   tryConsume(expected: TokenType): IToken | undefined {
-    const tok = this.la(1);
+    const idx = this.pos;
+    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
     if (tokenMatches(tok, expected)) {
-      this.pos++;
+      this.pos = idx + 1;
       return tok;
     }
     return undefined;
@@ -545,18 +563,7 @@ export class RecursiveDescentParser {
       // Non-last alt without GATE: speculative execution via SPEC_FAIL.
       // consume() throws the SPEC_FAIL symbol on mismatch — no Error
       // object, no stack trace. We catch it by === check and restore.
-      const savedPos = this.pos;
-      // Snapshot stacks so we can fully restore on failure.
-      // A simple .length save/restore doesn't work when ALTs pop
-      // elements (e.g. endRule() during speculation) — setting
-      // .length back up fills with `undefined`, not the original items.
-      const savedLocStack = this.locationStack.slice();
-      const savedRuleStack = this.ruleStack.slice();
-      const savedErrors = this.errors.length;
-      // Snapshot usedSkippedTokens so speculative alts that call
-      // wrap()/getPrePost() don't permanently consume skipped tokens
-      // (WS/comments) when they later fail and backtrack.
-      const savedUsedSkippedMark = this.markUsedSkippedTokens();
+      const saved = this.saveState();
       const wasSpeculating = this.speculating;
       this.speculating = true;
       try {
@@ -571,13 +578,7 @@ export class RecursiveDescentParser {
           // in speculative mode) and ParseError (from committed sub-paths
           // that threw a real error). From the outer speculative
           // perspective, either way the alt failed.
-          this.pos = savedPos;
-          this.locationStack.length = 0;
-          this.locationStack.push(...savedLocStack);
-          this.ruleStack.length = 0;
-          this.ruleStack.push(...savedRuleStack);
-          this.errors.length = savedErrors;
-          this.rollbackUsedSkippedTokens(savedUsedSkippedMark);
+          this.restoreState(saved);
           continue;
         }
         // Non-parse errors bubble up
@@ -627,31 +628,20 @@ export class RecursiveDescentParser {
       if (gate && !gate()) {
         break;
       }
-      const prevPos = this.pos;
-      const savedLocStack = this.locationStack.slice();
-      const savedRuleStack = this.ruleStack.slice();
-      const savedErrors = this.errors.length;
-      const savedUsedSkippedMark = this.markUsedSkippedTokens();
+      const saved = this.saveState();
       try {
         def();
       } catch (e) {
         if (e instanceof ParseError || e === SPEC_FAIL) {
-          this.pos = prevPos;
-          this.restoreStack(this.locationStack, savedLocStack);
-          this.restoreStack(this.ruleStack, savedRuleStack);
-          this.errors.length = savedErrors;
-          this.rollbackUsedSkippedTokens(savedUsedSkippedMark);
+          this.restoreState(saved);
           break;
         }
         throw e;
       }
       // No progress means DEF didn't match (possibly only inserted
       // virtual tokens via recovery). Undo any recovery errors and stop.
-      if (this.pos === prevPos) {
-        this.restoreStack(this.locationStack, savedLocStack);
-        this.restoreStack(this.ruleStack, savedRuleStack);
-        this.errors.length = savedErrors;
-        this.rollbackUsedSkippedTokens(savedUsedSkippedMark);
+      if (this.pos === saved.pos) {
+        this.restoreState(saved);
         break;
       }
     }
@@ -681,26 +671,18 @@ export class RecursiveDescentParser {
       if (gate && !gate()) {
         break;
       }
-      const prevPos = this.pos;
-      const savedLocStack = this.locationStack.slice();
-      const savedRuleStack = this.ruleStack.slice();
-      const savedErrors = this.errors.length;
+      const saved = this.saveState();
       try {
         def();
       } catch (e) {
         if (e instanceof ParseError || e === SPEC_FAIL) {
-          this.pos = prevPos;
-          this.restoreStack(this.locationStack, savedLocStack);
-          this.restoreStack(this.ruleStack, savedRuleStack);
-          this.errors.length = savedErrors;
+          this.restoreState(saved);
           break;
         }
         throw e;
       }
-      if (this.pos === prevPos) {
-        this.restoreStack(this.locationStack, savedLocStack);
-        this.restoreStack(this.ruleStack, savedRuleStack);
-        this.errors.length = savedErrors;
+      if (this.pos === saved.pos) {
+        this.restoreState(saved);
         break;
       }
     }
@@ -722,29 +704,20 @@ export class RecursiveDescentParser {
    * position-comparison to detect recovery-mode virtual tokens.
    */
   option<T>(def: () => T): T | undefined {
-    const prevPos = this.pos;
-    const savedLocStack = this.locationStack.slice();
-    const savedRuleStack = this.ruleStack.slice();
-    const savedErrors = this.errors.length;
+    const saved = this.saveState();
     try {
       const result = def();
       // option() is speculative: if DEF didn't advance pos, or if
       // recovery added errors (the optional content wasn't really there),
       // undo everything.
-      if (this.pos === prevPos || this.errors.length > savedErrors) {
-        this.pos = prevPos;
-        this.restoreStack(this.locationStack, savedLocStack);
-        this.restoreStack(this.ruleStack, savedRuleStack);
-        this.errors.length = savedErrors;
+      if (this.pos === saved.pos || this.errors.length > saved.errorsLength) {
+        this.restoreState(saved);
         return undefined;
       }
       return result;
     } catch (e) {
       if (e instanceof ParseError || e === SPEC_FAIL) {
-        this.pos = prevPos;
-        this.restoreStack(this.locationStack, savedLocStack);
-        this.restoreStack(this.ruleStack, savedRuleStack);
-        this.errors.length = savedErrors;
+        this.restoreState(saved);
         return undefined;
       }
       throw e;
@@ -771,27 +744,19 @@ export class RecursiveDescentParser {
     if (!this.couldStartSep(opts)) {
       return;
     }
-    const prevPos = this.pos;
-    const savedLocStack = this.locationStack.slice();
-    const savedRuleStack = this.ruleStack.slice();
-    const savedErrors = this.errors.length;
+    const saved = this.saveState();
     try {
       DEF();
     } catch (e) {
       if (e instanceof ParseError || e === SPEC_FAIL) {
-        this.pos = prevPos;
-        this.restoreStack(this.locationStack, savedLocStack);
-        this.restoreStack(this.ruleStack, savedRuleStack);
-        this.errors.length = savedErrors;
+        this.restoreState(saved);
         return;
       }
       throw e;
     }
     // First element didn't advance — undo recovery artifacts and exit
-    if (this.pos === prevPos) {
-      this.restoreStack(this.locationStack, savedLocStack);
-      this.restoreStack(this.ruleStack, savedRuleStack);
-      this.errors.length = savedErrors;
+    if (this.pos === saved.pos) {
+      this.restoreState(saved);
       return;
     }
     // Continue with separator + element. After consuming a separator,
@@ -874,16 +839,50 @@ export class RecursiveDescentParser {
     return result;
   }
 
+  // ── Savepoint helpers ────────────────────────────────────────────
+
+  /**
+   * Take a full parser savepoint.
+   *
+   * This is still a full snapshot of the mutable stacks, because speculative
+   * parser code may push and pop within the same ALT/loop body. But we now
+   * centralize that work and pair it with transactional rollback for skipped
+   * trivia consumption instead of cloning the entire usedSkippedTokens Set.
+   */
+  protected saveState(): ParserSavepoint {
+    return {
+      pos: this.pos,
+      errorsLength: this.errors.length,
+      locationStack: this.locationStack.slice(),
+      ruleStack: this.ruleStack.slice(),
+      usedSkippedMark: this.markUsedSkippedTokens()
+    };
+  }
+
+  /**
+   * Restore parser state from a prior savepoint.
+   */
+  protected restoreState(saved: ParserSavepoint): void {
+    this.pos = saved.pos;
+    this.errors.length = saved.errorsLength;
+    this.restoreStack(this.locationStack, saved.locationStack);
+    this.restoreStack(this.ruleStack, saved.ruleStack);
+    this.rollbackUsedSkippedTokens(saved.usedSkippedMark);
+  }
+
   // ── Stack restore helper ─────────────────────────────────────────
 
   /**
-   * Restore an array to a previous snapshot. Avoids sparse holes
-   * that `arr.length = savedLen` would create when elements were
-   * popped during speculation.
+   * Restore an array to a previous snapshot.
+   *
+   * We write elements back manually instead of using push(...saved) so the
+   * restore path stays predictable and avoids spread-call overhead.
    */
   private restoreStack<T>(arr: T[], saved: T[]): void {
-    arr.length = 0;
-    arr.push(...saved);
+    arr.length = saved.length;
+    for (let i = 0; i < saved.length; i++) {
+      arr[i] = saved[i]!;
+    }
   }
 
   // ── Backtracking ─────────────────────────────────────────────────
@@ -895,16 +894,14 @@ export class RecursiveDescentParser {
    * Use for Strategy B disambiguation (rare, ~2-3 CSS productions).
    */
   backtrack(rule: (...args: any[]) => any, ...args: any[]): boolean {
-    const savedPos = this.pos;
-    const savedErrors = this.errors.length;
+    const saved = this.saveState();
     try {
       rule.call(this, ...args);
       return true;
     } catch {
       return false;
     } finally {
-      this.pos = savedPos;
-      this.errors.length = savedErrors;
+      this.restoreState(saved);
     }
   }
 
@@ -1075,7 +1072,8 @@ export class RecursiveDescentParser {
   resyncTo(...syncTokens: TokenType[]): void {
     let depth = 0;
     while (this.pos < this.tokens.length) {
-      const tok = this.la(1);
+      const idx = this.pos;
+      const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
       if (tok.tokenType.name === 'LCurly') {
         depth++;
       } else if (tok.tokenType.name === 'RCurly') {
@@ -1083,8 +1081,17 @@ export class RecursiveDescentParser {
           break;
         }
         depth--;
-      } else if (depth === 0 && syncTokens.some(t => tokenMatches(tok, t))) {
-        break;
+      } else if (depth === 0) {
+        let matched = false;
+        for (let i = 0; i < syncTokens.length; i++) {
+          if (tokenMatches(tok, syncTokens[i]!)) {
+            matched = true;
+            break;
+          }
+        }
+        if (matched) {
+          break;
+        }
       }
       this.pos++;
     }
@@ -1135,12 +1142,13 @@ export class RecursiveDescentParser {
   /** Collect suggestions from all alternatives in an or() call site */
   protected collectOrAssistSuggestions<T>(alternatives: OrAlternative<T>[]): void {
     const suggestions: ContentAssistSuggestion[] = [];
-    for (const alt of alternatives) {
+    for (let i = 0; i < alternatives.length; i++) {
+      const alt = alternatives[i]!;
       if (alt.GATE && !alt.GATE()) {
         continue;
       }
       // Try each alternative in a mini-backtrack to find its first consume()
-      const savedPos = this.pos;
+      const saved = this.saveState();
       const savedAssist = this.assistMode;
       this.assistMode = false; // prevent recursion
       try {
@@ -1148,7 +1156,7 @@ export class RecursiveDescentParser {
       } catch {
         // Expected — we just want the first consume()
       }
-      this.pos = savedPos;
+      this.restoreState(saved);
       this.assistMode = savedAssist;
     }
     if (suggestions.length > 0) {

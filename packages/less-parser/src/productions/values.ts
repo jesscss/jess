@@ -71,45 +71,46 @@ const createInterpolatedReference = (
 // ── Production rules ──────────────────────────────────────────────────
 
 export function expressionSum(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
 
-  let left = this.expressionProduct(ctx);
+  let left = $.expressionProduct(ctx);
 
-  this.many({
+  $.MANY({
     /**
      * What this GATE does. We need to dis-ambiguate
      * 1 -1 (a value sequence) from 1-1 (a Less expression),
      * so Less is white-space sensitive here.
      */
     GATE: () => {
-      const next = this.la(1);
+      const next = $.la(1);
       const nextType = next.tokenType;
       return (
-        nextType === this.T.Plus
-        || nextType === this.T.Minus
-        || (this.noSep() && tokenMatches(next, this.T.Signed))
+        nextType === $.T.Plus
+        || nextType === $.T.Minus
+        || ($.noSep() && tokenMatches(next, $.T.Signed))
       );
     },
     DEF: () => {
       let op: string | undefined;
       let right: Node;
 
-      this.or([
+      $.OR([
         {
           ALT: () => {
-            let opToken = this.or([
-              { ALT: () => this.consume(this.T.Plus) },
-              { ALT: () => this.consume(this.T.Minus) }
+            let opToken = $.OR([
+              { ALT: () => $.CONSUME($.T.Plus) },
+              { ALT: () => $.CONSUME($.T.Minus) }
             ]);
             op = opToken.image;
-            right = this.expressionProduct(ctx);
+            right = $.expressionProduct(ctx);
           }
         },
         /** This will be interpreted by Less as a complete expression */
         {
           ALT: () => {
             // Consume a signed literal and convert it without rewinding
-            const tok = this.consume(this.T.Signed);
+            const tok = $.CONSUME($.T.Signed);
             let startValue: Node | undefined;
             const str = tok.image;
             op = str[0];
@@ -117,27 +118,27 @@ export function expressionSum(this: P, ctx: RuleContext = {}) {
             // Prefer dimension if payload exists, else number, else ident fallback
             if (tok.payload && tok.payload[1]) {
               const dim = { number: parseFloat(tok.payload[0]), unit: tok.payload[1] };
-              startValue = new Dimension(dim, undefined, this.getLocationInfo(tok), this.context);
+              startValue = new Dimension(dim, undefined, $.getLocationInfo(tok), $.context);
             } else {
               const num = parseFloat(str);
               if (!Number.isNaN(num)) {
-                startValue = new Num(num, undefined, this.getLocationInfo(tok), this.context);
+                startValue = new Num(num, undefined, $.getLocationInfo(tok), $.context);
               } else {
-                startValue = this.processValueToken(tok);
+                startValue = $.processValueToken(tok);
               }
             }
             // Delegate to expressionProduct for any trailing * / %
             // e.g. 6px-1px*2 -> 6px - (1px * 2)
-            right = this.expressionProduct({ ...ctx, startValue });
+            right = $.expressionProduct({ ...ctx, startValue });
           }
         }
       ]);
 
       const operation = new Operation(
-        [this.wrap(left, true), op as Operator, this.wrap(right!)],
+        [$.wrap(left, true), op as Operator, $.wrap(right!)],
         undefined,
-        this.getLocationFromNodes([left, right!]),
-        this.context
+        $.getLocationFromNodes([left, right!]),
+        $.context
       );
       left = operation;
 
@@ -145,62 +146,64 @@ export function expressionSum(this: P, ctx: RuleContext = {}) {
     }
   });
 
-  this.endRule();
+  $.endRule();
 
   return left;
 }
 
 export function expressionProduct(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let opAlt = [
-    { ALT: () => this.consume(this.T.Star) },
-    { ALT: () => this.consume(this.T.Slash) },
-    { ALT: () => this.consume(this.T.Percent) }
+    { ALT: () => $.CONSUME($.T.Star) },
+    { ALT: () => $.CONSUME($.T.Slash) },
+    { ALT: () => $.CONSUME($.T.Percent) }
   ];
 
-  this.startRule();
+  $.startRule();
 
-  let left = ctx.startValue ?? this.expressionValue(ctx);
+  let left = ctx.startValue ?? $.expressionValue(ctx);
 
-  this.many(() => {
-    let op = this.or(opAlt);
+  $.MANY(() => {
+    let op = $.OR(opAlt);
     // Check for deprecated ./ operator
     if (op.image === './') {
-      this.warnDeprecation(
+      $.warnDeprecation(
         './ operator is deprecated',
         op,
         'dot-slash-operator'
       );
     }
-    let right: Node = this.expressionValue(ctx);
+    let right: Node = $.expressionValue(ctx);
 
     const operation = new Operation(
-      [this.wrap(left, true), op.image as Operator, this.wrap(right)],
+      [$.wrap(left, true), op.image as Operator, $.wrap(right)],
       undefined,
-      this.getLocationFromNodes([left, right]),
-      this.context
+      $.getLocationFromNodes([left, right]),
+      $.context
     );
     left = operation;
   });
 
-  this.endRule();
+  $.endRule();
 
   return left;
 }
 
 export function expressionValue(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
   /** Can create a negative expression */
-  let minus = this.option(() => this.consume(this.T.Minus));
-  let node = this.or([
+  let minus = $.OPTION(() => $.CONSUME($.T.Minus));
+  let node = $.OR([
     {
       ALT: () => {
-        this.startRule();
+        $.startRule();
         let escape: IToken | undefined;
-        this.option(() => {
-          escape = this.consume(this.T.Tilde);
+        $.OPTION(() => {
+          escape = $.CONSUME($.T.Tilde);
         });
 
-        this.consume(this.T.LParen);
+        $.CONSUME($.T.LParen);
         const innerCtx: RuleContext = {
           ...ctx,
           inner: true,
@@ -208,22 +211,22 @@ export function expressionValue(this: P, ctx: RuleContext = {}) {
           // Parentheses in Less enable "math in parens" semantics
           parenFrames: [...getParenFrames(ctx), true]
         };
-        let node = this.valueList(innerCtx);
+        let node = $.valueList(innerCtx);
 
         // ~() paren escapes also support semicolons as separators: ~(1; 2; 3)
         let isSemiList = false;
         if (escape) {
           let semiNodes: Node[] = [];
-          this.option(() => {
-            this.consume(this.T.Semi);
+          $.OPTION(() => {
+            $.CONSUME($.T.Semi);
             isSemiList = true;
-            semiNodes.push(this.wrap(node, true));
-            node = this.valueList(innerCtx);
-            semiNodes.push(this.wrap(node, true));
-            this.many(() => {
-              this.consume(this.T.Semi);
-              node = this.valueList(innerCtx);
-              semiNodes.push(this.wrap(node, true));
+            semiNodes.push($.wrap(node, true));
+            node = $.valueList(innerCtx);
+            semiNodes.push($.wrap(node, true));
+            $.MANY(() => {
+              $.CONSUME($.T.Semi);
+              node = $.valueList(innerCtx);
+              semiNodes.push($.wrap(node, true));
             });
           });
           if (isSemiList) {
@@ -231,18 +234,18 @@ export function expressionValue(this: P, ctx: RuleContext = {}) {
           }
         }
 
-        this.consume(this.T.RParen);
+        $.CONSUME($.T.RParen);
 
-        let location = this.endRule();
-        node = this.wrap(node, 'both');
-        return new Paren(node, { escaped: !!escape }, location, this.context);
+        let location = $.endRule();
+        node = $.wrap(node, 'both');
+        return new Paren(node, { escaped: !!escape }, location, $.context);
       }
     },
-    { ALT: () => this.value(ctx) }
+    { ALT: () => $.value(ctx) }
   ]);
-  let location = this.endRule();
+  let location = $.endRule();
   if (minus) {
-    return new Negative(node, undefined, location, this.context);
+    return new Negative(node, undefined, location, $.context);
   }
   return node;
 }
@@ -251,33 +254,34 @@ export function expressionValue(this: P, ctx: RuleContext = {}) {
  * Add interpolation
  */
 export function nthValue(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let nthValueAlt = (ctx: RuleContext = {}) => [
-    { ALT: () => this.consume(this.T.InterpolatedIdent) },
-    { ALT: () => this.consume(this.T.NthOdd) },
-    { ALT: () => this.consume(this.T.NthEven) },
-    { ALT: () => this.consume(this.T.Integer) },
+    { ALT: () => $.CONSUME($.T.InterpolatedIdent) },
+    { ALT: () => $.CONSUME($.T.NthOdd) },
+    { ALT: () => $.CONSUME($.T.NthEven) },
+    { ALT: () => $.CONSUME($.T.Integer) },
     {
       ALT: () => {
-        this.or([
-          { ALT: () => this.consume(this.T.NthSignedDimension) },
-          { ALT: () => this.consume(this.T.NthUnsignedDimension) },
-          { ALT: () => this.consume(this.T.NthSignedPlus) },
-          { ALT: () => this.consume(this.T.NthIdent) }
+        $.OR([
+          { ALT: () => $.CONSUME($.T.NthSignedDimension) },
+          { ALT: () => $.CONSUME($.T.NthUnsignedDimension) },
+          { ALT: () => $.CONSUME($.T.NthSignedPlus) },
+          { ALT: () => $.CONSUME($.T.NthIdent) }
         ]);
-        this.option(() => {
-          this.or([
-            { ALT: () => this.consume(this.T.SignedInt) },
+        $.OPTION(() => {
+          $.OR([
+            { ALT: () => $.CONSUME($.T.SignedInt) },
             {
               ALT: () => {
-                this.consume(this.T.Minus);
-                this.consume(this.T.UnsignedInt);
+                $.CONSUME($.T.Minus);
+                $.CONSUME($.T.UnsignedInt);
               }
             }
           ]);
         });
-        this.option(() => {
-          this.consume(this.T.Of);
-          this.complexSelector(ctx);
+        $.OPTION(() => {
+          $.CONSUME($.T.Of);
+          $.complexSelector(ctx);
         });
       }
     }
@@ -287,13 +291,14 @@ export function nthValue(this: P, ctx: RuleContext = {}) {
 }
 
 export function knownFunctions(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let functions = (ctx: RuleContext = {}) => [
-    { ALT: () => this.urlFunction(ctx) },
-    { ALT: () => this.varFunction(ctx) },
-    { ALT: () => this.calcFunction(ctx) },
+    { ALT: () => $.urlFunction(ctx) },
+    { ALT: () => $.varFunction(ctx) },
+    { ALT: () => $.calcFunction(ctx) },
     // colorFunction is already in cssKnownFunctions default, so we don't need to add it here
-    { ALT: () => this.ifFunction(ctx) },
-    { ALT: () => this.booleanFunction(ctx) }
+    { ALT: () => $.ifFunction(ctx) },
+    { ALT: () => $.booleanFunction(ctx) }
   ];
 
   return cssKnownFunctions.call(this, ctx, functions);
@@ -304,33 +309,35 @@ export function knownFunctions(this: P, ctx: RuleContext = {}) {
  * This is the parse-time analogue of `Call.evalNode`'s calcFrames++/--.
  */
 export function calcFunction(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
 
-  this.consume(this.T.Calc);
+  $.CONSUME($.T.Calc);
   const innerCtx = withCalcFrame(ctx, 1);
-  const args = this.mathSum(innerCtx);
-  this.consume(this.T.RParen);
+  const args = $.mathSum(innerCtx);
+  $.CONSUME($.T.RParen);
 
-  const location = this.endRule();
+  const location = $.endRule();
   return new Call({
     name: 'calc',
     args: new List([args])
-  }, undefined, location, this.context);
+  }, undefined, location, $.context);
 }
 
 export function ifFunction(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
 
-  let name = this.consume(this.T.IfFunction);
+  let name = $.CONSUME($.T.IfFunction);
   let args = new List<Node>([]);
   let isCssBranch = false;
 
-  this.or([
+  $.OR([
     {
       ALT: () => {
         isCssBranch = true;
-        const cssArgs = this.ifFunctionArgs({ ...ctx, inner: true });
-        this.consume(this.T.RParen);
+        const cssArgs = $.ifFunctionArgs({ ...ctx, inner: true });
+        $.CONSUME($.T.RParen);
         args = new List([cssArgs]);
       }
     },
@@ -338,72 +345,74 @@ export function ifFunction(this: P, ctx: RuleContext = {}) {
       ALT: () => {
         isCssBranch = false;
 
-        let node: Node = this.guardInner({ ...ctx, inValueList: true });
+        let node: Node = $.guardInner({ ...ctx, inValueList: true });
         const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
         args = new List([condNode]);
 
-        this.or([
+        $.OR([
           {
             ALT: () => {
-              this.consume(this.T.Semi);
-              node = this.valueList({ ...ctx, allowAnonymousMixins: true });
+              $.CONSUME($.T.Semi);
+              node = $.valueList({ ...ctx, allowAnonymousMixins: true });
               args.value.push(node);
-              this.option(() => {
-                this.consume(this.T.Semi);
-                node = this.valueList({ ...ctx, allowAnonymousMixins: true });
+              $.OPTION(() => {
+                $.CONSUME($.T.Semi);
+                node = $.valueList({ ...ctx, allowAnonymousMixins: true });
                 args.value.push(node);
               });
             }
           },
           {
             ALT: () => {
-              this.consume(this.T.Comma);
-              node = this.callArgument({ ...ctx, allowAnonymousMixins: true });
+              $.CONSUME($.T.Comma);
+              node = $.callArgument({ ...ctx, allowAnonymousMixins: true });
               args.value.push(node);
-              this.option(() => {
-                this.consume(this.T.Comma);
-                node = this.callArgument({ ...ctx, allowAnonymousMixins: true });
+              $.OPTION(() => {
+                $.CONSUME($.T.Comma);
+                node = $.callArgument({ ...ctx, allowAnonymousMixins: true });
                 args.value.push(node);
               });
             }
           }
         ]);
-        this.consume(this.T.RParen);
+        $.CONSUME($.T.RParen);
       }
     }
   ]);
 
-  let location = this.endRule();
+  let location = $.endRule();
   let nameNode = new Reference('if', {
     type: 'function',
     fallbackValue: isCssBranch ? true : undefined
-  }, this.getLocationInfo(name), this.context);
-  const callNode = new Call({ name: nameNode, args }, undefined, location, this.context);
+  }, $.getLocationInfo(name), $.context);
+  const callNode = new Call({ name: nameNode, args }, undefined, location, $.context);
   return callNode;
 }
 
 export function booleanFunction(this: P, ctx: RuleContext = {}) {
-  this.startRule();
-  this.consume(this.T.BooleanFunction);
-  let arg: Node = this.guardInner({ ...ctx, inValueList: true });
-  this.consume(this.T.RParen);
+  const $ = this;
+  $.startRule();
+  $.CONSUME($.T.BooleanFunction);
+  let arg: Node = $.guardInner({ ...ctx, inValueList: true });
+  $.CONSUME($.T.RParen);
 
-  let location = this.endRule();
+  let location = $.endRule();
   const conditionNode = arg instanceof Paren && arg.value instanceof Node ? arg.value : arg;
-  const exprNode = new Expression(conditionNode, { parens: true }, location, this.context);
+  const exprNode = new Expression(conditionNode, { parens: true }, location, $.context);
   return exprNode;
 }
 
 export function varReference(this: P, ctx: RuleContext = {}) {
-  let node: Node | undefined = this.or([
+  const $ = this;
+  let node: Node | undefined = $.OR([
     {
       ALT: () => {
-        let token = this.consume(this.T.PropertyReference);
+        let token = $.CONSUME($.T.PropertyReference);
         // Warn about $ident in custom property values - it's treated as literal text, not a property reference
         if (ctx.inCustomPropertyValue) {
           const atName = token.image;
           const ident = token.image.slice(1);
-          this.warnDeprecation(
+          $.warnDeprecation(
             `${atName} in custom property values is treated as literal text, not a property reference. Use \${${ident}} if you want it to be evaluated.`,
             token,
             'property-in-unknown-value'
@@ -411,36 +420,36 @@ export function varReference(this: P, ctx: RuleContext = {}) {
           return new Reference(
             { key: token.image.slice(1) },
             { type: 'property', role: 'ident' },
-            this.getLocationInfo(token),
-            this.context
+            $.getLocationInfo(token),
+            $.context
           );
         }
-        return new Reference(token.image.slice(1), { type: 'property' }, this.getLocationInfo(token), this.context);
+        return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), $.context);
       }
     },
     {
       ALT: () => {
-        let token = this.consume(this.T.NestedReference);
+        let token = $.CONSUME($.T.NestedReference);
         const raw = token.image;
         const type: 'variable' | 'property' = raw.startsWith('@') ? 'variable' : 'property';
         const key = getInterpolatedOrString(raw);
         if (ctx.inCustomPropertyValue && typeof key === 'string') {
-          return new Reference({ key }, { type: 'variable', role: 'ident' }, this.getLocationInfo(token), this.context);
+          return new Reference({ key }, { type: 'variable', role: 'ident' }, $.getLocationInfo(token), $.context);
         }
         if (typeof key === 'string') {
-          return new Reference(key, { type }, this.getLocationInfo(token), this.context);
+          return new Reference(key, { type }, $.getLocationInfo(token), $.context);
         }
-        return new Reference({ key }, { type }, this.getLocationInfo(token), this.context);
+        return new Reference({ key }, { type }, $.getLocationInfo(token), $.context);
       }
     },
     {
       ALT: () => {
-        let token = this.varName(ctx);
+        let token = $.varName(ctx);
         // Warn about @ident in custom property values - it's treated as literal text, not a variable reference
         if (ctx.inCustomPropertyValue) {
           const atName = token.image;
           const ident = token.image.slice(1);
-          this.warnDeprecation(
+          $.warnDeprecation(
             `${atName} in custom property values is treated as literal text, not a variable reference. Use @{${ident}} if you want it to be evaluated.`,
             token,
             'variable-in-unknown-value'
@@ -448,20 +457,20 @@ export function varReference(this: P, ctx: RuleContext = {}) {
           return new Reference(
             { key: token.image.slice(1) },
             { type: 'variable', role: 'ident' },
-            this.getLocationInfo(token),
-            this.context
+            $.getLocationInfo(token),
+            $.context
           );
         }
-        return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
+        return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), $.context);
       }
     }
   ]);
-  this.or([
+  $.OR([
     {
       ALT: () => {
         /** This spreads a (list) value within a containing list when evaluated */
-        let token = this.consume(this.T.Ellipsis);
-        node = new Rest(node, undefined, this.getLocationFromNodes([node!, token]), this.context);
+        let token = $.CONSUME($.T.Ellipsis);
+        node = new Rest(node, undefined, $.getLocationFromNodes([node!, token]), $.context);
       }
     },
     {
@@ -470,51 +479,53 @@ export function varReference(this: P, ctx: RuleContext = {}) {
         if (node?.options?.type !== 'variable') {
           return false;
         }
-        let next = this.la(1).tokenType;
-        if (next !== this.T.LSquare && next !== this.T.LParen) {
+        let next = $.la(1).tokenType;
+        if (next !== $.T.LSquare && next !== $.T.LParen) {
           return false;
         }
-        if (!this.noSep()) {
+        if (!$.noSep()) {
           return false;
         }
         return true;
       },
       ALT: () => {
-        this.atLeastOne({
+        $.AT_LEAST_ONE({
           GATE: () => {
-            let next = this.la(1).tokenType;
-            if (next !== this.T.LSquare && next !== this.T.LParen) {
+            let next = $.la(1).tokenType;
+            if (next !== $.T.LSquare && next !== $.T.LParen) {
               return false;
             }
-            if (!this.noSep()) {
+            if (!$.noSep()) {
               return false;
             }
             return true;
           },
           DEF: () => {
-            node = this.lookupOrCall({ ...ctx, node: node! });
+            node = $.lookupOrCall({ ...ctx, node: node! });
           }
         });
-        this.option(() => {
-          this.option(() => this.consume(this.T.Gt));
-          node = this.mixinReference({ ...ctx, node: node! });
+        $.OPTION(() => {
+          $.OPTION(() => $.CONSUME($.T.Gt));
+          node = $.mixinReference({ ...ctx, node: node! });
         });
       }
     },
     { ALT: () => undefined }
   ]);
 
-  return this.wrap(node!);
+  return $.wrap(node!);
 }
 
 export function valueReference(this: P, ctx: RuleContext = {}) {
-  return this.or([
-    { ALT: () => this.varReference(ctx) },
-    { ALT: () => this.mixinReference(ctx) }
+  const $ = this;
+  return $.OR([
+    { ALT: () => $.varReference(ctx) },
+    { ALT: () => $.mixinReference(ctx) }
   ]);
 }
 
 export function functionCall(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   const modernColorFunctions = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
   const isModernColorCall = (name: string, args?: List<Node>) => {
     if (!modernColorFunctions.has(name.toLowerCase())) {
@@ -531,59 +542,60 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
     {
       // Disambiguate known functions by their dedicated tokens
       GATE: () => {
-        let tokenType = this.la(1).tokenType;
-        return tokenType === this.T.UrlStart
-          || tokenType === this.T.Var
-          || tokenType === this.T.Calc
-          || tokenType === this.T.IfFunction
-          || tokenType === this.T.BooleanFunction;
+        let tokenType = $.la(1).tokenType;
+        return tokenType === $.T.UrlStart
+          || tokenType === $.T.Var
+          || tokenType === $.T.Calc
+          || tokenType === $.T.IfFunction
+          || tokenType === $.T.BooleanFunction;
       },
-      ALT: () => this.knownFunctions(ctx)
+      ALT: () => $.knownFunctions(ctx)
     },
     {
       // Generic function via FunctionStart token
       GATE: () => {
-        let tokenType = this.la(1).tokenType;
-        return tokenType !== this.T.UrlStart
-          && tokenType !== this.T.Var
-          && tokenType !== this.T.Calc
-          && tokenType !== this.T.IfFunction
-          && tokenType !== this.T.BooleanFunction;
+        let tokenType = $.la(1).tokenType;
+        return tokenType !== $.T.UrlStart
+          && tokenType !== $.T.Var
+          && tokenType !== $.T.Calc
+          && tokenType !== $.T.IfFunction
+          && tokenType !== $.T.BooleanFunction;
       },
       ALT: () => {
-        this.startRule();
-        const fnStart = this.consume(this.T.FunctionStart);
+        $.startRule();
+        const fnStart = $.CONSUME($.T.FunctionStart);
         const fnNameForCtx = fnStart.image.slice(0, -1);
         let args: List<Node> | undefined;
-        this.option(() => args = this.functionCallArgs({ ...ctx, currentFunctionName: fnNameForCtx }));
-        this.consume(this.T.RParen);
-        const location = this.endRule();
+        $.OPTION(() => args = $.functionCallArgs({ ...ctx, currentFunctionName: fnNameForCtx }));
+        $.CONSUME($.T.RParen);
+        const location = $.endRule();
         const nameValue = fnNameForCtx;
         if (nameValue === 'unit' && args?.value[1] instanceof Any) {
           const unitArg = args.value[1];
-          const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, this.context);
+          const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, $.context);
           quotedUnit.pre = unitArg.pre;
           quotedUnit.post = unitArg.post;
           args.value[1] = quotedUnit;
         }
-        const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, this.getLocationInfo(fnStart), this.context);
+        const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), $.context);
         /** Less / Sass functions we try to call that throw just get turned into calls. */
         const modernSyntax = isModernColorCall(nameValue, args);
         return new Call(
           { name: nameNode, args },
           { silentFail: true, ...(modernSyntax ? { modernSyntax: true } : {}) },
           location,
-          this.context
+          $.context
         );
       }
     }
   ];
 
-  return this.or(funcAlt(ctx));
+  return $.OR(funcAlt(ctx));
 }
 
 export function functionCallArgs(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
 
   // Inside function arguments, allow inner tokens like ':'
   const prevInner = ctx.inner;
@@ -600,81 +612,82 @@ export function functionCallArgs(this: P, ctx: RuleContext = {}) {
   let semiNodes: Node[] = [];
   let isSemiList = false;
   try {
-    let node = this.callArgument(argCtx);
+    let node = $.callArgument(argCtx);
 
-    commaNodes = [this.wrap(node, true)];
+    commaNodes = [$.wrap(node, true)];
 
     // First, consume any comma-separated arguments
-    this.many(() => {
-      this.consume(this.T.Comma);
-      node = this.callArgument(argCtx);
-      commaNodes!.push(this.wrap(node, true));
+    $.MANY(() => {
+      $.CONSUME($.T.Comma);
+      node = $.callArgument(argCtx);
+      commaNodes!.push($.wrap(node, true));
     });
 
     // Then, optionally switch to semicolon-separated list and continue with semicolons
-    this.option(() => {
-      this.consume(this.T.Semi);
+    $.OPTION(() => {
+      $.CONSUME($.T.Semi);
       isSemiList = true;
 
       // Aggregate the previous set of comma-nodes as the first semi item
       if (commaNodes.length > 1) {
-        semiNodes.push(new List(commaNodes, undefined, this.getLocationFromNodes(commaNodes), this.context));
+        semiNodes.push(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context));
       } else {
         semiNodes.push(commaNodes[0]!);
       }
 
-      node = this.callArgument({ ...argCtx, allowComma: true });
-      semiNodes.push(this.wrap(node, true));
+      node = $.callArgument({ ...argCtx, allowComma: true });
+      semiNodes.push($.wrap(node, true));
 
-      this.many(() => {
-        this.consume(this.T.Semi);
-        node = this.callArgument({ ...argCtx, allowComma: true });
-        semiNodes.push(this.wrap(node, true));
+      $.MANY(() => {
+        $.CONSUME($.T.Semi);
+        node = $.callArgument({ ...argCtx, allowComma: true });
+        semiNodes.push($.wrap(node, true));
       });
     });
   } finally {
     ctx.inner = prevInner;
   }
-  this.endRule();
+  $.endRule();
   const nodes = isSemiList ? semiNodes! : commaNodes!;
   return new List(nodes, isSemiList ? { sep: ';' } : undefined);
 }
 
 export function value(this: P, ctx: RuleContext = {}) {
-  if (this.la(1).tokenType === this.T.Percent) {
+  const $ = this;
+  if ($.la(1).tokenType === $.T.Percent) {
     // no-op: preserved from original
   }
   // eslint-disable-next-line @typescript-eslint/naming-convention
   let _isMixinReference = undefined as boolean | undefined;
   const isMixinReference = () => {
     if (_isMixinReference === undefined) {
-      let tt1 = this.la(1).tokenType;
-      let tt2 = this.la(2).tokenType;
+      let tt1 = $.la(1).tokenType;
+      let tt2 = $.la(2).tokenType;
       /**
        * We'll allow a few "bare" mixin references without parens
        * or square brackets, but not if they'll conflict with
        * other syntax.
        */
       _isMixinReference =
-      tt1 === this.T.DotName
-      || tt1 === this.T.HashName
-      || tt1 === this.T.InterpolatedSelector
+      tt1 === $.T.DotName
+      || tt1 === $.T.HashName
+      || tt1 === $.T.InterpolatedSelector
       || (
         (
-          tt1 === this.T.ColorIdentStart
-          || tt1 === this.T.InterpolatedSelector
+          tt1 === $.T.ColorIdentStart
+          || tt1 === $.T.InterpolatedSelector
         ) && (
-          tt2 === this.T.Gt
-          || tt2 === this.T.DotName
-          || tt2 === this.T.HashName
-          || tt2 === this.T.InterpolatedSelector
+          tt2 === $.T.Gt
+          || tt2 === $.T.DotName
+          || tt2 === $.T.HashName
+          || tt2 === $.T.InterpolatedSelector
           || (
-            this.noSep(1)
+            $.noSep(1)
             && (
-              tt2 === this.T.LParen
-              || tt2 === this.T.LSquare
-              || tt2 === this.T.HashName
-              || tt2 === this.T.DotName
+              tt2 === $.T.LParen
+              || tt2 === $.T.LSquare
+              || tt2 === $.T.HashName
+              || tt2 === $.T.DotName
             )
           )
         )
@@ -682,79 +695,80 @@ export function value(this: P, ctx: RuleContext = {}) {
     }
     return _isMixinReference;
   };
-  let node: Node = this.or([
-    { ALT: () => this.functionCall(ctx) },
+  let node: Node = $.OR([
+    { ALT: () => $.functionCall(ctx) },
     {
-      GATE: () => this.la(1).tokenType === this.T.Star && this.la(2).tokenType === this.T.LSquare,
-      ALT: () => this.selectorCapture(ctx)
+      GATE: () => $.la(1).tokenType === $.T.Star && $.la(2).tokenType === $.T.LSquare,
+      ALT: () => $.selectorCapture(ctx)
     },
     {
       GATE: isMixinReference,
-      ALT: () => this.mixinReference(ctx)
+      ALT: () => $.mixinReference(ctx)
     },
     {
       GATE: () => !isMixinReference(),
-      ALT: () => this.consume(this.T.Color)
+      ALT: () => $.CONSUME($.T.Color)
     },
     {
       GATE: () => !isMixinReference(),
-      ALT: () => this.consume(this.T.Ident)
+      ALT: () => $.CONSUME($.T.Ident)
     },
-    { ALT: () => this.varReference(ctx) },
-    { ALT: () => this.consume(this.T.DefaultGuardFunc) },
-    { ALT: () => this.consume(this.T.Dimension) },
-    { ALT: () => this.consume(this.T.Number) },
+    { ALT: () => $.varReference(ctx) },
+    { ALT: () => $.CONSUME($.T.DefaultGuardFunc) },
+    { ALT: () => $.CONSUME($.T.Dimension) },
+    { ALT: () => $.CONSUME($.T.Number) },
     {
       GATE: () => (ctx as any).currentFunctionName === 'unit',
-      ALT: () => this.consume(this.T.Percent)
+      ALT: () => $.CONSUME($.T.Percent)
     },
-    { ALT: () => this.consume(this.T.UnicodeRange) },
-    { ALT: () => this.string(ctx) },
-    { ALT: () => this.consume(this.T.JavaScript) },
+    { ALT: () => $.CONSUME($.T.UnicodeRange) },
+    { ALT: () => $.string(ctx) },
+    { ALT: () => $.CONSUME($.T.JavaScript) },
     /** Explicitly not marked as an ident */
-    { ALT: () => this.consume(this.T.When) },
-    { ALT: () => this.squareValue(ctx) },
+    { ALT: () => $.CONSUME($.T.When) },
+    { ALT: () => $.squareValue(ctx) },
     {
-      GATE: () => this.looseMode && !!ctx.inner,
-      ALT: () => this.consume(this.T.Colon)
+      GATE: () => $.looseMode && !!ctx.inner,
+      ALT: () => $.CONSUME($.T.Colon)
     },
     {
       /** e.g. alpha(opacity=@var) */
-      GATE: () => this.looseMode && !!ctx.inFunctionArgs,
-      ALT: () => this.consume(this.T.Eq)
+      GATE: () => $.looseMode && !!ctx.inFunctionArgs,
+      ALT: () => $.CONSUME($.T.Eq)
     },
     {
-      GATE: () => this.looseMode,
-      ALT: () => this.consume(this.T.Unknown)
+      GATE: () => $.looseMode,
+      ALT: () => $.CONSUME($.T.Unknown)
     },
     {
       /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-      GATE: () => this.legacyMode,
-      ALT: () => this.consume(this.T.LegacyMSFilter)
+      GATE: () => $.legacyMode,
+      ALT: () => $.CONSUME($.T.LegacyMSFilter)
     }
   ]);
   if (!(node instanceof Node)) {
-    node = this.processValueToken(node);
+    node = $.processValueToken(node);
   }
-  return this.wrap(node);
+  return $.wrap(node);
 }
 
 export function string(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let stringAlt = [
     {
       ALT: () => {
-        this.startRule();
-        let quote = this.consume(this.T.SingleQuoteStart);
+        $.startRule();
+        let quote = $.CONSUME($.T.SingleQuoteStart);
         let contents: IToken | undefined;
-        this.option(() => contents = this.consume(this.T.SingleQuoteStringContents));
-        this.consume(this.T.SingleQuoteEnd);
+        $.OPTION(() => contents = $.CONSUME($.T.SingleQuoteStringContents));
+        $.CONSUME($.T.SingleQuoteEnd);
         let quoteImg = quote.image;
         let escaped = false;
         if (quoteImg.startsWith('~')) {
           escaped = true;
           quoteImg = quoteImg.slice(1);
         }
-        let location = this.endRule();
+        let location = $.endRule();
         let value = contents?.image;
         if (escaped && value) {
           value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
@@ -762,26 +776,26 @@ export function string(this: P, ctx: RuleContext = {}) {
 
         // Handle interpolation in string contents
         if (value && (value.includes('@{') || value.includes('${'))) {
-          return new Quoted(processStringInterpolation(value, location, this.context), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+          return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
         }
 
-        return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+        return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
       }
     },
     {
       ALT: () => {
-        this.startRule();
-        let quote = this.consume(this.T.DoubleQuoteStart);
+        $.startRule();
+        let quote = $.CONSUME($.T.DoubleQuoteStart);
         let contents: IToken | undefined;
-        this.option(() => contents = this.consume(this.T.DoubleQuoteStringContents));
-        this.consume(this.T.DoubleQuoteEnd);
+        $.OPTION(() => contents = $.CONSUME($.T.DoubleQuoteStringContents));
+        $.CONSUME($.T.DoubleQuoteEnd);
         let quoteImg = quote.image;
         let escaped = false;
         if (quoteImg.startsWith('~')) {
           escaped = true;
           quoteImg = quoteImg.slice(1);
         }
-        let location = this.endRule();
+        let location = $.endRule();
         let value = contents?.image;
         if (escaped && value) {
           value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
@@ -789,15 +803,15 @@ export function string(this: P, ctx: RuleContext = {}) {
 
         // Handle interpolation in string contents
         if (value && (value.includes('@{') || value.includes('${'))) {
-          return new Quoted(processStringInterpolation(value, location, this.context), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+          return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
         }
 
-        return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+        return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
       }
     }
   ];
 
-  return this.or(stringAlt);
+  return $.OR(stringAlt);
 }
 
 // ── String interpolation helpers ──────────────────────────────────────
@@ -878,24 +892,25 @@ function processStringInterpolation(value: string, location: LocationInfo, conte
 }
 
 export function mathValue(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let valueAlt = (ctx: RuleContext = {}) => [
-    { ALT: () => this.consume(this.T.AtKeyword) },
-    { ALT: () => this.consume(this.T.Number) },
-    { ALT: () => this.consume(this.T.Dimension) },
+    { ALT: () => $.CONSUME($.T.AtKeyword) },
+    { ALT: () => $.CONSUME($.T.Number) },
+    { ALT: () => $.CONSUME($.T.Dimension) },
     // Allow identifiers like channel names in color space calcs (e.g., calc(l - 0.1))
-    { ALT: () => this.consume(this.T.Ident) },
-    { ALT: () => this.functionCall(ctx) },
+    { ALT: () => $.CONSUME($.T.Ident) },
+    { ALT: () => $.functionCall(ctx) },
     {
       /** Only allow escaped strings in calc */
-      GATE: () => this.la(1).image.startsWith('~'),
-      ALT: () => this.string(ctx)
+      GATE: () => $.la(1).image.startsWith('~'),
+      ALT: () => $.string(ctx)
     },
     {
       /** For some reason, e() goes here instead of $.function */
-      GATE: () => this.la(2).tokenType !== this.T.LParen,
-      ALT: () => this.consume(this.T.MathConstant)
+      GATE: () => $.la(2).tokenType !== $.T.LParen,
+      ALT: () => $.CONSUME($.T.MathConstant)
     },
-    { ALT: () => this.mathParen(ctx) }
+    { ALT: () => $.mathParen(ctx) }
   ];
 
   return cssMathValue.call(this, ctx, valueAlt);

@@ -50,25 +50,26 @@ const cssFunctionCall = CssRecursiveParser.prototype.functionCall;
  * module-qualified references.
  */
 export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
+  const $ = this;
   valueAlt ??= (ctx: RuleContext = {}) => [
     {
-      GATE: () => this.la(1).tokenType === this.T.LParen && looksLikeMapLiteral(this, this.T),
-      ALT: () => this.scssMapLiteral(ctx)
+      GATE: () => $.la(1).tokenType === $.T.LParen && looksLikeMapLiteral($, $.T),
+      ALT: () => $.scssMapLiteral(ctx)
     },
     {
       // SCSS interpolation in values: `#{$expr}`
-      GATE: () => this.la(1).tokenType === this.T.InterpolationStart,
+      GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
       ALT: () => {
-        this.startRule();
-        this.consume(this.T.InterpolationStart);
-        const expr = this.valueSequence(ctx) as unknown as Node;
-        this.consume(this.T.RCurly);
-        const loc = this.endRule();
+        $.startRule();
+        $.CONSUME($.T.InterpolationStart);
+        const expr = $.valueSequence(ctx) as unknown as Node;
+        $.CONSUME($.T.RCurly);
+        const loc = $.endRule();
         return new Interpolated(
           { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
           { role: 'any' },
           loc,
-          this.context
+          $.context
         );
       }
     },
@@ -78,56 +79,56 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
       //
       // Tokenizes as: (PlainIdent/Ident) + Unknown('.') + Unknown('\\') + (HashName | DotName) + LParen ...
       GATE: () =>
-        (this.la(1).tokenType === this.T.Ident || this.la(1).tokenType === this.T.PlainIdent)
-        && this.la(2).tokenType === this.T.Unknown
-        && this.la(2).image === '.'
-        && this.la(3).tokenType === this.T.Unknown
-        && this.la(3).image === '\\'
-        && (this.la(4).tokenType === this.T.HashName || this.la(4).tokenType === this.T.DotName)
-        && this.la(5).tokenType === this.T.LParen,
+        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
+        && $.la(2).tokenType === $.T.Unknown
+        && $.la(2).image === '.'
+        && $.la(3).tokenType === $.T.Unknown
+        && $.la(3).image === '\\'
+        && ($.la(4).tokenType === $.T.HashName || $.la(4).tokenType === $.T.DotName)
+        && $.la(5).tokenType === $.T.LParen,
       ALT: () => {
-        this.startRule();
-        const nsTok = this.or([
-          { GATE: () => this.la(1).tokenType === this.T.Ident, ALT: () => this.consume(this.T.Ident) },
-          { ALT: () => this.consume(this.T.PlainIdent) }
+        $.startRule();
+        const nsTok = $.OR([
+          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
-        this.consume(this.T.Unknown); // '.'
-        this.consume(this.T.Unknown); // '\'
-        const member = this.or([
-          { GATE: () => this.la(1).tokenType === this.T.HashName, ALT: () => this.consume(this.T.HashName) },
-          { ALT: () => this.consume(this.T.DotName) }
+        $.CONSUME($.T.Unknown); // '.'
+        $.CONSUME($.T.Unknown); // '\'
+        const member = $.OR([
+          { GATE: () => $.la(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
+          { ALT: () => $.CONSUME($.T.DotName) }
         ]) as unknown as IToken;
-        this.consume(this.T.LParen);
+        $.CONSUME($.T.LParen);
         let args: List | undefined;
-        this.option(() => (args = this.functionCallArgs(ctx)));
-        this.consume(this.T.RParen);
-        const loc = this.endRule();
+        $.OPTION(() => (args = $.functionCallArgs(ctx)));
+        $.CONSUME($.T.RParen);
+        const loc = $.endRule();
         const key = member.image.slice(1);
-        const ref = makeNamespacedReference(this, [nsTok.image, key], 'mixin-ruleset');
-        const call = new Call({ name: ref, args }, undefined, loc, this.context);
-        return new Expression(call, undefined, loc, this.context);
+        const ref = makeNamespacedReference($, [nsTok.image, key], 'mixin-ruleset');
+        const call = new Call({ name: ref, args }, undefined, loc, $.context);
+        return new Expression(call, undefined, loc, $.context);
       }
     },
     {
       // SCSS module-member variable: `ns.$var`
       GATE: () =>
-        (this.la(1).tokenType === this.T.Ident || this.la(1).tokenType === this.T.PlainIdent)
-        && this.la(2).tokenType === this.T.Unknown
-        && this.la(2).image === '.'
-        && this.la(3).tokenType === this.T.DollarVariable,
+        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
+        && $.la(2).tokenType === $.T.Unknown
+        && $.la(2).image === '.'
+        && $.la(3).tokenType === $.T.DollarVariable,
       ALT: () => {
-        this.startRule();
-        const nsTok = this.or([
-          { GATE: () => this.la(1).tokenType === this.T.Ident, ALT: () => this.consume(this.T.Ident) },
-          { ALT: () => this.consume(this.T.PlainIdent) }
+        $.startRule();
+        const nsTok = $.OR([
+          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
-        this.consume(this.T.Unknown); // '.'
-        const dv = this.consume(this.T.DollarVariable);
-        const loc = this.endRule();
+        $.CONSUME($.T.Unknown); // '.'
+        const dv = $.CONSUME($.T.DollarVariable);
+        const loc = $.endRule();
         const ns = nsTok.image;
         const key = dv.image.slice(1);
-        const nsRef = new Reference(ns, { type: 'variable' }, loc, this.context);
-        const ref = new Reference({ target: nsRef, key }, { type: 'variable' }, loc, this.context);
+        const nsRef = new Reference(ns, { type: 'variable' }, loc, $.context);
+        const ref = new Reference({ target: nsRef, key }, { type: 'variable' }, loc, $.context);
         return ref;
       }
     },
@@ -135,58 +136,58 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
       // SCSS module-qualified function call in value position: `ns.fn(...)`
       // Tokenizes as: PlainIdent/Ident + DotName(".fn") + LParen ...
       GATE: () =>
-        (this.la(1).tokenType === this.T.Ident || this.la(1).tokenType === this.T.PlainIdent)
-        && this.la(2).tokenType === this.T.DotName
-        && this.la(3).tokenType === this.T.LParen,
+        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
+        && $.la(2).tokenType === $.T.DotName
+        && $.la(3).tokenType === $.T.LParen,
       ALT: () => {
-        this.startRule();
-        const nsTok = this.or([
-          { GATE: () => this.la(1).tokenType === this.T.Ident, ALT: () => this.consume(this.T.Ident) },
-          { ALT: () => this.consume(this.T.PlainIdent) }
+        $.startRule();
+        const nsTok = $.OR([
+          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
-        const dot = this.consume(this.T.DotName); // ".fn"
-        this.consume(this.T.LParen);
+        const dot = $.CONSUME($.T.DotName); // ".fn"
+        $.CONSUME($.T.LParen);
         let args: List | undefined;
-        this.option(() => (args = this.functionCallArgs(ctx)));
-        this.consume(this.T.RParen);
-        const loc = this.endRule();
+        $.OPTION(() => (args = $.functionCallArgs(ctx)));
+        $.CONSUME($.T.RParen);
+        const loc = $.endRule();
         const fnName = `${nsTok.image}.${dot.image.slice(1)}`;
-        const call = new Call({ name: fnName, args }, undefined, loc, this.context);
-        const maybe = desugarNamespacedCall(this, call);
-        return new Expression(maybe, undefined, loc, this.context);
+        const call = new Call({ name: fnName, args }, undefined, loc, $.context);
+        const maybe = desugarNamespacedCall($, call);
+        return new Expression(maybe, undefined, loc, $.context);
       }
     },
-    { ALT: () => this.functionCall(ctx) },
-    { ALT: () => this.consume(this.T.DollarVariable) },
-    { ALT: () => this.consume(this.T.Ident) },
-    { ALT: () => this.consume(this.T.Dimension) },
-    { ALT: () => this.consume(this.T.Number) },
-    { ALT: () => this.consume(this.T.Color) },
-    { ALT: () => this.consume(this.T.UnicodeRange) },
-    { ALT: () => this.string(ctx) },
-    { ALT: () => this.squareValue(ctx) },
+    { ALT: () => $.functionCall(ctx) },
+    { ALT: () => $.CONSUME($.T.DollarVariable) },
+    { ALT: () => $.CONSUME($.T.Ident) },
+    { ALT: () => $.CONSUME($.T.Dimension) },
+    { ALT: () => $.CONSUME($.T.Number) },
+    { ALT: () => $.CONSUME($.T.Color) },
+    { ALT: () => $.CONSUME($.T.UnicodeRange) },
+    { ALT: () => $.string(ctx) },
+    { ALT: () => $.squareValue(ctx) },
     {
-      GATE: () => this.legacyMode,
-      ALT: () => this.consume(this.T.LegacyMSFilter)
+      GATE: () => $.legacyMode,
+      ALT: () => $.CONSUME($.T.LegacyMSFilter)
     }
   ];
 
-  this.startRule();
-  let node = this.or(valueAlt!(ctx)) as unknown as Node | IToken;
+  $.startRule();
+  let node = $.OR(valueAlt!(ctx)) as unknown as Node | IToken;
   let additionalValue: Node | undefined;
-  this.option(() => {
-    this.consume(this.T.Slash);
-    additionalValue = this.value(ctx);
+  $.OPTION(() => {
+    $.CONSUME($.T.Slash);
+    additionalValue = $.value(ctx);
   });
-  const location = this.endRule();
+  const location = $.endRule();
   // Match CSS parser behavior: convert raw tokens into Nodes.
   if (!(node instanceof JessNode)) {
-    node = this.processValueToken(node as IToken, ctx);
+    node = $.processValueToken(node as IToken, ctx);
   }
   if (additionalValue) {
-    return this.wrap(new List([this.wrap(node, true), additionalValue], { sep: '/' }, location, this.context));
+    return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, $.context));
   }
-  return this.wrap(node);
+  return $.wrap(node);
 }
 
 /**
@@ -194,14 +195,15 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
  * We return an Expression(Call(Reference(ns.fn))) to match Less-style outer wrapping.
  */
 export function functionCall(this: P, ctx: RuleContext = {}) {
-  const node = cssFunctionCall.call(this, ctx) as unknown as Call;
+  const $ = this;
+  const node = cssFunctionCall.call($, ctx) as unknown as Call;
 
   if (!isNode(node, N.Call)) {
     return node as unknown as any;
   }
 
   // First, keep existing Sass map.get() desugaring behavior.
-  const mapped = desugarMapLookup(this, node);
+  const mapped = desugarMapLookup($, node);
   if (isNode(mapped, N.Reference)) {
     return mapped as unknown as any;
   }
@@ -218,16 +220,16 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
     }
     const selectorText = String(firstArg.value.valueOf());
     const selector = parseSelectorListExpression(selectorText);
-    return new SelectorCapture(selector, undefined, loc, this.context);
+    return new SelectorCapture(selector, undefined, loc, $.context);
   }
 
-  const maybe = desugarNamespacedCall(this, call);
+  const maybe = desugarNamespacedCall($, call);
   if (maybe !== call) {
     const loc: LocationInfo | undefined = Array.isArray(maybe.location) && maybe.location.length === 6
       ? (maybe.location as LocationInfo)
       : undefined;
     // Namespaced call: emit as Expression so it serializes like `$ns.func(...)`.
-    return new Expression(maybe, undefined, loc, this.context);
+    return new Expression(maybe, undefined, loc, $.context);
   }
 
   // Plain Sass/Less-style function call: `foo(...)`
@@ -241,14 +243,14 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
       { key: call.value.name },
       { type: 'function', fallbackValue: true },
       loc,
-      this.context
+      $.context
     );
     // Sass/Less plain function calls are not optional/silent-fail calls (no `?(` output).
     // Keep other call options if present, but drop `silentFail` coming from CSS fallback behavior.
     const { silentFail: silentFailIgnored, ...rest } = call.options ?? {};
     void silentFailIgnored;
     const nextOptions = Object.keys(rest).length > 0 ? rest : undefined;
-    return new Call({ name: ref, args: call.value.args }, nextOptions, loc, this.context);
+    return new Call({ name: ref, args: call.value.args }, nextOptions, loc, $.context);
   }
   return call;
 }
@@ -257,40 +259,41 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
  * Override CSS `string` to add SCSS string interpolation support.
  */
 export function string(this: P, ctx: RuleContext = {}, stringAlt?: AltContext) {
+  const $ = this;
   stringAlt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
-        this.startRule();
-        const quote = this.consume(this.T.SingleQuoteStart);
+        $.startRule();
+        const quote = $.CONSUME($.T.SingleQuoteStart);
 
         let contents: IToken | undefined;
-        this.option(() => (contents = this.consume(this.T.SingleQuoteStringContents)));
+        $.OPTION(() => (contents = $.CONSUME($.T.SingleQuoteStringContents)));
 
-        this.consume(this.T.SingleQuoteEnd);
-        const location = this.endRule();
+        $.CONSUME($.T.SingleQuoteEnd);
+        const location = $.endRule();
         const raw = contents?.image ?? '';
-        const inner = processScssStringInterpolation(raw, location, this.context);
-        return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, this.context);
+        const inner = processScssStringInterpolation(raw, location, $.context);
+        return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
       }
     },
     {
       ALT: () => {
-        this.startRule();
-        const quote = this.consume(this.T.DoubleQuoteStart);
+        $.startRule();
+        const quote = $.CONSUME($.T.DoubleQuoteStart);
 
         let contents: IToken | undefined;
-        this.option(() => (contents = this.consume(this.T.DoubleQuoteStringContents)));
+        $.OPTION(() => (contents = $.CONSUME($.T.DoubleQuoteStringContents)));
 
-        this.consume(this.T.DoubleQuoteEnd);
-        const location = this.endRule();
+        $.CONSUME($.T.DoubleQuoteEnd);
+        const location = $.endRule();
         const raw = contents?.image ?? '';
-        const inner = processScssStringInterpolation(raw, location, this.context);
-        return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, this.context);
+        const inner = processScssStringInterpolation(raw, location, $.context);
+        return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
       }
     }
   ];
 
-  return this.or(stringAlt!(ctx));
+  return $.OR(stringAlt!(ctx));
 }
 
 /**
@@ -298,27 +301,28 @@ export function string(this: P, ctx: RuleContext = {}, stringAlt?: AltContext) {
  * (Only the map form is supported in this milestone; list literals come later.)
  */
 export function scssMapLiteral(this: P, ctx: RuleContext = {}) {
-  this.startRule();
-  this.consume(this.T.LParen);
+  const $ = this;
+  $.startRule();
+  $.CONSUME($.T.LParen);
 
   const decls: Declaration[] = [];
 
-  if (this.la(1).tokenType !== this.T.RParen) {
-    this.option(() => {
-      this.atLeastOneSep({
-        SEP: this.T.Comma,
+  if ($.la(1).tokenType !== $.T.RParen) {
+    $.OPTION(() => {
+      $.AT_LEAST_ONE_SEP({
+        SEP: $.T.Comma,
         DEF: () => {
-          const keyNode = this.value(ctx);
-          this.consume(this.T.Colon);
-          const valueNode = this.valueSequence(ctx);
+          const keyNode = $.value(ctx);
+          $.CONSUME($.T.Colon);
+          const valueNode = $.valueSequence(ctx);
 
           const keyStr = toDeclKey(keyNode);
           const declName = new Any(keyStr, { role: 'property' });
           const decl = new Declaration(
             { name: declName, value: valueNode },
             undefined,
-            this.getLocationFromNodes([keyNode, valueNode]),
-            this.context
+            $.getLocationFromNodes([keyNode, valueNode]),
+            $.context
           );
           decls.push(decl);
         }
@@ -326,11 +330,11 @@ export function scssMapLiteral(this: P, ctx: RuleContext = {}) {
     });
   }
 
-  this.consume(this.T.RParen);
+  $.CONSUME($.T.RParen);
 
-  const location = this.endRule();
-  const coll = new Collection(decls, undefined, location, this.context);
-  return this.wrap(coll);
+  const location = $.endRule();
+  const coll = new Collection(decls, undefined, location, $.context);
+  return $.wrap(coll);
 }
 
 /**
@@ -339,6 +343,7 @@ export function scssMapLiteral(this: P, ctx: RuleContext = {}) {
  *  - Interpolated declaration names: `foo-#{$bar}: ...`
  */
 export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   // Inline the CSS declaration production (rather than calling it) so we can
   // add `$var: ...` without Chevrotain "numerical suffix" conflicts.
 
@@ -346,11 +351,11 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     // Look ahead until ':' and see if we encounter `#{`.
     // This keeps the fast path for normal CSS declarations.
     for (let i = 1; i < 64; i++) {
-      const tok = this.la(i);
-      if (tok.tokenType === this.T.Assign || tok.tokenType.name === 'EOF') {
+      const tok = $.la(i);
+      if (tok.tokenType === $.T.Assign || tok.tokenType.name === 'EOF') {
         return false;
       }
-      if (tok.tokenType === this.T.InterpolationStart) {
+      if (tok.tokenType === $.T.InterpolationStart) {
         return true;
       }
     }
@@ -360,29 +365,29 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   alt ??= (ctx: RuleContext = {}) => [
     {
       // SCSS variable declaration: `$x: ... [!default] [!global]`
-      GATE: () => this.la(1).tokenType === this.T.DollarVariable,
+      GATE: () => $.la(1).tokenType === $.T.DollarVariable,
       ALT: () => {
-        const dv = this.consume(this.T.DollarVariable);
-        const assign = this.consume(this.T.Assign);
-        const value = this.valueList(ctx);
+        const dv = $.CONSUME($.T.DollarVariable);
+        const assign = $.CONSUME($.T.Assign);
+        const value = $.valueList(ctx);
 
         let sawDefault = false;
         let sawGlobal = false;
-        this.many(() => {
-          this.or([
+        $.MANY(() => {
+          $.OR([
             { ALT: () => {
-              this.consume(this.T.SassDefault);
+              $.CONSUME($.T.SassDefault);
               sawDefault = true;
             } },
             { ALT: () => {
-              this.consume(this.T.SassGlobal);
+              $.CONSUME($.T.SassGlobal);
               sawGlobal = true;
             } }
           ]);
         });
 
-        const nameNode = this.wrap(
-          new Any(dv.image.slice(1), { role: 'property' }, this.getLocationInfo(dv), this.context),
+        const nameNode = $.wrap(
+          new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context),
           true
         );
         return [
@@ -399,37 +404,37 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
       // SCSS interpolated declaration name: `foo-#{$bar}: ...`, `#{$prop}: ...`, `--x-#{$y}: ...`
       GATE: () => (
         (
-          this.la(1).tokenType === this.T.Ident
-          || this.la(1).tokenType === this.T.CustomProperty
-          || (this.legacyMode && this.la(1).tokenType === this.T.LegacyPropIdent)
-          || this.la(1).tokenType === this.T.InterpolationStart
+          $.la(1).tokenType === $.T.Ident
+          || $.la(1).tokenType === $.T.CustomProperty
+          || ($.legacyMode && $.la(1).tokenType === $.T.LegacyPropIdent)
+          || $.la(1).tokenType === $.T.InterpolationStart
         ) && looksLikeInterpolatedDeclName()
       ),
       ALT: () => {
         let source = '';
         const replacements: Node[] = [];
 
-        this.atLeastOne({
+        $.AT_LEAST_ONE({
           DEF: () => {
-            this.or([
+            $.OR([
               {
-                GATE: () => this.la(1).tokenType === this.T.InterpolationStart,
+                GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
                 ALT: () => {
-                  this.consume(this.T.InterpolationStart);
-                  const expr = this.valueSequence(ctx) as unknown as Node;
-                  this.consume(this.T.RCurly);
+                  $.CONSUME($.T.InterpolationStart);
+                  const expr = $.valueSequence(ctx) as unknown as Node;
+                  $.CONSUME($.T.RCurly);
                   source += INTERPOLATION_PLACEHOLDER;
-                  replacements.push(toNameInterpolationReplacement(this, expr, this.getLocationFromNodes([expr])));
+                  replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
                 }
               },
               {
                 ALT: () => {
-                  const tok = this.or([
-                    { ALT: () => this.consume(this.T.Ident) },
-                    { ALT: () => this.consume(this.T.CustomProperty) },
+                  const tok = $.OR([
+                    { ALT: () => $.CONSUME($.T.Ident) },
+                    { ALT: () => $.CONSUME($.T.CustomProperty) },
                     {
-                      GATE: () => this.legacyMode,
-                      ALT: () => this.consume(this.T.LegacyPropIdent)
+                      GATE: () => $.legacyMode,
+                      ALT: () => $.CONSUME($.T.LegacyPropIdent)
                     }
                   ]) as unknown as IToken;
                   source += tok.image;
@@ -439,15 +444,15 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
           }
         });
 
-        const assign = this.consume(this.T.Assign);
-        const value = this.valueList(ctx);
+        const assign = $.CONSUME($.T.Assign);
+        const value = $.valueList(ctx);
         let important: IToken | undefined;
-        this.option(() => {
-          important = this.consume(this.T.Important);
+        $.OPTION(() => {
+          important = $.CONSUME($.T.Important);
         });
 
-        const nameNode = this.wrap(
-          new Interpolated({ source, replacements }, { role: 'property' }, this.getLocationFromNodes(replacements), this.context),
+        const nameNode = $.wrap(
+          new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context),
           true
         );
         return [nameNode, assign, value, important] as const;
@@ -456,42 +461,42 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     {
       ALT: () => {
         let name!: IToken;
-        this.or([
-          { ALT: () => (name = this.consume(this.T.Ident)) },
+        $.OR([
+          { ALT: () => (name = $.CONSUME($.T.Ident)) },
           {
-            GATE: () => this.legacyMode,
-            ALT: () => (name = this.consume(this.T.LegacyPropIdent))
+            GATE: () => $.legacyMode,
+            ALT: () => (name = $.CONSUME($.T.LegacyPropIdent))
           }
         ]);
-        const assign = this.consume(this.T.Assign);
-        const value = this.valueList(ctx);
+        const assign = $.CONSUME($.T.Assign);
+        const value = $.valueList(ctx);
         let important: IToken | undefined;
-        this.option(() => {
-          important = this.consume(this.T.Important);
+        $.OPTION(() => {
+          important = $.CONSUME($.T.Important);
         });
-        const nameNode = this.wrap(new Any(name.image, { role: 'property' }, this.getLocationInfo(name), this.context), true);
+        const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
         return [nameNode, assign, value, important] as const;
       }
     },
     {
       ALT: () => {
-        const name = this.consume(this.T.CustomProperty);
-        const assign = this.consume(this.T.Assign);
+        const name = $.CONSUME($.T.CustomProperty);
+        const assign = $.CONSUME($.T.Assign);
         let nodes: Node[] = [];
-        this.startRule();
-        this.many(() => {
-          const val = this.customValue({ ...ctx, inCustomPropertyValue: true });
+        $.startRule();
+        $.MANY(() => {
+          const val = $.customValue({ ...ctx, inCustomPropertyValue: true });
           nodes.push(val);
         });
-        const location = this.endRule();
-        const nameNode = this.wrap(new Any(name.image, { role: 'property' }, this.getLocationInfo(name), this.context), true);
-        const value = new Sequence(nodes, undefined, location, this.context);
+        const location = $.endRule();
+        const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+        const value = new Sequence(nodes, undefined, location, $.context);
         return [nameNode, assign, value] as const;
       }
     }
   ];
 
-  this.startRule();
+  $.startRule();
   let name: Any<'property'> | Interpolated<'property'> | undefined;
   let assign: IToken | undefined;
   let value: Node | undefined;
@@ -500,7 +505,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   let sawDefault = false;
   let sawGlobal = false;
 
-  const picked = this.or(alt!(ctx) as any);
+  const picked = $.OR(alt!(ctx) as any);
 
   // scss var alt returns a tagged tuple
   if (Array.isArray(picked) && picked[0] === 'scss-var') {
@@ -517,18 +522,18 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     }
   }
 
-  const location = this.endRule();
+  const location = $.endRule();
 
   if (kind === 'scss-var') {
     // Semicolon is consumed by the main production (like Less), not here
     return new VarDeclaration(
-      { name: name!, value: this.wrap(value!, 'both') },
+      { name: name!, value: $.wrap(value!, 'both') },
       {
         assign: (sawDefault ? '?:' : assign!.image) as AssignmentType,
         setDefined: sawGlobal
       },
       location,
-      this.context
+      $.context
     );
   }
 
@@ -536,7 +541,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   const isCustom = String(name!.valueOf()).startsWith('--');
   return new (isCustom ? CustomDeclaration : Declaration)({
     name: name!,
-    value: this.wrap(value!, 'both'),
-    important: important ? this.wrap(new Any(important.image, { role: 'flag' }, this.getLocationInfo(important), this.context), 'both') : undefined
-  }, { assign: assign!.image as AssignmentType }, location, this.context);
+    value: $.wrap(value!, 'both'),
+    important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both') : undefined
+  }, { assign: assign!.image as AssignmentType }, location, $.context);
 }

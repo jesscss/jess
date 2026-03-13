@@ -13,42 +13,43 @@ type Alt = Array<{ ALT: () => any; GATE?: () => boolean }>;
 type AltContext = (ctx?: RuleContext) => Alt;
 
 export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let name: IToken;
-        this.or([
+        $.OR([
           {
-            ALT: () => name = this.consume(this.T.Ident)
+            ALT: () => name = $.CONSUME($.T.Ident)
           },
           {
-            GATE: () => this.legacyMode,
-            ALT: () => name = this.consume(this.T.LegacyPropIdent)
+            GATE: () => $.legacyMode,
+            ALT: () => name = $.CONSUME($.T.LegacyPropIdent)
           }
         ]);
-        let assign = this.consume(this.T.Assign);
-        let value = this.valueList(ctx);
+        let assign = $.CONSUME($.T.Assign);
+        let value = $.valueList(ctx);
         let important: IToken | undefined;
-        this.option(() => {
-          important = this.consume(this.T.Important);
+        $.OPTION(() => {
+          important = $.CONSUME($.T.Important);
         });
-        let nameNode = this.wrap(new Any(name!.image, { role: 'property' }, this.getLocationInfo(name!), this.context), true);
+        let nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context), true);
         return [nameNode, assign, value, important];
       }
     },
     {
       ALT: () => {
-        let name = this.consume(this.T.CustomProperty);
-        let assign = this.consume(this.T.Assign);
+        let name = $.CONSUME($.T.CustomProperty);
+        let assign = $.CONSUME($.T.Assign);
         let nodes: Node[] = [];
-        this.startRule();
-        this.many(() => {
-          let val = this.customValue({ ...ctx, inCustomPropertyValue: true });
+        $.startRule();
+        $.MANY(() => {
+          let val = $.customValue({ ...ctx, inCustomPropertyValue: true });
           nodes.push(val);
         });
-        let location = this.endRule();
-        let nameNode = this.wrap(new Any(name.image, { role: 'property' }, this.getLocationInfo(name), this.context), true);
-        let value = new Sequence(nodes, undefined, location, this.context);
+        let location = $.endRule();
+        let nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+        let value = new Sequence(nodes, undefined, location, $.context);
         return [nameNode, assign, value];
       }
     }
@@ -57,23 +58,23 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   //   : identifier WS* COLON WS* valueList (WS* IMPORTANT)?
   //   | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   //   ;
-  this.startRule();
+  $.startRule();
   let name: Any<'property'> | undefined;
   let assign: IToken | undefined;
   let value: Node | undefined;
   let important: IToken | undefined;
-  let val = this.or(alt(ctx));
+  let val = $.OR(alt(ctx));
 
   ([name, assign, value, important] = val);
 
-  let location = this.endRule();
+  let location = $.endRule();
   const isCustom = name!.valueOf().startsWith('--');
   const wrapCtx = isCustom ? { ...ctx, inCustomPropertyValue: true } : ctx;
   return new (isCustom ? CustomDeclaration : Declaration)({
     name: name!,
-    value: this.wrap(value!, 'both', wrapCtx),
-    important: important ? this.wrap(new Any(important.image, { role: 'flag' }, this.getLocationInfo(important), this.context), 'both') : undefined
-  }, { assign: assign!.image as AssignmentType }, location, this.context);
+    value: $.wrap(value!, 'both', wrapCtx),
+    important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both') : undefined
+  }, { assign: assign!.image as AssignmentType }, location, $.context);
 }
 
 /**
@@ -82,52 +83,54 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
  * Chevrotain does not support recursive tokens very well.
  */
 export function customValue(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   /** Should be almost anything, but custom blocks need matching closers */
   // Order matters: prefer nested blocks first, then strings, then raw tokens.
   // Avoid knownFunctions here to remove ambiguity with custom blocks.
   alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
-        return this.customBlock(ctx);
+        return $.customBlock(ctx);
       }
     },
     {
       ALT: () => {
-        return this.string(ctx);
+        return $.string(ctx);
       }
     },
     {
       ALT: () => {
-        const token = this.or([
-          { ALT: () => this.consume(this.T.Value) },
-          { ALT: () => this.consume(this.T.CustomProperty) },
-          { ALT: () => this.consume(this.T.Colon) },
-          { ALT: () => this.consume(this.T.AtName) },
-          { ALT: () => this.consume(this.T.Comma) },
-          { ALT: () => this.consume(this.T.Important) },
-          { ALT: () => this.consume(this.T.Unknown) }
+        const token = $.OR([
+          { ALT: () => $.CONSUME($.T.Value) },
+          { ALT: () => $.CONSUME($.T.CustomProperty) },
+          { ALT: () => $.CONSUME($.T.Colon) },
+          { ALT: () => $.CONSUME($.T.AtName) },
+          { ALT: () => $.CONSUME($.T.Comma) },
+          { ALT: () => $.CONSUME($.T.Important) },
+          { ALT: () => $.CONSUME($.T.Unknown) }
         ]);
-        return this.wrap(this.processValueToken(token, ctx), undefined, ctx);
+        return $.wrap($.processValueToken(token, ctx), undefined, ctx);
       }
     }
   ];
 
-  return this.or(alt(ctx));
+  return $.OR(alt(ctx));
 }
 
 export function innerCustomValue(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         /** Can also have semi-colons */
-        let semi = this.consume(this.T.Semi);
-        return this.wrap(new Any(semi.image, { role: 'semi' }, this.getLocationInfo(semi), this.context));
+        let semi = $.CONSUME($.T.Semi);
+        return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), $.context));
       }
     },
-    { ALT: () => this.customValue(ctx) }
+    { ALT: () => $.customValue(ctx) }
   ];
 
-  return this.or(alt(ctx));
+  return $.OR(alt(ctx));
 }
 
 /**
@@ -137,57 +140,59 @@ export function innerCustomValue(this: P, ctx: RuleContext = {}, alt?: AltContex
  * @todo - In tests, is there a way to test that every token is captured?
  */
 export function extraTokens(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => this.functionCallLike(ctx) },
-    { ALT: () => this.consume(this.T.Value) },
-    { ALT: () => this.consume(this.T.CustomProperty) },
-    { ALT: () => this.consume(this.T.Colon) },
-    { ALT: () => this.consume(this.T.AtName) },
-    { ALT: () => this.consume(this.T.Comma) },
-    { ALT: () => this.consume(this.T.Important) },
-    { ALT: () => this.consume(this.T.Unknown) }
+    { ALT: () => $.functionCallLike(ctx) },
+    { ALT: () => $.CONSUME($.T.Value) },
+    { ALT: () => $.CONSUME($.T.CustomProperty) },
+    { ALT: () => $.CONSUME($.T.Colon) },
+    { ALT: () => $.CONSUME($.T.AtName) },
+    { ALT: () => $.CONSUME($.T.Comma) },
+    { ALT: () => $.CONSUME($.T.Important) },
+    { ALT: () => $.CONSUME($.T.Unknown) }
   ];
 
-  let node: Node = this.or(alt(ctx));
+  let node: Node = $.OR(alt(ctx));
   if (!(node instanceof Node)) {
-    node = this.wrap(this.processValueToken(node));
+    node = $.wrap($.processValueToken(node));
   }
   return node;
 }
 
 export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let start: IToken;
         let nodes: Node[] = [];
-        this.or([
+        $.OR([
           /**
            * All tokens that have a left parentheses.
            * These need to match a right parentheses.
            */
-          { ALT: () => start = this.consume(this.T.LParen) },
-          { ALT: () => start = this.consume(this.T.FunctionStart) },
-          { ALT: () => start = this.consume(this.T.FunctionalPseudoClass) }
+          { ALT: () => start = $.CONSUME($.T.LParen) },
+          { ALT: () => start = $.CONSUME($.T.FunctionStart) },
+          { ALT: () => start = $.CONSUME($.T.FunctionalPseudoClass) }
         ]);
 
-        this.many(() => {
-          let val = this.innerCustomValue(ctx);
+        $.MANY(() => {
+          let val = $.innerCustomValue(ctx);
           nodes.push(val);
         });
-        let end = this.consume(this.T.RParen);
+        let end = $.CONSUME($.T.RParen);
         return [start!, nodes, end];
       }
     },
     {
       ALT: () => {
         let nodes: Node[] = [];
-        let start = this.consume(this.T.LSquare);
-        this.many(() => {
-          let val = this.innerCustomValue(ctx);
+        let start = $.CONSUME($.T.LSquare);
+        $.MANY(() => {
+          let val = $.innerCustomValue(ctx);
           nodes.push(val);
         });
-        let end = this.consume(this.T.RSquare);
+        let end = $.CONSUME($.T.RSquare);
 
         return [start, nodes, end];
       }
@@ -195,28 +200,28 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     {
       ALT: () => {
         let nodes: Node[] = [];
-        let start = this.consume(this.T.LCurly);
-        this.many(() => {
-          let val = this.innerCustomValue(ctx);
+        let start = $.CONSUME($.T.LCurly);
+        $.MANY(() => {
+          let val = $.innerCustomValue(ctx);
           nodes.push(val);
         });
-        let end = this.consume(this.T.RCurly);
+        let end = $.CONSUME($.T.RCurly);
 
         return [start, nodes, end];
       }
     }
   ];
 
-  this.startRule();
+  $.startRule();
   let start: IToken | undefined;
   let end: IToken | undefined;
   let nodes: Node[];
 
-  let val = this.or(alt(ctx));
+  let val = $.OR(alt(ctx));
 
   ([start, nodes, end] = val);
 
-  let location = this.endRule();
+  let location = $.endRule();
   let type: 'square' | 'curly' | undefined;
   switch (start!.image) {
     case '[':
@@ -228,66 +233,69 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   }
   if (type) {
     // Preserve inner sequence post so trailing semicolons become part of block content
-    const seqLoc = nodes!.length ? this.getLocationFromNodes(nodes!) : undefined;
-    let seq = new Sequence(nodes!, undefined, seqLoc, this.context);
-    return this.wrap(new Block(this.wrap(seq, true, ctx), { type }, location, this.context), undefined, ctx);
+    const seqLoc = nodes!.length ? $.getLocationFromNodes(nodes!) : undefined;
+    let seq = new Sequence(nodes!, undefined, seqLoc, $.context);
+    return $.wrap(new Block($.wrap(seq, true, ctx), { type }, location, $.context), undefined, ctx);
   } else {
-    let startNode = this.wrap(new Any(start!.image, { role: 'any' }, this.getLocationInfo(start!), this.context), undefined, ctx);
-    let endNode = this.wrap(new Any(end!.image, { role: 'any' }, this.getLocationInfo(end!), this.context), undefined, ctx);
+    let startNode = $.wrap(new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context), undefined, ctx);
+    let endNode = $.wrap(new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context), undefined, ctx);
     nodes = [startNode, ...nodes!, endNode];
-    return new Sequence(nodes, undefined, location, this.context);
+    return new Sequence(nodes, undefined, location, $.context);
   }
 }
 
 export function valueList(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   /** Values separated by commas */
   // valueList
   //   : value+ (, value+)*
   //   ;
-  this.startRule();
+  $.startRule();
   let nodes: Node[] = [];
 
-  this.atLeastOneSep({
-    SEP: this.T.Comma,
+  $.AT_LEAST_ONE_SEP({
+    SEP: $.T.Comma,
     DEF: () => {
-      let seq = this.valueSequence(ctx);
+      let seq = $.valueSequence(ctx);
       nodes.push(seq);
     }
   });
 
-  let location = this.endRule();
+  let location = $.endRule();
   if (nodes.length === 1) {
     return nodes[0];
   }
-  return new List(nodes, undefined, location, this.context);
+  return new List(nodes, undefined, location, $.context);
 }
 
 export function valueSequence(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   /** Often space-separated */
-  this.startRule();
+  $.startRule();
   let nodes: Node[] = [];
 
-  this.atLeastOne(() => {
-    let value = this.value(ctx);
+  $.AT_LEAST_ONE(() => {
+    let value = $.value(ctx);
 
-    nodes.push(this.wrap(value));
+    nodes.push($.wrap(value));
   });
 
-  let location = this.endRule();
+  let location = $.endRule();
   if (nodes.length === 1) {
-    return this.wrap(nodes[0]!, true);
+    return $.wrap(nodes[0]!, true);
   }
-  return this.wrap(new Sequence(nodes, undefined, location, this.context), true);
+  return $.wrap(new Sequence(nodes, undefined, location, $.context), true);
 }
 
 export function squareValue(this: P, ctx: RuleContext = {}) {
-  this.startRule();
-  this.consume(this.T.LSquare);
-  let ident = this.consume(this.T.Ident);
-  this.consume(this.T.RSquare);
-  let location = this.endRule();
-  let identNode = new Any(ident.image, { role: 'ident' }, this.getLocationInfo(ident), this.context);
-  return new Block(identNode, { type: 'square' }, location, this.context);
+  const $ = this;
+  $.startRule();
+  $.CONSUME($.T.LSquare);
+  let ident = $.CONSUME($.T.Ident);
+  $.CONSUME($.T.RSquare);
+  let location = $.endRule();
+  let identNode = new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context);
+  return new Block(identNode, { type: 'square' }, location, $.context);
 }
 
 // value
@@ -304,25 +312,26 @@ export function squareValue(this: P, ctx: RuleContext = {}) {
 //   | unknownValue
 //   ;
 export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
+  const $ = this;
   valueAlt ??= (ctx: RuleContext = {}) => [
     /** Function should appear before Ident */
-    { ALT: () => this.functionCall(ctx) },
-    { ALT: () => this.consume(this.T.Ident) },
-    { ALT: () => this.consume(this.T.Dimension) },
-    { ALT: () => this.consume(this.T.Number) },
-    { ALT: () => this.consume(this.T.Color) },
-    { ALT: () => this.consume(this.T.UnicodeRange) },
-    { ALT: () => this.string(ctx) },
-    { ALT: () => this.squareValue(ctx) },
+    { ALT: () => $.functionCall(ctx) },
+    { ALT: () => $.CONSUME($.T.Ident) },
+    { ALT: () => $.CONSUME($.T.Dimension) },
+    { ALT: () => $.CONSUME($.T.Number) },
+    { ALT: () => $.CONSUME($.T.Color) },
+    { ALT: () => $.CONSUME($.T.UnicodeRange) },
+    { ALT: () => $.string(ctx) },
+    { ALT: () => $.squareValue(ctx) },
     {
       /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-      GATE: () => this.legacyMode,
-      ALT: () => this.consume(this.T.LegacyMSFilter)
+      GATE: () => $.legacyMode,
+      ALT: () => $.CONSUME($.T.LegacyMSFilter)
     }
   ];
 
-  this.startRule();
-  let node: Node = this.or(valueAlt(ctx));
+  $.startRule();
+  let node: Node = $.OR(valueAlt(ctx));
   /**
    * Allows slash separators. Note that, structurally, the meaning
    * of slash separators in CSS is inconsistent and ambiguous. It
@@ -334,59 +343,60 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
    * essentially has a defined "micro-syntax".
    */
   let additionalValue: Node | undefined;
-  this.option(() => {
-    this.consume(this.T.Slash);
-    additionalValue = this.value(ctx);
+  $.OPTION(() => {
+    $.CONSUME($.T.Slash);
+    additionalValue = $.value(ctx);
   });
-  let location = this.endRule();
+  let location = $.endRule();
   if (!(node instanceof Node)) {
-    node = this.processValueToken(node);
+    node = $.processValueToken(node);
   }
   if (additionalValue) {
-    return this.wrap(new List([this.wrap(node, true), additionalValue], { sep: '/' }, location, this.context));
+    return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, $.context));
   }
-  return this.wrap(node);
+  return $.wrap(node);
 }
 
 export function string(this: P, ctx: RuleContext = {}, stringAlt?: AltContext) {
+  const $ = this;
   stringAlt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
-        this.startRule();
-        let quote = this.consume(this.T.SingleQuoteStart);
+        $.startRule();
+        let quote = $.CONSUME($.T.SingleQuoteStart);
         let contents: IToken | undefined;
-        this.option(() => contents = this.consume(this.T.SingleQuoteStringContents));
-        this.consume(this.T.SingleQuoteEnd);
-        let location = this.endRule();
+        $.OPTION(() => contents = $.CONSUME($.T.SingleQuoteStringContents));
+        $.CONSUME($.T.SingleQuoteEnd);
+        let location = $.endRule();
         const escaped = quote.image.startsWith('~');
         const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
         let value = contents?.image ?? '';
         if (escaped) {
           value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
         }
-        return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
+        return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, $.context);
       }
     },
     {
       ALT: () => {
-        this.startRule();
-        let quote = this.consume(this.T.DoubleQuoteStart);
+        $.startRule();
+        let quote = $.CONSUME($.T.DoubleQuoteStart);
         let contents: IToken | undefined;
-        this.option(() => contents = this.consume(this.T.DoubleQuoteStringContents));
-        this.consume(this.T.DoubleQuoteEnd);
-        let location = this.endRule();
+        $.OPTION(() => contents = $.CONSUME($.T.DoubleQuoteStringContents));
+        $.CONSUME($.T.DoubleQuoteEnd);
+        let location = $.endRule();
         const escaped = quote.image.startsWith('~');
         const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
         let value = contents?.image ?? '';
         if (escaped) {
           value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
         }
-        return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
+        return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, $.context);
       }
     }
   ];
 
-  return this.or(stringAlt(ctx));
+  return $.OR(stringAlt(ctx));
 }
 
 /** Abstracted for easy over-ride */
@@ -394,24 +404,25 @@ export function string(this: P, ctx: RuleContext = {}, stringAlt?: AltContext) {
 //   $.SUBRULE($.mathSum)
 // })
 export function mathSum(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let opAlt = [
-    { ALT: () => this.consume(this.T.Plus) },
-    { ALT: () => this.consume(this.T.Minus) }
+    { ALT: () => $.CONSUME($.T.Plus) },
+    { ALT: () => $.CONSUME($.T.Minus) }
   ];
   // mathSum
   //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
   //   ;
-  this.startRule();
+  $.startRule();
 
-  let left: Node = this.mathProduct(ctx);
+  let left: Node = $.mathProduct(ctx);
 
-  this.many(() => {
-    let op = this.or(opAlt);
-    let right: Node = this.mathProduct(ctx);
+  $.MANY(() => {
+    let op = $.OR(opAlt);
+    let right: Node = $.mathProduct(ctx);
 
-    left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
   });
-  left._location = this.endRule();
+  left._location = $.endRule();
   return left;
 }
 
@@ -419,23 +430,24 @@ export function mathSum(this: P, ctx: RuleContext = {}) {
 //   : mathValue (WS* ('*' | '/') WS* mathValue)*
 //   ;
 export function mathProduct(this: P, ctx: RuleContext = {}) {
+  const $ = this;
   let opAlt = [
-    { ALT: () => this.consume(this.T.Star) },
-    { ALT: () => this.consume(this.T.Divide) }
+    { ALT: () => $.CONSUME($.T.Star) },
+    { ALT: () => $.CONSUME($.T.Divide) }
   ];
 
-  this.startRule();
+  $.startRule();
 
-  let left: Node = this.mathValue(ctx);
+  let left: Node = $.mathValue(ctx);
 
-  this.many(() => {
-    let op = this.or(opAlt);
-    let right: Node = this.mathValue(ctx);
+  $.MANY(() => {
+    let op = $.OR(opAlt);
+    let right: Node = $.mathValue(ctx);
 
-    left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
   });
 
-  left._location = this.endRule();
+  left._location = $.endRule();
   return left;
 }
 
@@ -447,30 +459,32 @@ export function mathProduct(this: P, ctx: RuleContext = {}) {
 //   | '(' WS* mathSum WS* ')'
 //   ;
 export function mathValue(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => this.consume(this.T.Number) },
-    { ALT: () => this.consume(this.T.Dimension) },
+    { ALT: () => $.CONSUME($.T.Number) },
+    { ALT: () => $.CONSUME($.T.Dimension) },
     // Allow identifiers like channel names in color space calcs (e.g., calc(l - 0.1))
-    { ALT: () => this.consume(this.T.Ident) },
-    { ALT: () => this.consume(this.T.MathConstant) },
-    { ALT: () => this.knownFunctions(ctx) },
-    { ALT: () => this.mathParen(ctx) }
+    { ALT: () => $.CONSUME($.T.Ident) },
+    { ALT: () => $.CONSUME($.T.MathConstant) },
+    { ALT: () => $.knownFunctions(ctx) },
+    { ALT: () => $.mathParen(ctx) }
   ];
 
-  let node: Node = this.or(alt(ctx));
+  let node: Node = $.OR(alt(ctx));
   if (!(node instanceof Node)) {
-    node = this.processValueToken(node);
+    node = $.processValueToken(node);
   }
-  return this.wrap(node, 'both');
+  return $.wrap(node, 'both');
 }
 
 export function mathParen(this: P, ctx: RuleContext = {}) {
-  this.startRule();
-  this.consume(this.T.LParen);
-  let node = this.mathSum(ctx);
-  this.consume(this.T.RParen);
-  let location = this.endRule();
-  return new Paren(node, undefined, location, this.context);
+  const $ = this;
+  $.startRule();
+  $.CONSUME($.T.LParen);
+  let node = $.mathSum(ctx);
+  $.CONSUME($.T.RParen);
+  let location = $.endRule();
+  return new Paren(node, undefined, location, $.context);
 }
 
 // function
@@ -481,64 +495,68 @@ export function mathParen(this: P, ctx: RuleContext = {}) {
 //   ;
 // These have special parsing rules
 export function knownFunctions(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => this.urlFunction(ctx) },
-    { ALT: () => this.varFunction(ctx) },
-    { ALT: () => this.calcFunction(ctx) }
+    { ALT: () => $.urlFunction(ctx) },
+    { ALT: () => $.varFunction(ctx) },
+    { ALT: () => $.calcFunction(ctx) }
   ];
 
-  return this.or(alt(ctx));
+  return $.OR(alt(ctx));
 }
 
 export function ifFunctionArgs(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
   let branches: Node[] = [];
-  this.atLeastOneSep({
-    SEP: this.T.Semi,
+  $.AT_LEAST_ONE_SEP({
+    SEP: $.T.Semi,
     DEF: () => {
-      const condition = this.valueSequence({ ...ctx, inner: true });
-      this.consume(this.T.Assign);
-      const value = this.valueList({ ...ctx, inner: true });
-      const sep = this.wrap(new Any(':', { role: 'operator' }, undefined, this.context), true);
-      const loc = this.getLocationFromNodes([condition as Node, value as Node].filter(Boolean));
-      branches.push(new Sequence([this.wrap(condition as Node, true), sep, this.wrap(value as Node, true)], undefined, loc, this.context));
+      const condition = $.valueSequence({ ...ctx, inner: true });
+      $.CONSUME($.T.Assign);
+      const value = $.valueList({ ...ctx, inner: true });
+      const sep = $.wrap(new Any(':', { role: 'operator' }, undefined, $.context), true);
+      const loc = $.getLocationFromNodes([condition as Node, value as Node].filter(Boolean));
+      branches.push(new Sequence([$.wrap(condition as Node, true), sep, $.wrap(value as Node, true)], undefined, loc, $.context));
     }
   });
-  this.option(() => this.consume(this.T.Semi));
-  const location = this.endRule();
+  $.OPTION(() => $.CONSUME($.T.Semi));
+  const location = $.endRule();
   if (branches.length === 1) {
     return branches[0]!;
   }
-  return new List(branches, { sep: ';' }, location, this.context);
+  return new List(branches, { sep: ';' }, location, $.context);
 }
 
 export function ifFunction(this: P, ctx: RuleContext = {}) {
-  this.startRule();
-  const start = this.consume(this.T.FunctionStart);
-  const args = this.ifFunctionArgs({ ...ctx, inner: true }) as Node;
-  this.consume(this.T.RParen);
-  const location = this.endRule();
+  const $ = this;
+  $.startRule();
+  const start = $.CONSUME($.T.FunctionStart);
+  const args = $.ifFunctionArgs({ ...ctx, inner: true }) as Node;
+  $.CONSUME($.T.RParen);
+  const location = $.endRule();
   return new Call({
     name: start.image.slice(0, -1),
     args: new List([args])
-  }, undefined, location, this.context);
+  }, undefined, location, $.context);
 }
 
 export function varFunction(this: P, ctx: RuleContext = {}) {
-  this.startRule();
-  this.consume(this.T.Var);
-  let prop = this.consume(this.T.CustomProperty);
+  const $ = this;
+  $.startRule();
+  $.CONSUME($.T.Var);
+  let prop = $.CONSUME($.T.CustomProperty);
   let args: List | undefined;
-  this.option(() => {
-    this.consume(this.T.Comma);
-    args = this.valueList(ctx) as List;
+  $.OPTION(() => {
+    $.CONSUME($.T.Comma);
+    args = $.valueList(ctx) as List;
   });
-  this.consume(this.T.RParen);
+  $.CONSUME($.T.RParen);
 
-  let location = this.endRule();
-  let propNode = this.wrap(new Any(prop.image, { role: 'customprop' }, this.getLocationInfo(prop), this.context), 'both');
+  let location = $.endRule();
+  let propNode = $.wrap(new Any(prop.image, { role: 'customprop' }, $.getLocationInfo(prop), $.context), 'both');
   if (!args) {
-    args = new List([propNode], undefined, this.getLocationInfo(prop), this.context);
+    args = new List([propNode], undefined, $.getLocationInfo(prop), $.context);
   } else {
     let { startOffset, startLine, startColumn } = prop;
     args.value.unshift(propNode);
@@ -549,39 +567,41 @@ export function varFunction(this: P, ctx: RuleContext = {}) {
   return new Call({
     name: 'var',
     args
-  }, undefined, location, this.context);
+  }, undefined, location, $.context);
 }
 
 export function calcFunction(this: P, ctx: RuleContext = {}) {
-  this.startRule();
+  const $ = this;
+  $.startRule();
 
-  this.consume(this.T.Calc);
-  let args = this.mathSum(ctx);
-  this.consume(this.T.RParen);
+  $.CONSUME($.T.Calc);
+  let args = $.mathSum(ctx);
+  $.CONSUME($.T.RParen);
 
-  let location = this.endRule();
+  let location = $.endRule();
   return new Call({
     name: 'calc',
     args: new List([args])
-  }, undefined, location, this.context);
+  }, undefined, location, $.context);
 }
 
 export function urlFunction(this: P, ctx: RuleContext = {}, alt?: AltContext) {
+  const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => this.string(ctx) },
-    { ALT: () => this.consume(this.T.NonQuotedUrl) }
+    { ALT: () => $.string(ctx) },
+    { ALT: () => $.CONSUME($.T.NonQuotedUrl) }
   ];
 
-  this.startRule();
+  $.startRule();
 
-  this.consume(this.T.UrlStart);
-  let node: Any | IToken = this.or(alt(ctx));
-  this.consume(this.T.UrlEnd);
+  $.CONSUME($.T.UrlStart);
+  let node: Any | IToken = $.OR(alt(ctx));
+  $.CONSUME($.T.UrlEnd);
 
-  let location = this.endRule();
+  let location = $.endRule();
   if (!(node instanceof Node)) {
     /** Whitespace should be included in the NonQuotedUrl */
-    node = new Any(node.image, { role: 'urlvalue' }, this.getLocationInfo(node), this.context);
+    node = new Any(node.image, { role: 'urlvalue' }, $.getLocationInfo(node), $.context);
   }
-  return new Url(node, undefined, location, this.context);
+  return new Url(node, undefined, location, $.context);
 }
