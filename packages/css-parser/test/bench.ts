@@ -78,7 +78,7 @@ function findCSSFiles(dir: string): string[] {
 // ── Setup ────────────────────────────────────────────────────────────
 
 const WARMUP = 10;
-const ITERATIONS = 100;
+const ITERATIONS = process.env.BENCH_ITERATIONS ? parseInt(process.env.BENCH_ITERATIONS, 10) : 100;
 
 const corpus = collectTestCSS();
 const allCSS = corpus.map(f => f.css).join('\n\n');

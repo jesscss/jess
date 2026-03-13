@@ -65,8 +65,7 @@
     "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "@types/lodash-es": "^4.17.8",
-    "less": "^4.0.0"
+    "@types/lodash-es": "^4.17.8"
   },
   "keywords": [
     "css",

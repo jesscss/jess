@@ -30,6 +30,9 @@
     "build": "pnpm compile",
     "compile": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
+    "bench": "tsx test/bench.ts",
+    "bench:memory": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --memory",
+    "bench:heap": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --heap-snapshot",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -45,7 +48,8 @@
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
-    "@types/node": "^18.19.31"
+    "@types/node": "^18.19.31",
+    "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
