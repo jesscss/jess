@@ -53,12 +53,12 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
   const $ = this;
   valueAlt ??= (ctx: RuleContext = {}) => [
     {
-      GATE: () => $.la(1).tokenType === $.T.LParen && looksLikeMapLiteral($, $.T),
+      GATE: () => $.LA(1).tokenType === $.T.LParen && looksLikeMapLiteral($, $.T),
       ALT: () => $.scssMapLiteral(ctx)
     },
     {
       // SCSS interpolation in values: `#{$expr}`
-      GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
       ALT: () => {
         $.startRule();
         $.CONSUME($.T.InterpolationStart);
@@ -79,23 +79,23 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
       //
       // Tokenizes as: (PlainIdent/Ident) + Unknown('.') + Unknown('\\') + (HashName | DotName) + LParen ...
       GATE: () =>
-        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
-        && $.la(2).tokenType === $.T.Unknown
-        && $.la(2).image === '.'
-        && $.la(3).tokenType === $.T.Unknown
-        && $.la(3).image === '\\'
-        && ($.la(4).tokenType === $.T.HashName || $.la(4).tokenType === $.T.DotName)
-        && $.la(5).tokenType === $.T.LParen,
+        ($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent)
+        && $.LA(2).tokenType === $.T.Unknown
+        && $.LA(2).image === '.'
+        && $.LA(3).tokenType === $.T.Unknown
+        && $.LA(3).image === '\\'
+        && ($.LA(4).tokenType === $.T.HashName || $.LA(4).tokenType === $.T.DotName)
+        && $.LA(5).tokenType === $.T.LParen,
       ALT: () => {
         $.startRule();
         const nsTok = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         $.CONSUME($.T.Unknown); // '.'
         $.CONSUME($.T.Unknown); // '\'
         const member = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
+          { GATE: () => $.LA(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
           { ALT: () => $.CONSUME($.T.DotName) }
         ]) as unknown as IToken;
         $.CONSUME($.T.LParen);
@@ -112,14 +112,14 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
     {
       // SCSS module-member variable: `ns.$var`
       GATE: () =>
-        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
-        && $.la(2).tokenType === $.T.Unknown
-        && $.la(2).image === '.'
-        && $.la(3).tokenType === $.T.DollarVariable,
+        ($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent)
+        && $.LA(2).tokenType === $.T.Unknown
+        && $.LA(2).image === '.'
+        && $.LA(3).tokenType === $.T.DollarVariable,
       ALT: () => {
         $.startRule();
         const nsTok = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         $.CONSUME($.T.Unknown); // '.'
@@ -136,13 +136,13 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
       // SCSS module-qualified function call in value position: `ns.fn(...)`
       // Tokenizes as: PlainIdent/Ident + DotName(".fn") + LParen ...
       GATE: () =>
-        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
-        && $.la(2).tokenType === $.T.DotName
-        && $.la(3).tokenType === $.T.LParen,
+        ($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent)
+        && $.LA(2).tokenType === $.T.DotName
+        && $.LA(3).tokenType === $.T.LParen,
       ALT: () => {
         $.startRule();
         const nsTok = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         const dot = $.CONSUME($.T.DotName); // ".fn"
@@ -307,7 +307,7 @@ export function scssMapLiteral(this: P, ctx: RuleContext = {}) {
 
   const decls: Declaration[] = [];
 
-  if ($.la(1).tokenType !== $.T.RParen) {
+  if ($.LA(1).tokenType !== $.T.RParen) {
     $.OPTION(() => {
       $.AT_LEAST_ONE_SEP({
         SEP: $.T.Comma,
@@ -351,7 +351,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     // Look ahead until ':' and see if we encounter `#{`.
     // This keeps the fast path for normal CSS declarations.
     for (let i = 1; i < 64; i++) {
-      const tok = $.la(i);
+      const tok = $.LA(i);
       if (tok.tokenType === $.T.Assign || tok.tokenType.name === 'EOF') {
         return false;
       }
@@ -365,7 +365,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   alt ??= (ctx: RuleContext = {}) => [
     {
       // SCSS variable declaration: `$x: ... [!default] [!global]`
-      GATE: () => $.la(1).tokenType === $.T.DollarVariable,
+      GATE: () => $.LA(1).tokenType === $.T.DollarVariable,
       ALT: () => {
         const dv = $.CONSUME($.T.DollarVariable);
         const assign = $.CONSUME($.T.Assign);
@@ -404,10 +404,10 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
       // SCSS interpolated declaration name: `foo-#{$bar}: ...`, `#{$prop}: ...`, `--x-#{$y}: ...`
       GATE: () => (
         (
-          $.la(1).tokenType === $.T.Ident
-          || $.la(1).tokenType === $.T.CustomProperty
-          || ($.legacyMode && $.la(1).tokenType === $.T.LegacyPropIdent)
-          || $.la(1).tokenType === $.T.InterpolationStart
+          $.LA(1).tokenType === $.T.Ident
+          || $.LA(1).tokenType === $.T.CustomProperty
+          || ($.legacyMode && $.LA(1).tokenType === $.T.LegacyPropIdent)
+          || $.LA(1).tokenType === $.T.InterpolationStart
         ) && looksLikeInterpolatedDeclName()
       ),
       ALT: () => {
@@ -418,7 +418,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
           DEF: () => {
             $.OR([
               {
-                GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+                GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
                 ALT: () => {
                   $.CONSUME($.T.InterpolationStart);
                   const expr = $.valueSequence(ctx) as unknown as Node;

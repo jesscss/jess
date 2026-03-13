@@ -114,7 +114,7 @@ export function guardOr(this: P, ctx: RuleContext = {}) {
   let right: Node | undefined;
   $.MANY({
     GATE: () => {
-      const next = $.la(1).tokenType;
+      const next = $.LA(1).tokenType;
       return (ctx.allowComma && next === $.T.Comma) || next === $.T.Or;
     },
     DEF: () => {
@@ -175,7 +175,7 @@ export function guardAnd(this: P, ctx: RuleContext = {}) {
           { ALT: () => $.guardInParens(ctx) },
           {
             GATE: () => {
-              const tokenType = $.la(1).tokenType;
+              const tokenType = $.LA(1).tokenType;
               return tokenType !== $.T.Not
                 && tokenType !== $.T.DefaultGuardFunc
                 && tokenType !== $.T.DefaultGuardIdent;
@@ -474,7 +474,7 @@ export function mixinReference(this: P, ctx: RuleContext = {}) {
 
   $.MANY({
     GATE: () => {
-      let next = $.la(1).tokenType;
+      let next = $.LA(1).tokenType;
       return $.noSep() && (next === $.T.LParen || next === $.T.LSquare);
     },
     DEF: () => {
@@ -495,7 +495,7 @@ export function mixinArgs(this: P, ctx: RuleContext = {}) {
   let args: List | undefined;
   // Check for whitespace before the opening paren (before consuming)
   const hasWhitespace = !$.noSep();
-  const openingParenToken = hasWhitespace ? $.la(1) : undefined;
+  const openingParenToken = hasWhitespace ? $.LA(1) : undefined;
 
   $.CONSUME($.T.LParen);
   // Clear ctx.node when parsing arguments - arguments should start fresh, not inherit the parent node
@@ -515,7 +515,7 @@ export function mixinArgs(this: P, ctx: RuleContext = {}) {
   // Check for whitespace warning AFTER consuming closing paren
   // Now we can check what comes next to determine if it's actually a definition
   if (hasWhitespace && openingParenToken) {
-    const nextAfterParens = $.la(1).tokenType;
+    const nextAfterParens = $.LA(1).tokenType;
     const isActuallyDefinition = nextAfterParens === $.T.LCurly || nextAfterParens === $.T.When;
     // Only warn if it's NOT a definition (i.e., it's a mixin call)
     if (!isActuallyDefinition) {
@@ -676,7 +676,7 @@ export function mixinArgList(this: P, ctx: RuleContext = {}) {
             }
             $.OR([
               {
-                GATE: () => $.la(1).tokenType !== $.T.RParen,
+                GATE: () => $.LA(1).tokenType !== $.T.RParen,
                 ALT: () => {
                   const prevAllow = ctx.allowComma;
                   ctx.allowComma = true;
@@ -720,18 +720,18 @@ export function varName(this: P) {
  */
 export function mixinArg(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  let firstToken = $.la(1);
+  let firstToken = $.LA(1);
 
   let atStart = (
     firstToken.tokenType === $.T.AtKeyword
     || firstToken.tokenType === $.T.AtKeywordLessExtension
   );
 
-  let isDeclaration = atStart && $.la(2).tokenType === $.T.Colon;
+  let isDeclaration = atStart && $.LA(2).tokenType === $.T.Colon;
 
   return $.OR([
     {
-      GATE: () => !isDeclaration && atStart && $.la(2).tokenType === $.T.Ellipsis,
+      GATE: () => !isDeclaration && atStart && $.LA(2).tokenType === $.T.Ellipsis,
       ALT: () => {
         $.startRule();
         let name = $.varName();
@@ -767,13 +767,13 @@ export function mixinArg(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      GATE: () => !isDeclaration && atStart && $.la(2).tokenType !== $.T.Ellipsis && $.la(2).tokenType !== $.T.RParen && $.la(2).tokenType !== $.T.Comma && $.la(2).tokenType !== $.T.Semi,
+      GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== $.T.Ellipsis && $.LA(2).tokenType !== $.T.RParen && $.LA(2).tokenType !== $.T.Comma && $.LA(2).tokenType !== $.T.Semi,
       ALT: () => {
         return $.callArgument(ctx);
       }
     },
     {
-      GATE: () => !isDeclaration && atStart && $.la(2).tokenType !== $.T.Ellipsis && ($.la(2).tokenType === $.T.RParen || $.la(2).tokenType === $.T.Comma || $.la(2).tokenType === $.T.Semi),
+      GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== $.T.Ellipsis && ($.LA(2).tokenType === $.T.RParen || $.LA(2).tokenType === $.T.Comma || $.LA(2).tokenType === $.T.Semi),
       ALT: () => {
         $.startRule();
         let name = $.varName();
@@ -811,7 +811,7 @@ export function callArgument(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
     {
-      GATE: () => $.la(1).tokenType === $.T.AnonMixinStart || $.la(1).tokenType === $.T.LCurly,
+      GATE: () => $.LA(1).tokenType === $.T.AnonMixinStart || $.LA(1).tokenType === $.T.LCurly,
       ALT: () => $.anonymousMixinDefinition(ctx)
     },
     {
@@ -831,7 +831,7 @@ export function callArgument(this: P, ctx: RuleContext = {}) {
  */
 export function unknownAtRule(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  const img = $.la(1).image;
+  const img = $.LA(1).image;
   if (img === '@-export') {
     return $.exportAtRule(ctx);
   }
@@ -859,18 +859,18 @@ export function exportAtRule(this: P, ctx: RuleContext = {}) {
   // Optional "as <namespace>"
   let namespace: string | undefined;
   $.OPTION(() => {
-    const la = $.la(1);
+    const la = $.LA(1);
     if (!((la.tokenType === $.T.PlainIdent || la.tokenType === $.T.Ident) && la.image === 'as')) {
       return;
     }
     // Consume "as"
-    if ($.la(1).tokenType === $.T.Ident) {
+    if ($.LA(1).tokenType === $.T.Ident) {
       $.CONSUME($.T.Ident);
     } else {
       $.CONSUME($.T.PlainIdent);
     }
     // Consume namespace identifier
-    const nsTok = ($.la(1).tokenType === $.T.Ident)
+    const nsTok = ($.LA(1).tokenType === $.T.Ident)
       ? ($.CONSUME($.T.Ident) as unknown as IToken)
       : ($.CONSUME($.T.PlainIdent) as unknown as IToken);
     namespace = nsTok.image;

@@ -72,7 +72,7 @@ export function scssUseAtRule(this: P, ctx: RuleContext = {}) {
   let namespace: string | undefined;
 
   // optional "as <ident|*>"
-  if ($.la(1).image === 'as') {
+  if ($.LA(1).image === 'as') {
     $.OPTION(() => {
       $.CONSUME($.T.Ident);
       $.OR([
@@ -89,7 +89,7 @@ export function scssUseAtRule(this: P, ctx: RuleContext = {}) {
 
   // optional "with (...)"
   let withRules: Collection | undefined;
-  if ($.la(1).image === 'with') {
+  if ($.LA(1).image === 'with') {
     $.OPTION(() => {
       $.CONSUME($.T.Ident);
       withRules = $.scssWithConfig(ctx) as unknown as Collection;
@@ -141,7 +141,7 @@ export function scssForwardAtRule(this: P, ctx: RuleContext = {}) {
 
   const pathNode = $.string(ctx) as unknown as Quoted;
 
-  const isWithConfigStart = () => $.la(1).image === 'with' && $.la(2).tokenType === $.T.LParen;
+  const isWithConfigStart = () => $.LA(1).image === 'with' && $.LA(2).tokenType === $.T.LParen;
 
   // optional "as <prefix>-*"
   // NOTE: this is parsed inside the prelude loop below (instead of option),
@@ -154,29 +154,29 @@ export function scssForwardAtRule(this: P, ctx: RuleContext = {}) {
   let forwardListMode: 'show' | 'hide' | undefined;
   $.MANY({
     // Stop before `with (...)` so the option below stays unambiguous.
-    GATE: () => $.la(1).tokenType !== $.T.Semi && !isWithConfigStart(),
+    GATE: () => $.LA(1).tokenType !== $.T.Semi && !isWithConfigStart(),
     DEF: () => {
-      const la = $.la(1);
+      const la = $.LA(1);
       // optional "as <prefix>-*"
       if ((la.tokenType === $.T.Ident || la.tokenType === $.T.PlainIdent) && la.image === 'as') {
         // "as" may be Ident or PlainIdent depending on token mode.
-        if ($.la(1).tokenType === $.T.Ident) {
+        if ($.LA(1).tokenType === $.T.Ident) {
           $.CONSUME($.T.Ident);
         } else {
           $.CONSUME($.T.PlainIdent);
         }
 
         // The prefix is typically tokenized as a single ident/plainident (often including the trailing '-').
-        const tok = ($.la(1).tokenType === $.T.Ident)
+        const tok = ($.LA(1).tokenType === $.T.Ident)
           ? ($.CONSUME($.T.Ident) as unknown as IToken)
           : ($.CONSUME($.T.PlainIdent) as unknown as IToken);
 
         // If the `*` was split into its own token, consume it (and optional '-' if present as Unknown).
         if (
-          ($.la(1).tokenType === $.T.Unknown && $.la(1).image === '-' && $.la(2).tokenType === $.T.Star)
-          || $.la(1).tokenType === $.T.Star
+          ($.LA(1).tokenType === $.T.Unknown && $.LA(1).image === '-' && $.LA(2).tokenType === $.T.Star)
+          || $.LA(1).tokenType === $.T.Star
         ) {
-          if ($.la(1).tokenType === $.T.Unknown && $.la(1).image === '-') {
+          if ($.LA(1).tokenType === $.T.Unknown && $.LA(1).image === '-') {
             $.CONSUME($.T.Unknown);
           }
           $.CONSUME($.T.Star);
@@ -201,7 +201,7 @@ export function scssForwardAtRule(this: P, ctx: RuleContext = {}) {
       }
       // Start of a show/hide list.
       if ((la.tokenType === $.T.Ident || la.tokenType === $.T.PlainIdent) && (la.image === 'show' || la.image === 'hide')) {
-        const kw = ($.la(1).tokenType === $.T.Ident)
+        const kw = ($.LA(1).tokenType === $.T.Ident)
           ? ($.CONSUME($.T.Ident) as unknown as IToken)
           : ($.CONSUME($.T.PlainIdent) as unknown as IToken);
         forwardListMode = kw.image === 'hide' ? 'hide' : 'show';
@@ -214,10 +214,10 @@ export function scssForwardAtRule(this: P, ctx: RuleContext = {}) {
       }
       // Consume list members when we're in a show/hide list.
       if (forwardListMode) {
-        const t = ($.la(1).tokenType === $.T.DollarVariable)
+        const t = ($.LA(1).tokenType === $.T.DollarVariable)
           ? ($.CONSUME($.T.DollarVariable) as unknown as IToken)
           : (
-              $.la(1).tokenType === $.T.Ident
+              $.LA(1).tokenType === $.T.Ident
                 ? ($.CONSUME($.T.Ident) as unknown as IToken)
                 : ($.CONSUME($.T.PlainIdent) as unknown as IToken)
             );
@@ -237,7 +237,7 @@ export function scssForwardAtRule(this: P, ctx: RuleContext = {}) {
     $.OPTION(() => {
       // "with" may be Ident or PlainIdent depending on token mode.
       $.OR([
-        { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+        { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
         { ALT: () => $.CONSUME($.T.PlainIdent) }
       ]);
       withRules = $.scssWithConfig(ctx) as unknown as Collection;
@@ -295,7 +295,7 @@ export function scssExtendAtRule(this: P, ctx: RuleContext = {}) {
 
   // Accept (but ignore) any trailing bits like `!optional`
   $.MANY({
-    GATE: () => $.la(1).tokenType !== $.T.Semi && $.la(1).tokenType.name !== 'EOF',
+    GATE: () => $.LA(1).tokenType !== $.T.Semi && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
       $.anyOuterValue(ctx);
     }
@@ -425,13 +425,13 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
   $.OR([
     {
       // Sass parity: interpolation in mixin names is not valid syntax.
-      GATE: () => $.la(1).tokenType === $.T.InterpolationStart || $.la(2).tokenType === $.T.InterpolationStart,
+      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart || $.LA(2).tokenType === $.T.InterpolationStart,
       ALT: () => {
         $.AT_LEAST_ONE({
           DEF: () => {
             $.OR([
               {
-                GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+                GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
                 ALT: () => {
                   $.CONSUME($.T.InterpolationStart);
                   $.valueSequence(ctx);
@@ -452,10 +452,10 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
     {
       // Mixin call where lexer tokenizes `name(` as a single token.
       // e.g. `@include wrap(red);` may arrive as FunctionStart("wrap(") + ...
-      GATE: () => tokenMatches($.la(1), $.T.FunctionStart) || tokenMatches($.la(1), $.T.GenericFunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart) || tokenMatches($.LA(1), $.T.GenericFunctionStart),
       ALT: () => {
         const nameTok = $.OR([
-          { GATE: () => tokenMatches($.la(1), $.T.FunctionStart), ALT: () => $.CONSUME($.T.FunctionStart) },
+          { GATE: () => tokenMatches($.LA(1), $.T.FunctionStart), ALT: () => $.CONSUME($.T.FunctionStart) },
           { ALT: () => $.CONSUME($.T.GenericFunctionStart) }
         ]) as unknown as IToken;
         const parsedName = nameTok.image.slice(0, -1);
@@ -476,11 +476,11 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
       // SCSS module-qualified mixin call: `@include ns.foo(...)`
       // Tokenizes as: Ident + DotName(".foo")
       GATE: () =>
-        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
-        && $.la(2).tokenType === $.T.DotName,
+        ($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent)
+        && $.LA(2).tokenType === $.T.DotName,
       ALT: () => {
         const ns = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         const dot = $.CONSUME($.T.DotName) as unknown as IToken; // ".foo"
@@ -492,21 +492,21 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
       // Escaped module-qualified mixin "ruleset" reference: `@include ns.\#foo(...)` or `@include ns.\.foo(...)`
       // Note: there is no standalone dot token; the '.' is tokenized as Unknown when not part of DotName.
       GATE: () =>
-        ($.la(1).tokenType === $.T.Ident || $.la(1).tokenType === $.T.PlainIdent)
-        && $.la(2).tokenType === $.T.Unknown
-        && $.la(2).image === '.'
-        && $.la(3).tokenType === $.T.Unknown
-        && $.la(3).image === '\\'
-        && ($.la(4).tokenType === $.T.HashName || $.la(4).tokenType === $.T.DotName),
+        ($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent)
+        && $.LA(2).tokenType === $.T.Unknown
+        && $.LA(2).image === '.'
+        && $.LA(3).tokenType === $.T.Unknown
+        && $.LA(3).image === '\\'
+        && ($.LA(4).tokenType === $.T.HashName || $.LA(4).tokenType === $.T.DotName),
       ALT: () => {
         const ns = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         $.CONSUME($.T.Unknown); // '.'
         $.CONSUME($.T.Unknown); // '\'
         const member = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
+          { GATE: () => $.LA(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
           { ALT: () => $.CONSUME($.T.DotName) }
         ]) as unknown as IToken;
         const key = member.image.slice(1);
@@ -516,7 +516,7 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
     {
       ALT: () => {
         const ident = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         // Some lexer paths produce `PlainIdent` tokens that can include an immediately-following `(`,
@@ -553,7 +553,7 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
   let usingParams: List | undefined;
 
   // SCSS: `@include foo() using ($x, $y) { ... }`
-  if ($.la(1).image === 'using') {
+  if ($.LA(1).image === 'using') {
     $.OPTION(() => {
       $.CONSUME($.T.Ident); // using
       // Sass `using(...)` parameters are just variable names.
@@ -579,7 +579,7 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
         });
       });
       $.CONSUME($.T.RParen);
-      usingParams = new List(p, undefined, $.getLocationInfo($.la(0)), $.context);
+      usingParams = new List(p, undefined, $.getLocationInfo($.LA(0)), $.context);
     });
   }
 
@@ -590,7 +590,7 @@ export function scssIncludeAtRule(this: P, ctx: RuleContext = {}) {
   });
 
   // Require semicolon only when present (SCSS requires it if no block; we enforce later)
-  if ($.la(1).tokenType === $.T.Semi) {
+  if ($.LA(1).tokenType === $.T.Semi) {
     $.OPTION(() => $.CONSUME($.T.Semi));
   }
 
@@ -639,14 +639,14 @@ export function scssIfAtRule(this: P, ctx: RuleContext = {}) {
 
   // Consume chained @else / @else if
   $.MANY({
-    GATE: () => $.la(1).image === '@else',
+    GATE: () => $.LA(1).image === '@else',
     DEF: () => {
       $.CONSUME($.T.AtKeyword); // @else
 
       let elseCond: Node | undefined;
 
       // @else if ...
-      if ($.la(1).image === 'if') {
+      if ($.LA(1).image === 'if') {
         $.OPTION(() => {
           $.CONSUME($.T.Ident); // if (token category)
           elseCond = $.scssCondition(ctx) as unknown as Node;
@@ -679,10 +679,10 @@ export function scssForAtRule(this: P, ctx: RuleContext = {}) {
   const dv = $.CONSUME($.T.DollarVariable);
 
   // consume `from` keyword (token type can vary by mode/categories)
-  if ($.la(1).image !== 'from') {
+  if ($.LA(1).image !== 'from') {
     // Trigger a useful parse error if we don't see `from`.
     $.CONSUME($.T.PlainIdent);
-  } else if ($.la(1).tokenType === $.T.PlainIdent) {
+  } else if ($.LA(1).tokenType === $.T.PlainIdent) {
     $.CONSUME($.T.PlainIdent);
   } else {
     $.CONSUME($.T.Ident);
@@ -692,7 +692,7 @@ export function scssForAtRule(this: P, ctx: RuleContext = {}) {
   const startNodes: Node[] = [];
   $.AT_LEAST_ONE({
     GATE: () => {
-      const la = $.la(1);
+      const la = $.LA(1);
       // Stop before `to`/`through` regardless of token type.
       return !(la.image === 'to' || la.image === 'through');
     },
@@ -704,10 +704,10 @@ export function scssForAtRule(this: P, ctx: RuleContext = {}) {
 
   // consume `to` / `through`
   let kw: IToken;
-  if ($.la(1).image !== 'to' && $.la(1).image !== 'through') {
+  if ($.LA(1).image !== 'to' && $.LA(1).image !== 'through') {
     // Trigger a useful parse error if we don't see `to|through`.
     kw = $.CONSUME($.T.PlainIdent) as unknown as IToken;
-  } else if ($.la(1).tokenType === $.T.PlainIdent) {
+  } else if ($.LA(1).tokenType === $.T.PlainIdent) {
     kw = $.CONSUME($.T.PlainIdent) as unknown as IToken;
   } else {
     kw = $.CONSUME($.T.Ident) as unknown as IToken;
@@ -717,7 +717,7 @@ export function scssForAtRule(this: P, ctx: RuleContext = {}) {
   // Parse end expression until `{` (or EOF)
   const endNodes: Node[] = [];
   $.AT_LEAST_ONE({
-    GATE: () => $.la(1).tokenType !== $.T.LCurly && $.la(1).tokenType.name !== 'EOF',
+    GATE: () => $.LA(1).tokenType !== $.T.LCurly && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
       const n = $.anyOuterValue(ctx) as unknown as Node;
       endNodes.push($.wrap(n, 'both'));
@@ -772,7 +772,7 @@ export function scssEachAtRule(this: P, ctx: RuleContext = {}) {
     const varName = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
     // Param-like var decl (prints `$name` with no `: <value>`).
     vars.push(new VarDeclaration({ name: varName, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context));
-    if ($.la(1).tokenType === $.T.Comma) {
+    if ($.LA(1).tokenType === $.T.Comma) {
       $.CONSUME($.T.Comma);
     } else {
       break;
@@ -780,7 +780,7 @@ export function scssEachAtRule(this: P, ctx: RuleContext = {}) {
   } while (true);
 
   // consume `in` keyword (Ident or PlainIdent depending on token mode)
-  if ($.la(1).tokenType === $.T.Ident) {
+  if ($.LA(1).tokenType === $.T.Ident) {
     $.CONSUME($.T.Ident);
   } else {
     $.CONSUME($.T.PlainIdent);
@@ -847,7 +847,7 @@ export function scssMixinAtRule(this: P, ctx: RuleContext = {}) {
 
   const looksLikeInterpolatedMixinName = () => {
     for (let i = 1; i < 64; i++) {
-      const tok = $.la(i);
+      const tok = $.LA(i);
       if (tok.tokenType === $.T.LParen || tok.tokenType === $.T.LCurly || tok.tokenType.name === 'EOF') {
         return false;
       }
@@ -867,7 +867,7 @@ export function scssMixinAtRule(this: P, ctx: RuleContext = {}) {
           DEF: () => {
             $.OR([
               {
-                GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+                GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
                 ALT: () => {
                   $.CONSUME($.T.InterpolationStart);
                   $.valueSequence(ctx);
@@ -886,14 +886,14 @@ export function scssMixinAtRule(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      GATE: () => tokenMatches($.la(1), $.T.FunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
       ALT: () => {
         nameTok = $.CONSUME($.T.FunctionStart) as unknown as IToken;
         hasParamsFromStart = true;
       }
     },
     {
-      GATE: () => tokenMatches($.la(1), $.T.GenericFunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.GenericFunctionStart),
       ALT: () => {
         nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
         hasParamsFromStart = true;
@@ -913,7 +913,7 @@ export function scssMixinAtRule(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      GATE: () => $.la(1).tokenType === $.T.LParen,
+      GATE: () => $.LA(1).tokenType === $.T.LParen,
       ALT: () => {
         params = $.scssMixinParams(ctx) as unknown as List;
       }
@@ -994,7 +994,7 @@ export function scssMixinParam(this: P, ctx: RuleContext = {}) {
   $.OR([
     // ...$rest
     {
-      GATE: () => $.la(1).tokenType?.name === 'Ellipsis' || $.la(1).image === '...',
+      GATE: () => $.LA(1).tokenType?.name === 'Ellipsis' || $.LA(1).image === '...',
       ALT: () => {
         $.CONSUME($.T.Ellipsis);
         const dv = $.CONSUME($.T.DollarVariable);
@@ -1035,11 +1035,11 @@ export function scssMediaPrelude(this: P, ctx: RuleContext = {}) {
   const nodes: Node[] = [];
 
   $.MANY({
-    GATE: () => $.la(1).tokenType !== $.T.LCurly && $.la(1).tokenType.name !== 'EOF',
+    GATE: () => $.LA(1).tokenType !== $.T.LCurly && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
       const n = $.OR([
         {
-          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
             $.CONSUME($.T.InterpolationStart);
             const expr = $.valueSequence(ctx) as unknown as Node;
@@ -1078,11 +1078,11 @@ export function scssSupportsPrelude(this: P, ctx: RuleContext = {}) {
   const nodes: Node[] = [];
 
   $.MANY({
-    GATE: () => $.la(1).tokenType !== $.T.LCurly && $.la(1).tokenType.name !== 'EOF',
+    GATE: () => $.LA(1).tokenType !== $.T.LCurly && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
       const n = $.OR([
         {
-          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
             $.CONSUME($.T.InterpolationStart);
             const expr = $.valueSequence(ctx) as unknown as Node;
@@ -1133,11 +1133,11 @@ export function scssContainerPrelude(this: P, ctx: RuleContext = {}) {
   const nodes: Node[] = [];
 
   $.MANY({
-    GATE: () => $.la(1).tokenType !== $.T.LCurly && $.la(1).tokenType.name !== 'EOF',
+    GATE: () => $.LA(1).tokenType !== $.T.LCurly && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
       const n = $.OR([
         {
-          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
             $.CONSUME($.T.InterpolationStart);
             const expr = $.valueSequence(ctx) as unknown as Node;
@@ -1176,11 +1176,11 @@ export function scssScopePrelude(this: P, ctx: RuleContext = {}) {
   const nodes: Node[] = [];
 
   $.MANY({
-    GATE: () => $.la(1).tokenType !== $.T.LCurly && $.la(1).tokenType.name !== 'EOF',
+    GATE: () => $.LA(1).tokenType !== $.T.LCurly && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
       const n = $.OR([
         {
-          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
             $.CONSUME($.T.InterpolationStart);
             const expr = $.valueSequence(ctx) as unknown as Node;
@@ -1222,7 +1222,7 @@ export function scopeAtRule(this: P, ctx: RuleContext = {}) {
  */
 export function unknownAtRule(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  const img = $.la(1).image;
+  const img = $.LA(1).image;
   if (img === '@use') {
     return $.scssUseAtRule(ctx);
   }
@@ -1301,14 +1301,14 @@ export function scssFunctionAtRule(this: P, ctx: RuleContext = {}) {
   $.OR([
     {
       // function name may be tokenized as a FunctionStart / GenericFunctionStart (`name(`)
-      GATE: () => tokenMatches($.la(1), $.T.FunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
       ALT: () => {
         nameTok = $.CONSUME($.T.FunctionStart) as unknown as IToken;
         hasParamsFromStart = true;
       }
     },
     {
-      GATE: () => tokenMatches($.la(1), $.T.GenericFunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.GenericFunctionStart),
       ALT: () => {
         nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
         hasParamsFromStart = true;
@@ -1317,7 +1317,7 @@ export function scssFunctionAtRule(this: P, ctx: RuleContext = {}) {
     {
       ALT: () => {
         nameTok = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
       }
@@ -1332,7 +1332,7 @@ export function scssFunctionAtRule(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      GATE: () => $.la(1).tokenType === $.T.LParen,
+      GATE: () => $.LA(1).tokenType === $.T.LParen,
       ALT: () => {
         params = $.scssMixinParams(ctx) as unknown as List;
       }
@@ -1351,7 +1351,7 @@ export function scssFunctionAtRule(this: P, ctx: RuleContext = {}) {
   bodyRules.options.rulesVisibility.Ruleset ??= 'private';
 
   const loc = $.endRule();
-  const tok = nameTok ?? ($.la(0) as unknown as IToken);
+  const tok = nameTok ?? ($.LA(0) as unknown as IToken);
   const rawName = hasParamsFromStart ? String(tok.image).slice(0, -1) : String(tok.image);
   const fnName = new Any(rawName, { role: 'name' }, $.getLocationInfo(tok), $.context);
   return new Func(
@@ -1403,7 +1403,7 @@ export function scssAtRootAtRule(this: P, ctx: RuleContext = {}) {
   $.OR([
     {
       // @at-root (without: media) or @at-root (with: rule)
-      GATE: () => $.la(1).tokenType === $.T.LParen,
+      GATE: () => $.LA(1).tokenType === $.T.LParen,
       ALT: () => {
         prelude = $.valueSequence(ctx) as unknown as Node;
       }
@@ -1411,7 +1411,7 @@ export function scssAtRootAtRule(this: P, ctx: RuleContext = {}) {
     {
       // @at-root .selector { ... }
       GATE: () => {
-        const next = $.la(1);
+        const next = $.LA(1);
         return next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent
           || next.tokenType === $.T.Dot || next.tokenType === $.T.Hash
           || next.tokenType === $.T.Colon || next.tokenType === $.T.LBracket;

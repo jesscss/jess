@@ -293,7 +293,7 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
   selectors.push(sel as SimpleSelector);
   $.MANY({
     /** Make sure we don't ignore space combinators */
-    GATE: () => !$.hasWS() && !(ctx.inExtend && $.la(1).tokenType === $.T.All),
+    GATE: () => !$.hasWS() && !(ctx.inExtend && $.LA(1).tokenType === $.T.All),
     DEF: () => {
       let sel = $.simpleSelector(ctx);
       /** Make sure we don't add implicit whitespace */
@@ -315,7 +315,7 @@ export function complexSelector(this: P, ctx: RuleContext = {}) {
   let selector: Selector = cssComplexSelector.call(
     this,
     ctx,
-    (ctx: RuleContext) => () => !ctx.inExtend || $.la(1).tokenType !== $.T.All
+    (ctx: RuleContext) => () => !ctx.inExtend || $.LA(1).tokenType !== $.T.All
   )!;
   let isQualifiedRule = !!ctx.qualifiedRule;
   let flag: IToken | undefined;
@@ -432,8 +432,8 @@ export function simpleSelector(this: P, ctx: RuleContext = {}) {
   let selectorAlt: Alt = [
     {
       GATE: () => (
-        (!ctx.inExtend || $.la(1).tokenType !== $.T.All)
-        && $.la(1).tokenType !== $.T.InterpolatedIdent
+        (!ctx.inExtend || $.LA(1).tokenType !== $.T.All)
+        && $.LA(1).tokenType !== $.T.InterpolatedIdent
       ),
       /**
        * In Less/Sass (and now CSS), the first inner selector can be an identifier
@@ -714,7 +714,7 @@ export function varDeclarationOrCall(this: P, ctx: RuleContext = {}) {
            */
           {
             GATE: () => {
-              let type = $.la(1).tokenType;
+              let type = $.LA(1).tokenType;
               return type === $.T.AnonMixinStart || type === $.T.LCurly;
             },
             ALT: () => {
@@ -725,7 +725,7 @@ export function varDeclarationOrCall(this: P, ctx: RuleContext = {}) {
           },
           {
             GATE: () => {
-              let type = $.la(1).tokenType;
+              let type = $.LA(1).tokenType;
               return type !== $.T.AnonMixinStart && type !== $.T.LCurly;
             },
             ALT: () => {
@@ -741,7 +741,7 @@ export function varDeclarationOrCall(this: P, ctx: RuleContext = {}) {
     },
     /** This is a variable call. Allow optional whitespace between name and (. */
     {
-      GATE: () => $.la(1).tokenType === $.T.LParen,
+      GATE: () => $.LA(1).tokenType === $.T.LParen,
       /**
        * This is a change from Less 1.x-4.x
        * e.g.
@@ -798,8 +798,8 @@ export function varDeclarationOrCall(this: P, ctx: RuleContext = {}) {
     $.warnings.push(
       new ParseError(
         `Unquoted selector capture in '${varName}' is no longer supported. Use '*[ ... ]' (e.g. ${varName}: *[.a, .b]).`,
-        $.la(1),
-        { previousToken: $.la(0) }
+        $.LA(1),
+        { previousToken: $.LA(0) }
       )
     );
   }

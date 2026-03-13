@@ -22,7 +22,7 @@ function resolvePreludeRule(parser: P, preludeRule: PreludeRule): unknown {
 
 export function atRule(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  const la1 = $.la(1);
+  const la1 = $.LA(1);
   return $.OR([
     { GATE: () => tokenMatches(la1, $.T.AtContainer), ALT: () => $.containerAtRule(ctx) },
     { GATE: () => tokenMatches(la1, $.T.AtScope), ALT: () => $.scopeAtRule(ctx) },
@@ -46,7 +46,7 @@ export function atRule(this: P, ctx: RuleContext = {}) {
 */
 export function innerAtRule(this: P, ctx: RuleContext = {}): Node {
   const $ = this;
-  const la1 = $.la(1);
+  const la1 = $.LA(1);
   return $.OR([
     { GATE: () => tokenMatches(la1, $.T.AtContainer), ALT: () => $.containerAtRule({ ...ctx, inner: true }) },
     { GATE: () => tokenMatches(la1, $.T.AtScope), ALT: () => $.scopeAtRule({ ...ctx, inner: true }) },
@@ -538,7 +538,7 @@ export function pageSelector(this: P, ctx: RuleContext = {}) {
 
   $.OPTION(() => token += $.CONSUME($.T.Ident).image);
   $.MANY({
-    GATE: () => $.la(1).tokenType === $.T.Colon && $.noSep(1),
+    GATE: () => $.LA(1).tokenType === $.T.Colon && $.noSep(1),
     DEF: () => {
       token += $.CONSUME($.T.Colon).image;
       token += $.CONSUME($.T.PagePseudoClassKeywords).image;
@@ -629,7 +629,7 @@ export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Pr
     $.OR([
       {
         GATE: () => {
-          const next = $.la(1);
+          const next = $.LA(1);
           // If it's a FunctionStart (like `size(` or `style(`), it's a query function, not a container name
           if (tokenMatches(next, $.T.FunctionStart)) {
             return false;
@@ -719,7 +719,7 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
   return $.OR([
     {
       // Container query type function: any FunctionStart token
-      GATE: () => tokenMatches($.la(1), $.T.FunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
@@ -736,7 +736,7 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
               {
                 // QueryCondition: starts with LParen or Not
                 GATE: () => {
-                  const next = $.la(1);
+                  const next = $.LA(1);
                   return next.tokenType === $.T.LParen || next.tokenType === $.T.Not;
                 },
                 ALT: () => {
@@ -747,8 +747,8 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
               {
                 // Declaration: starts with Ident or CustomProperty followed by Assign (colon)
                 GATE: () => {
-                  const next = $.la(1);
-                  const after = $.la(2);
+                  const next = $.LA(1);
+                  const after = $.LA(2);
                   const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
                   return isIdent && after && tokenMatches(after, $.T.Assign);
                 },
@@ -760,8 +760,8 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
               {
                 // Just a name (Any): Ident, PlainIdent, or CustomProperty without Assign
                 GATE: () => {
-                  const next = $.la(1);
-                  const after = $.la(2);
+                  const next = $.LA(1);
+                  const after = $.LA(2);
                   const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
                   return isIdent && (!after || !tokenMatches(after, $.T.Assign));
                 },
@@ -820,9 +820,9 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
     {
       // Handle `not` followed by a container query type function (e.g., `not scroll-state(...)`)
       GATE: () => {
-        const next = $.la(1);
+        const next = $.LA(1);
         if (next.tokenType === $.T.Not) {
-          const afterNot = $.la(2);
+          const afterNot = $.LA(2);
           return afterNot && tokenMatches(afterNot, $.T.FunctionStart);
         }
         return false;
@@ -841,7 +841,7 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
     {
       // Custom container condition that handles `and not` and `or not`
       GATE: () => {
-        const next = $.la(1);
+        const next = $.LA(1);
         return next.tokenType === $.T.LParen;
       },
       ALT: () => {
@@ -866,7 +866,7 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
     {
       // For cases not starting with LParen (like `not` at start), reuse media condition logic
       GATE: () => {
-        const next = $.la(1);
+        const next = $.LA(1);
         return next.tokenType !== $.T.LParen;
       },
       ALT: () => $.mediaCondition(ctx)
@@ -884,7 +884,7 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
   let node: Node | undefined;
   $.OR([
     {
-      GATE: () => $.la(1).tokenType === $.T.Not,
+      GATE: () => $.LA(1).tokenType === $.T.Not,
       ALT: () => {
         const notToken = $.CONSUME($.T.Not);
         node = $.containerInParens(ctx);
@@ -893,7 +893,7 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      GATE: () => tokenMatches($.la(1), $.T.FunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
       ALT: () => {
         // Parse function call (reuse containerQuery logic)
         const funcStart = $.CONSUME($.T.FunctionStart);
@@ -905,7 +905,7 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
             $.OR([
               {
                 GATE: () => {
-                  const next = $.la(1);
+                  const next = $.LA(1);
                   return next.tokenType === $.T.LParen || next.tokenType === $.T.Not;
                 },
                 ALT: () => {
@@ -915,8 +915,8 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.la(1);
-                  const after = $.la(2);
+                  const next = $.LA(1);
+                  const after = $.LA(2);
                   const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
                   return isIdent && after && tokenMatches(after, $.T.Assign);
                 },
@@ -927,8 +927,8 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.la(1);
-                  const after = $.la(2);
+                  const next = $.LA(1);
+                  const after = $.LA(2);
                   const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
                   return isIdent && (!after || !tokenMatches(after, $.T.Assign));
                 },
@@ -979,7 +979,7 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
   let node: Node | undefined;
   $.OR([
     {
-      GATE: () => $.la(1).tokenType === $.T.Not,
+      GATE: () => $.LA(1).tokenType === $.T.Not,
       ALT: () => {
         const notToken = $.CONSUME($.T.Not);
         node = $.containerInParens(ctx);
@@ -988,7 +988,7 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      GATE: () => tokenMatches($.la(1), $.T.FunctionStart),
+      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
       ALT: () => {
         // Parse function call (reuse containerQuery logic)
         const funcStart = $.CONSUME($.T.FunctionStart);
@@ -1000,7 +1000,7 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
             $.OR([
               {
                 GATE: () => {
-                  const next = $.la(1);
+                  const next = $.LA(1);
                   return next.tokenType === $.T.LParen || next.tokenType === $.T.Not;
                 },
                 ALT: () => {
@@ -1010,8 +1010,8 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.la(1);
-                  const after = $.la(2);
+                  const next = $.LA(1);
+                  const after = $.LA(2);
                   const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
                   return isIdent && after && tokenMatches(after, $.T.Assign);
                 },
@@ -1022,8 +1022,8 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.la(1);
-                  const after = $.la(2);
+                  const next = $.LA(1);
+                  const after = $.LA(2);
                   const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
                   return isIdent && (!after || !tokenMatches(after, $.T.Assign));
                 },

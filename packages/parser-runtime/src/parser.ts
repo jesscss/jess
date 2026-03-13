@@ -102,7 +102,7 @@ type ParserSavepoint = {
  *
  * Subclass this and define production rules as methods that call the DSL
  * methods: `CONSUME()`, `OR()`, `MANY()`, `OPTION()`, `AT_LEAST_ONE()`,
- * `MANY_SEP()`, `AT_LEAST_ONE_SEP()`. See the module-level JSDoc for the
+ * `MANY_SEP()`, `AT_LEAST_ONE_SEP()`, `SUBRULE()`. See the module-level JSDoc for the
  * full architecture overview including zero-cost speculative backtracking.
  *
  * ### Performance characteristics (vs Chevrotain ALL(*))
@@ -378,9 +378,9 @@ export class RecursiveDescentParser {
 
   /**
    * Look ahead `offset` tokens from current position.
-   * `la(1)` = next token, `la(0)` = last consumed token.
+   * `LA(1)` = next token, `LA(0)` = last consumed token.
    */
-  la(offset: number): IToken {
+  LA(offset: number): IToken {
     if (offset === 0) {
       // Last consumed token
       return this.pos > 0 ? this.tokens[this.pos - 1]! : this.eofToken;
@@ -390,11 +390,6 @@ export class RecursiveDescentParser {
       return this.eofToken;
     }
     return this.tokens[idx]!;
-  }
-
-  /** Alias for la() — compatibility with Chevrotain's LA() */
-  LA(offset: number): IToken {
-    return this.la(offset);
   }
 
   /** Check if the next token matches the given type */
@@ -419,7 +414,7 @@ export class RecursiveDescentParser {
 
   /** Push a custom parse error from a production rule */
   pushError(message: string, token?: IToken): void {
-    const tok = token ?? this.la(1);
+    const tok = token ?? this.LA(1);
     this.errors.push(new ParseError(message, tok, {
       ruleStack: [...this.ruleStack]
     }));
@@ -427,7 +422,7 @@ export class RecursiveDescentParser {
 
   /** Push a custom parse warning from a production rule */
   pushWarning(message: string, token?: IToken): void {
-    const tok = token ?? this.la(1);
+    const tok = token ?? this.LA(1);
     this.warnings.push(new ParseError(message, tok, {
       ruleStack: [...this.ruleStack]
     }));
@@ -531,7 +526,7 @@ export class RecursiveDescentParser {
   OR<T>(alternatives: OrAlternative<T>[]): T {
     // Content assist: at cursor, collect first tokens of all alternatives
     if (this.assistMode) {
-      const tok = this.la(1);
+      const tok = this.LA(1);
       if (tok.startOffset >= this.assistOffset) {
         this.collectOrAssistSuggestions(alternatives);
       }
@@ -583,7 +578,7 @@ export class RecursiveDescentParser {
 
     // No alternative matched (all skipped by GATE, or all speculative failed)
     if (this.recoveryEnabled) {
-      const tok = this.la(1);
+      const tok = this.LA(1);
       this.errors.push(new NoViableAltError(tok, [...this.ruleStack]));
       if (this.pos < this.tokens.length) {
         this.pos++;
@@ -594,7 +589,7 @@ export class RecursiveDescentParser {
       // Nested or() inside a speculative alt — bubble up
       throw SPEC_FAIL;
     }
-    throw new NoViableAltError(this.la(1), [...this.ruleStack]);
+    throw new NoViableAltError(this.LA(1), [...this.ruleStack]);
   }
 
   // ── DSL: MANY ────────────────────────────────────────────────────
@@ -764,13 +759,13 @@ export class RecursiveDescentParser {
     return true;
   }
 
-  // ── DSL: subrule ─────────────────────────────────────────────────
+  // ── DSL: SUBRULE ─────────────────────────────────────────────────
 
   /**
    * Call a sub-rule. Tracks the rule name on the stack for error
    * messages, and validates locationStack integrity.
    */
-  subrule<T>(rule: (...args: any[]) => T, ...args: any[]): T {
+  SUBRULE<T>(rule: (...args: any[]) => T, ...args: any[]): T {
     const ruleName = rule.name || '(anonymous)';
     const preStackLen = this.locationStack.length;
     this.ruleStack.push(ruleName);
@@ -877,7 +872,7 @@ export class RecursiveDescentParser {
    * Call endRule() to complete it.
    */
   startRule(): LocationInfo {
-    const tok = this.la(1);
+    const tok = this.LA(1);
     const location: LocationInfo = [
       tok.startOffset,
       tok.startLine ?? NaN,
@@ -893,7 +888,7 @@ export class RecursiveDescentParser {
    * end coordinates from the last consumed token.
    */
   endRule(): LocationInfo {
-    const tok = this.la(0);
+    const tok = this.LA(0);
     const location = this.locationStack.pop()!;
     location[3] = tok.endOffset ?? tok.startOffset;
     location[4] = tok.endLine ?? tok.startLine ?? NaN;
@@ -1016,7 +1011,7 @@ export class RecursiveDescentParser {
    */
   protected recoverConsume(expected: TokenType, actual: IToken): IToken {
     // Try single-token deletion: skip current token, check if next matches
-    const la2 = this.la(2);
+    const la2 = this.LA(2);
     if (tokenMatches(la2, expected)) {
       this.errors.push(new MismatchedTokenError(actual, expected, [...this.ruleStack]));
       this.pos++; // skip bad token

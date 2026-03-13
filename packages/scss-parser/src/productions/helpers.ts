@@ -289,7 +289,7 @@ export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): 
 export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {
   let depth = 0;
   for (let i = 1; i < 50; i++) {
-    const tok = parser.la(i);
+    const tok = parser.LA(i);
     if (tok.tokenType === T.LParen) {
       depth++;
     }
@@ -314,7 +314,7 @@ export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap
 
 export function looksLikeScssComparison(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {
   for (let i = 1; i < 30; i++) {
-    const tok = parser.la(i);
+    const tok = parser.LA(i);
     const tt = tok.tokenType;
     if (
       tt === T.LCurly

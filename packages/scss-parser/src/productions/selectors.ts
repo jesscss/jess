@@ -80,8 +80,8 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext) {
 
   $.MANY({
     GATE: () => !requiredSemi || (requiredSemi && (
-      $.la(1).tokenType === $.T.Semi
-      || $.la(0).tokenType === $.T.Semi
+      $.LA(1).tokenType === $.T.Semi
+      || $.LA(0).tokenType === $.T.Semi
     )),
     DEF: () => {
       const localAlt = typeof alt === 'function' ? alt(ctx) : alt!;
@@ -90,7 +90,7 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext) {
         if (lastRule) {
           lastRule.options.semi = true;
         } else {
-          rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.la(1)), $.context));
+          rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), $.context));
         }
         return;
       }
@@ -105,7 +105,7 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     }
   });
 
-  const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.la(1)));
+  const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
   return $.wrap(withComments, true);
 }
 
@@ -140,7 +140,7 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
   // First atom is required.
   $.OR([
     {
-      GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
       ALT: () => {
         $.CONSUME($.T.InterpolationStart);
         const expr = $.valueSequence(ctx) as unknown as Node;
@@ -151,9 +151,9 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
     },
     {
       ALT: () => {
-        const startTokenOffset = $.la(1).startOffset;
+        const startTokenOffset = $.LA(1).startOffset;
         const sel = $.simpleSelector(ctx) as unknown as SimpleSelector;
-        const endTokenOffset = $.la(0).startOffset;
+        const endTokenOffset = $.LA(0).startOffset;
         selectors.push(sel);
         appendTokenSpan(startTokenOffset, endTokenOffset);
       }
@@ -166,7 +166,7 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
     DEF: () => {
       $.OR([
         {
-          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
             $.CONSUME($.T.InterpolationStart);
             const expr = $.valueSequence(ctx) as unknown as Node;
@@ -177,9 +177,9 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
         },
         {
           ALT: () => {
-            const startTokenOffset = $.la(1).startOffset;
+            const startTokenOffset = $.LA(1).startOffset;
             const sel = $.simpleSelector(ctx) as unknown as SimpleSelector;
-            const endTokenOffset = $.la(0).startOffset;
+            const endTokenOffset = $.LA(0).startOffset;
             selectors.push(sel);
             appendTokenSpan(startTokenOffset, endTokenOffset);
           }
@@ -224,7 +224,7 @@ export function layerName(this: P, ctx: RuleContext = {}) {
   // First segment
   $.OR([
     {
-      GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
       ALT: () => {
         $.CONSUME($.T.InterpolationStart);
         const expr = $.valueSequence(ctx) as unknown as Node;
@@ -235,7 +235,7 @@ export function layerName(this: P, ctx: RuleContext = {}) {
     {
       ALT: () => {
         const tok = $.OR([
-          { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         takeIdent(tok);
@@ -247,14 +247,14 @@ export function layerName(this: P, ctx: RuleContext = {}) {
   $.MANY({
     GATE: () =>
       !$.hasWS()
-      && $.la(1).tokenType !== $.T.LCurly
-      && $.la(1).tokenType !== $.T.Comma
-      && $.la(1).tokenType !== $.T.Semi
-      && $.la(1).tokenType.name !== 'EOF',
+      && $.LA(1).tokenType !== $.T.LCurly
+      && $.LA(1).tokenType !== $.T.Comma
+      && $.LA(1).tokenType !== $.T.Semi
+      && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
       $.OR([
         {
-          GATE: () => $.la(1).tokenType === $.T.InterpolationStart,
+          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
           ALT: () => {
             $.CONSUME($.T.InterpolationStart);
             const expr = $.valueSequence(ctx) as unknown as Node;
@@ -265,7 +265,7 @@ export function layerName(this: P, ctx: RuleContext = {}) {
         {
           ALT: () => {
             const tok = $.OR([
-              { GATE: () => $.la(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+              { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
               { ALT: () => $.CONSUME($.T.PlainIdent) }
             ]) as unknown as IToken;
             takeIdent(tok);

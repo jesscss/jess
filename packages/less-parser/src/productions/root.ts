@@ -187,15 +187,15 @@ export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContex
 }
 
 function isEscapedString(this: P) {
-  const next = this.la(1);
+  const next = this.LA(1);
   return tokenMatches(next, this.T.QuoteStart) && next.image.startsWith('~');
 }
 
 function isVariableLike(this: P): boolean {
-  let token = this.la(2);
+  let token = this.LA(2);
   let isColon = token.tokenType === this.T.Colon;
   let isParen = token.tokenType === this.T.LParen;
-  let postToken = this.la(3);
+  let postToken = this.LA(3);
 
   if (!this.preSkippedTokenMap) {
     return false;
@@ -329,14 +329,14 @@ export function main(this: P, ctx: RuleContext = {}) {
       { ALT: () => $.ampersandExtend(ctx) },
       {
         GATE: () => {
-          let next = $.la(1).tokenType;
+          let next = $.LA(1).tokenType;
           return next === $.T.DotName || next === $.T.HashName || next === $.T.ColorIdentStart;
         },
         ALT: () => $.mixinOrQualifiedRule(ctx)
       },
       {
         GATE: () => {
-          let next = $.la(1).tokenType;
+          let next = $.LA(1).tokenType;
           return next !== $.T.DotName
             && next !== $.T.HashName
             && next !== $.T.ColorIdentStart;
@@ -381,14 +381,14 @@ export function main(this: P, ctx: RuleContext = {}) {
    */
   $.MANY({
     GATE: () => {
-      const next = $.la(1);
+      const next = $.LA(1);
       // Stop at RCurly (belongs to parent block) or end of input
       if (next.tokenType === $.T.RCurly || next.tokenType.name === 'EOF') {
         return false;
       }
       return !requiredSemi || (requiredSemi && (
         next.tokenType === $.T.Semi
-        || $.la(0).tokenType === $.T.Semi
+        || $.LA(0).tokenType === $.T.Semi
       ));
     },
     DEF: () => {
@@ -405,7 +405,7 @@ export function main(this: P, ctx: RuleContext = {}) {
             if (lastRule) {
               lastRule.options.semi = true;
             } else {
-              rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.la(1)), context));
+              rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), context));
             }
           }
         } else {
@@ -424,7 +424,7 @@ export function main(this: P, ctx: RuleContext = {}) {
     rules = [...ctx.extendNodes, ...filteredRules];
     ctx.extendNodes = undefined;
   }
-  let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.la(1)));
+  let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
   // Attaches remaining whitespace at the end of rules
   const wrapped = $.wrap(returnNode!, true);
 
@@ -438,7 +438,7 @@ export function declarationList(this: P, ctx: RuleContext = {}) {
     return [
       {
         GATE: () => {
-          let next = $.la(1).tokenType;
+          let next = $.LA(1).tokenType;
           return next === $.T.DotName || next === $.T.HashName || next === $.T.ColorIdentStart;
         },
         ALT: () => {
@@ -456,7 +456,7 @@ export function declarationList(this: P, ctx: RuleContext = {}) {
          * parser correctly picks it when both paths appear viable.
          */
         GATE: () => {
-          let next = $.la(1).tokenType;
+          let next = $.LA(1).tokenType;
           return next !== $.T.DotName
             && next !== $.T.HashName
             && next !== $.T.ColorIdentStart;
@@ -614,7 +614,7 @@ export function mfNonIdentifierValue(this: P, ctx: RuleContext = {}) {
   return $.OR([
     {
       GATE: () => {
-        const next = $.la(1);
+        const next = $.LA(1);
         return next.tokenType === $.T.AtKeyword || next.tokenType === $.T.PropertyReference || next.tokenType === $.T.NestedReference;
       },
       ALT: () => $.valueReference({ ...ctx, requireAccessorsAfterMixinCall: true })
@@ -981,7 +981,7 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
       GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
       ALT: () => {
         args = $.mixinArgs(ctx);
-        let next = $.la(1).tokenType;
+        let next = $.LA(1).tokenType;
         if (next === $.T.LCurly || next === $.T.When) {
           isPossibleMixinCall = false;
         }
@@ -1025,7 +1025,7 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
               {
                 /** in Less legacy mode, mixin calls can happen without a space. */
                 let noSpace = $.noSep();
-                let next = $.la(1).tokenType;
+                let next = $.LA(1).tokenType;
                 if ((noSpace && next === $.T.LSquare) || ((noSpace || $.looseMode) && next === $.T.LParen)) {
                   result = $.OPTION(() => $.lookupOrCall({ ...ctx, node: createMixinCall(location) }));
                 }

@@ -30,7 +30,7 @@ export function scssGuardOr(this: P, ctx: RuleContext = {}) {
   let right: Node | undefined;
   $.MANY({
     GATE: () => {
-      const next = $.la(1).tokenType;
+      const next = $.LA(1).tokenType;
       return (ctx.allowComma && next === $.T.Comma) || next === $.T.Or;
     },
     DEF: () => {
@@ -143,7 +143,7 @@ export function scssGuardInner(this: P, ctx: RuleContext = {}) {
     { ALT: () => $.scssComparison(ctx) },
     {
       GATE: () => {
-        let tokenType = $.la(1).tokenType;
+        let tokenType = $.LA(1).tokenType;
         return tokenType !== $.T.Not;
       },
       ALT: () => $.value(ctx)

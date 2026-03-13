@@ -83,7 +83,7 @@ export function expressionSum(this: P, ctx: RuleContext = {}) {
      * so Less is white-space sensitive here.
      */
     GATE: () => {
-      const next = $.la(1);
+      const next = $.LA(1);
       const nextType = next.tokenType;
       return (
         nextType === $.T.Plus
@@ -479,7 +479,7 @@ export function varReference(this: P, ctx: RuleContext = {}) {
         if (node?.options?.type !== 'variable') {
           return false;
         }
-        let next = $.la(1).tokenType;
+        let next = $.LA(1).tokenType;
         if (next !== $.T.LSquare && next !== $.T.LParen) {
           return false;
         }
@@ -491,7 +491,7 @@ export function varReference(this: P, ctx: RuleContext = {}) {
       ALT: () => {
         $.AT_LEAST_ONE({
           GATE: () => {
-            let next = $.la(1).tokenType;
+            let next = $.LA(1).tokenType;
             if (next !== $.T.LSquare && next !== $.T.LParen) {
               return false;
             }
@@ -542,7 +542,7 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
     {
       // Disambiguate known functions by their dedicated tokens
       GATE: () => {
-        let tokenType = $.la(1).tokenType;
+        let tokenType = $.LA(1).tokenType;
         return tokenType === $.T.UrlStart
           || tokenType === $.T.Var
           || tokenType === $.T.Calc
@@ -554,7 +554,7 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
     {
       // Generic function via FunctionStart token
       GATE: () => {
-        let tokenType = $.la(1).tokenType;
+        let tokenType = $.LA(1).tokenType;
         return tokenType !== $.T.UrlStart
           && tokenType !== $.T.Var
           && tokenType !== $.T.Calc
@@ -654,15 +654,15 @@ export function functionCallArgs(this: P, ctx: RuleContext = {}) {
 
 export function value(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  if ($.la(1).tokenType === $.T.Percent) {
+  if ($.LA(1).tokenType === $.T.Percent) {
     // no-op: preserved from original
   }
   // eslint-disable-next-line @typescript-eslint/naming-convention
   let _isMixinReference = undefined as boolean | undefined;
   const isMixinReference = () => {
     if (_isMixinReference === undefined) {
-      let tt1 = $.la(1).tokenType;
-      let tt2 = $.la(2).tokenType;
+      let tt1 = $.LA(1).tokenType;
+      let tt2 = $.LA(2).tokenType;
       /**
        * We'll allow a few "bare" mixin references without parens
        * or square brackets, but not if they'll conflict with
@@ -698,7 +698,7 @@ export function value(this: P, ctx: RuleContext = {}) {
   let node: Node = $.OR([
     { ALT: () => $.functionCall(ctx) },
     {
-      GATE: () => $.la(1).tokenType === $.T.Star && $.la(2).tokenType === $.T.LSquare,
+      GATE: () => $.LA(1).tokenType === $.T.Star && $.LA(2).tokenType === $.T.LSquare,
       ALT: () => $.selectorCapture(ctx)
     },
     {
@@ -902,12 +902,12 @@ export function mathValue(this: P, ctx: RuleContext = {}) {
     { ALT: () => $.functionCall(ctx) },
     {
       /** Only allow escaped strings in calc */
-      GATE: () => $.la(1).image.startsWith('~'),
+      GATE: () => $.LA(1).image.startsWith('~'),
       ALT: () => $.string(ctx)
     },
     {
       /** For some reason, e() goes here instead of $.function */
-      GATE: () => $.la(2).tokenType !== $.T.LParen,
+      GATE: () => $.LA(2).tokenType !== $.T.LParen,
       ALT: () => $.CONSUME($.T.MathConstant)
     },
     { ALT: () => $.mathParen(ctx) }

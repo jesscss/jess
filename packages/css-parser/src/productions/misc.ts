@@ -238,7 +238,7 @@ export function functionCallLike(this: P, ctx: RuleContext = {}) {
   let seq: Sequence | undefined;
   $.MANY({
     GATE: () => {
-      let tt = $.la(1).tokenType;
+      let tt = $.LA(1).tokenType;
       return tt !== $.T.RParen && tt !== $.T.UrlEnd;
     },
     DEF: () => {
@@ -532,8 +532,8 @@ export function unknownAtRule(this: P, ctx: RuleContext = {}) {
         $.CONSUME(LCurly);
         $.startRule();
         // 1) Fast selector/nested-at-rule start gate
-        let t1 = $.la(1).tokenType;
-        let t2 = $.la(2).tokenType;
+        let t1 = $.LA(1).tokenType;
+        let t2 = $.LA(2).tokenType;
         let assumeDeclList = (
           t1 === DotName
           || t1 === HashName

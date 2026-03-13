@@ -144,7 +144,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
     nextTokenLocation?: LocationInfo
   ) {
     if (!nextTokenLocation) {
-      nextTokenLocation = this.getLocationInfo(this.la(1));
+      nextTokenLocation = this.getLocationInfo(this.LA(1));
     }
     let rules: Node[] = [];
 

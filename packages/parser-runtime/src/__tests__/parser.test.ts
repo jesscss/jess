@@ -109,7 +109,7 @@ describe('RecursiveDescentParser', () => {
 
       const t = p.CONSUME(NumberTok);
       expect(t.image).toBe('42');
-      expect(p.la(1).image).toBe('+');
+      expect(p.LA(1).image).toBe('+');
     });
 
     test('throws on mismatch', () => {
@@ -190,7 +190,7 @@ describe('RecursiveDescentParser', () => {
         items.push(p.CONSUME(NumberTok).image);
       });
       expect(items).toEqual(['1', '2', '3']);
-      expect(p.la(1).image).toBe('+');
+      expect(p.LA(1).image).toBe('+');
     });
 
     test('with GATE predicate', () => {
@@ -258,7 +258,7 @@ describe('RecursiveDescentParser', () => {
       const result = p.OPTION(() => p.CONSUME(NumberTok));
       expect(result).toBeUndefined();
       // Position should be restored
-      expect(p.la(1).image).toBe('+');
+      expect(p.LA(1).image).toBe('+');
     });
   });
 
@@ -296,7 +296,7 @@ describe('RecursiveDescentParser', () => {
         }
       });
       expect(items).toEqual(['1', '2', '3']);
-      expect(p.la(1).image).toBe(';');
+      expect(p.LA(1).image).toBe(';');
     });
   });
 
@@ -341,7 +341,7 @@ describe('RecursiveDescentParser', () => {
       });
       expect(result).toBe(true);
       // Position restored
-      expect(p.la(1).image).toBe('42');
+      expect(p.LA(1).image).toBe('42');
     });
 
     test('returns false on failure, restores position', () => {
@@ -353,7 +353,7 @@ describe('RecursiveDescentParser', () => {
         this.CONSUME(Star); // will fail
       });
       expect(result).toBe(false);
-      expect(p.la(1).image).toBe('42');
+      expect(p.LA(1).image).toBe('42');
     });
   });
 
@@ -390,11 +390,11 @@ describe('RecursiveDescentParser', () => {
       ];
 
       // Parser should only see: Ident Colon Ident
-      expect(p.la(1).image).toBe('a');
+      expect(p.LA(1).image).toBe('a');
       p.CONSUME(Ident);
-      expect(p.la(1).image).toBe(':');
+      expect(p.LA(1).image).toBe(':');
       p.CONSUME(Colon);
-      expect(p.la(1).image).toBe('b');
+      expect(p.LA(1).image).toBe('b');
     });
 
     test('hasWS detects whitespace before token', () => {
@@ -413,7 +413,7 @@ describe('RecursiveDescentParser', () => {
     });
   });
 
-  describe('subrule', () => {
+  describe('SUBRULE', () => {
     test('calls rule and tracks rule stack', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(NumberTok, '42', 0)];
@@ -422,7 +422,7 @@ describe('RecursiveDescentParser', () => {
         return this.CONSUME(NumberTok).image;
       }
 
-      const result = p.subrule(myRule);
+      const result = p.SUBRULE(myRule);
       expect(result).toBe('42');
     });
   });
@@ -434,7 +434,7 @@ describe('RecursiveDescentParser', () => {
 
       const t = p.tryConsume(NumberTok);
       expect(t?.image).toBe('42');
-      expect(p.la(1).image).toBe('+');
+      expect(p.LA(1).image).toBe('+');
     });
 
     test('returns undefined on mismatch, does NOT advance', () => {
@@ -444,7 +444,7 @@ describe('RecursiveDescentParser', () => {
       const t = p.tryConsume(Plus);
       expect(t).toBeUndefined();
       // Position unchanged
-      expect(p.la(1).image).toBe('42');
+      expect(p.LA(1).image).toBe('42');
     });
 
     test('never throws — no Error allocation', () => {
@@ -592,7 +592,7 @@ describe('RecursiveDescentParser', () => {
         } }
       ]);
       expect(result).toBe('number');
-      expect(p.la(1).image).toBe('+');
+      expect(p.LA(1).image).toBe('+');
     });
 
     test('backtracks restore position on failed alt', () => {
@@ -667,13 +667,13 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(Plus, '+', 0), tok(Ident, 'x', 2)];
 
       function outerRule(this: RecursiveDescentParser) {
-        return this.subrule(innerRule);
+        return this.SUBRULE(innerRule);
       }
       function innerRule(this: RecursiveDescentParser) {
         return this.CONSUME(NumberTok);
       }
 
-      p.subrule(outerRule);
+      p.SUBRULE(outerRule);
       const err = p.errors[0]!;
       expect(err.ruleStack).toContain('outerRule');
       expect(err.ruleStack).toContain('innerRule');
@@ -729,7 +729,7 @@ describe('RecursiveDescentParser', () => {
       // At most 1 iteration (recovery inserts virtual), then many() exits
       expect(items.length).toBeLessThanOrEqual(1);
       // Position unchanged — virtual token didn't advance
-      expect(p.la(1).image).toBe('*');
+      expect(p.LA(1).image).toBe('*');
     });
   });
 

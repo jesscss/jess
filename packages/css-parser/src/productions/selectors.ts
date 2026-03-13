@@ -48,7 +48,7 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
   const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     /** GATE kept: @ commits to atRule for correct error reporting */
-    { GATE: () => tokenMatches($.la(1), $.T.AtName), ALT: () => $.atRule() },
+    { GATE: () => tokenMatches($.LA(1), $.T.AtName), ALT: () => $.atRule() },
     { ALT: () => $.qualifiedRule() }
   ];
 
@@ -66,14 +66,14 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
    */
   $.MANY({
     GATE: () => {
-      const next = $.la(1);
+      const next = $.LA(1);
       // Stop at RCurly (belongs to parent block) or end of input
       if (next.tokenType === $.T.RCurly || next.tokenType.name === 'EOF') {
         return false;
       }
       return !requiredSemi || (requiredSemi && (
         next.tokenType === $.T.Semi
-        || $.la(0).tokenType === $.T.Semi
+        || $.LA(0).tokenType === $.T.Semi
       ));
     },
     DEF: () => {
@@ -84,7 +84,7 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
         if (lastRule) {
           lastRule.options.semi = true;
         } else {
-          rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.la(1)), context));
+          rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), context));
         }
       } else {
         requiredSemi = !!value.requiredSemi;
@@ -94,7 +94,7 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
     }
   });
 
-  let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.la(1)));
+  let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
   // Attaches remaining whitespace at the end of rules
   const wrapped = $.wrap(returnNode!, true);
 
@@ -340,12 +340,12 @@ export function nthValue(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) 
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
    */
   $.startRule();
-  let startTokenOffset: number | undefined = $.la(1).startOffset;
+  let startTokenOffset: number | undefined = $.LA(1).startOffset;
 
   $.OR(valueAlt(ctx));
 
   /** Coelesce all token values into one value */
-  let endTokenOffset = $.la(0).startOffset;
+  let endTokenOffset = $.LA(0).startOffset;
   let location = $.endRule();
   let origTokens = $.originalInput;
   let origLength = origTokens.length;
@@ -437,7 +437,7 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
  */
 export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx: RuleContext) => () => boolean) {
   const $ = this;
-  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatches($.la(1), $.T.Combinator);
+  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatches($.LA(1), $.T.Combinator);
 
   /**
       A sequence of one or more simple and/or compound selectors
@@ -472,7 +472,7 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
         combinator = $.wrap(new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context), 'both');
       } else {
         /** Whitespace combinators are special */
-        wsCombinatorOffset = $.la(1).startOffset;
+        wsCombinatorOffset = $.LA(1).startOffset;
         /**
          * Technically, a whitespace combinator may not actually _include_
          * a literal space (it can be a newline, for example), but we'll just use a
@@ -645,7 +645,7 @@ export function declarationList(this: P, ctx: RuleContext = {}, alt?: AltContext
 
   alt ??= (ctx: RuleContext = {}) => [
     /** GATE kept: @ commits to innerAtRule for correct error reporting */
-    { GATE: () => tokenMatches($.la(1), $.T.AtName), ALT: () => $.innerAtRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatches($.LA(1), $.T.AtName), ALT: () => $.innerAtRule({ ...ctx, inner: true }) },
     { ALT: () => $.declaration(ctx) },
     { ALT: () => $.qualifiedRule({ ...ctx, inner: true }) },
     { ALT: () => $.CONSUME($.T.Semi) }
