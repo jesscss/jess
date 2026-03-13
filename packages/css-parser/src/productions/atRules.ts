@@ -354,11 +354,12 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
               ALT: (): Node => {
                 let seq = $.mediaRange(ctx);
                 let [startOffset, startLine, startColumn] = $.endRule();
-                seq.value.unshift($.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context)));
+                const identNode = $.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context));
+                const arr = [identNode, ...seq.data];
                 seq.location[0] = startOffset!;
                 seq.location[1] = startLine!;
                 seq.location[2] = startColumn!;
-                return new QueryCondition(seq.value, undefined, seq.location as LocationInfo, $.context);
+                return new QueryCondition(arr, undefined, seq.location as LocationInfo, $.context);
               }
             },
             {
@@ -394,11 +395,11 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
               // Try range first: `value < ident < value` or `value < ident`
               let seq = $.mediaRange({ ...ctx });
               let [startOffset, startLine, startColumn] = $.endRule();
-              seq.value.unshift(rule1);
+              const arr = [rule1, ...seq.data];
               seq.location[0] = startOffset!;
               seq.location[1] = startLine!;
               seq.location[2] = startColumn!;
-              return new QueryCondition(seq.value, undefined, seq.location as LocationInfo, $.context);
+              return new QueryCondition(arr, undefined, seq.location as LocationInfo, $.context);
             }
           },
           {

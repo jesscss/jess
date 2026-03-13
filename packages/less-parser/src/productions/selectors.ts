@@ -131,8 +131,8 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext.value.target;
-    let flag = ext.value.flag ?? 1; // ExtendFlag.Exact = 1
+    let target = ext.data.target;
+    let flag = ext.data.flag ?? 1; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -174,11 +174,11 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      let target = currentNode.value.target;
+      let target = currentNode.data.target;
       if (!(target instanceof SelectorList)) {
-        currentNode.value.target = new SelectorList([target, ext.target], undefined, location, context);
+        currentNode.target = new SelectorList([target, ext.target], undefined, location, context);
       } else {
-        target.value.push(ext.target);
+        target.setData([...target.data, ext.target]);
       }
     } else {
       if (!extendNodes || !extendNodes.includes(currentNode)) {
@@ -214,7 +214,7 @@ function isSelectorLikeListItem(node: Node): boolean {
     return node.options.type === 'mixin-ruleset';
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 0 && (node as List).value.every(isSelectorLikeListItem);
+    return (node as List).data.length > 0 && (node as List).data.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -228,7 +228,7 @@ function isLegacySelectorLikeValue(node: Node): boolean {
     return false; // Single mixin reference is valid.
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 1 && (node as List).value.every(isSelectorLikeListItem);
+    return (node as List).data.length > 1 && (node as List).data.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -251,16 +251,16 @@ export function relativeSelector(this: P, ctx: RuleContext = {}) {
         let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
         let targetNode =
           node instanceof Extend
-            ? node.value.selector
+            ? node.data.selector
             : node;
         if (targetNode instanceof ComplexSelector) {
-          targetNode.value.unshift(combinator);
-          targetNode._location = $.getLocationFromNodes(targetNode.value);
+          targetNode.setData([combinator, ...targetNode.data]);
+          targetNode._location = $.getLocationFromNodes(targetNode.data);
         } else {
           let nodes = [combinator, targetNode as ComplexSelectorComponent];
           let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
           if (node instanceof Extend) {
-            node.value.selector = complex;
+            node.selector = complex;
             let location = node.location;
             location[0] = co.startOffset;
             location[1] = co.startLine;
@@ -531,7 +531,7 @@ export function anonymousMixinDefinition(this: P, ctx: RuleContext = {}) {
     // Check if this should be parsed as Collection or Rules
     const shouldBeCollection = (() => {
       let properties: Declaration[] = [];
-      for (const node of rules.value) {
+      for (const node of rules.data) {
         if (node.type === 'Declaration') {
           properties.push(node);
         } else if (node.type === 'Comment' || node.type === 'VarDeclaration') {
@@ -548,7 +548,7 @@ export function anonymousMixinDefinition(this: P, ctx: RuleContext = {}) {
       }
 
       const validPropertyCount = properties.filter((decl) => {
-        const name = decl.value.name;
+        const name = decl.data.name;
         const propName = typeof name === 'string' ? name : name.valueOf();
         // Skip custom properties (--*)
         if (propName.startsWith('--')) {
@@ -570,7 +570,7 @@ export function anonymousMixinDefinition(this: P, ctx: RuleContext = {}) {
       || usage === 'default-param';
     const shouldBeCollectionFinal = shouldBeCollection && !forceMixinForDynamicUsage;
     if (shouldBeCollectionFinal) {
-      return new Collection(rules.value, rules.options, $.endRule(), $.context);
+      return new Collection(rules.data, rules.options, $.endRule(), $.context);
     }
   }
 

@@ -209,16 +209,16 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
   }
   const call = mapped as Call;
 
-  if (typeof call.value.name === 'string' && call.value.name === 'selector.parse') {
-    const args = isNode(call.value.args, N.List) ? call.value.args.value : [];
+  if (typeof call.data.name === 'string' && call.data.name === 'selector.parse') {
+    const args = isNode(call.data.args, N.List) ? call.data.args.data : [];
     const firstArg = args[0];
     const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
       ? (call.location as LocationInfo)
       : undefined;
-    if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode(firstArg.value, N.Any)) {
+    if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode(firstArg.data, N.Any)) {
       throw new SyntaxError('selector.parse() requires a quoted selector string literal.');
     }
-    const selectorText = String(firstArg.value.valueOf());
+    const selectorText = String(firstArg.data.valueOf());
     const selector = parseSelectorListExpression(selectorText);
     return new SelectorCapture(selector, undefined, loc, $.context);
   }
@@ -235,12 +235,12 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
   // Plain Sass/Less-style function call: `foo(...)`
   // Parse as Call(name: Reference(type='function', fallbackValue: true)) so evaluation tries function registry,
   // but still serializes safely if unresolved.
-  if (typeof call.value.name === 'string') {
+  if (typeof call.data.name === 'string') {
     const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
       ? (call.location as LocationInfo)
       : undefined;
     const ref = new Reference(
-      { key: call.value.name },
+      { key: call.data.name },
       { type: 'function', fallbackValue: true },
       loc,
       $.context
@@ -250,7 +250,7 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
     const { silentFail: silentFailIgnored, ...rest } = call.options ?? {};
     void silentFailIgnored;
     const nextOptions = Object.keys(rest).length > 0 ? rest : undefined;
-    return new Call({ name: ref, args: call.value.args }, nextOptions, loc, $.context);
+    return new Call({ name: ref, args: call.data.args }, nextOptions, loc, $.context);
   }
   return call;
 }

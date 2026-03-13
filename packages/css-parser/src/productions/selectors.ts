@@ -30,7 +30,7 @@ export function stylesheet(this: P, options: Record<string, any> = {}) {
   const ctx: RuleContext = { isRoot: true };
   let root: Node = $.main();
 
-  let rules = root.value as Node[];
+  let rules = root.data as Node[];
 
   if (charset) {
     let loc = $.getLocationInfo(charset);
@@ -527,11 +527,15 @@ export function relativeSelector(this: P, ctx: RuleContext = {}) {
 
         let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
         if (complex instanceof ComplexSelector) {
-          complex.value.unshift(combinator);
-          let location = complex.location;
-          location[0] = co.startOffset;
-          location[1] = co.startLine;
-          location[2] = co.startColumn;
+          complex = new ComplexSelector(
+            [combinator, ...complex.data],
+            undefined,
+            $.getLocationFromNodes([combinator, complex]),
+            $.context
+          );
+          complex.location[0] = co.startOffset;
+          complex.location[1] = co.startLine;
+          complex.location[2] = co.startColumn;
         } else {
           complex = new ComplexSelector(
             [combinator, complex as ComplexSelectorComponent],

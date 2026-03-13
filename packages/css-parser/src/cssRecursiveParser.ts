@@ -152,7 +152,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
     }
     this.usedSkippedTokens.add(skipped);
 
-    let pre: Node['pre'] = skipped.map((token) => {
+    let pre: Node['pre'] = skipped.map((token: IToken) => {
       let name = token.tokenType.name;
       if (name === 'WS') {
         return token.image;
@@ -165,7 +165,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
       }
     });
 
-    if (pre.length === 1 && pre[0] === ' ') {
+    if (Array.isArray(pre) && pre.length === 1 && pre[0] === ' ') {
       pre = 1;
     }
     return pre;

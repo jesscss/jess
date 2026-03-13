@@ -71,12 +71,12 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
   if (!node || node.type !== 'Call') {
     return false;
   }
-  const callName = (node as Call).value.name;
+  const callName = (node as Call).data.name;
   const callNameStr = String((callName as any)?.valueOf?.() ?? callName ?? '');
   if (callNameStr === 'default' || callNameStr === '??') {
     return true;
   }
-  const key = (callName as any)?.value?.key;
+  const key = (callName as any)?.data?.key;
   const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
   return keyStr === 'default' || keyStr === '??';
 }
@@ -426,7 +426,7 @@ export function mixinName(this: P, ctx: RuleContext = {}) {
     if (asReference) {
       // If target is a Reference with matching type, merge keys instead of nesting
       if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
-        const existingKey = ctx.node.value.key;
+        const existingKey = ctx.node.data.key;
         let mergedKeys: string[];
         if (Array.isArray(existingKey)) {
           mergedKeys = [...existingKey];
@@ -566,7 +566,7 @@ export function lookupOrCall(this: P, ctx: RuleContext = {}) {
           const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
           const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
           if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
-            const existingKey = target.value.key;
+            const existingKey = target.data.key;
             let mergedKeys: string[];
             if (Array.isArray(existingKey)) {
               mergedKeys = [...existingKey];
@@ -646,12 +646,12 @@ export function mixinArgList(this: P, ctx: RuleContext = {}) {
                 let [first, ...rest] = commaNodes;
                 let hasDeclarations = false;
                 if (first instanceof VarDeclaration) {
-                  const nodes = [first.value.value, ...rest];
+                  const nodes = [first.data.value, ...rest];
                   /**
                    * If we still have declarations, we need to push an error.
                    */
                   hasDeclarations = rest.some(n => n instanceof VarDeclaration);
-                  first.value.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
+                  first.setData('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
                   semiNodes.push(first);
                 } else {
                   hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);

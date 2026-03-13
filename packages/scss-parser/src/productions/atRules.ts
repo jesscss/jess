@@ -308,13 +308,13 @@ export function scssExtendAtRule(this: P, ctx: RuleContext = {}) {
   // For placeholder targets (tokenized as `\\foo`), we set `allNamespaces: true` so extend lookup
   // searches all file roots, regardless of namespace scoping.
   const isPlaceholderTarget = (sel: Node): boolean => {
-    const sv = (sel as any).value;
+    const sv = (sel as any).data;
     if (typeof sv === 'string' && sv.startsWith('\\')) {
       return true;
     }
     if (Array.isArray(sv) && sv.length === 1) {
       const only = sv[0];
-      return typeof only?.value === 'string' && only.value.startsWith('\\');
+      return typeof only?.data === 'string' && only.data.startsWith('\\');
     }
     return false;
   };

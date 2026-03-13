@@ -346,7 +346,7 @@ export function ifFunction(this: P, ctx: RuleContext = {}) {
         isCssBranch = false;
 
         let node: Node = $.guardInner({ ...ctx, inValueList: true });
-        const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
+        const condNode = node instanceof Paren && node.data instanceof Node ? node.data : node;
         args = new List([condNode]);
 
         $.OR([
@@ -354,11 +354,11 @@ export function ifFunction(this: P, ctx: RuleContext = {}) {
             ALT: () => {
               $.CONSUME($.T.Semi);
               node = $.valueList({ ...ctx, allowAnonymousMixins: true });
-              args.value.push(node);
+              args = new List([...args.data, node], args.options, $.getLocationFromNodes([...args.data, node]), $.context);
               $.OPTION(() => {
                 $.CONSUME($.T.Semi);
                 node = $.valueList({ ...ctx, allowAnonymousMixins: true });
-                args.value.push(node);
+                args = new List([...args.data, node], args.options, $.getLocationFromNodes([...args.data, node]), $.context);
               });
             }
           },
@@ -366,11 +366,11 @@ export function ifFunction(this: P, ctx: RuleContext = {}) {
             ALT: () => {
               $.CONSUME($.T.Comma);
               node = $.callArgument({ ...ctx, allowAnonymousMixins: true });
-              args.value.push(node);
+              args = new List([...args.data, node], args.options, $.getLocationFromNodes([...args.data, node]), $.context);
               $.OPTION(() => {
                 $.CONSUME($.T.Comma);
                 node = $.callArgument({ ...ctx, allowAnonymousMixins: true });
-                args.value.push(node);
+                args = new List([...args.data, node], args.options, $.getLocationFromNodes([...args.data, node]), $.context);
               });
             }
           }
@@ -397,7 +397,7 @@ export function booleanFunction(this: P, ctx: RuleContext = {}) {
   $.CONSUME($.T.RParen);
 
   let location = $.endRule();
-  const conditionNode = arg instanceof Paren && arg.value instanceof Node ? arg.value : arg;
+  const conditionNode = arg instanceof Paren && arg.data instanceof Node ? arg.data : arg;
   const exprNode = new Expression(conditionNode, { parens: true }, location, $.context);
   return exprNode;
 }
@@ -531,11 +531,11 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    if (!args || args.value.length !== 1) {
+    if (!args || args.data.length !== 1) {
       return false;
     }
-    const firstArg = args.value[0];
-    return Boolean(isNode(firstArg, N.Sequence) && firstArg.value.length >= 2);
+    const firstArg = args.data[0];
+    return Boolean(isNode(firstArg, N.Sequence) && firstArg.data.length >= 2);
   };
 
   let funcAlt = (ctx: RuleContext = {}) => [
@@ -570,12 +570,14 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
         $.CONSUME($.T.RParen);
         const location = $.endRule();
         const nameValue = fnNameForCtx;
-        if (nameValue === 'unit' && args?.value[1] instanceof Any) {
-          const unitArg = args.value[1];
+        if (nameValue === 'unit' && args?.data[1] instanceof Any) {
+          const unitArg = args.data[1];
           const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, $.context);
           quotedUnit.pre = unitArg.pre;
           quotedUnit.post = unitArg.post;
-          args.value[1] = quotedUnit;
+          const newArgsData = [...args.data];
+          newArgsData[1] = quotedUnit;
+          args = new List(newArgsData, args.options, $.getLocationFromNodes(newArgsData), $.context);
         }
         const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), $.context);
         /** Less / Sass functions we try to call that throw just get turned into calls. */

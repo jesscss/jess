@@ -558,11 +558,9 @@ export function varFunction(this: P, ctx: RuleContext = {}) {
   if (!args) {
     args = new List([propNode], undefined, $.getLocationInfo(prop), $.context);
   } else {
-    let { startOffset, startLine, startColumn } = prop;
-    args.value.unshift(propNode);
-    args.location[0] = startOffset;
-    args.location[1] = startLine!;
-    args.location[2] = startColumn!;
+    const newData = [propNode, ...args.data];
+    const loc = $.getLocationFromNodes([propNode, ...args.data]);
+    args = new List(newData, undefined, loc ?? $.getLocationInfo(prop), $.context);
   }
   return new Call({
     name: 'var',
