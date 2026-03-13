@@ -46,7 +46,7 @@
  *
  * ### Catch behavior in DSL methods
  *
- * `option()`, `many()`, `atLeastOne()`, and `manySep()` all catch both
+ * `OPTION()`, `MANY()`, `AT_LEAST_ONE()`, and `MANY_SEP()` all catch both
  * `ParseError` (from committed sub-paths) and `SPEC_FAIL` (from direct
  * speculative consume mismatches). This ensures these constructs work
  * correctly regardless of whether they're inside a speculative context.
@@ -54,14 +54,14 @@
  * ## Recovery mode
  *
  * When `recoveryEnabled = true` (for language services / linting):
- * - `consume()` inserts virtual tokens on mismatch (single-token insertion)
+ * - `CONSUME()` inserts virtual tokens on mismatch (single-token insertion)
  * - `recoverConsume()` also tries single-token deletion
  * - `resyncTo()` provides grammar-aware re-synchronization
  * - Virtual tokens don't advance `pos`, which loop-based DSL methods
- *   (many, option) detect via position-comparison to avoid infinite loops
+ *   (MANY, OPTION) detect via position-comparison to avoid infinite loops
  *
  * Recovery only activates in non-speculative contexts. During speculation,
- * consume() throws SPEC_FAIL immediately — no recovery, no Error objects.
+ * CONSUME() throws SPEC_FAIL immediately — no recovery, no Error objects.
  */
 import {
   type LocationInfo,
@@ -101,8 +101,8 @@ type ParserSavepoint = {
  * Recursive-descent parser base class.
  *
  * Subclass this and define production rules as methods that call the DSL
- * methods: `consume()`, `or()`, `many()`, `option()`, `atLeastOne()`,
- * `manySep()`, `atLeastOneSep()`. See the module-level JSDoc for the
+ * methods: `CONSUME()`, `OR()`, `MANY()`, `OPTION()`, `AT_LEAST_ONE()`,
+ * `MANY_SEP()`, `AT_LEAST_ONE_SEP()`. See the module-level JSDoc for the
  * full architecture overview including zero-cost speculative backtracking.
  *
  * ### Performance characteristics (vs Chevrotain ALL(*))
@@ -449,7 +449,24 @@ export class RecursiveDescentParser {
    * transparent to production rules — they just call `consume()` and
    * the parser runtime decides the cheapest failure path.
    */
-  consume(expected: TokenType): IToken {
+  /**
+   * Try to consume a token. Returns the token on match, or undefined
+   * on mismatch. NEVER throws — no Error object allocation.
+   *
+   * Used internally by MANY(), OPTION(), MANY_SEP() to avoid
+   * creating thousands of throwaway ParseError objects.
+   */
+  tryConsume(expected: TokenType): IToken | undefined {
+    const idx = this.pos;
+    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
+    if (tokenMatches(tok, expected)) {
+      this.pos = idx + 1;
+      return tok;
+    }
+    return undefined;
+  }
+
+  CONSUME(expected: TokenType): IToken {
     const idx = this.pos;
     const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
 
@@ -466,7 +483,7 @@ export class RecursiveDescentParser {
 
     // Speculative mode: throw the SPEC_FAIL sentinel symbol.
     // This is nearly free: no Error object, no stack trace capture,
-    // no message formatting. or() catches it by === check.
+    // no message formatting. OR() catches it by === check.
     if (this.speculating) {
       throw SPEC_FAIL;
     }
@@ -478,29 +495,7 @@ export class RecursiveDescentParser {
     throw new MismatchedTokenError(tok, expected, [...this.ruleStack]);
   }
 
-  /**
-   * Try to consume a token. Returns the token on match, or undefined
-   * on mismatch. NEVER throws — no Error object allocation.
-   *
-   * Used internally by many(), option(), manySep() to avoid
-   * creating thousands of throwaway ParseError objects.
-   */
-  tryConsume(expected: TokenType): IToken | undefined {
-    const idx = this.pos;
-    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
-    if (tokenMatches(tok, expected)) {
-      this.pos = idx + 1;
-      return tok;
-    }
-    return undefined;
-  }
-
-  /** Alias — Chevrotain compatibility */
-  CONSUME(expected: TokenType): IToken {
-    return this.consume(expected);
-  }
-
-  // ── DSL: or ──────────────────────────────────────────────────────
+  // ── DSL: OR ───────────────────────────────────────────────────────
 
   /**
    * Try alternatives in order using zero-cost speculative backtracking.
@@ -516,8 +511,8 @@ export class RecursiveDescentParser {
    *
    * ### Why no GATEs are required
    *
-   * Production rules can use plain `consume()` calls without GATEs.
-   * When `or()` speculatively tries an alt and `consume()` encounters
+   * Production rules can use plain `CONSUME()` calls without GATEs.
+   * When `OR()` speculatively tries an alt and `CONSUME()` encounters
    * a wrong token, it throws SPEC_FAIL (a frozen Symbol — no Error
    * object, no stack trace). `or()` catches it by `===` check, restores
    * parser state, and tries the next alt. This is ~15x faster than
@@ -530,10 +525,10 @@ export class RecursiveDescentParser {
    *
    * ### No numbered variants needed
    *
-   * Unlike Chevrotain, you can call `or()` as many times as you like
+   * Unlike Chevrotain, you can call `OR()` as many times as you like
    * in the same rule without OR1/OR2/OR3 suffixes.
    */
-  or<T>(alternatives: OrAlternative<T>[]): T {
+  OR<T>(alternatives: OrAlternative<T>[]): T {
     // Content assist: at cursor, collect first tokens of all alternatives
     if (this.assistMode) {
       const tok = this.la(1);
@@ -561,7 +556,7 @@ export class RecursiveDescentParser {
         return alt.ALT();
       }
       // Non-last alt without GATE: speculative execution via SPEC_FAIL.
-      // consume() throws the SPEC_FAIL symbol on mismatch — no Error
+      // CONSUME() throws the SPEC_FAIL symbol on mismatch — no Error
       // object, no stack trace. We catch it by === check and restore.
       const saved = this.saveState();
       const wasSpeculating = this.speculating;
@@ -574,7 +569,7 @@ export class RecursiveDescentParser {
         this.speculating = wasSpeculating;
         if (e === SPEC_FAIL || e instanceof ParseError) {
           // Speculative failure — restore and try next alt.
-          // We catch both SPEC_FAIL (from direct consume() mismatches
+          // We catch both SPEC_FAIL (from direct CONSUME() mismatches
           // in speculative mode) and ParseError (from committed sub-paths
           // that threw a real error). From the outer speculative
           // perspective, either way the alt failed.
@@ -602,12 +597,7 @@ export class RecursiveDescentParser {
     throw new NoViableAltError(this.la(1), [...this.ruleStack]);
   }
 
-  /** Alias — Chevrotain compatibility */
-  OR<T>(alternatives: OrAlternative<T>[]): T {
-    return this.or(alternatives);
-  }
-
-  // ── DSL: many ────────────────────────────────────────────────────
+  // ── DSL: MANY ────────────────────────────────────────────────────
 
   /**
    * Zero or more repetitions. Accepts either a callback or an options
@@ -620,7 +610,7 @@ export class RecursiveDescentParser {
    *    restores state and exits. This handles both speculative and
    *    committed failure paths cleanly.
    */
-  many(defOrOpts: (() => void) | ManyOptions): void {
+  MANY(defOrOpts: (() => void) | ManyOptions): void {
     const gate = typeof defOrOpts === 'function' ? undefined : defOrOpts.GATE;
     const def = typeof defOrOpts === 'function' ? defOrOpts : defOrOpts.DEF;
 
@@ -647,19 +637,14 @@ export class RecursiveDescentParser {
     }
   }
 
-  /** Alias — Chevrotain compatibility */
-  MANY(defOrOpts: (() => void) | ManyOptions): void {
-    this.many(defOrOpts);
-  }
-
-  // ── DSL: atLeastOne ──────────────────────────────────────────────
+  // ── DSL: AT_LEAST_ONE ────────────────────────────────────────────
 
   /**
    * One or more repetitions. Same as `many()` but requires at least
    * one successful iteration. The first call to DEF may throw on
    * mismatch — that's a genuine error, not flow control.
    */
-  atLeastOne(defOrOpts: (() => void) | ManyOptions): void {
+  AT_LEAST_ONE(defOrOpts: (() => void) | ManyOptions): void {
     const gate = typeof defOrOpts === 'function' ? undefined : defOrOpts.GATE;
     const def = typeof defOrOpts === 'function' ? defOrOpts : defOrOpts.DEF;
 
@@ -688,12 +673,7 @@ export class RecursiveDescentParser {
     }
   }
 
-  /** Alias — Chevrotain compatibility */
-  AT_LEAST_ONE(defOrOpts: (() => void) | ManyOptions): void {
-    this.atLeastOne(defOrOpts);
-  }
-
-  // ── DSL: option ──────────────────────────────────────────────────
+  // ── DSL: OPTION ──────────────────────────────────────────────────
 
   /**
    * Optionally execute the callback. Returns the callback's result
@@ -703,11 +683,11 @@ export class RecursiveDescentParser {
    * called inside or outside a speculative context. Also uses
    * position-comparison to detect recovery-mode virtual tokens.
    */
-  option<T>(def: () => T): T | undefined {
+  OPTION<T>(def: () => T): T | undefined {
     const saved = this.saveState();
     try {
       const result = def();
-      // option() is speculative: if DEF didn't advance pos, or if
+      // OPTION() is speculative: if DEF didn't advance pos, or if
       // recovery added errors (the optional content wasn't really there),
       // undo everything.
       if (this.pos === saved.pos || this.errors.length > saved.errorsLength) {
@@ -724,11 +704,6 @@ export class RecursiveDescentParser {
     }
   }
 
-  /** Alias — Chevrotain compatibility */
-  OPTION<T>(def: () => T): T | undefined {
-    return this.option(def);
-  }
-
   // ── DSL: separated lists ─────────────────────────────────────────
 
   /**
@@ -738,7 +713,7 @@ export class RecursiveDescentParser {
    * Uses tryConsume() for the separator check — zero allocation
    * on the non-matching path.
    */
-  manySep<T>(opts: ManySepOptions<T>): void {
+  MANY_SEP<T>(opts: ManySepOptions<T>): void {
     const { SEP, DEF } = opts;
     // Try the first element — if it fails, nothing to parse
     if (!this.couldStartSep(opts)) {
@@ -766,16 +741,11 @@ export class RecursiveDescentParser {
     }
   }
 
-  /** Alias — Chevrotain compatibility */
-  MANY_SEP<T>(opts: ManySepOptions<T>): void {
-    this.manySep(opts);
-  }
-
   /**
    * One or more occurrences separated by a token.
    * Parses: DEF (SEP DEF)*
    */
-  atLeastOneSep<T>(opts: ManySepOptions<T>): void {
+  AT_LEAST_ONE_SEP<T>(opts: ManySepOptions<T>): void {
     const { SEP, DEF } = opts;
     // First element is mandatory — let it throw if it fails
     DEF();
@@ -783,11 +753,6 @@ export class RecursiveDescentParser {
     while (this.tryConsume(SEP)) {
       DEF();
     }
-  }
-
-  /** Alias — Chevrotain compatibility */
-  AT_LEAST_ONE_SEP<T>(opts: ManySepOptions<T>): void {
-    this.atLeastOneSep(opts);
   }
 
   /**

@@ -107,7 +107,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(NumberTok, '42', 0), tok(Plus, '+', 3)];
 
-      const t = p.consume(NumberTok);
+      const t = p.CONSUME(NumberTok);
       expect(t.image).toBe('42');
       expect(p.la(1).image).toBe('+');
     });
@@ -116,7 +116,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(NumberTok, '42', 0)];
 
-      expect(() => p.consume(Plus)).toThrow(MismatchedTokenError);
+      expect(() => p.CONSUME(Plus)).toThrow(MismatchedTokenError);
     });
 
     test('recovery: single-token deletion', () => {
@@ -124,7 +124,7 @@ describe('RecursiveDescentParser', () => {
       // Stream: BAD GOOD — delete BAD, consume GOOD
       p.input = [tok(Plus, '+', 0), tok(NumberTok, '42', 2)];
 
-      const t = p.consume(NumberTok);
+      const t = p.CONSUME(NumberTok);
       expect(t.image).toBe('42');
       expect(p.errors).toHaveLength(1);
     });
@@ -135,7 +135,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(NumberTok, '42', 0)];
 
-      const result = p.or([
+      const result = p.OR([
         { GATE: () => p.check(Plus), ALT: () => 'plus' },
         { GATE: () => p.check(NumberTok), ALT: () => 'number' }
       ]);
@@ -146,7 +146,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(NumberTok, '42', 0)];
 
-      const result = p.or([
+      const result = p.OR([
         { GATE: () => p.check(Plus), ALT: () => 'plus' },
         { ALT: () => 'default' } // no GATE = default
       ]);
@@ -157,7 +157,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(NumberTok, '42', 0)];
 
-      expect(() => p.or([
+      expect(() => p.OR([
         { GATE: () => false, ALT: () => 'a' },
         { GATE: () => false, ALT: () => 'b' }
       ])).toThrow(NoViableAltError);
@@ -170,8 +170,8 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(Plus, '+', 0)];
       const items: string[] = [];
 
-      p.many(() => {
-        items.push(p.consume(NumberTok).image);
+      p.MANY(() => {
+        items.push(p.CONSUME(NumberTok).image);
       });
       expect(items).toEqual([]);
     });
@@ -186,8 +186,8 @@ describe('RecursiveDescentParser', () => {
       ];
       const items: string[] = [];
 
-      p.many(() => {
-        items.push(p.consume(NumberTok).image);
+      p.MANY(() => {
+        items.push(p.CONSUME(NumberTok).image);
       });
       expect(items).toEqual(['1', '2', '3']);
       expect(p.la(1).image).toBe('+');
@@ -203,10 +203,10 @@ describe('RecursiveDescentParser', () => {
       const items: string[] = [];
       let count = 0;
 
-      p.many({
+      p.MANY({
         GATE: () => count < 2,
         DEF: () => {
-          items.push(p.consume(NumberTok).image);
+          items.push(p.CONSUME(NumberTok).image);
           count++;
         }
       });
@@ -220,8 +220,8 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(Plus, '+', 0)];
 
       expect(() => {
-        p.atLeastOne(() => {
-          p.consume(NumberTok);
+        p.AT_LEAST_ONE(() => {
+          p.CONSUME(NumberTok);
         });
       }).toThrow(MismatchedTokenError);
     });
@@ -235,8 +235,8 @@ describe('RecursiveDescentParser', () => {
       ];
       const items: string[] = [];
 
-      p.atLeastOne(() => {
-        items.push(p.consume(NumberTok).image);
+      p.AT_LEAST_ONE(() => {
+        items.push(p.CONSUME(NumberTok).image);
       });
       expect(items).toEqual(['1', '2']);
     });
@@ -247,7 +247,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(NumberTok, '42', 0)];
 
-      const result = p.option(() => p.consume(NumberTok));
+      const result = p.OPTION(() => p.CONSUME(NumberTok));
       expect(result?.image).toBe('42');
     });
 
@@ -255,7 +255,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser();
       p.input = [tok(Plus, '+', 0)];
 
-      const result = p.option(() => p.consume(NumberTok));
+      const result = p.OPTION(() => p.CONSUME(NumberTok));
       expect(result).toBeUndefined();
       // Position should be restored
       expect(p.la(1).image).toBe('+');
@@ -268,10 +268,10 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(Semi, ';', 0)];
       const items: string[] = [];
 
-      p.manySep({
+      p.MANY_SEP({
         SEP: Comma,
         DEF: () => {
-          items.push(p.consume(NumberTok).image);
+          items.push(p.CONSUME(NumberTok).image);
         }
       });
       expect(items).toEqual([]);
@@ -289,10 +289,10 @@ describe('RecursiveDescentParser', () => {
       ];
       const items: string[] = [];
 
-      p.manySep({
+      p.MANY_SEP({
         SEP: Comma,
         DEF: () => {
-          items.push(p.consume(NumberTok).image);
+          items.push(p.CONSUME(NumberTok).image);
         }
       });
       expect(items).toEqual(['1', '2', '3']);
@@ -306,10 +306,10 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(Semi, ';', 0)];
 
       expect(() => {
-        p.atLeastOneSep({
+        p.AT_LEAST_ONE_SEP({
           SEP: Comma,
           DEF: () => {
-            p.consume(NumberTok);
+            p.CONSUME(NumberTok);
           }
         });
       }).toThrow(MismatchedTokenError);
@@ -320,10 +320,10 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(NumberTok, '42', 0), tok(Semi, ';', 3)];
       const items: string[] = [];
 
-      p.atLeastOneSep({
+      p.AT_LEAST_ONE_SEP({
         SEP: Comma,
         DEF: () => {
-          items.push(p.consume(NumberTok).image);
+          items.push(p.CONSUME(NumberTok).image);
         }
       });
       expect(items).toEqual(['42']);
@@ -336,8 +336,8 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(NumberTok, '42', 0), tok(Plus, '+', 3)];
 
       const result = p.backtrack(function(this: RecursiveDescentParser) {
-        this.consume(NumberTok);
-        this.consume(Plus);
+        this.CONSUME(NumberTok);
+        this.CONSUME(Plus);
       });
       expect(result).toBe(true);
       // Position restored
@@ -349,8 +349,8 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(NumberTok, '42', 0), tok(Plus, '+', 3)];
 
       const result = p.backtrack(function(this: RecursiveDescentParser) {
-        this.consume(NumberTok);
-        this.consume(Star); // will fail
+        this.CONSUME(NumberTok);
+        this.CONSUME(Star); // will fail
       });
       expect(result).toBe(false);
       expect(p.la(1).image).toBe('42');
@@ -367,9 +367,9 @@ describe('RecursiveDescentParser', () => {
       ];
 
       p.startRule();
-      p.consume(Ident);
-      p.consume(Colon);
-      p.consume(Ident);
+      p.CONSUME(Ident);
+      p.CONSUME(Colon);
+      p.CONSUME(Ident);
       const loc = p.endRule();
 
       expect(loc[0]).toBe(0);  // startOffset
@@ -391,9 +391,9 @@ describe('RecursiveDescentParser', () => {
 
       // Parser should only see: Ident Colon Ident
       expect(p.la(1).image).toBe('a');
-      p.consume(Ident);
+      p.CONSUME(Ident);
       expect(p.la(1).image).toBe(':');
-      p.consume(Colon);
+      p.CONSUME(Colon);
       expect(p.la(1).image).toBe('b');
     });
 
@@ -407,7 +407,7 @@ describe('RecursiveDescentParser', () => {
 
       // First token has no WS before it
       expect(p.hasWS()).toBe(false);
-      p.consume(Ident);
+      p.CONSUME(Ident);
       // Second token has WS before it
       expect(p.hasWS()).toBe(true);
     });
@@ -419,7 +419,7 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(NumberTok, '42', 0)];
 
       function myRule(this: RecursiveDescentParser): string {
-        return this.consume(NumberTok).image;
+        return this.CONSUME(NumberTok).image;
       }
 
       const result = p.subrule(myRule);
@@ -484,9 +484,9 @@ describe('RecursiveDescentParser', () => {
       ];
 
       p.startRule();
-      p.consume(Ident);
-      p.consume(Colon);
-      p.consume(Ident);
+      p.CONSUME(Ident);
+      p.CONSUME(Colon);
+      p.CONSUME(Ident);
       const loc = p.endRule();
 
       expect(loc).toEqual([0, 1, 0, 9, 1, 9]);
@@ -507,12 +507,12 @@ describe('RecursiveDescentParser', () => {
       ];
 
       p.startRule();
-      p.consume(Ident);   // div
-      p.consume(LCurly);  // {
-      p.consume(Ident);   // color
-      p.consume(Colon);   // :
-      p.consume(Ident);   // red
-      p.consume(RCurly);  // }
+      p.CONSUME(Ident);   // div
+      p.CONSUME(LCurly);  // {
+      p.CONSUME(Ident);   // color
+      p.CONSUME(Colon);   // :
+      p.CONSUME(Ident);   // red
+      p.CONSUME(RCurly);  // }
       const loc = p.endRule();
 
       // Start: line 1, col 0, offset 0
@@ -536,12 +536,12 @@ describe('RecursiveDescentParser', () => {
       ];
 
       p.startRule();       // outer
-      p.consume(Ident);    // a
-      p.consume(Colon);    // :
+      p.CONSUME(Ident);    // a
+      p.CONSUME(Colon);    // :
 
       p.startRule();       // inner (value)
-      p.consume(Ident);    // b
-      p.consume(Ident);    // c
+      p.CONSUME(Ident);    // b
+      p.CONSUME(Ident);    // c
       const inner = p.endRule();
       const outer = p.endRule();
 
@@ -579,15 +579,15 @@ describe('RecursiveDescentParser', () => {
       // Stream: Number Plus
       p.input = [tok(NumberTok, '42', 0), tok(Plus, '+', 3)];
 
-      const result = p.or([
+      const result = p.OR([
         { ALT: () => {
           // This alt tries to consume Ident — will fail
-          p.consume(Ident);
+          p.CONSUME(Ident);
           return 'ident';
         } },
         { ALT: () => {
           // This alt consumes Number — will succeed
-          p.consume(NumberTok);
+          p.CONSUME(NumberTok);
           return 'number';
         } }
       ]);
@@ -600,18 +600,18 @@ describe('RecursiveDescentParser', () => {
       // Stream: Number Plus Number
       p.input = [tok(NumberTok, '1', 0), tok(Plus, '+', 2), tok(NumberTok, '2', 4)];
 
-      const result = p.or([
+      const result = p.OR([
         { ALT: () => {
           // Consume Number, then try Star — fails after consuming 1 token
-          p.consume(NumberTok);
-          p.consume(Star);
+          p.CONSUME(NumberTok);
+          p.CONSUME(Star);
           return 'mul';
         } },
         { ALT: () => {
           // Consume Number, then Plus — succeeds
-          const a = p.consume(NumberTok);
-          p.consume(Plus);
-          const b = p.consume(NumberTok);
+          const a = p.CONSUME(NumberTok);
+          p.CONSUME(Plus);
+          const b = p.CONSUME(NumberTok);
           return `${a.image}+${b.image}`;
         } }
       ]);
@@ -624,13 +624,13 @@ describe('RecursiveDescentParser', () => {
 
       // With recovery, or() disables recovery during backtracking
       // so the first alt properly fails and backtracks
-      const result = p.or([
+      const result = p.OR([
         { ALT: () => {
-          p.consume(Ident);  // fails — should NOT recover, should backtrack
+          p.CONSUME(Ident);  // fails — should NOT recover, should backtrack
           return 'ident';
         } },
         { ALT: () => {
-          p.consume(NumberTok);
+          p.CONSUME(NumberTok);
           return 'number';
         } }
       ]);
@@ -645,7 +645,7 @@ describe('RecursiveDescentParser', () => {
       // Stream: Plus Number — expect Number first
       p.input = [tok(Plus, '+', 0), tok(NumberTok, '42', 2)];
 
-      const t = p.consume(NumberTok);
+      const t = p.CONSUME(NumberTok);
       // Recovery: single-token deletion skips Plus, returns Number
       expect(t.image).toBe('42');
       expect(p.errors).toHaveLength(1);
@@ -656,7 +656,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser({ recoveryEnabled: true });
       p.input = [tok(Plus, '+', 0), tok(NumberTok, '42', 2)];
 
-      p.consume(NumberTok);
+      p.CONSUME(NumberTok);
       const err = p.errors[0]!;
       expect(err.expected).toBe(NumberTok);
       expect(err.token.image).toBe('+');
@@ -670,7 +670,7 @@ describe('RecursiveDescentParser', () => {
         return this.subrule(innerRule);
       }
       function innerRule(this: RecursiveDescentParser) {
-        return this.consume(NumberTok);
+        return this.CONSUME(NumberTok);
       }
 
       p.subrule(outerRule);
@@ -683,7 +683,7 @@ describe('RecursiveDescentParser', () => {
       const p = new RecursiveDescentParser({ recoveryEnabled: true });
       p.input = [tok(Star, '*', 0)];
 
-      const result = p.or([
+      const result = p.OR([
         { GATE: () => false, ALT: () => 'a' },
         { GATE: () => false, ALT: () => 'b' }
       ]);
@@ -697,13 +697,13 @@ describe('RecursiveDescentParser', () => {
       // Stream: Star — neither Ident nor Number
       p.input = [tok(Star, '*', 0)];
 
-      const result = p.or([
+      const result = p.OR([
         { ALT: () => {
-          p.consume(Ident);
+          p.CONSUME(Ident);
           return 'ident';
         } },
         { ALT: () => {
-          p.consume(NumberTok);
+          p.CONSUME(NumberTok);
           return 'number';
         } }
       ]);
@@ -723,8 +723,8 @@ describe('RecursiveDescentParser', () => {
       // many() should exit when no progress is made, even with recovery.
       // First iteration: consume(NumberTok) recovers with virtual token (no pos advance).
       // many() detects pos didn't advance → exits after 1 iteration.
-      p.many(() => {
-        items.push(p.consume(NumberTok).image);
+      p.MANY(() => {
+        items.push(p.CONSUME(NumberTok).image);
       });
       // At most 1 iteration (recovery inserts virtual), then many() exits
       expect(items.length).toBeLessThanOrEqual(1);
@@ -764,13 +764,13 @@ describe('RecursiveDescentParser', () => {
       p.input = [tok(NumberTok, '42', 0)];
 
       // or() backtracking catches ParseError (not Error) via instanceof
-      const result = p.or([
+      const result = p.OR([
         { ALT: () => {
-          p.consume(Ident);
+          p.CONSUME(Ident);
           return 'ident';
         } },
         { ALT: () => {
-          p.consume(NumberTok);
+          p.CONSUME(NumberTok);
           return 'number';
         } }
       ]);
@@ -807,10 +807,10 @@ describe('RecursiveDescentParser', () => {
     class ExprParser extends RecursiveDescentParser {
       expr(): number {
         let left = this.term();
-        this.many(() => {
-          const op = this.or([
-            { GATE: () => this.check(Plus), ALT: () => this.consume(Plus).image },
-            { GATE: () => this.check(Minus), ALT: () => this.consume(Minus).image }
+        this.MANY(() => {
+          const op = this.OR([
+            { GATE: () => this.check(Plus), ALT: () => this.CONSUME(Plus).image },
+            { GATE: () => this.check(Minus), ALT: () => this.CONSUME(Minus).image }
           ]);
           const right = this.term();
           left = op === '+' ? left + right : left - right;
@@ -819,7 +819,7 @@ describe('RecursiveDescentParser', () => {
       }
 
       term(): number {
-        return parseInt(this.consume(NumberTok).image, 10);
+        return parseInt(this.CONSUME(NumberTok).image, 10);
       }
     }
 
