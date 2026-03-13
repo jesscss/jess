@@ -6,7 +6,9 @@ export {
 
 export {
   buildTokenMatchBitsets,
+  buildTokenTypeSet,
   tokenMatches,
+  tokenTypeInSet,
   ParseError,
   MismatchedTokenError,
   NoViableAltError,

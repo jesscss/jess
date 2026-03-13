@@ -13,6 +13,7 @@
 import {
   RecursiveDescentParser,
   buildTokenMatchBitsets,
+  buildTokenTypeSet,
   EOF_TOKEN_TYPE,
   type IToken,
   type TokenType,
@@ -79,6 +80,12 @@ export class CssRecursiveParser extends RecursiveDescentParser {
   legacyMode: boolean;
   ruleIndex = 0;
 
+  /** Token sets for O(1) token matching */
+
+  SIMPLE_NAME_START: Uint32Array;
+  NESTED_RULE_START: Uint32Array;
+  DECL_NAME_START: Uint32Array;
+
   constructor(
     T: TokenMap,
     config: CssRecursiveParserConfig = {}
@@ -89,6 +96,31 @@ export class CssRecursiveParser extends RecursiveDescentParser {
     this.T = T;
     this.legacyMode = config.legacyMode ?? true;
     buildTokenMatchBitsets([...Object.values(T), EOF_TOKEN_TYPE]);
+
+    /** Build token sets for O(1) token matching */
+    this.SIMPLE_NAME_START = buildTokenTypeSet([
+      T.DotName,
+      T.HashName,
+      T.ColorIdentStart
+    ]);
+
+    this.NESTED_RULE_START = buildTokenTypeSet([
+      T.DotName,
+      T.HashName,
+      T.Ampersand,
+      T.LSquare,
+      T.SelectorPseudoClass,
+      T.NthPseudoClass,
+      T.Star,
+      T.ColorIdentStart,
+      T.AtKeyword
+    ]),
+
+    this.DECL_NAME_START = buildTokenTypeSet([
+      T.PlainIdent,
+      T.CustomProperty,
+      T.LegacyPropIdent
+    ]);
   }
 
   override get context(): TreeContext {

@@ -392,14 +392,45 @@ export class RecursiveDescentParser {
     return this.tokens[idx]!;
   }
 
-  /** Check if the next token matches the given type */
+  /**
+   * Exact token-type check for the next token.
+   *
+   * Use this when the grammar wants one concrete token type and does not
+   * need category matching.
+   */
+  isType(expected: TokenType): boolean {
+    const idx = this.pos;
+    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
+    return tok.tokenType === expected;
+  }
+
+  /**
+   * Exact token-type check at a lookahead offset.
+   */
+  isTypeAt(offset: number, expected: TokenType): boolean {
+    if (offset === 0) {
+      const tok = this.pos > 0 ? this.tokens[this.pos - 1]! : this.eofToken;
+      return tok.tokenType === expected;
+    }
+    const idx = this.pos + offset - 1;
+    const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
+    return tok.tokenType === expected;
+  }
+
+  /**
+   * Check if the next token matches the given type
+   * This is a a "category-aware" version of isType
+   */
   check(tokenType: TokenType): boolean {
     const idx = this.pos;
     const tok = idx < this.tokens.length ? this.tokens[idx]! : this.eofToken;
     return tokenMatches(tok, tokenType);
   }
 
-  /** Check if token at lookahead offset matches the given type */
+  /**
+   * Check if token at lookahead offset matches the given type
+   * This is a a "category-aware" version of isTypeAt
+   */
   checkAt(offset: number, tokenType: TokenType): boolean {
     if (offset === 0) {
       const tok = this.pos > 0 ? this.tokens[this.pos - 1]! : this.eofToken;

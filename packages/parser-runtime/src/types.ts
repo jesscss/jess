@@ -115,6 +115,42 @@ export function buildTokenMatchBitsets(tokenTypes: TokenType[]): void {
   }
 }
 
+export function buildTokenTypeSet(tokenTypes: TokenType[]): Uint32Array {
+  const types = tokenTypes as TokenTypeWithBits[];
+
+  if (types.length === 0) {
+    throw new Error('Cannot build token set from an empty token list.');
+  }
+
+  const wordCount = types[0]!.MATCH_BITS?.length;
+  if (wordCount == null) {
+    throw new Error(
+      'Token types not initialized. Call buildTokenMatchBitsets(...) first.'
+    );
+  }
+
+  const bits = new Uint32Array(wordCount);
+
+  for (const tokenType of types) {
+    const id = tokenType.TOKEN_ID;
+    if (id == null) {
+      throw new Error('Token type missing TOKEN_ID during token-set construction.');
+    }
+    bits[id >>> 5]! |= 1 << (id & 31);
+  }
+
+  return bits;
+}
+
+export function tokenTypeInSet(tokenType: TokenType, setBits: Uint32Array): boolean {
+  const tt = tokenType as TokenTypeWithBits;
+  const id = tt.TOKEN_ID;
+  if (id == null) {
+    throw new Error('Token type missing TOKEN_ID during token-set lookup.');
+  }
+  return (setBits[id >>> 5]! & (1 << (id & 31))) !== 0;
+}
+
 export function tokenMatches(token: IToken, expected: TokenType): boolean {
   const tt = token.tokenType as TokenTypeWithBits;
   if (tt === expected) {

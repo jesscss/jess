@@ -22,20 +22,19 @@ function resolvePreludeRule(parser: P, preludeRule: PreludeRule): unknown {
 
 export function atRule(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  const la1 = $.LA(1);
   return $.OR([
-    { GATE: () => tokenMatches(la1, $.T.AtContainer), ALT: () => $.containerAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtScope), ALT: () => $.scopeAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtDocument), ALT: () => $.documentAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtLayer), ALT: () => $.layerAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtKeyframes), ALT: () => $.keyframesAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtImport), ALT: () => $.importAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtMedia), ALT: () => $.mediaAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtPage), ALT: () => $.pageAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtFontFace), ALT: () => $.fontFaceAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtSupports), ALT: () => $.supportsAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtNested), ALT: () => $.nestedAtRule(ctx) },
-    { GATE: () => tokenMatches(la1, $.T.AtNonNested), ALT: () => $.nonNestedAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtContainer), ALT: () => $.containerAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtScope), ALT: () => $.scopeAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtDocument), ALT: () => $.documentAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtLayer), ALT: () => $.layerAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtKeyframes), ALT: () => $.keyframesAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtImport), ALT: () => $.importAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtMedia), ALT: () => $.mediaAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtPage), ALT: () => $.pageAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtFontFace), ALT: () => $.fontFaceAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtSupports), ALT: () => $.supportsAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtNested), ALT: () => $.nestedAtRule(ctx) },
+    { GATE: () => $.isType($.T.AtNonNested), ALT: () => $.nonNestedAtRule(ctx) },
     { ALT: () => $.unknownAtRule(ctx) }
   ]);
 }
@@ -46,17 +45,42 @@ export function atRule(this: P, ctx: RuleContext = {}) {
 */
 export function innerAtRule(this: P, ctx: RuleContext = {}): Node {
   const $ = this;
-  const la1 = $.LA(1);
   return $.OR([
-    { GATE: () => tokenMatches(la1, $.T.AtContainer), ALT: () => $.containerAtRule({ ...ctx, inner: true }) },
-    { GATE: () => tokenMatches(la1, $.T.AtScope), ALT: () => $.scopeAtRule({ ...ctx, inner: true }) },
-    { GATE: () => tokenMatches(la1, $.T.AtDocument), ALT: () => $.documentAtRule({ ...ctx, inner: true }) },
-    { GATE: () => tokenMatches(la1, $.T.AtLayer), ALT: () => $.layerAtRule({ ...ctx, inner: true }) },
-    { GATE: () => tokenMatches(la1, $.T.AtKeyframes), ALT: () => $.keyframesAtRule({ ...ctx, inner: true }) },
-    { GATE: () => tokenMatches(la1, $.T.AtMedia), ALT: () => $.mediaAtRule({ ...ctx, inner: true }) },
-    { GATE: () => tokenMatches(la1, $.T.AtSupports), ALT: () => $.supportsAtRule({ ...ctx, inner: true }) },
-    { GATE: () => tokenMatches(la1, $.T.AtNested), ALT: () => $.nestedAtRule({ ...ctx, inner: true }) },
-    { ALT: () => $.unknownAtRule({ ...ctx, inner: true }) }
+    {
+      GATE: () => $.isType($.T.AtContainer),
+      ALT: () => $.containerAtRule({ ...ctx, inner: true })
+    },
+    {
+      GATE: () => $.isType($.T.AtScope),
+      ALT: () => $.scopeAtRule({ ...ctx, inner: true })
+    },
+    {
+      GATE: () => $.isType($.T.AtDocument),
+      ALT: () => $.documentAtRule({ ...ctx, inner: true })
+    },
+    {
+      GATE: () => $.isType($.T.AtLayer),
+      ALT: () => $.layerAtRule({ ...ctx, inner: true })
+    },
+    {
+      GATE: () => $.isType($.T.AtKeyframes),
+      ALT: () => $.keyframesAtRule({ ...ctx, inner: true })
+    },
+    {
+      GATE: () => $.isType($.T.AtMedia),
+      ALT: () => $.mediaAtRule({ ...ctx, inner: true })
+    },
+    {
+      GATE: () => $.isType($.T.AtSupports),
+      ALT: () => $.supportsAtRule({ ...ctx, inner: true })
+    },
+    {
+      GATE: () => $.isType($.T.AtNested),
+      ALT: () => $.nestedAtRule({ ...ctx, inner: true })
+    },
+    {
+      ALT: () => $.unknownAtRule({ ...ctx, inner: true })
+    }
   ]);
 }
 
