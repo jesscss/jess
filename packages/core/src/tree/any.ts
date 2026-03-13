@@ -52,6 +52,14 @@ export class Any<
     this.addFlag(F_STATIC);
   }
 
+  get value() {
+    return this.data;
+  }
+
+  set value(val: string) {
+    this.setData(val);
+  }
+
   override preEval(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules
@@ -76,14 +84,14 @@ export class Any<
       return undefined;
     }
     if (other.type === 'Any' || other.type === 'Keyword') {
-      return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
+      return this.data === String(other.valueOf?.() ?? '') ? 0 : undefined;
     }
     if (other.type === 'Num' || other.type === 'Dimension') {
-      const text = this.value.trim();
+      const text = this.data.trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherValue = (other as any).value;
+      const otherValue = (other as any).data;
       const otherNumber = otherValue?.number;
       const otherUnit = otherValue?.unit;
       if (typeof otherNumber !== 'number') {

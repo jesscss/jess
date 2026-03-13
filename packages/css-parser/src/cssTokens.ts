@@ -52,7 +52,7 @@ export const rawCssFragments = () => [
 //   index: number
 
 //   constructor(str: string, index: number) {
-//     this.value = str
+//     this.data = str
 //     this.index = index
 //   }
 // }

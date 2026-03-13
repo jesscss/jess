@@ -27,17 +27,17 @@ export function transformQuotedToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = quoted.value;
+      const value = quoted.data;
       if (typeof value === 'string') {
         return value;
       }
       if (value instanceof Any) {
-        return value.value;
+        return value.data;
       }
       if (value instanceof Interpolated) {
         // Convert interpolated to string representation
         // Less handles interpolation differently, so we convert to string
-        return String(value.value);
+        return String(value.data);
       }
       return String(value);
     }

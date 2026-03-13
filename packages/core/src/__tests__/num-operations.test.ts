@@ -11,29 +11,29 @@ describe('Num operations', () => {
     const addResult = n1.operate(n2, '+');
     expect(addResult).toBeInstanceOf(Num);
     expect(addResult.type).toBe('Num');
-    expect(addResult.value.number).toBe(4);
-    expect(addResult.value.unit).toBeUndefined();
+    expect(addResult.data.number).toBe(4);
+    expect(addResult.data.unit).toBeUndefined();
 
     // Subtraction should return Num
     const subResult = n1.operate(n2, '-');
     expect(subResult).toBeInstanceOf(Num);
     expect(subResult.type).toBe('Num');
-    expect(subResult.value.number).toBe(2);
-    expect(subResult.value.unit).toBeUndefined();
+    expect(subResult.data.number).toBe(2);
+    expect(subResult.data.unit).toBeUndefined();
 
     // Multiplication should return Num
     const mulResult = n1.operate(n2, '*');
     expect(mulResult).toBeInstanceOf(Num);
     expect(mulResult.type).toBe('Num');
-    expect(mulResult.value.number).toBe(3);
-    expect(mulResult.value.unit).toBeUndefined();
+    expect(mulResult.data.number).toBe(3);
+    expect(mulResult.data.unit).toBeUndefined();
 
     // Division should return Num
     const divResult = n1.operate(n2, '/');
     expect(divResult).toBeInstanceOf(Num);
     expect(divResult.type).toBe('Num');
-    expect(divResult.value.number).toBe(3);
-    expect(divResult.value.unit).toBeUndefined();
+    expect(divResult.data.number).toBe(3);
+    expect(divResult.data.unit).toBeUndefined();
   });
 
   it('should return Dimension instances when operating on Num with Dimension', () => {
@@ -44,15 +44,15 @@ describe('Num operations', () => {
     const addResult = n1.operate(d1, '+');
     expect(addResult).toBeInstanceOf(Dimension);
     expect(addResult.type).toBe('Dimension');
-    expect((addResult as Dimension).value.number).toBe(5);
-    expect((addResult as Dimension).value.unit).toBe('px');
+    expect((addResult as Dimension).data.number).toBe(5);
+    expect((addResult as Dimension).data.unit).toBe('px');
 
     // Subtraction should return Dimension
     const subResult = n1.operate(d1, '-');
     expect(subResult).toBeInstanceOf(Dimension);
     expect(subResult.type).toBe('Dimension');
-    expect((subResult as Dimension).value.number).toBe(1);
-    expect((subResult as Dimension).value.unit).toBe('px');
+    expect((subResult as Dimension).data.number).toBe(1);
+    expect((subResult as Dimension).data.unit).toBe('px');
   });
 
   it('should return Num instances when operating on Num with Dimension that has no unit', () => {
@@ -63,15 +63,15 @@ describe('Num operations', () => {
     const addResult = n1.operate(d1, '+');
     expect(addResult).toBeInstanceOf(Num);
     expect(addResult.type).toBe('Num');
-    expect(addResult.value.number).toBe(5);
-    expect(addResult.value.unit).toBeUndefined();
+    expect(addResult.data.number).toBe(5);
+    expect(addResult.data.unit).toBeUndefined();
 
     // Subtraction should return Num (because result has no unit)
     const subResult = n1.operate(d1, '-');
     expect(subResult).toBeInstanceOf(Num);
     expect(subResult.type).toBe('Num');
-    expect(subResult.value.number).toBe(1);
-    expect(subResult.value.unit).toBeUndefined();
+    expect(subResult.data.number).toBe(1);
+    expect(subResult.data.unit).toBeUndefined();
   });
 
   it('should handle complex operations correctly', () => {
@@ -82,10 +82,10 @@ describe('Num operations', () => {
     // Complex operation: (10 + 2) * 3
     const step1 = n1.operate(n2, '+') as Num;
     expect(step1).toBeInstanceOf(Num);
-    expect(step1.value.number).toBe(12);
+    expect(step1.data.number).toBe(12);
 
     const step2 = step1.operate(n3, '*');
     expect(step2).toBeInstanceOf(Num);
-    expect(step2.value.number).toBe(36);
+    expect(step2.data.number).toBe(36);
   });
 });

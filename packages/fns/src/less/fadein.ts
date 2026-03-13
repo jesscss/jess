@@ -10,15 +10,15 @@ import {
 const fadein = defineFunction(
   'fadein',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
-    let adjustAmount = amount.value.number / 100;
+    let adjustAmount = amount.data.number / 100;
 
-    if (method && method.value === 'relative') {
+    if (method && method.data === 'relative') {
       adjustAmount = color._alpha * adjustAmount;
     }
 
     const newAlpha = color._alpha + adjustAmount;
     const outputAlpha = Math.round(newAlpha * 1e12) / 1e12;
-    const inputNode = typeof color.value.node === 'string' ? color.value.node : undefined;
+    const inputNode = typeof color.data.node === 'string' ? color.data.node : undefined;
     const preserveHexFormat = color.options.format === ColorFormat.HEX
       && !!inputNode
       && inputNode.startsWith('#');

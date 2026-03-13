@@ -10,7 +10,7 @@ describe('source map segments', () => {
       decl({ name: any('color'), value: any('red') })
     ]);
     // fake location & file for mapping
-    (root.value[0] as any)._location = [0, 1, 1, 0, 1, 6];
+    (root.data[0] as any)._location = [0, 1, 1, 0, 1, 6];
     (root as any).treeContext.file = { name: 'root.jess', path: '.', fullPath: '/abs/root.jess' };
     const css = root.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('color: red;\n');
@@ -31,8 +31,8 @@ describe('source map segments', () => {
       })
     ]);
     // attach fake locations and files
-    const rs = (nested.value[0] as any).value.rules;
-    (rs.value[0] as any)._location = [0, 1, 3, 0, 1, 8];
+    const rs = (nested.data[0] as any).data.rules;
+    (rs.data[0] as any)._location = [0, 1, 3, 0, 1, 8];
     (nested as any).treeContext.file = { name: 'nested.jess', path: '.', fullPath: '/abs/nested.jess' };
     const css = nested.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('.a {\n  x: y;\n}\n');
@@ -95,14 +95,14 @@ describe('source map segments', () => {
       decl({ name: any('a'), value: any('1') })
     ]);
     // attach file+location to the declaration itself so segments carry sources
-    (left.value[0] as any).treeContext.file = { name: 'left.jess', path: '.', fullPath: '/abs/left.jess' };
-    (left.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
+    (left.data[0] as any).treeContext.file = { name: 'left.jess', path: '.', fullPath: '/abs/left.jess' };
+    (left.data[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
     const right = rules([
       decl({ name: any('b'), value: any('2') })
     ]);
-    (right.value[0] as any).treeContext.file = { name: 'right.jess', path: '.', fullPath: '/abs/right.jess' };
-    (right.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
+    (right.data[0] as any).treeContext.file = { name: 'right.jess', path: '.', fullPath: '/abs/right.jess' };
+    (right.data[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
     const root = rules([left, right]);
     const css = root.toString(getPrintOptions({ writer: w }));

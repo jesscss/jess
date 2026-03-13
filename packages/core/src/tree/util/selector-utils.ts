@@ -16,8 +16,8 @@ declare const process: { env: Record<string, string | undefined> };
 /** Container object whose .selector is read by the ampersand (e.g. ruleset value for live connection). */
 export type SelectorContainer = AmpersandValue['selectorContainer'];
 
-/** Parent ruleset (live container) or a snapshot { value: SelectorContainer } when no ruleset is available. */
-export type ParentSource = Ruleset | { value: SelectorContainer };
+/** Parent ruleset (live container) or a snapshot { data: SelectorContainer } when no ruleset is available. */
+export type ParentSource = Ruleset | { data: SelectorContainer };
 
 /**
  * Adds an implicit ampersand to a selector if it doesn't already have one.
@@ -25,7 +25,7 @@ export type ParentSource = Ruleset | { value: SelectorContainer };
  *
  * @param selector - The selector to add the ampersand to
  * @param collapseNesting - Whether to collapse nesting (affects visibility flags)
- * @param parentSource - Optional parent ruleset (live) or snapshot { value: { selector } }; ampersand reads .selector from parentSource.value so extend sees the updated parent when ruleset is extended
+ * @param parentSource - Optional parent ruleset (live) or snapshot { data: { selector } }; ampersand reads .selector from parentSource.data so extend sees the updated parent when ruleset is extended
  * @returns The selector with implicit ampersand added
  */
 export function addImplicitAmpersand(
@@ -36,7 +36,7 @@ export function addImplicitAmpersand(
   if (selector.hasFlag(F_AMPERSAND)) {
     return selector;
   }
-  const selectorContainer = parentSource?.value;
+  const selectorContainer = parentSource?.data;
   let ampInit: { selectorContainer?: SelectorContainer } = {};
   if (selectorContainer) {
     ampInit.selectorContainer = selectorContainer;
@@ -53,13 +53,14 @@ export function addImplicitAmpersand(
   }
   if (isNode(selector, N.ComplexSelector)) {
     const complex = selector;
-    // Avoid moving live nodes from the existing selector into a new selector
-    // (which would reparent them). Work with a copy instead.
+    // Existing LLM comment: "Avoid moving live nodes from the existing selector into a new selector (which would reparent them). Work with a copy instead..""
+    // User: "Why? Why avoid moving live nodes? If we're extending, and this is the target selector,
+    // then nothing else is going to use it. Why not just mutate and set the correct parent?"
     const complexCopy = complex.copy(true) as ComplexSelector;
-    if (isNode(complexCopy.value[0], N.Combinator)) {
-      return ComplexSelector.create([amp, ...complexCopy.value]).inherit(selector);
+    if (isNode(complexCopy.data[0], N.Combinator)) {
+      return ComplexSelector.create([amp, ...complexCopy.data]).inherit(selector);
     }
-    return ComplexSelector.create([amp, comb, ...complexCopy.value]).inherit(selector);
+    return ComplexSelector.create([amp, comb, ...complexCopy.data]).inherit(selector);
   }
   // Avoid self-parenting: if we include `selector` as a child and then call `.inherit(selector)`,
   // the constructor will adopt `selector` first (setting selector.parent = newComplex),
@@ -76,7 +77,7 @@ function snapshotParentSource(parentSelector: Selector, collapseNesting: boolean
     ? PseudoSelector.create({ name: ':is', arg: parentCopy })
     : parentCopy;
   const container: SelectorContainer = { selector: sel };
-  return { value: container };
+  return { data: container };
 }
 
 /**
@@ -101,15 +102,15 @@ export function getImplicitSelector(
     : snapshotParentSource(parent as Selector, collapseNesting);
   if (isNode(selector, N.SelectorList)) {
     let mutated = false;
-    const value = selector.value;
-    for (let i = 0; i < value.length; i++) {
-      const sel = value[i]!;
+    const data = selector.data;
+    for (let i = 0; i < data.length; i++) {
+      const sel = data[i]!;
       const result = addImplicitAmpersand(sel, collapseNesting, parentSource);
       if (result !== sel) {
         if (!mutated) {
           selector = selector.clone(true);
         }
-        (selector as SelectorList).value[i] = result;
+        (selector as SelectorList).setData(i, result);
         mutated = true;
       }
     }

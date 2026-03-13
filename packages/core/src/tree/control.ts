@@ -62,8 +62,8 @@ function parsePatternNode(patternNode: Node): ForPattern {
   if (isNode(patternNode, N.VarDeclaration)) {
     return { kind: 'single', value: patternNode };
   }
-  if (patternNode.type === 'Block' && patternNode.options?.type === 'square' && isNode(patternNode.value, N.List)) {
-    const values = patternNode.value.value.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
+  if (patternNode.type === 'Block' && patternNode.options?.type === 'square' && isNode(patternNode.data, N.List)) {
+    const values = patternNode.data.data.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
     if (values.length === 1) {
       return { kind: 'single', value: values[0]! };
     }
@@ -72,7 +72,7 @@ function parsePatternNode(patternNode: Node): ForPattern {
     }
   }
   if (isNode(patternNode, N.List | N.Sequence)) {
-    const values = (patternNode as List).value.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
+    const values = (patternNode as List).data.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
     if (values.length === 1) {
       return { kind: 'single', value: values[0]! };
     }
@@ -87,12 +87,12 @@ function parseLegacyHeader(header: Sequence): {
   pattern: ForPattern;
   iterable: ForIterable;
 } {
-  const headerNode = header.value[0];
-  const inner = isNode(headerNode, N.Paren) && headerNode.value
-    ? headerNode.value
+  const headerNode = header.data[0];
+  const inner = isNode(headerNode, N.Paren) && headerNode.data
+    ? headerNode.data
     : headerNode;
   const sequence = isNode(inner, N.Sequence)
-    ? inner.value
+    ? inner.data
     : [inner].filter(Boolean) as Node[];
   const ofIndex = sequence.findIndex(node => isNode(node, N.Any) && node.valueOf() === 'of');
   if (ofIndex <= 0 || ofIndex >= sequence.length - 1) {
@@ -110,9 +110,9 @@ function parseLegacyHeader(header: Sequence): {
   if (isNode(iterableNode, N.Range)) {
     iterable = {
       kind: 'range',
-      start: iterableNode.value.start,
-      end: iterableNode.value.end,
-      step: iterableNode.value.step,
+      start: iterableNode.data.start,
+      end: iterableNode.data.end,
+      step: iterableNode.data.step,
       includeStart: iterableNode.options?.includeStart !== false,
       includeEnd: iterableNode.options?.includeEnd !== false
     };
@@ -127,10 +127,10 @@ function parseLegacyHeader(header: Sequence): {
 
 function getBindingNames(pattern: ForPattern): string[] {
   if (pattern.kind === 'single') {
-    return [pattern.value.value.name.valueOf()];
+    return [pattern.value.data.name.valueOf()];
   }
   if (pattern.kind === 'tuple') {
-    return pattern.values.map(entry => entry.value.name.valueOf());
+    return pattern.values.map(entry => entry.data.name.valueOf());
   }
   return [];
 }
@@ -161,7 +161,7 @@ function iterableToNode(iterable: ForIterable): Node {
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.value.eval(context), context);
+    yield* resolveEntries(await input.data.eval(context), context);
     return;
   }
   if (isNode(input, N.Call)) {
@@ -173,19 +173,19 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     yield* resolveEntries(evald, context);
     return;
   }
-  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.value)) {
-    for (let key = 0; key < input.value.length; key++) {
-      const value = input.value[key]!;
+  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.data)) {
+    for (let key = 0; key < input.data.length; key++) {
+      const value = input.data[key]!;
       yield [value, key];
     }
     return;
   }
   if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
     const rules = isNode(input, N.Rules)
-      ? input.value
+      ? input.data
       : isNode(input, N.Ruleset)
-        ? (input.value.rules?.value ?? [])
-        : ((input as Mixin).value.rules?.value ?? []);
+        ? (input.data.rules?.data ?? [])
+        : ((input as Mixin).data.rules?.data ?? []);
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -193,7 +193,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.value.value, rule.value.name];
+      yield [rule.data.value, rule.data.name];
     }
     return;
   }
@@ -241,7 +241,7 @@ export class If extends Node<IfValue> {
     const w = options.writer!;
     const mark = w.mark();
 
-    const [first, ...rest] = this.value.branches;
+    const [first, ...rest] = this.data.branches;
     w.add('$if', this);
     w.add(' (');
     first?.condition?.toString(options);
@@ -310,7 +310,7 @@ export class For extends Node<StructuredLoopValue> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { pattern, iterable } = this.value;
+    const { pattern, iterable } = this.data;
     const bindingNames = getBindingNames(pattern);
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
@@ -320,15 +320,15 @@ export class For extends Node<StructuredLoopValue> {
       let counter = 1;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const loopRules = this.value.rules.clone(true);
+        const loopRules = this.data.rules.clone(true);
         // Preserve definition-scope parent chain so nested calls/lookups
         // inside loop bodies resolve the same way as the original rules.
-        loopRules.inherit(this.value.rules);
+        loopRules.inherit(this.data.rules);
         if (accumulatedNodes.length > 0) {
           // Make prior iteration output visible to current iteration lookups
           // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
           const priorScope = new Rules(accumulatedNodes.map(n => n.copy(true)));
-          priorScope.inherit(this.value.rules);
+          priorScope.inherit(this.data.rules);
           priorScope.adopt(loopRules);
         }
         const resolvedValue = await value.eval(context);
@@ -348,16 +348,15 @@ export class For extends Node<StructuredLoopValue> {
             name: new Any(bindingNames[i]!, { role: 'property' }),
             value: bindings[i]!
           });
-          loopRules.mutableValue.unshift(varDecl);
-          loopRules.adopt(varDecl);
+          loopRules.unshift(varDecl);
         }
         counter++;
         const result = await loopRules.eval(context);
         if (isNode(result, N.Rules)) {
-          for (const outNode of result.value) {
+          for (const outNode of result.data) {
             if (isNode(outNode, N.Declaration)) {
               const normalizedFromAssign = outNode.options.normalizedFromAssign;
-              const outName = String(outNode.value.name);
+              const outName = String(outNode.data.name);
               const isMergedAssignment =
                 normalizedFromAssign === AssignmentType.Add
                 || normalizedFromAssign === AssignmentType.MergeList
@@ -369,7 +368,7 @@ export class For extends Node<StructuredLoopValue> {
                 let firstMatch = -1;
                 for (let i = 0; i < accumulatedNodes.length; i++) {
                   const prev = accumulatedNodes[i]!;
-                  if (isNode(prev, N.Declaration) && String(prev.value.name) === outName) {
+                  if (isNode(prev, N.Declaration) && String(prev.data.name) === outName) {
                     firstMatch = i;
                     break;
                   }
@@ -377,17 +376,17 @@ export class For extends Node<StructuredLoopValue> {
                 if (firstMatch >= 0) {
                   const prev = accumulatedNodes[firstMatch]!;
                   if (isNode(prev, N.Declaration)) {
-                    const prevValue = prev.value.value;
-                    const nextValue = outNode.value.value;
+                    const prevValue = prev.data.value;
+                    const nextValue = outNode.data.value;
                     if (
                       normalizedFromAssign === AssignmentType.Add
                       || normalizedFromAssign === AssignmentType.MergeList
                     ) {
                       const prevItems = isNode(prevValue, N.List)
-                        ? prevValue.value
+                        ? prevValue.data
                         : [prevValue];
                       const nextItems = isNode(nextValue, N.List)
-                        ? nextValue.value
+                        ? nextValue.data
                         : [nextValue];
                       const nextAlreadyIncludesPrev =
                         nextItems.length >= prevItems.length
@@ -395,13 +394,13 @@ export class For extends Node<StructuredLoopValue> {
                       const mergedItems = nextAlreadyIncludesPrev
                         ? [...nextItems]
                         : [...prevItems, ...nextItems];
-                      outNode.setValue('value', new List(mergedItems).inherit(outNode.value.value));
+                      outNode.setData('value', new List(mergedItems).inherit(outNode.data.value));
                     } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
                       const prevItems = isNode(prevValue, N.Sequence)
-                        ? prevValue.value
+                        ? prevValue.data
                         : [prevValue];
                       const nextItems = isNode(nextValue, N.Sequence)
-                        ? nextValue.value
+                        ? nextValue.data
                         : [nextValue];
                       const nextAlreadyIncludesPrev =
                         nextItems.length >= prevItems.length
@@ -409,13 +408,13 @@ export class For extends Node<StructuredLoopValue> {
                       const mergedItems = nextAlreadyIncludesPrev
                         ? [...nextItems]
                         : [...prevItems, ...nextItems];
-                      outNode.setValue('value', new Sequence(mergedItems).inherit(outNode.value.value));
+                      outNode.setData('value', new Sequence(mergedItems).inherit(outNode.data.value));
                     }
                   }
                   accumulatedNodes[firstMatch] = outNode;
                   for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
                     const prev = accumulatedNodes[i]!;
-                    if (isNode(prev, N.Declaration) && String(prev.value.name) === outName) {
+                    if (isNode(prev, N.Declaration) && String(prev.data.name) === outName) {
                       accumulatedNodes.splice(i, 1);
                     }
                   }
@@ -453,12 +452,12 @@ export class For extends Node<StructuredLoopValue> {
     const mark = w.mark();
     w.add('$for ', this);
     w.add('(');
-    patternToNode(this.value.pattern).toString(options);
+    patternToNode(this.data.pattern).toString(options);
     w.add(' of ');
-    iterableToNode(this.value.iterable).toString(options);
+    iterableToNode(this.data.iterable).toString(options);
     w.add(')');
     w.add(' ');
-    this.value.rules.toBraced(options);
+    this.data.rules.toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -486,9 +485,9 @@ export class Each extends Node<LegacyLoopValue> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('$each ', this);
-    this.value.header.toString(options);
+    this.data.header.toString(options);
     w.add(' ');
-    this.value.rules.toBraced(options);
+    this.data.rules.toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -519,9 +518,9 @@ export class While extends Node<WhileValue> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('$while (', this);
-    this.value.condition.toString(options);
+    this.data.condition.toString(options);
     w.add(') ');
-    this.value.rules.toBraced(options);
+    this.data.rules.toBraced(options);
     return w.getSince(mark);
   }
 }

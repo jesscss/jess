@@ -24,7 +24,7 @@ describe('AtRule', () => {
       // Represents: .body { @media print { padding: 20px; } }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]),
+          selector: sel([el('.body')]) as any,
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -65,7 +65,7 @@ describe('AtRule', () => {
       // }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]),
+          selector: sel([el('.body')]) as any,
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -73,7 +73,7 @@ describe('AtRule', () => {
               rules: rules([
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
-                  selector: sel([amp('-1')]),
+                  selector: sel([amp('-1')]) as any,
                   rules: rules([
                     decl({ name: 'color', value: any('black') })
                   ])
@@ -117,7 +117,7 @@ describe('AtRule', () => {
       // }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]),
+          selector: sel([el('.body')]) as any,
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -125,20 +125,20 @@ describe('AtRule', () => {
               rules: rules([
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
-                  selector: sel([amp('-1')]),
+                  selector: sel([amp('-1')]) as any,
                   rules: rules([
                     decl({ name: 'color', value: any('black') })
                   ])
                 }),
                 decl({ name: 'background-color', value: any('white') }),
                 ruleset({
-                  selector: sel([amp('-2')]),
+                  selector: sel([amp('-2')]) as any,
                   rules: rules([
                     decl({ name: 'color', value: any('blue') })
                   ])
                 }),
                 ruleset({
-                  selector: sel([amp('-3')]),
+                  selector: sel([amp('-3')]) as any,
                   rules: rules([
                     decl({ name: 'color', value: any('red') })
                   ])
@@ -187,7 +187,7 @@ describe('AtRule', () => {
       // Represents: .body { @media print { header { background-color: red; @media (orientation:landscape) { margin-left: 20px; } } } }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]),
+          selector: sel([el('.body')]) as any,
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -195,7 +195,7 @@ describe('AtRule', () => {
               rules: rules([
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
-                  selector: sel([el('header')]),
+                  selector: sel([el('header')]) as any,
                   rules: rules([
                     decl({ name: 'background-color', value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 }) }),
                     atrule({
@@ -278,7 +278,7 @@ describe('AtRule', () => {
       });
 
       const callSite = ruleset({
-        selector: sel([el('.a')]),
+        selector: sel([el('.a')]) as any,
         rules: rules([
           call({
             name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
@@ -315,7 +315,7 @@ describe('AtRule', () => {
           prelude: seq([any('print', { role: 'keyword' })]),
           rules: rules([
             ruleset({
-              selector: sel([el('.class')]),
+              selector: sel([el('.class')]) as any,
               rules: rules([
                 decl({ name: 'color', value: color({ node: 'blue', format: 0, rgb: [0, 0, 255], alpha: 1 }) })
               ])
@@ -328,7 +328,7 @@ describe('AtRule', () => {
           rules: rules([
             vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
             ruleset({
-              selector: sel([el('.body')]),
+              selector: sel([el('.body')]) as any,
               rules: rules([
                 decl({ name: 'max-width', value: op([ref('base', { type: 'variable' }), '*', num(60)]) })
               ])
@@ -367,7 +367,7 @@ describe('AtRule', () => {
           prelude: seq([ref('all', { type: 'variable' }), any('and', { role: 'keyword' }), ref('tv', { type: 'variable' })]),
           rules: rules([
             ruleset({
-              selector: sel([el('.all-and-tv-variables')]),
+              selector: sel([el('.all-and-tv-variables')]) as any,
               rules: rules([
                 decl({ name: 'var', value: spaced([any('all-and-tv')]) })
               ])
@@ -406,7 +406,7 @@ describe('AtRule', () => {
           ]),
           rules: rules([
             ruleset({
-              selector: sel([el('.selector')]),
+              selector: sel([el('.selector')]) as any,
               rules: rules([
                 decl({ name: 'foo', value: spaced([any('bar')]) })
               ])
@@ -448,7 +448,7 @@ describe('AtRule', () => {
           ]),
           rules: rules([
             ruleset({
-              selector: sel([el('.selector')]),
+              selector: sel([el('.selector')]) as any,
               rules: rules([
                 decl({ name: 'color', value: color({ node: '#eee', format: 0 }) })
               ])
@@ -496,7 +496,7 @@ describe('AtRule', () => {
             }))]),
             rules: rules([
               ruleset({
-                selector: sel([el('> li')]),
+                selector: sel([el('> li')]) as any,
                 rules: rules([
                   decl({ name: 'display', value: spaced([any('table-cell')]) })
                 ])
@@ -507,7 +507,7 @@ describe('AtRule', () => {
       });
 
       const callSite = ruleset({
-        selector: sel([el('.menu')]),
+        selector: sel([el('.menu')]) as any,
         rules: rules([
           atrule({
             name: any('@media', { role: 'atkeyword' }),
@@ -1322,7 +1322,7 @@ describe('AtRule', () => {
                         el('.nav-justified'),
                         co('>'),
                         el('li')
-                      ]),
+                      ]) as any,
                       rules: rules([
                         decl({
                           name: 'display',
@@ -1368,7 +1368,7 @@ describe('AtRule', () => {
                                 el('.menu'),
                                 co('>'),
                                 el('li')
-                              ]),
+                              ]) as any,
                               rules: rules([
                                 decl({
                                   name: 'display',
@@ -1627,7 +1627,7 @@ describe('AtRule', () => {
                         el('.selector'),
                         co(' '),
                         el('.test-range-syntax')
-                      ]),
+                      ]) as any,
                       rules: rules([
                         decl({
                           name: 'padding',

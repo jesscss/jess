@@ -32,11 +32,35 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  get left() {
+    return this.data[0];
+  }
+
+  set left(val: Node) {
+    (this.data as ConditionValue)[0] = val;
+  }
+
+  get operator() {
+    return this.data[1];
+  }
+
+  set operator(val: ConditionOperator | undefined) {
+    (this.data as ConditionValue)[1] = val as any;
+  }
+
+  get right() {
+    return this.data[2];
+  }
+
+  set right(val: Node | undefined) {
+    (this.data as ConditionValue)[2] = val as any;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     const needsParens = Boolean(right || this.options?.negate);
     if (this.options?.negate) {
       w.add('not ');
@@ -59,7 +83,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   static getBool(node: Node, negated: boolean): Bool {
     if (node instanceof Bool) {
-      return new Bool(negated ? !node.value : node.value);
+      return new Bool(negated ? !node.data : node.data);
     }
     // Less guards treat only explicit booleans as truthy.
     // Any non-boolean (number, quoted, keyword, list, nil, etc.) is false.
@@ -68,8 +92,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
     switch (op) {
-      case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
-      case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
+      case 'and': return Condition.getBool(a, false).data && Condition.getBool(b, false).data;
+      case 'or': return Condition.getBool(a, false).data || Condition.getBool(b, false).data;
       default:
         switch (a.compare(b)) {
           case -1:
@@ -85,7 +109,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     let negated = !!this.options?.negate;
 
     return pipe(

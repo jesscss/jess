@@ -35,18 +35,20 @@ export interface ComplexSelector {
   shortType: 'sel';
 }
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
+  get length() {
+    return this.data.length;
+  }
+
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators
    *
    */
   override valueOf() {
-    if (!Array.isArray(this._value)) {
-      // Repair a malformed ComplexSelector that holds a single component directly.
-      // Use _value directly to avoid triggering the setter / _invalidateValueOf.
-      (this as any)._value = [(this as any)._value];
+    if (!Array.isArray(this.data)) {
+      this.setData([this.data as unknown as ComplexSelectorComponent]);
     }
-    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
+    return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
   }
 
   protected override _computeKeySetAndFastReject(): void {
@@ -54,7 +56,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let combinedVisibleKeySet = new Set<string>();
     let canFastReject = true;
 
-    for (const component of this.value) {
+    for (const component of this.data) {
       // Skip combinators - they don't contribute keys
       if (isNode(component, N.Combinator)) {
         continue;
@@ -92,18 +94,18 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { value } = this;
-    let length = value.length;
+    let { data } = this;
+    let length = data.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      let component = value[i]!;
+      let component = data[i]!;
       /** Add some combinator spacing */
       if (isNode(component, N.Combinator)) {
         /** Skip spacing if the previous node is a Nil */
-        if (isNode(value[i - 1], N.Nil)) {
+        if (isNode(data[i - 1], N.Nil)) {
           continue;
         }
-        let co = component.value;
+        let co = component.data;
         if (co !== ' ') {
           // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
           // pre spacing (default to single space when no explicit pre)
@@ -133,16 +135,16 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return pipe(
       () => {
         const selector = this;
-        let { value } = selector;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
+        const { data } = selector;
+        const maybe = serialForEach(Array.from(getEntries(data)), ([sel, i]) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
-              value[i] = res as ComplexSelectorComponent;
+              selector.setData(i, res as ComplexSelectorComponent);
               return undefined;
             });
           }
-          value[i] = out as ComplexSelectorComponent;
+          selector.setData(i, out as ComplexSelectorComponent);
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -153,9 +155,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         return selector;
       },
       (selector) => {
-        const { value } = selector;
-        if (value.length === 1) {
-          const only = value[0]!.inherit(selector);
+        const { data } = selector;
+        if (data.length === 1) {
+          const only = data[0]!.inherit(selector);
           if (selector.hoistToRoot) {
             (only as any).hoistToRoot = true;
           }
@@ -249,13 +251,13 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
-  //   this.value.forEach(node => node.toCSS(context, out))
+  //   this.data.forEach(node => node.toCSS(context, out))
   // }
 
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.sel([', this.location)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
+  //   const length = this.data.length - 1
+  //   this.data.forEach((node, i) => {
   //     node.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')

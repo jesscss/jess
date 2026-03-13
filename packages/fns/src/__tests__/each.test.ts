@@ -8,20 +8,20 @@ function makeMixin(paramNames?: string[]) {
     return new Mixin({ rules: mixinRules });
   }
   const params = new List(
-    paramNames.map((name) => new Any(name, { role: 'property' }))
+    paramNames.map(name => new Any(name, { role: 'property' }))
   );
   return new Mixin({ params, rules: mixinRules });
 }
 
 function assertTupleBindings(loop: For, expectedNames: string[]) {
-  const { pattern } = loop.value;
+  const { pattern } = loop.data;
   expect(pattern.kind).toBe('tuple');
   expect(pattern.values).toHaveLength(3);
-  const names = pattern.values.map((variable) => variable.value.name.valueOf());
+  const names = pattern.values.map(variable => variable.data.name.valueOf());
   expect(names).toEqual(expectedNames);
   for (const variable of pattern.values) {
     expect(variable).toBeInstanceOf(VarDeclaration);
-    expect(variable.value.value).toBeInstanceOf(Nil);
+    expect(variable.data.value).toBeInstanceOf(Nil);
     expect(variable.options.paramVar).toBe(true);
   }
 }
@@ -35,9 +35,9 @@ describe('each', () => {
 
     expect(result).toBeInstanceOf(For);
     assertTupleBindings(result, ['value', 'key', 'index']);
-    expect(result.value.iterable.kind).toBe('node');
-    expect(result.value.iterable.value).toBe(list);
-    expect(result.value.rules).toBe(mixinRules);
+    expect(result.data.iterable.kind).toBe('node');
+    expect(result.data.iterable.value).toBe(list);
+    expect(result.data.rules).toBe(mixinRules);
   });
 
   it('uses default binding names when mixin has no params', async () => {
@@ -47,7 +47,7 @@ describe('each', () => {
     const result = await each(list, mixin);
 
     assertTupleBindings(result, ['value', 'key', 'index']);
-    expect(result.value.rules).toBe(mixin.value.rules);
+    expect(result.data.rules).toBe(mixin.data.rules);
   });
 
   it('overrides only the first binding name with one param', async () => {

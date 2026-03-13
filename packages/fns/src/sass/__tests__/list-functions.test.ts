@@ -18,21 +18,21 @@ describe('Sass list functions', () => {
       const list = new List([new Num(1), new Num(2), new Num(3)]);
       const result = length(list);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(3);
-      expect((result as Dimension).value.unit).toBeUndefined();
+      expect((result as Dimension).data.number).toBe(3);
+      expect((result as Dimension).data.unit).toBeUndefined();
     });
 
     it('returns 0 for empty list', () => {
       const list = new List([]);
       const result = length(list);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(0);
+      expect((result as Dimension).data.number).toBe(0);
     });
 
     it('works with object parameters', () => {
       const list = new List([new Num(1), new Num(2)]);
       const result = length({ list });
-      expect((result as Dimension).value.number).toBe(2);
+      expect((result as Dimension).data.number).toBe(2);
     });
   });
 
@@ -87,7 +87,7 @@ describe('Sass list functions', () => {
       const value = new Num(20);
       const result = index(list, value);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(2);
+      expect((result as Dimension).data.number).toBe(2);
     });
 
     it('returns 1 for first element', () => {
@@ -95,7 +95,7 @@ describe('Sass list functions', () => {
       const value = new Num(10);
       const result = index(list, value);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(1);
+      expect((result as Dimension).data.number).toBe(1);
     });
 
     it('returns null when value is not found', () => {
@@ -110,14 +110,14 @@ describe('Sass list functions', () => {
       const value = new Quoted('b');
       const result = index(list, value);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(2);
+      expect((result as Dimension).data.number).toBe(2);
     });
 
     it('works with object parameters', () => {
       const list = new List([new Num(10), new Num(20)]);
       const value = new Num(20);
       const result = index({ list, value });
-      expect((result as Dimension).value.number).toBe(2);
+      expect((result as Dimension).data.number).toBe(2);
     });
   });
 
@@ -162,14 +162,14 @@ describe('Sass list functions', () => {
       const list = new List([new Num(1), new Num(2)]);
       const result = isBracketed(list);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(false);
+      expect((result as Bool).data).toBe(false);
     });
 
     it('works with object parameters', () => {
       const list = new List([new Num(1)]);
       const result = isBracketed({ list });
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(false);
+      expect((result as Bool).data).toBe(false);
     });
   });
 });

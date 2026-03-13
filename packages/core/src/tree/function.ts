@@ -46,8 +46,32 @@ export class Func extends Node<FuncValue, FuncOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: FuncValue['name']) {
+    this.setData('name', val as any);
+  }
+
+  get params() {
+    return this.data.params;
+  }
+
+  set params(val: FuncValue['params']) {
+    this.setData('params', val as any);
+  }
+
+  get body() {
+    return this.data.body;
+  }
+
+  set body(val: FuncValue['body']) {
+    this.setData('body', val);
+  }
+
   get nameKey(): string | undefined {
-    const { name } = this.value;
+    const { name } = this.data;
     if (!name) {
       return undefined;
     }
@@ -58,7 +82,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, params, body } = this.value;
+    const { name, params, body } = this.data;
 
     w.add('$function', this);
     w.add(' ');
@@ -86,14 +110,14 @@ export class Func extends Node<FuncValue, FuncOptions> {
     const returnName = this.options?.returnName ?? 'return';
 
     // Normalize body to a Rules node so it can be evaluated/scoped consistently.
-    const bodyNode = this.value.body;
+    const bodyNode = this.data.body;
     const bodyRules = bodyNode instanceof Rules
       ? bodyNode
       : Rules.create([bodyNode]);
 
     // Build a temporary anonymous mixin wrapper to observe the same param binding rules.
     const mixinLike = new Mixin(
-      { rules: bodyRules, params: this.value.params },
+      { rules: bodyRules, params: this.data.params },
       undefined,
       Array.isArray(this.location) && this.location.length === 6 ? (this.location as LocationInfo) : undefined,
       this.treeContext
@@ -104,7 +128,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
 
     const fn = getFunctionFromMixins(mixinLike);
-    const evaluated = await fn.call(context, ...args.value.map(a => cast(a)));
+    const evaluated = await fn.call(context, ...args.data.map(a => cast(a)));
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
@@ -115,7 +139,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.value.value.eval(context);
+    return await decl.data.value.eval(context);
   }
 }
 

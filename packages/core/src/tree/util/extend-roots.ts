@@ -339,7 +339,7 @@ export function processExtends(context: Context): void {
         continue;
       }
       for (const ruleset of rulesetSet) {
-        const selector = ruleset.value.selector as Selector | undefined;
+        const selector = ruleset.data.selector as Selector | undefined;
         if (!selector || isNode(selector, N.Nil)) {
           ruleset.removeFlag(F_EXTENDED);
           continue;
@@ -363,7 +363,7 @@ export function processExtends(context: Context): void {
           ruleset.addFlag(F_EXTENDED);
           ruleset.addFlag(F_VISIBLE);
           if (isNode(selector, N.SelectorList)) {
-            for (const item of (selector as SelectorList).value) {
+            for (const item of (selector as SelectorList).data) {
               item.addFlag(F_EXTENDED);
               item.addFlag(F_VISIBLE);
             }
@@ -388,7 +388,7 @@ export function processExtends(context: Context): void {
           const fullBefore = selector.valueOf();
           const fullAfter = fullNewSelector.valueOf();
           if (ownNewSelector !== ownSelector && ownAfter !== ownBefore) {
-            ruleset.setValue('selector', ownNewSelector);
+            ruleset.setData('selector', ownNewSelector);
             (ruleset.options as { ownSelector?: Selector }).ownSelector = ownNewSelector;
             ruleset.invalidateSelectorValueCache();
             if (ownNewSelector.hoistToRoot) {
@@ -410,7 +410,7 @@ export function processExtends(context: Context): void {
             const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
             const parentSelector = (
               ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
-                ? (ruleset.parent.parent as Ruleset).value.selector
+                ? (ruleset.parent.parent as Ruleset).data.selector
                 : null
             );
             const canDeriveOwnFromGeneratedIs = Boolean(
@@ -423,16 +423,16 @@ export function processExtends(context: Context): void {
             );
             if (canDeriveOwnFromGeneratedIs) {
               const complex = fullAfterPartialOnly as ComplexSelector;
-              const last = complex.value.at(-1);
+              const last = complex.data.at(-1);
               if (
                 last
                 && isNode(last, N.PseudoSelector)
-                && (last as PseudoSelector).value.name === ':is'
-                && (last as PseudoSelector).value.arg
-                && isNode((last as PseudoSelector).value.arg!, N.SelectorList)
+                && (last as PseudoSelector).data.name === ':is'
+                && (last as PseudoSelector).data.arg
+                && isNode((last as PseudoSelector).data.arg!, N.SelectorList)
               ) {
-                const derivedOwn = ((last as PseudoSelector).value.arg as SelectorList).copy(true) as Selector;
-                ruleset.setValue('selector', derivedOwn);
+                const derivedOwn = ((last as PseudoSelector).data.arg as SelectorList).copy(true) as Selector;
+                ruleset.setData('selector', derivedOwn);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = derivedOwn;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -442,7 +442,7 @@ export function processExtends(context: Context): void {
           if (nonPartialOnly.length > 0) {
             const parentSelectorForOwnSplit = (
               ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
-                ? (ruleset.parent.parent as Ruleset).value.selector as Selector
+                ? (ruleset.parent.parent as Ruleset).data.selector as Selector
                 : null
             );
             const {
@@ -451,10 +451,18 @@ export function processExtends(context: Context): void {
               hasParentMatchedOwnOnlyNonPartial
             } = analyzeNonPartialExtends(ownSelector, selector, nonPartialOnly, parentSelectorForOwnSplit);
 
+            // For nested selectors, exact extends that match only the own selector
+            // should NOT be applied. In Less/CSS semantics, exact extend (.a) should
+            // only match selectors whose full resolved path is exactly .a, not nested
+            // .a that resolves to e.g. .parent .a. The own selector matches, but the
+            // full path doesn't, so discard these "ownOnly" instructions.
+            if (hasResolvedNestedSelector) {
+              nonPartialOwnOnly.length = 0;
+            }
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
                 const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
-                ruleset.setValue('selector', ownAfterOwnOnly);
+                ruleset.setData('selector', ownAfterOwnOnly);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -472,7 +480,7 @@ export function processExtends(context: Context): void {
                 const newSel = applyExtendsToSelector(selector, nonPartialOnly);
                 if (newSel.valueOf() !== selector.valueOf()) {
                   newSel.hoistToRoot = true;
-                  ruleset.setValue('selector', newSel);
+                  ruleset.setData('selector', newSel);
                   ruleset.invalidateSelectorValueCache();
                   ruleset.hoistToRoot = true;
                 }
@@ -483,13 +491,13 @@ export function processExtends(context: Context): void {
                   ownSelector,
                   [...partialOnly, ...nonPartialOwnOnly]
                 );
-                ruleset.setValue('selector', ownAfterBoth);
+                ruleset.setData('selector', ownAfterBoth);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterBoth;
                 ruleset.invalidateSelectorValueCache();
                 continue;
               }
               if (hasParentMatchedOwnOnlyNonPartial) {
-                ruleset.setValue('selector', ownAfterPartial);
+                ruleset.setData('selector', ownAfterPartial);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -500,7 +508,7 @@ export function processExtends(context: Context): void {
                 && hasAncestorDrivenNonPartial
               );
               if (shouldDeferToParentForNonPartial) {
-                ruleset.setValue('selector', ownAfterPartial);
+                ruleset.setData('selector', ownAfterPartial);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
                 ruleset.invalidateSelectorValueCache();
                 continue;
@@ -527,7 +535,7 @@ export function processExtends(context: Context): void {
               ? (ruleset.parent.parent as Ruleset)
               : null
           );
-          const parentSelectorForBoundary = parentRuleset?.value.selector;
+          const parentSelectorForBoundary = parentRuleset?.data.selector;
           const parentHasCombinatorContext = Boolean(
             parentSelectorForBoundary
             && !(parentSelectorForBoundary instanceof Nil)
@@ -552,39 +560,39 @@ export function processExtends(context: Context): void {
             && !newSelector.hoistToRoot
           );
           if (parentHoistedBoundaryCompose) {
-            const parentSelector = parentRuleset?.value.selector;
+            const parentSelector = parentRuleset?.data.selector;
             if (parentSelector && !(parentSelector instanceof Nil) && isNode(parentSelector, N.SelectorList)) {
-              const parentItems = (parentSelector as SelectorList).value;
+              const parentItems = (parentSelector as SelectorList).data;
               const complexItems = parentItems.filter(item => isNode(item, N.ComplexSelector)) as ComplexSelector[];
               if (complexItems.length === parentItems.length && complexItems.length >= 2) {
                 const first = complexItems[0]!;
-                const allTri = complexItems.every(c => c.value.length === 3 && isNode(c.value[1], N.Combinator));
+                const allTri = complexItems.every(c => c.data.length === 3 && isNode(c.data[1], N.Combinator));
                 if (allTri) {
-                  const leftKey = first.value[0]!.valueOf();
-                  const combKey = first.value[1]!.valueOf();
+                  const leftKey = first.data[0]!.valueOf();
+                  const combKey = first.data[1]!.valueOf();
                   const samePrefix = complexItems.every(c =>
-                    c.value[0]!.valueOf() === leftKey
-                    && c.value[1]!.valueOf() === combKey
+                    c.data[0]!.valueOf() === leftKey
+                    && c.data[1]!.valueOf() === combKey
                   );
                   if (samePrefix) {
                     const ownSelectorNode = ownSelector as Selector;
                     const middleIs = PseudoSelector.create({
                       name: ':is',
                       arg: SelectorList.create(
-                        complexItems.map(c => c.value[2]!.copy(true) as Selector)
+                        complexItems.map(c => c.data[2]!.copy(true) as Selector)
                       )
                     });
                     const parentFactored = ComplexSelector.create([
-                      first.value[0]!.copy(true) as Selector,
-                      (first.value[1] as Combinator).copy(true),
+                      first.data[0]!.copy(true) as Selector,
+                      (first.data[1] as Combinator).copy(true),
                       middleIs
                     ]);
                     const ownArg = isNode(ownSelectorNode, N.SelectorList)
-                      ? SelectorList.create((ownSelectorNode as SelectorList).value.map(s => s.copy(true) as Selector))
+                      ? SelectorList.create((ownSelectorNode as SelectorList).data.map(s => s.copy(true) as Selector))
                       : SelectorList.create([ownSelectorNode.copy(true) as Selector]);
                     const ownIs = PseudoSelector.create({ name: ':is', arg: ownArg });
                     newSelector = ComplexSelector.create([
-                      ...parentFactored.value.map(c => c.copy(true)),
+                      ...parentFactored.data.map(c => c.copy(true)),
                       Combinator.create(' '),
                       ownIs
                     ]).inherit(newSelector) as Selector;
@@ -617,19 +625,19 @@ export function processExtends(context: Context): void {
           if (hasOnlyPartialExtends && isNode(newSelector, N.SelectorList)) {
             const previousValues = new Set<string>();
             if (isNode(selector, N.SelectorList)) {
-              for (const item of (selector as SelectorList).value) {
+              for (const item of (selector as SelectorList).data) {
                 previousValues.add(item.valueOf());
               }
             } else {
               previousValues.add(selector.valueOf());
             }
-            for (const item of (newSelector as SelectorList).value) {
+            for (const item of (newSelector as SelectorList).data) {
               if (!previousValues.has(item.valueOf())) {
                 item.addFlag(F_EXTENDED);
               }
             }
           }
-          ruleset.setValue('selector', newSelector);
+          ruleset.setData('selector', newSelector);
           ruleset.invalidateSelectorValueCache();
           if (newSelector.hoistToRoot) {
             ruleset.hoistToRoot = true;
@@ -663,7 +671,7 @@ export function processExtends(context: Context): void {
           return false;
         }
         return Array.from(rulesets).some((ruleset) => {
-          const sel = ruleset.value.selector as Selector | undefined;
+          const sel = ruleset.data.selector as Selector | undefined;
           return sel && !isNode(sel, N.Nil) && wouldInstructionChangeSel(sel, instruction);
         });
       });

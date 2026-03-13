@@ -27,7 +27,7 @@ export function transformImportToLess(
 
     // Map 'path' property
     if (prop === 'path') {
-      const path = imp.value.path;
+      const path = imp.data.path;
       if (path instanceof Node) {
         return toLessNode(path, { cache });
       }

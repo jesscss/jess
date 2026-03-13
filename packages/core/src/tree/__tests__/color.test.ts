@@ -359,7 +359,7 @@ describe('Color Node', () => {
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
-      const callNode = new Call({ name: 'rgb', args });
+      const callNode = new Call({ name: 'rgb', args: args as any });
 
       const color = new Color({
         node: callNode,
@@ -368,8 +368,8 @@ describe('Color Node', () => {
       }, { format: ColorFormat.RGB });
 
       expect(color.options.format).toBe(ColorFormat.RGB);
-      expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('rgb');
+      expect(color.data.node).toBeInstanceOf(Call);
+      expect((color.data.node as Call).data.name).toBe('rgb');
       expect(color.alpha).toBe(1);
     });
 
@@ -379,7 +379,7 @@ describe('Color Node', () => {
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
-      const callNode = new Call({ name: 'hsl', args });
+      const callNode = new Call({ name: 'hsl', args: args as any });
 
       const color = new Color({
         node: callNode,
@@ -388,8 +388,8 @@ describe('Color Node', () => {
       }, { format: ColorFormat.HSL });
 
       expect(color.options.format).toBe(ColorFormat.HSL);
-      expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('hsl');
+      expect(color.data.node).toBeInstanceOf(Call);
+      expect((color.data.node as Call).data.name).toBe('hsl');
       expect(color.alpha).toBe(1);
     });
   });

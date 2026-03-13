@@ -107,7 +107,7 @@ describe('rgb()/rgba() branch coverage', () => {
     );
     const raw = (result as unknown as {
       value: { rgb: Array<number | [number, string]> };
-    }).value.rgb;
+    }).data.rgb;
 
     expect(raw[0]).toEqual([10, '%']);
     expect(raw[1]).toEqual([20, '%']);

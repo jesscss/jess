@@ -308,7 +308,7 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
         ...Array.from({ length: N }, (_, i) =>
           ruleset({
             selector: sellist([sel([el(`.child-${i}`)])]),
-            rules: rules([extend({ target: el('.base'), all: true })])
+            rules: rules([extend({ target: el('.base') })])
           })
         )
       ]);

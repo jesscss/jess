@@ -1,9 +1,9 @@
 /**
  * Sass opacity() function
- * 
+ *
  * Extracts the alpha channel from a color, or passes through CSS filter function
  * if given a number (for CSS filter: opacity()).
- * 
+ *
  * @example
  * opacity(rgba(255, 0, 0, 0.5)) // 0.5
  * opacity(50%) // CSS filter passthrough (returns as-is for now)
@@ -21,7 +21,7 @@ const opacity = defineFunction(
       // For now, return the dimension
       return colorOrNumber;
     }
-    
+
     // Extract alpha from color
     const color = colorOrNumber as Color;
     return new Dimension({ number: color.alpha, unit: undefined });

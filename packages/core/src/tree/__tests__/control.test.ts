@@ -47,7 +47,7 @@ function makeForHeader(pattern: any, iterable: any) {
       pattern,
       new Any('of', { role: 'any' }),
       iterable
-    ]))
+    ])) as any
   ]);
 }
 
@@ -76,12 +76,12 @@ function normalizePattern(pattern: any) {
   if (pattern instanceof VarDeclaration) {
     return { kind: 'single' as const, value: pattern };
   }
-  if (pattern instanceof Block && pattern.value instanceof List) {
-    const values = pattern.value.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+  if (pattern instanceof Block && pattern.data instanceof List) {
+    const values = pattern.data.data.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
     return { kind: 'tuple' as const, values: values as [VarDeclaration, ...VarDeclaration[]] };
   }
   if (isPatternNodeTuple(pattern)) {
-    const values = pattern.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+    const values = pattern.data.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
     return values.length === 1
       ? { kind: 'single' as const, value: values[0]! }
       : { kind: 'tuple' as const, values: values as [VarDeclaration, ...VarDeclaration[]] };
@@ -128,7 +128,7 @@ describe('Control Nodes', () => {
     const iterableRules = rules([
       decl({ name: 'one', value: new Any('red') }),
       ruleset({
-        selector: sel([el('.skip')]),
+        selector: sel([el('.skip')]) as any,
         rules: rules([decl({ name: 'x', value: new Any('nope') })])
       }),
       decl({ name: 'two', value: new Any('blue') })
@@ -191,7 +191,7 @@ describe('Control Nodes', () => {
 
   it('throws for invalid $for header', async () => {
     const badHeader = new Sequence([
-      new Paren(new Sequence([makePattern(['value'], 'single'), new Any('from', { role: 'any' }), list([new Any('a')])]))
+      new Paren(new Sequence([makePattern(['value'], 'single'), new Any('from', { role: 'any' }), list([new Any('a')])])) as any
     ]);
     expect(() => new For({ header: badHeader, rules: rules([]) })).toThrow('Invalid $for header');
   });
@@ -220,13 +220,13 @@ describe('Control Nodes', () => {
         }
       })
     });
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(forNode.data.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(forNode.data.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(forNode.data.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(forNode.data.rules.options.rulesVisibility.Mixin).toBe('public');
   });
 });

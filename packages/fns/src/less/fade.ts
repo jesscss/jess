@@ -9,8 +9,8 @@ import {
 const fade = defineFunction(
   'fade',
   function(this: Context, color: Color, amount: Dimension) {
-    const newAlpha = amount.value.number / 100;
-    const inputNode = typeof color.value.node === 'string' ? color.value.node : undefined;
+    const newAlpha = amount.data.number / 100;
+    const inputNode = typeof color.data.node === 'string' ? color.data.node : undefined;
     const preserveHexFormat = color.options.format === ColorFormat.HEX
       && !!inputNode
       && inputNode.startsWith('#');

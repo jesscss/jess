@@ -19,10 +19,14 @@ export interface SelectorList {
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
+  get length() {
+    return this.data.length;
+  }
+
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();
-    for (const selector of this.value) {
+    for (const selector of this.data) {
       for (const key of selector.keySet) {
         combinedKeySet.add(key);
       }
@@ -47,32 +51,32 @@ export class SelectorList extends Selector<Selector[]> {
     // This matches Less output expectations when an extend created an :is() and it ended up being
     // the whole selector-list item.
     const value: Selector[] = [];
-    for (const item of this.value) {
+    for (const item of this.data) {
       // Flatten `:is(a, b)` selector-list items into `a, b`.
       // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
-      if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
-        const arg = item.value.arg;
+      if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
+        const arg = item.data.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.value);
+          value.push(...arg.data);
           continue;
         }
       }
-      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-          const arg = only.value.arg;
+      if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
+        const only = item.data[0]!;
+        if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+          const arg = only.data.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
+            value.push(...arg.data);
             continue;
           }
         }
       }
-      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-          const arg = only.value.arg;
+      if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
+        const only = item.data[0]!;
+        if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+          const arg = only.data.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
+            value.push(...arg.data);
             continue;
           }
         }
@@ -112,7 +116,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    const itemValues = this.value.map(item => item.valueOf());
+    const itemValues = this.data.map(item => item.valueOf());
     return itemValues.join(',');
   }
 
@@ -131,16 +135,16 @@ export class SelectorList extends Selector<Selector[]> {
     return pipe(
       () => {
         const list = this;
-        const { value } = list;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
+        const { data } = list;
+        const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector>).then((res) => {
-              value[i] = res as Selector;
+              list.setData(i, res as Selector);
               return undefined;
             });
           }
-          value[i] = out as Selector;
+          list.setData(i, out as Selector);
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -149,45 +153,45 @@ export class SelectorList extends Selector<Selector[]> {
         return list;
       },
       (list) => {
-        const { value } = list;
+        const { data } = list;
         // Flatten top-level `:is(a, b)` items into the selector list.
         // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
-        for (const item of value) {
-          if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
-            const arg = item.value.arg;
+        for (const item of data) {
+          if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
+            const arg = item.data.arg;
             if (arg && isNode(arg, N.SelectorList)) {
-              flattened.push(...arg.value);
+              flattened.push(...arg.data);
               continue;
             }
           }
-          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-              const arg = only.value.arg;
+          if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
+            const only = item.data[0]!;
+            if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+              const arg = only.data.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.value);
+                flattened.push(...arg.data);
                 continue;
               }
             }
           }
-          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-              const arg = only.value.arg;
+          if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
+            const only = item.data[0]!;
+            if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+              const arg = only.data.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.value);
+                flattened.push(...arg.data);
                 continue;
               }
             }
           }
           flattened.push(item);
         }
-        if (flattened.length !== value.length) {
-          list.value = flattened;
+        if (flattened.length !== data.length) {
+          list.setData(flattened);
         }
-        if (value.length === 1) {
-          return value[0]!;
+        if (data.length === 1) {
+          return data[0]!;
         }
         return list;
       }

@@ -58,7 +58,7 @@ describe('Ampersand', () => {
         }
       }
     `);
-    node = wrapAmpList([sel([amp()])]);
+    node = wrapAmpList([sel([amp()]) as any]);
     evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one,
@@ -88,7 +88,7 @@ describe('Ampersand', () => {
 
   it('should collapse selectors when in collapsing mode #2', async () => {
     /** We need a root node to bubble rules */
-    let node = wrapAmpList([sel([amp()])]);
+    let node = wrapAmpList([sel([amp()]) as any]);
     context = new Context({ collapseNesting: true });
 
     let evald = await node.eval(context);
@@ -134,7 +134,7 @@ describe('Ampersand', () => {
   });
 
   it('should collapse selectors when ampersand is set to hoist #2', async () => {
-    let node = wrapAmpList([sel([amp('')])]);
+    let node = wrapAmpList([sel([amp('')]) as any]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
@@ -164,7 +164,7 @@ describe('Ampersand', () => {
   });
 
   it('should collapse selectors when ampersand has an appended value #2', async () => {
-    let node = wrapAmpList([sel([amp('-1')])]);
+    let node = wrapAmpList([sel([amp('-1')]) as any]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
@@ -181,7 +181,7 @@ describe('Ampersand', () => {
   });
 
   it('should reject invalid ampersand merge-template joins', async () => {
-    const node = wrapAmpList([sel([amp('.fruit-&')])]);
+    const node = wrapAmpList([sel([amp('.fruit-&')]) as any]);
     context = new Context({ collapseNesting: true });
     await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
   });
@@ -193,7 +193,7 @@ describe('Ampersand', () => {
         selector: el('apple, satsuma, banana, pear'),
         rules: rules([
           ruleset({
-            selector: sel([amp('.fruit-quoted-&')]),
+            selector: sel([amp('.fruit-quoted-&')]) as any,
             rules: rules([decl({ name: 'content', value: any('"Quoted"') })])
           })
         ])
@@ -217,7 +217,7 @@ describe('Ampersand', () => {
         selector: el('.one, .two'),
         rules: rules([
           ruleset({
-            selector: sel([amp('.fruit-&')]),
+            selector: sel([amp('.fruit-&')]) as any,
             rules: rules([decl({ name: 'color', value: any('red') })])
           })
         ])
@@ -228,7 +228,7 @@ describe('Ampersand', () => {
   });
 
   it('should wrap inner lists in :is()', async () => {
-    let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
+    let node = wrapAmpList([sel([amp()]) as any, sel([el('.three')]) as any]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
@@ -268,7 +268,7 @@ describe('Ampersand', () => {
   it('unwraps :is(* b)[e] to * b[e] when ampersand is flattened (css-3 nesting case)', async () => {
     const node = rules([
       ruleset({
-        selector: sel([el('*'), co(' '), el('b')]),
+        selector: sel([el('*'), co(' '), el('b')]) as any,
         rules: rules([
           ruleset({
             selector: compound([amp(), attr({ name: 'e' })]),
@@ -293,11 +293,11 @@ describe('Ampersand', () => {
             op: '=',
             value: any('foo')
           })
-        ]),
+        ]) as any,
         rules: rules([
           decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
           ruleset({
-            selector: sel([amp('-1')]),
+            selector: sel([amp('-1')]) as any,
             rules: rules([
               decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
             ])

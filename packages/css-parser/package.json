@@ -37,7 +37,6 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/parser-runtime": "workspace:*",
     "chevrotain": "^11.0.3",
     "chevrotain-allstar": "~0.3.0",
     "color-name": "~2.0.0",

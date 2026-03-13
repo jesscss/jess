@@ -28,15 +28,15 @@ import {
 const each = defineFunction(
   'each',
   async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    const rawMixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
+    const rawMixinRules = mixin instanceof Rules ? mixin : mixin.data.rules;
     // Preserve callback lexical scope for variable lookups used in each bodies.
     let mixinRules = rawMixinRules.copy(true).inherit(rawMixinRules);
     mixinRules.sourceParent = mixin.sourceParent ?? mixin.parent ?? mixinRules.sourceParent;
     let keys = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
-      let params = mixin.value.params;
+      let params = mixin.data.params;
       if (params) {
-        let paramList = params.value;
+        let paramList = params.data;
         let key0 = paramList[0]?.toTrimmedString();
         let key1 = paramList[1]?.toTrimmedString();
         let key2 = paramList[2]?.toTrimmedString();

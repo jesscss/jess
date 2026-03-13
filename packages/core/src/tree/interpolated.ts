@@ -24,7 +24,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = (replacement as { value: Node }).value;
+    const arg = (replacement as unknown as { data: Node }).data;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -33,7 +33,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    return (replacement as { value: Node }).value;
+    return (replacement as unknown as { data: Node }).data;
   }
   return replacement;
 }
@@ -88,12 +88,28 @@ export class Interpolated<
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  get source() {
+    return this.data.source;
+  }
+
+  set source(val: string) {
+    this.setData('source', val);
+  }
+
+  get replacements() {
+    return this.data.replacements;
+  }
+
+  set replacements(val: Node[]) {
+    this.setData('replacements', val);
+  }
+
   override valueOf(): string {
-    return this.value.source;
+    return this.data.source;
   }
 
   replace(replacements: Node[], options?: PrintOptions): string {
-    let { source } = this.value;
+    let { source } = this.data;
     let output = source;
     let i = 0;
     let printOpts = getPrintOptions(options);
@@ -132,7 +148,7 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const result = this.replace(this.value.replacements, options);
+    const result = this.replace(this.data.replacements, options);
     w.add(result, this);
     return w.getSince(mark);
   }
@@ -142,7 +158,7 @@ export class Interpolated<
    * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
   createSelector() {
-    let { source, replacements } = this.value;
+    let { source, replacements } = this.data;
     const segments = source.split(INTERPOLATION_PLACEHOLDER);
     const isWholeSelectorInterpolation = (
       replacements.length === 1
@@ -225,7 +241,7 @@ export class Interpolated<
    */
   _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
-    let { replacements } = node.value;
+    let { replacements } = node.data;
 
     let maybe = serialForEach(replacements, (n, idx) => {
       const out = n.eval(context);

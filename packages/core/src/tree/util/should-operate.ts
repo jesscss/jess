@@ -39,8 +39,8 @@ export function shouldOperateWithMathFrames(
   if (inCalc) {
     /** Only collapse safe units */
     if (isNode(left, N.Dimension) && isNode(right, N.Dimension)) {
-      const lUnit = left.value.unit;
-      const rUnit = right.value.unit;
+      const lUnit = left.data.unit;
+      const rUnit = right.data.unit;
       if ((op === '+' || op === '-') && lUnit === rUnit) {
         return true;
       }

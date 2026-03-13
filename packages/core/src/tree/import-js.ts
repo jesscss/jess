@@ -41,9 +41,9 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this.value;
+    const { path } = this.data;
     const { namespace } = this.options;
-    const imports = this.value.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const imports = this.data.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
 
     w.add('@-use ');
     path.toString(options);

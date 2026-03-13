@@ -38,8 +38,8 @@ function memoize<Args extends any[], Return>(
  * Memoized so that percentOf(255) always returns the same function instance
  */
 export const percentOf = memoize((base: number): ConversionPlugin => (value: unknown) => {
-  if (value instanceof Dimension && value.value.unit === '%') {
-    const converted = value.value.number * base / 100;
+  if (value instanceof Dimension && value.data.unit === '%') {
+    const converted = value.data.number * base / 100;
     return new Num(converted);
   }
   return value;
@@ -54,7 +54,7 @@ export const angleToDegrees = memoize((): ConversionPlugin => (value: unknown) =
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value.data;
   if (unit === 'turn') {
     return new Num(number * 360);
   }
@@ -79,7 +79,7 @@ export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => 
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value.data;
   let degrees = number;
 
   if (unit === 'turn') {
@@ -110,7 +110,7 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value.data;
   let result = number;
 
   if (unit === '%') {
@@ -131,10 +131,10 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
  */
 export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension) {
-    return new Num(value.value.number); // Extract number from Dimension
+    return new Num(value.data.number); // Extract number from Dimension
   }
   if (value instanceof Num) {
-    return new Num(value.value.number);
+    return new Num(value.data.number);
   }
   return value; // Don't know how to handle this, pass through
 });
@@ -153,7 +153,7 @@ export const lengthToPx = (baseFontSize: number = 16): ConversionPlugin => (valu
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value.data;
 
   switch (unit) {
     case 'px': return new Num(number);
@@ -176,7 +176,7 @@ export const timeToMs = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value.data;
   if (unit === 'ms') {
     return new Num(number);
   }
@@ -194,7 +194,7 @@ export const frequencyToHz = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value.data;
   if (unit === 'hz') {
     return new Num(number);
   }
@@ -212,7 +212,7 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value.data;
   if (unit === 'turn') {
     return new Num(number * 2 * Math.PI);
   }
@@ -252,19 +252,19 @@ export const splitSequence = (): PreprocessParams => {
 
     // Split the sequence into individual arguments
     const splitArgs: any[] = [];
-    for (let i = 0; i < sequence.value.length; i++) {
-      const item = sequence.value[i]!;
+    for (let i = 0; i < sequence.data.length; i++) {
+      const item = sequence.data[i]!;
 
       // Check if this is the last item and it's an Operation (likely a slash)
-      if (i === sequence.value.length - 1 && item.type === 'Operation') {
-        const [left, op, right] = (item as Operation).value;
+      if (i === sequence.data.length - 1 && item.type === 'Operation') {
+        const [left, op, right] = (item as Operation).data;
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)
         // This handles test cases where Num(0) is used as a placeholder for undefined
         if (right) {
           const isPlaceholder = right.type === 'Num'
-            && (right as any).value?.number === 0;
+            && (right as any).data?.number === 0;
           if (!isPlaceholder) {
             splitArgs.push(right);
           }

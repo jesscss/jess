@@ -39,12 +39,12 @@ export function indent(depth: number): string {
 }
 
 function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
-  const selector = node.value.selector;
+  const selector = node.data.selector;
   if (!selector || selector instanceof Nil) {
     return false;
   }
   if (isNode(selector, N.SelectorList)) {
-    return selector.value.some(item => item.hasFlag(F_EXTENDED));
+    return selector.data.some(item => item.hasFlag(F_EXTENDED));
   }
   return selector.hasFlag(F_EXTENDED);
 }
@@ -57,7 +57,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (node.type === 'Ruleset' && node.value.selector instanceof Nil) {
+  if (node.type === 'Ruleset' && node.data.selector instanceof Nil) {
     return '';
   }
   // let header = node.getHeaderString(options);
@@ -65,35 +65,14 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const mark = w.mark();
   const previousReferenceMode = options.referenceMode === true;
   const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
-  const isInMixinOutputScope = (): boolean => {
-    const seen = new Set<any>();
-    const queue: any[] = [(node as any).parent, (node as any).sourceParent];
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (!current || seen.has(current)) {
-        continue;
-      }
-      seen.add(current);
-      if (current.options?.isMixinOutput === true) {
-        return true;
-      }
-      queue.push(current.parent, current.sourceParent);
-    }
-    return false;
-  };
-  const parentIsMixinOutput = isInMixinOutputScope();
-  const ownReferenceMode = Boolean(
-    (node as any).options?.referenceMode === true
-    && !parentIsMixinOutput
-  );
-  const inReferenceMode = previousReferenceMode || ownReferenceMode;
-  const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
+  const inReferenceMode = previousReferenceMode;
+  const enteringReferenceMode = false;
   const nodeExtendsReference = node.type === 'Ruleset' && rulesetHasExtendedTopLevelSelector(node as Ruleset);
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
   options.referenceMode = inReferenceMode;
   options.referenceRenderEnabled = renderEnabled;
-  const rules = node.value.rules;
+  const rules = node.data.rules;
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {
       options.referenceMode = previousReferenceMode;
@@ -129,15 +108,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     return false;
   };
-  const originatesFromReferenceImport = (n: any): boolean => {
-    return sourceChainHas(n, (current) => {
-      if (current?.type !== 'StyleImport') {
-        return false;
-      }
-      const importOptions = current.options?.importOptions;
-      return importOptions?.reference === true || importOptions?._dedupe === true;
-    });
-  };
   const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
   if (rulesToRender.length === 0) {
     options.referenceMode = previousReferenceMode;
@@ -157,7 +127,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
     const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-    const declProp = node.value.name.valueOf();
+    const declProp = node.data.name.valueOf();
     let seenValues = seenDeclarationsByProp.get(declProp);
     if (!seenValues) {
       seenValues = new Set<string>();
@@ -199,17 +169,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (!n.visible && !n.fullRender) {
       continue;
     }
-    if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
-      continue;
-    }
-    if (
-      isNode(n, N.Any)
-      && String(n.valueOf?.() ?? '').trimStart().startsWith('/*')
-      && originatesFromReferenceImport(n)
-      && !originatesFromCall(n)
-    ) {
-      continue;
-    }
     if (inReferenceMode && !renderEnabled && !isContainer) {
       continue;
     }
@@ -217,10 +176,29 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       continue;
     }
 
+    if (isNode(n, N.Rules)) {
+      // Reference-mode Rules preserved by flatRules — serialize with referenceMode cascading
+      const ownRefMode = (n as any).options?.referenceMode === true;
+      const childRefMode = inReferenceMode || ownRefMode;
+      const entering = !inReferenceMode && ownRefMode;
+      const childRenderEnabled = childRefMode
+        ? (entering ? false : renderEnabled)
+        : true;
+      const childOptions = {
+        ...options,
+        referenceMode: childRefMode,
+        referenceRenderEnabled: childRenderEnabled
+      } as FinalPrintOptions;
+      const childOut = w.capture(() => n.toTrimmedString(childOptions));
+      if (childOut) {
+        w.add(childOut, n);
+      }
+      continue;
+    }
     if (isNode(n, N.Ruleset | N.AtRule)) {
       if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
-        const parentSelector = String(node.value.selector?.valueOf?.() ?? '');
-        const childSelector = String(n.value.selector?.valueOf?.() ?? '');
+        const parentSelector = String(node.data.selector?.valueOf?.() ?? '');
+        const childSelector = String(n.data.selector?.valueOf?.() ?? '');
         const isExpandedDescendant = parentSelector !== '' && (
           childSelector.startsWith(`${parentSelector} `)
           || childSelector.startsWith(`${parentSelector}.`)
@@ -252,7 +230,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
             if (current?.type !== 'Ruleset') {
               return false;
             }
-            const currentSelector = String(current.value?.selector?.valueOf?.() ?? '');
+            const currentSelector = String(current.data?.selector?.valueOf?.() ?? '');
             return currentSelector !== '' && currentSelector === childSelector;
           });
           return !ownedByCurrentChild;
@@ -260,7 +238,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
           return otherIdx !== idx
             && isNode(other, N.Ruleset)
-            && String(other.value.selector?.valueOf?.() ?? '') === childSelector;
+            && String(other.data.selector?.valueOf?.() ?? '') === childSelector;
         });
         if (isExpandedDescendant
           && !isSelfWrappedDescendant
@@ -345,7 +323,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
         ? `${idt}${out}`
         : normalizeIndent(declIn, idt, true);
-      if (nn.value.name.valueOf().startsWith('--')) {
+      if (nn.data.name.valueOf().startsWith('--')) {
         w.add(idt);
         w.add(out, nn);
       } else {

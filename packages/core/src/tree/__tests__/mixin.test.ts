@@ -543,13 +543,13 @@ describe('Mixin', () => {
       // }
       const node = rules([
         ruleset({
-          selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]),
+          selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]) as any,
           rules: rules([
             ruleset({
-              selector: sel([el('.sol'), co(' '), el('.la')]),
+              selector: sel([el('.sol'), co(' '), el('.la')]) as any,
               rules: rules([
                 ruleset({
-                  selector: sel([el('.si')]),
+                  selector: sel([el('.si')]) as any,
                   rules: rules([
                     decl({ name: 'color', value: any('cyan') })
                   ])

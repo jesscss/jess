@@ -117,7 +117,7 @@ describe('serializeTypes coverage', () => {
       .withNegatedDefault(@x) when not (default()) { c: 1; }
     `);
     expect(errors.length).toBe(0);
-    const mixins = (tree as any).value.filter((node: any) => node.type === 'Mixin');
+    const mixins = (tree as any).data.filter((node: any) => node.type === 'Mixin');
     expect(mixins).toHaveLength(3);
     expect(mixins[0].options?.hasDefault).toBe(true);
     expect(Boolean(mixins[1].options?.hasDefault)).toBe(false);
@@ -1535,16 +1535,16 @@ describe('extend cases', () => {
     expect(errors).toHaveLength(0);
 
     // Find the extend node and check its selector
-    const ruleset = tree.value[0];
+    const ruleset = tree.data[0];
     expect(ruleset?.type).toBe('Ruleset');
     if (ruleset && ruleset.type === 'Ruleset') {
-      const rules = ruleset.value.rules;
-      if (rules && rules.value) {
-        for (const rule of rules.value) {
+      const rules = ruleset.data.rules;
+      if (rules && rules.data) {
+        for (const rule of rules.data) {
           if (rule.type === 'Extend') {
             // Check what selector the parser set
-            const selectorType = rule.value.selector?.type;
-            const selectorValueOf = rule.value.selector?.valueOf();
+            const selectorType = rule.data.selector?.type;
+            const selectorValueOf = rule.data.selector?.valueOf();
 
             // The parser should set the extend selector to undefined for extends inside rulesets
             // This allows it to default to ampersand and resolve to the ruleset's selector

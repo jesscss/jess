@@ -143,22 +143,22 @@ describe('Node Flags', () => {
       const inner = list([any('a'), any('b')]);
       const outer = paren(inner);
       expect(inner.hasFlag(F_STATIC)).toBe(true);
-      expect(outer.hasFlag(F_STATIC)).toBe(true);
-      expect(outer.hasFlag(F_NON_STATIC)).toBe(false);
+      expect((outer as any).hasFlag(F_STATIC)).toBe(true);
+      expect((outer as any).hasFlag(F_NON_STATIC)).toBe(false);
     });
 
     it('nested non-static containers should bubble F_NON_STATIC up', () => {
       const inner = list([any('a'), ref({ key: any('x') })] as any);
       const outer = paren(inner);
-      expect(outer.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(outer.hasFlag(F_STATIC)).toBe(false);
+      expect((outer as any).hasFlag(F_NON_STATIC)).toBe(true);
+      expect((outer as any).hasFlag(F_STATIC)).toBe(false);
     });
 
     it('F_MAY_ASYNC should bubble through multiple levels', () => {
       const r = ref({ key: any('x') });
       const inner = list([r] as any);
       const outer = paren(inner);
-      expect(outer.hasFlag(F_MAY_ASYNC)).toBe(true);
+      expect((outer as any).hasFlag(F_MAY_ASYNC)).toBe(true);
     });
 
     it('expression is always F_NON_STATIC (needs unwrapping)', () => {
@@ -276,20 +276,20 @@ describe('Node Flags', () => {
   describe('Paren flag behavior', () => {
     it('non-escaped Paren with static child inherits F_STATIC', () => {
       const node = paren(any('hello'));
-      expect(node.hasFlag(F_STATIC)).toBe(true);
-      expect(node.hasFlag(F_NON_STATIC)).toBe(false);
+      expect((node as any).hasFlag(F_STATIC)).toBe(true);
+      expect((node as any).hasFlag(F_NON_STATIC)).toBe(false);
     });
 
     it('escaped Paren is always F_NON_STATIC', () => {
       const node = paren(any('hello'), { escaped: true });
-      expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_STATIC)).toBe(false);
+      expect((node as any).hasFlag(F_NON_STATIC)).toBe(true);
+      expect((node as any).hasFlag(F_STATIC)).toBe(false);
     });
 
     it('Paren with non-static child gets F_NON_STATIC', () => {
       const node = paren(ref({ key: any('x') }));
-      expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
+      expect((node as any).hasFlag(F_NON_STATIC)).toBe(true);
+      expect((node as any).hasFlag(F_MAY_ASYNC)).toBe(true);
     });
   });
 
@@ -382,7 +382,7 @@ describe('Node Flags', () => {
 
     it('paren(expr(static)) is F_NON_STATIC because of Expression', () => {
       const node = paren(expr(any('foo')));
-      expect(node.hasFlag(F_NON_STATIC)).toBe(true);
+      expect((node as any).hasFlag(F_NON_STATIC)).toBe(true);
     });
 
     it('Combinator is always F_STATIC', () => {
@@ -392,7 +392,7 @@ describe('Node Flags', () => {
 
     it('escaped paren wrapping escaped quoted is F_NON_STATIC', () => {
       const node = paren(quoted('2/1', { escaped: true }), { escaped: true });
-      expect(node.hasFlag(F_NON_STATIC)).toBe(true);
+      expect((node as any).hasFlag(F_NON_STATIC)).toBe(true);
     });
 
     it('F_VISIBLE is preserved when adding F_STATIC', () => {

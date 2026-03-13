@@ -1,11 +1,11 @@
 import { defineFunction, Node, List, Sequence, Dimension, toNumber } from '@jesscss/core';
 
-function getItems(value: Node): Node[] {
-  if (value instanceof List && value.length === 1 && value.value[0] instanceof Sequence) {
-    return value.value[0].value;
+function getItems(value: Node): readonly Node[] {
+  if (value instanceof List && value.length === 1 && value.data[0] instanceof Sequence) {
+    return value.data[0].data;
   }
   if (value instanceof List || value instanceof Sequence) {
-    return value.value;
+    return value.data;
   }
   return [value];
 }
@@ -28,7 +28,7 @@ const extract = defineFunction(
     const out = items[normalized - 1]!;
     if (out instanceof Sequence) {
       const normalizedOut = out.copy(true) as Sequence;
-      normalizedOut.value.forEach((node, index) => {
+      normalizedOut.data.forEach((node, index) => {
         node.pre = index === 0 ? 0 : 1;
       });
       return normalizedOut;

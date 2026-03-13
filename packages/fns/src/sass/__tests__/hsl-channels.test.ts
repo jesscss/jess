@@ -19,16 +19,16 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] });
       const result = hue(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(120);
-      expect((result as Dimension).value.unit).toBe('deg');
+      expect((result as Dimension).data.number).toBe(120);
+      expect((result as Dimension).data.unit).toBe('deg');
     });
 
     it('extracts hue from RGB color (converts to HSL)', () => {
       const color = new Color('#ff0000');
       const result = hue(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.unit).toBe('deg');
-      const hueValue = (result as Dimension).value.number;
+      expect((result as Dimension).data.unit).toBe('deg');
+      const hueValue = (result as Dimension).data.number;
       expect(hueValue).toBeGreaterThanOrEqual(0);
       expect(hueValue).toBeLessThan(360);
     });
@@ -37,8 +37,8 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [180, 0.5, 0.5] });
       const result = hue({ color });
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(180);
-      expect((result as Dimension).value.unit).toBe('deg');
+      expect((result as Dimension).data.number).toBe(180);
+      expect((result as Dimension).data.unit).toBe('deg');
     });
 
     it('differs from Less: Sass returns deg while Less returns unitless number', () => {
@@ -46,10 +46,10 @@ describe('Sass HSL channel functions', () => {
       const sassResult = hue(color) as Dimension;
       const lessResult = lessHue(color) as Num;
 
-      expect(sassResult.value.number).toBe(210);
-      expect(sassResult.value.unit).toBe('deg');
+      expect(sassResult.data.number).toBe(210);
+      expect(sassResult.data.unit).toBe('deg');
       expect(lessResult).toBeInstanceOf(Num);
-      expect(lessResult.value.number).toBe(210);
+      expect(lessResult.data.number).toBe(210);
     });
   });
 
@@ -58,25 +58,25 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] });
       const result = saturation(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(50);
-      expect((result as Dimension).value.unit).toBe('%');
+      expect((result as Dimension).data.number).toBe(50);
+      expect((result as Dimension).data.unit).toBe('%');
     });
 
     it('extracts saturation from RGB color (converts to HSL)', () => {
       const color = new Color('#ff0000');
       const result = saturation(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.unit).toBe('%');
-      expect((result as Dimension).value.number).toBeGreaterThanOrEqual(0);
-      expect((result as Dimension).value.number).toBeLessThanOrEqual(100);
+      expect((result as Dimension).data.unit).toBe('%');
+      expect((result as Dimension).data.number).toBeGreaterThanOrEqual(0);
+      expect((result as Dimension).data.number).toBeLessThanOrEqual(100);
     });
 
     it('works with object parameters', () => {
       const color = new Color({ format: 2, hsl: [120, 0.75, 0.5] });
       const result = saturation({ color });
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(75);
-      expect((result as Dimension).value.unit).toBe('%');
+      expect((result as Dimension).data.number).toBe(75);
+      expect((result as Dimension).data.unit).toBe('%');
     });
 
     it('matches Less behavior for value and percent unit', () => {
@@ -84,10 +84,10 @@ describe('Sass HSL channel functions', () => {
       const sassResult = saturation(color) as Dimension;
       const lessResult = lessSaturation(color) as Dimension;
 
-      expect(sassResult.value.number).toBe(25);
-      expect(sassResult.value.unit).toBe('%');
-      expect(lessResult.value.number).toBe(25);
-      expect(lessResult.value.unit).toBe('%');
+      expect(sassResult.data.number).toBe(25);
+      expect(sassResult.data.unit).toBe('%');
+      expect(lessResult.data.number).toBe(25);
+      expect(lessResult.data.unit).toBe('%');
     });
   });
 
@@ -96,25 +96,25 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] });
       const result = lightness(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(50);
-      expect((result as Dimension).value.unit).toBe('%');
+      expect((result as Dimension).data.number).toBe(50);
+      expect((result as Dimension).data.unit).toBe('%');
     });
 
     it('extracts lightness from RGB color (converts to HSL)', () => {
       const color = new Color('#ff0000');
       const result = lightness(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.unit).toBe('%');
-      expect((result as Dimension).value.number).toBeGreaterThanOrEqual(0);
-      expect((result as Dimension).value.number).toBeLessThanOrEqual(100);
+      expect((result as Dimension).data.unit).toBe('%');
+      expect((result as Dimension).data.number).toBeGreaterThanOrEqual(0);
+      expect((result as Dimension).data.number).toBeLessThanOrEqual(100);
     });
 
     it('works with object parameters', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.25] });
       const result = lightness({ color });
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(25);
-      expect((result as Dimension).value.unit).toBe('%');
+      expect((result as Dimension).data.number).toBe(25);
+      expect((result as Dimension).data.unit).toBe('%');
     });
 
     it('matches Less behavior for value and percent unit', () => {
@@ -122,10 +122,10 @@ describe('Sass HSL channel functions', () => {
       const sassResult = lightness(color) as Dimension;
       const lessResult = lessLightness(color) as Dimension;
 
-      expect(sassResult.value.number).toBe(30);
-      expect(sassResult.value.unit).toBe('%');
-      expect(lessResult.value.number).toBe(30);
-      expect(lessResult.value.unit).toBe('%');
+      expect(sassResult.data.number).toBe(30);
+      expect(sassResult.data.unit).toBe('%');
+      expect(lessResult.data.number).toBe(30);
+      expect(lessResult.data.unit).toBe('%');
     });
   });
 });

@@ -20,7 +20,7 @@ export class RawRules extends Rules {
     const mark = w.mark();
     w.add('{');
     // Emit children using toString to preserve exact whitespace/comments
-    for (const child of this.value) {
+    for (const child of this.data) {
       child.toString(options);
     }
     w.add('}');
@@ -32,7 +32,7 @@ export class RawRules extends Rules {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (const child of this.value) {
+    for (const child of this.data) {
       child.toString(options);
     }
     return w.getSince(mark);

@@ -68,7 +68,7 @@ export function stylesheet(this: C, T: TokenMap) {
     let root: Node = $.SUBRULE($.main);
 
     if (!RECORDING_PHASE) {
-      let rules = root.value as Node[];
+      let rules = root.data as Node[];
 
       if (charset) {
         let loc = $.getLocationInfo(charset);
@@ -640,7 +640,7 @@ export function relativeSelector(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
-              complex.value.unshift(combinator);
+              complex.unshift(combinator);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -1498,7 +1498,7 @@ export function varFunction(this: C, T: TokenMap) {
         args = new List([propNode], undefined, $.getLocationInfo(prop), this.context);
       } else {
         let { startOffset, startLine, startColumn } = prop;
-        args.value.unshift(propNode);
+        args.unshift(propNode);
         args.location[0] = startOffset;
         args.location[1] = startLine!;
         args.location[2] = startColumn!;
@@ -2035,11 +2035,11 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                 let seq = $.SUBRULE($.mediaRange, { ARGS: [ctx] });
                 if (!RECORDING_PHASE) {
                   let [startOffset, startLine, startColumn] = $.endRule();
-                  seq.value.unshift($.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context)));
+                  seq.data.unshift($.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context)));
                   seq.location[0] = startOffset;
                   seq.location[1] = startLine;
                   seq.location[2] = startColumn;
-                  return new QueryCondition(seq.value, undefined, seq.location, this.context);
+                  return new QueryCondition(seq.data, undefined, seq.location, this.context);
                 }
                 return seq;
               }
@@ -2094,11 +2094,11 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
               let seq = $.SUBRULE2($.mediaRange, { ARGS: [{ ...ctx }] });
               if (!RECORDING_PHASE) {
                 let [startOffset, startLine, startColumn] = $.endRule();
-                seq.value.unshift(rule1);
+                seq.data.unshift(rule1);
                 seq.location[0] = startOffset;
                 seq.location[1] = startLine;
                 seq.location[2] = startColumn;
-                return new QueryCondition(seq.value, undefined, seq.location, this.context);
+                return new QueryCondition(seq.data, undefined, seq.location, this.context);
               }
               return seq;
             }
@@ -3338,11 +3338,11 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    if (!args || args.value.length !== 1) {
+    if (!args || args.data.length !== 1) {
       return false;
     }
-    const firstArg = args.value[0];
-    return Boolean(firstArg instanceof Sequence && firstArg.value.length >= 2);
+    const firstArg = args.data[0];
+    return Boolean(firstArg instanceof Sequence && firstArg.data.length >= 2);
   };
 
   alt ??= (ctx: RuleContext = {}) => [

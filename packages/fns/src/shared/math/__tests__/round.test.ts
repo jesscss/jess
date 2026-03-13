@@ -5,6 +5,6 @@ import sharedRound from '../round.js';
 describe('shared round()', () => {
   it('rounds with precision', () => {
     const result = sharedRound(new Dimension({ number: 2.345, unit: 'px' }), 2);
-    expect(result.value).toEqual({ number: 2.35, unit: 'px' });
+    expect(result.data).toEqual({ number: 2.35, unit: 'px' });
   });
 });

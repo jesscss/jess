@@ -20,9 +20,9 @@ describe('Sass advanced list functions', () => {
       const result = setNth(list, n, value);
       expect(result).toBeInstanceOf(List);
       expect(result.length).toBe(3);
-      expect((result.value[0] as Num).valueOf()).toBe(10);
-      expect((result.value[1] as Num).valueOf()).toBe(99);
-      expect((result.value[2] as Num).valueOf()).toBe(30);
+      expect((result.data[0] as Num).valueOf()).toBe(10);
+      expect((result.data[1] as Num).valueOf()).toBe(99);
+      expect((result.data[2] as Num).valueOf()).toBe(30);
     });
 
     it('sets first element', () => {
@@ -30,7 +30,7 @@ describe('Sass advanced list functions', () => {
       const n = new Dimension({ number: 1 });
       const value = new Num(99);
       const result = setNth(list, n, value);
-      expect((result.value[0] as Num).valueOf()).toBe(99);
+      expect((result.data[0] as Num).valueOf()).toBe(99);
     });
 
     it('sets last element', () => {
@@ -38,7 +38,7 @@ describe('Sass advanced list functions', () => {
       const n = new Dimension({ number: 3 });
       const value = new Num(99);
       const result = setNth(list, n, value);
-      expect((result.value[2] as Num).valueOf()).toBe(99);
+      expect((result.data[2] as Num).valueOf()).toBe(99);
     });
 
     it('preserves original list', () => {
@@ -47,9 +47,9 @@ describe('Sass advanced list functions', () => {
       const value = new Num(99);
       const result = setNth(list, n, value);
       // Original should be unchanged
-      expect((list.value[0] as Num).valueOf()).toBe(10);
+      expect((list.data[0] as Num).valueOf()).toBe(10);
       // New list should have the change
-      expect((result.value[0] as Num).valueOf()).toBe(99);
+      expect((result.data[0] as Num).valueOf()).toBe(99);
     });
 
     it('throws error for out of bounds index', () => {
@@ -67,7 +67,7 @@ describe('Sass advanced list functions', () => {
       const result = append(list, value);
       expect(result).toBeInstanceOf(List);
       expect(result.length).toBe(3);
-      expect((result.value[2] as Num).valueOf()).toBe(3);
+      expect((result.data[2] as Num).valueOf()).toBe(3);
     });
 
     it('preserves separator when appending', () => {
@@ -101,8 +101,8 @@ describe('Sass advanced list functions', () => {
       const result = join(list1, list2);
       expect(result).toBeInstanceOf(List);
       expect(result.length).toBe(4);
-      expect((result.value[0] as Num).valueOf()).toBe(1);
-      expect((result.value[3] as Num).valueOf()).toBe(4);
+      expect((result.data[0] as Num).valueOf()).toBe(1);
+      expect((result.data[3] as Num).valueOf()).toBe(4);
     });
 
     it('uses first list separator by default', () => {
@@ -140,17 +140,17 @@ describe('Sass advanced list functions', () => {
       expect(result.options?.sep).toBe(',');
 
       // First zipped list: (1 10)
-      const first = result.value[0] as List;
+      const first = result.data[0] as List;
       expect(first).toBeInstanceOf(List);
       expect(first.length).toBe(2);
-      expect((first.value[0] as Num).valueOf()).toBe(1);
-      expect((first.value[1] as Num).valueOf()).toBe(10);
+      expect((first.data[0] as Num).valueOf()).toBe(1);
+      expect((first.data[1] as Num).valueOf()).toBe(10);
 
       // Second zipped list: (2 20)
-      const second = result.value[1] as List;
+      const second = result.data[1] as List;
       expect(second.length).toBe(2);
-      expect((second.value[0] as Num).valueOf()).toBe(2);
-      expect((second.value[1] as Num).valueOf()).toBe(20);
+      expect((second.data[0] as Num).valueOf()).toBe(2);
+      expect((second.data[1] as Num).valueOf()).toBe(20);
     });
 
     it('zips three lists', () => {
@@ -160,11 +160,11 @@ describe('Sass advanced list functions', () => {
       const result = zip(list1, list2, list3);
       expect(result.length).toBe(2);
 
-      const first = result.value[0] as List;
+      const first = result.data[0] as List;
       expect(first.length).toBe(3);
-      expect((first.value[0] as Num).valueOf()).toBe(1);
-      expect((first.value[1] as Num).valueOf()).toBe(10);
-      expect((first.value[2] as Num).valueOf()).toBe(100);
+      expect((first.data[0] as Num).valueOf()).toBe(1);
+      expect((first.data[1] as Num).valueOf()).toBe(10);
+      expect((first.data[2] as Num).valueOf()).toBe(100);
     });
 
     it('stops when shortest list ends', () => {

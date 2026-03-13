@@ -14,19 +14,27 @@ export interface Url {
 }
 
 export class Url extends Node<Quoted | Any> {
+  get value() {
+    return this.data as Quoted | Any;
+  }
+
+  set value(val: Quoted | Any) {
+    this.setData(val);
+  }
+
   /**
    * @todo - enable URL rewriting
    */
   override valueOf(): string {
-    let value: Node | string = this.value;
+    let value: Node | string = this.data as Quoted | Any;
     if (isNode(value, N.Quoted)) {
-      value = value.value;
+      value = value.data as Node | string;
       if (isNode(value)) {
-        return String(value.value);
+        return String(value.data);
       }
-      return value;
+      return value as string;
     }
-    return (value as Any).value;
+    return (value as Any).data;
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -34,7 +42,7 @@ export class Url extends Node<Quoted | Any> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('url(');
-    this.value.toString(options);
+    this.data.toString(options);
     w.add(')');
     return w.getSince(mark);
   }
