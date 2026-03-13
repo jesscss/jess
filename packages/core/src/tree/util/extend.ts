@@ -720,6 +720,19 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
             continue;
           }
 
+          const preserveHoistedGeneratedIsPair = Boolean(
+            el.hoistToRoot
+            && !!first
+            && isNode(first, N.PseudoSelector)
+            && first.data.name === ':is'
+            && (first as any).generated === true
+            && maybeIs.generated === true
+          );
+          if (preserveHoistedGeneratedIsPair) {
+            push(el);
+            continue;
+          }
+
           const argSel = maybeIs.data.arg;
           const argList: Selector[] = isNode(argSel, N.SelectorList) ? (argSel.data as Selector[]) : [argSel as Selector];
           // If this came from implicit `& ` nesting (both ampersand and the space are invisible),

@@ -15,6 +15,7 @@ import { N } from '../node-type.js';
 import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
+import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
 
 /**
  * Fast check: would applying a single extend instruction change the selector?
@@ -32,7 +33,7 @@ function wouldInstructionChangeSel(
     return wouldExtendChange(selector, target, extendWith, partial);
   }
   // Fallback: full extend + compare
-  const after = applyExtendsToSelector(selector, [instruction]);
+  const after = applyExtendsToSelector(selector.copy(true) as Selector, [instruction]);
   return after.valueOf() !== selector.valueOf();
 }
 
@@ -50,7 +51,7 @@ function analyzeNonPartialExtends(
 ): NonPartialAnalysis {
   const perInstruction = nonPartialOnly.map((instruction) => {
     const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
-    const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
+    const fullAfterSingle = applyExtendsToSelector(selector.copy(true) as Selector, [instruction]);
     const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
     const parentHasTargetMatch = Boolean(
       parentSelector
@@ -60,13 +61,14 @@ function analyzeNonPartialExtends(
     return { instruction, ownChangedSingle, fullChangedSingle, parentHasTargetMatch };
   });
   const fullChangedExtendWith = new Set(
-    perInstruction.filter(d => d.fullChangedSingle).map(d => d.instruction.extendWith.valueOf())
+    perInstruction
+      .filter(d => d.fullChangedSingle && !d.ownChangedSingle)
+      .map(d => d.instruction.extendWith.valueOf())
   );
   const withInclusion = perInstruction.map(d => ({
     ...d,
     includeOwnOnly: (
       d.ownChangedSingle
-      && !d.fullChangedSingle
       && !d.parentHasTargetMatch
       && !fullChangedExtendWith.has(d.instruction.extendWith.valueOf())
     )
@@ -80,6 +82,82 @@ function analyzeNonPartialExtends(
       d.ownChangedSingle && !d.fullChangedSingle && d.parentHasTargetMatch
     )
   };
+}
+
+function applyExtendsToSelectorPure(
+  selector: Selector,
+  instructions: ExtendInstruction[]
+): Selector {
+  return applyExtendsToSelector(selector.copy(true) as Selector, instructions);
+}
+
+function invalidateSelectorTreeCaches(selector: Selector | Nil | undefined): void {
+  if (!selector || selector instanceof Nil) {
+    return;
+  }
+
+  const clear = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return;
+    }
+    if ('_valueOf' in (node as object)) {
+      (node as { _valueOf?: string })._valueOf = undefined;
+    }
+    if ('_keySet' in (node as object)) {
+      (node as { _keySet?: Set<string> })._keySet = undefined;
+    }
+    if ('_visibleKeySet' in (node as object)) {
+      (node as { _visibleKeySet?: Set<string> })._visibleKeySet = undefined;
+    }
+    if ('_canFastReject' in (node as object)) {
+      (node as { _canFastReject?: boolean })._canFastReject = undefined;
+    }
+  };
+
+  clear(selector);
+  for (const node of selector.nodes()) {
+    clear(node);
+  }
+}
+
+function wrapSelectorForComposition(selector: Selector): Selector {
+  if (isNode(selector, N.SelectorList)) {
+    const list = selector as SelectorList;
+    if (list.data.length === 1) {
+      return list.data[0]!.copy(true) as Selector;
+    }
+    const wrapped = PseudoSelector.create({
+      name: ':is',
+      arg: list.copy(true) as Selector
+    });
+    wrapped.generated = true;
+    return wrapped;
+  }
+  return selector.copy(true) as Selector;
+}
+
+function composeParentAndOwnSelector(parentSelector: Selector, ownSelector: Selector, inheritFrom: Selector): Selector {
+  return ComplexSelector.create([
+    wrapSelectorForComposition(parentSelector),
+    Combinator.create(' '),
+    wrapSelectorForComposition(ownSelector)
+  ]).inherit(inheritFrom) as Selector;
+}
+
+function invalidateRulesetSelectorCaches(ruleset: Ruleset): void {
+  ruleset.invalidateSelectorValueCache();
+  invalidateSelectorTreeCaches(ruleset.data.selector);
+  invalidateSelectorTreeCaches((ruleset.options as { ownSelector?: Selector | Nil }).ownSelector);
+  invalidateSelectorTreeCaches(ruleset.data.selectorBeforeExtend as Selector | Nil | undefined);
+  const rules = ruleset.data?.rules;
+  if (!rules || !isNode(rules, N.Rules)) {
+    return;
+  }
+  for (const child of (rules as Rules).data) {
+    if (isNode(child, N.Ruleset)) {
+      invalidateRulesetSelectorCaches(child as Ruleset);
+    }
+  }
 }
 
 export class ExtendRootRegistry {
@@ -381,8 +459,8 @@ export function processExtends(context: Context): void {
         );
         const hasOnlyPartialExtends = visibleExtends.length > 0 && visibleExtends.every(instruction => instruction.partial);
         if (ownSelector && hasResolvedNestedSelector && hasOnlyPartialExtends) {
-          const ownNewSelector = applyExtendsToSelector(ownSelector, visibleExtends);
-          const fullNewSelector = applyExtendsToSelector(selector, visibleExtends);
+          const ownNewSelector = applyExtendsToSelectorPure(ownSelector, visibleExtends);
+          const fullNewSelector = applyExtendsToSelectorPure(selector, visibleExtends);
           const ownBefore = ownSelector.valueOf();
           const ownAfter = ownNewSelector.valueOf();
           const fullBefore = selector.valueOf();
@@ -390,7 +468,7 @@ export function processExtends(context: Context): void {
           if (ownNewSelector !== ownSelector && ownAfter !== ownBefore) {
             ruleset.setData('selector', ownNewSelector);
             (ruleset.options as { ownSelector?: Selector }).ownSelector = ownNewSelector;
-            ruleset.invalidateSelectorValueCache();
+            invalidateRulesetSelectorCaches(ruleset);
             if (ownNewSelector.hoistToRoot) {
               ruleset.hoistToRoot = true;
             }
@@ -403,9 +481,40 @@ export function processExtends(context: Context): void {
         if (ownSelector && hasResolvedNestedSelector) {
           const partialOnly = visibleExtends.filter(instruction => instruction.partial);
           const nonPartialOnly = visibleExtends.filter(instruction => !instruction.partial);
+          if (partialOnly.length === 0 && nonPartialOnly.length > 0) {
+            const parentRulesetForOwnBoundary = (
+              ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
+                ? (ruleset.parent.parent as Ruleset)
+                : null
+            );
+            const ownSelectorForBoundary = (
+              parentRulesetForOwnBoundary
+              && !ownSelector.hasFlag(F_AMPERSAND)
+                ? getImplicitSelectorUtil(
+                    ownSelector.copy(true) as Selector,
+                    parentRulesetForOwnBoundary,
+                    false
+                  )
+                : ownSelector
+            );
+            const ownAfterNonPartialOnly = applyExtendsToSelectorPure(ownSelectorForBoundary, nonPartialOnly);
+            const fullAfterNonPartialOnly = applyExtendsToSelectorPure(selector, nonPartialOnly);
+            const ownChangedByNonPartialOnly = ownAfterNonPartialOnly.valueOf() !== ownSelectorForBoundary.valueOf();
+            const fullChangedByNonPartialOnly = fullAfterNonPartialOnly.valueOf() !== selector.valueOf();
+
+            // Exact extends that only change the resolved selector via an ancestor
+            // should not rewrite the nested rule's own selector. Preserve the local
+            // selector shape and let the parent carry the extend expansion.
+            if (!ownChangedByNonPartialOnly && fullChangedByNonPartialOnly) {
+              ruleset.setData('selector', ownSelector);
+              (ruleset.options as { ownSelector?: Selector }).ownSelector = ownSelector;
+              invalidateRulesetSelectorCaches(ruleset);
+              continue;
+            }
+          }
           if (partialOnly.length > 0 && nonPartialOnly.length === 0) {
-            const ownAfterPartialOnly = applyExtendsToSelector(ownSelector, partialOnly);
-            const fullAfterPartialOnly = applyExtendsToSelector(selector, partialOnly);
+            const ownAfterPartialOnly = applyExtendsToSelectorPure(ownSelector, partialOnly);
+            const fullAfterPartialOnly = applyExtendsToSelectorPure(selector, partialOnly);
             const ownChangedByPartialOnly = ownAfterPartialOnly.valueOf() !== ownSelector.valueOf();
             const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
             const parentSelector = (
@@ -434,7 +543,7 @@ export function processExtends(context: Context): void {
                 const derivedOwn = ((last as PseudoSelector).data.arg as SelectorList).copy(true) as Selector;
                 ruleset.setData('selector', derivedOwn);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = derivedOwn;
-                ruleset.invalidateSelectorValueCache();
+                invalidateRulesetSelectorCaches(ruleset);
                 continue;
               }
             }
@@ -451,26 +560,18 @@ export function processExtends(context: Context): void {
               hasParentMatchedOwnOnlyNonPartial
             } = analyzeNonPartialExtends(ownSelector, selector, nonPartialOnly, parentSelectorForOwnSplit);
 
-            // For nested selectors, exact extends that match only the own selector
-            // should NOT be applied. In Less/CSS semantics, exact extend (.a) should
-            // only match selectors whose full resolved path is exactly .a, not nested
-            // .a that resolves to e.g. .parent .a. The own selector matches, but the
-            // full path doesn't, so discard these "ownOnly" instructions.
-            if (hasResolvedNestedSelector) {
-              nonPartialOwnOnly.length = 0;
-            }
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
                 const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
                 ruleset.setData('selector', ownAfterOwnOnly);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
-                ruleset.invalidateSelectorValueCache();
+                invalidateRulesetSelectorCaches(ruleset);
                 continue;
               }
             } else {
-              const ownAfterPartial = applyExtendsToSelector(ownSelector, partialOnly);
-              const ownAfterNonPartial = applyExtendsToSelector(ownSelector, nonPartialOnly);
-              const fullAfterNonPartial = applyExtendsToSelector(selector, nonPartialOnly);
+              const ownAfterPartial = applyExtendsToSelectorPure(ownSelector, partialOnly);
+              const ownAfterNonPartial = applyExtendsToSelectorPure(ownSelector, nonPartialOnly);
+              const fullAfterNonPartial = applyExtendsToSelectorPure(selector, nonPartialOnly);
               const ownChangedByNonPartial = ownAfterNonPartial.valueOf() !== ownSelector.valueOf();
               const fullChangedByNonPartial = fullAfterNonPartial.valueOf() !== selector.valueOf();
               const nonPartialBoundaryOnly = !ownChangedByNonPartial && fullChangedByNonPartial;
@@ -481,7 +582,7 @@ export function processExtends(context: Context): void {
                 if (newSel.valueOf() !== selector.valueOf()) {
                   newSel.hoistToRoot = true;
                   ruleset.setData('selector', newSel);
-                  ruleset.invalidateSelectorValueCache();
+                  invalidateRulesetSelectorCaches(ruleset);
                   ruleset.hoistToRoot = true;
                 }
                 continue;
@@ -493,13 +594,13 @@ export function processExtends(context: Context): void {
                 );
                 ruleset.setData('selector', ownAfterBoth);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterBoth;
-                ruleset.invalidateSelectorValueCache();
+                invalidateRulesetSelectorCaches(ruleset);
                 continue;
               }
               if (hasParentMatchedOwnOnlyNonPartial) {
                 ruleset.setData('selector', ownAfterPartial);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
-                ruleset.invalidateSelectorValueCache();
+                invalidateRulesetSelectorCaches(ruleset);
                 continue;
               }
               const shouldDeferToParentForNonPartial = Boolean(
@@ -510,7 +611,7 @@ export function processExtends(context: Context): void {
               if (shouldDeferToParentForNonPartial) {
                 ruleset.setData('selector', ownAfterPartial);
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
-                ruleset.invalidateSelectorValueCache();
+                invalidateRulesetSelectorCaches(ruleset);
                 continue;
               }
             }
@@ -523,7 +624,7 @@ export function processExtends(context: Context): void {
             ? visibleExtends.filter(instruction => instruction.partial)
             : visibleExtends;
           const ownAfterRelevant = (ownSelector && hasResolvedNestedSelector)
-            ? applyExtendsToSelector(ownSelector, ownRelevantExtends)
+            ? applyExtendsToSelectorPure(ownSelector, ownRelevantExtends)
             : null;
           const ownChangedByRelevant = Boolean(
             ownSelector
@@ -602,6 +703,55 @@ export function processExtends(context: Context): void {
               }
             }
           }
+          const shouldFactorNestedExactSelector = Boolean(
+            ownSelector
+            && hasResolvedNestedSelector
+            && !hasOnlyPartialExtends
+            && !ownChangedByRelevant
+            && parentRuleset
+            && !parentRuleset.hoistToRoot
+            && isNode(newSelector, N.SelectorList)
+            && isNode(parentRuleset.data.selector as Selector, N.SelectorList)
+            && isNode(ownSelector as Selector, N.SelectorList)
+          );
+          if (shouldFactorNestedExactSelector) {
+            const parentSelector = parentRuleset!.data.selector;
+            if (parentSelector && !(parentSelector instanceof Nil)) {
+              const previousValues = new Set<string>();
+              const parentItems = isNode(parentSelector as Selector, N.SelectorList)
+                ? (parentSelector as SelectorList).data
+                : [parentSelector as Selector];
+              const ownItems = isNode(ownSelector as Selector, N.SelectorList)
+                ? (ownSelector as SelectorList).data
+                : [ownSelector as Selector];
+              for (const parentItem of parentItems) {
+                for (const ownItem of ownItems) {
+                  previousValues.add(
+                    ComplexSelector.create([
+                      parentItem.copy(true) as Selector,
+                      Combinator.create(' '),
+                      ownItem.copy(true) as Selector
+                    ]).valueOf()
+                  );
+                }
+              }
+              const addedItems = (newSelector as SelectorList).data
+                .filter(item => !previousValues.has(item.valueOf()))
+                .map(item => item.copy(true) as Selector);
+              if (addedItems.length > 0) {
+                const factoredBase = composeParentAndOwnSelector(
+                  parentSelector as Selector,
+                  ownSelector as Selector,
+                  newSelector
+                );
+                newSelector = SelectorList.create([
+                  factoredBase,
+                  ...addedItems
+                ]).inherit(newSelector) as Selector;
+                newSelector.hoistToRoot = true;
+              }
+            }
+          }
           const boundaryOnlyNestedExactChange = Boolean(
             ownSelector
             && hasResolvedNestedSelector
@@ -638,7 +788,7 @@ export function processExtends(context: Context): void {
             }
           }
           ruleset.setData('selector', newSelector);
-          ruleset.invalidateSelectorValueCache();
+          invalidateRulesetSelectorCaches(ruleset);
           if (newSelector.hoistToRoot) {
             ruleset.hoistToRoot = true;
           }
