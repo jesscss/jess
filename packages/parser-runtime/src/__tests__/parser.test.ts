@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
   RecursiveDescentParser,
-  buildTokenMatchSets,
+  buildTokenMatchBitsets,
   tokenMatches,
   EOF_TOKEN_TYPE,
   ParseError,
@@ -46,7 +46,7 @@ function tok(type: TokenType, image: string, offset: number): IToken {
   };
 }
 
-buildTokenMatchSets([
+buildTokenMatchBitsets([
   NumberTok,
   Plus,
   Minus,
@@ -83,13 +83,13 @@ describe('tokenMatches', () => {
     expect(tokenMatches(t, NumberTok)).toBe(false);
   });
 
-  test('buildTokenMatchSets enables O(1) lookups and supports deep nesting', () => {
+  test('buildTokenMatchBitsets enables O(1) lookups and supports deep nesting', () => {
     const ArithmeticOp: TokenType = { name: 'ArithmeticOp' };
     const AddOp: TokenType = { name: 'AddOp', CATEGORIES: [ArithmeticOp] };
     const MulOp: TokenType = { name: 'MulOp', CATEGORIES: [ArithmeticOp] };
     const PlusOp2: TokenType = { name: 'PlusOp2', CATEGORIES: [AddOp] };
     const MinusOp2: TokenType = { name: 'MinusOp2', CATEGORIES: [AddOp] };
-    buildTokenMatchSets([PlusOp2, MinusOp2, MulOp, AddOp, ArithmeticOp]);
+    buildTokenMatchBitsets([PlusOp2, MinusOp2, MulOp, AddOp, ArithmeticOp]);
 
     const t = tok(PlusOp2, '+', 0);
     expect(tokenMatches(t, PlusOp2)).toBe(true);

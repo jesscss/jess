@@ -48,7 +48,8 @@
     "@jesscss/shared": "workspace:*",
     "@types/color-name": "^1.1.1",
     "@types/lodash-es": "~4.17.8",
-    "@types/xregexp": "^4.4.0"
+    "@types/xregexp": "^4.4.0",
+    "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

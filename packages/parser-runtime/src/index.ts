@@ -5,7 +5,7 @@ export {
 } from './parser.js';
 
 export {
-  buildTokenMatchSets,
+  buildTokenMatchBitsets,
   tokenMatches,
   ParseError,
   MismatchedTokenError,

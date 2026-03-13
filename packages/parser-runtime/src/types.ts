@@ -56,52 +56,86 @@ function getCategories(tt: TokenType): TokenType[] | undefined {
   const t = tt as TokenType & { categories?: TokenType[] };
   return t.CATEGORIES ?? t.categories;
 }
+type TokenTypeWithBits = TokenType & {
+  TOKEN_ID?: number;
+  MATCH_BITS?: Uint32Array;
+};
 
-/**
- * Precompute MATCH_SET on each token type for O(1) tokenMatches() lookups.
- * Call during parser initialization with all token types (e.g. Object.values(T)).
- * Idempotent: safe to call multiple times.
- */
-export function buildTokenMatchSets(tokenTypes: TokenType[]): void {
-  const visiting = new Set<TokenType>();
-  const built = new Set<TokenType>();
+export function buildTokenMatchBitsets(tokenTypes: TokenType[]): void {
+  const types = tokenTypes as TokenTypeWithBits[];
+  const wordCount = Math.ceil(types.length / 32);
+  const visiting = new Set<TokenTypeWithBits>();
 
-  function computeMatchSet(tokenType: TokenType): Set<TokenType> {
-    if (tokenType.MATCH_SET) {
-      return tokenType.MATCH_SET;
+  for (let i = 0; i < types.length; i++) {
+    types[i]!.TOKEN_ID = i;
+  }
+
+  function setBit(bits: Uint32Array, tokenType: TokenTypeWithBits): void {
+    const id = tokenType.TOKEN_ID;
+    if (id == null) {
+      throw new Error('Token type missing TOKEN_ID during bitset construction.');
+    }
+    bits[id >>> 5]! |= 1 << (id & 31);
+  }
+
+  function orBits(target: Uint32Array, source: Uint32Array): void {
+    for (let i = 0; i < target.length; i++) {
+      target[i]! |= source[i]!;
+    }
+  }
+
+  function computeMatchBits(tokenType: TokenTypeWithBits): Uint32Array {
+    if (tokenType.MATCH_BITS) {
+      return tokenType.MATCH_BITS;
     }
 
     if (visiting.has(tokenType)) {
-      return new Set([tokenType]);
+      const partial = new Uint32Array(wordCount);
+      setBit(partial, tokenType);
+      return partial;
     }
 
     visiting.add(tokenType);
 
-    const matchSet = new Set<TokenType>();
-    matchSet.add(tokenType);
+    const bits = new Uint32Array(wordCount);
+    setBit(bits, tokenType);
 
-    const categories = getCategories(tokenType);
-    if (categories) {
-      for (const category of categories) {
-        matchSet.add(category);
-        const categorySet = computeMatchSet(category);
-        for (const t of categorySet) {
-          matchSet.add(t);
-        }
-      }
+    for (const category of (getCategories(tokenType) ?? []) as TokenTypeWithBits[]) {
+      setBit(bits, category);
+      orBits(bits, computeMatchBits(category));
     }
 
     visiting.delete(tokenType);
-    (tokenType as TokenType & { MATCH_SET: Set<TokenType> }).MATCH_SET = matchSet;
-    built.add(tokenType);
-    return matchSet;
+    tokenType.MATCH_BITS = bits;
+    return bits;
   }
 
-  for (const tokenType of tokenTypes) {
-    if (!built.has(tokenType)) {
-      computeMatchSet(tokenType);
-    }
+  for (const tokenType of types) {
+    computeMatchBits(tokenType);
   }
+}
+
+export function tokenMatches(token: IToken, expected: TokenType): boolean {
+  const tt = token.tokenType as TokenTypeWithBits;
+  if (tt === expected) {
+    return true;
+  }
+
+  const bits = tt.MATCH_BITS;
+  if (!bits) {
+    throw new Error(
+      'Token types not initialized. Call buildTokenMatchBitsets(Object.values(T)) before parsing.'
+    );
+  }
+
+  const expectedId = (expected as TokenTypeWithBits).TOKEN_ID;
+  if (expectedId == null) {
+    throw new Error(
+      'Expected token type missing TOKEN_ID. Make sure buildTokenMatchBitsets() was called with the full token list.'
+    );
+  }
+
+  return (bits[expectedId >>> 5]! & (1 << (expectedId & 31))) !== 0;
 }
 
 /**
@@ -119,25 +153,6 @@ export interface IToken {
   tokenType: TokenType;
   tokenTypeIdx?: number;
   payload?: any;
-}
-
-/**
- * Check if a token matches a given token type, respecting categories.
- * Requires buildTokenMatchSets() to have been called with all token types
- * before parsing. Throws if token types are not initialized.
- */
-export function tokenMatches(token: IToken, expected: TokenType): boolean {
-  const tt = token.tokenType;
-  if (tt === expected) {
-    return true;
-  }
-  const matchSet = tt.MATCH_SET;
-  if (!matchSet) {
-    throw new Error(
-      'Token types not initialized. Call buildTokenMatchSets(Object.values(T)) before parsing.'
-    );
-  }
-  return matchSet.has(expected);
 }
 
 // ── DSL types ────────────────────────────────────────────────────────

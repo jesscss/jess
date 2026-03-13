@@ -1,16 +1,7 @@
 /* eslint no-control-regex: "off" */
-import { type WritableDeep } from 'type-fest';
 import type { RawModeConfig } from './util/index.js';
 import { LexerType } from './util/index.js';
 export const SKIPPED_LABEL = 'Skipped';
-import {
-  Lexer,
-  createToken,
-  type ITokenConfig,
-  type TokenType,
-  type IMultiModeLexerDefinition,
-  type CustomPatternMatcherFunc
-} from 'chevrotain';
 import { buildFragments, createLexerDefinition } from './util/index.js';
 
 /**
