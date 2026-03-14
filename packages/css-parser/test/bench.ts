@@ -1,37 +1,52 @@
 /**
- * Parser benchmark: Chevrotain ALL(*) vs hand-written recursive-descent
+ * Parser benchmark: Jess CSS parser vs saved Jess baseline snapshots
  *
  * Usage:
- *   npx tsx test/bench.ts
- *   npx tsx test/bench.ts --profile    # generates V8 CPU profile
- *   npx tsx test/bench.ts --per-file   # per-file breakdown
+ *   pnpm exec tsx test/bench.ts
+ *   pnpm exec tsx test/bench.ts --save
+ *   pnpm exec tsx test/bench.ts --baseline test/bench-results/some-run.json
+ *   pnpm exec tsx test/bench.ts --per-file
  *
  * With GC stats:
  *   node --expose-gc --import tsx test/bench.ts
  */
 import { Lexer } from 'chevrotain';
-import { cssLexer } from '../src/cssTokens.js';
-import { CssActionsParser } from '../src/cssActionsParser.js';
-import { CssRecursiveParser } from '../src/cssRecursiveParser.js';
-import { type TokenMap } from '../src/cssActionsParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import type { IToken } from '@jesscss/parser-runtime';
+import { cssLexer } from '../src/cssTokens.js';
+import { CssRecursiveParser } from '../src/cssRecursiveParser.js';
+import { type TokenMap } from '../src/cssActionsParser.js';
 
 const thisFile = fileURLToPath(import.meta.url);
 const thisDir = path.dirname(thisFile);
+const RESULTS_DIR = path.join(thisDir, 'bench-results');
 
-// ── Collect CSS corpus ──────────────────────────────────────────────
+function hasFlag(flag: string): boolean {
+  return process.argv.includes(flag);
+}
+
+function getFlagValue(flag: string): string | undefined {
+  const idx = process.argv.indexOf(flag);
+  if (idx === -1) {
+    return undefined;
+  }
+  return process.argv[idx + 1];
+}
+
+const SAVE_RESULTS = hasFlag('--save');
+const BASELINE_PATH = getFlagValue('--baseline');
 
 function collectTestCSS(): { name: string; css: string }[] {
   const files: { name: string; css: string }[] = [];
 
-  // Less test-data CSS outputs (real-world compiled CSS)
   const testDataCandidates = [
     path.resolve(thisDir, '../../../node_modules/@less/test-data'),
     path.resolve(process.env.HOME || '~', 'git/oss/less.js/packages/test-data')
   ];
+
   let foundTestData = false;
   for (const testDataRoot of testDataCandidates) {
     try {
@@ -43,13 +58,15 @@ function collectTestCSS(): { name: string; css: string }[] {
         foundTestData = true;
         break;
       }
-    } catch { /* skip */ }
+    } catch {
+      // skip
+    }
   }
+
   if (!foundTestData) {
     console.warn('⚠ @less/test-data not found, using local CSS files only');
   }
 
-  // Local CSS test fixtures
   const localDir = path.join(thisDir, 'css');
   if (fs.existsSync(localDir)) {
     for (const f of fs.readdirSync(localDir).filter(f => f.endsWith('.css'))) {
@@ -71,14 +88,15 @@ function findCSSFiles(dir: string): string[] {
         results.push(full);
       }
     }
-  } catch { /* skip unreadable dirs */ }
+  } catch {
+    // skip unreadable dirs
+  }
   return results;
 }
 
-// ── Setup ────────────────────────────────────────────────────────────
-
 const WARMUP = 10;
 const ITERATIONS = process.env.BENCH_ITERATIONS ? parseInt(process.env.BENCH_ITERATIONS, 10) : 100;
+const RESULT_NAME = 'Jess CSS parser';
 
 const corpus = collectTestCSS();
 const allCSS = corpus.map(f => f.css).join('\n\n');
@@ -89,33 +107,19 @@ const lexer = new Lexer(lexerDef, {
   ensureOptimizations: true,
   skipValidations: true
 });
-
-// Pre-lex
 const lexResult = lexer.tokenize(allCSS);
 console.log(`Tokens: ${lexResult.tokens.length}`);
 if (lexResult.errors.length > 0) {
   console.warn(`Lexer errors: ${lexResult.errors.length}`);
 }
 
-// Create parsers
-const chevrotainParser = new CssActionsParser(lexerDef, T);
-const recursiveParser = new CssRecursiveParser(T as TokenMap);
+const parser = new CssRecursiveParser(T as TokenMap);
 
-// ── Parse functions ──────────────────────────────────────────────────
-
-function parseChevrotain(tokens: any[]): number {
-  chevrotainParser.input = tokens;
-  chevrotainParser.stylesheet();
-  return chevrotainParser.errors.length;
+function parseCurrent(tokens: any[]): number {
+  parser.input = tokens as IToken[];
+  parser.stylesheet();
+  return parser.errors.length;
 }
-
-function parseRecursive(tokens: any[]): number {
-  recursiveParser.input = tokens as IToken[];
-  recursiveParser.stylesheet();
-  return recursiveParser.errors.length;
-}
-
-// ── Benchmark runner ─────────────────────────────────────────────────
 
 interface BenchResult {
   avg: number;
@@ -126,8 +130,32 @@ interface BenchResult {
   errors: number;
 }
 
-function bench(name: string, fn: (tokens: any[]) => number): BenchResult {
-  // Warmup
+interface SavedBenchSnapshot {
+  tool: 'css-parser';
+  model?: 'jess-vs-jess';
+  recordedAt: string;
+  git: {
+    commit: string;
+    dirty: boolean;
+  };
+  env: {
+    node: string;
+    platform: string;
+    arch: string;
+  };
+  corpus: {
+    files: number;
+    chars: number;
+    lines: number;
+    tokens: number;
+  };
+  warmup: number;
+  iterations: number;
+  args: string[];
+  results: Array<BenchResult & { name: string }>;
+}
+
+function bench(fn: (tokens: any[]) => number): BenchResult {
   let errors = 0;
   for (let i = 0; i < WARMUP; i++) {
     errors = fn(lexResult.tokens);
@@ -162,30 +190,103 @@ function fmt(ms: number): string {
   return ms.toFixed(2).padStart(8) + 'ms';
 }
 
-function formatTable(results: { name: string; r: BenchResult }[]): void {
-  const nameW = Math.max(...results.map(x => x.name.length));
+function formatTable(result: BenchResult): void {
+  console.log('Parser              median       avg       min       p95    errors');
+  console.log('────────────────────────────────────────────────────────────────────');
   console.log(
-    'Parser'.padEnd(nameW) + '    median       avg       min       p95    errors'
-  );
-  console.log('─'.repeat(nameW + 56));
-  for (const { name, r } of results) {
-    console.log(
-      `${name.padEnd(nameW)}  ${fmt(r.median)}  ${fmt(r.avg)}  ${fmt(r.min)}  ${fmt(r.p95)}  ${String(r.errors).padStart(6)}`
-    );
-  }
-
-  // Speedup comparison
-  const baseline = results[0]!.r;
-  const rec = results[1]!.r;
-  const medianX = baseline.median / rec.median;
-  const avgX = baseline.avg / rec.avg;
-  console.log('');
-  console.log(
-    `Speedup: ${medianX.toFixed(2)}x median, ${avgX.toFixed(2)}x avg`
+    `${RESULT_NAME.padEnd(18)}  ${fmt(result.median)}  ${fmt(result.avg)}  ${fmt(result.min)}  ${fmt(result.p95)}  ${String(result.errors).padStart(6)}`
   );
 }
 
-// ── Memory measurement ───────────────────────────────────────────────
+function getGitInfo(): SavedBenchSnapshot['git'] {
+  try {
+    const commit = execSync('git rev-parse --short HEAD', { cwd: thisDir, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+    const dirty = execSync('git status --porcelain', { cwd: thisDir, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim().length > 0;
+    return { commit, dirty };
+  } catch {
+    return { commit: 'unknown', dirty: false };
+  }
+}
+
+function loadBaseline(): SavedBenchSnapshot | undefined {
+  const explicit = BASELINE_PATH ? path.resolve(process.cwd(), BASELINE_PATH) : undefined;
+  const latest = path.join(RESULTS_DIR, 'latest.json');
+  const target = explicit ?? latest;
+  if (!fs.existsSync(target)) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(target, 'utf8')) as SavedBenchSnapshot;
+  } catch {
+    console.warn(`⚠ Failed to read baseline snapshot: ${target}`);
+    return undefined;
+  }
+}
+
+function getPrimaryResult(snapshot: SavedBenchSnapshot): BenchResult | undefined {
+  const result = snapshot.results.find(r => r.name === RESULT_NAME);
+  if (!result) {
+    console.warn('⚠ Baseline snapshot is not in the current Jess-vs-Jess format; skipping comparison.');
+  }
+  return result;
+}
+
+function printComparison(current: BenchResult, baseline: SavedBenchSnapshot): void {
+  const prior = getPrimaryResult(baseline);
+  if (!prior) {
+    return;
+  }
+
+  const deltaMedian = current.median - prior.median;
+  const deltaAvg = current.avg - prior.avg;
+  const medianPct = prior.median === 0 ? 0 : (deltaMedian / prior.median) * 100;
+  const avgPct = prior.avg === 0 ? 0 : (deltaAvg / prior.avg) * 100;
+  const medianWord = deltaMedian <= 0 ? 'faster' : 'slower';
+  const avgWord = deltaAvg <= 0 ? 'faster' : 'slower';
+
+  console.log('\n── Baseline Comparison ──\n');
+  console.log(`Baseline: ${baseline.git.commit} from ${baseline.recordedAt}`);
+  console.log(`Median:   ${fmt(prior.median)} -> ${fmt(current.median)}  (${Math.abs(deltaMedian).toFixed(2)}ms, ${Math.abs(medianPct).toFixed(2)}% ${medianWord})`);
+  console.log(`Avg:      ${fmt(prior.avg)} -> ${fmt(current.avg)}  (${Math.abs(deltaAvg).toFixed(2)}ms, ${Math.abs(avgPct).toFixed(2)}% ${avgWord})`);
+}
+
+function saveSnapshot(result: BenchResult): void {
+  const snapshot: SavedBenchSnapshot = {
+    tool: 'css-parser',
+    model: 'jess-vs-jess',
+    recordedAt: new Date().toISOString(),
+    git: getGitInfo(),
+    env: {
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch
+    },
+    corpus: {
+      files: corpus.length,
+      chars: allCSS.length,
+      lines: allCSS.split('\n').length,
+      tokens: lexResult.tokens.length
+    },
+    warmup: WARMUP,
+    iterations: ITERATIONS,
+    args: process.argv.slice(2),
+    results: [{ name: RESULT_NAME, ...result }]
+  };
+
+  fs.mkdirSync(RESULTS_DIR, { recursive: true });
+  const stamp = snapshot.recordedAt.replace(/[:.]/g, '-');
+  const stampedPath = path.join(RESULTS_DIR, `css-parser-${stamp}.json`);
+  const latestPath = path.join(RESULTS_DIR, 'latest.json');
+  const json = JSON.stringify(snapshot, null, 2);
+  fs.writeFileSync(stampedPath, json);
+  fs.writeFileSync(latestPath, json);
+  console.log(`\nSaved benchmark snapshot: ${stampedPath}`);
+  console.log(`Updated latest snapshot: ${latestPath}`);
+}
 
 function measureMemory(fn: (tokens: any[]) => number): { heapDelta: number; rss: number } {
   if (global.gc) {
@@ -208,39 +309,33 @@ function measureMemory(fn: (tokens: any[]) => number): { heapDelta: number; rss:
   };
 }
 
-// ── Run ──────────────────────────────────────────────────────────────
-
 console.log(`\n── Parse speed (${ITERATIONS} iterations) ──\n`);
 
-const allResults: { name: string; r: BenchResult }[] = [];
+const result = bench(parseCurrent);
+formatTable(result);
 
-const chevResult = bench('Chev ALL(*)', parseChevrotain);
-allResults.push({ name: 'Chev ALL(*)', r: chevResult });
+const baseline = loadBaseline();
+if (baseline) {
+  printComparison(result, baseline);
+}
 
-const recResult = bench('Recursive', parseRecursive);
-allResults.push({ name: 'Recursive', r: recResult });
+if (SAVE_RESULTS) {
+  saveSnapshot(result);
+}
 
-formatTable(allResults);
-
-// Memory
 if (global.gc) {
   console.log(`\n── Memory (${ITERATIONS} iterations, GC enabled) ──\n`);
-  const chevMem = measureMemory(parseChevrotain);
-  const recMem = measureMemory(parseRecursive);
-  console.log(`Chev ALL(*): heap=${(chevMem.heapDelta / 1024).toFixed(0)}KB  rss=${(chevMem.rss / 1024).toFixed(0)}KB`);
-  console.log(`Recursive:   heap=${(recMem.heapDelta / 1024).toFixed(0)}KB  rss=${(recMem.rss / 1024).toFixed(0)}KB`);
+  const mem = measureMemory(parseCurrent);
+  console.log(`Jess CSS parser: heap=${(mem.heapDelta / 1024).toFixed(0)}KB  rss=${(mem.rss / 1024).toFixed(0)}KB`);
 } else {
   console.log('\n(Run with --expose-gc for memory stats)');
 }
 
-// Per-file breakdown (optional)
-if (process.argv.includes('--per-file')) {
+if (hasFlag('--per-file')) {
   console.log(`\n── Per-file breakdown ──\n`);
   const nameW = Math.max(...corpus.map(f => f.name.length), 10);
-  console.log(
-    'File'.padEnd(nameW) + '   tokens  ALL(*)     Rec   Speedup'
-  );
-  console.log('─'.repeat(nameW + 42));
+  console.log('File'.padEnd(nameW) + '   tokens     ms');
+  console.log('─'.repeat(nameW + 18));
 
   for (const file of corpus) {
     const fileLex = lexer.tokenize(file.css);
@@ -248,48 +343,13 @@ if (process.argv.includes('--per-file')) {
       continue;
     }
     const N = 100;
-
-    const t1 = performance.now();
+    const t0 = performance.now();
     for (let i = 0; i < N; i++) {
-      parseChevrotain(fileLex.tokens);
+      parseCurrent(fileLex.tokens);
     }
-    const chevTime = (performance.now() - t1) / N;
-
-    const t2 = performance.now();
-    for (let i = 0; i < N; i++) {
-      parseRecursive(fileLex.tokens);
-    }
-    const recTime = (performance.now() - t2) / N;
-
-    const ratio = chevTime / recTime;
+    const avgMs = (performance.now() - t0) / N;
     console.log(
-      `${file.name.padEnd(nameW)} ${String(fileLex.tokens.length).padStart(7)}  `
-      + `${chevTime.toFixed(2).padStart(6)}  ${recTime.toFixed(2).padStart(6)}  `
-      + `${ratio.toFixed(2).padStart(7)}x`
+      `${file.name.padEnd(nameW)} ${String(fileLex.tokens.length).padStart(7)}  ${avgMs.toFixed(2).padStart(6)}`
     );
   }
-}
-
-// V8 CPU profiling
-if (process.argv.includes('--profile')) {
-  console.log('\n── V8 CPU Profile ──\n');
-  const inspector = require('inspector');
-  const session = new inspector.Session();
-  session.connect();
-
-  session.post('Profiler.enable', () => {
-    session.post('Profiler.start', () => {
-      for (let i = 0; i < ITERATIONS * 2; i++) {
-        parseRecursive(lexResult.tokens);
-      }
-      session.post('Profiler.stop', (err: any, { profile }: any) => {
-        if (!err) {
-          const outPath = path.join(thisDir, 'recursive-parser.cpuprofile');
-          fs.writeFileSync(outPath, JSON.stringify(profile));
-          console.log(`Wrote ${outPath}`);
-        }
-        session.disconnect();
-      });
-    });
-  });
 }

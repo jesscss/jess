@@ -383,12 +383,12 @@ export function main(this: P, ctx: RuleContext = {}) {
     GATE: () => {
       const next = $.LA(1);
       // Stop at RCurly (belongs to parent block) or end of input
-      if (next.tokenType === $.T.RCurly || next.tokenType.name === 'EOF') {
+      if ($.isType($.T.RCurly) || next.tokenType.name === 'EOF') {
         return false;
       }
       return !requiredSemi || (requiredSemi && (
-        next.tokenType === $.T.Semi
-        || $.LA(0).tokenType === $.T.Semi
+        $.isType($.T.Semi)
+        || $.isTypeAt(0, $.T.Semi)
       ));
     },
     DEF: () => {

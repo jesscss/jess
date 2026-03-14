@@ -16,6 +16,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     {
+      GATE: () => !$.isType($.T.CustomProperty),
       ALT: () => {
         let name: IToken;
         $.OR([
@@ -38,14 +39,18 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
       }
     },
     {
+      GATE: () => $.isType($.T.CustomProperty),
       ALT: () => {
         let name = $.CONSUME($.T.CustomProperty);
         let assign = $.CONSUME($.T.Assign);
         let nodes: Node[] = [];
         $.startRule();
-        $.MANY(() => {
-          let val = $.customValue({ ...ctx, inCustomPropertyValue: true });
-          nodes.push(val);
+        $.MANY({
+          GATE: () => !$.isType($.T.Semi) && !$.isType($.T.RCurly) && $.LA(1).tokenType.name !== 'EOF',
+          DEF: () => {
+            let val = $.customValue({ ...ctx, inCustomPropertyValue: true });
+            nodes.push(val);
+          }
         });
         let location = $.endRule();
         let nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
@@ -163,6 +168,10 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     {
+      GATE: () => $.isType($.T.LParen)
+        || $.isType($.T.FunctionStart)
+        || $.isType($.T.GenericFunctionStart)
+        || $.isType($.T.FunctionalPseudoClass),
       ALT: () => {
         let start: IToken;
         let nodes: Node[] = [];
@@ -173,24 +182,32 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
            */
           { ALT: () => start = $.CONSUME($.T.LParen) },
           { ALT: () => start = $.CONSUME($.T.FunctionStart) },
+          { ALT: () => start = $.CONSUME($.T.GenericFunctionStart) },
           { ALT: () => start = $.CONSUME($.T.FunctionalPseudoClass) }
         ]);
 
-        $.MANY(() => {
-          let val = $.innerCustomValue(ctx);
-          nodes.push(val);
+        $.MANY({
+          GATE: () => !$.isType($.T.RParen),
+          DEF: () => {
+            let val = $.innerCustomValue(ctx);
+            nodes.push(val);
+          }
         });
         let end = $.CONSUME($.T.RParen);
         return [start!, nodes, end];
       }
     },
     {
+      GATE: () => $.isType($.T.LSquare),
       ALT: () => {
         let nodes: Node[] = [];
         let start = $.CONSUME($.T.LSquare);
-        $.MANY(() => {
-          let val = $.innerCustomValue(ctx);
-          nodes.push(val);
+        $.MANY({
+          GATE: () => !$.isType($.T.RSquare),
+          DEF: () => {
+            let val = $.innerCustomValue(ctx);
+            nodes.push(val);
+          }
         });
         let end = $.CONSUME($.T.RSquare);
 
@@ -198,12 +215,16 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
       }
     },
     {
+      GATE: () => $.isType($.T.LCurly),
       ALT: () => {
         let nodes: Node[] = [];
         let start = $.CONSUME($.T.LCurly);
-        $.MANY(() => {
-          let val = $.innerCustomValue(ctx);
-          nodes.push(val);
+        $.MANY({
+          GATE: () => !$.isType($.T.RCurly),
+          DEF: () => {
+            let val = $.innerCustomValue(ctx);
+            nodes.push(val);
+          }
         });
         let end = $.CONSUME($.T.RCurly);
 
@@ -315,7 +336,10 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
   const $ = this;
   valueAlt ??= (ctx: RuleContext = {}) => [
     /** Function should appear before Ident */
-    { ALT: () => $.functionCall(ctx) },
+    {
+      GATE: () => $.check($.T.FunctionStart),
+      ALT: () => $.functionCall(ctx)
+    },
     { ALT: () => $.CONSUME($.T.Ident) },
     { ALT: () => $.CONSUME($.T.Dimension) },
     { ALT: () => $.CONSUME($.T.Number) },
@@ -361,6 +385,7 @@ export function string(this: P, ctx: RuleContext = {}, stringAlt?: AltContext) {
   const $ = this;
   stringAlt ??= (ctx: RuleContext = {}) => [
     {
+      GATE: () => $.isType($.T.SingleQuoteStart),
       ALT: () => {
         $.startRule();
         let quote = $.CONSUME($.T.SingleQuoteStart);
@@ -378,6 +403,7 @@ export function string(this: P, ctx: RuleContext = {}, stringAlt?: AltContext) {
       }
     },
     {
+      GATE: () => $.isType($.T.DoubleQuoteStart),
       ALT: () => {
         $.startRule();
         let quote = $.CONSUME($.T.DoubleQuoteStart);
@@ -416,11 +442,14 @@ export function mathSum(this: P, ctx: RuleContext = {}) {
 
   let left: Node = $.mathProduct(ctx);
 
-  $.MANY(() => {
-    let op = $.OR(opAlt);
-    let right: Node = $.mathProduct(ctx);
+  $.MANY({
+    GATE: () => $.isType($.T.Plus) || $.isType($.T.Minus),
+    DEF: () => {
+      let op = $.OR(opAlt);
+      let right: Node = $.mathProduct(ctx);
 
-    left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+      left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+    }
   });
   left._location = $.endRule();
   return left;
@@ -440,11 +469,14 @@ export function mathProduct(this: P, ctx: RuleContext = {}) {
 
   let left: Node = $.mathValue(ctx);
 
-  $.MANY(() => {
-    let op = $.OR(opAlt);
-    let right: Node = $.mathValue(ctx);
+  $.MANY({
+    GATE: () => $.isType($.T.Star) || $.isType($.T.Divide),
+    DEF: () => {
+      let op = $.OR(opAlt);
+      let right: Node = $.mathValue(ctx);
 
-    left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+      left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+    }
   });
 
   left._location = $.endRule();

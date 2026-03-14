@@ -1,6 +1,7 @@
 import {
   type IToken,
   type TokenType,
+  buildTokenTypeSet,
   tokenMatches
 } from '@jesscss/parser-runtime';
 
@@ -158,6 +159,11 @@ export class LessRecursiveParser extends CssRecursiveParser {
   mathMode: MathMode;
   /** See `LessParserConfig.wrapOuterExpressions` */
   wrapOuterExpressions: boolean;
+  EXPRESSION_PRODUCT_OPERATOR_START: Uint32Array;
+  GUARD_OR_START: Uint32Array;
+  MIXIN_ARG_TERMINATOR: Uint32Array;
+  CALL_ARGUMENT_BLOCK_START: Uint32Array;
+  LESS_AT_NAME_START: Uint32Array;
 
   constructor(
     T: TokenMap,
@@ -180,6 +186,34 @@ export class LessRecursiveParser extends CssRecursiveParser {
     this.mathMode = mathMode;
     this.wrapOuterExpressions = wrapOuterExpressions;
     this.warnings = [];
+
+    this.EXPRESSION_PRODUCT_OPERATOR_START = buildTokenTypeSet([
+      T.Star,
+      T.Divide,
+      T.Percent
+    ]);
+
+    this.GUARD_OR_START = buildTokenTypeSet([
+      T.Comma,
+      T.Or
+    ]);
+
+    this.MIXIN_ARG_TERMINATOR = buildTokenTypeSet([
+      T.Ellipsis,
+      T.RParen,
+      T.Comma,
+      T.Semi
+    ]);
+
+    this.CALL_ARGUMENT_BLOCK_START = buildTokenTypeSet([
+      T.AnonMixinStart,
+      T.LCurly
+    ]);
+
+    this.LESS_AT_NAME_START = buildTokenTypeSet([
+      T.AtKeyword,
+      T.AtKeywordLessExtension
+    ]);
   }
 
   protected override processValueToken(token: IToken, ctx?: RuleContext): Node {

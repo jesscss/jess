@@ -4,7 +4,7 @@
  * Token and error types are inspired by Chevrotain's interfaces but
  * simplified for a hand-coded recursive-descent parser. Category
  * matching in tokenMatches() uses O(1) MATCH_SET lookups when
- * buildTokenMatchSets() has been called during parser initialization.
+ * buildTokenMatchBitsets() has been called during parser initialization.
  */
 
 // ── Location info ────────────────────────────────────────────────────

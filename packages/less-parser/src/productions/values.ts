@@ -2,7 +2,7 @@
 // Converted from Chevrotain-based productions.ts (lines 2060-3015)
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { IToken } from '@jesscss/parser-runtime';
-import { tokenMatches } from '@jesscss/parser-runtime';
+import { tokenMatches, tokenTypeInSet } from '@jesscss/parser-runtime';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   type TreeContext,
@@ -86,8 +86,8 @@ export function expressionSum(this: P, ctx: RuleContext = {}) {
       const next = $.LA(1);
       const nextType = next.tokenType;
       return (
-        nextType === $.T.Plus
-        || nextType === $.T.Minus
+        $.isType($.T.Plus)
+        || $.isType($.T.Minus)
         || ($.noSep() && tokenMatches(next, $.T.Signed))
       );
     },
@@ -163,25 +163,28 @@ export function expressionProduct(this: P, ctx: RuleContext = {}) {
 
   let left = ctx.startValue ?? $.expressionValue(ctx);
 
-  $.MANY(() => {
-    let op = $.OR(opAlt);
-    // Check for deprecated ./ operator
-    if (op.image === './') {
-      $.warnDeprecation(
-        './ operator is deprecated',
-        op,
-        'dot-slash-operator'
-      );
-    }
-    let right: Node = $.expressionValue(ctx);
+  $.MANY({
+    GATE: () => tokenTypeInSet($.LA(1).tokenType, $.EXPRESSION_PRODUCT_OPERATOR_START),
+    DEF: () => {
+      let op = $.OR(opAlt);
+      // Check for deprecated ./ operator
+      if (op.image === './') {
+        $.warnDeprecation(
+          './ operator is deprecated',
+          op,
+          'dot-slash-operator'
+        );
+      }
+      let right: Node = $.expressionValue(ctx);
 
-    const operation = new Operation(
-      [$.wrap(left, true), op.image as Operator, $.wrap(right)],
-      undefined,
-      $.getLocationFromNodes([left, right]),
-      $.context
-    );
-    left = operation;
+      const operation = new Operation(
+        [$.wrap(left, true), op.image as Operator, $.wrap(right)],
+        undefined,
+        $.getLocationFromNodes([left, right]),
+        $.context
+      );
+      left = operation;
+    }
   });
 
   $.endRule();
@@ -223,10 +226,13 @@ export function expressionValue(this: P, ctx: RuleContext = {}) {
             semiNodes.push($.wrap(node, true));
             node = $.valueList(innerCtx);
             semiNodes.push($.wrap(node, true));
-            $.MANY(() => {
-              $.CONSUME($.T.Semi);
-              node = $.valueList(innerCtx);
-              semiNodes.push($.wrap(node, true));
+            $.MANY({
+              GATE: () => $.isType($.T.Semi),
+              DEF: () => {
+                $.CONSUME($.T.Semi);
+                node = $.valueList(innerCtx);
+                semiNodes.push($.wrap(node, true));
+              }
             });
           });
           if (isSemiList) {
@@ -619,10 +625,13 @@ export function functionCallArgs(this: P, ctx: RuleContext = {}) {
     commaNodes = [$.wrap(node, true)];
 
     // First, consume any comma-separated arguments
-    $.MANY(() => {
-      $.CONSUME($.T.Comma);
-      node = $.callArgument(argCtx);
-      commaNodes!.push($.wrap(node, true));
+    $.MANY({
+      GATE: () => $.isType($.T.Comma),
+      DEF: () => {
+        $.CONSUME($.T.Comma);
+        node = $.callArgument(argCtx);
+        commaNodes!.push($.wrap(node, true));
+      }
     });
 
     // Then, optionally switch to semicolon-separated list and continue with semicolons
@@ -640,10 +649,13 @@ export function functionCallArgs(this: P, ctx: RuleContext = {}) {
       node = $.callArgument({ ...argCtx, allowComma: true });
       semiNodes.push($.wrap(node, true));
 
-      $.MANY(() => {
-        $.CONSUME($.T.Semi);
-        node = $.callArgument({ ...argCtx, allowComma: true });
-        semiNodes.push($.wrap(node, true));
+      $.MANY({
+        GATE: () => $.isType($.T.Semi),
+        DEF: () => {
+          $.CONSUME($.T.Semi);
+          node = $.callArgument({ ...argCtx, allowComma: true });
+          semiNodes.push($.wrap(node, true));
+        }
       });
     });
   } finally {
@@ -656,7 +668,7 @@ export function functionCallArgs(this: P, ctx: RuleContext = {}) {
 
 export function value(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  if ($.LA(1).tokenType === $.T.Percent) {
+  if ($.isType($.T.Percent)) {
     // no-op: preserved from original
   }
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -698,9 +710,12 @@ export function value(this: P, ctx: RuleContext = {}) {
     return _isMixinReference;
   };
   let node: Node = $.OR([
-    { ALT: () => $.functionCall(ctx) },
     {
-      GATE: () => $.LA(1).tokenType === $.T.Star && $.LA(2).tokenType === $.T.LSquare,
+      GATE: () => $.check($.T.FunctionStart),
+      ALT: () => $.functionCall(ctx)
+    },
+    {
+      GATE: () => $.isType($.T.Star) && $.isTypeAt(2, $.T.LSquare),
       ALT: () => $.selectorCapture(ctx)
     },
     {
@@ -758,6 +773,7 @@ export function string(this: P, ctx: RuleContext = {}) {
   const $ = this;
   let stringAlt = [
     {
+      GATE: () => $.isType($.T.SingleQuoteStart),
       ALT: () => {
         $.startRule();
         let quote = $.CONSUME($.T.SingleQuoteStart);
@@ -785,6 +801,7 @@ export function string(this: P, ctx: RuleContext = {}) {
       }
     },
     {
+      GATE: () => $.isType($.T.DoubleQuoteStart),
       ALT: () => {
         $.startRule();
         let quote = $.CONSUME($.T.DoubleQuoteStart);
@@ -909,7 +926,7 @@ export function mathValue(this: P, ctx: RuleContext = {}) {
     },
     {
       /** For some reason, e() goes here instead of $.function */
-      GATE: () => $.LA(2).tokenType !== $.T.LParen,
+      GATE: () => !$.isTypeAt(2, $.T.LParen),
       ALT: () => $.CONSUME($.T.MathConstant)
     },
     { ALT: () => $.mathParen(ctx) }

@@ -1,6 +1,7 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser-runtime';
+import { tokenTypeInSet } from '@jesscss/parser-runtime';
 import {
   Node, Any, AtRule, Ruleset, Rules, Sequence, List, Block,
   QueryCondition, Keyword, Paren, Call, Url, RawRules,
@@ -237,10 +238,7 @@ export function functionCallLike(this: P, ctx: RuleContext = {}) {
   let args: Node[] = [];
   let seq: Sequence | undefined;
   $.MANY({
-    GATE: () => {
-      let tt = $.LA(1).tokenType;
-      return tt !== $.T.RParen && tt !== $.T.UrlEnd;
-    },
+    GATE: () => !tokenTypeInSet($.LA(1).tokenType, $.FUNCTION_LIKE_END),
     DEF: () => {
       const node = $.anyOuterValue(ctx);
       args.push($.wrap(node));
@@ -273,8 +271,14 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
   };
 
   return $.OR([
-    { ALT: () => $.ifFunction(ctx) },
-    { ALT: () => $.knownFunctions(ctx) },
+    {
+      GATE: () => $.isType($.T.FunctionStart) && $.LA(1).image.slice(0, -1).toLowerCase() === 'if',
+      ALT: () => $.ifFunction(ctx)
+    },
+    {
+      GATE: () => $.check($.T.FunctionStart),
+      ALT: () => $.knownFunctions(ctx)
+    },
     {
       ALT: () => {
         $.startRule();
@@ -320,34 +324,37 @@ export function functionCallArgs(this: P, ctx: RuleContext = {}) {
   let semiNodes: Node[] = [];
   let isSemiList = false;
 
-  $.MANY(() => {
-    $.OR([
-      {
-        GATE: () => !isSemiList,
-        ALT: () => {
-          $.CONSUME($.T.Comma);
-          node = $.valueSequence(ctx);
-          commaNodes!.push($.wrap(node, true));
-        }
-      },
-      {
-        ALT: () => {
-          isSemiList = true;
-
-          $.CONSUME($.T.Semi);
-
-          /** Aggregate the previous set of comma-nodes */
-          if (commaNodes.length > 1) {
-            let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context);
-            semiNodes.push(commaList);
-          } else {
-            semiNodes.push(commaNodes[0]!);
+  $.MANY({
+    GATE: () => (!isSemiList && $.isType($.T.Comma)) || $.isType($.T.Semi),
+    DEF: () => {
+      $.OR([
+        {
+          GATE: () => !isSemiList,
+          ALT: () => {
+            $.CONSUME($.T.Comma);
+            node = $.valueSequence(ctx);
+            commaNodes!.push($.wrap(node, true));
           }
-          node = $.valueList(ctx) as Node;
-          semiNodes.push($.wrap(node, true));
+        },
+        {
+          ALT: () => {
+            isSemiList = true;
+
+            $.CONSUME($.T.Semi);
+
+            /** Aggregate the previous set of comma-nodes */
+            if (commaNodes.length > 1) {
+              let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context);
+              semiNodes.push(commaList);
+            } else {
+              semiNodes.push(commaNodes[0]!);
+            }
+            node = $.valueList(ctx) as Node;
+            semiNodes.push($.wrap(node, true));
+          }
         }
-      }
-    ]);
+      ]);
+    }
   });
 
   $.endRule();
@@ -621,13 +628,17 @@ export function anyOuterValue(this: P, ctx: RuleContext = {}) {
     { ALT: () => $.extraTokens(ctx) },
     { ALT: () => $.string(ctx) },
     {
+      GATE: () => $.isType($.T.LParen),
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
         $.CONSUME($.T.LParen);
-        $.MANY(() => {
-          let val = $.anyInnerValue(ctx);
-          nodes.push($.wrap(val));
+        $.MANY({
+          GATE: () => !$.isType($.T.RParen),
+          DEF: () => {
+            let val = $.anyInnerValue(ctx);
+            nodes.push($.wrap(val));
+          }
         });
         $.CONSUME($.T.RParen);
 
@@ -641,14 +652,18 @@ export function anyOuterValue(this: P, ctx: RuleContext = {}) {
       }
     },
     {
+      GATE: () => $.isType($.T.LSquare),
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
 
         $.CONSUME($.T.LSquare);
-        $.MANY(() => {
-          let node = $.anyInnerValue(ctx);
-          nodes.push($.wrap(node));
+        $.MANY({
+          GATE: () => !$.isType($.T.RSquare),
+          DEF: () => {
+            let node = $.anyInnerValue(ctx);
+            nodes.push($.wrap(node));
+          }
         });
         $.CONSUME($.T.RSquare);
 
@@ -673,13 +688,17 @@ export function anyInnerValue(this: P, ctx: RuleContext = {}) {
   return $.OR([
     { ALT: () => $.anyOuterValue(ctx) },
     {
+      GATE: () => $.isType($.T.LCurly),
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
         $.CONSUME($.T.LCurly);
-        $.MANY(() => {
-          let node = $.anyInnerValue(ctx);
-          nodes.push(node);
+        $.MANY({
+          GATE: () => !$.isType($.T.RCurly),
+          DEF: () => {
+            let node = $.anyInnerValue(ctx);
+            nodes.push(node);
+          }
         });
         $.CONSUME($.T.RCurly);
 

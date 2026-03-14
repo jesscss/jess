@@ -1,7 +1,7 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
 import type { IToken, LocationInfo } from '@jesscss/parser-runtime';
-import { tokenMatches } from '@jesscss/parser-runtime';
+import { tokenMatches, tokenTypeInSet } from '@jesscss/parser-runtime';
 import {
   Node, Any, AtRule, Rules, Sequence, List,
   QueryCondition, Keyword, Paren, Declaration, Call,
@@ -563,7 +563,7 @@ export function pageSelector(this: P, ctx: RuleContext = {}) {
 
   $.OPTION(() => token += $.CONSUME($.T.Ident).image);
   $.MANY({
-    GATE: () => $.LA(1).tokenType === $.T.Colon && $.noSep(1),
+    GATE: () => $.isType($.T.Colon) && $.noSep(1),
     DEF: () => {
       token += $.CONSUME($.T.Colon).image;
       token += $.CONSUME($.T.PagePseudoClassKeywords).image;
@@ -660,7 +660,7 @@ export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Pr
             return false;
           }
           // If it's an Ident (not a query keyword), it could be a container name
-          return (next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent)
+          return tokenTypeInSet(next.tokenType, $.IDENT_LIKE_START)
             && next.image.toLowerCase() !== 'not'
             && next.image.toLowerCase() !== 'only'
             && next.image.toLowerCase() !== 'and'
@@ -760,10 +760,7 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
             $.OR([
               {
                 // QueryCondition: starts with LParen or Not
-                GATE: () => {
-                  const next = $.LA(1);
-                  return next.tokenType === $.T.LParen || next.tokenType === $.T.Not;
-                },
+                GATE: () => tokenTypeInSet($.LA(1).tokenType, $.QUERY_CONDITION_START),
                 ALT: () => {
                   const arg = $.containerCondition(ctx);
                   args!.push($.wrap(arg));
@@ -772,10 +769,10 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
               {
                 // Declaration: starts with Ident or CustomProperty followed by Assign (colon)
                 GATE: () => {
-                  const next = $.LA(1);
                   const after = $.LA(2);
-                  const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
-                  return isIdent && after && tokenMatches(after, $.T.Assign);
+                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                    && after
+                    && tokenMatches(after, $.T.Assign);
                 },
                 ALT: () => {
                   const arg = $.declaration(ctx);
@@ -785,17 +782,24 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
               {
                 // Just a name (Any): Ident, PlainIdent, or CustomProperty without Assign
                 GATE: () => {
-                  const next = $.LA(1);
                   const after = $.LA(2);
-                  const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
-                  return isIdent && (!after || !tokenMatches(after, $.T.Assign));
+                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                    && (!after || !tokenMatches(after, $.T.Assign));
                 },
                 ALT: () => {
                   let nameToken: IToken | undefined;
                   $.OR([
-                    { ALT: () => nameToken = $.CONSUME($.T.Ident) },
-                    { ALT: () => nameToken = $.CONSUME($.T.PlainIdent) },
-                    { ALT: () => nameToken = $.CONSUME($.T.CustomProperty) }
+                    {
+                      GATE: () => $.isType($.T.Ident),
+                      ALT: () => nameToken = $.CONSUME($.T.Ident)
+                    },
+                    {
+                      GATE: () => $.isType($.T.PlainIdent),
+                      ALT: () => nameToken = $.CONSUME($.T.PlainIdent)
+                    },
+                    {
+                      ALT: () => nameToken = $.CONSUME($.T.CustomProperty)
+                    }
                   ]);
                   if (nameToken) {
                     const nameNode = $.wrap(new Any(nameToken.image, { role: 'name' }, $.getLocationInfo(nameToken), $.context), true);
@@ -815,12 +819,20 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
         nodes!.push(call);
 
         // Check for and/or after the function call (similar to mediaCondition)
-        $.MANY(() => {
-          let rule = $.OR([
-            { ALT: () => $.containerAnd(ctx) },
-            { ALT: () => $.containerOr(ctx) }
-          ]) as Node[];
-          nodes!.push(...rule);
+        $.MANY({
+          GATE: () => $.isType($.T.And) || $.isType($.T.Or),
+          DEF: () => {
+            let rule = $.OR([
+              {
+                GATE: () => $.isType($.T.And),
+                ALT: () => $.containerAnd(ctx)
+              },
+              {
+                ALT: () => $.containerOr(ctx)
+              }
+            ]) as Node[];
+            nodes!.push(...rule);
+          }
         });
 
         const location = $.endRule();
@@ -865,21 +877,26 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
     },
     {
       // Custom container condition that handles `and not` and `or not`
-      GATE: () => {
-        const next = $.LA(1);
-        return next.tokenType === $.T.LParen;
-      },
+      GATE: () => $.isType($.T.LParen),
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
         let node = $.containerInParens(ctx);
         nodes!.push(node);
-        $.MANY(() => {
-          let rule = $.OR([
-            { ALT: () => $.containerAnd(ctx) },
-            { ALT: () => $.containerOr(ctx) }
-          ]) as Node[];
-          nodes!.push(...rule);
+        $.MANY({
+          GATE: () => $.isType($.T.And) || $.isType($.T.Or),
+          DEF: () => {
+            let rule = $.OR([
+              {
+                GATE: () => $.isType($.T.And),
+                ALT: () => $.containerAnd(ctx)
+              },
+              {
+                ALT: () => $.containerOr(ctx)
+              }
+            ]) as Node[];
+            nodes!.push(...rule);
+          }
         });
         if (nodes!.length === 1) {
           $.endRule();
@@ -890,10 +907,7 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
     },
     {
       // For cases not starting with LParen (like `not` at start), reuse media condition logic
-      GATE: () => {
-        const next = $.LA(1);
-        return next.tokenType !== $.T.LParen;
-      },
+      GATE: () => !$.isType($.T.LParen),
       ALT: () => $.mediaCondition(ctx)
     }
   ]);
@@ -909,7 +923,7 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
   let node: Node | undefined;
   $.OR([
     {
-      GATE: () => $.LA(1).tokenType === $.T.Not,
+      GATE: () => $.isType($.T.Not),
       ALT: () => {
         const notToken = $.CONSUME($.T.Not);
         node = $.containerInParens(ctx);
@@ -929,10 +943,7 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
           DEF: () => {
             $.OR([
               {
-                GATE: () => {
-                  const next = $.LA(1);
-                  return next.tokenType === $.T.LParen || next.tokenType === $.T.Not;
-                },
+                GATE: () => tokenTypeInSet($.LA(1).tokenType, $.QUERY_CONDITION_START),
                 ALT: () => {
                   const arg = $.containerCondition(ctx);
                   args!.push($.wrap(arg));
@@ -940,10 +951,10 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.LA(1);
                   const after = $.LA(2);
-                  const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
-                  return isIdent && after && tokenMatches(after, $.T.Assign);
+                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                    && after
+                    && tokenMatches(after, $.T.Assign);
                 },
                 ALT: () => {
                   const arg = $.declaration(ctx);
@@ -952,17 +963,24 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.LA(1);
                   const after = $.LA(2);
-                  const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
-                  return isIdent && (!after || !tokenMatches(after, $.T.Assign));
+                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                    && (!after || !tokenMatches(after, $.T.Assign));
                 },
                 ALT: () => {
                   let nameToken: IToken | undefined;
                   $.OR([
-                    { ALT: () => nameToken = $.CONSUME($.T.Ident) },
-                    { ALT: () => nameToken = $.CONSUME($.T.PlainIdent) },
-                    { ALT: () => nameToken = $.CONSUME($.T.CustomProperty) }
+                    {
+                      GATE: () => $.isType($.T.Ident),
+                      ALT: () => nameToken = $.CONSUME($.T.Ident)
+                    },
+                    {
+                      GATE: () => $.isType($.T.PlainIdent),
+                      ALT: () => nameToken = $.CONSUME($.T.PlainIdent)
+                    },
+                    {
+                      ALT: () => nameToken = $.CONSUME($.T.CustomProperty)
+                    }
                   ]);
                   if (nameToken) {
                     const nameNode = $.wrap(new Any(nameToken.image, { role: 'name' }, $.getLocationInfo(nameToken), $.context), true);
@@ -1004,7 +1022,7 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
   let node: Node | undefined;
   $.OR([
     {
-      GATE: () => $.LA(1).tokenType === $.T.Not,
+      GATE: () => $.isType($.T.Not),
       ALT: () => {
         const notToken = $.CONSUME($.T.Not);
         node = $.containerInParens(ctx);
@@ -1024,10 +1042,7 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
           DEF: () => {
             $.OR([
               {
-                GATE: () => {
-                  const next = $.LA(1);
-                  return next.tokenType === $.T.LParen || next.tokenType === $.T.Not;
-                },
+                GATE: () => tokenTypeInSet($.LA(1).tokenType, $.QUERY_CONDITION_START),
                 ALT: () => {
                   const arg = $.containerCondition(ctx);
                   args!.push($.wrap(arg));
@@ -1035,10 +1050,10 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.LA(1);
                   const after = $.LA(2);
-                  const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
-                  return isIdent && after && tokenMatches(after, $.T.Assign);
+                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                    && after
+                    && tokenMatches(after, $.T.Assign);
                 },
                 ALT: () => {
                   const arg = $.declaration(ctx);
@@ -1047,17 +1062,24 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
               },
               {
                 GATE: () => {
-                  const next = $.LA(1);
                   const after = $.LA(2);
-                  const isIdent = next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent || next.tokenType === $.T.CustomProperty;
-                  return isIdent && (!after || !tokenMatches(after, $.T.Assign));
+                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                    && (!after || !tokenMatches(after, $.T.Assign));
                 },
                 ALT: () => {
                   let nameToken: IToken | undefined;
                   $.OR([
-                    { ALT: () => nameToken = $.CONSUME($.T.Ident) },
-                    { ALT: () => nameToken = $.CONSUME($.T.PlainIdent) },
-                    { ALT: () => nameToken = $.CONSUME($.T.CustomProperty) }
+                    {
+                      GATE: () => $.isType($.T.Ident),
+                      ALT: () => nameToken = $.CONSUME($.T.Ident)
+                    },
+                    {
+                      GATE: () => $.isType($.T.PlainIdent),
+                      ALT: () => nameToken = $.CONSUME($.T.PlainIdent)
+                    },
+                    {
+                      ALT: () => nameToken = $.CONSUME($.T.CustomProperty)
+                    }
                   ]);
                   if (nameToken) {
                     const nameNode = $.wrap(new Any(nameToken.image, { role: 'name' }, $.getLocationInfo(nameToken), $.context), true);
@@ -1122,7 +1144,10 @@ export function scopeAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Prelud
     }
   } else {
     const preludeNodes: Node[] = [];
-    $.MANY(() => preludeNodes.push($.wrap($.anyOuterValue(ctx))));
+    $.MANY({
+      GATE: () => !$.isType($.T.LCurly) && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => preludeNodes.push($.wrap($.anyOuterValue(ctx)))
+    });
     prelude = preludeNodes.length
       ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context), 'both')
       : undefined;
@@ -1143,7 +1168,10 @@ export function documentAtRule(this: P, ctx: RuleContext = {}) {
   $.startRule();
   const name = $.CONSUME($.T.AtDocument);
   const preludeNodes: Node[] = [];
-  $.MANY(() => preludeNodes.push($.wrap($.anyOuterValue(ctx))));
+  $.MANY({
+    GATE: () => !$.isType($.T.LCurly) && $.LA(1).tokenType.name !== 'EOF',
+    DEF: () => preludeNodes.push($.wrap($.anyOuterValue(ctx)))
+  });
   $.CONSUME($.T.LCurly);
   const rules = $.atRuleBody(ctx) as Rules;
   $.CONSUME($.T.RCurly);

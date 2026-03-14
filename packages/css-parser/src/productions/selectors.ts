@@ -68,12 +68,12 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
     GATE: () => {
       const next = $.LA(1);
       // Stop at RCurly (belongs to parent block) or end of input
-      if (next.tokenType === $.T.RCurly || next.tokenType.name === 'EOF') {
+      if ($.isType($.T.RCurly) || next.tokenType.name === 'EOF') {
         return false;
       }
       return !requiredSemi || (requiredSemi && (
-        next.tokenType === $.T.Semi
-        || $.LA(0).tokenType === $.T.Semi
+        $.isType($.T.Semi)
+        || $.isTypeAt(0, $.T.Semi)
       ));
     },
     DEF: () => {
@@ -267,9 +267,12 @@ export function pseudoSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
               let valuesLocation: LocationInfo;
 
               $.startRule();
-              $.MANY(() => {
-                let val = $.anyInnerValue();
-                values!.push(val);
+              $.MANY({
+                GATE: () => !$.isType($.T.RParen),
+                DEF: () => {
+                  let val = $.anyInnerValue();
+                  values!.push(val);
+                }
               });
               valuesLocation = $.endRule();
               $.CONSUME($.T.RParen);

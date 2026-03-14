@@ -408,7 +408,8 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
           || $.LA(1).tokenType === $.T.CustomProperty
           || ($.legacyMode && $.LA(1).tokenType === $.T.LegacyPropIdent)
           || $.LA(1).tokenType === $.T.InterpolationStart
-        ) && looksLikeInterpolatedDeclName()
+        )
+        && looksLikeInterpolatedDeclName()
       ),
       ALT: () => {
         let source = '';

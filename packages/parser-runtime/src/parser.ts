@@ -396,7 +396,8 @@ export class RecursiveDescentParser {
    * Exact token-type check for the next token.
    *
    * Use this when the grammar wants one concrete token type and does not
-   * need category matching.
+   * need category matching. For token-set membership, use
+   * `tokenTypeInSet($.LA(n).tokenType, SOME_SET)` in parser code.
    */
   isType(expected: TokenType): boolean {
     const idx = this.pos;
@@ -419,7 +420,7 @@ export class RecursiveDescentParser {
 
   /**
    * Check if the next token matches the given type
-   * This is a a "category-aware" version of isType
+   * This is a a "category-aware" version of isType.
    */
   check(tokenType: TokenType): boolean {
     const idx = this.pos;

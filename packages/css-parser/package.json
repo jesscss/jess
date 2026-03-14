@@ -30,6 +30,8 @@
     "build": "pnpm compile",
     "compile": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
+    "bench": "tsx test/bench.ts",
+    "bench:save": "tsx test/bench.ts --save",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",

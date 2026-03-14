@@ -85,6 +85,10 @@ export class CssRecursiveParser extends RecursiveDescentParser {
   SIMPLE_NAME_START: Uint32Array;
   NESTED_RULE_START: Uint32Array;
   DECL_NAME_START: Uint32Array;
+  IDENT_LIKE_START: Uint32Array;
+  DECL_VALUE_NAME_START: Uint32Array;
+  QUERY_CONDITION_START: Uint32Array;
+  FUNCTION_LIKE_END: Uint32Array;
 
   constructor(
     T: TokenMap,
@@ -120,6 +124,27 @@ export class CssRecursiveParser extends RecursiveDescentParser {
       T.PlainIdent,
       T.CustomProperty,
       T.LegacyPropIdent
+    ]);
+
+    this.IDENT_LIKE_START = buildTokenTypeSet([
+      T.Ident,
+      T.PlainIdent
+    ]);
+
+    this.DECL_VALUE_NAME_START = buildTokenTypeSet([
+      T.Ident,
+      T.PlainIdent,
+      T.CustomProperty
+    ]);
+
+    this.QUERY_CONDITION_START = buildTokenTypeSet([
+      T.LParen,
+      T.Not
+    ]);
+
+    this.FUNCTION_LIKE_END = buildTokenTypeSet([
+      T.RParen,
+      T.UrlEnd
     ]);
   }
 

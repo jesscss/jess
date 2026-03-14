@@ -1,6 +1,6 @@
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { IToken, LocationInfo } from '@jesscss/parser-runtime';
-import { ParseError } from '@jesscss/parser-runtime';
+import { ParseError, tokenTypeInSet } from '@jesscss/parser-runtime';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   type TreeContext,
@@ -113,10 +113,7 @@ export function guardOr(this: P, ctx: RuleContext = {}) {
   let left = $.guardAnd(ctx);
   let right: Node | undefined;
   $.MANY({
-    GATE: () => {
-      const next = $.LA(1).tokenType;
-      return (ctx.allowComma && next === $.T.Comma) || next === $.T.Or;
-    },
+    GATE: () => (ctx.allowComma && $.isType($.T.Comma)) || $.isType($.T.Or),
     DEF: () => {
       /**
        * Nest expressions within expressions for correct
@@ -676,7 +673,7 @@ export function mixinArgList(this: P, ctx: RuleContext = {}) {
             }
             $.OR([
               {
-                GATE: () => $.LA(1).tokenType !== $.T.RParen,
+                GATE: () => !$.isType($.T.RParen),
                 ALT: () => {
                   const prevAllow = ctx.allowComma;
                   ctx.allowComma = true;
@@ -722,16 +719,13 @@ export function mixinArg(this: P, ctx: RuleContext = {}) {
   const $ = this;
   let firstToken = $.LA(1);
 
-  let atStart = (
-    firstToken.tokenType === $.T.AtKeyword
-    || firstToken.tokenType === $.T.AtKeywordLessExtension
-  );
+  let atStart = tokenTypeInSet(firstToken.tokenType, $.LESS_AT_NAME_START);
 
-  let isDeclaration = atStart && $.LA(2).tokenType === $.T.Colon;
+  let isDeclaration = atStart && $.isTypeAt(2, $.T.Colon);
 
   return $.OR([
     {
-      GATE: () => !isDeclaration && atStart && $.LA(2).tokenType === $.T.Ellipsis,
+      GATE: () => !isDeclaration && atStart && $.isTypeAt(2, $.T.Ellipsis),
       ALT: () => {
         $.startRule();
         let name = $.varName();
@@ -761,19 +755,19 @@ export function mixinArg(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      GATE: () => !isDeclaration && !atStart && firstToken.tokenType !== $.T.RParen && firstToken.tokenType !== $.T.Ellipsis,
+      GATE: () => !isDeclaration && !atStart && !tokenTypeInSet(firstToken.tokenType, $.MIXIN_ARG_TERMINATOR),
       ALT: () => {
         return $.callArgument(ctx);
       }
     },
     {
-      GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== $.T.Ellipsis && $.LA(2).tokenType !== $.T.RParen && $.LA(2).tokenType !== $.T.Comma && $.LA(2).tokenType !== $.T.Semi,
+      GATE: () => !isDeclaration && atStart && !tokenTypeInSet($.LA(2).tokenType, $.MIXIN_ARG_TERMINATOR),
       ALT: () => {
         return $.callArgument(ctx);
       }
     },
     {
-      GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== $.T.Ellipsis && ($.LA(2).tokenType === $.T.RParen || $.LA(2).tokenType === $.T.Comma || $.LA(2).tokenType === $.T.Semi),
+      GATE: () => !isDeclaration && atStart && !$.isTypeAt(2, $.T.Ellipsis) && tokenTypeInSet($.LA(2).tokenType, $.MIXIN_ARG_TERMINATOR),
       ALT: () => {
         $.startRule();
         let name = $.varName();
@@ -811,7 +805,7 @@ export function callArgument(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
     {
-      GATE: () => $.LA(1).tokenType === $.T.AnonMixinStart || $.LA(1).tokenType === $.T.LCurly,
+      GATE: () => tokenTypeInSet($.LA(1).tokenType, $.CALL_ARGUMENT_BLOCK_START),
       ALT: () => $.anonymousMixinDefinition(ctx)
     },
     {
@@ -864,13 +858,13 @@ export function exportAtRule(this: P, ctx: RuleContext = {}) {
       return;
     }
     // Consume "as"
-    if ($.LA(1).tokenType === $.T.Ident) {
+    if ($.isType($.T.Ident)) {
       $.CONSUME($.T.Ident);
     } else {
       $.CONSUME($.T.PlainIdent);
     }
     // Consume namespace identifier
-    const nsTok = ($.LA(1).tokenType === $.T.Ident)
+    const nsTok = $.isType($.T.Ident)
       ? ($.CONSUME($.T.Ident) as unknown as IToken)
       : ($.CONSUME($.T.PlainIdent) as unknown as IToken);
     namespace = nsTok.image;

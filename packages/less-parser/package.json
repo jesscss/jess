@@ -31,6 +31,7 @@
     "compile": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
     "bench": "tsx test/bench.ts",
+    "bench:save": "tsx test/bench.ts --save",
     "bench:memory": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --memory",
     "bench:heap": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --heap-snapshot",
     "test": "cross-env TEST=true vitest --watch=false",

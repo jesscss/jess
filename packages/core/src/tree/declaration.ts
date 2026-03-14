@@ -127,8 +127,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
     const effAssign = (setDefined && assign === ':') ? ':=' : assign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
-    // Normalize property name by trimming trailing whitespace
-    const normalizedName = String(name).replace(/\s+$/, '');
+    // Serialize the property name so attached comments survive, then trim only
+    // trailing whitespace before the assignment token.
+    const normalizedName = w.capture(() => name.toString(options)).replace(/\s+$/, '');
     w.add(`${normalizedName}${a}`, name);
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');
