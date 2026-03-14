@@ -57,6 +57,13 @@ export function shouldOperateWithMathFrames(
     return false;
   }
 
+  // Preserve CSS/Less slash syntax such as `font: small/20px` even under
+  // aggressive math modes. Keyword-like `Any` operands are overwhelmingly
+  // shorthand/value syntax, not arithmetic.
+  if (op === '/' && (isNode(left, N.Any) || isNode(right, N.Any))) {
+    return false;
+  }
+
   /** Parens for Less/SCSS will set `canOperate` to true */
   if (mathMode === 'always' || inParens) {
     return true;
