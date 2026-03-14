@@ -36,6 +36,7 @@ const RUNTIME_MISSING_MESSAGE = [
 
 const BOOT_TIMEOUT_MS = 8000;
 const REQUEST_TIMEOUT_MS = 10_000;
+const IDLE_SHUTDOWN_MS = 5_000;
 
 const isPathInside = (candidatePath: string, rootPath: string): boolean => {
   const rel = path.relative(rootPath, candidatePath);
@@ -117,6 +118,8 @@ type RuntimeState =
   | { status: 'failed'; error: Error };
 
 export class JsPlugin extends AbstractPlugin {
+  private static cleanupRegistered = false;
+  private static liveInstances = new Set<JsPlugin>();
   name = 'js';
   supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
   private runtimeState: RuntimeState = { status: 'idle' };
@@ -131,12 +134,53 @@ export class JsPlugin extends AbstractPlugin {
     timeout: NodeJS.Timeout;
   }>();
 
+  private idleTimer: NodeJS.Timeout | undefined;
+
   constructor(public opts: JsPluginOptions = {}) {
     super();
+    JsPlugin.liveInstances.add(this);
+    JsPlugin.registerProcessCleanup();
   }
 
   prewarm() {
     return this.ensureRuntime().catch(() => undefined);
+  }
+
+  private static registerProcessCleanup() {
+    if (JsPlugin.cleanupRegistered) {
+      return;
+    }
+    JsPlugin.cleanupRegistered = true;
+    const cleanup = () => {
+      for (const instance of JsPlugin.liveInstances) {
+        try {
+          instance.dispose();
+        } catch {
+          // ignore
+        }
+      }
+    };
+    process.once('beforeExit', cleanup);
+    process.once('exit', cleanup);
+  }
+
+  private clearIdleTimer() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+  }
+
+  private scheduleIdleShutdown() {
+    this.clearIdleTimer();
+    if (this.pending.size > 0 || this.runtimeState.status !== 'ready') {
+      return;
+    }
+    this.idleTimer = setTimeout(() => {
+      this.shutdown();
+      this.runtimeState = { status: 'idle' };
+    }, IDLE_SHUTDOWN_MS);
+    this.idleTimer.unref?.();
   }
 
   private ensureRuntimeAvailable(): void {
@@ -151,6 +195,7 @@ export class JsPlugin extends AbstractPlugin {
 
   private ensureRuntime(): Promise<void> {
     if (this.runtimeState.status === 'ready') {
+      this.clearIdleTimer();
       return Promise.resolve();
     }
     if (this.runtimeState.status === 'initializing') {
@@ -162,6 +207,7 @@ export class JsPlugin extends AbstractPlugin {
     const promise = this.startRuntime().then(
       () => {
         this.runtimeState = { status: 'ready' };
+        this.scheduleIdleShutdown();
       },
       (err: Error) => {
         this.runtimeState = { status: 'failed', error: err };
@@ -382,6 +428,9 @@ export class JsPlugin extends AbstractPlugin {
       this.pending.delete(parsed.id);
       clearTimeout(pending.timeout);
       pending.resolve(parsed);
+      if (this.pending.size === 0) {
+        this.scheduleIdleShutdown();
+      }
     }
   }
 
@@ -399,6 +448,7 @@ export class JsPlugin extends AbstractPlugin {
       | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
   ): Promise<RpcResult> {
     await this.ensureRuntime();
+    this.clearIdleTimer();
     if (!this.worker || !this.worker.stdin.writable) {
       throw new Error('Deno worker is not available.');
     }
@@ -415,6 +465,7 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   private shutdown() {
+    this.clearIdleTimer();
     if (this.worker && !this.worker.killed) {
       this.worker.kill();
     }

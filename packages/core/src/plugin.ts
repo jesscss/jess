@@ -93,6 +93,8 @@ export interface PluginInterface {
   preEvalVisitor?: Visitor | Visitor[];
   /** Post-eval visitor(s) - called after node.eval() (alternative to visitor for clarity) */
   postEvalVisitor?: Visitor | Visitor[];
+  /** Optional cleanup hook for plugins that manage external resources */
+  dispose?(): void;
 }
 
 const { isArray } = Array;
