@@ -23,24 +23,6 @@ export class SelectorList extends Selector<Selector[]> {
     return this.data.length;
   }
 
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    for (const selector of this.data) {
-      for (const key of selector.keySet) {
-        combinedKeySet.add(key);
-      }
-      for (const key of selector.visibleKeySet) {
-        combinedVisibleKeySet.add(key);
-      }
-    }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    // SelectorLists represent alternatives - can't use fast rejection
-    this._canFastReject = false;
-  }
-
   /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
@@ -120,6 +102,12 @@ export class SelectorList extends Selector<Selector[]> {
     return itemValues.join(',');
   }
 
+  override computeKeySetAndFastReject(): void {
+    super.computeKeySetAndFastReject();
+    /** Selector lists represent alternates, so subsets can't fast reject */
+    this.canFastReject = false;
+  }
+
   override compare(b: Selector): 0 | 1 | -1 | undefined {
     if (!isNode(b, N.Selector)) {
       return super.compare(b as unknown as Selector);
@@ -134,7 +122,7 @@ export class SelectorList extends Selector<Selector[]> {
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
     return pipe(
       () => {
-        const list = this;
+        const list = super.evalNode(context) as SelectorList;
         const { data } = list;
         const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
           const out = item.eval(context);

@@ -5,10 +5,8 @@ import type {
   ImportOptions,
   Node,
   Any,
-  Selector,
-  Mixin
+  Selector
 } from './tree/index.js';
-import type { Visitor } from './visitor/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -17,11 +15,11 @@ import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 import type { Call } from './tree/call.js';
-import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
+import { BitSetLibrary } from './tree/util/bitset.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -255,12 +253,16 @@ export class Context {
   /**
    * Depth-first document order of each Ruleset (assigned once per root before eval).
    * Used so processExtends can apply extends in true source order.
+   *
+   * @todo - Probably remove once I fix extends
    */
   documentOrderByRuleset?: WeakMap<Ruleset, number>;
 
   /**
    * Registered extends with their extend root context
    * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
+   *
+   * @todo - Probably remove once I fix extends
    */
   extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
 
@@ -287,6 +289,9 @@ export class Context {
 
   /** Rules depth, used to figure out source order */
   depth = -1;
+
+  /** Selector valueOf() strings to bitset positions */
+  selectorBits = new BitSetLibrary<string>();
 
   private _classMap: Map<string, string> | undefined;
   get classMap() {

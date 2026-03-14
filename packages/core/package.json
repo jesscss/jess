@@ -31,6 +31,7 @@
     "@jesscss/awaitable-pipe": "workspace:*",
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
+    "bitset": "~5.2.3",
     "chalk": "^5.2.0",
     "combinate": "^1.1.11",
     "data-structure-typed": "~2.0.0",

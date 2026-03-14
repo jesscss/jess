@@ -65,7 +65,9 @@
     "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "@types/lodash-es": "^4.17.8"
+    "@types/lodash-es": "^4.17.8",
+    "bootstrap-less-port": "~2.5.1",
+    "clinic": "~13.0.0"
   },
   "keywords": [
     "css",

@@ -27,26 +27,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return this.data.length;
   }
 
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    let canFastReject = true;
-
-    for (const selector of this.data) {
-      // Union each child's keySet
-      combinedKeySet = combinedKeySet.union(selector.keySet);
-      combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
-      // If any child can't fast reject, this compound can't either
-      if (!selector.canFastReject) {
-        canFastReject = false;
-      }
-    }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    this._canFastReject = canFastReject;
-  }
-
   override valueOf() {
     let value = this._valueOf;
     if (!value) {
@@ -87,7 +67,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
     return pipe(
       () => {
-        const sel = this;
+        const sel = super.evalNode(context) as CompoundSelector;
         const { data } = sel;
         const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
           const out = item.eval(context);

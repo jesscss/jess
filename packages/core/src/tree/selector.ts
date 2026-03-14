@@ -3,7 +3,9 @@ import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from '.
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
+import { type BitSetLibrary, BitSet } from './util/bitset.js';
 
+const { isArray } = Array;
 /**
  * This represents anything that is valid in a selector
  *
@@ -22,24 +24,35 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
 
   protected _valueOf: string | undefined;
 
+  keySetLibrary: BitSetLibrary<string> | undefined;
+
+  protected override evalNode(context: Context): MaybePromise<Node> {
+    this.keySetLibrary = context.selectorBits;
+    // this.computeKeySetAndFastReject();
+    return super.evalNode(context);
+  }
+
   /**
    * A set of all simplified (valueOf) selectors,
    * for easy lookup to see if the selector is extendable
    * by the key sets in the extend scope.
    */
-  protected _keySet: Set<string> | undefined;
+  protected _keySet: BitSet<string> | undefined;
   /** Used for mixin registry indexing - only includes visible selectors */
-  protected _visibleKeySet: Set<string> | undefined;
-  get keySet(): Set<string> {
-    if (!this._keySet) {
-      this._computeKeySetAndFastReject();
+  protected _visibleKeySet: BitSet<string> | undefined;
+
+  get keySet() {
+    let keySet = this._keySet;
+    if (!keySet) {
+      this.computeKeySetAndFastReject();
     }
     return this._keySet!;
   }
 
-  get visibleKeySet(): Set<string> {
-    if (!this._visibleKeySet) {
-      this._computeKeySetAndFastReject();
+  get visibleKeySet() {
+    let visibleKeySet = this._visibleKeySet;
+    if (!visibleKeySet) {
+      this.computeKeySetAndFastReject();
     }
     return this._visibleKeySet!;
   }
@@ -49,30 +62,48 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    * True = keySet represents exact requirements (no alternatives)
    * False = keySet contains alternatives/unions, disjoint check unreliable
    */
-  protected _canFastReject: boolean | undefined;
-
-  get canFastReject(): boolean {
-    if (this._canFastReject === undefined) {
-      // Trigger computation of both keySet and canFastReject together
-      this._computeKeySetAndFastReject();
-    }
-    return this._canFastReject!;
-  }
+  canFastReject: boolean | undefined;
 
   /**
    * Computes both keySet and canFastReject in one pass for efficiency.
    * Subclasses should override this to implement their specific logic.
    */
-  protected _computeKeySetAndFastReject(): void {
+  protected computeKeySetAndFastReject(): void {
+    let keySet = this._keySet;
+    let visibleKeySet = this._visibleKeySet;
+    if (keySet && visibleKeySet) {
+      return;
+    }
     // Default implementation - subclasses override
+    let library = this.keySetLibrary;
+    if (!library) {
+      throw new Error('Selector keySet library not found');
+    }
+
+    let data = this.data;
+    if (isArray(data)) {
+      /** Aggregate children keysets */
+      let childCanReject = true;
+      for (const child of data as Selector[]) {
+        let childKeySet = child.keySet;
+        let keySet = this._keySet;
+        let visibleKeySet = this._visibleKeySet;
+        this._keySet = keySet ? keySet.or(childKeySet) : childKeySet.clone();
+        this._visibleKeySet = visibleKeySet ? visibleKeySet.or(child.visibleKeySet) : child.visibleKeySet.clone();
+        childCanReject &&= Boolean(child.canFastReject);
+      }
+      this.canFastReject = childCanReject;
+      return;
+    }
     let value = String(this.valueOf());
-    this._keySet = new Set([value]);
+    this._keySet = library.getBitset([value]);
+
     if (this.hasFlag(F_VISIBLE)) {
       this._visibleKeySet = this._keySet;
     } else {
-      this._visibleKeySet = new Set();
+      this._visibleKeySet = library.getBitset();
     }
-    this._canFastReject = true;
+    this.canFastReject = true;
   }
 }
 

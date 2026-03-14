@@ -27,6 +27,8 @@ export type ParentSource = Ruleset | { data: SelectorContainer };
  * @param collapseNesting - Whether to collapse nesting (affects visibility flags)
  * @param parentSource - Optional parent ruleset (live) or snapshot { data: { selector } }; ampersand reads .selector from parentSource.data so extend sees the updated parent when ruleset is extended
  * @returns The selector with implicit ampersand added
+ *
+ * @todo - Remove, we shouldn't alter all selectors, it's expensive
  */
 export function addImplicitAmpersand(
   selector: Selector,

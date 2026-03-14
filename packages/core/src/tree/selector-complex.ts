@@ -51,46 +51,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
   }
 
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    let canFastReject = true;
-
-    for (const component of this.data) {
-      // Skip combinators - they don't contribute keys
-      if (isNode(component, N.Combinator)) {
-        continue;
-      }
-
-      // Get keys from selector components
-      const selector = component as Selector;
-      const selectorKeySet = selector.keySet;
-      if (selectorKeySet instanceof Set) {
-        combinedKeySet = combinedKeySet.union(selectorKeySet);
-      }
-
-      // Only add to visibleKeySet if the component is visible AND not an implicit ampersand
-      // Implicit ampersands should be excluded from visibleKeySet for indexing purposes,
-      // regardless of visibility (they're added by getImplicitSelector, not written by user)
-      if (component.hasFlag(F_VISIBLE) && !component.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        const selectorVisibleKeySet = selector.visibleKeySet;
-        if (selectorVisibleKeySet instanceof Set) {
-          combinedVisibleKeySet = combinedVisibleKeySet.union(selectorVisibleKeySet);
-        }
-      }
-      // If component is invisible (like an implicit ampersand), its visibleKeySet should be empty anyway
-
-      // If any selector component can't fast reject, this complex selector can't either
-      if (!selector.canFastReject) {
-        canFastReject = false;
-      }
-    }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    this._canFastReject = canFastReject;
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -128,13 +88,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return w.getSince(mark);
   }
 
-  /**
-   * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
-   */
   override evalNode(context: Context): MaybePromise<Selector | Nil> {
     return pipe(
       () => {
-        const selector = this;
+        const selector = super.evalNode(context) as ComplexSelector;
         const { data } = selector;
         const maybe = serialForEach(Array.from(getEntries(data)), ([sel, i]) => {
           const out = sel.eval(context);

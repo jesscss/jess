@@ -8,7 +8,6 @@ import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { isSubsetOf } from './bitset.js';
 /**
  * Helper functions for extend operations that eliminate genuine code duplication
  * These preserve all original logic while extracting commonly repeated patterns
@@ -86,15 +85,6 @@ export function getCombinatorComponents(selector: ComplexSelector): Combinator[]
  * Preserves the exact original matching semantics from multiple locations
  */
 export function componentsMatch(a: Selector, b: Selector): boolean {
-  let aValue = a.valueOf();
-  let bValue = b.valueOf();
-  if (aValue === bValue) {
-    return true;
-  }
-
-  if (isSubsetOf(a.keySet, b.keySet)) {
-
-  }
   // Exact string match first (fast path)
   if (a.valueOf() === b.valueOf()) {
     return true;

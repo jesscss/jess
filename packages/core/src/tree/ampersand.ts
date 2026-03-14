@@ -11,6 +11,8 @@ import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { F_VISIBLE } from './node.js';
+import { BitSet } from './util/bitset.js';
+
 export type AmpersandValue = {
   /**
    * The only value that may exist is an anonymous value
@@ -115,40 +117,24 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.setData('appendValue', val as any);
   }
 
-  override get keySet() {
+  override computeKeySetAndFastReject(): void {
     const stored = this._storedSelector;
     const current = this._selectorContainer?.selector;
-    if (!current || isNode(current, N.Nil)) {
-      return new Set(['&']);
-    }
     let keySet = this._keySet;
-    if (!keySet || stored !== current) {
-      this._computeKeySetAndFastReject();
-      return this._keySet!;
+    let visibleKeySet = this._visibleKeySet;
+    /** Ampersands don't participate to the visible key set */
+    if (!visibleKeySet) {
+      this._visibleKeySet = new BitSet();
     }
-    return keySet;
-  }
-
-  /** The keys of an ampersand are the keys of the selector it contains */
-  protected override _computeKeySetAndFastReject(): void {
-    const selector = this._selectorContainer?.selector;
-    if (selector && 'keySet' in selector) {
-      this._keySet = selector.keySet;
-      // For visibleKeySet, if this ampersand has a selector value, it's an implicit ampersand
-      // (added by getImplicitSelector). For indexing purposes, we want to exclude implicit ampersands
-      // regardless of visibility, so always set visibleKeySet to empty when there's a selector value
-      if (this.hasFlag(F_VISIBLE) && !selector) {
-        // Only include visibleKeySet if visible AND no selector value (explicit ampersand)
-        this._visibleKeySet = new Set();
-      } else {
-        // Implicit ampersand (has selector value) or invisible - exclude from visibleKeySet
-        this._visibleKeySet = new Set();
+    if (!current || isNode(current, N.Nil)) {
+      if (!keySet) {
+        this._keySet = new BitSet();
       }
-      this._canFastReject = selector.canFastReject;
       return;
     }
-    this._keySet = new Set(['&']);
-    this._visibleKeySet = new Set();
+    if (!keySet || stored !== current) {
+      this._keySet = current.keySet;
+    }
   }
 
   /**
