@@ -354,7 +354,7 @@ describe('componentsMatch', () => {
     });
 
     it('can continue the search into an ampersand', async () => {
-      let sel1 = sel([amp({ }), co(' '), el('.a')]);
+      let sel1 = sel([amp(), co(' '), el('.a')]);
     });
   });
 });
