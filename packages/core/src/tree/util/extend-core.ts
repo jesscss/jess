@@ -399,6 +399,40 @@ function getCompoundMembersOutsideRange(
   return compoundSelector.data.filter((_, index) => !matchedIndexSet.has(index)) as Selector[];
 }
 
+function wrapOrderedMatchRange(
+  targetSelector: Selector & { data: readonly Selector[] },
+  startIndex: number,
+  endIndex: number,
+  extendWith: Selector
+): Selector {
+  const matched = targetSelector.data.slice(startIndex, endIndex + 1) as Selector[];
+  const wrapped = wrapSelectorInIs(
+    matched.length === 1
+      ? matched[0]!
+      : ComplexSelector.create(matched).inherit(targetSelector) as Selector,
+    extendWith
+  );
+  const nextData: Selector[] = [];
+
+  for (let i = 0; i < targetSelector.data.length; i++) {
+    const node = targetSelector.data[i]!;
+    if (i === startIndex) {
+      nextData.push(wrapped);
+      continue;
+    }
+    if (i > startIndex && i <= endIndex) {
+      continue;
+    }
+    nextData.push(node);
+  }
+
+  if (nextData.length === 1) {
+    return nextData[0]!;
+  }
+
+  return ComplexSelector.create(nextData).inherit(targetSelector) as Selector;
+}
+
 /**
  * Replaces one direct child selector inside its parent container.
  *
@@ -752,6 +786,21 @@ export function tryExtendSelector(
       )
       : [];
     target.setData(location.startIndex, wrapSelectorInIs(existing, stripRedundantCompoundContext(extendWith, outsideMembers)));
+    if (location.crossesAmpersand || match.crossesAmpersand) {
+      target.hoistToRoot = true;
+    }
+    return createSuccessResult(target);
+  }
+
+  if (
+    isNode(target, N.ComplexSelector)
+    && location.containingNode === target
+    && location.startIndex !== undefined
+    && location.endIndex !== undefined
+    && location.startIndex < location.endIndex
+  ) {
+    const replacement = wrapOrderedMatchRange(target as Selector & { data: readonly Selector[] }, location.startIndex, location.endIndex, extendWith);
+    target.setData(replacement.data as any);
     if (location.crossesAmpersand || match.crossesAmpersand) {
       target.hoistToRoot = true;
     }

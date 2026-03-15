@@ -1,6 +1,7 @@
 import type { EqualityMode, MathMode, UnitMode } from './modes.js';
 
 export type { EqualityMode, MathMode, UnitMode };
+export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /**
  * Less compiler options.
@@ -9,6 +10,21 @@ export type { EqualityMode, MathMode, UnitMode };
  * Based on less.js default-options.js and bin/lessc.
  */
 export interface LessOptions {
+  /**
+   * Restrict which selector shapes are allowed in extend targets.
+   * When set, any other selector kind is a parse error.
+   *
+   * Supported kinds mirror selector node types in lowercase:
+   * - `simple`
+   * - `basic`
+   * - `pseudo`
+   * - `compound`
+   * - `complex`
+   *
+   * @default undefined
+   */
+  allowExtendSelectors?: ExtendSelectorKind[];
+
   /**
    * Inline Javascript - @plugin still allowed
    * @default false

@@ -156,7 +156,8 @@ export class LessPlugin extends AbstractPlugin {
     return out;
   }
 
-  safeParse(filePath: string, source: string): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: { compilerOptions?: Record<string, any> }): ISafeParseResult {
+    void parseOptions;
     const context = new TreeContext({
       file: {
         name: path.basename(filePath),
@@ -168,6 +169,7 @@ export class LessPlugin extends AbstractPlugin {
       unitMode: this.unitMode,
       equalityMode: this.equalityMode,
       plugin: this,
+      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
       collapseNesting: this.collapseNesting,
       leakyRules: this.leakyRules,
       bubbleRootAtRules: this.bubbleRootAtRules

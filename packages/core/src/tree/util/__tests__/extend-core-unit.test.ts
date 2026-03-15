@@ -346,4 +346,36 @@ describe('tryExtendSelector', () => {
     expect(result.value).toBe(target);
     expect(serialize(result.value)).toBe('a > :is(.class, span.other)');
   });
+
+  it('wraps the full matched segment when a partial match spans a combinator', () => {
+    const target = sel([
+      el('div'),
+      co('+'),
+      compound([el('.a'), el('.c'), el('.b')]),
+      co('>'),
+      compound([el('.y'), el('.x')])
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.b')]),
+      co('>'),
+      el('.x')
+    ]);
+    const result = tryExtendSelector(target, find, el('.q'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe('div + :is(.a.c.b > .y.x, .q)');
+  });
+
+  it('wraps a partial match inside one root :is() alternative only', () => {
+    const target = is(sellist([
+      sel([el('.foo'), co(' '), el('.bar')]),
+      el('.baz')
+    ]));
+    const result = tryExtendSelector(target, el('.bar'), el('.q'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe(':is(.foo :is(.bar, .q), .baz)');
+  });
 });

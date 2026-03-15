@@ -631,7 +631,9 @@ export class Context {
     } catch (error: any) {
       throw error;
     }
-    const parseResult = plugin.safeParse!(resolvedPath, source);
+    const parseResult = plugin.safeParse!(resolvedPath, source, {
+      compilerOptions: this.opts as Record<string, any>
+    });
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
@@ -717,7 +719,9 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
-    const tree = await plugin.parse!(virtualPath, content);
+    const tree = await plugin.parse!(virtualPath, content, {
+      compilerOptions: this.opts as Record<string, any>
+    });
 
     if (!tree) {
       throw new Error('Failed to parse content');

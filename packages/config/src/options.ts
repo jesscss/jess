@@ -157,6 +157,7 @@ export function getOptions(
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
     equalityMode: compile.equalityMode,
+    allowExtendSelectors: compile.allowExtendSelectors,
     paths: compile.searchPaths,
     javascriptEnabled: compile.enableJavaScript,
 

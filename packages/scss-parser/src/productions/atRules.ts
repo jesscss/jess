@@ -2,7 +2,7 @@
 // Converted from lines 1184-3096 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../scssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser-runtime';
-import { tokenMatches } from '@jesscss/parser-runtime';
+import { ParseError, tokenMatches } from '@jesscss/parser-runtime';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   Any,
@@ -37,7 +37,8 @@ import {
   type AssignmentType,
   type Node,
   type Rules as RulesType,
-  type Selector
+  type Selector,
+  type TreeContext
 } from '@jesscss/core';
 import {
   makeNamespacedReference,
@@ -49,6 +50,53 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+
+function getAllowedExtendSelectors(context: TreeContext): ExtendSelectorKind[] | undefined {
+  return context.opts.allowExtendSelectors as ExtendSelectorKind[] | undefined;
+}
+
+function findDisallowedExtendSelector(selector: Selector, allowed?: readonly ExtendSelectorKind[]) {
+  if (!allowed) {
+    return undefined;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    for (const item of selector.data) {
+      const disallowed = findDisallowedExtendSelector(item, allowed);
+      if (disallowed) {
+        return disallowed;
+      }
+    }
+    return undefined;
+  }
+  const kinds: ExtendSelectorKind[] = isNode(selector, N.BasicSelector)
+    ? ['simple', 'basic']
+    : isNode(selector, N.PseudoSelector)
+      ? ['simple', 'pseudo']
+      : isNode(selector, N.CompoundSelector)
+        ? ['compound']
+        : isNode(selector, N.ComplexSelector)
+          ? ['complex']
+          : ['simple'];
+  if (kinds.some(kind => allowed.includes(kind))) {
+    return undefined;
+  }
+  return {
+    kind: kinds[0]!,
+    selector
+  };
+}
+
+function formatAllowedExtendSelectors(allowed: readonly ExtendSelectorKind[]) {
+  if (allowed.length === 0) {
+    return 'no selector kinds';
+  }
+  if (allowed.length === 1) {
+    return `${allowed[0]} selectors`;
+  }
+  const head = allowed.slice(0, -1).join(', ');
+  return `${head}, or ${allowed[allowed.length - 1]} selectors`;
+}
 
 // Save CSS prototype methods for super calls
 const cssMediaAtRule = CssRecursiveParser.prototype.mediaAtRule;
@@ -292,6 +340,17 @@ export function scssExtendAtRule(this: P, ctx: RuleContext = {}) {
   $.CONSUME($.T.AtKeyword); // '@extend'
 
   const target = $.selectorList(ctx) as unknown as Node;
+  const allowed = getAllowedExtendSelectors($.context);
+  const disallowed = allowed
+    ? findDisallowedExtendSelector(target as Selector, allowed)
+    : undefined;
+  if (disallowed && allowed) {
+    throw new ParseError(
+      `@extend only allows ${formatAllowedExtendSelectors(allowed)}, but found ${disallowed.kind} selector "${disallowed.selector.valueOf()}".`,
+      $.LA(0),
+      { previousToken: $.LA(0) }
+    );
+  }
 
   // Accept (but ignore) any trailing bits like `!optional`
   $.MANY({

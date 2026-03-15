@@ -116,6 +116,66 @@ import { wrapOuterExpressionIfNeeded } from './root.js';
 // ── Helper: groupExtendsByTargetAndFlag ──────────────────────────────
 
 const { isArray } = Array;
+type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+
+function getAllowedExtendSelectors(context: TreeContext): ExtendSelectorKind[] | undefined {
+  return context.opts.allowExtendSelectors as ExtendSelectorKind[] | undefined;
+}
+
+function findDisallowedExtendSelector(selector: Selector, allowed?: readonly ExtendSelectorKind[]) {
+  if (!allowed) {
+    return undefined;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    for (const item of selector.data) {
+      const disallowed = findDisallowedExtendSelector(item, allowed);
+      if (disallowed) {
+        return disallowed;
+      }
+    }
+    return undefined;
+  }
+  const kinds: ExtendSelectorKind[] = isNode(selector, N.BasicSelector)
+    ? ['simple', 'basic']
+    : isNode(selector, N.PseudoSelector)
+      ? ['simple', 'pseudo']
+      : isNode(selector, N.CompoundSelector)
+        ? ['compound']
+        : isNode(selector, N.ComplexSelector)
+          ? ['complex']
+          : ['simple'];
+  if (kinds.some(kind => allowed.includes(kind))) {
+    return undefined;
+  }
+  return {
+    kind: kinds[0]!,
+    selector
+  };
+}
+
+function formatAllowedExtendSelectors(allowed: readonly ExtendSelectorKind[]) {
+  if (allowed.length === 0) {
+    return 'no selector kinds';
+  }
+  if (allowed.length === 1) {
+    return `${allowed[0]} selectors`;
+  }
+  const head = allowed.slice(0, -1).join(', ');
+  return `${head}, or ${allowed[allowed.length - 1]} selectors`;
+}
+
+function validateExtendTarget($: P, selector: Selector, source: ':extend()' | '&:extend()') {
+  const allowed = getAllowedExtendSelectors($.context);
+  const disallowed = findDisallowedExtendSelector(selector, allowed);
+  if (!disallowed || !allowed) {
+    return;
+  }
+  throw new ParseError(
+    `${source} only allows ${formatAllowedExtendSelectors(allowed)}, but found ${disallowed.kind} selector "${disallowed.selector.valueOf()}".`,
+    $.LA(0),
+    { previousToken: $.LA(0) }
+  );
+}
 
 /**
  * Groups extends by target (using valueOf()) and flag.
@@ -340,6 +400,7 @@ export function complexSelector(this: P, ctx: RuleContext = {}) {
   ]);
 
   if (ctx.inExtend) {
+    validateExtendTarget($, selector, ':extend()');
     (ctx.extendTargets ??= []).push({ selector: ctx.selector, target: selector, flag });
   }
 

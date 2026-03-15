@@ -16,6 +16,7 @@ export * from './tree/util/cast.js';
 export * from './tree/util/collections.js';
 export * from './tree/util/print.js';
 export * from './tree/util/serialize-types.js';
+export * from './tree/util/extend-selector-policy.js';
 export * from './conversions.js';
 export * from './types/index.js';
 export * from './visitor/index.js';

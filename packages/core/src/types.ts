@@ -1,4 +1,5 @@
 import type { PluginInterface } from './plugin';
+export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 export const enum MathMode {
   /**
@@ -30,6 +31,7 @@ export interface StylesConfig {
     enableJavaScript?: boolean;
     mathMode?: MathMode;
     unitMode?: UnitMode;
+    allowExtendSelectors?: ExtendSelectorKind[];
   };
   output?: {
     collapseNesting?: boolean;
@@ -44,6 +46,7 @@ export interface StylesConfig {
 }
 
 export interface LessOptions {
+  allowExtendSelectors?: ExtendSelectorKind[];
   mathMode?: MathMode;
   unitMode?: UnitMode;
   dumpLineNumbers?: string;

@@ -28,6 +28,10 @@ export type ISafeParseResult = {
   warnings: WarningDiagnostic[];
 };
 
+export type PluginParseOptions = {
+  compilerOptions?: Record<string, any>;
+};
+
 export interface PluginInterface {
   /**
    * e.g. 'less-plugin'
@@ -79,10 +83,10 @@ export interface PluginInterface {
    * If we have the extension in `supportedExtensions`, and this method exists,
    * then this plugin is assumed to be able to parse the file.
    */
-  parse?(filePath: string, source: string): Rules;
+  parse?(filePath: string, source: string, options?: PluginParseOptions): Rules;
 
   /** No errors thrown; instead will return errors in the result */
-  safeParse?(filePath: string, source: string): ISafeParseResult;
+  safeParse?(filePath: string, source: string, options?: PluginParseOptions): ISafeParseResult;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
@@ -144,12 +148,12 @@ export abstract class AbstractPlugin implements PluginInterface {
     return null;
   }
 
-  parse(filePath: string, source: string): Rules {
+  parse(filePath: string, source: string, options?: PluginParseOptions): Rules {
     const safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
     if (!safeParse) {
       throw new Error(`Plugin "${this.name}" does not support parsing`);
     }
-    const { tree, errors } = safeParse.call(this, filePath, source);
+    const { tree, errors } = safeParse.call(this, filePath, source, options);
     if (errors.length > 0) {
       const firstError = errors[0]!;
       throw new JessError({

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Parser } from '../src/index.js';
-import { isNode, N, serializeTypes, Condition } from '@jesscss/core';
+import { isNode, N, serializeTypes, Condition, TreeContext } from '@jesscss/core';
 import { assertValidTree } from './assert-valid-tree.js';
 
 describe('scss-parser (baseline)', () => {
@@ -356,6 +356,26 @@ describe('scss-parser (baseline)', () => {
     expect(result.errors.length).toBe(0);
     expect(serializeTypes(result.tree)).toContainString('(Extend');
     expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('rejects compound @extend targets when only simple selectors are allowed', () => {
+    const parser = new Parser();
+    const context = new TreeContext({ allowExtendSelectors: ['simple'] });
+    const result = parser.parse(`.a { @extend .b.c; }`, 'stylesheet', { context });
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.message).toContain('@extend only allows simple selectors');
+    expect(result.errors[0]?.message).toContain('compound selector');
+  });
+
+  it('allows selector lists when each @extend target is allowed', () => {
+    const parser = new Parser();
+    const context = new TreeContext({ allowExtendSelectors: ['simple'] });
+    const result = parser.parse(`.a { @extend .b, .c; }`, 'stylesheet', { context });
+
+    expect(result.errors).toHaveLength(0);
+    expect(serializeTypes(result.tree)).toContainString('(Extend');
     assertValidTree(result.tree);
   });
 

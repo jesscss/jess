@@ -74,6 +74,7 @@ type ResolvedRenderConfig = {
   configFilePath?: string;
   effectiveConfig: ConfigOptions;
   lessOptions: LessOptions;
+  activeOptions: Record<string, any>;
   resolvedOutputFilePath?: string;
   jsPluginConfig: JavaScriptSandboxConfig;
   normalizedCompileJavaScript?: JavaScriptSandboxConfig;
@@ -303,7 +304,11 @@ export class Compiler {
     );
   }
 
-  private resolveEffectiveConfig(filePath?: string, renderOptions?: Partial<ConfigOptions>): ResolvedRenderConfig {
+  private resolveEffectiveConfig(
+    filePath?: string,
+    renderOptions?: Partial<ConfigOptions>,
+    parseInput: { language?: string; extension?: string } = {}
+  ): ResolvedRenderConfig {
     const { config: loadedFileConfig, configFilePath } = filePath
       ? getConfigWithMeta(path.dirname(filePath))
       : { config: {}, configFilePath: undefined };
@@ -336,7 +341,21 @@ export class Compiler {
         resolvedOutputFilePath = path.join(dir, (renderOptions.output as any).file.replace('{name}', name));
       }
     }
-    const lessOptions = getOptions(effectiveConfig, { language: 'less', input: filePath, output: resolvedOutputFilePath });
+    const configInputPath = filePath ?? (
+      parseInput.extension
+        ? `virtual${parseInput.extension.startsWith('.') ? parseInput.extension : `.${parseInput.extension}`}`
+        : undefined
+    );
+    const lessOptions = getOptions(effectiveConfig, {
+      language: 'less',
+      input: configInputPath,
+      output: resolvedOutputFilePath
+    });
+    const activeOptions = getOptions(effectiveConfig, {
+      language: parseInput.language,
+      input: configInputPath,
+      output: resolvedOutputFilePath
+    });
 
     const resolveMatchedOutputCollapseNesting = (): boolean | undefined => {
       if (!Array.isArray(effectiveConfig.output) || !resolvedOutputFilePath) {
@@ -377,7 +396,7 @@ export class Compiler {
     const printOptions = {
       collapseNesting: explicitOutputCollapseNesting
         ?? matchedOutputCollapseNesting
-        ?? lessOptions.collapseNesting
+        ?? activeOptions.collapseNesting
     };
 
     return {
@@ -385,6 +404,7 @@ export class Compiler {
       configFilePath,
       effectiveConfig,
       lessOptions,
+      activeOptions,
       resolvedOutputFilePath,
       jsPluginConfig,
       normalizedCompileJavaScript,
@@ -399,6 +419,7 @@ export class Compiler {
       strictUnits: (lessOptions as any).strictUnits,
       unitMode: lessOptions.unitMode,
       equalityMode: lessOptions.equalityMode,
+      allowExtendSelectors: (lessOptions as any).allowExtendSelectors,
       leakyRules: lessOptions.leakyRules,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
       collapseNesting: lessOptions.collapseNesting
@@ -607,8 +628,8 @@ export class Compiler {
 
   private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
     const contextOptions = {
-      ...resolved.lessOptions,
-      ...resolved.effectiveConfig.compile
+      ...resolved.effectiveConfig.compile,
+      ...resolved.activeOptions
     };
     if (resolved.normalizedCompileJavaScript) {
       (contextOptions as any).javascript = resolved.jsPluginConfig;
@@ -624,10 +645,14 @@ export class Compiler {
     return new Context(contextOptions, plugins);
   }
 
-  private async prepareRender(filePath?: string, renderOptions?: Partial<ConfigOptions>) {
+  private async prepareRender(
+    filePath?: string,
+    renderOptions?: Partial<ConfigOptions>,
+    parseInput?: { language?: string; extension?: string }
+  ) {
     const profile = createRenderProfile('prepareRender', { filePath });
     const resolved = measureProfileSync(profile, 'resolveEffectiveConfig', () =>
-      this.resolveEffectiveConfig(filePath, renderOptions)
+      this.resolveEffectiveConfig(filePath, renderOptions, parseInput)
     );
     const plugins = measureProfileSync(profile, 'buildPlugins', () =>
       this.buildPlugins(resolved)
@@ -881,7 +906,7 @@ export class Compiler {
     config?: Partial<ConfigOptions>;
   } = {}) {
     const { filePath, language, extension, config: renderOptions } = options;
-    const { context, profile } = await this.prepareRender(filePath, renderOptions);
+    const { context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
       const evald = await this.evaluateInput(context, { filePath, source: content, language, extension }, profile);
@@ -926,7 +951,7 @@ export class Compiler {
     const language = isSourceContent ? input.language : options?.language;
     const extension = isSourceContent ? input.extension : options?.extension;
     const renderOptions = options;
-    const { context, profile } = await this.prepareRender(filePath, renderOptions);
+    const { context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
       const evald = await this.evaluateInput(context, {
