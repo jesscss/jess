@@ -17,6 +17,10 @@ import { type PseudoSelector } from '../selector-pseudo.js';
  *
  * `crossesAmpersand` is set on synthetic cross-boundary matches completed
  * through a parent selector context.
+ *
+ * `consumedTarget` means this location matched everything it could possibly
+ * match in its target container. This is distinct from route-level
+ * `fullMatch`, which only means one exact match route succeeded.
  */
 interface SelectorMatchLocation {
   startIndex?: number;
@@ -25,6 +29,7 @@ interface SelectorMatchLocation {
   containingNode: Node;
   exact?: boolean;
   crossesAmpersand?: boolean;
+  consumedTarget?: boolean;
 }
 
 /**
@@ -566,6 +571,16 @@ function collectMatchedIndicesForWindow(
  *
  * For compounds this scans contiguous windows so repeated matches in the same
  * compound are reported independently.
+ *
+ * @todo This is still the hottest path in selector matching. It currently
+ * scans O(n^2) spans and may re-run `matchCompoundWindow()` for the same
+ * requirement to prove minimality (`withoutStartMatches` / `withoutEndMatches`).
+ * If this becomes a measurable bottleneck, replace the brute-force span scan
+ * with a requirement-aware sliding window or prefix-count index that can:
+ * 1. detect whether a span satisfies the requirement,
+ * 2. prove minimality without rescanning adjacent subspans, and
+ * 3. still preserve current semantics for extras-inside-span, matchedIndices,
+ *    branch-tail ambiguity, and repeated independent matches in one compound.
  */
 function collectGroupMatchLocations(
   targetGroup: Node,
@@ -578,7 +593,8 @@ function collectGroupMatchLocations(
           startIndex: 0,
           endIndex: 0,
           containingNode: targetGroup,
-          exact: groupMatch.exact
+          exact: groupMatch.exact,
+          consumedTarget: groupMatch.exact
         }]
       : [];
   }
@@ -627,7 +643,8 @@ function collectGroupMatchLocations(
           endIndex: end,
           matchedIndices: collectMatchedIndicesForWindow(targetCompound, start, end, requirement),
           containingNode: targetGroup,
-          exact: windowMatch.exact && start === 0 && end === targetLength - 1
+          exact: windowMatch.exact && start === 0 && end === targetLength - 1,
+          consumedTarget: windowMatch.exact && start === 0 && end === targetLength - 1
         });
       }
     }
@@ -809,7 +826,8 @@ function pushNestedBranchMatches(
           endIndex: match.endIndex,
           matchedIndices: match.matchedIndices,
           containingNode: match.containingNode,
-          exact: false
+          exact: false,
+          consumedTarget: match.consumedTarget
         });
       }
     }
@@ -977,7 +995,8 @@ function pushNestedPseudoMatches(
           startIndex: match.startIndex,
           endIndex: match.endIndex,
           containingNode: match.containingNode,
-          exact: match.exact
+          exact: match.exact,
+          consumedTarget: match.consumedTarget
         });
       }
       return;
@@ -990,7 +1009,8 @@ function pushNestedPseudoMatches(
         startIndex: match.startIndex,
         endIndex: match.endIndex,
         containingNode: match.containingNode,
-        exact: false
+        exact: false,
+        consumedTarget: match.consumedTarget
       });
     }
     return;
@@ -1009,6 +1029,9 @@ function pushNestedPseudoMatches(
  *
  * Matching is ordered at the route level, unordered only inside a single
  * compound-like position, and branches only at `SelectorList` alternatives.
+ * A selector list on the find side is treated as alternate find routes: any
+ * one alternate may match, and each matching alternate contributes its own
+ * recorded locations.
  *
  * When `parent` is provided, it acts like an implicit prefix context joined to
  * `target` by a descendant combinator. Parent traversal is attempted only when
@@ -1027,6 +1050,20 @@ function selectorMatchUncached(
   parent: Selector | undefined,
   context: SelectorMatchContext
 ): SelectorMatchState {
+  if (isNode(find, N.SelectorList)) {
+    const result = emptySelectorMatchState();
+
+    for (let i = 0; i < find.data.length; i++) {
+      const nested = selectorMatchInternal(find.data[i]!, target, parent, context);
+      result.fullMatch ||= nested.fullMatch;
+      result.partialMatch ||= nested.partialMatch;
+      result.crossesAmpersand ||= nested.crossesAmpersand;
+      pushMatches(result.matches, nested.matches);
+    }
+
+    return finalizeMatchState(result);
+  }
+
   if (
     isNode(find, N.PseudoSelector)
     && find.data.name !== ':is'
@@ -1052,7 +1089,8 @@ function selectorMatchUncached(
         startIndex: match.startIndex,
         endIndex: match.endIndex,
         containingNode: find.data.arg as Node,
-        exact: false
+        exact: false,
+        consumedTarget: false
       };
     }
 
@@ -1066,28 +1104,26 @@ function selectorMatchUncached(
 
   let findValue = find.valueOf();
   if (isNode(target, N.SelectorList)) {
-    for (let i = 0; i < target.value.length; i++) {
-      const sel = target.value[i]!;
-      if (sel.valueOf() === findValue) {
+    for (let i = 0; i < target.data.length; i++) {
+      const sel = target.data[i]!;
+      const nested = selectorMatchInternal(find, sel, undefined, context);
+      if (nested.partialMatch) {
         return {
-          fullMatch: true,
+          fullMatch: nested.fullMatch,
           partialMatch: true,
-          crossesAmpersand: sel.hasFlag(F_AMPERSAND),
+          crossesAmpersand: nested.crossesAmpersand || sel.hasFlag(F_AMPERSAND),
           matches: [{
             startIndex: i,
             endIndex: i,
-            containingNode: sel,
-            exact: true
+            matchedIndices: [i],
+            containingNode: target,
+            exact: nested.fullMatch,
+            consumedTarget: nested.fullMatch && target.data.length === 1
           }]
         };
       }
     }
-    return {
-      fullMatch: false,
-      partialMatch: true,
-      crossesAmpersand: false,
-      matches: []
-    };
+    return emptySelectorMatchState();
   } else {
     if (findValue === target.valueOf()) {
       return {
@@ -1096,7 +1132,8 @@ function selectorMatchUncached(
         crossesAmpersand: target.hasFlag(F_AMPERSAND),
         matches: [{
           containingNode: target,
-          exact: true
+          exact: true,
+          consumedTarget: true
         }]
       };
     }
@@ -1207,7 +1244,8 @@ function selectorMatchUncached(
           endIndex: routePlan.selector.data.length - 1,
           containingNode: routePlan.selector,
           exact,
-          crossesAmpersand: true
+          crossesAmpersand: true,
+          consumedTarget: !!exact
         });
         return;
       }
@@ -1215,7 +1253,8 @@ function selectorMatchUncached(
       result.matches.push({
         containingNode: routePlan.selector,
         exact,
-        crossesAmpersand: true
+        crossesAmpersand: true,
+        consumedTarget: !!exact
       });
     };
 
@@ -1274,7 +1313,8 @@ function selectorMatchUncached(
               const location = groupLocations[i]!;
               result.matches.push({
                 ...location,
-                exact: exact && location.exact
+                exact: exact && location.exact,
+                consumedTarget: !!location.consumedTarget
               });
             }
             continue;
@@ -1290,7 +1330,8 @@ function selectorMatchUncached(
           startIndex: routeUnits[start]!.index,
           endIndex: routeUnits[start + findUnits.length - 1]!.index,
           containingNode: routePlan.selector as Node,
-          exact
+          exact,
+          consumedTarget: !!exact
         });
       }
     }

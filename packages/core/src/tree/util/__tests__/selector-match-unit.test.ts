@@ -28,6 +28,7 @@ describe('basic selectors', () => {
     let result = selectorMatch(sel1, sel2);
     expect(result.fullMatch).toBe(true);
     expect(result.crossesAmpersand).toBe(false);
+    expect(result.matches[0]!.consumedTarget).toBe(true);
   });
 
   it('rejects different simple selectors', async () => {
@@ -68,6 +69,7 @@ describe('compound selectors', () => {
     expect(result.matches[0]!.startIndex).toBe(0);
     expect(result.matches[0]!.endIndex).toBe(2);
     expect(result.matches[0]!.matchedIndices).toEqual([0, 2]);
+    expect(result.matches[0]!.consumedTarget).toBe(false);
   });
 
   it('returns a partial match for .b:hover within .b.a:hover', async () => {
@@ -362,6 +364,34 @@ describe('selector lists and branching', () => {
       let result = selectorMatch(sel2, sel1);
       expect(result.fullMatch).toBe(true);
       expect(result.partialMatch).toBe(true);
+    });
+
+    it('reports a single selector-list item match against the list container', async () => {
+      let sel1 = sellist([el('a'), el('b'), el('c')]);
+      let sel2 = el('a');
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]!.containingNode).toBe(sel1);
+      expect(result.matches[0]!.startIndex).toBe(0);
+      expect(result.matches[0]!.endIndex).toBe(0);
+      expect(result.matches[0]!.matchedIndices).toEqual([0]);
+      expect(result.matches[0]!.consumedTarget).toBe(false);
+    });
+
+    it('treats a find-side selector list as alternates', async () => {
+      let sel1 = el('a');
+      let sel2 = sellist([el('a'), el('b'), el('c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]!.containingNode).toBe(sel1);
     });
   });
 
