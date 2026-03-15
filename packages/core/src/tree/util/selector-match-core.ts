@@ -6,37 +6,55 @@ import { N } from '../node-type.js';
 import { isSubsetOf } from './bitset.js';
 import { type PseudoSelector } from '../selector-pseudo.js';
 
-const { isArray } = Array;
+/**
+ * A single located selector match.
+ *
+ * `startIndex` / `endIndex` are measured in the `containingNode`'s local
+ * ordered data when the containing node is ordered.
+ *
+ * `exact` means the matched route consumed its span end-to-end without extra
+ * unmatched basic selectors on that route.
+ *
+ * `crossesAmpersand` is set on synthetic cross-boundary matches completed
+ * through a parent selector context.
+ */
+interface SelectorMatchLocation {
+  startIndex?: number;
+  endIndex?: number;
+  matchedIndices?: number[];
+  containingNode: Node;
+  exact?: boolean;
+  crossesAmpersand?: boolean;
+}
 
+/**
+ * Aggregate selector-match result.
+ *
+ * `fullMatch` means at least one exact end-to-end route matched.
+ * `partialMatch` means at least one match of any kind was found.
+ * `crossesAmpersand` means at least one recorded match crossed an ampersand
+ * boundary instead of matching entirely on one side of it.
+ */
 interface SelectorMatchState {
-  /**
-   * Note that a "full" match just means an "end to end" match,
-   * which does not mean all alternatives are matched.
-   */
   fullMatch: boolean;
   partialMatch: boolean;
   crossesAmpersand: boolean;
-  matches: Array<{
-    startIndex?: number;
-    endIndex?: number;
-    containingNode: Node;
-    exact?: boolean;
-    crossesAmpersand?: boolean;
-  }>;
+  matches: SelectorMatchLocation[];
 }
 
-type SelectorMatchLocation = SelectorMatchState['matches'][number];
-
+/** The set of basic selectors that one unordered position can satisfy. */
 type MatchGroupRequirement = {
   basicSelectorIndex: Map<string, number>;
   basicSelectorCounts: number[];
   basicSelectorTotal: number;
 };
 
+/** One position can satisfy any one of its alternatives, such as `:is(...)`. */
 type MatchGroup = {
   alternatives: MatchGroupRequirement[];
 };
 
+/** One ordered unit in a route-level match plan. */
 type MatchPlanUnit =
   | {
     kind: 'group';
@@ -76,11 +94,17 @@ type MatchWindowResult = {
   exact: boolean;
 };
 
+type GroupMatchCache = WeakMap<Node, WeakMap<MatchGroup, MatchWindowResult>>;
+
 const selectorMatchPlanCache = new WeakMap<Selector, {
   value: string;
   plan: MatchPlan;
 }>();
 
+/**
+ * Returns true for pseudos whose selector arguments can be searched recursively
+ * but cannot be consumed as part of a continuing outer match, unlike `:is()`.
+ */
 function isSearchablePseudoBoundary(node: Node): node is PseudoSelector {
   return (
     isNode(node, N.PseudoSelector)
@@ -132,6 +156,12 @@ function mergeRequirements(
 
 function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
   if (isNode(node, N.BasicSelector)) {
+    const requirement = createRequirement();
+    addRequirementValue(requirement, node.valueOf());
+    return [requirement];
+  }
+
+  if (isNode(node, N.PseudoSelector) && node.data.name !== ':is') {
     const requirement = createRequirement();
     addRequirementValue(requirement, node.valueOf());
     return [requirement];
@@ -298,7 +328,7 @@ function consumeGroupBasics(
     return states;
   }
 
-  if (isNode(node, N.BasicSelector)) {
+  if (isNode(node, N.BasicSelector) || (isNode(node, N.PseudoSelector) && node.data.name !== ':is')) {
     const idx = group.basicSelectorIndex.get(node.valueOf());
 
     for (let i = 0; i < states.length; i++) {
@@ -363,6 +393,33 @@ function consumeGroupBasics(
   return nextStates;
 }
 
+/** Summarizes a set of consume-states with a single pass. */
+function summarizeStates(states: MatchGroupState[]): MatchWindowResult {
+  let matched = false;
+  let exact = false;
+
+  for (let i = 0; i < states.length; i++) {
+    const state = states[i]!;
+    if (state.remainingTotal !== 0) {
+      continue;
+    }
+
+    matched = true;
+    if (state.exact) {
+      exact = true;
+      break;
+    }
+  }
+
+  return { matched, exact };
+}
+
+/**
+ * Matches a single unordered target position against one match group.
+ *
+ * This is the core "consume basics within a position" operation used by
+ * route-level matching.
+ */
 function matchTargetGroup(
   targetGroup: Node,
   findGroup: MatchGroup
@@ -377,9 +434,10 @@ function matchTargetGroup(
       remainingTotal: requirement.basicSelectorTotal,
       exact: true
     }]);
+    const summary = summarizeStates(states);
 
-    matched ||= states.some(state => state.remainingTotal === 0);
-    exact ||= states.some(state => state.remainingTotal === 0 && state.exact);
+    matched ||= summary.matched;
+    exact ||= summary.exact;
 
     if (exact) {
       break;
@@ -405,12 +463,51 @@ function matchCompoundWindow(
     states = consumeGroupBasics(targetCompound.data[i]!, requirement, states);
   }
 
-  return {
-    matched: states.some(state => state.remainingTotal === 0),
-    exact: states.some(state => state.remainingTotal === 0 && state.exact)
-  };
+  return summarizeStates(states);
 }
 
+function collectMatchedIndicesForWindow(
+  targetCompound: Selector & { data: readonly Node[] },
+  start: number,
+  end: number,
+  requirement: MatchGroupRequirement
+): number[] | undefined {
+  const remainingCounts = [...requirement.basicSelectorCounts];
+  const matchedIndices: number[] = [];
+
+  for (let i = start; i <= end; i++) {
+    const node = targetCompound.data[i]!;
+    if (!isNode(node, N.BasicSelector) && !(isNode(node, N.PseudoSelector) && node.data.name !== ':is')) {
+      continue;
+    }
+
+    const idx = requirement.basicSelectorIndex.get(node.valueOf());
+    if (idx === undefined || remainingCounts[idx] === 0) {
+      continue;
+    }
+
+    remainingCounts[idx]!--;
+    matchedIndices.push(i);
+  }
+
+  if (matchedIndices.length === 0) {
+    return undefined;
+  }
+
+  const spanLength = end - start + 1;
+  if (matchedIndices.length === spanLength) {
+    return undefined;
+  }
+
+  return matchedIndices;
+}
+
+/**
+ * Collects every group-local span match for a target node.
+ *
+ * For compounds this scans contiguous windows so repeated matches in the same
+ * compound are reported independently.
+ */
 function collectGroupMatchLocations(
   targetGroup: Node,
   findGroup: MatchGroup
@@ -428,41 +525,86 @@ function collectGroupMatchLocations(
   }
 
   const matches: SelectorMatchLocation[] = [];
+  const seen = new Set<string>();
+  const targetCompound = targetGroup as Selector & { data: readonly Node[] };
 
   for (let i = 0; i < findGroup.alternatives.length; i++) {
     const requirement = findGroup.alternatives[i]!;
-    const findSpanLength = requirement.basicSelectorTotal;
-    const lastStart = targetGroup.data.length - findSpanLength;
+    for (let start = 0; start < targetGroup.data.length; start++) {
+      for (let end = start; end < targetGroup.data.length; end++) {
+        const withoutStartMatches = start < end
+          && matchCompoundWindow(targetCompound, start + 1, end, requirement).matched;
+        if (withoutStartMatches) {
+          continue;
+        }
 
-    if (lastStart < 0) {
-      continue;
-    }
+        const withoutEndMatches = start < end
+          && matchCompoundWindow(targetCompound, start, end - 1, requirement).matched;
+        if (withoutEndMatches) {
+          continue;
+        }
 
-    for (let start = 0; start <= lastStart; start++) {
-      const end = start + findSpanLength - 1;
+        const key = `${start}:${end}`;
+        if (seen.has(key)) {
+          continue;
+        }
+
+        seen.add(key);
+
       const windowMatch = matchCompoundWindow(
-        targetGroup as Selector & { data: readonly Node[] },
+        targetCompound,
         start,
         end,
         requirement
       );
 
       if (!windowMatch.matched) {
+        seen.delete(key);
         continue;
       }
 
       matches.push({
         startIndex: start,
         endIndex: end,
+        matchedIndices: collectMatchedIndicesForWindow(targetCompound, start, end, requirement),
         containingNode: targetGroup,
         exact: windowMatch.exact && start === 0 && end === targetGroup.data.length - 1
       });
+      }
     }
   }
 
-  return matches;
+  matches.sort((left, right) => {
+    const leftStart = left.startIndex ?? 0;
+    const rightStart = right.startIndex ?? 0;
+    if (leftStart !== rightStart) {
+      return leftStart - rightStart;
+    }
+
+    const leftEnd = left.endIndex ?? leftStart;
+    const rightEnd = right.endIndex ?? rightStart;
+    return leftEnd - rightEnd;
+  });
+
+  const filtered: SelectorMatchLocation[] = [];
+  let lastEnd = -1;
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i]!;
+    const start = match.startIndex ?? 0;
+    const end = match.endIndex ?? start;
+
+    if (start <= lastEnd) {
+      continue;
+    }
+
+    filtered.push(match);
+    lastEnd = end;
+  }
+
+  return filtered;
 }
 
+/** Fast constructor for the no-match result shape. */
 function emptySelectorMatchState(): SelectorMatchState {
   return {
     fullMatch: false,
@@ -472,6 +614,7 @@ function emptySelectorMatchState(): SelectorMatchState {
   };
 }
 
+/** Appends one result list into another without allocating a combined array. */
 function pushMatches(
   target: SelectorMatchLocation[],
   source: SelectorMatchLocation[]
@@ -481,12 +624,40 @@ function pushMatches(
   }
 }
 
+function getCachedGroupMatch(
+  cache: GroupMatchCache,
+  targetGroup: Node,
+  findGroup: MatchGroup
+): MatchWindowResult {
+  let nodeCache = cache.get(targetGroup);
+  if (!nodeCache) {
+    nodeCache = new WeakMap<MatchGroup, MatchWindowResult>();
+    cache.set(targetGroup, nodeCache);
+  }
+
+  const cached = nodeCache.get(findGroup);
+  if (cached) {
+    return cached;
+  }
+
+  const result = matchTargetGroup(targetGroup, findGroup);
+  nodeCache.set(findGroup, result);
+  return result;
+}
+
+/**
+ * Compares a contiguous slice of ordered units.
+ *
+ * Groups compare via unordered basic-selector consumption, while combinators
+ * must match exactly in place.
+ */
 function matchUnitWindow(
   findUnits: MatchPlanUnit[],
   findStart: number,
   targetUnits: MatchPlanUnit[],
   targetStart: number,
-  length: number
+  length: number,
+  groupMatchCache: GroupMatchCache
 ): MatchWindowResult {
   let exact = true;
 
@@ -505,7 +676,7 @@ function matchUnitWindow(
       continue;
     }
 
-    const groupMatch = matchTargetGroup(targetUnit.node, findUnit.group);
+    const groupMatch = getCachedGroupMatch(groupMatchCache, targetUnit.node, findUnit.group);
     if (!groupMatch.matched) {
       return { matched: false, exact: false };
     }
@@ -516,6 +687,7 @@ function matchUnitWindow(
   return { matched: true, exact };
 }
 
+/** True when a complex selector begins with a visible ampersand boundary. */
 function hasLeadingAmpersandBoundary(selector: Selector): boolean {
   return (
     isNode(selector, N.ComplexSelector)
@@ -568,13 +740,38 @@ function locationCrossesAmpersand(location: SelectorMatchLocation): boolean {
   return true;
 }
 
+/**
+ * Finalizes aggregate booleans from the collected match list.
+ *
+ * This intentionally uses a single scan to avoid repeated array passes on a
+ * hot path.
+ */
 function finalizeMatchState(result: SelectorMatchState): SelectorMatchState {
-  result.fullMatch = result.matches.some(match => match.exact);
+  let fullMatch = false;
+  let crossesAmpersand = false;
+
+  for (let i = 0; i < result.matches.length; i++) {
+    const match = result.matches[i]!;
+    fullMatch ||= !!match.exact;
+    crossesAmpersand ||= locationCrossesAmpersand(match);
+
+    if (fullMatch && crossesAmpersand) {
+      break;
+    }
+  }
+
+  result.fullMatch = fullMatch;
   result.partialMatch = result.matches.length > 0;
-  result.crossesAmpersand = result.matches.some(locationCrossesAmpersand);
+  result.crossesAmpersand = crossesAmpersand;
   return result;
 }
 
+/**
+ * Recursively searches inside searchable pseudo-selector arguments.
+ *
+ * These nested matches are root-like searches; they do not allow an outer
+ * match route to continue through the pseudo boundary.
+ */
 function pushNestedPseudoMatches(
   find: Selector,
   targetNode: Node,
@@ -620,6 +817,18 @@ function pushNestedPseudoMatches(
   }
 }
 
+/**
+ * Finds all occurrences of `find` inside `target`.
+ *
+ * Matching is ordered at the route level, unordered only inside a single
+ * compound-like position, and branches only at `SelectorList` alternatives.
+ *
+ * When `parent` is provided, it acts like an implicit prefix context joined to
+ * `target` by a descendant combinator. Parent traversal is attempted only when
+ * a match reaches a left-side ampersand boundary with partial-but-incomplete
+ * progress; matches that exist only inside the parent do not get added on
+ * their own.
+ */
 export function selectorMatch(
   find: Selector,
   target: Selector,
@@ -708,6 +917,7 @@ export function selectorMatch(
   if (findPlan.kind !== 'route' || findPlan.units.length === 0) {
     return emptySelectorMatchState();
   }
+  const groupMatchCache: GroupMatchCache = new WeakMap();
 
   const matchParentRoute = (
     routePlan: RouteMatchPlan,
@@ -731,7 +941,8 @@ export function selectorMatch(
         0,
         boundaryTailUnits,
         boundaryTailLength - findLength,
-        findLength
+        findLength,
+        groupMatchCache
       ).matched
     );
 
@@ -744,7 +955,8 @@ export function selectorMatch(
       findLength - boundaryTailLength,
       boundaryTailUnits,
       0,
-      boundaryTailLength
+      boundaryTailLength,
+      groupMatchCache
     );
 
     if (!targetBoundaryMatch.matched) {
@@ -774,7 +986,8 @@ export function selectorMatch(
         0,
         parentUnits,
         parentUnits.length - remainingFindLength,
-        remainingFindLength
+        remainingFindLength,
+        groupMatchCache
       );
 
       if (!parentMatch.matched) {
@@ -822,7 +1035,14 @@ export function selectorMatch(
 
       for (let start = 0; start <= lastStart; start++) {
         let exact = start === 0 && routeUnits.length === findUnits.length;
-        const windowMatch = matchUnitWindow(findUnits, 0, routeUnits, start, findUnits.length);
+        const windowMatch = matchUnitWindow(
+          findUnits,
+          0,
+          routeUnits,
+          start,
+          findUnits.length,
+          groupMatchCache
+        );
         let matched = windowMatch.matched;
         exact &&= windowMatch.exact;
 

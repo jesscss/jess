@@ -55,6 +55,48 @@ describe('compound selectors', () => {
     await sel2.eval(context);
     expect(selectorMatch(sel1, sel2).fullMatch).toBe(true);
   });
+
+  it('returns a partial match when a compound has extra members inside the matched span', async () => {
+    let sel1 = compound([el('.b'), el('.a'), pseudo({ name: ':hover' })]);
+    let sel2 = compound([el('.b'), pseudo({ name: ':hover' })]);
+    await sel1.eval(context);
+    await sel2.eval(context);
+    let result = selectorMatch(sel2, sel1);
+    expect(result.fullMatch).toBe(false);
+    expect(result.partialMatch).toBe(true);
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]!.startIndex).toBe(0);
+    expect(result.matches[0]!.endIndex).toBe(2);
+    expect(result.matches[0]!.matchedIndices).toEqual([0, 2]);
+  });
+
+  it('returns a partial match for .b:hover within .b.a:hover', async () => {
+    let sel1 = compound([el('.b'), el('.a'), pseudo({ name: ':hover' })]);
+    let sel2 = compound([el('.b'), pseudo({ name: ':hover' })]);
+    await sel1.eval(context);
+    await sel2.eval(context);
+    let result = selectorMatch(sel2, sel1);
+    expect(result.fullMatch).toBe(false);
+    expect(result.partialMatch).toBe(true);
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]!.startIndex).toBe(0);
+    expect(result.matches[0]!.endIndex).toBe(2);
+    expect(result.matches[0]!.matchedIndices).toEqual([0, 2]);
+  });
+
+  it('returns a partial match for .b.x within .b.a.x', async () => {
+    let sel1 = compound([el('.b'), el('.a'), el('.x')]);
+    let sel2 = compound([el('.b'), el('.x')]);
+    await sel1.eval(context);
+    await sel2.eval(context);
+    let result = selectorMatch(sel2, sel1);
+    expect(result.fullMatch).toBe(false);
+    expect(result.partialMatch).toBe(true);
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]!.startIndex).toBe(0);
+    expect(result.matches[0]!.endIndex).toBe(2);
+    expect(result.matches[0]!.matchedIndices).toEqual([0, 2]);
+  });
 });
 
 describe('pseudo-selectors', () => {
@@ -390,7 +432,7 @@ describe('selector lists and branching', () => {
       expect(result.matches).toHaveLength(1);
     });
 
-    it('matches near an ampersand but doesn\'t cross it', async () => {
+    it('matches near an ampersand but doesn\'t cross it #1', async () => {
       let inner = el('a').eval(context);
       let sel1 = compound([amp({ selectorContainer: { selector: inner } }), el('.b'), pseudo({ name: ':hover' })]);
       let sel2 = compound([el('.b'), pseudo({ name: ':hover' })]);
@@ -398,6 +440,21 @@ describe('selector lists and branching', () => {
       let evald2 = await sel2.eval(context);
       let result = selectorMatch(sel2, sel1);
       expect(`${evald1}`).toBe('&.b:hover');
+      expect(`${evald2}`).toBe('.b:hover');
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+      expect(result.crossesAmpersand).toBe(false);
+    });
+
+    it('matches near an ampersand but doesn\'t cross it #2', async () => {
+      let inner = el('.c').eval(context);
+      let sel1 = compound([el('.b'), pseudo({ name: ':hover' }), amp({ selectorContainer: { selector: inner } }), el('.b')]);
+      let sel2 = compound([el('.b'), pseudo({ name: ':hover' })]);
+      let evald1 = await sel1.eval(context);
+      let evald2 = await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(`${evald1}`).toBe('.b:hover&.b');
       expect(`${evald2}`).toBe('.b:hover');
       expect(result.fullMatch).toBe(false);
       expect(result.partialMatch).toBe(true);
