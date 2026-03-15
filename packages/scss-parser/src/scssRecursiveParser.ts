@@ -40,6 +40,8 @@ export type RuleContext = {
   isRoot?: boolean;
   /** Allow comma in guard context */
   allowComma?: boolean;
+  /** Inside an @extend target selector */
+  inExtend?: boolean;
 
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
