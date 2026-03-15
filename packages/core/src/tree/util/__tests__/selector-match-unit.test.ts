@@ -7,25 +7,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  el, sel, sellist, compound, is, co, pseudo
+  el, sel, sellist, compound, is, co, pseudo, amp
 } from '../../../index.js';
 import { Context } from '../../../context.js';
-import type { Selector, ComplexSelector } from '../../../index.js';
 import {
-  selectorMatch,
-  compoundComponentMatches,
-  arePseudoSelectorsEquivalent,
-  areSelectorArgumentsEquivalent,
-  areCompoundSelectorsEquivalent,
-  expandCompoundWithPseudoSelectors,
-  expandComplexSelectorWithIs,
-  expandSelectorWithIs,
-  areComplexSelectorsEquivalent,
-  isStructurallyEqual,
-  findExtendableLocations,
-  selectorMatchesExtendTarget,
-  normalizeSelectorForExtend,
-  selectorCompare
+  selectorMatch
 } from '../selector-match-core.js';
 
 // ─────────────────────────────────────────────────
@@ -152,12 +138,223 @@ describe('componentsMatch', () => {
   });
 
   describe.only('selector lists', () => {
-    it('find a selector in a selector list', async () => {
+    it('finds a selector in a selector list #1', async () => {
       let sel1 = sellist([el('.a'), el('.b')]);
       let sel2 = el('.b');
       await sel1.eval(context);
       await sel2.eval(context);
       expect(selectorMatch(sel2, sel1).fullMatch).toBe(true);
+    });
+
+    it('finds a selector in a selector list #2', async () => {
+      let sel1 = sellist([el('.b'), el('.x'), el('.y')]);
+      let sel2 = el('.b');
+      await sel1.eval(context);
+      await sel2.eval(context);
+      expect(selectorMatch(sel2, sel1).fullMatch).toBe(true);
+    });
+
+    it('finds a compound selector in a selector list', async () => {
+      let sel1 = sellist([compound([el('.b'), el('.x')]), el('.y')]);
+      let sel2 = compound([el('.x'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      expect(selectorMatch(sel2, sel1).fullMatch).toBe(true);
+    });
+
+    it('finds (partially) a compound selector in a selector list', async () => {
+      let sel1 = sellist([sel([compound([el('.b'), el('.x')]), co('>'), el('.y')]), el('.z')]);
+      let sel2 = compound([el('.x'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      expect(selectorMatch(sel2, sel1).fullMatch).toBe(false);
+      expect(selectorMatch(sel2, sel1).partialMatch).toBe(true);
+    });
+
+    it('matches a compound to a compound with an :is() in it', async () => {
+      let sel1 = compound([el('.a'), is(sellist([el('.x'), el('.c')])), el('.d')]);
+      let sel2 = compound([el('.d'), el('.a'), el('.c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+    });
+
+    it('returns a partial match for partial match in a compound selector', async () => {
+      let sel1 = compound([el('.a'), is(sellist([el('.x'), el('.c')])), el('.d')]);
+      let sel2 = compound([el('.d'), el('.c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+    });
+
+    it('returns a partial match for partial match in a complex selector', async () => {
+      let sel1 = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+    });
+
+    it('returns a partial match for partial compound match in a complex selector', async () => {
+      let sel1 = sel([el('.a'), co('>'), compound([el('.b'), el('.x')]), co('>'), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+    });
+
+    it('does not find a match #1', async () => {
+      let sel1 = sel([el('.a'), co('>'), compound([el('.b'), el('.x')]), co('>'), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(false);
+    });
+
+    it('does not find a match #2', async () => {
+      let sel1 = sel([el('.a'), co('>'), compound([el('.b'), el('.x')]), co('>'), el('.c')]);
+      let sel2 = sel([el('.q'), co('>'), el('.r')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(false);
+    });
+
+    it('does not find a match #3', async () => {
+      let sel1 = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(false);
+    });
+
+    it('does not give up finding a match too soon', async () => {
+      let sel1 = sel([el('.a'), co('>'), el('.c'), co('>'), el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+    });
+
+    it('can find multiple matches #1', async () => {
+      let sel1 = sel([el('.a'), co('>'), el('.c'), co('>'), el('.a'), co('>'), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      let fullMatches = result.matches.filter(match => match.exact);
+      let partialMatches = result.matches.filter(match => !match.exact);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(fullMatches).toHaveLength(0);
+      expect(partialMatches).toHaveLength(2);
+      expect(partialMatches[0]!.startIndex).toBe(0);
+      expect(partialMatches[0]!.endIndex).toBe(2);
+      expect(partialMatches[0]!.containingNode).toBe(sel1);
+      expect(partialMatches[1]!.startIndex).toBe(4);
+      expect(partialMatches[1]!.endIndex).toBe(6);
+      expect(partialMatches[1]!.containingNode).toBe(sel1);
+    });
+
+    it('can find multiple matches #2', async () => {
+      let sel1 = compound([el('.a'), el('.b'), el('.c'), el('.a'), el('.b')]);
+      let sel2 = compound([el('.a'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      let fullMatches = result.matches.filter(match => match.exact);
+      let partialMatches = result.matches.filter(match => !match.exact);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(fullMatches).toHaveLength(0);
+      expect(partialMatches).toHaveLength(2);
+      expect(partialMatches[0]!.startIndex).toBe(0);
+      expect(partialMatches[0]!.endIndex).toBe(1);
+      expect(partialMatches[0]!.containingNode).toBe(sel1);
+      expect(partialMatches[1]!.startIndex).toBe(3);
+      expect(partialMatches[1]!.endIndex).toBe(4);
+      expect(partialMatches[1]!.containingNode).toBe(sel1);
+    });
+
+    it('can find multiple matches #3', async () => {
+      let sel1 = compound([el('.a'), el('.b'), el('.c'), el('.a'), el('.b')]);
+      let sel2 = el('.a');
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      let fullMatches = result.matches.filter(match => match.exact);
+      let partialMatches = result.matches.filter(match => !match.exact);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(fullMatches).toHaveLength(0);
+      expect(partialMatches).toHaveLength(2);
+      expect(partialMatches[0]!.startIndex).toBe(0);
+      expect(partialMatches[0]!.endIndex).toBe(0);
+      expect(partialMatches[0]!.containingNode).toBe(sel1);
+      expect(partialMatches[1]!.startIndex).toBe(3);
+      expect(partialMatches[1]!.endIndex).toBe(3);
+      expect(partialMatches[1]!.containingNode).toBe(sel1);
+    });
+
+    it('can find multiple matches #4', async () => {
+      let sel0 = compound([el('.a'), el('.b'), el('.c'), el('.a'), el('.b')]);
+      let sel1 = sel([sel0, co('>'), el('.d')]);
+      let sel2 = el('.a');
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      let fullMatches = result.matches.filter(match => match.exact);
+      let partialMatches = result.matches.filter(match => !match.exact);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(fullMatches).toHaveLength(0);
+      expect(partialMatches).toHaveLength(2);
+      expect(partialMatches[0]!.startIndex).toBe(0);
+      expect(partialMatches[0]!.endIndex).toBe(0);
+      expect(partialMatches[0]!.containingNode).toBe(sel0);
+      expect(partialMatches[1]!.startIndex).toBe(3);
+      expect(partialMatches[1]!.endIndex).toBe(3);
+      expect(partialMatches[1]!.containingNode).toBe(sel0);
+    });
+
+    it('can find multiple matches #5', async () => {
+      let sel0 = compound([el('.a'), el('.b'), el('.c'), el('.a'), el('.b')]);
+      let sel1 = sel([sel0, co('>'), el('.d')]);
+      let sel2 = compound([el('.b'), el('.a')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      let fullMatches = result.matches.filter(match => match.exact);
+      let partialMatches = result.matches.filter(match => !match.exact);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(fullMatches).toHaveLength(0);
+      expect(partialMatches).toHaveLength(2);
+      expect(partialMatches[0]!.startIndex).toBe(0);
+      expect(partialMatches[0]!.endIndex).toBe(1);
+      expect(partialMatches[0]!.containingNode).toBe(sel0);
+      expect(partialMatches[1]!.startIndex).toBe(3);
+      expect(partialMatches[1]!.endIndex).toBe(4);
+      expect(partialMatches[1]!.containingNode).toBe(sel0);
+    });
+
+    it('can continue the search into an ampersand', async () => {
+      let sel1 = sel([amp({ }), co(' '), el('.a')]);
     });
   });
 });
