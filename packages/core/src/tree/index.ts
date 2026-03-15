@@ -77,7 +77,7 @@ export * from './rest.js';
 export * from './url.js';
 
 // Patch Selector.compare after all exports to avoid circular dependency
-import { selectorCompare } from './util/compare.js';
+import { selectorMatch } from './util/selector-match-core.js';
 
 /** Patch Selector to avoid circularity */
 Selector.prototype.compare = function(other: Node) {
@@ -85,15 +85,15 @@ Selector.prototype.compare = function(other: Node) {
   // if the same file is loaded via different specifiers.
   if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
     const otherSelector = other as unknown as Selector;
-    const forward = selectorCompare(this, otherSelector);
-    if (forward.isEquivalent) {
+    const forward = selectorMatch(this, otherSelector);
+    if (forward.fullMatch) {
       return 0;
     }
-    if (forward.hasPartialMatch) {
+    if (forward.partialMatch) {
       return -1;
     }
-    const backward = selectorCompare(otherSelector, this);
-    if (backward.hasPartialMatch) {
+    const backward = selectorMatch(otherSelector, this);
+    if (backward.partialMatch) {
       return 1;
     }
   }

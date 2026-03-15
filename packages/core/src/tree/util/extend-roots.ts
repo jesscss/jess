@@ -8,34 +8,16 @@ import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
-import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
-import { findExtendableLocations } from './extend-helpers.js';
+
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
 
 /**
- * Fast check: would applying a single extend instruction change the selector?
- *
- * Uses the walk-and-consume dry-run for SimpleSelector find targets (O(depth)),
- * falls back to the full applyExtendsToSelector + valueOf comparison for complex targets.
+ * @todo - Rewrite entirely by hand
  */
-function wouldInstructionChangeSel(
-  selector: Selector,
-  instruction: ExtendInstruction
-): boolean {
-  const { target, extendWith, partial } = instruction;
-  // Walk-and-consume fast path for SimpleSelector targets
-  if (canUseWalkAndConsume(selector, target)) {
-    return wouldExtendChange(selector, target, extendWith, partial);
-  }
-  // Fallback: full extend + compare
-  const after = applyExtendsToSelector(selector.copy(true) as Selector, [instruction]);
-  return after.valueOf() !== selector.valueOf();
-}
 
 interface NonPartialAnalysis {
   nonPartialOwnOnly: ExtendInstruction[];
@@ -89,35 +71,6 @@ function applyExtendsToSelectorPure(
   instructions: ExtendInstruction[]
 ): Selector {
   return applyExtendsToSelector(selector.copy(true) as Selector, instructions);
-}
-
-function invalidateSelectorTreeCaches(selector: Selector | Nil | undefined): void {
-  if (!selector || selector instanceof Nil) {
-    return;
-  }
-
-  const clear = (node: unknown): void => {
-    if (!node || typeof node !== 'object') {
-      return;
-    }
-    if ('_valueOf' in (node as object)) {
-      (node as { _valueOf?: string })._valueOf = undefined;
-    }
-    if ('_keySet' in (node as object)) {
-      (node as { _keySet?: Set<string> })._keySet = undefined;
-    }
-    if ('_visibleKeySet' in (node as object)) {
-      (node as { _visibleKeySet?: Set<string> })._visibleKeySet = undefined;
-    }
-    if ('_canFastReject' in (node as object)) {
-      (node as { _canFastReject?: boolean })._canFastReject = undefined;
-    }
-  };
-
-  clear(selector);
-  for (const node of selector.nodes()) {
-    clear(node);
-  }
 }
 
 function wrapSelectorForComposition(selector: Selector): Selector {

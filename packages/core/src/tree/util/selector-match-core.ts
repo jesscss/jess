@@ -47,6 +47,8 @@ type MatchGroupRequirement = {
   basicSelectorIndex: Map<string, number>;
   basicSelectorCounts: number[];
   basicSelectorTotal: number;
+  hasComplexBranch: boolean;
+  branchTailAmbiguous: boolean;
 };
 
 /** One position can satisfy any one of its alternatives, such as `:is(...)`. */
@@ -120,7 +122,9 @@ function createRequirement(): MatchGroupRequirement {
   return {
     basicSelectorIndex,
     basicSelectorCounts,
-    basicSelectorTotal: 0
+    basicSelectorTotal: 0,
+    hasComplexBranch: false,
+    branchTailAmbiguous: false
   };
 }
 
@@ -139,7 +143,9 @@ function cloneRequirement(requirement: MatchGroupRequirement): MatchGroupRequire
   return {
     basicSelectorIndex: new Map(requirement.basicSelectorIndex),
     basicSelectorCounts: [...requirement.basicSelectorCounts],
-    basicSelectorTotal: requirement.basicSelectorTotal
+    basicSelectorTotal: requirement.basicSelectorTotal,
+    hasComplexBranch: requirement.hasComplexBranch,
+    branchTailAmbiguous: requirement.branchTailAmbiguous
   };
 }
 
@@ -151,7 +157,41 @@ function mergeRequirements(
   for (const value of right.basicSelectorIndex.keys()) {
     addRequirementValue(merged, value);
   }
+  merged.hasComplexBranch ||= right.hasComplexBranch;
+  merged.branchTailAmbiguous ||= right.branchTailAmbiguous;
   return merged;
+}
+
+function markComplexBranchRequirements(
+  requirements: MatchGroupRequirement[],
+  branch: Selector & { data?: readonly Node[] }
+): MatchGroupRequirement[] {
+  const earlierValues = new Set<string>();
+
+  if (isNode(branch, N.ComplexSelector)) {
+    for (let i = 0; i < branch.data.length - 1; i++) {
+      const component = branch.data[i]!;
+      const nested = buildGroupRequirements(component);
+      for (let j = 0; j < nested.length; j++) {
+        for (const value of nested[j]!.basicSelectorIndex.keys()) {
+          earlierValues.add(value);
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < requirements.length; i++) {
+    const requirement = requirements[i]!;
+    requirement.hasComplexBranch = true;
+    for (const value of requirement.basicSelectorIndex.keys()) {
+      if (earlierValues.has(value)) {
+        requirement.branchTailAmbiguous = true;
+        break;
+      }
+    }
+  }
+
+  return requirements;
 }
 
 function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
@@ -159,6 +199,17 @@ function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
     const requirement = createRequirement();
     addRequirementValue(requirement, node.valueOf());
     return [requirement];
+  }
+
+  if (isNode(node, N.ComplexSelector)) {
+    for (let i = node.data.length - 1; i >= 0; i--) {
+      const component = node.data[i]!;
+      if (!isNode(component, N.Combinator)) {
+        return markComplexBranchRequirements(buildGroupRequirements(component), node);
+      }
+    }
+
+    return [createRequirement()];
   }
 
   if (isNode(node, N.PseudoSelector) && node.data.name !== ':is') {
@@ -437,7 +488,7 @@ function matchTargetGroup(
     const summary = summarizeStates(states);
 
     matched ||= summary.matched;
-    exact ||= summary.exact;
+    exact ||= summary.exact && !requirement.hasComplexBranch;
 
     if (exact) {
       break;
@@ -463,7 +514,11 @@ function matchCompoundWindow(
     states = consumeGroupBasics(targetCompound.data[i]!, requirement, states);
   }
 
-  return summarizeStates(states);
+  const summary = summarizeStates(states);
+  if (requirement.hasComplexBranch) {
+    summary.exact = false;
+  }
+  return summary;
 }
 
 function collectMatchedIndicesForWindow(
@@ -645,6 +700,124 @@ function getCachedGroupMatch(
   return result;
 }
 
+function getBranchAlternatives(node: Node): Selector[] | undefined {
+  if (isNode(node, N.SelectorList)) {
+    return [...node.data];
+  }
+
+  if (isNode(node, N.PseudoSelector) && node.data.name === ':is' && isNode(node.data.arg, N.Selector)) {
+    if (isNode(node.data.arg, N.SelectorList)) {
+      return [...node.data.arg.data];
+    }
+
+    return [node.data.arg as Selector];
+  }
+
+  return undefined;
+}
+
+function hasNestedBranchAlternatives(node: Node): boolean {
+  if (getBranchAlternatives(node)) {
+    return true;
+  }
+
+  const children = node.children();
+  let child = children.next();
+  while (!child.done) {
+    if (hasNestedBranchAlternatives(child.value)) {
+      return true;
+    }
+    child = children.next();
+  }
+
+  return false;
+}
+
+function matchGroupNodes(
+  findNode: Node,
+  targetNode: Node,
+  findGroup: MatchGroup,
+  groupMatchCache: GroupMatchCache
+): MatchWindowResult {
+  const targetBranches = getBranchAlternatives(targetNode);
+  const findBranches = getBranchAlternatives(findNode);
+  if (targetBranches && findBranches) {
+    let matched = false;
+    let exact = false;
+
+    for (let i = 0; i < findBranches.length; i++) {
+      for (let j = 0; j < targetBranches.length; j++) {
+        const nested = selectorMatch(findBranches[i]!, targetBranches[j]!);
+        matched ||= nested.partialMatch;
+        exact ||= nested.fullMatch;
+
+        if (exact) {
+          break;
+        }
+      }
+
+      if (exact) {
+        break;
+      }
+    }
+
+    return { matched, exact };
+  }
+
+  if (targetBranches) {
+    let matched = false;
+    let exact = false;
+
+    for (let i = 0; i < targetBranches.length; i++) {
+      const nested = selectorMatch(findNode as Selector, targetBranches[i]!);
+      matched ||= nested.partialMatch;
+      exact ||= nested.fullMatch;
+
+      if (exact) {
+        break;
+      }
+    }
+
+    return { matched, exact };
+  }
+
+  return getCachedGroupMatch(groupMatchCache, targetNode, findGroup);
+}
+
+function pushNestedBranchMatches(
+  findNode: Node,
+  target: Selector,
+  matches: SelectorMatchLocation[]
+): void {
+  const branches = getBranchAlternatives(findNode);
+  if (branches) {
+    for (let i = 0; i < branches.length; i++) {
+      const nested = selectorMatch(target, branches[i]!);
+      if (!nested.fullMatch) {
+        continue;
+      }
+      for (let j = 0; j < nested.matches.length; j++) {
+        const match = nested.matches[j]!;
+        matches.push({
+          startIndex: match.startIndex,
+          endIndex: match.endIndex,
+          matchedIndices: match.matchedIndices,
+          containingNode: match.containingNode,
+          exact: false
+        });
+      }
+    }
+    return;
+  }
+
+  const children = findNode.children();
+  let child = children.next();
+  while (!child.done) {
+    pushNestedBranchMatches(child.value, target, matches);
+    child = children.next();
+  }
+}
+
 /**
  * Compares a contiguous slice of ordered units.
  *
@@ -676,7 +849,12 @@ function matchUnitWindow(
       continue;
     }
 
-    const groupMatch = getCachedGroupMatch(groupMatchCache, targetUnit.node, findUnit.group);
+    const groupMatch = matchGroupNodes(
+      findUnit.node,
+      targetUnit.node,
+      findUnit.group,
+      groupMatchCache
+    );
     if (!groupMatch.matched) {
       return { matched: false, exact: false };
     }
@@ -760,8 +938,8 @@ function finalizeMatchState(result: SelectorMatchState): SelectorMatchState {
     }
   }
 
-  result.fullMatch = fullMatch;
-  result.partialMatch = result.matches.length > 0;
+  result.fullMatch ||= fullMatch;
+  result.partialMatch ||= result.matches.length > 0;
   result.crossesAmpersand = crossesAmpersand;
   return result;
 }
@@ -828,6 +1006,11 @@ function pushNestedPseudoMatches(
  * a match reaches a left-side ampersand boundary with partial-but-incomplete
  * progress; matches that exist only inside the parent do not get added on
  * their own.
+ *
+ * Complex selector branches inside `:is(...)` or selector lists are treated as
+ * alternate branch routes. Matching may succeed inside one branch, but the
+ * outer route cannot continue leftward through that branch unless that branch
+ * itself was consumed end-to-end.
  */
 export function selectorMatch(
   find: Selector,
@@ -909,7 +1092,12 @@ export function selectorMatch(
     }
   }
 
-  if (!parent && find.canFastReject && !isSubsetOf(find.keySet, target.keySet)) {
+  if (
+    !parent
+    && !hasNestedBranchAlternatives(find)
+    && find.canFastReject
+    && !isSubsetOf(find.keySet, target.keySet)
+  ) {
     return emptySelectorMatchState();
   }
 
@@ -1035,6 +1223,7 @@ export function selectorMatch(
 
       for (let start = 0; start <= lastStart; start++) {
         let exact = start === 0 && routeUnits.length === findUnits.length;
+        let suppressLocation = false;
         const windowMatch = matchUnitWindow(
           findUnits,
           0,
@@ -1045,6 +1234,19 @@ export function selectorMatch(
         );
         let matched = windowMatch.matched;
         exact &&= windowMatch.exact;
+
+        if (!windowMatch.exact) {
+          for (let offset = 0; offset < findUnits.length; offset++) {
+            const findUnit = findUnits[offset]!;
+            if (
+              findUnit.kind === 'group'
+              && findUnit.group.alternatives.some(alternative => alternative.branchTailAmbiguous)
+            ) {
+              suppressLocation = true;
+              break;
+            }
+          }
+        }
 
         if (!matched) {
           continue;
@@ -1063,6 +1265,11 @@ export function selectorMatch(
             }
             continue;
           }
+        }
+
+        if (suppressLocation) {
+          result.partialMatch = true;
+          continue;
         }
 
         result.matches.push({
@@ -1101,5 +1308,8 @@ export function selectorMatch(
   const parentPlan = parent ? getSelectorMatchPlan(parent) : undefined;
   const result = matchTargetPlan(getSelectorMatchPlan(target), parentPlan);
   pushNestedPseudoMatches(find, target, result.matches);
+  if (result.matches.length === 0) {
+    pushNestedBranchMatches(find, target, result.matches);
+  }
   return finalizeMatchState(result);
 }

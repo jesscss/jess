@@ -10,7 +10,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { selectorCompare } from './util/compare.js';
+import { selectorMatch } from './util/selector-match-core.js';
 
 export interface SelectorList {
   type: 'SelectorList';
@@ -116,8 +116,8 @@ export class SelectorList extends Selector<Selector[]> {
     if (!isNode(b, N.Selector)) {
       return super.compare(b as unknown as Selector);
     }
-    const semantic = selectorCompare(this, b);
-    if (semantic.isEquivalent) {
+    const semantic = selectorMatch(this, b);
+    if (semantic.fullMatch) {
       return 0;
     }
     return super.compare(b);

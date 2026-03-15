@@ -13,7 +13,6 @@ export * from './tree/util/calculate.js';
 export * from './tree/util/should-operate.js';
 export * from './tree/util/compare.js';
 export * from './tree/util/cast.js';
-export * from './tree/util/find-extendable-locations.js';
 export * from './tree/util/collections.js';
 export * from './tree/util/print.js';
 export * from './tree/util/serialize-types.js';
