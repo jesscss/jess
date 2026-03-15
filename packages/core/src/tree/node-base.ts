@@ -1,4 +1,4 @@
-import { ChildrenCursor, isPlainObject, NodeTraversalCursor } from './util/collections.js';
+import { isPlainObject, NodeTraversalCursor } from './util/collections.js';
 import {
   type TreeContext,
   type Context
@@ -631,7 +631,7 @@ export abstract class Node<
     }
   }
 
-  * nodeAndPrePost() {
+  * nodeAndPrePost(): IterableIterator<Node> {
     const node = this;
     if (isArray(node.pre)) {
       for (let n of node.pre) {

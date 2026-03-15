@@ -23,6 +23,10 @@ export class SelectorList extends Selector<Selector[]> {
     return this.data.length;
   }
 
+  get value() {
+    return this.data as Selector[];
+  }
+
   /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);

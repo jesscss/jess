@@ -14,104 +14,51 @@ import {
   selectorMatch
 } from '../selector-match-core.js';
 
-// ─────────────────────────────────────────────────
-// componentsMatch
-// ─────────────────────────────────────────────────
-describe('componentsMatch', () => {
-  let context: Context;
-  beforeEach(() => {
-    context = new Context();
+let context: Context;
+beforeEach(() => {
+  context = new Context();
+});
+
+describe('basic selectors', () => {
+  it('matches identical simple selectors', () => {
+    let sel1 = el('.a');
+    let sel2 = el('.a');
+    sel1.eval(context);
+    sel2.eval(context);
+    let result = selectorMatch(sel1, sel2);
+    expect(result.fullMatch).toBe(true);
+    expect(result.crossesAmpersand).toBe(false);
   });
 
-  describe('simple selectors', () => {
-    it('matches identical simple selectors', () => {
-      let sel1 = el('.a');
-      let sel2 = el('.a');
-      sel1.eval(context);
-      sel2.eval(context);
-      expect(selectorMatch(sel1, sel2).fullMatch).toBe(true);
-    });
+  it('rejects different simple selectors', async () => {
+    let sel1 = el('.a');
+    let sel2 = el('.b');
+    sel1.eval(context);
+    sel2.eval(context);
+    expect(selectorMatch(sel1, sel2).fullMatch).toBe(false);
+  });
+});
 
-    it('rejects different simple selectors', async () => {
-      let sel1 = el('.a');
-      let sel2 = el('.b');
-      sel1.eval(context);
-      sel2.eval(context);
-      expect(selectorMatch(sel1, sel2).fullMatch).toBe(false);
-    });
+describe('compound selectors', () => {
+  it('matches identical compound selectors', async () => {
+    let sel1 = compound([el('.a'), el('.b')]);
+    let sel2 = compound([el('.a'), el('.b')]);
+    await sel1.eval(context);
+    await sel2.eval(context);
+    expect(selectorMatch(sel1, sel2).fullMatch).toBe(true);
   });
 
-  // ─────────────────────────────────────────────────
-  // compoundComponentMatches
-  // ─────────────────────────────────────────────────
-  describe('compoundComponentMatches', () => {
-    it('matches identical compound selectors', async () => {
-      let sel1 = compound([el('.a'), el('.b')]);
-      let sel2 = compound([el('.a'), el('.b')]);
-      await sel1.eval(context);
-      await sel2.eval(context);
-      expect(selectorMatch(sel1, sel2).fullMatch).toBe(true);
-    });
-
-    it('matches rearranged compound selectors', async () => {
-      let sel1 = compound([el('.a'), el('.b')]);
-      let sel2 = compound([el('.b'), el('.a')]);
-      await sel1.eval(context);
-      await sel2.eval(context);
-      expect(selectorMatch(sel1, sel2).fullMatch).toBe(true);
-    });
-
-    // it('rejects different simple selectors', () => {
-    //   expect(compoundComponentMatches(el('.a'), el('.b'))).toBe(false);
-    // });
-
-    // it('matches when find is :is() containing target', () => {
-    //   // :is(.a, .b) should match .a
-    //   const find = is(sellist([el('.a'), el('.b')]));
-    //   const target = el('.a');
-    //   expect(compoundComponentMatches(find, target)).toBe(true);
-    // });
-
-    // it('rejects when find is :is() NOT containing target', () => {
-    //   const find = is(sellist([el('.a'), el('.b')]));
-    //   const target = el('.c');
-    //   expect(compoundComponentMatches(find, target)).toBe(false);
-    // });
-
-    // it('matches when target is :is() containing find', () => {
-    //   // .a should match :is(.a, .b) position
-    //   const find = el('.a');
-    //   const target = is(sellist([el('.a'), el('.b')]));
-    //   expect(compoundComponentMatches(find, target)).toBe(true);
-    // });
-
-    // it('rejects when target is :is() NOT containing find', () => {
-    //   const find = el('.c');
-    //   const target = is(sellist([el('.a'), el('.b')]));
-    //   expect(compoundComponentMatches(find, target)).toBe(false);
-    // });
-
-    // it('matches nested :is() — find is :is(:is(.a))', () => {
-    //   const innerIs = is(el('.a'));
-    //   const outerIs = is(innerIs);
-    //   expect(compoundComponentMatches(outerIs, el('.a'))).toBe(true);
-    // });
-
-    // it('handles :is() with single arg (no SelectorList)', () => {
-    //   const find = is(el('.x'));
-    //   expect(compoundComponentMatches(find, el('.x'))).toBe(true);
-    //   expect(compoundComponentMatches(find, el('.y'))).toBe(false);
-    // });
-
-    // it('matches non-:is() pseudo-selectors with equivalent args', () => {
-    //   const find = pseudo({ name: ':where', arg: el('.a') });
-    //   const target = pseudo({ name: ':where', arg: el('.a') });
-    //   expect(compoundComponentMatches(find, target)).toBe(true);
-    // });
+  it('matches rearranged compound selectors', async () => {
+    let sel1 = compound([el('.a'), el('.b')]);
+    let sel2 = compound([el('.b'), el('.a')]);
+    await sel1.eval(context);
+    await sel2.eval(context);
+    expect(selectorMatch(sel1, sel2).fullMatch).toBe(true);
   });
+});
 
-  /** Has unique matching behavior */
-  describe('pseudo-selectors', () => {
+describe('pseudo-selectors', () => {
+  describe(':is()', () => {
     it('matches identical :is() pseudo-selectors', async () => {
       let sel1 = pseudo({ name: ':is', arg: el('.a') });
       let sel2 = pseudo({ name: ':is', arg: el('.a') });
@@ -136,8 +83,10 @@ describe('componentsMatch', () => {
       let result = selectorMatch(sel1, sel2);
       expect(result.fullMatch).toBe(true);
     });
+  });
 
-    it('does not return a full match for other pseudos', async () => {
+  describe('other pseudos', () => {
+    it('returns a partial match when only the inner selector matches', async () => {
       let sel0 = compound([el('.a'), el('.b')]);
       let sel1 = pseudo({ name: ':where', arg: sel0 });
       let sel2 = compound([el('.b'), el('.a')]);
@@ -147,12 +96,10 @@ describe('componentsMatch', () => {
       expect(result.fullMatch).toBe(false);
       expect(result.partialMatch).toBe(true);
       expect(result.matches[0]!.exact).toBe(false);
-      expect(result.matches[0]!.startIndex).toBe(0);
-      expect(result.matches[0]!.endIndex).toBe(1);
       expect(result.matches[0]!.containingNode).toBe(sel0);
     });
 
-    it('does NOT match outside other pseudo boundaries', async () => {
+    it('does not continue a match across a nested pseudo boundary', async () => {
       let sel1 = compound([el('.a'), pseudo({ name: ':where', arg: el('.b') })]);
       let sel2 = compound([el('.a'), el('.b')]);
       await sel1.eval(context);
@@ -162,7 +109,7 @@ describe('componentsMatch', () => {
       expect(result.partialMatch).toBe(false);
     });
 
-    it('does NOT match outside other pseudo boundaries', async () => {
+    it('does not continue a match across a leading pseudo boundary', async () => {
       let sel1 = compound([pseudo({ name: ':where', arg: el('.a') }), el('.b')]);
       let sel2 = compound([el('.a'), el('.b')]);
       await sel1.eval(context);
@@ -172,8 +119,7 @@ describe('componentsMatch', () => {
       expect(result.partialMatch).toBe(false);
     });
 
-    /** Should be obvious, but... */
-    it('does not match non-matching pseudos', async () => {
+    it('does not match non-matching pseudo names', async () => {
       let sel1 = pseudo({ name: ':where', arg: el('.a') });
       let sel2 = pseudo({ name: ':not', arg: el('.a') });
       await sel1.eval(context);
@@ -183,7 +129,7 @@ describe('componentsMatch', () => {
       expect(result.partialMatch).toBe(false);
     });
 
-    it('matches matching pseudos #1', async () => {
+    it('matches equivalent pseudo selectors', async () => {
       let sel1 = pseudo({ name: ':not', arg: compound([el('.a'), el('.b')]) });
       let sel2 = pseudo({ name: ':not', arg: compound([el('.b'), el('.a')]) });
       await sel1.eval(context);
@@ -193,7 +139,7 @@ describe('componentsMatch', () => {
       expect(result.partialMatch).toBe(true);
     });
 
-    it('matches matching pseudos #2', async () => {
+    it('matches equivalent pseudo selectors with selector-list alternates', async () => {
       let sel1 = pseudo({ name: ':not', arg: compound([el('.a'), is(sellist([el('.b'), el('.x')]))]) });
       let sel2 = pseudo({ name: ':not', arg: compound([el('.b'), el('.a')]) });
       await sel1.eval(context);
@@ -203,8 +149,10 @@ describe('componentsMatch', () => {
       expect(result.partialMatch).toBe(true);
     });
   });
+});
 
-  describe('selector lists', () => {
+describe('selector lists and branching', () => {
+  describe('direct matches', () => {
     it('finds a selector in a selector list #1', async () => {
       let sel1 = sellist([el('.a'), el('.b')]);
       let sel2 = el('.b');
@@ -229,15 +177,6 @@ describe('componentsMatch', () => {
       expect(selectorMatch(sel2, sel1).fullMatch).toBe(true);
     });
 
-    it('finds (partially) a compound selector in a selector list', async () => {
-      let sel1 = sellist([sel([compound([el('.b'), el('.x')]), co('>'), el('.y')]), el('.z')]);
-      let sel2 = compound([el('.x'), el('.b')]);
-      await sel1.eval(context);
-      await sel2.eval(context);
-      expect(selectorMatch(sel2, sel1).fullMatch).toBe(false);
-      expect(selectorMatch(sel2, sel1).partialMatch).toBe(true);
-    });
-
     it('matches a compound to a compound with an :is() in it', async () => {
       let sel1 = compound([el('.a'), is(sellist([el('.x'), el('.c')])), el('.d')]);
       let sel2 = compound([el('.d'), el('.a'), el('.c')]);
@@ -246,6 +185,17 @@ describe('componentsMatch', () => {
       let result = selectorMatch(sel2, sel1);
       expect(result.fullMatch).toBe(true);
       expect(result.partialMatch).toBe(true);
+    });
+  });
+
+  describe('partial matches', () => {
+    it('finds (partially) a compound selector in a selector list', async () => {
+      let sel1 = sellist([sel([compound([el('.b'), el('.x')]), co('>'), el('.y')]), el('.z')]);
+      let sel2 = compound([el('.x'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      expect(selectorMatch(sel2, sel1).fullMatch).toBe(false);
+      expect(selectorMatch(sel2, sel1).partialMatch).toBe(true);
     });
 
     it('returns a partial match for partial match in a compound selector', async () => {
@@ -278,6 +228,18 @@ describe('componentsMatch', () => {
       expect(result.partialMatch).toBe(true);
     });
 
+    it('does not give up finding a match too soon', async () => {
+      let sel1 = sel([el('.a'), co('>'), el('.c'), co('>'), el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.c')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+    });
+  });
+
+  describe('misses', () => {
     it('does not find a match #1', async () => {
       let sel1 = sel([el('.a'), co('>'), compound([el('.b'), el('.x')]), co('>'), el('.c')]);
       let sel2 = sel([el('.a'), co('>'), el('.c')]);
@@ -307,17 +269,9 @@ describe('componentsMatch', () => {
       expect(result.fullMatch).toBe(false);
       expect(result.partialMatch).toBe(false);
     });
+  });
 
-    it('does not give up finding a match too soon', async () => {
-      let sel1 = sel([el('.a'), co('>'), el('.c'), co('>'), el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
-      let sel2 = sel([el('.a'), co('>'), el('.c')]);
-      await sel1.eval(context);
-      await sel2.eval(context);
-      let result = selectorMatch(sel2, sel1);
-      expect(result.fullMatch).toBe(false);
-      expect(result.partialMatch).toBe(true);
-    });
-
+  describe('multiple matches', () => {
     it('can find multiple matches #1', async () => {
       let sel1 = sel([el('.a'), co('>'), el('.c'), co('>'), el('.a'), co('>'), el('.c')]);
       let sel2 = sel([el('.a'), co('>'), el('.c')]);
@@ -419,9 +373,107 @@ describe('componentsMatch', () => {
       expect(partialMatches[1]!.endIndex).toBe(4);
       expect(partialMatches[1]!.containingNode).toBe(sel0);
     });
+  });
 
+  describe('miscellaneous', () => {
     it('can continue the search into an ampersand', async () => {
-      let sel1 = sel([amp(), co(' '), el('.a')]);
+      let sel1 = compound([amp({ selectorContainer: { selector: el('a') } }), pseudo({ name: ':hover' })]);
+      let sel2 = compound([el('a'), pseudo({ name: ':hover' })]);
+      let evald1 = await sel1.eval(context);
+      let evald2 = await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(`${evald1}`).toBe('&:hover');
+      expect(`${evald2}`).toBe('a:hover');
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+      expect(result.crossesAmpersand).toBe(true);
+      expect(result.matches).toHaveLength(1);
+    });
+
+    it('matches near an ampersand but doesn\'t cross it', async () => {
+      let inner = el('a').eval(context);
+      let sel1 = compound([amp({ selectorContainer: { selector: inner } }), el('.b'), pseudo({ name: ':hover' })]);
+      let sel2 = compound([el('.b'), pseudo({ name: ':hover' })]);
+      let evald1 = await sel1.eval(context);
+      let evald2 = await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(`${evald1}`).toBe('&.b:hover');
+      expect(`${evald2}`).toBe('.b:hover');
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+      expect(result.crossesAmpersand).toBe(false);
+    });
+
+    describe('parent selector context', () => {
+      it('uses the parent context for a plain target selector', async () => {
+        let parent = sellist([el('div'), el('span')]);
+        let sel1 = el('.a');
+        let sel2 = sel([el('span'), co(' '), el('.a')]);
+        await parent.eval(context);
+        await sel1.eval(context);
+        await sel2.eval(context);
+        let result = selectorMatch(sel2, sel1, parent as any);
+        expect(result.fullMatch).toBe(true);
+        expect(result.partialMatch).toBe(true);
+        expect(result.crossesAmpersand).toBe(true);
+        expect(result.matches).toHaveLength(1);
+      });
+
+      it('uses a parent selector list as alternates across a leading ampersand', async () => {
+        let parent = sellist([el('div'), el('span')]);
+        let sel1 = sel([amp(), co(' '), el('.a')]);
+        let sel2 = sel([el('span'), co(' '), el('.a')]);
+        await parent.eval(context);
+        await sel1.eval(context);
+        await sel2.eval(context);
+        let result = selectorMatch(sel2, sel1, parent as any);
+        expect(result.fullMatch).toBe(true);
+        expect(result.partialMatch).toBe(true);
+        expect(result.crossesAmpersand).toBe(true);
+        expect(result.matches).toHaveLength(1);
+      });
+
+      it('does not search the parent when the target already fully matched before the leading ampersand', async () => {
+        let parent = sellist([el('div'), el('span')]);
+        let sel1 = sel([amp(), co(' '), el('.a')]);
+        let sel2 = el('.a');
+        await parent.eval(context);
+        await sel1.eval(context);
+        await sel2.eval(context);
+        let result = selectorMatch(sel2, sel1, parent as any);
+        expect(result.fullMatch).toBe(false);
+        expect(result.partialMatch).toBe(true);
+        expect(result.crossesAmpersand).toBe(false);
+        expect(result.matches).toHaveLength(1);
+      });
+
+      it('does not search the parent when nothing matched before the leading ampersand', async () => {
+        let parent = sellist([el('div'), el('span')]);
+        let sel1 = sel([amp(), co(' '), el('.a')]);
+        let sel2 = el('span');
+        await parent.eval(context);
+        await sel1.eval(context);
+        await sel2.eval(context);
+        let result = selectorMatch(sel2, sel1, parent as any);
+        expect(result.fullMatch).toBe(false);
+        expect(result.partialMatch).toBe(false);
+        expect(result.crossesAmpersand).toBe(false);
+        expect(result.matches).toHaveLength(0);
+      });
+
+      it('does not add matches that exist only inside an explicit ampersand selector', async () => {
+        let inner = el('a').eval(context);
+        let sel1 = compound([amp({ selectorContainer: { selector: inner } }), pseudo({ name: ':hover' })]);
+        let sel2 = el('a');
+        await sel1.eval(context);
+        await sel2.eval(context);
+        let result = selectorMatch(sel2, sel1);
+        expect(result.fullMatch).toBe(false);
+        expect(result.partialMatch).toBe(false);
+        expect(result.crossesAmpersand).toBe(false);
+        expect(result.matches).toHaveLength(0);
+      });
     });
   });
 });

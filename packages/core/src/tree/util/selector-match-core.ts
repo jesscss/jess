@@ -1,10 +1,12 @@
 import { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import type { Node } from '../node.js';
+import { F_AMPERSAND, type Node } from '../node.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { isSubsetOf } from './bitset.js';
 import { type PseudoSelector } from '../selector-pseudo.js';
+
+const { isArray } = Array;
 
 interface SelectorMatchState {
   /**
@@ -13,11 +15,13 @@ interface SelectorMatchState {
    */
   fullMatch: boolean;
   partialMatch: boolean;
+  crossesAmpersand: boolean;
   matches: Array<{
-    startIndex: number;
-    endIndex: number;
+    startIndex?: number;
+    endIndex?: number;
     containingNode: Node;
-    exact: boolean;
+    exact?: boolean;
+    crossesAmpersand?: boolean;
   }>;
 }
 
@@ -64,6 +68,11 @@ type MatchPlan = RouteMatchPlan | SelectorListMatchPlan;
 type MatchGroupState = {
   remainingCounts: number[];
   remainingTotal: number;
+  exact: boolean;
+};
+
+type MatchWindowResult = {
+  matched: boolean;
   exact: boolean;
 };
 
@@ -357,7 +366,7 @@ function consumeGroupBasics(
 function matchTargetGroup(
   targetGroup: Node,
   findGroup: MatchGroup
-): { matched: boolean; exact: boolean } {
+): MatchWindowResult {
   let matched = false;
   let exact = false;
 
@@ -385,7 +394,7 @@ function matchCompoundWindow(
   start: number,
   end: number,
   requirement: MatchGroupRequirement
-): { matched: boolean; exact: boolean } {
+): MatchWindowResult {
   let states = [{
     remainingCounts: [...requirement.basicSelectorCounts],
     remainingTotal: requirement.basicSelectorTotal,
@@ -458,6 +467,7 @@ function emptySelectorMatchState(): SelectorMatchState {
   return {
     fullMatch: false,
     partialMatch: false,
+    crossesAmpersand: false,
     matches: []
   };
 }
@@ -469,6 +479,100 @@ function pushMatches(
   for (let i = 0; i < source.length; i++) {
     target.push(source[i]!);
   }
+}
+
+function matchUnitWindow(
+  findUnits: MatchPlanUnit[],
+  findStart: number,
+  targetUnits: MatchPlanUnit[],
+  targetStart: number,
+  length: number
+): MatchWindowResult {
+  let exact = true;
+
+  for (let offset = 0; offset < length; offset++) {
+    const findUnit = findUnits[findStart + offset]!;
+    const targetUnit = targetUnits[targetStart + offset]!;
+
+    if (findUnit.kind !== targetUnit.kind) {
+      return { matched: false, exact: false };
+    }
+
+    if (findUnit.kind === 'combinator') {
+      if (targetUnit.kind !== 'combinator' || findUnit.value !== targetUnit.value) {
+        return { matched: false, exact: false };
+      }
+      continue;
+    }
+
+    const groupMatch = matchTargetGroup(targetUnit.node, findUnit.group);
+    if (!groupMatch.matched) {
+      return { matched: false, exact: false };
+    }
+
+    exact &&= groupMatch.exact;
+  }
+
+  return { matched: true, exact };
+}
+
+function hasLeadingAmpersandBoundary(selector: Selector): boolean {
+  return (
+    isNode(selector, N.ComplexSelector)
+    && selector.data.length > 0
+    && isNode(selector.data[0]!, N.Ampersand)
+  );
+}
+
+function getBoundaryTailUnits(routePlan: RouteMatchPlan): MatchPlanUnit[] {
+  if (hasLeadingAmpersandBoundary(routePlan.selector)) {
+    return routePlan.units;
+  }
+
+  return [{
+    kind: 'combinator',
+    index: -1,
+    node: routePlan.selector,
+    value: ' '
+  }, ...routePlan.units];
+}
+
+function locationCrossesAmpersand(location: SelectorMatchLocation): boolean {
+  if (location.crossesAmpersand) {
+    return true;
+  }
+
+  const { containingNode, startIndex, endIndex } = location;
+
+  if (!containingNode.hasFlag(F_AMPERSAND)) {
+    return false;
+  }
+
+  if (startIndex === undefined || endIndex === undefined) {
+    return true;
+  }
+
+  if (isNode(containingNode, N.CompoundSelector) || isNode(containingNode, N.ComplexSelector)) {
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (containingNode.data[i]?.hasFlag(F_AMPERSAND)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (isNode(containingNode, N.SelectorList)) {
+    return !!containingNode.data[startIndex]?.hasFlag(F_AMPERSAND);
+  }
+
+  return true;
+}
+
+function finalizeMatchState(result: SelectorMatchState): SelectorMatchState {
+  result.fullMatch = result.matches.some(match => match.exact);
+  result.partialMatch = result.matches.length > 0;
+  result.crossesAmpersand = result.matches.some(locationCrossesAmpersand);
+  return result;
 }
 
 function pushNestedPseudoMatches(
@@ -489,7 +593,7 @@ function pushNestedPseudoMatches(
           startIndex: match.startIndex,
           endIndex: match.endIndex,
           containingNode: match.containingNode,
-          exact: false
+          exact: match.exact
         });
       }
       return;
@@ -518,7 +622,8 @@ function pushNestedPseudoMatches(
 
 export function selectorMatch(
   find: Selector,
-  target: Selector
+  target: Selector,
+  parent?: Selector
 ): SelectorMatchState {
   if (
     isNode(find, N.PseudoSelector)
@@ -552,13 +657,50 @@ export function selectorMatch(
     return {
       fullMatch: false,
       partialMatch: true,
+      crossesAmpersand: matches.some(locationCrossesAmpersand),
       matches
     };
   }
 
-  /** @todo - put back in exact match hot path */
+  let findValue = find.valueOf();
+  if (isNode(target, N.SelectorList)) {
+    for (let i = 0; i < target.value.length; i++) {
+      const sel = target.value[i]!;
+      if (sel.valueOf() === findValue) {
+        return {
+          fullMatch: true,
+          partialMatch: true,
+          crossesAmpersand: sel.hasFlag(F_AMPERSAND),
+          matches: [{
+            startIndex: i,
+            endIndex: i,
+            containingNode: sel,
+            exact: true
+          }]
+        };
+      }
+    }
+    return {
+      fullMatch: false,
+      partialMatch: true,
+      crossesAmpersand: false,
+      matches: []
+    };
+  } else {
+    if (findValue === target.valueOf()) {
+      return {
+        fullMatch: true,
+        partialMatch: true,
+        crossesAmpersand: target.hasFlag(F_AMPERSAND),
+        matches: [{
+          containingNode: target,
+          exact: true
+        }]
+      };
+    }
+  }
 
-  if (find.canFastReject && !isSubsetOf(find.keySet, target.keySet)) {
+  if (!parent && find.canFastReject && !isSubsetOf(find.keySet, target.keySet)) {
     return emptySelectorMatchState();
   }
 
@@ -567,97 +709,177 @@ export function selectorMatch(
     return emptySelectorMatchState();
   }
 
-  const matchTargetRoute = (routePlan: RouteMatchPlan): SelectorMatchState => {
+  const matchParentRoute = (
+    routePlan: RouteMatchPlan,
+    parentPlan: MatchPlan
+  ): SelectorMatchState => {
     const result = emptySelectorMatchState();
     const routeUnits = routePlan.units;
     const findUnits = findPlan.units;
 
-    if (routeUnits.length < findUnits.length) {
+    if (routeUnits.length === 0) {
       return result;
     }
 
-    const lastStart = routeUnits.length - findUnits.length;
+    const boundaryTailUnits = getBoundaryTailUnits(routePlan);
+    const boundaryTailLength = boundaryTailUnits.length;
+    const findLength = findUnits.length;
+    const matchedAll = (
+      findLength <= boundaryTailLength
+      && matchUnitWindow(
+        findUnits,
+        0,
+        boundaryTailUnits,
+        boundaryTailLength - findLength,
+        findLength
+      ).matched
+    );
 
-    for (let start = 0; start <= lastStart; start++) {
-      let exact = start === 0 && routeUnits.length === findUnits.length;
-      let matched = true;
+    if (matchedAll || boundaryTailLength > findLength) {
+      return result;
+    }
 
-      for (let offset = 0; offset < findUnits.length; offset++) {
-        const findUnit = findUnits[offset]!;
-        const targetUnit = routeUnits[start + offset]!;
+    const targetBoundaryMatch = matchUnitWindow(
+      findUnits,
+      findLength - boundaryTailLength,
+      boundaryTailUnits,
+      0,
+      boundaryTailLength
+    );
 
-        if (findUnit.kind !== targetUnit.kind) {
-          matched = false;
-          break;
+    if (!targetBoundaryMatch.matched) {
+      return result;
+    }
+
+    const remainingFindLength = findLength - boundaryTailLength;
+    if (remainingFindLength === 0) {
+      return result;
+    }
+
+    const matchParentPlan = (plan: MatchPlan): void => {
+      if (plan.kind === 'list') {
+        for (let i = 0; i < plan.alternates.length; i++) {
+          matchParentPlan(plan.alternates[i]!);
         }
-
-        if (findUnit.kind === 'combinator') {
-          if (targetUnit.kind !== 'combinator' || findUnit.value !== targetUnit.value) {
-            matched = false;
-            break;
-          }
-          continue;
-        }
-
-        const groupMatch = matchTargetGroup(targetUnit.node, findUnit.group);
-        if (!groupMatch.matched) {
-          matched = false;
-          break;
-        }
-        exact &&= groupMatch.exact;
+        return;
       }
 
-      if (!matched) {
-        continue;
+      const parentUnits = plan.units;
+      if (parentUnits.length < remainingFindLength) {
+        return;
       }
 
-      if (findUnits.length === 1 && findUnits[0]!.kind === 'group') {
-        const targetUnit = routeUnits[start]!;
-        if (targetUnit.kind === 'group') {
-          const groupLocations = collectGroupMatchLocations(targetUnit.node, findUnits[0]!.group);
-          for (let i = 0; i < groupLocations.length; i++) {
-            const location = groupLocations[i]!;
-            result.matches.push({
-              ...location,
-              exact: exact && location.exact
-            });
-          }
-          continue;
-        }
+      const parentMatch = matchUnitWindow(
+        findUnits,
+        0,
+        parentUnits,
+        parentUnits.length - remainingFindLength,
+        remainingFindLength
+      );
+
+      if (!parentMatch.matched) {
+        return;
+      }
+
+      const exact = (
+        parentMatch.exact
+        && targetBoundaryMatch.exact
+        && remainingFindLength === parentUnits.length
+      );
+
+      if (isNode(routePlan.selector, N.CompoundSelector) || isNode(routePlan.selector, N.ComplexSelector)) {
+        result.matches.push({
+          startIndex: 0,
+          endIndex: routePlan.selector.data.length - 1,
+          containingNode: routePlan.selector,
+          exact,
+          crossesAmpersand: true
+        });
+        return;
       }
 
       result.matches.push({
-        startIndex: routeUnits[start]!.index,
-        endIndex: routeUnits[start + findUnits.length - 1]!.index,
-        containingNode: routePlan.selector as Node,
-        exact
+        containingNode: routePlan.selector,
+        exact,
+        crossesAmpersand: true
       });
-    }
+    };
 
-    result.fullMatch = result.matches.some(match => match.exact);
-    result.partialMatch = result.matches.length > 0;
-    return result;
+    matchParentPlan(parentPlan);
+    return finalizeMatchState(result);
   };
 
-  const matchTargetPlan = (plan: MatchPlan): SelectorMatchState => {
+  const matchTargetRoute = (
+    routePlan: RouteMatchPlan,
+    parentPlan?: MatchPlan
+  ): SelectorMatchState => {
+    const result = emptySelectorMatchState();
+    const routeUnits = routePlan.units;
+    const findUnits = findPlan.units;
+
+    if (routeUnits.length >= findUnits.length) {
+      const lastStart = routeUnits.length - findUnits.length;
+
+      for (let start = 0; start <= lastStart; start++) {
+        let exact = start === 0 && routeUnits.length === findUnits.length;
+        const windowMatch = matchUnitWindow(findUnits, 0, routeUnits, start, findUnits.length);
+        let matched = windowMatch.matched;
+        exact &&= windowMatch.exact;
+
+        if (!matched) {
+          continue;
+        }
+
+        if (findUnits.length === 1 && findUnits[0]!.kind === 'group') {
+          const targetUnit = routeUnits[start]!;
+          if (targetUnit.kind === 'group') {
+            const groupLocations = collectGroupMatchLocations(targetUnit.node, findUnits[0]!.group);
+            for (let i = 0; i < groupLocations.length; i++) {
+              const location = groupLocations[i]!;
+              result.matches.push({
+                ...location,
+                exact: exact && location.exact
+              });
+            }
+            continue;
+          }
+        }
+
+        result.matches.push({
+          startIndex: routeUnits[start]!.index,
+          endIndex: routeUnits[start + findUnits.length - 1]!.index,
+          containingNode: routePlan.selector as Node,
+          exact
+        });
+      }
+    }
+
+    if (parentPlan) {
+      pushMatches(result.matches, matchParentRoute(routePlan, parentPlan).matches);
+    }
+
+    return finalizeMatchState(result);
+  };
+
+  const matchTargetPlan = (
+    plan: MatchPlan,
+    parentPlan?: MatchPlan
+  ): SelectorMatchState => {
     if (plan.kind === 'route') {
-      return matchTargetRoute(plan);
+      return matchTargetRoute(plan, parentPlan);
     }
 
     const result = emptySelectorMatchState();
     for (let i = 0; i < plan.alternates.length; i++) {
-      const match = matchTargetPlan(plan.alternates[i]!);
+      const match = matchTargetPlan(plan.alternates[i]!, parentPlan);
       pushMatches(result.matches, match.matches);
     }
 
-    result.fullMatch = result.matches.some(match => match.exact);
-    result.partialMatch = result.matches.length > 0;
-    return result;
+    return finalizeMatchState(result);
   };
 
-  const result = matchTargetPlan(getSelectorMatchPlan(target));
+  const parentPlan = parent ? getSelectorMatchPlan(parent) : undefined;
+  const result = matchTargetPlan(getSelectorMatchPlan(target), parentPlan);
   pushNestedPseudoMatches(find, target, result.matches);
-  result.fullMatch = result.matches.some(match => match.exact);
-  result.partialMatch = result.matches.length > 0;
-  return result;
+  return finalizeMatchState(result);
 }

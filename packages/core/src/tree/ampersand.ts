@@ -10,8 +10,6 @@ import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { F_VISIBLE } from './node.js';
-import { BitSet } from './util/bitset.js';
 
 export type AmpersandValue = {
   /**
@@ -118,17 +116,18 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   }
 
   override computeKeySetAndFastReject(): void {
+    let library = this.keySetLibrary!;
     const stored = this._storedSelector;
     const current = this._selectorContainer?.selector;
     let keySet = this._keySet;
     let visibleKeySet = this._visibleKeySet;
     /** Ampersands don't participate to the visible key set */
     if (!visibleKeySet) {
-      this._visibleKeySet = new BitSet();
+      this._visibleKeySet = library.getBitset();
     }
     if (!current || isNode(current, N.Nil)) {
       if (!keySet) {
-        this._keySet = new BitSet();
+        this._keySet = library.getBitset();
       }
       return;
     }
@@ -214,6 +213,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
+    this.keySetLibrary = context.selectorBits;
     const { appendValue } = this.data;
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
