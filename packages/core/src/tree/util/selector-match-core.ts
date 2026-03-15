@@ -551,25 +551,25 @@ function collectGroupMatchLocations(
 
         seen.add(key);
 
-      const windowMatch = matchCompoundWindow(
-        targetCompound,
-        start,
-        end,
-        requirement
-      );
+        const windowMatch = matchCompoundWindow(
+          targetCompound,
+          start,
+          end,
+          requirement
+        );
 
-      if (!windowMatch.matched) {
-        seen.delete(key);
-        continue;
-      }
+        if (!windowMatch.matched) {
+          seen.delete(key);
+          continue;
+        }
 
-      matches.push({
-        startIndex: start,
-        endIndex: end,
-        matchedIndices: collectMatchedIndicesForWindow(targetCompound, start, end, requirement),
-        containingNode: targetGroup,
-        exact: windowMatch.exact && start === 0 && end === targetGroup.data.length - 1
-      });
+        matches.push({
+          startIndex: start,
+          endIndex: end,
+          matchedIndices: collectMatchedIndicesForWindow(targetCompound, start, end, requirement),
+          containingNode: targetGroup,
+          exact: windowMatch.exact && start === 0 && end === targetGroup.data.length - 1
+        });
       }
     }
   }
