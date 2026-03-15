@@ -94,6 +94,7 @@ type RouteMatchPlan = {
   kind: 'route';
   selector: Selector;
   units: MatchPlanUnit[];
+  hasAmbiguousBranchTail: boolean;
 };
 
 type SelectorListMatchPlan = {
@@ -125,6 +126,7 @@ type SelectorMatchContext = {
 const selectorMatchPlanCache = new WeakMap<Selector, {
   value: string;
   plan: MatchPlan;
+  hasNestedBranchAlternatives: boolean;
 }>();
 
 /**
@@ -296,6 +298,7 @@ function buildMatchGroup(node: Node): MatchGroup {
 function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
   if (isNode(selector, N.ComplexSelector)) {
     const units: MatchPlanUnit[] = [];
+    let hasAmbiguousBranchTail = false;
 
     for (let i = 0; i < selector.data.length; i++) {
       const component = selector.data[i]!;
@@ -312,6 +315,7 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
       const group = buildMatchGroup(component);
       const hasAlternatives = group.alternatives.some(alternate => alternate.basicSelectorTotal > 0);
       if (hasAlternatives) {
+        hasAmbiguousBranchTail ||= group.alternatives.some(alternate => alternate.branchTailAmbiguous);
         units.push({
           kind: 'group',
           index: i,
@@ -324,7 +328,8 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
     return {
       kind: 'route',
       selector,
-      units
+      units,
+      hasAmbiguousBranchTail
     };
   }
 
@@ -332,6 +337,7 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
     return {
       kind: 'route',
       selector,
+      hasAmbiguousBranchTail: false,
       units: [{
         kind: 'combinator',
         index: 0,
@@ -345,6 +351,7 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
   return {
     kind: 'route',
     selector,
+    hasAmbiguousBranchTail: group.alternatives.some(alternate => alternate.branchTailAmbiguous),
     units: group.alternatives.some(alternate => alternate.basicSelectorTotal > 0)
       ? [{
           kind: 'group',
@@ -376,8 +383,23 @@ function getSelectorMatchPlan(selector: Selector): MatchPlan {
   }
 
   const plan = buildMatchPlan(selector);
-  selectorMatchPlanCache.set(selector, { value, plan });
+  selectorMatchPlanCache.set(selector, {
+    value,
+    plan,
+    hasNestedBranchAlternatives: hasNestedBranchAlternatives(selector)
+  });
   return plan;
+}
+
+function selectorHasNestedBranchAlternatives(selector: Selector): boolean {
+  const value = selector.valueOf();
+  const cached = selectorMatchPlanCache.get(selector);
+  if (cached && cached.value === value) {
+    return cached.hasNestedBranchAlternatives;
+  }
+
+  getSelectorMatchPlan(selector);
+  return selectorMatchPlanCache.get(selector)?.hasNestedBranchAlternatives ?? false;
 }
 
 function cloneGroupStates(states: MatchGroupState[]): MatchGroupState[] {
@@ -1355,7 +1377,7 @@ function selectorMatchUncached(
 
   if (
     !parent
-    && !hasNestedBranchAlternatives(find)
+    && !selectorHasNestedBranchAlternatives(find)
     && !find.hasFlag(F_AMPERSAND)
     && target.hasFlag(F_AMPERSAND)
     && find.canFastReject
@@ -1367,7 +1389,7 @@ function selectorMatchUncached(
 
   if (
     !parent
-    && !hasNestedBranchAlternatives(find)
+    && !selectorHasNestedBranchAlternatives(find)
     && find.canFastReject
     && target.canFastReject
     && !isSubsetOf(find.keySet, target.keySet)
@@ -1518,13 +1540,18 @@ function selectorMatchUncached(
     const result = emptySelectorMatchState();
     const routeUnits = routePlan.units;
     const findUnits = findPlan.units;
+    const singleFindGroup = findUnits.length === 1 && findUnits[0]!.kind === 'group'
+      ? findUnits[0]!
+      : undefined;
+    const suppressAmbiguousBranchLocations = findUnits.length > 0 && routePlan.selector !== find
+      ? findPlan.hasAmbiguousBranchTail
+      : findPlan.hasAmbiguousBranchTail;
 
     if (routeUnits.length >= findUnits.length) {
       const lastStart = routeUnits.length - findUnits.length;
 
       for (let start = 0; start <= lastStart; start++) {
         let exact = start === 0 && routeUnits.length === findUnits.length;
-        let suppressLocation = false;
         const windowMatch = matchUnitWindow(
           findUnits,
           0,
@@ -1537,27 +1564,14 @@ function selectorMatchUncached(
         let matched = windowMatch.matched;
         exact &&= windowMatch.exact;
 
-        if (!windowMatch.exact) {
-          for (let offset = 0; offset < findUnits.length; offset++) {
-            const findUnit = findUnits[offset]!;
-            if (
-              findUnit.kind === 'group'
-              && findUnit.group.alternatives.some(alternative => alternative.branchTailAmbiguous)
-            ) {
-              suppressLocation = true;
-              break;
-            }
-          }
-        }
-
         if (!matched) {
           continue;
         }
 
-        if (findUnits.length === 1 && findUnits[0]!.kind === 'group') {
+        if (singleFindGroup) {
           const targetUnit = routeUnits[start]!;
           if (targetUnit.kind === 'group') {
-            const groupLocations = collectGroupMatchLocations(targetUnit.node, findUnits[0]!.group);
+            const groupLocations = collectGroupMatchLocations(targetUnit.node, singleFindGroup.group);
             for (let i = 0; i < groupLocations.length; i++) {
               const location = groupLocations[i]!;
               result.matches.push({
@@ -1571,7 +1585,7 @@ function selectorMatchUncached(
           }
         }
 
-        if (suppressLocation) {
+        if (!windowMatch.exact && suppressAmbiguousBranchLocations) {
           result.partialMatch = true;
           continue;
         }

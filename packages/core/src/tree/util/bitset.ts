@@ -97,7 +97,32 @@ export function isSubsetOf(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {
     throw new Error('Bitsets must be from the same library');
   }
-  return a.and(b).equals(a);
+
+  const aInternal = a as { data?: number[]; _?: number };
+  const bInternal = b as { data?: number[]; _?: number };
+  if (aInternal._ || bInternal._) {
+    return a.and(b).equals(a);
+  }
+
+  const aData = aInternal.data;
+  const bData = bInternal.data;
+  if (!aData) {
+    return true;
+  }
+
+  for (let i = 0; i < aData.length; i++) {
+    const aWord = aData[i] ?? 0;
+    if (!aWord) {
+      continue;
+    }
+
+    const bWord = bData?.[i] ?? 0;
+    if ((aWord & ~bWord) !== 0) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /** True when `a` and `b` share no set bits. */
@@ -105,5 +130,17 @@ export function isDisjoint(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {
     throw new Error('Bitsets must be from the same library');
   }
-  return a.and(b).equals(a._library!.getBitset());
+  const intersection = a.and(b) as BitSet;
+  const data = (intersection as { data?: number[] }).data;
+  if (!data) {
+    return true;
+  }
+
+  for (let i = 0; i < data.length; i++) {
+    if (data[i]) {
+      return false;
+    }
+  }
+
+  return true;
 }
