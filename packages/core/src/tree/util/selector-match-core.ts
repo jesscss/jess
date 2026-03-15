@@ -4,6 +4,7 @@ import type { Node } from '../node.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { isSubsetOf } from './bitset.js';
+import { type PseudoSelector } from '../selector-pseudo.js';
 
 interface SelectorMatchState {
   /**
@@ -22,10 +23,14 @@ interface SelectorMatchState {
 
 type SelectorMatchLocation = SelectorMatchState['matches'][number];
 
-type MatchGroup = {
+type MatchGroupRequirement = {
   basicSelectorIndex: Map<string, number>;
   basicSelectorCounts: number[];
   basicSelectorTotal: number;
+};
+
+type MatchGroup = {
+  alternatives: MatchGroupRequirement[];
 };
 
 type MatchPlanUnit =
@@ -67,40 +72,101 @@ const selectorMatchPlanCache = new WeakMap<Selector, {
   plan: MatchPlan;
 }>();
 
-function buildMatchGroup(node: Node): MatchGroup {
+function isSearchablePseudoBoundary(node: Node): node is PseudoSelector {
+  return (
+    isNode(node, N.PseudoSelector)
+    && node.data.name !== ':is'
+    && isNode(node.data.arg, N.Selector)
+  );
+}
+
+function createRequirement(): MatchGroupRequirement {
   const basicSelectorIndex = new Map<string, number>();
   const basicSelectorCounts: number[] = [];
-  let basicSelectorTotal = 0;
-
-  const collectGroupBasics = (current: Node): void => {
-    if (isNode(current, N.BasicSelector)) {
-      const value = current.valueOf();
-      const idx = basicSelectorIndex.get(value);
-      if (idx === undefined) {
-        basicSelectorIndex.set(value, basicSelectorCounts.length);
-        basicSelectorCounts.push(1);
-      } else {
-        basicSelectorCounts[idx]!++;
-      }
-      basicSelectorTotal++;
-      return;
-    }
-
-    const children = current.children();
-    let child = children.next();
-
-    while (!child.done) {
-      collectGroupBasics(child.value);
-      child = children.next();
-    }
-  };
-
-  collectGroupBasics(node);
 
   return {
     basicSelectorIndex,
     basicSelectorCounts,
-    basicSelectorTotal
+    basicSelectorTotal: 0
+  };
+}
+
+function addRequirementValue(requirement: MatchGroupRequirement, value: string): MatchGroupRequirement {
+  if (requirement.basicSelectorIndex.has(value)) {
+    return requirement;
+  }
+
+  requirement.basicSelectorIndex.set(value, requirement.basicSelectorCounts.length);
+  requirement.basicSelectorCounts.push(1);
+  requirement.basicSelectorTotal++;
+  return requirement;
+}
+
+function cloneRequirement(requirement: MatchGroupRequirement): MatchGroupRequirement {
+  return {
+    basicSelectorIndex: new Map(requirement.basicSelectorIndex),
+    basicSelectorCounts: [...requirement.basicSelectorCounts],
+    basicSelectorTotal: requirement.basicSelectorTotal
+  };
+}
+
+function mergeRequirements(
+  left: MatchGroupRequirement,
+  right: MatchGroupRequirement
+): MatchGroupRequirement {
+  const merged = cloneRequirement(left);
+  for (const value of right.basicSelectorIndex.keys()) {
+    addRequirementValue(merged, value);
+  }
+  return merged;
+}
+
+function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
+  if (isNode(node, N.BasicSelector)) {
+    const requirement = createRequirement();
+    addRequirementValue(requirement, node.valueOf());
+    return [requirement];
+  }
+
+  if (isSearchablePseudoBoundary(node)) {
+    return [createRequirement()];
+  }
+
+  if (isNode(node, N.SelectorList)) {
+    const alternatives: MatchGroupRequirement[] = [];
+    for (let i = 0; i < node.data.length; i++) {
+      const nested = buildGroupRequirements(node.data[i]!);
+      for (let j = 0; j < nested.length; j++) {
+        alternatives.push(nested[j]!);
+      }
+    }
+    return alternatives;
+  }
+
+  let requirements: MatchGroupRequirement[] = [createRequirement()];
+  const children = node.children();
+  let child = children.next();
+
+  while (!child.done) {
+    const childRequirements = buildGroupRequirements(child.value);
+    const nextRequirements: MatchGroupRequirement[] = [];
+    for (let i = 0; i < requirements.length; i++) {
+      for (let j = 0; j < childRequirements.length; j++) {
+        nextRequirements.push(
+          mergeRequirements(requirements[i]!, childRequirements[j]!)
+        );
+      }
+    }
+    requirements = nextRequirements;
+    child = children.next();
+  }
+
+  return requirements;
+}
+
+function buildMatchGroup(node: Node): MatchGroup {
+  return {
+    alternatives: buildGroupRequirements(node)
   };
 }
 
@@ -121,7 +187,8 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
       }
 
       const group = buildMatchGroup(component);
-      if (group.basicSelectorTotal > 0) {
+      const hasAlternatives = group.alternatives.some(alternate => alternate.basicSelectorTotal > 0);
+      if (hasAlternatives) {
         units.push({
           kind: 'group',
           index: i,
@@ -155,7 +222,7 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
   return {
     kind: 'route',
     selector,
-    units: group.basicSelectorTotal > 0
+    units: group.alternatives.some(alternate => alternate.basicSelectorTotal > 0)
       ? [{
           kind: 'group',
           index: 0,
@@ -215,7 +282,7 @@ function allStatesAreTerminalPartial(states: MatchGroupState[]): boolean {
 
 function consumeGroupBasics(
   node: Node,
-  group: MatchGroup,
+  group: MatchGroupRequirement,
   states: MatchGroupState[]
 ): MatchGroupState[] {
   if (states.length === 0) {
@@ -241,6 +308,10 @@ function consumeGroupBasics(
       state.remainingTotal--;
     }
 
+    return states;
+  }
+
+  if (isSearchablePseudoBoundary(node)) {
     return states;
   }
 
@@ -287,32 +358,42 @@ function matchTargetGroup(
   targetGroup: Node,
   findGroup: MatchGroup
 ): { matched: boolean; exact: boolean } {
-  const states = consumeGroupBasics(targetGroup, findGroup, [{
-    remainingCounts: [...findGroup.basicSelectorCounts],
-    remainingTotal: findGroup.basicSelectorTotal,
-    exact: true
-  }]);
+  let matched = false;
+  let exact = false;
 
-  return {
-    matched: states.some(state => state.remainingTotal === 0),
-    exact: states.some(state => state.remainingTotal === 0 && state.exact)
-  };
+  for (let i = 0; i < findGroup.alternatives.length; i++) {
+    const requirement = findGroup.alternatives[i]!;
+    const states = consumeGroupBasics(targetGroup, requirement, [{
+      remainingCounts: [...requirement.basicSelectorCounts],
+      remainingTotal: requirement.basicSelectorTotal,
+      exact: true
+    }]);
+
+    matched ||= states.some(state => state.remainingTotal === 0);
+    exact ||= states.some(state => state.remainingTotal === 0 && state.exact);
+
+    if (exact) {
+      break;
+    }
+  }
+
+  return { matched, exact };
 }
 
 function matchCompoundWindow(
   targetCompound: Selector & { data: readonly Node[] },
   start: number,
   end: number,
-  findGroup: MatchGroup
+  requirement: MatchGroupRequirement
 ): { matched: boolean; exact: boolean } {
   let states = [{
-    remainingCounts: [...findGroup.basicSelectorCounts],
-    remainingTotal: findGroup.basicSelectorTotal,
+    remainingCounts: [...requirement.basicSelectorCounts],
+    remainingTotal: requirement.basicSelectorTotal,
     exact: true
   }];
 
   for (let i = start; i <= end && states.length > 0 && !allStatesAreTerminalPartial(states); i++) {
-    states = consumeGroupBasics(targetCompound.data[i]!, findGroup, states);
+    states = consumeGroupBasics(targetCompound.data[i]!, requirement, states);
   }
 
   return {
@@ -323,43 +404,51 @@ function matchCompoundWindow(
 
 function collectGroupMatchLocations(
   targetGroup: Node,
-  find: Selector,
   findGroup: MatchGroup
 ): SelectorMatchLocation[] {
   if (!isNode(targetGroup, N.CompoundSelector)) {
     const groupMatch = matchTargetGroup(targetGroup, findGroup);
     return groupMatch.matched
       ? [{
-        startIndex: 0,
-        endIndex: 0,
-        containingNode: targetGroup,
-        exact: groupMatch.exact
-      }]
+          startIndex: 0,
+          endIndex: 0,
+          containingNode: targetGroup,
+          exact: groupMatch.exact
+        }]
       : [];
   }
 
-  const findSpanLength = isNode(find, N.CompoundSelector) ? find.data.length : 1;
-  const lastStart = targetGroup.data.length - findSpanLength;
   const matches: SelectorMatchLocation[] = [];
 
-  if (lastStart < 0) {
-    return matches;
-  }
+  for (let i = 0; i < findGroup.alternatives.length; i++) {
+    const requirement = findGroup.alternatives[i]!;
+    const findSpanLength = requirement.basicSelectorTotal;
+    const lastStart = targetGroup.data.length - findSpanLength;
 
-  for (let start = 0; start <= lastStart; start++) {
-    const end = start + findSpanLength - 1;
-    const windowMatch = matchCompoundWindow(targetGroup as Selector & { data: readonly Node[] }, start, end, findGroup);
-
-    if (!windowMatch.matched) {
+    if (lastStart < 0) {
       continue;
     }
 
-    matches.push({
-      startIndex: start,
-      endIndex: end,
-      containingNode: targetGroup,
-      exact: windowMatch.exact && start === 0 && end === targetGroup.data.length - 1
-    });
+    for (let start = 0; start <= lastStart; start++) {
+      const end = start + findSpanLength - 1;
+      const windowMatch = matchCompoundWindow(
+        targetGroup as Selector & { data: readonly Node[] },
+        start,
+        end,
+        requirement
+      );
+
+      if (!windowMatch.matched) {
+        continue;
+      }
+
+      matches.push({
+        startIndex: start,
+        endIndex: end,
+        containingNode: targetGroup,
+        exact: windowMatch.exact && start === 0 && end === targetGroup.data.length - 1
+      });
+    }
   }
 
   return matches;
@@ -382,10 +471,93 @@ function pushMatches(
   }
 }
 
+function pushNestedPseudoMatches(
+  find: Selector,
+  targetNode: Node,
+  matches: SelectorMatchLocation[]
+): void {
+  if (isSearchablePseudoBoundary(targetNode)) {
+    if (isSearchablePseudoBoundary(find)) {
+      if (find.data.name !== targetNode.data.name) {
+        return;
+      }
+
+      const nested = selectorMatch(find.data.arg as Selector, targetNode.arg as Selector);
+      for (let i = 0; i < nested.matches.length; i++) {
+        const match = nested.matches[i]!;
+        matches.push({
+          startIndex: match.startIndex,
+          endIndex: match.endIndex,
+          containingNode: match.containingNode,
+          exact: false
+        });
+      }
+      return;
+    }
+
+    const nested = selectorMatch(find, targetNode.arg as Selector);
+    for (let i = 0; i < nested.matches.length; i++) {
+      const match = nested.matches[i]!;
+      matches.push({
+        startIndex: match.startIndex,
+        endIndex: match.endIndex,
+        containingNode: match.containingNode,
+        exact: false
+      });
+    }
+    return;
+  }
+
+  const children = targetNode.children();
+  let child = children.next();
+  while (!child.done) {
+    pushNestedPseudoMatches(find, child.value, matches);
+    child = children.next();
+  }
+}
+
 export function selectorMatch(
   find: Selector,
   target: Selector
 ): SelectorMatchState {
+  if (
+    isNode(find, N.PseudoSelector)
+    && find.data.name !== ':is'
+    && isNode(find.data.arg, N.Selector)
+  ) {
+    if (isSearchablePseudoBoundary(target)) {
+      if (find.data.name !== target.data.name) {
+        return emptySelectorMatchState();
+      }
+
+      return selectorMatch(find.data.arg as Selector, target.arg as Selector);
+    }
+
+    const nested = selectorMatch(find.data.arg as Selector, target);
+    if (!nested.partialMatch) {
+      return nested;
+    }
+
+    const matches = new Array<SelectorMatchLocation>(nested.matches.length);
+    for (let i = 0; i < nested.matches.length; i++) {
+      const match = nested.matches[i]!;
+      matches[i] = {
+        startIndex: match.startIndex,
+        endIndex: match.endIndex,
+        containingNode: find.data.arg as Node,
+        exact: false
+      };
+    }
+
+    return {
+      fullMatch: false,
+      partialMatch: true,
+      matches
+    };
+  }
+
+  /** @todo - put back in exact match hot path */
+
   if (find.canFastReject && !isSubsetOf(find.keySet, target.keySet)) {
     return emptySelectorMatchState();
   }
@@ -442,7 +614,7 @@ export function selectorMatch(
       if (findUnits.length === 1 && findUnits[0]!.kind === 'group') {
         const targetUnit = routeUnits[start]!;
         if (targetUnit.kind === 'group') {
-          const groupLocations = collectGroupMatchLocations(targetUnit.node, find, findUnits[0]!.group);
+          const groupLocations = collectGroupMatchLocations(targetUnit.node, findUnits[0]!.group);
           for (let i = 0; i < groupLocations.length; i++) {
             const location = groupLocations[i]!;
             result.matches.push({
@@ -483,5 +655,9 @@ export function selectorMatch(
     return result;
   };
 
-  return matchTargetPlan(getSelectorMatchPlan(target));
+  const result = matchTargetPlan(getSelectorMatchPlan(target));
+  pushNestedPseudoMatches(find, target, result.matches);
+  result.fullMatch = result.matches.some(match => match.exact);
+  result.partialMatch = result.matches.length > 0;
+  return result;
 }

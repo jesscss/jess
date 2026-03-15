@@ -111,7 +111,7 @@ describe('componentsMatch', () => {
   });
 
   /** Has unique matching behavior */
-  describe(':is() pseudo-selector', () => {
+  describe('pseudo-selectors', () => {
     it('matches identical :is() pseudo-selectors', async () => {
       let sel1 = pseudo({ name: ':is', arg: el('.a') });
       let sel2 = pseudo({ name: ':is', arg: el('.a') });
@@ -133,11 +133,78 @@ describe('componentsMatch', () => {
       let sel2 = compound([el('.b'), el('.a')]);
       await sel1.eval(context);
       await sel2.eval(context);
-      expect(selectorMatch(sel1, sel2).fullMatch).toBe(true);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(true);
+    });
+
+    it('does not return a full match for other pseudos', async () => {
+      let sel0 = compound([el('.a'), el('.b')]);
+      let sel1 = pseudo({ name: ':where', arg: sel0 });
+      let sel2 = compound([el('.b'), el('.a')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches[0]!.exact).toBe(false);
+      expect(result.matches[0]!.startIndex).toBe(0);
+      expect(result.matches[0]!.endIndex).toBe(1);
+      expect(result.matches[0]!.containingNode).toBe(sel0);
+    });
+
+    it('does NOT match outside other pseudo boundaries', async () => {
+      let sel1 = compound([el('.a'), pseudo({ name: ':where', arg: el('.b') })]);
+      let sel2 = compound([el('.a'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(false);
+    });
+
+    it('does NOT match outside other pseudo boundaries', async () => {
+      let sel1 = compound([pseudo({ name: ':where', arg: el('.a') }), el('.b')]);
+      let sel2 = compound([el('.a'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(false);
+    });
+
+    /** Should be obvious, but... */
+    it('does not match non-matching pseudos', async () => {
+      let sel1 = pseudo({ name: ':where', arg: el('.a') });
+      let sel2 = pseudo({ name: ':not', arg: el('.a') });
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(false);
+    });
+
+    it('matches matching pseudos #1', async () => {
+      let sel1 = pseudo({ name: ':not', arg: compound([el('.a'), el('.b')]) });
+      let sel2 = pseudo({ name: ':not', arg: compound([el('.b'), el('.a')]) });
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+    });
+
+    it('matches matching pseudos #2', async () => {
+      let sel1 = pseudo({ name: ':not', arg: compound([el('.a'), is(sellist([el('.b'), el('.x')]))]) });
+      let sel2 = pseudo({ name: ':not', arg: compound([el('.b'), el('.a')]) });
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
     });
   });
 
-  describe.only('selector lists', () => {
+  describe('selector lists', () => {
     it('finds a selector in a selector list #1', async () => {
       let sel1 = sellist([el('.a'), el('.b')]);
       let sel2 = el('.b');
