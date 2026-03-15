@@ -1,4 +1,4 @@
-import { isPlainObject } from './util/collections.js';
+import { ChildrenCursor, isPlainObject, NodeTraversalCursor } from './util/collections.js';
 import {
   type TreeContext,
   type Context
@@ -145,6 +145,11 @@ export const F_DEFAULT = F_VISIBLE;
 // export const LOCKED = 0b100000000;
 
 // const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
+
+export type RestorableIterator<T> = Iterator<T> & {
+  mark: (key?: string) => void;
+  reset: (key?: string) => void;
+};
 
 /**
  * The underlying type for all Jess nodes
@@ -626,7 +631,8 @@ export abstract class Node<
     }
   }
 
-  static* nodeAndPrePost(node: Node) {
+  * nodeAndPrePost() {
+    const node = this;
     if (isArray(node.pre)) {
       for (let n of node.pre) {
         if (n instanceof Node) {
@@ -647,50 +653,32 @@ export abstract class Node<
   /**
    * Return an iterator for all nodes / children nodes, including this one
    */
-  * nodes(reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
-    if (includePrePost) {
-      yield* Node.nodeAndPrePost(this);
-    } else {
-      yield this;
-    }
-    yield* this.children(true, reverse, includePrePost);
+  nodes(
+    reverse?: boolean,
+    includePrePost?: boolean
+  ): NodeTraversalCursor {
+    return new NodeTraversalCursor(this, {
+      includeSelf: true,
+      deep: true,
+      reverse,
+      includePrePost
+    });
   }
 
   /**
    * An iterator for all node children
-   * @todo - Replace `walkNodes` with this?
    */
-  * children(deep?: boolean, reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
-    const keys = (this.constructor as typeof Node).childNodeKeys;
-    if (keys) {
-      const val = this.data as Record<string, unknown>;
-      for (let i = 0; i < keys.length; i++) {
-        const nodeVal = val[keys[i]!];
-        if (nodeVal instanceof Node) {
-          if (includePrePost) {
-            yield* Node.nodeAndPrePost(nodeVal);
-          } else {
-            yield nodeVal;
-          }
-          if (deep) {
-            yield* nodeVal.children(deep, reverse, includePrePost);
-          }
-        }
-      }
-    } else {
-      for (let nodeVal of getValues(this.data, reverse)) {
-        if (nodeVal instanceof Node) {
-          if (includePrePost) {
-            yield* Node.nodeAndPrePost(nodeVal);
-          } else {
-            yield nodeVal;
-          }
-          if (deep) {
-            yield* nodeVal.children(deep, reverse, includePrePost);
-          }
-        }
-      }
-    }
+  children(
+    deep?: boolean,
+    reverse?: boolean,
+    includePrePost?: boolean
+  ): NodeTraversalCursor {
+    return new NodeTraversalCursor(this, {
+      includeSelf: false,
+      deep,
+      reverse,
+      includePrePost
+    });
   }
 
   /**

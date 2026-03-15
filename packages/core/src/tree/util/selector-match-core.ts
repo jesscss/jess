@@ -81,6 +81,54 @@ export function getCombinatorComponents(selector: ComplexSelector): Combinator[]
   return selector.data.filter(c => isNode(c, N.Combinator)) as Combinator[];
 }
 
+interface SelectorMatchState {
+  /**
+   * Note that a "full" match just means an "end to end" match,
+   * which does not mean all alternatives are matched.
+   */
+  fullMatch: boolean;
+  partialMatch: boolean;
+}
+
+/**
+ * selectorMatch
+ */
+export function selectorMatch(
+  find: Selector,
+  target: Selector
+): SelectorMatchState {
+  let findValue = find.valueOf();
+  let targetValue = target.valueOf();
+  if (findValue === targetValue) {
+    return { fullMatch: true, partialMatch: false };
+  }
+
+  if (find.canFastReject && !isSubsetOf(find.keySet, target.keySet)) {
+    return { fullMatch: false, partialMatch: false };
+  }
+
+  let findIterator = find.nodes(true);
+  let targetIterator = target.nodes(true);
+
+  let findIndex = findIterator.next();
+  let targetIndex = targetIterator.next();
+
+  let searchPos = -1;
+  let needle = '';
+
+  while (!findIndex.done && !targetIndex.done) {
+    let value = findIndex.value;
+    if (isNode(value, N.BasicSelector)) {
+      searchPos++;
+      findIterator.mark();
+    }
+    findIndex = findIterator.next();
+    targetIndex = targetIterator.next();
+  }
+
+  return { fullMatch: false, partialMatch: false };
+}
+
 /**
  * Checks if two selectors match using component-level logic
  * Preserves the exact original matching semantics from multiple locations
@@ -92,12 +140,22 @@ export function componentsMatch(a: Selector, b: Selector): boolean {
     return true;
   }
 
-  if (isSubsetOf(a.keySet, b.keySet)) {
-
+  if (a.canFastReject && isSubsetOf(a.keySet, b.keySet)) {
+    return false;
   }
-  // Exact string match first (fast path)
-  if (a.valueOf() === b.valueOf()) {
-    return true;
+
+  let aIterator = a.nodes(true);
+  let bIterator = b.nodes(true);
+
+  let aIndex = aIterator.next();
+  let bIndex = bIterator.next();
+
+  const state = {
+
+  };
+
+  while (!aIndex.done && !bIndex.done) {
+
   }
 
   // Handle compound selector equivalence (order-independent)

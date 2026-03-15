@@ -177,3 +177,146 @@ export function arraysEqual(a: string[], b: string[]) {
   }
   return true;
 }
+
+type TraversalFrame = {
+  items: Node[];
+  index: number;
+};
+
+type TraversalMark = {
+  stack: TraversalFrame[];
+};
+
+type NodeTraversalOptions = {
+  includeSelf?: boolean;
+  deep?: boolean;
+  reverse?: boolean;
+  includePrePost?: boolean;
+};
+
+function cloneFrames(frames: TraversalFrame[]): TraversalFrame[] {
+  return frames.map(frame => ({
+    items: frame.items,
+    index: frame.index
+  }));
+}
+
+function collectDirectNodes(
+  node: Node,
+  reverse = false,
+  includePrePost = false
+): Node[] {
+  const result: Node[] = [];
+  const keys = (node.constructor as typeof Node).childNodeKeys;
+
+  if (keys) {
+    const keyList = reverse ? [...keys].reverse() : keys;
+    const val = node.data as Record<string, unknown>;
+
+    for (const key of keyList) {
+      const nodeVal = val[key!];
+      if (isNode(nodeVal)) {
+        if (includePrePost) {
+          result.push(...nodeVal.nodeAndPrePost());
+        } else {
+          result.push(nodeVal);
+        }
+      }
+    }
+  } else {
+    for (const nodeVal of getValues(node.data, reverse)) {
+      if (isNode(nodeVal)) {
+        if (includePrePost) {
+          result.push(...nodeVal.nodeAndPrePost());
+        } else {
+          result.push(nodeVal);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+export class NodeTraversalCursor implements IterableIterator<Node> {
+  private stack: TraversalFrame[] = [];
+  private readonly deep: boolean;
+  private readonly reverse: boolean;
+  private readonly includePrePost: boolean;
+
+  constructor(root: Node, options: NodeTraversalOptions = {}) {
+    const {
+      includeSelf = false,
+      deep = false,
+      reverse = false,
+      includePrePost = false
+    } = options;
+
+    this.deep = deep;
+    this.reverse = reverse;
+    this.includePrePost = includePrePost;
+
+    const initialItems = includeSelf
+      ? includePrePost
+        ? [...root.nodeAndPrePost()]
+        : [root]
+      : collectDirectNodes(root, reverse, includePrePost);
+
+    this.stack.push({
+      items: initialItems,
+      index: 0
+    });
+  }
+
+  [Symbol.iterator](): IterableIterator<Node> {
+    return this;
+  }
+
+  next(): IteratorResult<Node> {
+    while (this.stack.length > 0) {
+      const frame = this.stack[this.stack.length - 1]!;
+
+      if (frame.index >= frame.items.length) {
+        this.stack.pop();
+        continue;
+      }
+
+      const node = frame.items[frame.index++]!;
+
+      if (this.deep) {
+        const children = collectDirectNodes(
+          node,
+          this.reverse,
+          this.includePrePost
+        );
+
+        if (children.length > 0) {
+          this.stack.push({
+            items: children,
+            index: 0
+          });
+        }
+      }
+
+      return {
+        done: false,
+        value: node
+      };
+    }
+
+    return {
+      done: true,
+      value: undefined as never
+    };
+  }
+
+  mark(): TraversalMark {
+    return {
+      stack: cloneFrames(this.stack)
+    };
+  }
+
+  restore(mark: TraversalMark): void {
+    this.stack = cloneFrames(mark.stack);
+  }
+}

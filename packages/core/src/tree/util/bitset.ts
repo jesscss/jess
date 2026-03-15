@@ -10,7 +10,13 @@ export class BitSet<T = unknown> extends OriginalBitSet {
   }
 
   override clone(): BitSet<T> {
-    let set = super.clone() as BitSet<T>;
+    let set: any = new BitSet<T>();
+    /**
+     * Clone like the regular bitset does but preserve this as the constructor.
+     * Otherwise cloned objects won't preserve the library reference.
+     */
+    set.data = (this as any).data.slice();
+    set._ = (this as any)._;
     set._library = this._library;
     return set;
   }

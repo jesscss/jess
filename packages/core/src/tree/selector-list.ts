@@ -105,7 +105,7 @@ export class SelectorList extends Selector<Selector[]> {
   override computeKeySetAndFastReject(): void {
     super.computeKeySetAndFastReject();
     /** Selector lists represent alternates, so subsets can't fast reject */
-    this.canFastReject = false;
+    this._canFastReject = false;
   }
 
   override compare(b: Selector): 0 | 1 | -1 | undefined {

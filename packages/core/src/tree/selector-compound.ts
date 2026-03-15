@@ -9,6 +9,7 @@ import { getEntries } from './util/collections.js';
 import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
+import { N } from './node-type.js';
 
 /**
  * @example
@@ -27,27 +28,48 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return this.data.length;
   }
 
+  get value() {
+    return this.data as SimpleSelector[];
+  }
+
   override valueOf() {
     let value = this._valueOf;
     if (!value) {
       // Convert selectors to strings
-      const components = this.data.map(n => n.valueOf());
+      const components = this.value;
 
       // Find element selectors (those that don't start with .#:[)
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];
 
-      for (const component of components) {
-        if (!nonElementRegex.test(component)) {
-          elementSelectors.push(component);
-        } else {
-          nonElementSelectors.push(component);
+      const processComponents = (components: SimpleSelector[]) => {
+        for (const component of components) {
+          if (
+            isNode(component, N.PseudoSelector)
+            && component.name === ':is'
+          ) {
+            let arg = component.arg;
+            if (isNode(arg, N.CompoundSelector)) {
+              processComponents(arg.value);
+              continue;
+            } else {
+              value = String(arg!.valueOf());
+            }
+          } else {
+            value = component.valueOf();
+          }
+          if (!nonElementRegex.test(value)) {
+            elementSelectors.push(value);
+          } else {
+            nonElementSelectors.push(value);
+          }
         }
-      }
+      };
+      processComponents(components);
 
       // Element selectors must come first for valid CSS
       // Non-element selectors maintain their original order (no sorting)
-      value = [...elementSelectors, ...nonElementSelectors].join('');
+      value = [...elementSelectors, ...nonElementSelectors.sort()].join('');
       this._valueOf = value;
     }
     return value;

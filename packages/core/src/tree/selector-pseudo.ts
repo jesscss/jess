@@ -69,11 +69,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         keySet.set(pos, 1);
         visibleKeySet.set(pos, 1);
       }
-      this.canFastReject = arg.canFastReject;
+      this._canFastReject = arg.canFastReject;
     } else {
       this._keySet = library.getBitset([this.valueOf()]);
       this._visibleKeySet = this._keySet;
-      this.canFastReject = true;
+      this._canFastReject = true;
     }
   }
 
@@ -114,8 +114,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     let valueOf = this._valueOf;
     if (!valueOf) {
       let { name, arg } = this.data;
-      // For :is() with SelectorList, use valueOf() to avoid newlines
-
       /**
        * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
        * That is, anything that doesn't hold a selector as a value
@@ -123,7 +121,12 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
        *
        * @todo 1n === n, 2n + 0 === 2n
        */
-      valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
+      if (name === ':is' && arg && isNode(arg, N.BasicSelector | N.CompoundSelector)) {
+        /** Simples and compounds can be normalized */
+        valueOf = String(arg.valueOf());
+      } else {
+        valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
+      }
 
       this._valueOf = valueOf;
     }

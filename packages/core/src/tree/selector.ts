@@ -57,12 +57,16 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return this._visibleKeySet!;
   }
 
+  protected _canFastReject: boolean | undefined;
   /**
    * Cached computation: can this selector's keySet be trusted for disjoint rejection?
    * True = keySet represents exact requirements (no alternatives)
    * False = keySet contains alternatives/unions, disjoint check unreliable
    */
-  canFastReject: boolean | undefined;
+  get canFastReject() {
+    this.computeKeySetAndFastReject();
+    return this._canFastReject!;
+  }
 
   /**
    * Computes both keySet and canFastReject in one pass for efficiency.
@@ -92,7 +96,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
         this._visibleKeySet = visibleKeySet ? visibleKeySet.or(child.visibleKeySet) : child.visibleKeySet.clone();
         childCanReject &&= Boolean(child.canFastReject);
       }
-      this.canFastReject = childCanReject;
+      this._canFastReject = childCanReject;
       return;
     }
     let value = String(this.valueOf());
@@ -103,7 +107,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     } else {
       this._visibleKeySet = library.getBitset();
     }
-    this.canFastReject = true;
+    this._canFastReject = true;
   }
 }
 
