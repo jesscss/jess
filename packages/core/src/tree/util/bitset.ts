@@ -99,3 +99,11 @@ export function isSubsetOf(a: BitSet, b: BitSet): boolean {
   }
   return a.and(b).equals(a);
 }
+
+/** True when `a` and `b` share no set bits. */
+export function isDisjoint(a: BitSet, b: BitSet): boolean {
+  if (a._library !== b._library) {
+    throw new Error('Bitsets must be from the same library');
+  }
+  return a.and(b).equals(a._library!.getBitset());
+}

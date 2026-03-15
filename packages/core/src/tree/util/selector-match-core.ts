@@ -3,7 +3,7 @@ import { SelectorList } from '../selector-list.js';
 import { F_AMPERSAND, type Node } from '../node.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { isSubsetOf } from './bitset.js';
+import { isDisjoint, isSubsetOf } from './bitset.js';
 import { type PseudoSelector } from '../selector-pseudo.js';
 
 /**
@@ -30,6 +30,20 @@ interface SelectorMatchLocation {
   exact?: boolean;
   crossesAmpersand?: boolean;
   consumedTarget?: boolean;
+  ampersandCrossings?: SelectorMatchAmpersandCrossing[];
+}
+
+interface SelectorMatchSegment {
+  containingNode: Node;
+  startIndex?: number;
+  endIndex?: number;
+  matchedIndices?: number[];
+}
+
+interface SelectorMatchAmpersandCrossing {
+  ampersandNode?: Node;
+  targetSegment: SelectorMatchSegment;
+  parentSegment?: SelectorMatchSegment;
 }
 
 /**
@@ -94,6 +108,7 @@ type MatchGroupState = {
   remainingCounts: number[];
   remainingTotal: number;
   exact: boolean;
+  matchedOutsideAmpersand: boolean;
 };
 
 type MatchWindowResult = {
@@ -208,6 +223,15 @@ function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
     const requirement = createRequirement();
     addRequirementValue(requirement, node.valueOf());
     return [requirement];
+  }
+
+  if (isNode(node, N.Ampersand)) {
+    const resolved = node.getResolvedSelector();
+    if (resolved && !isNode(resolved, N.Nil)) {
+      return buildGroupRequirements(resolved);
+    }
+
+    return [createRequirement()];
   }
 
   if (isNode(node, N.ComplexSelector)) {
@@ -363,7 +387,8 @@ function cloneGroupStates(states: MatchGroupState[]): MatchGroupState[] {
     nextStates[i] = {
       remainingCounts: [...state.remainingCounts],
       remainingTotal: state.remainingTotal,
-      exact: state.exact
+      exact: state.exact,
+      matchedOutsideAmpersand: state.matchedOutsideAmpersand
     };
   }
   return nextStates;
@@ -382,7 +407,8 @@ function allStatesAreTerminalPartial(states: MatchGroupState[]): boolean {
 function consumeGroupBasics(
   node: Node,
   group: MatchGroupRequirement,
-  states: MatchGroupState[]
+  states: MatchGroupState[],
+  insideAmpersand = false
 ): MatchGroupState[] {
   if (states.length === 0) {
     return states;
@@ -405,6 +431,18 @@ function consumeGroupBasics(
 
       state.remainingCounts[idx]!--;
       state.remainingTotal--;
+      if (!insideAmpersand) {
+        state.matchedOutsideAmpersand = true;
+      }
+    }
+
+    return states;
+  }
+
+  if (isNode(node, N.Ampersand)) {
+    const resolved = node.getResolvedSelector();
+    if (resolved && !isNode(resolved, N.Nil)) {
+      return consumeGroupBasics(resolved, group, states, true);
     }
 
     return states;
@@ -433,7 +471,8 @@ function consumeGroupBasics(
         ...consumeGroupBasics(
           alternate.value,
           group,
-          cloneGroupStates(states)
+          cloneGroupStates(states),
+          insideAmpersand
         )
       );
     }
@@ -446,7 +485,7 @@ function consumeGroupBasics(
   let child = children.next();
 
   while (!child.done && nextStates.length > 0 && !allStatesAreTerminalPartial(nextStates)) {
-    nextStates = consumeGroupBasics(child.value, group, nextStates);
+    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand);
     child = children.next();
   }
 
@@ -460,7 +499,7 @@ function summarizeStates(states: MatchGroupState[]): MatchWindowResult {
 
   for (let i = 0; i < states.length; i++) {
     const state = states[i]!;
-    if (state.remainingTotal !== 0) {
+    if (state.remainingTotal !== 0 || !state.matchedOutsideAmpersand) {
       continue;
     }
 
@@ -492,7 +531,8 @@ function matchTargetGroup(
     const states = consumeGroupBasics(targetGroup, requirement, [{
       remainingCounts: [...requirement.basicSelectorCounts],
       remainingTotal: requirement.basicSelectorTotal,
-      exact: true
+      exact: true,
+      matchedOutsideAmpersand: false
     }]);
     const summary = summarizeStates(states);
 
@@ -516,7 +556,8 @@ function matchCompoundWindow(
   let states = [{
     remainingCounts: [...requirement.basicSelectorCounts],
     remainingTotal: requirement.basicSelectorTotal,
-    exact: true
+    exact: true,
+    matchedOutsideAmpersand: false
   }];
 
   for (let i = start; i <= end && states.length > 0 && !allStatesAreTerminalPartial(states); i++) {
@@ -700,6 +741,41 @@ function pushMatches(
   }
 }
 
+function cloneMatchSegment(
+  segment: SelectorMatchSegment | undefined
+): SelectorMatchSegment | undefined {
+  if (!segment) {
+    return undefined;
+  }
+
+  return {
+    containingNode: segment.containingNode,
+    startIndex: segment.startIndex,
+    endIndex: segment.endIndex,
+    matchedIndices: segment.matchedIndices ? [...segment.matchedIndices] : undefined
+  };
+}
+
+function cloneAmpersandCrossings(
+  crossings: SelectorMatchAmpersandCrossing[] | undefined
+): SelectorMatchAmpersandCrossing[] | undefined {
+  if (!crossings || crossings.length === 0) {
+    return undefined;
+  }
+
+  const next = new Array<SelectorMatchAmpersandCrossing>(crossings.length);
+  for (let i = 0; i < crossings.length; i++) {
+    const crossing = crossings[i]!;
+    next[i] = {
+      ampersandNode: crossing.ampersandNode,
+      targetSegment: cloneMatchSegment(crossing.targetSegment)!,
+      parentSegment: cloneMatchSegment(crossing.parentSegment)
+    };
+  }
+
+  return next;
+}
+
 function getCachedGroupMatch(
   cache: GroupMatchCache,
   targetGroup: Node,
@@ -827,7 +903,8 @@ function pushNestedBranchMatches(
           matchedIndices: match.matchedIndices,
           containingNode: match.containingNode,
           exact: false,
-          consumedTarget: match.consumedTarget
+          consumedTarget: match.consumedTarget,
+          ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
         });
       }
     }
@@ -914,6 +991,10 @@ function getBoundaryTailUnits(routePlan: RouteMatchPlan): MatchPlanUnit[] {
 }
 
 function locationCrossesAmpersand(location: SelectorMatchLocation): boolean {
+  if (location.ampersandCrossings && location.ampersandCrossings.length > 0) {
+    return true;
+  }
+
   if (location.crossesAmpersand) {
     return true;
   }
@@ -944,6 +1025,103 @@ function locationCrossesAmpersand(location: SelectorMatchLocation): boolean {
   return true;
 }
 
+function getLocationAmpersandCrossings(
+  location: SelectorMatchLocation
+): SelectorMatchAmpersandCrossing[] | undefined {
+  if (location.ampersandCrossings && location.ampersandCrossings.length > 0) {
+    return location.ampersandCrossings;
+  }
+
+  const { containingNode } = location;
+  if (!containingNode.hasFlag(F_AMPERSAND)) {
+    return undefined;
+  }
+
+  const indices = location.matchedIndices && location.matchedIndices.length > 0
+    ? location.matchedIndices
+    : undefined;
+  const start = location.startIndex ?? indices?.[0] ?? 0;
+  const end = location.endIndex ?? indices?.[indices.length - 1] ?? start;
+  const targetSegment: SelectorMatchSegment = {
+    containingNode,
+    startIndex: location.startIndex,
+    endIndex: location.endIndex,
+    matchedIndices: location.matchedIndices ? [...location.matchedIndices] : undefined
+  };
+
+  const crossings: SelectorMatchAmpersandCrossing[] = [];
+  const seenAmpersands = new Set<Node>();
+  const pushCrossing = (ampersandNode: Node): void => {
+    if (seenAmpersands.has(ampersandNode)) {
+      return;
+    }
+
+    seenAmpersands.add(ampersandNode);
+
+    let parentSegment: SelectorMatchSegment | undefined;
+    if (isNode(ampersandNode, N.Ampersand)) {
+      const resolved = ampersandNode.getResolvedSelector();
+      if (resolved && !isNode(resolved, N.Nil)) {
+        parentSegment = {
+          containingNode: resolved
+        };
+      }
+    }
+
+    crossings.push({
+      ampersandNode,
+      targetSegment,
+      parentSegment
+    });
+  };
+
+  if (isNode(containingNode, N.Ampersand)) {
+    pushCrossing(containingNode);
+    return crossings;
+  }
+
+  if (isNode(containingNode, N.CompoundSelector) || isNode(containingNode, N.ComplexSelector)) {
+    if (indices) {
+      for (let i = 0; i < indices.length; i++) {
+        const idx = indices[i]!;
+        const node = containingNode.data[idx];
+        if (node && isNode(node, N.Ampersand)) {
+          pushCrossing(node);
+        }
+      }
+    }
+
+    for (let i = start; i <= end; i++) {
+      const node = containingNode.data[i];
+      if (node && isNode(node, N.Ampersand)) {
+        pushCrossing(node);
+      }
+    }
+  }
+
+  if (isNode(containingNode, N.SelectorList) && start === end) {
+    const node = containingNode.data[start];
+    if (node && isNode(node, N.Ampersand)) {
+      pushCrossing(node);
+    } else if (node && (isNode(node, N.CompoundSelector) || isNode(node, N.ComplexSelector))) {
+      for (let i = 0; i < node.data.length; i++) {
+        const child = node.data[i];
+        if (child && isNode(child, N.Ampersand)) {
+          crossings.push({
+            ampersandNode: child,
+            targetSegment,
+            parentSegment: child.getResolvedSelector() && !isNode(child.getResolvedSelector(), N.Nil)
+              ? { containingNode: child.getResolvedSelector() as Selector }
+              : undefined
+          });
+        }
+      }
+    }
+  }
+
+  return crossings.length > 0 ? crossings : undefined;
+}
+
 /**
  * Finalizes aggregate booleans from the collected match list.
  *
@@ -956,6 +1134,9 @@ function finalizeMatchState(result: SelectorMatchState): SelectorMatchState {
 
   for (let i = 0; i < result.matches.length; i++) {
     const match = result.matches[i]!;
+    if (!match.ampersandCrossings) {
+      match.ampersandCrossings = getLocationAmpersandCrossings(match);
+    }
     fullMatch ||= !!match.exact;
     crossesAmpersand ||= locationCrossesAmpersand(match);
 
@@ -996,7 +1177,8 @@ function pushNestedPseudoMatches(
           endIndex: match.endIndex,
           containingNode: match.containingNode,
           exact: match.exact,
-          consumedTarget: match.consumedTarget
+          consumedTarget: match.consumedTarget,
+          ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
         });
       }
       return;
@@ -1010,7 +1192,8 @@ function pushNestedPseudoMatches(
         endIndex: match.endIndex,
         containingNode: match.containingNode,
         exact: false,
-        consumedTarget: match.consumedTarget
+        consumedTarget: match.consumedTarget,
+        ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
       });
     }
     return;
@@ -1090,7 +1273,8 @@ function selectorMatchUncached(
         endIndex: match.endIndex,
         containingNode: find.data.arg as Node,
         exact: false,
-        consumedTarget: false
+        consumedTarget: false,
+        ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
       };
     }
 
@@ -1106,6 +1290,30 @@ function selectorMatchUncached(
   if (isNode(target, N.SelectorList)) {
     for (let i = 0; i < target.data.length; i++) {
       const sel = target.data[i]!;
+      if (findValue === sel.valueOf()) {
+        return {
+          fullMatch: true,
+          partialMatch: true,
+          crossesAmpersand: sel.hasFlag(F_AMPERSAND),
+          matches: [{
+            startIndex: i,
+            endIndex: i,
+            matchedIndices: [i],
+            containingNode: target,
+            exact: true,
+            consumedTarget: target.data.length === 1,
+            ampersandCrossings: getLocationAmpersandCrossings({
+              startIndex: i,
+              endIndex: i,
+              matchedIndices: [i],
+              containingNode: target,
+              exact: true,
+              consumedTarget: target.data.length === 1
+            })
+          }]
+        };
+      }
+
       const nested = selectorMatchInternal(find, sel, undefined, context);
       if (nested.partialMatch) {
         return {
@@ -1118,7 +1326,8 @@ function selectorMatchUncached(
             matchedIndices: [i],
             containingNode: target,
             exact: nested.fullMatch,
-            consumedTarget: nested.fullMatch && target.data.length === 1
+            consumedTarget: nested.fullMatch && target.data.length === 1,
+            ampersandCrossings: cloneAmpersandCrossings(nested.matches[0]?.ampersandCrossings)
           }]
         };
       }
@@ -1133,7 +1342,12 @@ function selectorMatchUncached(
         matches: [{
           containingNode: target,
           exact: true,
-          consumedTarget: true
+          consumedTarget: true,
+          ampersandCrossings: getLocationAmpersandCrossings({
+            containingNode: target,
+            exact: true,
+            consumedTarget: true
+          })
         }]
       };
     }
@@ -1142,7 +1356,20 @@ function selectorMatchUncached(
   if (
     !parent
     && !hasNestedBranchAlternatives(find)
+    && !find.hasFlag(F_AMPERSAND)
+    && target.hasFlag(F_AMPERSAND)
     && find.canFastReject
+    && target.canFastReject
+    && isDisjoint(find.visibleKeySet, target.visibleKeySet)
+  ) {
+    return emptySelectorMatchState();
+  }
+
+  if (
+    !parent
+    && !hasNestedBranchAlternatives(find)
+    && find.canFastReject
+    && target.canFastReject
     && !isSubsetOf(find.keySet, target.keySet)
   ) {
     return emptySelectorMatchState();
@@ -1237,6 +1464,26 @@ function selectorMatchUncached(
         && targetBoundaryMatch.exact
         && remainingFindLength === parentUnits.length
       );
+      const firstTargetUnit = boundaryTailUnits[0]!;
+      const lastTargetUnit = boundaryTailUnits[boundaryTailLength - 1]!;
+      const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
+      const lastParentUnit = parentUnits[parentUnits.length - 1]!;
+      const leadingAmpersand = hasLeadingAmpersandBoundary(routePlan.selector)
+        ? routePlan.selector.data[0]
+        : undefined;
+      const ampersandCrossings: SelectorMatchAmpersandCrossing[] = [{
+        ampersandNode: leadingAmpersand,
+        targetSegment: {
+          containingNode: routePlan.selector,
+          startIndex: firstTargetUnit.index,
+          endIndex: lastTargetUnit.index
+        },
+        parentSegment: {
+          containingNode: plan.selector,
+          startIndex: firstParentUnit.index,
+          endIndex: lastParentUnit.index
+        }
+      }];
 
       if (isNode(routePlan.selector, N.CompoundSelector) || isNode(routePlan.selector, N.ComplexSelector)) {
         result.matches.push({
@@ -1245,7 +1492,8 @@ function selectorMatchUncached(
           containingNode: routePlan.selector,
           exact,
           crossesAmpersand: true,
-          consumedTarget: !!exact
+          consumedTarget: !!exact,
+          ampersandCrossings
         });
         return;
       }
@@ -1254,7 +1502,8 @@ function selectorMatchUncached(
         containingNode: routePlan.selector,
         exact,
         crossesAmpersand: true,
-        consumedTarget: !!exact
+        consumedTarget: !!exact,
+        ampersandCrossings
       });
     };
 
@@ -1314,7 +1563,8 @@ function selectorMatchUncached(
               result.matches.push({
                 ...location,
                 exact: exact && location.exact,
-                consumedTarget: !!location.consumedTarget
+                consumedTarget: !!location.consumedTarget,
+                ampersandCrossings: cloneAmpersandCrossings(location.ampersandCrossings)
               });
             }
             continue;

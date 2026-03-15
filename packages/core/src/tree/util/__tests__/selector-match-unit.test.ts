@@ -183,6 +183,23 @@ describe('pseudo-selectors', () => {
       expect(result.matches).toHaveLength(1);
     });
 
+    it('matches through deeply nested :is() alternates', async () => {
+      let sel1 = pseudo({
+        name: ':is',
+        arg: sellist([
+          pseudo({ name: ':is', arg: sellist([el('.a'), el('.b')]) }),
+          el('.c')
+        ])
+      });
+      let sel2 = el('.b');
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+    });
+
     it('doesn\'t match branched :is() as full match #1', async () => {
       let sel1 = sel([el('.a'), co('>'), pseudo({ name: ':is', arg: sel([el('.b'), co('>'), el('.b')]) })]);
       let sel2 = sel([el('.a'), co('>'), el('.b')]);
@@ -327,6 +344,67 @@ describe('pseudo-selectors', () => {
       expect(result.fullMatch).toBe(true);
       expect(result.partialMatch).toBe(true);
     });
+
+    it('matches equivalent pseudo selectors with complex selector args', async () => {
+      let sel1 = compound([
+        pseudo({ name: ':where', arg: sel([el('.a'), co('>'), el('.b')]) }),
+        el('.c')
+      ]);
+      let sel2 = compound([
+        el('.c'),
+        pseudo({ name: ':where', arg: sel([el('.a'), co('>'), el('.b')]) })
+      ]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+    });
+
+    it('matches equivalent mixed nested pseudo selectors', async () => {
+      let sel1 = pseudo({
+        name: ':not',
+        arg: compound([
+          pseudo({ name: ':is', arg: sellist([el('.a'), el('.c')]) }),
+          el('.d')
+        ])
+      });
+      let sel2 = pseudo({
+        name: ':not',
+        arg: compound([
+          el('.d'),
+          pseudo({ name: ':is', arg: sellist([el('.c'), el('.a')]) })
+        ])
+      });
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel1, sel2);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+    });
+
+    it('recursively searches through multiple nested pseudo boundaries', async () => {
+      let sel1 = pseudo({
+        name: ':not',
+        arg: pseudo({
+          name: ':where',
+          arg: pseudo({
+            name: ':is',
+            arg: compound([el('.a'), el('.b')])
+          })
+        })
+      });
+      let sel2 = el('.a');
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches.length).toBeGreaterThan(0);
+      expect(result.matches.every(match => !match.exact)).toBe(true);
+    });
   });
 });
 
@@ -380,6 +458,37 @@ describe('selector lists and branching', () => {
       expect(result.matches[0]!.endIndex).toBe(0);
       expect(result.matches[0]!.matchedIndices).toEqual([0]);
       expect(result.matches[0]!.consumedTarget).toBe(false);
+    });
+
+    it('reports a complex selector-list item match against the list container', async () => {
+      let sel1 = sellist([sel([el('.a'), co('>'), el('.b')]), el('.c')]);
+      let sel2 = sel([el('.a'), co('>'), el('.b')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(true);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]!.containingNode).toBe(sel1);
+      expect(result.matches[0]!.startIndex).toBe(0);
+      expect(result.matches[0]!.endIndex).toBe(0);
+      expect(result.matches[0]!.matchedIndices).toEqual([0]);
+      expect(result.matches[0]!.consumedTarget).toBe(false);
+    });
+
+    it('reports a pseudo-wrapped selector-list item match against the list container', async () => {
+      let sel1 = sellist([pseudo({ name: ':where', arg: compound([el('.a'), el('.b')]) }), el('.c')]);
+      let sel2 = compound([el('.b'), el('.a')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]!.containingNode).toBe(sel1);
+      expect(result.matches[0]!.startIndex).toBe(0);
+      expect(result.matches[0]!.endIndex).toBe(0);
+      expect(result.matches[0]!.matchedIndices).toEqual([0]);
     });
 
     it('treats a find-side selector list as alternates', async () => {
@@ -595,6 +704,10 @@ describe('selector lists and branching', () => {
       expect(result.partialMatch).toBe(true);
       expect(result.crossesAmpersand).toBe(true);
       expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
+      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.data[0]);
+      expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
+      expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode.valueOf()).toBe('a');
     });
 
     it('matches near an ampersand but doesn\'t cross it #1', async () => {
@@ -625,6 +738,42 @@ describe('selector lists and branching', () => {
       expect(result.partialMatch).toBe(true);
       expect(result.matches).toHaveLength(1);
       expect(result.crossesAmpersand).toBe(false);
+      expect(result.matches[0]!.ampersandCrossings).toBeUndefined();
+    });
+
+    it('matches repeated ampersand compounds in one complex selector', async () => {
+      let parentSelector = compound([el('.a'), el('.b')]).eval(context);
+      let sel1 = sel([
+        compound([amp({ selectorContainer: { selector: parentSelector } }), el('.x')]),
+        co(' '),
+        compound([amp({ selectorContainer: { selector: parentSelector } }), el('.x')])
+      ]);
+      let sel2 = compound([el('.b'), el('.x')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.crossesAmpersand).toBe(true);
+      expect(result.matches).toHaveLength(2);
+      expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
+      expect(result.matches[1]!.ampersandCrossings).toHaveLength(1);
+    });
+
+    it('matches repeated :is() compounds in one complex selector', async () => {
+      let sel1 = sel([
+        compound([is(compound([el('.a'), el('.b')])), el('.x')]),
+        co(' '),
+        compound([is(compound([el('.a'), el('.b')])), el('.x')])
+      ]);
+      let sel2 = compound([el('.b'), el('.x')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.crossesAmpersand).toBe(false);
+      expect(result.matches).toHaveLength(2);
     });
 
     describe('parent selector context', () => {
@@ -640,6 +789,9 @@ describe('selector lists and branching', () => {
         expect(result.partialMatch).toBe(true);
         expect(result.crossesAmpersand).toBe(true);
         expect(result.matches).toHaveLength(1);
+        expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
+        expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
+        expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode.valueOf()).toBe('span');
       });
 
       it('uses a parent selector list as alternates across a leading ampersand', async () => {
@@ -743,6 +895,34 @@ describe('selector lists and branching', () => {
         let parent = sellist([el('div'), el('span')]);
         let sel1 = el(':hover');
         let sel2 = sel([el('div'), co(' '), el(':hover')]);
+        await parent.eval(context);
+        await sel1.eval(context);
+        await sel2.eval(context);
+        let result = selectorMatch(sel2, sel1, parent as any);
+        expect(result.fullMatch).toBe(true);
+        expect(result.partialMatch).toBe(true);
+        expect(result.crossesAmpersand).toBe(true);
+        expect(result.matches).toHaveLength(1);
+      });
+
+      it('does not continue parent matching through a non-:is() pseudo boundary', async () => {
+        let parent = el('div');
+        let sel1 = sel([amp(), co(' '), pseudo({ name: ':where', arg: el('.a') })]);
+        let sel2 = sel([el('div'), co(' '), el('.a')]);
+        await parent.eval(context);
+        await sel1.eval(context);
+        await sel2.eval(context);
+        let result = selectorMatch(sel2, sel1, parent as any);
+        expect(result.fullMatch).toBe(false);
+        expect(result.partialMatch).toBe(false);
+        expect(result.crossesAmpersand).toBe(false);
+        expect(result.matches).toHaveLength(0);
+      });
+
+      it('does continue parent matching through an :is() boundary', async () => {
+        let parent = el('div');
+        let sel1 = sel([amp(), co(' '), pseudo({ name: ':is', arg: el('.a') })]);
+        let sel2 = sel([el('div'), co(' '), el('.a')]);
         await parent.eval(context);
         await sel1.eval(context);
         await sel2.eval(context);
