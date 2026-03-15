@@ -220,7 +220,7 @@ function markComplexBranchRequirements(
   return requirements;
 }
 
-function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
+function buildGroupRequirements(node: Node, parent?: Selector): MatchGroupRequirement[] {
   if (isNode(node, N.BasicSelector)) {
     const requirement = createRequirement();
     addRequirementValue(requirement, node.valueOf());
@@ -228,9 +228,9 @@ function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
   }
 
   if (isNode(node, N.Ampersand)) {
-    const resolved = node.getResolvedSelector();
+    const resolved = node.getResolvedSelector() ?? parent;
     if (resolved && !isNode(resolved, N.Nil)) {
-      return buildGroupRequirements(resolved);
+      return buildGroupRequirements(resolved, parent);
     }
 
     return [createRequirement()];
@@ -240,7 +240,7 @@ function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
     for (let i = node.data.length - 1; i >= 0; i--) {
       const component = node.data[i]!;
       if (!isNode(component, N.Combinator)) {
-        return markComplexBranchRequirements(buildGroupRequirements(component), node);
+        return markComplexBranchRequirements(buildGroupRequirements(component, parent), node);
       }
     }
 
@@ -260,7 +260,7 @@ function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
   if (isNode(node, N.SelectorList)) {
     const alternatives: MatchGroupRequirement[] = [];
     for (let i = 0; i < node.data.length; i++) {
-      const nested = buildGroupRequirements(node.data[i]!);
+      const nested = buildGroupRequirements(node.data[i]!, parent);
       for (let j = 0; j < nested.length; j++) {
         alternatives.push(nested[j]!);
       }
@@ -273,7 +273,7 @@ function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
   let child = children.next();
 
   while (!child.done) {
-    const childRequirements = buildGroupRequirements(child.value);
+    const childRequirements = buildGroupRequirements(child.value, parent);
     const nextRequirements: MatchGroupRequirement[] = [];
     for (let i = 0; i < requirements.length; i++) {
       for (let j = 0; j < childRequirements.length; j++) {
@@ -289,13 +289,13 @@ function buildGroupRequirements(node: Node): MatchGroupRequirement[] {
   return requirements;
 }
 
-function buildMatchGroup(node: Node): MatchGroup {
+function buildMatchGroup(node: Node, parent?: Selector): MatchGroup {
   return {
-    alternatives: buildGroupRequirements(node)
+    alternatives: buildGroupRequirements(node, parent)
   };
 }
 
-function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
+function buildRouteMatchPlan(selector: Selector, parent?: Selector): RouteMatchPlan {
   if (isNode(selector, N.ComplexSelector)) {
     const units: MatchPlanUnit[] = [];
     let hasAmbiguousBranchTail = false;
@@ -312,7 +312,10 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
         continue;
       }
 
-      const group = buildMatchGroup(component);
+      const group = buildMatchGroup(
+        component,
+        isNode(component, N.Ampersand) && i === 0 ? undefined : parent
+      );
       const hasAlternatives = group.alternatives.some(alternate => alternate.basicSelectorTotal > 0);
       if (hasAlternatives) {
         hasAmbiguousBranchTail ||= group.alternatives.some(alternate => alternate.branchTailAmbiguous);
@@ -347,7 +350,7 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
     };
   }
 
-  const group = buildMatchGroup(selector);
+  const group = buildMatchGroup(selector, parent);
   return {
     kind: 'route',
     selector,
@@ -363,19 +366,23 @@ function buildRouteMatchPlan(selector: Selector): RouteMatchPlan {
   };
 }
 
-function buildMatchPlan(selector: Selector): MatchPlan {
+function buildMatchPlan(selector: Selector, parent?: Selector): MatchPlan {
   if (isNode(selector, N.SelectorList)) {
     return {
       kind: 'list',
       selector,
-      alternates: selector.data.map(item => getSelectorMatchPlan(item))
+      alternates: selector.data.map(item => getSelectorMatchPlan(item, parent))
     };
   }
 
-  return buildRouteMatchPlan(selector);
+  return buildRouteMatchPlan(selector, parent);
 }
 
-function getSelectorMatchPlan(selector: Selector): MatchPlan {
+function getSelectorMatchPlan(selector: Selector, parent?: Selector): MatchPlan {
+  if (parent) {
+    return buildMatchPlan(selector, parent);
+  }
+
   const value = selector.valueOf();
   const cached = selectorMatchPlanCache.get(selector);
   if (cached && cached.value === value) {
@@ -430,7 +437,8 @@ function consumeGroupBasics(
   node: Node,
   group: MatchGroupRequirement,
   states: MatchGroupState[],
-  insideAmpersand = false
+  insideAmpersand = false,
+  parent?: Selector
 ): MatchGroupState[] {
   if (states.length === 0) {
     return states;
@@ -462,9 +470,9 @@ function consumeGroupBasics(
   }
 
   if (isNode(node, N.Ampersand)) {
-    const resolved = node.getResolvedSelector();
+    const resolved = node.getResolvedSelector() ?? parent;
     if (resolved && !isNode(resolved, N.Nil)) {
-      return consumeGroupBasics(resolved, group, states, true);
+      return consumeGroupBasics(resolved, group, states, true, parent);
     }
 
     return states;
@@ -494,7 +502,8 @@ function consumeGroupBasics(
           alternate.value,
           group,
           cloneGroupStates(states),
-          insideAmpersand
+          insideAmpersand,
+          parent
         )
       );
     }
@@ -507,7 +516,7 @@ function consumeGroupBasics(
   let child = children.next();
 
   while (!child.done && nextStates.length > 0 && !allStatesAreTerminalPartial(nextStates)) {
-    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand);
+    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand, parent);
     child = children.next();
   }
 
@@ -543,7 +552,9 @@ function summarizeStates(states: MatchGroupState[]): MatchWindowResult {
  */
 function matchTargetGroup(
   targetGroup: Node,
-  findGroup: MatchGroup
+  findGroup: MatchGroup,
+  parent?: Selector,
+  allowAmpersandOnlyMatch = false
 ): MatchWindowResult {
   let matched = false;
   let exact = false;
@@ -555,8 +566,22 @@ function matchTargetGroup(
       remainingTotal: requirement.basicSelectorTotal,
       exact: true,
       matchedOutsideAmpersand: false
-    }]);
+    }], false, parent);
     const summary = summarizeStates(states);
+    if (!summary.matched && allowAmpersandOnlyMatch) {
+      for (let j = 0; j < states.length; j++) {
+        const state = states[j]!;
+        if (state.remainingTotal !== 0) {
+          continue;
+        }
+
+        summary.matched = true;
+        if (state.exact) {
+          summary.exact = true;
+          break;
+        }
+      }
+    }
 
     matched ||= summary.matched;
     exact ||= summary.exact && !requirement.hasComplexBranch;
@@ -573,7 +598,8 @@ function matchCompoundWindow(
   targetCompound: Selector & { data: readonly Node[] },
   start: number,
   end: number,
-  requirement: MatchGroupRequirement
+  requirement: MatchGroupRequirement,
+  parent?: Selector
 ): MatchWindowResult {
   let states = [{
     remainingCounts: [...requirement.basicSelectorCounts],
@@ -583,7 +609,7 @@ function matchCompoundWindow(
   }];
 
   for (let i = start; i <= end && states.length > 0 && !allStatesAreTerminalPartial(states); i++) {
-    states = consumeGroupBasics(targetCompound.data[i]!, requirement, states);
+    states = consumeGroupBasics(targetCompound.data[i]!, requirement, states, false, parent);
   }
 
   const summary = summarizeStates(states);
@@ -647,10 +673,16 @@ function collectMatchedIndicesForWindow(
  */
 function collectGroupMatchLocations(
   targetGroup: Node,
-  findGroup: MatchGroup
+  findGroup: MatchGroup,
+  parent?: Selector
 ): SelectorMatchLocation[] {
   if (!isNode(targetGroup, N.CompoundSelector)) {
-    const groupMatch = matchTargetGroup(targetGroup, findGroup);
+    const groupMatch = matchTargetGroup(
+      targetGroup,
+      findGroup,
+      parent,
+      !!parent && isNode(targetGroup, N.Ampersand)
+    );
     return groupMatch.matched
       ? [{
           startIndex: 0,
@@ -675,7 +707,8 @@ function collectGroupMatchLocations(
           targetCompound,
           start,
           end,
-          requirement
+          requirement,
+          parent
         );
 
         if (!windowMatch.matched) {
@@ -683,13 +716,13 @@ function collectGroupMatchLocations(
         }
 
         const withoutStartMatches = start < end
-          && matchCompoundWindow(targetCompound, start + 1, end, requirement).matched;
+          && matchCompoundWindow(targetCompound, start + 1, end, requirement, parent).matched;
         if (withoutStartMatches) {
           continue;
         }
 
         const withoutEndMatches = start < end
-          && matchCompoundWindow(targetCompound, start, end - 1, requirement).matched;
+          && matchCompoundWindow(targetCompound, start, end - 1, requirement, parent).matched;
         if (withoutEndMatches) {
           continue;
         }
@@ -801,7 +834,8 @@ function cloneAmpersandCrossings(
 function getCachedGroupMatch(
   cache: GroupMatchCache,
   targetGroup: Node,
-  findGroup: MatchGroup
+  findGroup: MatchGroup,
+  parent?: Selector
 ): MatchWindowResult {
   let nodeCache = cache.get(targetGroup);
   if (!nodeCache) {
@@ -814,7 +848,12 @@ function getCachedGroupMatch(
     return cached;
   }
 
-  const result = matchTargetGroup(targetGroup, findGroup);
+  const result = matchTargetGroup(
+    targetGroup,
+    findGroup,
+    parent,
+    !!parent && isNode(targetGroup, N.Ampersand)
+  );
   nodeCache.set(findGroup, result);
   return result;
 }
@@ -857,7 +896,8 @@ function matchGroupNodes(
   targetNode: Node,
   findGroup: MatchGroup,
   groupMatchCache: GroupMatchCache,
-  context: SelectorMatchContext
+  context: SelectorMatchContext,
+  parent?: Selector
 ): MatchWindowResult {
   const targetBranches = getBranchAlternatives(targetNode);
   const findBranches = getBranchAlternatives(findNode);
@@ -901,7 +941,7 @@ function matchGroupNodes(
     return { matched, exact };
   }
 
-  return getCachedGroupMatch(groupMatchCache, targetNode, findGroup);
+  return getCachedGroupMatch(groupMatchCache, targetNode, findGroup, parent);
 }
 
 function pushNestedBranchMatches(
@@ -954,7 +994,8 @@ function matchUnitWindow(
   targetStart: number,
   length: number,
   groupMatchCache: GroupMatchCache,
-  context: SelectorMatchContext
+  context: SelectorMatchContext,
+  parent?: Selector
 ): MatchWindowResult {
   let exact = true;
 
@@ -978,7 +1019,8 @@ function matchUnitWindow(
       targetUnit.node,
       findUnit.group,
       groupMatchCache,
-      context
+      context,
+      parent
     );
     if (!groupMatch.matched) {
       return { matched: false, exact: false };
@@ -1380,6 +1422,8 @@ function selectorMatchUncached(
     && !selectorHasNestedBranchAlternatives(find)
     && !find.hasFlag(F_AMPERSAND)
     && target.hasFlag(F_AMPERSAND)
+    && find.keySetLibrary
+    && target.keySetLibrary
     && find.canFastReject
     && target.canFastReject
     && isDisjoint(find.visibleKeySet, target.visibleKeySet)
@@ -1390,6 +1434,8 @@ function selectorMatchUncached(
   if (
     !parent
     && !selectorHasNestedBranchAlternatives(find)
+    && find.keySetLibrary
+    && target.keySetLibrary
     && find.canFastReject
     && target.canFastReject
     && !isSubsetOf(find.keySet, target.keySet)
@@ -1427,7 +1473,8 @@ function selectorMatchUncached(
         boundaryTailLength - findLength,
         findLength,
         groupMatchCache,
-        context
+        context,
+        parent
       ).matched
     );
 
@@ -1442,7 +1489,8 @@ function selectorMatchUncached(
       0,
       boundaryTailLength,
       groupMatchCache,
-      context
+      context,
+      parent
     );
 
     if (!targetBoundaryMatch.matched) {
@@ -1559,7 +1607,8 @@ function selectorMatchUncached(
           start,
           findUnits.length,
           groupMatchCache,
-          context
+          context,
+          parent
         );
         let matched = windowMatch.matched;
         exact &&= windowMatch.exact;
@@ -1568,10 +1617,20 @@ function selectorMatchUncached(
           continue;
         }
 
+        if (
+          parent
+          && findUnits.length === 1
+          && routeUnits.length > 1
+          && routeUnits[start]?.kind === 'group'
+          && isNode(routeUnits[start]!.node, N.Ampersand)
+        ) {
+          continue;
+        }
+
         if (singleFindGroup) {
           const targetUnit = routeUnits[start]!;
           if (targetUnit.kind === 'group') {
-            const groupLocations = collectGroupMatchLocations(targetUnit.node, singleFindGroup.group);
+            const groupLocations = collectGroupMatchLocations(targetUnit.node, singleFindGroup.group, parent);
             for (let i = 0; i < groupLocations.length; i++) {
               const location = groupLocations[i]!;
               result.matches.push({
@@ -1625,7 +1684,7 @@ function selectorMatchUncached(
   };
 
   const parentPlan = parent ? getSelectorMatchPlan(parent) : undefined;
-  const result = matchTargetPlan(getSelectorMatchPlan(target), parentPlan);
+  const result = matchTargetPlan(getSelectorMatchPlan(target, parent), parentPlan);
   pushNestedPseudoMatches(find, target, result.matches, context);
   if (!result.partialMatch && result.matches.length === 0) {
     pushNestedBranchMatches(find, target, result.matches, context);
@@ -1675,6 +1734,11 @@ function selectorMatchInternal(
  * alternate branch routes. Matching may succeed inside one branch, but the
  * outer route cannot continue leftward through that branch unless that branch
  * itself was consumed end-to-end.
+ *
+ * The matcher uses normalized `valueOf()` and selector key-set fast paths only
+ * as cheap equality / rejection signals. They are not shape-preserving and
+ * should not be used by callers to infer the structural rewrite shape of a
+ * successful match.
  */
 export function selectorMatch(
   find: Selector,
