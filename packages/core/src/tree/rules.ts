@@ -135,6 +135,12 @@ export interface Rules {
   shortType: 'rules' | 'rules-raw' | 'coll';
 }
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  static override childKeys = ['value'] as const;
+
+  value!: Node[];
+
+  declare readonly data: readonly Node[];
+
   rulesetRegistry: Registries.RulesetRegistry | undefined;
   mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
@@ -149,7 +155,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this._indexing = true;
     try {
-      let value = this.data;
+      let value = this.value;
       let length = value.length;
       for (let i = this.rulesIndexed; i < length; i++) {
         const node = value[i]!;
@@ -226,7 +232,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
     }
-    if (this.rulesIndexed < this.data.length) {
+    if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     }
     return registry;
@@ -285,7 +291,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return isNode(node, N.Comment) || isNode(node, N.Any);
       };
       if (ctx?.topImports?.length) {
-        for (const node of this.data) {
+        for (const node of this.value) {
           if (!isCommentLike(node)) {
             break;
           }
@@ -369,13 +375,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
-    super(value ?? [], mergedOptions, location, treeContext);
+    const normalized = value ?? [];
+    super(normalized, mergedOptions, location, treeContext);
+    this.value = normalized;
+    for (const child of normalized) {
+      if (child instanceof Node) {
+        this.adopt(child);
+      }
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
   }
 
   * [Symbol.iterator]() {
-    let value = this.data;
+    let value = this.value;
     /**
      * This should always be the case? But at one point something somewhere
      * set the value to undefined I think, so just leaving this defensively.
@@ -417,7 +430,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const w = options.writer!;
     const depth = options.depth ?? 0;
     const space = indent(depth);
-    const value = this.data;
+    const value = this.value;
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
@@ -539,7 +552,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   visibleRules() {
-    return this.data.filter(n => n.visible);
+    return this.value.filter(n => n.visible);
   }
 
   /**
@@ -685,13 +698,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override push(...nodes: Node[]) {
     for (let node of nodes) {
       this.adopt(node);
-      (this.data as Node[]).push(node);
+      this.value.push(node);
       this.registerNode(node);
     }
   }
 
   at(index: number) {
-    return atIndex(this.data, index);
+    return atIndex(this.value, index);
   }
 
   /**
@@ -1711,6 +1724,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pipeResult as MaybePromise<this>;
   }
 }
+
+/** Compat: synthesize .data from instance field */
+Object.defineProperty(Rules.prototype, 'data', {
+  get(this: Rules) {
+    return this.value;
+  },
+  set(this: Rules, val: Node[]) {
+    this.value = val;
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const rules = defineType(Rules, 'Rules');
 
