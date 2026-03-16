@@ -35,8 +35,8 @@ export class Num extends Dimension {
     const result = super.operate(b, op, context);
 
     // If the result is a Dimension and has an empty unit, convert it to a Num
-    if (result instanceof Dimension && !result.data.unit) {
-      return new Num(result.data.number).inherit(this);
+    if (result instanceof Dimension && !result.unit) {
+      return new Num(result.number).inherit(this);
     }
 
     // Otherwise, pass through the result as-is

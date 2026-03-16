@@ -207,7 +207,7 @@ function collectDirectNodes(
   includePrePost = false
 ): Node[] {
   const result: Node[] = [];
-  const keys = (node.constructor as typeof Node).childNodeKeys;
+  const keys = (node.constructor as typeof Node).childKeys;
 
   if (keys) {
     const keyList = reverse ? [...keys].reverse() : keys;

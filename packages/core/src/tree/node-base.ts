@@ -373,12 +373,13 @@ export abstract class Node<
   declare nil: () => Nil;
 
   /**
-   * Keys in the data object that hold child Nodes.
-   * Override per node type for fast iteration.
-   * - `string[]` — object-valued nodes: only these keys are checked
-   * - `null` (default) — use generic iteration (arrays, single values)
+   * Keys of instance fields that hold child Nodes.
+   * Override per node type.
+   * - `undefined` (default) — unmigrated, uses legacy `.data` iteration
+   * - `null` — leaf node, no children to iterate/adopt/clone
+   * - `string[]` — names of instance fields holding child Node(s) or Node[]
    */
-  static childNodeKeys: string[] | null = null;
+  static childKeys: string[] | null | undefined = undefined;
 
   /**
    * The internal data of the node.
@@ -387,7 +388,9 @@ export abstract class Node<
   // Note to LLM - STOP removing Readonly to try to fix type errors. Make
   // this a strong readonly contract. Otherwise we will miss type errors
   // for things like code mutating arrays that are assigned to data.
-  readonly data!: Readonly<Data>;
+  // Uses `declare` to avoid emitting a class field initializer that would
+  // shadow prototype getters on migrated subclasses.
+  declare readonly data: Readonly<Data>;
 
   private static _isOwnPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && (value as any).constructor === Object;
@@ -414,7 +417,7 @@ export abstract class Node<
     idxRef: { value: number }
   ) {
     const ctor = this.constructor as typeof Node;
-    const fastKeys = ctor.childNodeKeys;
+    const fastKeys = ctor.childKeys;
 
     if (fastKeys) {
       for (let i = 0; i < fastKeys.length; i++) {
@@ -614,8 +617,9 @@ export abstract class Node<
 
   /**
    * Adopt all child Nodes in the value.
-   * Uses static childNodeKeys when available for fast path.
+   * Uses static childKeys when available for fast path.
    */
+  /** @internal — only called for unmigrated (childKeys === undefined) nodes */
   private _adoptChildren(): void {
     const value = this.data;
     if (isArray(value)) {
@@ -629,7 +633,7 @@ export abstract class Node<
     }
 
     const ctor = this.constructor as typeof Node;
-    const fastKeys = ctor.childNodeKeys;
+    const fastKeys = ctor.childKeys;
     if (fastKeys && Node._isOwnPlainObject(value)) {
       const record = value as Record<string, unknown>;
       for (let i = 0; i < fastKeys.length; i++) {
@@ -659,7 +663,11 @@ export abstract class Node<
   ) {
     (this as any).parent = undefined;
     this.index = undefined as any;
-    (this as unknown as { data: Data }).data = value;
+    const ck = (this.constructor as typeof Node).childKeys;
+    if (ck === undefined) {
+      // Legacy (unmigrated) path — store .data and adopt children
+      (this as unknown as { data: Data }).data = value;
+    }
     this._location = location;
     if (options !== undefined || treeContext !== undefined) {
       this._meta = {
@@ -674,7 +682,9 @@ export abstract class Node<
         sourceParent: undefined
       };
     }
-    this._adoptChildren();
+    if (ck === undefined) {
+      this._adoptChildren();
+    }
   }
 
   /**
@@ -937,6 +947,20 @@ export abstract class Node<
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>;
+    const ck = (Class as unknown as typeof Node).childKeys;
+
+    // Migrated leaf node — no children to iterate or deep-clone
+    if (ck === null) {
+      const options = this._meta?.options;
+      const newNode = new Class(this.data as any, options ? { ...options } : undefined, this.location, this.treeContext);
+      newNode.inherit(this);
+      return newNode;
+    }
+
+    // TODO: migrated container node fast path (Stage 2)
+    // if (ck) { ... use childKeys for deep clone ... }
+
+    // Legacy (unmigrated) path
     let originalData = this.data;
     let newData = { data: originalData as Data };
     /**
