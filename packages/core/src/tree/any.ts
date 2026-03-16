@@ -2,8 +2,8 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
-import type { Context, TreeContext } from '../context.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, type TreeContext, F_STATIC } from './node-base.js';
+import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 
@@ -47,17 +47,21 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
-    super(...args);
+  static override childKeys = null as null;
+
+  value!: string;
+
+  declare readonly data: Readonly<string>;
+
+  constructor(
+    value: string,
+    options?: AnyOptions<Role>,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
     this.addFlag(F_STATIC);
-  }
-
-  get value() {
-    return this.data;
-  }
-
-  set value(val: string) {
-    this.setData(val);
   }
 
   override preEval(context: Context): this | Nil {
@@ -84,10 +88,10 @@ export class Any<
       return undefined;
     }
     if (other.type === 'Any' || other.type === 'Keyword') {
-      return this.data === String(other.valueOf?.() ?? '') ? 0 : undefined;
+      return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
     }
     if (other.type === 'Num' || other.type === 'Dimension') {
-      const text = this.data.trim();
+      const text = this.value.trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
@@ -109,6 +113,13 @@ export class Any<
     return undefined;
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Any.prototype, 'data', {
+  get(this: Any) { return this.value; },
+  configurable: true,
+  enumerable: true
+});
 
 // Custom any function that properly handles role narrowing
 export function any<Role extends AnyRole = AnyRole>(
