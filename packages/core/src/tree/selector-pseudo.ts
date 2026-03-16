@@ -46,10 +46,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     this.setData('arg', val as any);
   }
 
-  override computeKeySetAndFastReject(): void {
-    let keySet = this._keySet;
-    let visibleKeySet = this._visibleKeySet;
-    if (keySet && visibleKeySet) {
+  override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
     }
     let name = this.name;
@@ -62,18 +60,26 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       if (name === ':is') {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
+        if (isNode(arg, N.SelectorList)) {
+          // `:is()` with alternatives — none are individually required
+          this._requiredKeySet = library.getBitset();
+        } else {
+          // `:is()` with a single selector — its keys are required
+          this._requiredKeySet = arg.requiredKeySet;
+        }
       } else {
         let pos = library.add(name);
         let keySet = this._keySet = arg.keySet.clone();
         let visibleKeySet = this._visibleKeySet = arg.visibleKeySet.clone();
         keySet.set(pos, 1);
         visibleKeySet.set(pos, 1);
+        this._requiredKeySet = arg.requiredKeySet.clone();
+        this._requiredKeySet.set(pos, 1);
       }
-      this._canFastReject = arg.canFastReject;
     } else {
       this._keySet = library.getBitset([this.valueOf()]);
       this._visibleKeySet = this._keySet;
-      this._canFastReject = true;
+      this._requiredKeySet = this._keySet;
     }
   }
 

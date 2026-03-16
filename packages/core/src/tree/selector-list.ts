@@ -106,12 +106,6 @@ export class SelectorList extends Selector<Selector[]> {
     return itemValues.join(',');
   }
 
-  override computeKeySetAndFastReject(): void {
-    super.computeKeySetAndFastReject();
-    /** Selector lists represent alternates, so subsets can't fast reject */
-    this._canFastReject = false;
-  }
-
   override compare(b: Selector): 0 | 1 | -1 | undefined {
     if (!isNode(b, N.Selector)) {
       return super.compare(b as unknown as Selector);

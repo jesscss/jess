@@ -116,15 +116,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.setData('appendValue', val as any);
   }
 
-  override computeKeySetAndFastReject(): void {
+  override computeKeySets(): void {
     let library = this.keySetLibrary!;
     const stored = this._storedSelector;
     const current = this._selectorContainer?.selector;
     let keySet = this._keySet;
-    let visibleKeySet = this._visibleKeySet;
     /** Ampersands don't participate to the visible key set */
-    if (!visibleKeySet) {
+    if (!this._visibleKeySet) {
       this._visibleKeySet = library.getBitset();
+    }
+    if (!this._requiredKeySet) {
+      this._requiredKeySet = library.getBitset();
     }
     if (!current || isNode(current, N.Nil)) {
       if (!keySet) {

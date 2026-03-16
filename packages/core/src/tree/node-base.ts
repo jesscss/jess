@@ -510,7 +510,7 @@ export abstract class Node<
     if ('_keySet' in self) {
       self._keySet = undefined;
       self._visibleKeySet = undefined;
-      self._canFastReject = undefined;
+      self._requiredKeySet = undefined;
     }
   }
 
