@@ -770,7 +770,7 @@ export abstract class Node<
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
     }
-    const entries = [...getEntriesFromNode({ data: this.data } as unknown as { data: unknown[] })];
+    const entries = this._collectChildEntries();
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -795,7 +795,58 @@ export abstract class Node<
     });
   }
 
+  private _collectChildEntries(): [unknown, string | number, any][] {
+    const ck = (this.constructor as typeof Node).childKeys;
+    if (Array.isArray(ck)) {
+      const entries: [unknown, string | number, any][] = [];
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (isArray(field)) {
+          for (let i = 0; i < field.length; i++) {
+            entries.push([field[i], i, field]);
+          }
+        } else {
+          entries.push([field, key!, this]);
+        }
+      }
+      return entries;
+    }
+    return [...getEntriesFromNode({ data: this.data } as unknown as { data: unknown[] })];
+  }
+
   private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
+    const ck = (this.constructor as typeof Node).childKeys;
+
+    if (Array.isArray(ck)) {
+      let idx = 0;
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (isArray(field)) {
+          for (let i = 0; i < field.length; i++) {
+            const item = field[i];
+            if (!(item instanceof Node)) {
+              continue;
+            }
+            const result = func(item, idx++);
+            if (result !== item) {
+              field[i] = result;
+              this.adopt(result);
+              this._invalidateValueOf();
+            }
+          }
+        } else if (field instanceof Node) {
+          const result = func(field, idx++);
+          if (result !== field) {
+            (this as any)[key!] = result;
+            this.adopt(result);
+            this._invalidateValueOf();
+          }
+        }
+      }
+      return;
+    }
+
+    // Legacy (unmigrated) path
     const idxRef = { value: 0 };
     const data = this.data;
     if (isArray(data)) {
@@ -985,15 +1036,58 @@ export abstract class Node<
       return newNode;
     }
 
-    // TODO: migrated container node fast path (Stage 2)
-    // if (ck) { ... use childKeys for deep clone ... }
+    if (ck) {
+      // Migrated container — use .data for full constructor shape,
+      // childKeys for targeted deep-clone of child nodes only
+      let cloneData: any = this.data;
+
+      // Shallow copy arrays/objects so we don't mutate the original
+      if (isArray(cloneData)) {
+        cloneData = [...cloneData];
+      } else if (isPlainObject(cloneData)) {
+        cloneData = { ...cloneData };
+        for (const key of ck) {
+          if (isArray(cloneData[key!])) {
+            cloneData[key!] = [...cloneData[key!]];
+          }
+        }
+      }
+
+      if (deep) {
+        cloneFn ??= n => n.clone(deep);
+        if (isArray(cloneData)) {
+          for (let i = 0; i < cloneData.length; i++) {
+            if (cloneData[i] instanceof Node) {
+              cloneData[i] = cloneFn(cloneData[i]);
+            }
+          }
+        } else if (isPlainObject(cloneData)) {
+          for (const key of ck) {
+            const val = cloneData[key!];
+            if (isArray(val)) {
+              for (let i = 0; i < val.length; i++) {
+                if (val[i] instanceof Node) {
+                  val[i] = cloneFn(val[i]);
+                }
+              }
+            } else if (val instanceof Node) {
+              cloneData[key!] = cloneFn(val);
+            }
+          }
+        } else if (cloneData instanceof Node) {
+          cloneData = cloneFn(cloneData);
+        }
+      }
+
+      const options = this._meta?.options;
+      const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
+      newNode.inherit(this);
+      return newNode;
+    }
 
     // Legacy (unmigrated) path
     let originalData = this.data;
     let newData = { data: originalData as Data };
-    /**
-     * Create new array objects and plain objects
-     */
     if (isArray(originalData)) {
       newData.data = [...originalData] as Data;
     } else if (isPlainObject(originalData)) {

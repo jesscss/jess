@@ -139,9 +139,9 @@ Each checkbox = one node class converted + tests green.
 ### Stage 2 Exit Criteria
 - [x] All node types use instance fields
 - [x] `childKeys` populated on every class
-- [ ] `getEntriesFromNode()` replaced by `childKeys` iteration
-- [ ] `clone()` uses `childKeys` for all types
-- [ ] All tests pass (same baseline or better)
+- [x] `getEntriesFromNode()` replaced by `childKeys` iteration
+- [x] `clone()` uses `childKeys` for all types
+- [x] All tests pass (same baseline or better)
 
 ---
 
