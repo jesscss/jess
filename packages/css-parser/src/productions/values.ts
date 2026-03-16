@@ -1,7 +1,7 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
-import { tokenMatches } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
+import { tokenMatches } from '@jesscss/parser';
 import {
   Node, Any, Declaration, CustomDeclaration, Sequence, List, Block,
   Quoted, Call, Url, Paren, Operation, type AssignmentType, type Operator, Keyword

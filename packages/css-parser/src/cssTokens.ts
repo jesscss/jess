@@ -24,7 +24,7 @@ export const rawCssFragments = () => [
   ['hex', '[\\da-fA-F]'],
   ['unicode', '\\\\{{hex}}{1,6}{{whitespace}}?'],
   ['escape', '{{unicode}}|\\\\[^\\r\\n\\f0-9a-fA-F]'],
-  ['nonascii', '[\\u0240-\\uffff]'],
+  ['nonascii', '[\\u0080-\\uffff]'],
   ['nmstart', '[_a-zA-Z]|{{nonascii}}|{{escape}}'],
   ['nmchar', '[_a-zA-Z0-9-]|{{nonascii}}|{{escape}}'],
   ['ident', '-?{{nmstart}}{{nmchar}}*'],

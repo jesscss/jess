@@ -1611,7 +1611,7 @@ function selectorMatchUncached(
       const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
       const lastParentUnit = parentUnits[parentUnits.length - 1]!;
       const leadingAmpersand = hasLeadingAmpersandBoundary(routePlan.selector)
-        ? routePlan.selector.data[0]
+        ? (routePlan.selector as { data: readonly Node[] }).data[0]
         : undefined;
       const ampersandCrossings: SelectorMatchAmpersandCrossing[] = [{
         ampersandNode: leadingAmpersand,

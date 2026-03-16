@@ -1,8 +1,8 @@
 // Root production rules for LessRecursiveParser
 // Converted from lines 1-1145 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../lessRecursiveParser.js';
-import type { IToken, OrAlternative } from '@jesscss/parser-runtime';
-import { tokenMatches } from '@jesscss/parser-runtime';
+import type { IToken, OrAlternative } from '@jesscss/parser';
+import { tokenMatches } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 
 import {

@@ -3,7 +3,7 @@ import { scssTokens, scssFragments } from './scssTokens.js';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { ScssRecursiveParser, type ScssParserConfig, type TokenMap } from './scssRecursiveParser.js';
 import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
-import { type IToken, MismatchedTokenError } from '@jesscss/parser-runtime';
+import { type IToken, MismatchedTokenError } from '@jesscss/parser';
 
 export type ScssRules = keyof {
   [K in keyof ScssRecursiveParser as ScssRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;

@@ -11,7 +11,6 @@ import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
-import { Range } from './range.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 
@@ -29,134 +28,29 @@ function makeDirectiveRulesPublic(rules: Rules) {
   };
 }
 
-export type ForPattern =
-  | {
-    kind: 'single';
-    value: VarDeclaration;
-  }
-  | {
-    kind: 'tuple';
-    values: [VarDeclaration, ...VarDeclaration[]];
-  };
-
-export type ForIterable =
-  | {
-    kind: 'node';
-    value: Node;
-  }
-  | {
-    kind: 'range';
-    start: Node;
-    end: Node;
-    step?: Node;
-    includeStart: boolean;
-    includeEnd: boolean;
-  };
-
 type LegacyLoopValue = {
   header: Sequence;
   rules: Rules;
 };
 
-function parsePatternNode(patternNode: Node): ForPattern {
-  if (isNode(patternNode, N.VarDeclaration)) {
-    return { kind: 'single', value: patternNode };
+export type ForValue = {
+  vars: VarDeclaration | VarDeclaration[];
+  iterable: Node;
+  rules: Rules;
+};
+
+function getBindingNames(vars: VarDeclaration | VarDeclaration[]): string[] {
+  if (Array.isArray(vars)) {
+    return vars.map(v => v.data.name.valueOf());
   }
-  if (patternNode.type === 'Block' && patternNode.options?.type === 'square' && isNode(patternNode.data, N.List)) {
-    const values = patternNode.data.data.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
-    if (values.length === 1) {
-      return { kind: 'single', value: values[0]! };
-    }
-    if (values.length > 1) {
-      return { kind: 'tuple', values: values as [VarDeclaration, ...VarDeclaration[]] };
-    }
-  }
-  if (isNode(patternNode, N.List | N.Sequence)) {
-    const values = (patternNode as List).data.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
-    if (values.length === 1) {
-      return { kind: 'single', value: values[0]! };
-    }
-    if (values.length > 1) {
-      return { kind: 'tuple', values: values as [VarDeclaration, ...VarDeclaration[]] };
-    }
-  }
-  throw new Error('Invalid $for pattern: expected one or more variables');
+  return [vars.data.name.valueOf()];
 }
 
-function parseLegacyHeader(header: Sequence): {
-  pattern: ForPattern;
-  iterable: ForIterable;
-} {
-  const headerNode = header.data[0];
-  const inner = isNode(headerNode, N.Paren) && headerNode.data
-    ? headerNode.data
-    : headerNode;
-  const sequence = isNode(inner, N.Sequence)
-    ? inner.data
-    : [inner].filter(Boolean) as Node[];
-  const ofIndex = sequence.findIndex(node => isNode(node, N.Any) && node.valueOf() === 'of');
-  if (ofIndex <= 0 || ofIndex >= sequence.length - 1) {
-    throw new Error('Invalid $for header: expected "<pattern> of <iterable>"');
+function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
+  if (Array.isArray(vars)) {
+    return new Block(new List([...vars.map(v => v.clone(true))], { sep: ',' }), { type: 'square' });
   }
-  const patternParts = sequence.slice(0, ofIndex);
-  const iterableParts = sequence.slice(ofIndex + 1);
-  const patternNode = patternParts.length === 1
-    ? patternParts[0]!
-    : new Sequence(patternParts);
-  const iterableNode = iterableParts.length === 1
-    ? iterableParts[0]!
-    : new Sequence(iterableParts);
-  let iterable: ForIterable;
-  if (isNode(iterableNode, N.Range)) {
-    iterable = {
-      kind: 'range',
-      start: iterableNode.data.start,
-      end: iterableNode.data.end,
-      step: iterableNode.data.step,
-      includeStart: iterableNode.options?.includeStart !== false,
-      includeEnd: iterableNode.options?.includeEnd !== false
-    };
-  } else {
-    iterable = { kind: 'node', value: iterableNode };
-  }
-  return {
-    pattern: parsePatternNode(patternNode),
-    iterable
-  };
-}
-
-function getBindingNames(pattern: ForPattern): string[] {
-  if (pattern.kind === 'single') {
-    return [pattern.value.data.name.valueOf()];
-  }
-  if (pattern.kind === 'tuple') {
-    return pattern.values.map(entry => entry.data.name.valueOf());
-  }
-  return [];
-}
-
-function patternToNode(pattern: ForPattern): Node {
-  if (pattern.kind === 'single') {
-    return pattern.value;
-  }
-  return new Block(new List([...pattern.values], { sep: ',' }), { type: 'square' });
-}
-
-function iterableToNode(iterable: ForIterable): Node {
-  if (iterable.kind === 'node') {
-    return iterable.value;
-  }
-  return new Range(
-    {
-      start: iterable.start,
-      end: iterable.end,
-      step: iterable.step
-    },
-    {
-      includeStart: iterable.includeStart,
-      includeEnd: iterable.includeEnd
-    }
-  );
+  return vars;
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
@@ -200,14 +94,16 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
   yield [input, 0];
 }
 
+/** @deprecated Use IfValue directly (conditions/bodies/elseBranch). */
 export type IfBranch = {
-  /** Undefined means "else" branch */
   condition?: Node;
   rules: Rules;
 };
 
 export type IfValue = {
-  branches: IfBranch[];
+  conditions: Node[];
+  bodies: Rules[];
+  elseBranch?: Rules;
 };
 
 /**
@@ -225,14 +121,16 @@ export interface If extends Node<IfValue> {
 export class If extends Node<IfValue> {
   // type = 'If' as const;
   // shortType = 'if' as const;
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: IfValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    for (const branch of value.branches) {
-      makeDirectiveRulesPublic(branch.rules);
+    for (const body of value.bodies) {
+      makeDirectiveRulesPublic(body);
+    }
+    if (value.elseBranch) {
+      makeDirectiveRulesPublic(value.elseBranch);
     }
   }
 
@@ -241,63 +139,45 @@ export class If extends Node<IfValue> {
     const w = options.writer!;
     const mark = w.mark();
 
-    const [first, ...rest] = this.data.branches;
+    const { conditions, bodies, elseBranch } = this.data;
     w.add('$if', this);
     w.add(' (');
-    first?.condition?.toString(options);
+    conditions[0]?.toString(options);
     w.add(') ');
-    first?.rules.toBraced(options);
+    bodies[0]?.toBraced(options);
 
-    for (const br of rest) {
-      if (br.condition) {
-        w.add(' $else if (');
-        br.condition.toString(options);
-        w.add(') ');
-      } else {
-        w.add(' $else ');
-      }
-      br.rules.toBraced(options);
+    for (let i = 1; i < conditions.length; i++) {
+      w.add(' $else if (');
+      conditions[i]!.toString(options);
+      w.add(') ');
+      bodies[i]?.toBraced(options);
+    }
+
+    if (elseBranch) {
+      w.add(' $else ');
+      elseBranch.toBraced(options);
     }
 
     return w.getSince(mark);
   }
 }
 
-export type StructuredLoopValue = {
-  pattern: ForPattern;
-  iterable: ForIterable;
-  rules: Rules;
-};
-
-export type LoopValue = StructuredLoopValue | LegacyLoopValue;
-
-export interface For extends Node<StructuredLoopValue> {
+export interface For extends Node<ForValue> {
   type: 'For';
   shortType: 'for';
 }
 /**
  * `$for <header> { ... }`
  */
-export class For extends Node<StructuredLoopValue> {
+export class For extends Node<ForValue> {
   // type = 'For' as const;
   // shortType = 'for' as const;
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
-  constructor(value: LoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
-    const normalized = ('header' in value)
-      ? (() => {
-          const parsed = parseLegacyHeader(value.header);
-          return {
-            pattern: parsed.pattern,
-            iterable: parsed.iterable,
-            rules: value.rules
-          };
-        })()
-      : value;
-    super(normalized, options, location, treeContext);
+  constructor(value: ForValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(normalized.rules);
+    makeDirectiveRulesPublic(value.rules);
   }
 
   override preEval(context: Context): MaybePromise<Node> {
@@ -310,15 +190,15 @@ export class For extends Node<StructuredLoopValue> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { pattern, iterable } = this.data;
-    const bindingNames = getBindingNames(pattern);
+    const { vars, iterable } = this.data;
+    const bindingNames = getBindingNames(vars);
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
     }
     const run = async (): Promise<Node> => {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
-      const evaluatedIterable = await iterableToNode(iterable).eval(context);
+      const evaluatedIterable = await iterable.eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
         const loopRules = this.data.rules.clone(true);
         // Preserve definition-scope parent chain so nested calls/lookups
@@ -452,9 +332,9 @@ export class For extends Node<StructuredLoopValue> {
     const mark = w.mark();
     w.add('$for ', this);
     w.add('(');
-    patternToNode(this.data.pattern).toString(options);
+    varsToNode(this.data.vars).toString(options);
     w.add(' of ');
-    iterableToNode(this.data.iterable).toString(options);
+    this.data.iterable.toString(options);
     w.add(')');
     w.add(' ');
     this.data.rules.toBraced(options);
@@ -472,11 +352,10 @@ export interface Each extends Node<LegacyLoopValue> {
 export class Each extends Node<LegacyLoopValue> {
   // type = 'Each' as const;
   // shortType = 'each' as const;
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
@@ -505,12 +384,12 @@ export interface While {
   shortType: 'while';
 }
 export class While extends Node<WhileValue> {
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    makeDirectiveRulesPublic(value.rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

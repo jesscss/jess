@@ -206,7 +206,7 @@ describe('serializeTypes coverage', () => {
   test('property accessor', () => {
     const { errors, tree } = parser.parse('.test { color: @obj[prop]; }');
     expect(errors.length).toBe(0);
-    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj.~prop');
+    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[\'prop\']');
     expect(serializeTypes(tree)).toContainString(`
       (Reference
         target: 

@@ -7,6 +7,13 @@ function isRecord(value: unknown): value is AnyRecord {
 }
 
 function* deepValues(value: unknown): Generator<unknown> {
+  // Node instances are yielded directly — assertValidTree's visit() handles
+  // their children. Recursing into Node properties here would follow .parent
+  // chains and create infinite cycles.
+  if (isNode(value)) {
+    yield value;
+    return;
+  }
   if (Array.isArray(value)) {
     for (const v of value) {
       yield* deepValues(v);
@@ -93,6 +100,8 @@ export function assertValidTree(root: unknown) {
         || key === 'sourceParent'
         || key === 'treeContext'
         || key === 'sourceNode'
+        || key === 'pre'
+        || key === 'post'
       ) {
         continue;
       }

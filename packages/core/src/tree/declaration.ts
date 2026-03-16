@@ -87,7 +87,10 @@ export interface Declaration {
 }
 
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
-  override allowRuleRoot = true;
+  constructor(value: DeclarationValue, options?: Opts, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
+    this.allowRuleRoot = true;
+  }
 
   get name() {
     return this.data.name;

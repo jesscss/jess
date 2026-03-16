@@ -1,4 +1,5 @@
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -109,19 +110,18 @@ export type StyleImportOptions = {
 export type StyleImportValue = {
   path: Quoted | Url;
 
-  /** Values to inject */
-  with?: {
-    node: Reference | Collection;
-    /**
-     * For use / ref / include statements, will affect how this module is evaluated
-     * every time. 'set' can be used once per module, 'with' can be used multiple.
-     * In Sass, 'set' is called 'with' and 'with' will be parsed as 'set'.
-     *   e.g.
-     *     `@-use 'library' set { $foo: 1 };` -- $foo will be set to 1 every time
-     *     `@-use 'library' with { $foo: 1 };` -- $foo will be set to 1 just for this scope.
-     */
-    type: 'with' | 'set';
-  };
+  /** The node to inject values from (Reference or Collection). */
+  withNode?: Reference | Collection;
+
+  /**
+   * How the injected values are applied.
+   * 'set' can be used once per module, 'with' can be used multiple.
+   * In Sass, 'set' is called 'with' and 'with' will be parsed as 'set'.
+   *   e.g.
+   *     `@-use 'library' set { $foo: 1 };` -- $foo will be set to 1 every time
+   *     `@-use 'library' with { $foo: 1 };` -- $foo will be set to 1 just for this scope.
+   */
+  withType?: 'with' | 'set';
 };
 
 export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
@@ -143,6 +143,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const { path } = this.data;
+    const { type, namespace, importOptions } = this.options;
+
+    if (type === 'compose') {
+      const keyword = importOptions?.forward ? '@-export' : '@-compose';
+      w.add(`${keyword} `);
+    } else {
+      w.add('@-import ');
+    }
+    path.toString(options);
+    if (namespace) {
+      w.add(` as ${namespace}`);
+    }
+    w.add(';');
+    return w.getSince(mark);
   }
 
   getFinalRules(evaluatedRules: Rules) {
@@ -237,7 +258,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { path, with: withValues } = node.data;
+    const { path, withNode, withType } = node.data;
+    const withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;

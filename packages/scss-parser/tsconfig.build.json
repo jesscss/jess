@@ -6,9 +6,5 @@
     "noEmit": false
   },
   "include": ["src/**/*"],
-  "exclude": [
-    "src/scssActionsParser.ts",
-    "src/productions.ts",
-    "src/scssErrorMessageProvider.ts"
-  ]
+  "exclude": []
 }

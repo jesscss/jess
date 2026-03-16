@@ -1,7 +1,7 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken, LocationInfo } from '@jesscss/parser-runtime';
-import { tokenMatches, tokenTypeInSet } from '@jesscss/parser-runtime';
+import type { IToken, LocationInfo } from '@jesscss/parser';
+import { tokenMatches, tokenTypeInSet } from '@jesscss/parser';
 import {
   Node, Any, AtRule, Rules, Sequence, List,
   QueryCondition, Keyword, Paren, Declaration, Call,
@@ -648,7 +648,7 @@ export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Pr
   if (preludeRule) {
     const resolvedPreludeRule = resolvePreludeRule(this, preludeRule);
     if (typeof resolvedPreludeRule === 'function') {
-      (resolvedPreludeRule as any).call(this, ctx);
+      prelude = (resolvedPreludeRule as any).call(this, ctx);
     }
   } else {
     $.OR([

@@ -78,10 +78,9 @@ export interface Call {
 }
 
 export class Call extends Node<CallValue, CallOptions> {
-  override _requiredSemi = true;
-
   constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.requiredSemi = true;
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }

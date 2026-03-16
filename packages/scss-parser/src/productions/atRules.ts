@@ -1,8 +1,8 @@
 // SCSS at-rule production rules for ScssRecursiveParser
 // Converted from lines 1184-3096 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
-import { ParseError, tokenMatches } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
+import { ParseError, tokenMatches } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   Any,
@@ -16,15 +16,17 @@ import {
   For,
   Func,
   If,
-  type IfBranch,
   Interpolated,
   INTERPOLATION_PLACEHOLDER,
+  isNode,
   JsImport,
   List,
   Log,
   Mixin,
+  N,
   Nil,
   Quoted,
+  Range,
   Reference,
   Rest,
   Rules,
@@ -38,7 +40,6 @@ import {
 } from '@jesscss/core';
 import {
   makeNamespacedReference,
-  makePublicDirectiveRules,
   isScriptUsePath,
   quotedLike,
   defaultNamespaceFromPath
@@ -46,6 +47,42 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+
+type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+
+function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: any } | undefined {
+  if (isNode(selector, N.SelectorList)) {
+    for (const item of (selector as any).data) {
+      const disallowed = findDisallowedExtendSelector(item, allowed);
+      if (disallowed) return disallowed;
+    }
+    return undefined;
+  }
+  const kinds: ExtendSelectorKind[] = isNode(selector, N.BasicSelector)
+    ? ['simple', 'basic']
+    : isNode(selector, N.PseudoSelector)
+      ? ['simple', 'pseudo']
+      : isNode(selector, N.CompoundSelector)
+        ? ['compound']
+        : isNode(selector, N.ComplexSelector)
+          ? ['complex']
+          : ['simple'];
+  if (kinds.some(k => allowed.includes(k))) return undefined;
+  return { kind: kinds[0]!, selector };
+}
+
+function validateExtendTarget($: P, target: any): void {
+  const allowed: ExtendSelectorKind[] | undefined = $.context?.opts?.allowExtendSelectors;
+  if (!allowed) return;
+  const disallowed = findDisallowedExtendSelector(target, allowed);
+  if (!disallowed) return;
+  const kindList = allowed.length === 1 ? `${allowed[0]} selectors` : allowed.join(', ');
+  $.errors.push(new ParseError(
+    `@extend only allows ${kindList}, but found ${disallowed.kind} selector "${disallowed.selector.valueOf()}".`,
+    $.LA(0),
+    { previousToken: $.LA(0) }
+  ));
+}
 
 // Save CSS prototype methods for super calls
 const cssMediaAtRule = CssRecursiveParser.prototype.mediaAtRule;
@@ -112,7 +149,8 @@ export function scssUseAtRule(this: P, ctx: RuleContext = {}) {
   return new StyleImport(
     {
       path: pathNode,
-      with: withRules ? { node: withRules, type: 'set' } : undefined
+      withNode: withRules,
+      withType: withRules ? 'set' : undefined
     },
     {
       type: 'compose',
@@ -262,7 +300,11 @@ export function scssForwardAtRule(this: P, ctx: RuleContext = {}) {
   }
 
   return new StyleImport(
-    { path: pathNode, with: withRules ? { node: withRules, type: 'set' } : undefined },
+    {
+      path: pathNode,
+      withNode: withRules,
+      withType: withRules ? 'set' : undefined
+    },
     {
       type: 'compose',
       importOptions: {
@@ -295,6 +337,7 @@ export function scssExtendAtRule(this: P, ctx: RuleContext = {}) {
   } finally {
     ctx.inExtend = false;
   }
+  validateExtendTarget($, target);
 
   // Accept (but ignore) any trailing bits like `!optional`
   $.MANY({
@@ -636,9 +679,9 @@ export function scssIfAtRule(this: P, ctx: RuleContext = {}) {
   const rules = $.atRuleBody({ ...ctx, inner: !!ctx.inner });
   $.CONSUME($.T.RCurly);
 
-  makePublicDirectiveRules(rules);
-
-  const branches: IfBranch[] = [{ condition: cond, rules }];
+  const conditions: Node[] = [cond as unknown as Node];
+  const bodies: Rules[] = [rules];
+  let elseBranch: Rules | undefined;
 
   // Consume chained @else / @else if
   $.MANY({
@@ -659,13 +702,17 @@ export function scssIfAtRule(this: P, ctx: RuleContext = {}) {
       $.CONSUME($.T.LCurly);
       const elseRules = $.atRuleBody({ ...ctx, inner: !!ctx.inner });
       $.CONSUME($.T.RCurly);
-      makePublicDirectiveRules(elseRules);
-      branches.push({ condition: elseCond, rules: elseRules });
+      if (elseCond !== undefined) {
+        conditions.push(elseCond);
+        bodies.push(elseRules);
+      } else {
+        elseBranch = elseRules;
+      }
     }
   });
 
   const loc = $.endRule();
-  return new If({ branches }, undefined, loc, $.context);
+  return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
 }
 
 export function scssForAtRule(this: P, ctx: RuleContext = {}) {
@@ -740,20 +787,15 @@ export function scssForAtRule(this: P, ctx: RuleContext = {}) {
   $.CONSUME($.T.LCurly);
   const rules = $.atRuleBody({ ...ctx, inner: !!ctx.inner });
   $.CONSUME($.T.RCurly);
-  makePublicDirectiveRules(rules);
   const loc = $.endRule();
   return new For({
-    pattern: {
-      kind: 'single' as const,
-      value: varDecl
-    },
-    iterable: {
-      kind: 'range' as const,
-      start: startExpr,
-      end: endExpr,
-      includeStart: true,
-      includeEnd
-    },
+    vars: varDecl,
+    iterable: new Range(
+      { start: startExpr, end: endExpr },
+      { includeStart: true, includeEnd },
+      loc,
+      $.context
+    ),
     rules
   }, undefined, loc, $.context);
 }
@@ -801,27 +843,13 @@ export function scssEachAtRule(this: P, ctx: RuleContext = {}) {
         return new Expression(innerExpr, undefined, $.getLocationFromNodes([rawExpr]), $.context);
       })();
 
-  const pattern = vars.length > 1
-    ? {
-        kind: 'tuple' as const,
-        values: vars as [VarDeclaration, ...VarDeclaration[]]
-      }
-    : {
-        kind: 'single' as const,
-        value: vars[0]!
-      };
-
   $.CONSUME($.T.LCurly);
   const rules = $.atRuleBody({ ...ctx, inner: !!ctx.inner });
   $.CONSUME($.T.RCurly);
-  makePublicDirectiveRules(rules);
   const loc = $.endRule();
   return new For({
-    pattern,
-    iterable: {
-      kind: 'node' as const,
-      value: expr
-    },
+    vars: vars.length === 1 ? vars[0]! : vars,
+    iterable: expr,
     rules
   }, undefined, loc, $.context);
 }
@@ -836,7 +864,6 @@ export function scssWhileAtRule(this: P, ctx: RuleContext = {}) {
   $.CONSUME($.T.LCurly);
   const rules = $.atRuleBody({ ...ctx, inner: !!ctx.inner });
   $.CONSUME($.T.RCurly);
-  makePublicDirectiveRules(rules);
   const loc = $.endRule();
   return new While({ condition: condition!, rules }, undefined, loc, $.context);
 }

@@ -15,7 +15,7 @@ import {
  * for lists without keys, the first key is 1, not 0.
  *
  * @example
- * @-from '@jesscss/fns' import (each);
+ * @-use '@jesscss/fns' as fns;
  * @-let list: 1, 2, 3;
  * @-mixin iterate (value, key) {
  *   .icon-#($value) {
@@ -40,12 +40,11 @@ const each = defineFunction(
         let key0 = paramList[0]?.toTrimmedString();
         let key1 = paramList[1]?.toTrimmedString();
         let key2 = paramList[2]?.toTrimmedString();
-        const parsedKeys = [key0, key1, key2].filter((k): k is string => !!k);
-        if (parsedKeys.length > 0) {
-          // For named callback params, use exactly the provided arity.
-          // Less callbacks often use 1-3 params; keeping defaults beyond arity
-          // can create duplicate names (e.g. .(@val, @index) => index/index).
-          keys = parsedKeys;
+        const parsedKeys = [key0, key1, key2];
+        for (let i = 0; i < parsedKeys.length; i++) {
+          if (parsedKeys[i]) {
+            keys[i] = parsedKeys[i]!;
+          }
         }
       }
     }
@@ -54,14 +53,8 @@ const each = defineFunction(
       value: new Nil()
     }, { paramVar: true }));
     return new For({
-      pattern: {
-        kind: 'tuple',
-        values: vars as [VarDeclaration, ...VarDeclaration[]]
-      },
-      iterable: {
-        kind: 'node',
-        value: list
-      },
+      vars,
+      iterable: list,
       rules: mixinRules
     });
   },

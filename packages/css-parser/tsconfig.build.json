@@ -10,10 +10,6 @@
     "node_modules",
     "lib",
     "**/__tests__/**/*",
-    "src/advancedActionsParser.ts",
-    "src/cssActionsParser.ts",
-    "src/cssErrorMessageProvider.ts",
-    "src/productions.ts",
     "src/util/cst.ts"
   ]
 }

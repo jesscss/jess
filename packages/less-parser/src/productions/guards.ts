@@ -1,6 +1,6 @@
 import type { RuleContext } from '../lessRecursiveParser.js';
-import type { IToken, LocationInfo } from '@jesscss/parser-runtime';
-import { ParseError, tokenTypeInSet } from '@jesscss/parser-runtime';
+import type { IToken, LocationInfo } from '@jesscss/parser';
+import { ParseError, tokenTypeInSet } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   type TreeContext,
@@ -782,7 +782,7 @@ export function mixinArg(this: P, ctx: RuleContext = {}) {
         let name = $.varName();
         $.CONSUME($.T.Colon);
         /** Default value */
-        let value = $.callArgument({ ...ctx, allowComma: false, detachedRulesetUsage: 'default-param' });
+        let value = $.callArgument({ ...ctx, detachedRulesetUsage: 'default-param' });
 
         let location = $.endRule();
         return new VarDeclaration({

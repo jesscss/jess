@@ -2,8 +2,8 @@
 // Converted from Chevrotain-based productions.ts lines 1145-2060
 
 import type { RuleContext, ExtendTarget } from '../lessRecursiveParser.js';
-import type { IToken, OrAlternative } from '@jesscss/parser-runtime';
-import { ParseError } from '@jesscss/parser-runtime';
+import type { IToken, OrAlternative } from '@jesscss/parser';
+import { ParseError } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 
 import {

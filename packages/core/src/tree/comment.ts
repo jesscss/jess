@@ -15,11 +15,10 @@ export interface Comment extends Node<string, CommentOptions> {
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlag(F_STATIC);
     if (this.options.lineComment || value.startsWith('//')) {
       this.removeFlag(F_VISIBLE);

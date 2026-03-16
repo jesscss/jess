@@ -1,7 +1,7 @@
 // Value-related production rules for ScssRecursiveParser
 // Converted from Chevrotain-based productions.ts
 import type { RuleContext } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   Any,
@@ -153,7 +153,11 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
         const loc = $.endRule();
         const fnName = `${nsTok.image}.${dot.image.slice(1)}`;
         const call = new Call({ name: fnName, args }, undefined, loc, $.context);
-        const maybe = desugarNamespacedCall($, call);
+        const mapped = desugarMapLookup($, call);
+        if (isNode(mapped, N.Reference)) {
+          return new Expression(mapped as unknown as Node, undefined, loc, $.context);
+        }
+        const maybe = desugarNamespacedCall($, mapped as Call);
         return new Expression(maybe, undefined, loc, $.context);
       }
     },

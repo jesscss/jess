@@ -135,9 +135,6 @@ export interface Rules {
   shortType: 'rules' | 'rules-raw' | 'coll';
 }
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  override allowRuleRoot = true;
-  override allowRoot = true;
-
   rulesetRegistry: Registries.RulesetRegistry | undefined;
   mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
@@ -373,6 +370,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
     super(value ?? [], mergedOptions, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
   }
 
   * [Symbol.iterator]() {

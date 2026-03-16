@@ -32,8 +32,6 @@ export interface VarDeclaration {
 }
 
 export class VarDeclaration extends Declaration<VarDeclarationOptions> {
-  override allowRuleRoot = true;
-  override allowRoot = true;
   constructor(
     value: DeclarationValue,
     options?: VarDeclarationOptions,
@@ -41,6 +39,8 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {

@@ -25,9 +25,11 @@ import type { BitSet } from './util/bitset.js';
  * and location.
  *   e.g. in Jess
  *    - `$foo` refers to a variable
- *    - `$.foo` is a prop or var
- *    - `$foo$(bar)` is a var var
- *    - `$foo.bar` is a prop or var `bar` in `foo`
+ *    - `$.foo` or `$target.foo` is a named member lookup (variable or property)
+ *    - `$[foo]` or `$target[foo]` is a braced variable reference
+ *    - `$['foo']` or `$target['foo']` is a braced property reference
+ *    - `$[$var]` is a variable member name lookup
+ *    - `$foo[0]` is an index lookup
  *    - in `$|.foo()`, `.foo` is a mixin
  *    - in `$foo|.mixin()`, `.mixin` is a mixin in `$foo`
  *    - Resolution:
@@ -164,20 +166,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       w.add('~');
     }
     /**
-     * @todo - Is this now just effectively an index reference? Should we just
-     *         allow indexes to be a plain keyword for variable, or a string
-     *         for a property name? Don't we do that already? Therefore, is
-     *         this even a "different type" of a reference, or should we not
-     *         just update the index type?
-     *
-     *         We could do it like this:
-     *           1. $[key] for variable (or $foo[key] with a target)
-     *           2. $['key'] for property (or $foo['key'] with a target... note, can also be an explicit prop ref like $foo.key)
-     *           3. $[0] for index (or $foo[0] with a target)
-     *           4. $[$key] for a variable variable. (or $foo[$key] with a target)
-     *              If $key resolves to a keyword, then variable lookup.
-     *              If $key resolves to a string, then property lookup.
-     *           5. $[-1] for a negative index (or $foo[-1] with a target)
+     * Reference serialization forms:
+     *   1. `$[key]` — braced variable reference (or `$target[key]` with a target)
+     *   2. `$['key']` — braced property reference (or `$target['key']` with a target)
+     *   3. `$.key` or `$target.key` — dot syntax for named member lookup (variable or property)
+     *   4. `$[$var]` — variable member name lookup (key is itself a reference)
+     *   5. `$[0]` — index (or `$target[0]` with a target)
+     *   6. `$[-1]` — negative index
      */
     if (role === 'ident' && (type === 'variable' || type === 'property') && !target) {
       w.add('$[');
@@ -193,19 +188,31 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         break;
       case 'variable':
         if (target) {
-          w.add('.$');
+          // Braced variable: $target[key]
+          w.add('[');
+          emitKey(key);
+          w.add(']');
         } else {
           w.add('$');
+          emitKey(key);
         }
-        emitKey(key);
         break;
       case 'declaration':
+        // Dot syntax for named member lookup: $.key or $target.key
+        if (!target) {
+          w.add('$');
+        }
         w.add('.');
         emitKey(key);
         break;
       case 'property':
-        w.add('.~');
+        // Braced property: $['key'] or $target['key']
+        if (!target) {
+          w.add('$');
+        }
+        w.add('[\'');
         emitKey(key);
+        w.add('\']');
         break;
       case 'mixin':
         // If this mixin reference has a target (e.g. `ns.foo`), render it as a scoped lookup:

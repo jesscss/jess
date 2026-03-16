@@ -115,7 +115,7 @@ export class BitSetLibrary<T = unknown> {
     }
 
     for (let wordIndex = 0; wordIndex < data.length; wordIndex++) {
-      let word = data[wordIndex] >>> 0;
+      let word = data[wordIndex]! >>> 0;
       while (word !== 0) {
         const lowestBit = word & -word;
         const bitIndex = 31 - Math.clz32(lowestBit);
@@ -131,7 +131,7 @@ export class BitSetLibrary<T = unknown> {
 
   valuesOf(bitset: BitSet<T>): T[] {
     const values: T[] = [];
-    this.forEachValue(bitset, value => {
+    this.forEachValue(bitset, (value) => {
       values.push(value);
     });
     return values;

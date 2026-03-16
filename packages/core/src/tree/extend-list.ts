@@ -16,11 +16,10 @@ export interface ExtendList extends Node<Extend[]> {
 }
 
 export class ExtendList extends Node<Extend[]> {
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.removeFlag(F_VISIBLE);
   }
 

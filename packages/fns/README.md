@@ -3,7 +3,7 @@
 Helper functions, migrated from Less and Sass, with additions.
 
 ```less
-@-from '@jesscss/fns' import (brighten);
+@-use '@jesscss/fns' as fns;
 
 .box {
   color: $brighten(#ABC, 20%);

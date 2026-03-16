@@ -17,7 +17,7 @@ import {
   type Node,
   type Selector
 } from '@jesscss/core';
-import type { IToken } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
 
 export type InterpolationMatch = { start: number; end: number; content: string };
 
@@ -369,10 +369,3 @@ export function defaultNamespaceFromPath(path: string): string | undefined {
   return noExt || undefined;
 }
 
-export function makePublicDirectiveRules(rules: any) {
-  rules.options.rulesVisibility ??= {};
-  rules.options.rulesVisibility.Declaration = 'public';
-  rules.options.rulesVisibility.Ruleset = 'public';
-  rules.options.rulesVisibility.VarDeclaration = 'public';
-  rules.options.rulesVisibility.Mixin = 'public';
-}
