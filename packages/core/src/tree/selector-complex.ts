@@ -35,8 +35,24 @@ export interface ComplexSelector {
   shortType: 'sel';
 }
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
+  static override childKeys = ['value'] as const;
+
+  value!: ComplexSelectorValue;
+
+  declare readonly data: readonly ComplexSelectorComponent[];
+
+  constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child);
+      }
+    }
+  }
+
   get length() {
-    return this.data.length;
+    return this.value.length;
   }
 
   /**
@@ -45,24 +61,24 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    *
    */
   override valueOf() {
-    if (!Array.isArray(this.data)) {
-      this.setData([this.data as unknown as ComplexSelectorComponent]);
+    if (!Array.isArray(this.value)) {
+      this.setData([this.value as unknown as ComplexSelectorComponent]);
     }
-    return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
+    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { data } = this;
-    let length = data.length;
+    let { value } = this;
+    let length = value.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      let component = data[i]!;
+      let component = value[i]!;
       /** Add some combinator spacing */
       if (isNode(component, N.Combinator)) {
         /** Skip spacing if the previous node is a Nil */
-        if (isNode(data[i - 1], N.Nil)) {
+        if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
         let co = component.data;
@@ -92,8 +108,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return pipe(
       () => {
         const selector = super.evalNode(context) as ComplexSelector;
-        const { data } = selector;
-        const maybe = serialForEach(Array.from(getEntries(data)), ([sel, i]) => {
+        const { value } = selector;
+        const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
@@ -112,9 +128,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         return selector;
       },
       (selector) => {
-        const { data } = selector;
-        if (data.length === 1) {
-          const only = data[0]!.inherit(selector);
+        const { value } = selector;
+        if (value.length === 1) {
+          const only = value[0]!.inherit(selector);
           if (selector.hoistToRoot) {
             (only as any).hoistToRoot = true;
           }
@@ -223,6 +239,18 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   //   out.add('])')
   // }
 }
+
+/** Compat: synthesize .data from instance field */
+Object.defineProperty(ComplexSelector.prototype, 'data', {
+  get(this: ComplexSelector) {
+    return this.value;
+  },
+  set(this: ComplexSelector, val: ComplexSelectorValue) {
+    this.value = val;
+  },
+  configurable: true,
+  enumerable: true
+});
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>;
 

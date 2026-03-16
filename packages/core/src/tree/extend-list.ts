@@ -16,8 +16,20 @@ export interface ExtendList extends Node<Extend[]> {
 }
 
 export class ExtendList extends Node<Extend[]> {
+  static override childKeys = ['value'] as const;
+
+  value!: Extend[];
+
+  declare readonly data: readonly Extend[];
+
   constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Node) {
+        this.adopt(child);
+      }
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.removeFlag(F_VISIBLE);
@@ -33,5 +45,17 @@ export class ExtendList extends Node<Extend[]> {
     return w.getSince(mark);
   }
 }
+
+/** Compat: synthesize .data from instance field */
+Object.defineProperty(ExtendList.prototype, 'data', {
+  get(this: ExtendList) {
+    return this.value;
+  },
+  set(this: ExtendList, val: Extend[]) {
+    this.value = val;
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const extendList = defineType(ExtendList, 'ExtendList');

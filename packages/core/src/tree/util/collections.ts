@@ -211,11 +211,23 @@ function collectDirectNodes(
 
   if (keys) {
     const keyList = reverse ? [...keys].reverse() : keys;
-    const val = node.data as Record<string, unknown>;
 
     for (const key of keyList) {
-      const nodeVal = val[key!];
-      if (isNode(nodeVal)) {
+      // Read from instance field directly (node[key]) instead of node.data[key],
+      // because array containers' .data getter returns the array itself, not { value: array }.
+      const nodeVal = (node as any)[key!];
+      if (isArray(nodeVal)) {
+        const items = reverse ? [...nodeVal].reverse() : nodeVal;
+        for (const item of items) {
+          if (isNode(item)) {
+            if (includePrePost) {
+              result.push(...item.nodeAndPrePost());
+            } else {
+              result.push(item);
+            }
+          }
+        }
+      } else if (isNode(nodeVal)) {
         if (includePrePost) {
           result.push(...nodeVal.nodeAndPrePost());
         } else {

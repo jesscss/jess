@@ -489,7 +489,13 @@ export abstract class Node<
   setData(...args: unknown[]): void {
     if (args.length === 1) {
       const val = args[0];
-      (this as unknown as { data: Data }).data = val as Data;
+      const ck = (this.constructor as typeof Node).childKeys;
+      if (Array.isArray(ck) && ck.length === 1 && (Array.isArray(val) || typeof val !== 'object')) {
+        // Migrated array container: data is stored in a single named field (e.g. 'value')
+        (this as any)[ck[0]] = val;
+      } else {
+        (this as unknown as { data: Data }).data = val as Data;
+      }
       this._adoptValue(val);
       this._invalidateValueOf();
       return;
@@ -499,12 +505,23 @@ export abstract class Node<
     const ck = (this.constructor as typeof Node).childKeys;
     // Migrated containers use instance fields — write directly to `this[key]`
     // instead of through the compat `.data` getter (which returns a temporary object).
-    if (ck) {
-      const prev = (this as any)[key];
-      if (prev === val) {
-        return;
+    if (Array.isArray(ck)) {
+      // For array-based containers (childKeys=['value']), numeric keys index into
+      // the array field, not the instance itself.
+      if (typeof key === 'number') {
+        const arr = (this as any)[ck[0]];
+        const prev = arr[key];
+        if (prev === val) {
+          return;
+        }
+        arr[key] = val;
+      } else {
+        const prev = (this as any)[key];
+        if (prev === val) {
+          return;
+        }
+        (this as any)[key] = val;
       }
-      (this as any)[key] = val;
     } else {
       const prev = (this.data as any)[key];
       if (prev === val) {

@@ -29,14 +29,30 @@ export interface Sequence {
   shortType: 'seq' | 'query';
 }
 export class Sequence extends Node<Node[], SequenceOptions> {
+  static override childKeys = ['value'] as const;
+
+  value!: Node[];
+
+  declare readonly data: readonly Node[];
+
+  constructor(value: Node[], options?: SequenceOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Node) {
+        this.adopt(child);
+      }
+    }
+  }
+
   get length() {
-    return this.data.length;
+    return this.value.length;
   }
 
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
+      const result = compareNodeArray([...this.value], [...other.data], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -55,7 +71,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.data;
+    const value = this.value;
     const length = value.length;
 
     if (length === 0) {
@@ -147,7 +163,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return pipe(
       () => {
         const node = this;
-        const maybe = serialForEach(node.data.map((n, i) => [n, i] as const), ([n, i]) => {
+        const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
@@ -162,9 +178,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         return node;
       },
       (node) => {
-        node.setData(node.data.filter(n => n && !(n instanceof Nil)) as any);
-        if (node.data.length === 1 && !node.options.preserveWhitespace) {
-          return node.data[0]!;
+        node.setData(node.value.filter(n => n && !(n instanceof Nil)) as any);
+        if (node.value.length === 1 && !node.options.preserveWhitespace) {
+          return node.value[0]!;
         }
         return node;
       }
@@ -174,7 +190,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector): void {
   //   const cast = context.cast
-  //   this.data.forEach(n => {
+  //   this.value.forEach(n => {
   //     const val = cast(n)
   //     val.toCSS(context, out)
   //   })
@@ -183,8 +199,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.expr([', loc)
-  //   const length = this.data.length - 1
-  //   this.data.forEach((n, i) => {
+  //   const length = this.value.length - 1
+  //   this.value.forEach((n, i) => {
   //     n.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')
@@ -193,6 +209,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   //   out.add('])')
   // }
 }
+
+/** Compat: synthesize .data from instance field */
+Object.defineProperty(Sequence.prototype, 'data', {
+  get(this: Sequence) {
+    return this.value;
+  },
+  set(this: Sequence, val: Node[]) {
+    this.value = val;
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const seq = defineType(Sequence, 'Sequence', 'seq');
 

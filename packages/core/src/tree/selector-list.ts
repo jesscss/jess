@@ -19,12 +19,24 @@ export interface SelectorList {
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  get length() {
-    return this.data.length;
+  static override childKeys = ['value'] as const;
+
+  value!: Selector[];
+
+  declare readonly data: readonly Selector[];
+
+  constructor(value: Selector[], options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child);
+      }
+    }
   }
 
-  get value() {
-    return this.data as Selector[];
+  get length() {
+    return this.value.length;
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -37,7 +49,7 @@ export class SelectorList extends Selector<Selector[]> {
     // This matches Less output expectations when an extend created an :is() and it ended up being
     // the whole selector-list item.
     const value: Selector[] = [];
-    for (const item of this.data) {
+    for (const item of this.value) {
       // Flatten `:is(a, b)` selector-list items into `a, b`.
       // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
       if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
@@ -102,7 +114,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    const itemValues = this.data.map(item => item.valueOf());
+    const itemValues = this.value.map(item => item.valueOf());
     return itemValues.join(',');
   }
 
@@ -127,8 +139,8 @@ export class SelectorList extends Selector<Selector[]> {
     return pipe(
       () => {
         const list = super.evalNode(context) as SelectorList;
-        const { data } = list;
-        const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
+        const { value } = list;
+        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector>).then((res) => {
@@ -145,11 +157,11 @@ export class SelectorList extends Selector<Selector[]> {
         return list;
       },
       (list) => {
-        const { data } = list;
+        const { value } = list;
         // Flatten top-level `:is(a, b)` items into the selector list.
         // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
-        for (const item of data) {
+        for (const item of value) {
           if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
             const arg = item.data.arg;
             if (arg && isNode(arg, N.SelectorList)) {
@@ -179,16 +191,28 @@ export class SelectorList extends Selector<Selector[]> {
           }
           flattened.push(item);
         }
-        if (flattened.length !== data.length) {
+        if (flattened.length !== value.length) {
           list.setData(flattened);
         }
-        if (data.length === 1) {
-          return data[0]!;
+        if (value.length === 1) {
+          return value[0]!;
         }
         return list;
       }
     );
   }
 }
+
+/** Compat: synthesize .data from instance field */
+Object.defineProperty(SelectorList.prototype, 'data', {
+  get(this: SelectorList) {
+    return this.value;
+  },
+  set(this: SelectorList, val: Selector[]) {
+    this.value = val;
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist');

@@ -24,12 +24,24 @@ export interface CompoundSelector {
   shortType: 'compound';
 }
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  get length() {
-    return this.data.length;
+  static override childKeys = ['value'] as const;
+
+  value!: SimpleSelector[];
+
+  declare readonly data: readonly SimpleSelector[];
+
+  constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child);
+      }
+    }
   }
 
-  get value() {
-    return this.data as SimpleSelector[];
+  get length() {
+    return this.value.length;
   }
 
   override valueOf() {
@@ -79,7 +91,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     // Components in a compound selector are joined without spaces.
     // However, parser/copy/extend pipelines can preserve `post=1` (single space) on components,
     // which would serialize `.e.e` as `.e .e`. Normalize here as a final guard.
-    const data = this.data;
+    const data = this.value;
     for (let i = 0; i < data.length - 1; i++) {
       (data[i] as any).post = undefined;
     }
@@ -90,8 +102,8 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return pipe(
       () => {
         const sel = super.evalNode(context) as CompoundSelector;
-        const { data } = sel;
-        const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
+        const { value } = sel;
+        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<SimpleSelector>).then((res) => {
@@ -108,7 +120,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         return sel;
       },
       (sel) => {
-        let data: SimpleSelector[] = [...sel.data].filter(n => n && !(n instanceof Nil));
+        let data: SimpleSelector[] = [...sel.value].filter(n => n && !(n instanceof Nil));
         data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
           let aIsElement = !nonElementRegex.test(a.valueOf());
           let bIsElement = !nonElementRegex.test(b.valueOf());
@@ -151,5 +163,17 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   //   out.add('])')
   // }
 }
+
+/** Compat: synthesize .data from instance field */
+Object.defineProperty(CompoundSelector.prototype, 'data', {
+  get(this: CompoundSelector) {
+    return this.value;
+  },
+  set(this: CompoundSelector, val: SimpleSelector[]) {
+    this.value = val;
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound');
