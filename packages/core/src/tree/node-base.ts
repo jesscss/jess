@@ -139,6 +139,15 @@ export const F_EXTEND_TARGET = 0b10000000;
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
 
+/** Secondary metadata flags. Keeps a pile of booleans off the instance shape. */
+const M_PRE_EVALUATED = 1 << 0;
+const M_EVALUATED = 1 << 1;
+const M_ALLOW_ROOT = 1 << 2;
+const M_ALLOW_RULE_ROOT = 1 << 3;
+const M_GENERATED = 1 << 4;
+const M_REQUIRED_SEMI = 1 << 5;
+const M_FROZEN = 1 << 6;
+
 // Future flags can be added here
 // export const CACHED = 0b1000000;
 // export const DIRTY = 0b10000000;
@@ -149,6 +158,14 @@ export const F_DEFAULT = F_VISIBLE;
 export type RestorableIterator<T> = Iterator<T> & {
   mark: (key?: string) => void;
   reset: (key?: string) => void;
+};
+
+type NodeMeta<O extends NodeOptions = NodeOptions> = {
+  treeContext?: TreeContext;
+  options?: O & AllNodeOptions;
+  sourceNode?: Node;
+  sourceParent?: Node;
+  hoistToRoot?: boolean;
 };
 
 /**
@@ -163,17 +180,25 @@ export abstract class Node<
     return (this._location ??= []);
   }
 
-  private _treeContext: TreeContext | undefined;
-  /** Assigned in index to avoid circularity */
-  declare readonly treeContext: TreeContext;
+  private _meta: NodeMeta<O> | undefined;
+  private _metaFlags = 0;
 
-  private _options: O & AllNodeOptions | undefined;
+  private _getMeta(): NodeMeta<O> {
+    return (this._meta ??= {});
+  }
+
+  /** Assigned in index to avoid circularity */
+  get treeContext() {
+    return this._meta?.treeContext as TreeContext;
+  }
+
   get options(): O & AllNodeOptions {
-    return (this._options ??= {} as O & AllNodeOptions);
+    const meta = this._getMeta();
+    return (meta.options ??= {} as O & AllNodeOptions);
   }
 
   set options(options: O & AllNodeOptions) {
-    this._options = options;
+    this._getMeta().options = options;
   }
 
   /**
@@ -209,10 +234,21 @@ export abstract class Node<
   /** Will be copied during inherit */
   state = F_DEFAULT;
 
-  /** Runtime tracking: has preEval been run on this node? */
-  preEvaluated = false;
-  /** Runtime tracking: has eval been run on this node? */
-  evaluated = false;
+  get preEvaluated() {
+    return (this._metaFlags & M_PRE_EVALUATED) !== 0;
+  }
+
+  set preEvaluated(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_PRE_EVALUATED) : (this._metaFlags & ~M_PRE_EVALUATED);
+  }
+
+  get evaluated() {
+    return (this._metaFlags & M_EVALUATED) !== 0;
+  }
+
+  set evaluated(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_EVALUATED) : (this._metaFlags & ~M_EVALUATED);
+  }
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -220,35 +256,72 @@ export abstract class Node<
 
   declare fullRender: boolean;
 
-  allowRoot = false;
-  allowRuleRoot = false;
-  hoistToRoot: boolean | undefined = undefined;
+  get allowRoot() {
+    return (this._metaFlags & M_ALLOW_ROOT) !== 0;
+  }
+
+  set allowRoot(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_ALLOW_ROOT) : (this._metaFlags & ~M_ALLOW_ROOT);
+  }
+
+  get allowRuleRoot() {
+    return (this._metaFlags & M_ALLOW_RULE_ROOT) !== 0;
+  }
+
+  set allowRuleRoot(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_ALLOW_RULE_ROOT) : (this._metaFlags & ~M_ALLOW_RULE_ROOT);
+  }
+
+  get hoistToRoot() {
+    return this._meta?.hoistToRoot;
+  }
+
+  set hoistToRoot(value: boolean | undefined) {
+    if (value === undefined) {
+      if (this._meta) {
+        this._meta.hoistToRoot = undefined;
+      }
+      return;
+    }
+    this._getMeta().hoistToRoot = value;
+  }
 
   /**
    * Code internally should call .create() when making new
    * nodes, which will automatically mark the node as generated.
    */
-  generated = false;
+  get generated() {
+    return (this._metaFlags & M_GENERATED) !== 0;
+  }
+
+  set generated(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_GENERATED) : (this._metaFlags & ~M_GENERATED);
+  }
 
   /**
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
    * rules list.
    */
-  _requiredSemi = false;
   get requiredSemi() {
-    return this._requiredSemi;
+    return (this._metaFlags & M_REQUIRED_SEMI) !== 0;
   }
 
   set requiredSemi(value: boolean) {
-    this._requiredSemi = value;
+    this._metaFlags = value ? (this._metaFlags | M_REQUIRED_SEMI) : (this._metaFlags & ~M_REQUIRED_SEMI);
   }
 
   /**
    * Track the original source when cloned / copied,
    * rather than keeping the entire tree
    */
-  declare sourceNode: Node;
+  get sourceNode() {
+    return this._meta?.sourceNode ?? this;
+  }
+
+  set sourceNode(node: Node) {
+    this._getMeta().sourceNode = node;
+  }
 
   /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
@@ -273,7 +346,13 @@ export abstract class Node<
    * If true, prevents re-parenting of this node.
    * This is used to maintain source lookup chains.
    */
-  frozen = false;
+  get frozen() {
+    return (this._metaFlags & M_FROZEN) !== 0;
+  }
+
+  set frozen(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_FROZEN) : (this._metaFlags & ~M_FROZEN);
+  }
 
   /**
    * The parent node of this node. Usually, this
@@ -281,7 +360,14 @@ export abstract class Node<
    * parent.adopt(thisNode);
    */
   declare readonly parent: Node | undefined;
-  declare sourceParent: Node | undefined;
+
+  get sourceParent() {
+    return this._meta?.sourceParent;
+  }
+
+  set sourceParent(node: Node | undefined) {
+    this._getMeta().sourceParent = node;
+  }
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
@@ -303,6 +389,90 @@ export abstract class Node<
   // for things like code mutating arrays that are assigned to data.
   readonly data!: Readonly<Data>;
 
+  private static _isOwnPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && (value as any).constructor === Object;
+  }
+
+  private _adoptValue(value: unknown): void {
+    if (value instanceof Node) {
+      this.adopt(value);
+      return;
+    }
+    if (isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const item = value[i];
+        if (item instanceof Node) {
+          this.adopt(item);
+        }
+      }
+    }
+  }
+
+  private _forEachObjectChild(
+    record: Record<string, unknown>,
+    func: (n: Node, idx?: number) => Node,
+    idxRef: { value: number }
+  ) {
+    const ctor = this.constructor as typeof Node;
+    const fastKeys = ctor.childNodeKeys;
+
+    if (fastKeys) {
+      for (let i = 0; i < fastKeys.length; i++) {
+        const key = fastKeys[i]!;
+        const v = record[key];
+        if (v instanceof Node) {
+          const result = func(v, idxRef.value++);
+          if (result !== v) {
+            record[key] = result;
+            this.adopt(result);
+            this._invalidateValueOf();
+          }
+        } else if (isArray(v)) {
+          for (let j = 0; j < v.length; j++) {
+            const item = v[j];
+            if (!(item instanceof Node)) {
+              continue;
+            }
+            const result = func(item, idxRef.value++);
+            if (result !== item) {
+              v[j] = result;
+              this.adopt(result);
+              this._invalidateValueOf();
+            }
+          }
+        }
+      }
+      return;
+    }
+
+    const keys = Object.keys(record);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!;
+      const v = record[k];
+      if (v instanceof Node) {
+        const result = func(v, idxRef.value++);
+        if (result !== v) {
+          record[k] = result;
+          this.adopt(result);
+          this._invalidateValueOf();
+        }
+      } else if (isArray(v)) {
+        for (let j = 0; j < v.length; j++) {
+          const item = v[j];
+          if (!(item instanceof Node)) {
+            continue;
+          }
+          const result = func(item, idxRef.value++);
+          if (result !== item) {
+            v[j] = result;
+            this.adopt(result);
+            this._invalidateValueOf();
+          }
+        }
+      }
+    }
+  }
+
   /**
    * Set the whole data, a named property on the data, or an array index.
    *
@@ -317,13 +487,8 @@ export abstract class Node<
     if (args.length === 1) {
       const val = args[0];
       (this as unknown as { data: Data }).data = val as Data;
-      if (isArray(val)) {
-        for (const item of val) {
-          if (item instanceof Node) {
-            this.adopt(item);
-          }
-        }
-      }
+      this._adoptValue(val);
+      this._invalidateValueOf();
       return;
     }
     const key = args[0] as string | number;
@@ -333,15 +498,7 @@ export abstract class Node<
       return;
     }
     (this.data as any)[key] = val;
-    if (val instanceof Node) {
-      this.adopt(val);
-    } else if (isArray(val)) {
-      for (const item of val) {
-        if (item instanceof Node) {
-          this.adopt(item);
-        }
-      }
-    }
+    this._adoptValue(val);
     this._invalidateValueOf();
   }
 
@@ -361,7 +518,8 @@ export abstract class Node<
   push(...items: any[]): void {
     const arr = this.data as unknown as any[];
     arr.push(...items);
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       if (item instanceof Node) {
         this.adopt(item);
       }
@@ -373,7 +531,8 @@ export abstract class Node<
   splice(start: number, deleteCount: number, ...items: any[]): any[] {
     const arr = this.data as unknown as any[];
     const removed = arr.splice(start, deleteCount, ...items);
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       if (item instanceof Node) {
         this.adopt(item);
       }
@@ -386,7 +545,8 @@ export abstract class Node<
   unshift(...items: any[]): void {
     const arr = this.data as unknown as any[];
     arr.unshift(...items);
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       if (item instanceof Node) {
         this.adopt(item);
       }
@@ -428,8 +588,8 @@ export abstract class Node<
    * Add multiple flags to the node's state
    */
   addFlags(...flags: number[]) {
-    for (const flag of flags) {
-      this.addFlag(flag);
+    for (let i = 0; i < flags.length; i++) {
+      this.addFlag(flags[i]!);
     }
   }
 
@@ -458,27 +618,35 @@ export abstract class Node<
    */
   private _adoptChildren(): void {
     const value = this.data;
-    if (Array.isArray(value)) {
+    if (isArray(value)) {
       for (let i = 0; i < value.length; i++) {
-        if (value[i] instanceof Node) {
-          this.adopt(value[i] as Node);
+        const item = value[i];
+        if (item instanceof Node) {
+          this.adopt(item);
         }
       }
-    } else if (typeof value === 'object' && value !== null && (value as any).constructor === Object) {
+      return;
+    }
+
+    const ctor = this.constructor as typeof Node;
+    const fastKeys = ctor.childNodeKeys;
+    if (fastKeys && Node._isOwnPlainObject(value)) {
+      const record = value as Record<string, unknown>;
+      for (let i = 0; i < fastKeys.length; i++) {
+        this._adoptValue(record[fastKeys[i]!]);
+      }
+      return;
+    }
+
+    if (Node._isOwnPlainObject(value)) {
       const vals = Object.values(value as Record<string, unknown>);
       for (let i = 0; i < vals.length; i++) {
-        const v = vals[i];
-        if (v instanceof Node) {
-          this.adopt(v);
-        } else if (Array.isArray(v)) {
-          for (let j = 0; j < v.length; j++) {
-            if (v[j] instanceof Node) {
-              this.adopt(v[j] as Node);
-            }
-          }
-        }
+        this._adoptValue(vals[i]);
       }
-    } else if (value instanceof Node) {
+      return;
+    }
+
+    if ((value as any) instanceof Node) {
       this.adopt(value);
     }
   }
@@ -489,14 +657,24 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    (this as any).sourceNode = this;
     (this as any).parent = undefined;
-    (this as any).sourceParent = undefined;
+    this.index = undefined as any;
     (this as unknown as { data: Data }).data = value;
-    this._adoptChildren();
-    this._treeContext = treeContext;
     this._location = location;
-    this._options = options;
+    if (options !== undefined || treeContext !== undefined) {
+      this._meta = {
+        sourceNode: this,
+        sourceParent: undefined,
+        options,
+        treeContext
+      };
+    } else {
+      this._meta = {
+        sourceNode: this,
+        sourceParent: undefined
+      };
+    }
+    this._adoptChildren();
   }
 
   /**
@@ -580,49 +758,31 @@ export abstract class Node<
   }
 
   private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
-    let idx = 0;
+    const idxRef = { value: 0 };
     const data = this.data;
-    if (Array.isArray(data)) {
+    if (isArray(data)) {
       for (let i = 0; i < data.length; i++) {
-        if (!(data[i] instanceof Node)) {
+        const item = data[i];
+        if (!(item instanceof Node)) {
           continue;
         }
-        const result = func(data[i] as Node, idx++);
-        if (result !== data[i]) {
+        const result = func(item, idxRef.value++);
+        if (result !== item) {
           data[i] = result;
           this.adopt(result);
           this._invalidateValueOf();
         }
       }
-    } else if (typeof data === 'object' && data !== null && (data as any).constructor === Object) {
-      const record = data as Record<string, unknown>;
-      const keys = Object.keys(record);
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i]!;
-        const v = record[k];
-        if (v instanceof Node) {
-          const result = func(v, idx++);
-          if (result !== v) {
-            record[k] = result;
-            this.adopt(result);
-            this._invalidateValueOf();
-          }
-        } else if (Array.isArray(v)) {
-          for (let j = 0; j < v.length; j++) {
-            if (!(v[j] instanceof Node)) {
-              continue;
-            }
-            const result = func(v[j] as Node, idx++);
-            if (result !== v[j]) {
-              v[j] = result;
-              this.adopt(result);
-              this._invalidateValueOf();
-            }
-          }
-        }
-      }
-    } else if (data instanceof Node) {
-      const result = func(data, idx++);
+      return;
+    }
+
+    if (Node._isOwnPlainObject(data)) {
+      this._forEachObjectChild(data as Record<string, unknown>, func, idxRef);
+      return;
+    }
+
+    if ((data as any) instanceof Node) {
+      const result = func(data, idxRef.value++);
       if (result !== data) {
         (this as unknown as { data: Data }).data = result as Data;
         this.adopt(result);
@@ -634,7 +794,8 @@ export abstract class Node<
   * nodeAndPrePost(): IterableIterator<Node> {
     const node = this;
     if (isArray(node.pre)) {
-      for (let n of node.pre) {
+      for (let i = 0; i < node.pre.length; i++) {
+        const n = node.pre[i];
         if (n instanceof Node) {
           yield n;
         }
@@ -642,7 +803,8 @@ export abstract class Node<
     }
     yield node;
     if (isArray(node.post)) {
-      for (let n of node.post) {
+      for (let i = 0; i < node.post.length; i++) {
+        const n = node.post[i];
         if (n instanceof Node) {
           yield n;
         }
@@ -680,25 +842,6 @@ export abstract class Node<
       includePrePost
     });
   }
-
-  /**
-   * @todo - Remove?
-   */
-  // collectRoots(): Node[] {
-  //   let list: Node[] = []
-  //   this.walkNodes(n => {
-  //     if (n.type === 'Rules') {
-  //       const rules = n.rootRules
-  //       if (rules) {
-  //         for (let n of rules) {
-  //           list.push(n)
-  //         }
-  //         n.rootRules = undefined
-  //       }
-  //     }
-  //   })
-  //   return list
-  // }
 
   /**
    * Accept a visitor (classic visitor pattern).
@@ -819,7 +962,8 @@ export abstract class Node<
       }
     }
 
-    let newNode = new Class(newData.data, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
+    const options = this._meta?.options;
+    let newNode = new Class(newData.data, options ? { ...options } : undefined, this.location, this.treeContext);
     newNode.inherit(this);
 
     return newNode;
@@ -1025,7 +1169,9 @@ export abstract class Node<
       (this as any).parent ??= node.parent;
     }
     this._location = node.location;
-    this._treeContext ??= node.treeContext;
+    if (this._meta?.treeContext === undefined) {
+      this._getMeta().treeContext = node.treeContext;
+    }
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags
     if (!node.hasFlag(F_VISIBLE)) {
@@ -1102,7 +1248,8 @@ export abstract class Node<
       return w.getSince(mark);
     } else if (isArray(value)) {
       // Handle Node[] array - call toString() on each node (they will emit into writer)
-      for (let node of value) {
+      for (let i = 0; i < value.length; i++) {
+        const node = value[i];
         if (node instanceof Node) {
           node.toString(options);
         } else {
