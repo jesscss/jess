@@ -139,9 +139,25 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  static override childKeys = ['path', 'withNode'] as const;
+
+  path!: Quoted | Url;
+  withNode: Reference | Collection | undefined;
+  withType: 'with' | 'set' | undefined;
+
+  declare readonly data: Readonly<StyleImportValue>;
+
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    // Style imports are always non-static and may be async
+    this.path = value.path;
+    this.withNode = value.withNode;
+    this.withType = value.withType;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
+    if (this.withNode instanceof Node) {
+      this.adopt(this.withNode);
+    }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
@@ -149,7 +165,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this.data;
+    const { path } = this;
     const { type, namespace, importOptions } = this.options;
 
     if (type === 'compose') {
@@ -258,7 +274,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { path, withNode, withType } = node.data;
+    const { path, withNode, withType } = node;
     const withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
     const { options } = node;
     options.importOptions ??= {};
@@ -706,6 +722,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return wrappedRules;
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(StyleImport.prototype, 'data', {
+  get(this: StyleImport) {
+    return { path: this.path, withNode: this.withNode, withType: this.withType };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 defineType<StyleImportValue>(StyleImport, 'StyleImport', 'style');
 
