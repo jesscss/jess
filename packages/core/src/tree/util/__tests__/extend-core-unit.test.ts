@@ -352,6 +352,25 @@ describe('tryExtendSelector', () => {
     expect(serialize(result.value)).toBe(':is(.a.x, .other) .a.x');
   });
 
+  it('creates a plain alternative when an exact match crosses multiple authored seams', () => {
+    const parent = el('.a');
+    const target = sel([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+      co('+'),
+      compound([amp({ selectorContainer: { selector: parent } }), el('.y')])
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('+'),
+      compound([el('.a'), el('.y')])
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe('.a.x + .a.y, .other');
+  });
+
   it('groups a crossed seam as one component inside a larger root compound', () => {
     const parent = el('.a');
     const target = compound([
@@ -384,6 +403,25 @@ describe('tryExtendSelector', () => {
     expect(result.error).toBeUndefined();
     expect(result.value.hoistToRoot).toBe(true);
     expect(serialize(result.value)).toBe(':is(.a.x > .y, .other).w');
+  });
+
+  it('does not over-wrap an unmatched tail when a partial ordered span crosses multiple authored seams', () => {
+    const parent = el('.a');
+    const target = sel([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+      co('+'),
+      compound([amp({ selectorContainer: { selector: parent } }), el('.y'), el('.z')])
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('+'),
+      compound([el('.a'), el('.y')])
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x + .a.y, .other).z');
   });
 
   it('rewrites a crossed ordered span inside one selector-list item without over-wrapping sibling items', () => {
