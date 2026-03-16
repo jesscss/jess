@@ -81,6 +81,12 @@ export interface Ampersand {
   shortType: 'amp';
 }
 export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
+  static override childKeys = null as null;
+
+  appendValue: string | undefined;
+
+  declare readonly data: Readonly<{ appendValue?: string }>;
+
   private _storedSelector: Selector | Nil | undefined;
   private _selectorContainer: { selector?: Selector | Nil | undefined } | undefined;
 
@@ -90,30 +96,23 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    let finalValue: AmpersandValue = {};
+    let finalAppendValue: string | undefined;
     if (typeof value === 'string') {
-      finalValue.appendValue = value;
-      super(finalValue, options, location, treeContext);
+      finalAppendValue = value;
+      super({ appendValue: value } as any, options, location, treeContext);
     } else {
-      finalValue = value ? { appendValue: value.appendValue } : {};
-      super(finalValue, options, location, treeContext);
+      finalAppendValue = value?.appendValue;
+      super({ appendValue: finalAppendValue } as any, options, location, treeContext);
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
         this._storedSelector = selectorContainer?.selector;
       }
     }
+    this.appendValue = finalAppendValue;
 
     // Set the F_AMPERSAND flag so it bubbles up to parent selectors
     this.addFlag(F_AMPERSAND);
-  }
-
-  get appendValue() {
-    return this.data.appendValue;
-  }
-
-  set appendValue(val: string | undefined) {
-    this.setData('appendValue', val as any);
   }
 
   override computeKeySetAndFastReject(): void {
@@ -161,7 +160,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { appendValue } = this.data;
+    const { appendValue } = this;
     if (appendValue) {
       w.add('&(');
       if (appendValue) {
@@ -213,7 +212,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     this.keySetLibrary = context.selectorBits;
-    const { appendValue } = this.data;
+    const { appendValue } = this;
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
     // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
@@ -387,5 +386,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   //   out.add('$J.amp()', this.location)
   // }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Ampersand.prototype, 'data', {
+  get(this: Ampersand) { return { appendValue: this.appendValue }; },
+  configurable: true,
+  enumerable: true
+});
 
 export const amp = defineType(Ampersand, 'Ampersand', 'amp');
