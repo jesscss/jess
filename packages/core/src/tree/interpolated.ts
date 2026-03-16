@@ -82,34 +82,32 @@ export interface Interpolated<
 export class Interpolated<
   Role extends AnyRole = AnyRole
 > extends Node<InterpolatedValue, AnyOptions<Role>> {
+  static override childKeys = ['source', 'replacements'] as const;
+
+  source!: string;
+  replacements!: Node[];
+
+  declare readonly data: Readonly<InterpolatedValue>;
+
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
+    super(value as any, options, location, treeContext);
+    this.source = value.source;
+    this.replacements = value.replacements;
+    for (const r of this.replacements) {
+      if (r instanceof Node) {
+        this.adopt(r);
+      }
+    }
     // Interpolated nodes are always non-static and may be async
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
 
-  get source() {
-    return this.data.source;
-  }
-
-  set source(val: string) {
-    this.setData('source', val);
-  }
-
-  get replacements() {
-    return this.data.replacements;
-  }
-
-  set replacements(val: Node[]) {
-    this.setData('replacements', val);
-  }
-
   override valueOf(): string {
-    return this.data.source;
+    return this.source;
   }
 
   replace(replacements: Node[], options?: PrintOptions): string {
-    let { source } = this.data;
+    let { source } = this;
     let output = source;
     let i = 0;
     let printOpts = getPrintOptions(options);
@@ -148,7 +146,7 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const result = this.replace(this.data.replacements, options);
+    const result = this.replace(this.replacements, options);
     w.add(result, this);
     return w.getSince(mark);
   }
@@ -158,7 +156,7 @@ export class Interpolated<
    * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
   createSelector() {
-    let { source, replacements } = this.data;
+    let { source, replacements } = this;
     const segments = source.split(INTERPOLATION_PLACEHOLDER);
     const isWholeSelectorInterpolation = (
       replacements.length === 1
@@ -241,7 +239,7 @@ export class Interpolated<
    */
   _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
-    let { replacements } = node.data;
+    let { replacements } = node;
 
     let maybe = serialForEach(replacements, (n, idx) => {
       const out = n.eval(context);
@@ -259,5 +257,14 @@ export class Interpolated<
     return node;
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Interpolated.prototype, 'data', {
+  get(this: Interpolated) {
+    return { source: this.source, replacements: this.replacements };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const interpolated = defineType(Interpolated, 'Interpolated');
