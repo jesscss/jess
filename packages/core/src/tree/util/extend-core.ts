@@ -1248,8 +1248,9 @@ function tryHandleMultiDirectChildFullMatches(
   }
 
   const matchedChildren: Array<{ index: number; child: Selector }> = [];
-  for (let i = 0; i < target.data.length; i++) {
-    const child = target.data[i];
+  const targetData = target.data as Selector[];
+  for (let i = 0; i < targetData.length; i++) {
+    const child = targetData[i];
     if (!child || !isNode(child, N.Selector)) {
       continue;
     }

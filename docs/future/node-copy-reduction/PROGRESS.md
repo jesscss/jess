@@ -1,0 +1,220 @@
+# Node Copy Reduction — Implementation Progress
+
+## Test Baselines
+
+Recorded 2026-03-16 after merging dev (commit `7f47b49d`) into jess-dev.
+Build fix: TypeScript errors from dev merge resolved (type narrowing casts in
+selector-utils.ts, extend-core.ts, registry-utils.ts, reference.ts).
+
+### Core (`packages/core`)
+- **Test Files**: 8 failed | 59 passed | 2 skipped (69 total)
+- **Tests**: 31 failed | 866 passed | 17 skipped (914 total)
+- Failing files: ampersand, at-rule, import-style (with values), mixin-recursion,
+  mixin, nesting-collapse, process-leading-is, at-rule-basic
+- These are pre-existing or from the dev merge (not regressions from this work)
+
+### Fns (`packages/fns`)
+- **Test Files**: 1 failed | 64 passed (65 total)
+- **Tests**: 1 failed | 480 passed (481 total)
+- Single failure: `iif.test.ts > iif (false) without elseValue` (pre-existing)
+
+### Jess (`packages/jess`)
+- **Test Files**: 28 failed | 7 passed | 1 skipped (36 total)
+- **Tests**: 189 failed | 75 passed | 4 skipped (268 total)
+- **Root cause**: `ERR_PACKAGE_PATH_NOT_EXPORTED` for `@jesscss/plugin-js` — Node.js
+  v24 CJS resolution requires a `require` condition in exports map. Most failures
+  cascade from this single issue, not from code regressions.
+
+---
+
+## Stage 0: Measure and Freeze Assumptions
+
+- [ ] Add clone/copy call count instrumentation behind test/bench flag
+- [ ] Record deep-clone count per benchmark run
+- [ ] Record approximate nodes allocated by clone/copy
+- [ ] Record import eval count per stylesheet
+- [ ] Add repeated-import benchmark on large source trees
+- [ ] Document high-cost clone sites
+- [ ] Add target tests for: repeated imports with different `with`/`set` values
+- [ ] Add target tests for: dynamic declaration/mixin names
+- [ ] Add target tests for: scope lookup vs linear lookup
+
+---
+
+## Stage 1: Instance Fields and childKeys — Leaf Nodes
+
+Goal: Move `.data` to instance fields for leaf/value nodes. Establish `childKeys`.
+
+### Infrastructure (Node base class)
+- [ ] Make `childKeys` load-bearing in `clone()` — leaf fast path (`childKeys === null`)
+- [ ] Make `childKeys` load-bearing in `_adoptChildren()`
+- [ ] Make `childKeys` load-bearing in child iteration helpers
+- [ ] Add `.data` compatibility getter that synthesizes from instance fields
+
+### Leaf Node Conversions
+Each checkbox = one node class converted + tests green.
+
+- [ ] `Dimension` — `number: number`, `unit: string | undefined`
+- [ ] `Num` — extends Dimension (no unit)
+- [ ] `Bool` — `value: boolean`
+- [ ] `Any` — `value: string`, `role: AnyRole`
+- [ ] `Keyword` — subclass of Any, role='keyword'
+- [ ] `Comment` — `value: string`, `lineComment: boolean`
+- [ ] `BasicSelector` — `value: string`
+- [ ] `Combinator` — `value: string`
+- [ ] `Ampersand` — (no data fields)
+- [ ] `Color` — `rgb`, `hsl`, `alpha`, `format`
+- [ ] `Nil` — (sentinel, no data)
+
+### Stage 1 Exit Criteria
+- [ ] All leaf node types use instance fields
+- [ ] `childKeys = null` on all leaf types
+- [ ] `clone()` uses fast path for leaf nodes
+- [ ] All core tests pass (same baseline or better)
+- [ ] `.data` compatibility getter works for consumers still reading it
+
+---
+
+## Stage 2: Instance Fields — Container Nodes
+
+Goal: Move all container/parent nodes to instance fields with `childKeys`.
+
+### Container Node Conversions
+Each checkbox = one node class converted + tests green.
+
+**Simple containers (1-2 child fields):**
+- [ ] `Url` — `value: Quoted | Any`; childKeys=['value']
+- [ ] `Expression` — `value: Node`; childKeys=['value']
+- [ ] `Paren` — TBD
+- [ ] `Negative` — TBD
+- [ ] `Quoted` — `value`, `quote`, `escaped`; childKeys=['value']
+
+**Multi-child containers:**
+- [ ] `Operation` — `left`, `op`, `right`; childKeys=['left','right']
+- [ ] `Condition` — `left`, `op`, `right`, `negate`; childKeys=['left','right']
+- [ ] `Declaration` — `name`, `value`, `important`; childKeys=['name','value','important']
+- [ ] `Call` — `name`, `args`, `contentNode`; childKeys=['name','args','contentNode']
+- [ ] `Reference` — `target`, `key`; childKeys=['target','key']
+
+**Complex containers:**
+- [ ] `Ruleset` — `selector`, `rules`, `guard`; childKeys=['selector','rules','guard']
+- [ ] `AtRule` — `name`, `prelude`, `rules`; childKeys=['name','prelude','rules']
+- [ ] `Mixin` — `name`, `rules`, `params`, `guard`; childKeys=['name','rules','params','guard']
+- [ ] `StyleImport` — `path`, `withConfig`; childKeys=['path']
+- [ ] `Rules` — `value: Node[]`; childKeys=['value']
+
+**Selector containers:**
+- [ ] `SelectorList` — `value: Selector[]`; childKeys=['value']
+- [ ] `ComplexSelector` — `value: ComplexSelectorComponent[]`; childKeys=['value']
+- [ ] `CompoundSelector` — `value: SimpleSelector[]`; childKeys=['value']
+- [ ] `PseudoSelector` — TBD
+- [ ] `SelectorAttr` — TBD
+- [ ] `SelectorInterpolated` — TBD
+
+**Other nodes:**
+- [ ] `List` — TBD
+- [ ] `Collection` — TBD
+- [ ] `Interpolated` — TBD
+- [ ] `Rest` — TBD
+- [ ] `Range` — TBD
+- [ ] `Sequence` — TBD
+- [ ] `Block` — TBD
+- [ ] `ExtendList` / `Extend` — TBD
+- [ ] `Control` — TBD
+- [ ] `Log` — TBD
+- [ ] `DefaultGuard` — TBD
+- [ ] `JsExpr` / `JsArray` / `JsObject` / `JsFunction` — TBD
+- [ ] `ImportJs` — TBD
+- [ ] `Function` — TBD
+- [ ] `DeclarationCustom` / `DeclarationVar` — TBD
+- [ ] `RulesRaw` — TBD
+- [ ] `Tree` — TBD
+
+### Stage 2 Exit Criteria
+- [ ] All node types use instance fields
+- [ ] `childKeys` populated on every class
+- [ ] `getEntriesFromNode()` replaced by `childKeys` iteration
+- [ ] `clone()` uses `childKeys` for all types
+- [ ] All tests pass (same baseline or better)
+
+---
+
+## Stage 3: Less-Aligned Field Renames
+
+- [ ] Any: `.data` → `value`
+- [ ] Bool: `.data` → `value`
+- [ ] Comment: `.data` → `value`, options.lineComment → `lineComment`
+- [ ] Quoted: `.data` → `value`, options.quote → `quote`, options.escaped → `escaped`
+- [ ] Condition: options.negate → `negate`
+- [ ] Any: options.role → `role`
+- [ ] Operation: `operator` → `op`
+
+---
+
+## Stage 4: RenderMask and `render()` Function
+
+- [ ] Define `RenderMask` interface
+- [ ] Implement `render(node, options?)` standalone function
+- [ ] Update base-class `toTrimmedString()` fallback to iterate `childKeys`
+- [ ] Keep `.toString()` as convenience delegating to `render(this)`
+- [ ] Comment suppression via mask
+- [ ] Convert Reference output paths to use render mask (not `copy(true)`)
+- [ ] Convert extend output helpers to use render mask
+
+---
+
+## Stage 5: Declarative Adapter Layer
+
+- [ ] Define `NodeAdapter<T>` interface
+- [ ] Implement `createAdapter(node, def, cache)`
+- [ ] Convert existing transformer files to adapter definitions
+- [ ] Verify less-compat test suite passes
+
+---
+
+## Stage 6: Remove `.data` Compatibility Layer
+
+- [ ] Grep for all `.data` usage
+- [ ] Convert remaining consumers to instance fields
+- [ ] Remove `.data` getter from base class
+- [ ] Remove `setData()` from base class
+- [ ] Remove `getEntriesFromNode()` and related utilities
+
+---
+
+## Stage 7-13: EvalSession (Future)
+
+These stages are deferred until Stages 1-6 are complete. See migration.md for details.
+
+- [ ] Stage 7: Introduce EvalSession as optional layer
+- [ ] Stage 8: Session-aware read/write helpers
+- [ ] Stage 9: Move import lookup to session scope
+- [ ] Stage 10: Externalize runtime state to session
+- [ ] Stage 11: Copy-on-write materialization
+- [ ] Stage 12: Remove preserveOriginalNodes
+- [ ] Stage 13: Expand beyond imports, clean up
+
+---
+
+## Stage 14: Explore Collapsing preEval / eval (Future)
+
+- [ ] Instrument preEval pass timing
+- [ ] Prototype registration-during-walk for simple case
+- [ ] Decision: merge or keep separate
+
+---
+
+## Notes
+
+### Working procedure
+1. Convert ONE node class at a time
+2. Run `cd packages/core && pnpm test` after each conversion
+3. Confirm green (same baseline or better) before moving on
+4. Commit after each successful conversion
+5. When renaming fields (Stage 3): grep all packages first, update all consumers in same commit
+
+### Test commands
+- Core: `cd packages/core && pnpm test`
+- Fns: `cd packages/fns && pnpm test`
+- Jess: `cd packages/jess && pnpm test`
+- Full: `pnpm test` from root (note: jess has pre-existing Node v24 resolution failures)

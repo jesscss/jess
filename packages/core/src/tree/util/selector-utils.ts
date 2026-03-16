@@ -124,11 +124,14 @@ function selectorHasAuthoredAmpersand(selector: Selector): boolean {
   }
 
   if (isNode(selector, N.SelectorList | N.ComplexSelector | N.CompoundSelector)) {
-    return selector.data.some(item => selectorHasAuthoredAmpersand(item as Selector));
+    return (selector.data as Selector[]).some(item => selectorHasAuthoredAmpersand(item));
   }
 
-  if (isNode(selector, N.PseudoSelector) && selector.data.arg && isNode(selector.data.arg, N.Selector)) {
-    return selectorHasAuthoredAmpersand(selector.data.arg as Selector);
+  if (isNode(selector, N.PseudoSelector)) {
+    const arg = (selector as PseudoSelector).arg;
+    if (arg && isNode(arg, N.Selector)) {
+      return selectorHasAuthoredAmpersand(arg as Selector);
+    }
   }
 
   return false;
@@ -153,8 +156,9 @@ function resolveAuthoredAmpersands(
 
   if (isNode(selector, N.ComplexSelector | N.CompoundSelector)) {
     const nextData: Selector[] = [];
-    for (let i = 0; i < selector.data.length; i++) {
-      const item = selector.data[i] as Selector;
+    const selectorData = selector.data as Selector[];
+    for (let i = 0; i < selectorData.length; i++) {
+      const item = selectorData[i] as Selector;
       if (isNode(item, N.Ampersand) && !item.hasFlag(F_IMPLICIT_AMPERSAND)) {
         const atStart = isNode(selector, N.ComplexSelector) && i === 0;
         nextData.push(...getParentReplacementForAmpersand(parentSelector, atStart));
@@ -166,13 +170,16 @@ function resolveAuthoredAmpersands(
     return ctor.create(nextData as any).inherit(selector) as Selector;
   }
 
-  if (isNode(selector, N.PseudoSelector) && selector.data.arg && isNode(selector.data.arg, N.Selector)) {
-    const copy = selector.copy(true) as PseudoSelector;
-    copy.setData('arg', resolveAuthoredAmpersands(selector.data.arg as Selector, parentSelector));
-    return copy as Selector;
+  if (isNode(selector as Selector, N.PseudoSelector)) {
+    const pseudo = selector as PseudoSelector;
+    if (pseudo.data.arg && isNode(pseudo.data.arg, N.Selector)) {
+      const copy = pseudo.copy(true) as PseudoSelector;
+      copy.setData('arg', resolveAuthoredAmpersands(pseudo.data.arg as Selector, parentSelector));
+      return copy as Selector;
+    }
   }
 
-  return selector.copy(true) as Selector;
+  return (selector as Selector).copy(true) as Selector;
 }
 
 function composeSelectorRouteWithParent(

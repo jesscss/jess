@@ -635,7 +635,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           // Reference (e.g. #theme -> .dark -> .navbar), preserve the resolved
           // scope entry instead of eagerly converting it into a callable mixin.
           if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
-            const first = returnVal[0];
+            const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
               first.sourceParent = this;
               context.popReference();
