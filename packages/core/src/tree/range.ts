@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo } from './node.js';
+import { Node, defineType, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type RangeValue = {
@@ -30,32 +30,31 @@ export interface Range {
 }
 
 export class Range extends Node<RangeValue, RangeOptions> {
-  get start() {
-    return this.data.start;
-  }
+  static override childKeys = ['start', 'end', 'step'] as const;
 
-  set start(val: Node) {
-    this.setData('start', val);
-  }
+  start!: Node;
+  end!: Node;
+  step: Node | undefined;
 
-  get end() {
-    return this.data.end;
-  }
+  declare readonly data: Readonly<RangeValue>;
 
-  set end(val: Node) {
-    this.setData('end', val);
-  }
-
-  get step() {
-    return this.data.step;
-  }
-
-  set step(val: Node | undefined) {
-    this.setData('step', val as any);
+  constructor(value: RangeValue, options?: RangeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.start = value.start;
+    this.end = value.end;
+    this.step = value.step;
+    if (this.start instanceof Node) {
+      this.adopt(this.start);
+    }
+    if (this.end instanceof Node) {
+      this.adopt(this.end);
+    }
+    if (this.step instanceof Node) {
+      this.adopt(this.step);
+    }
   }
 
   override evalNode(_context: Context): Range {
-    // Parsing-only for now; semantics can be implemented later.
     return this;
   }
 
@@ -63,7 +62,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { start, end, step } = this.data;
+    const { start, end, step } = this;
     const includeStart = this.options?.includeStart !== false;
     const includeEnd = this.options?.includeEnd !== false;
 
@@ -88,6 +87,15 @@ export class Range extends Node<RangeValue, RangeOptions> {
     return w.getSince(mark);
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Range.prototype, 'data', {
+  get(this: Range) {
+    return { start: this.start, end: this.end, step: this.step };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 type RangeParams = ConstructorParameters<typeof Range>;
 
