@@ -104,23 +104,23 @@ Each checkbox = one node class converted + tests green.
 - [ ] `Rules` — `value: Node[]`; childKeys=['value']
 
 **Selector containers:**
-- [ ] `SelectorList` — `value: Selector[]`; childKeys=['value']
-- [ ] `ComplexSelector` — `value: ComplexSelectorComponent[]`; childKeys=['value']
-- [ ] `CompoundSelector` — `value: SimpleSelector[]`; childKeys=['value']
+- [x] `SelectorList` — `value: Selector[]`; childKeys=['value']
+- [x] `ComplexSelector` — `value: ComplexSelectorComponent[]`; childKeys=['value']
+- [x] `CompoundSelector` — `value: SimpleSelector[]`; childKeys=['value']
 - [x] `PseudoSelector` — `name`, `arg`; childKeys=['name','arg']
 - [x] `SelectorAttr` — `name`, `value`; childKeys=['name','value']
 - [x] `SelectorInterpolated` — `value`; childKeys=['value']
 
 **Other nodes:**
-- [ ] `List` — TBD
+- [x] `List` — `value: T[]`; childKeys=['value']
 - [ ] `Collection` — TBD
 - [x] `Interpolated` — `source`, `replacements`; childKeys=['source','replacements']
 - [x] `Rest` — `value`; childKeys=['value']
 - [x] `Range` — `start`, `end`, `step`; childKeys=['start','end','step']
-- [ ] `Sequence` — TBD
+- [x] `Sequence` — `value: Node[]`; childKeys=['value']
 - [x] `Block` — `value`; childKeys=['value']
 - [x] `Extend` — `selector`, `target`; childKeys=['selector','target']
-- [ ] `ExtendList` — TBD
+- [x] `ExtendList` — `value: Extend[]`; childKeys=['value']
 - [x] `Control` (If, For, Each, While) — converted with per-type childKeys
 - [x] `Log` — `level`, `message`; childKeys=['level','message']
 - [x] `DefaultGuard` — leaf; childKeys=null
