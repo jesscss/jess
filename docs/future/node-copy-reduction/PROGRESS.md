@@ -101,7 +101,7 @@ Each checkbox = one node class converted + tests green.
 - [x] `AtRule` — `name`, `prelude`, `rules`; childKeys=['name','prelude','rules']
 - [x] `Mixin` — `name`, `rules`, `params`, `guard`; childKeys=['name','rules','params','guard']
 - [x] `StyleImport` — `path`, `withNode`; childKeys=['path','withNode']
-- [ ] `Rules` — `value: Node[]`; childKeys=['value']
+- [x] `Rules` — `value: Node[]`; childKeys=['value']
 
 **Selector containers:**
 - [x] `SelectorList` — `value: Selector[]`; childKeys=['value']
@@ -113,7 +113,7 @@ Each checkbox = one node class converted + tests green.
 
 **Other nodes:**
 - [x] `List` — `value: T[]`; childKeys=['value']
-- [ ] `Collection` — TBD
+- [x] `Collection` — inherits Rules childKeys=['value']
 - [x] `Interpolated` — `source`, `replacements`; childKeys=['source','replacements']
 - [x] `Rest` — `value`; childKeys=['value']
 - [x] `Range` — `start`, `end`, `step`; childKeys=['start','end','step']
@@ -137,8 +137,8 @@ Each checkbox = one node class converted + tests green.
 - [x] `Tree` — N/A (class does not exist in codebase)
 
 ### Stage 2 Exit Criteria
-- [ ] All node types use instance fields
-- [ ] `childKeys` populated on every class
+- [x] All node types use instance fields
+- [x] `childKeys` populated on every class
 - [ ] `getEntriesFromNode()` replaced by `childKeys` iteration
 - [ ] `clone()` uses `childKeys` for all types
 - [ ] All tests pass (same baseline or better)
