@@ -211,6 +211,17 @@ These stages are deferred until Stages 1-6 are complete. See migration.md for de
 
 ---
 
+## Future Exploration
+
+### Pre/Post Serialization Simplification
+The current `pre`/`post` arrays on every node capture all inter-node whitespace and comments from the original source. This was designed to preserve exact formatting (line breaks, comment placement, etc.), but in practice most output normalizes spacing anyway. Worth investigating:
+- How much of pre/post is actually meaningful vs redundant with normalized spacing?
+- Could we drop pre/post for most node types and only preserve it where formatting matters (e.g., top-level comments, intentional blank lines)?
+- Would a simpler model (e.g., "has leading newline" flag + optional attached comment) cover 95% of cases with far less overhead?
+- Impact on `copy(true)` / `stripPrePost` — if pre/post is simpler, comment suppression becomes trivial.
+
+---
+
 ## Notes
 
 ### Working procedure
