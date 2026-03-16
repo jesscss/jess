@@ -240,7 +240,10 @@ export function getImplicitSelector(
   if (
     !collapseNesting
     && isNode(selector, N.SelectorList)
-    && selector.data.some(item => isNode(item, N.ComplexSelector))
+    && selector.data.some(item =>
+      isNode(item, N.ComplexSelector) && (item as ComplexSelector).data.length > 1
+    )
+    && !selectorHasAuthoredAmpersand(selector)
   ) {
     const grouped = PseudoSelector.create({
       name: ':is',

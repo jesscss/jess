@@ -184,24 +184,35 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         ? this.parent.parent as Ruleset
         : undefined
     );
-    const parentSelector = parentRuleset?.getEffectiveSelector(collapseNesting);
-
     if (
       collapseNesting
       && this.hoistToRoot
       && !this.data.selectorBeforeExtend
       && ownSelector
       && !(ownSelector instanceof Nil)
-      && parentSelector
-      && !(parentSelector instanceof Nil)
     ) {
-      return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, false);
+      let parentSelector = parentRuleset?.getEffectiveSelector(collapseNesting);
+      if (parentSelector && !(parentSelector instanceof Nil)) {
+        /** In reference mode, the parent's selector may include invisible
+         *  (original referenced) items alongside extend-added items.
+         *  Filter to only visible items so children don't inherit invisible selectors. */
+        if (parentRuleset!.data.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRuleset!)) {
+          parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
+            parentSelector as Selector,
+            parentRuleset!.data.selectorBeforeExtend
+          );
+        }
+        if (parentSelector && !(parentSelector instanceof Nil)) {
+          return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, false);
+        }
+      }
     }
 
     if (this.hoistToRoot) {
       return selector;
     }
 
+    const parentSelector = parentRuleset?.getEffectiveSelector(collapseNesting);
     if (
       ownSelector
       && !(ownSelector instanceof Nil)
@@ -371,6 +382,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     if (isNode(sel, N.SelectorList)) {
       return (sel as SelectorList).data.every(item => isNode(item, N.Ampersand));
+    }
+    return false;
+  }
+
+  private static isInReferenceScope(node: Node): boolean {
+    let current: Node | undefined = node;
+    while (current) {
+      if (isNode(current, N.Rules) && (current as Rules).options?.referenceMode === true) {
+        return true;
+      }
+      current = current.parent as Node | undefined;
     }
     return false;
   }

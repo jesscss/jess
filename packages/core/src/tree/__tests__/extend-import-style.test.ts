@@ -711,19 +711,19 @@ describe('Style import extend behavior', () => {
         .visible {
           color: red;
         }
-        .z .c {
+        .visible .c {
           color: green;
         }
         .visible {
           color: green;
         }
-        :is(.only-with-visible, .z):hover {
+        .visible:hover {
           color: green;
         }
-        :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+        .visible + .visible {
           color: green;
         }
-        :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+        .visible + .visible .sub {
           color: green;
         }
       `);
@@ -740,7 +740,7 @@ describe('Style import extend behavior', () => {
         .visible {
           color: red;
         }
-        .z .c {
+        .visible .c {
           color: green;
         }
       `);
@@ -791,7 +791,7 @@ describe('Style import extend behavior', () => {
           .visible {
             color: red;
           }
-          .z .c {
+          :is(.z, .visible) .c {
             color: green;
           }
           .only-with-visible,
@@ -799,13 +799,13 @@ describe('Style import extend behavior', () => {
           .visible {
             color: green;
           }
-          :is(.only-with-visible, .z):hover {
+          :is(.only-with-visible, .z, .visible):hover {
             color: green;
           }
-          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+          :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) {
             color: green;
           }
-          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+          :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) .sub {
             color: green;
           }
           "
@@ -843,19 +843,19 @@ describe('Style import extend behavior', () => {
           ".visible {
             color: red;
           }
-          .z .c {
+          .visible .c {
             color: green;
           }
           .visible {
             color: green;
           }
-          :is(.only-with-visible, .z):hover {
+          .visible:hover {
             color: green;
           }
-          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+          .visible + .visible {
             color: green;
           }
-          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+          .visible + .visible .sub {
             color: green;
           }
           "
@@ -906,19 +906,19 @@ describe('Style import extend behavior', () => {
           ".visible {
             color: red;
           }
-          .z .c {
+          .visible .c {
             color: green;
           }
           .visible {
             color: green;
           }
-          :is(.only-with-visible, .z):hover {
+          .visible:hover {
             color: green;
           }
-          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+          .visible + .visible {
             color: green;
           }
-          :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+          .visible + .visible .sub {
             color: green;
           }
           "
