@@ -296,7 +296,7 @@ describe('scss-parser (ast serialize)', () => {
       `);
   });
 
-  it('serializes @each destructuring as For(header=Paren(Sequence(Block[square](List(VarDeclaration...)), "of", expr)))', () => {
+  it('serializes @each destructuring as For with vars array', () => {
     const { tree, errors, lexerResult } = parser.parse(`
       @each $a, $b in $list {
         .x { y: $a; z: $b; }
@@ -307,24 +307,21 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (For
-        pattern: {
-          kind: 'tuple'
-          values:
-            [
-              (VarDeclaration
-                name:
-                  (Any [role=property] 'a')
-                value:
-                  (Nil '')
-              )
-              (VarDeclaration
-                name:
-                  (Any [role=property] 'b')
-                value:
-                  (Nil '')
-              )
-            ]
-        }
+        vars:
+          [
+            (VarDeclaration
+              name:
+                (Any [role=property] 'a')
+              value:
+                (Nil '')
+            )
+            (VarDeclaration
+              name:
+                (Any [role=property] 'b')
+              value:
+                (Nil '')
+            )
+          ]
       `);
   });
 

@@ -48,6 +48,42 @@ import {
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
 
+type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+
+function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: any } | undefined {
+  if (isNode(selector, N.SelectorList)) {
+    for (const item of (selector as any).data) {
+      const disallowed = findDisallowedExtendSelector(item, allowed);
+      if (disallowed) return disallowed;
+    }
+    return undefined;
+  }
+  const kinds: ExtendSelectorKind[] = isNode(selector, N.BasicSelector)
+    ? ['simple', 'basic']
+    : isNode(selector, N.PseudoSelector)
+      ? ['simple', 'pseudo']
+      : isNode(selector, N.CompoundSelector)
+        ? ['compound']
+        : isNode(selector, N.ComplexSelector)
+          ? ['complex']
+          : ['simple'];
+  if (kinds.some(k => allowed.includes(k))) return undefined;
+  return { kind: kinds[0]!, selector };
+}
+
+function validateExtendTarget($: P, target: any): void {
+  const allowed: ExtendSelectorKind[] | undefined = $.context?.opts?.allowExtendSelectors;
+  if (!allowed) return;
+  const disallowed = findDisallowedExtendSelector(target, allowed);
+  if (!disallowed) return;
+  const kindList = allowed.length === 1 ? `${allowed[0]} selectors` : allowed.join(', ');
+  $.errors.push(new ParseError(
+    `@extend only allows ${kindList}, but found ${disallowed.kind} selector "${disallowed.selector.valueOf()}".`,
+    $.LA(0),
+    { previousToken: $.LA(0) }
+  ));
+}
+
 // Save CSS prototype methods for super calls
 const cssMediaAtRule = CssRecursiveParser.prototype.mediaAtRule;
 const cssContainerAtRule = CssRecursiveParser.prototype.containerAtRule;
@@ -301,6 +337,7 @@ export function scssExtendAtRule(this: P, ctx: RuleContext = {}) {
   } finally {
     ctx.inExtend = false;
   }
+  validateExtendTarget($, target);
 
   // Accept (but ignore) any trailing bits like `!optional`
   $.MANY({

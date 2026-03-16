@@ -114,10 +114,10 @@ export class ScssRecursiveParser extends CssRecursiveParser {
 
   // ── New SCSS-only productions ──────────────────────────────────────
   declare scssCondition: typeof productions.scssCondition;
-  declare scssGuardOr: typeof productions.scssGuardOr;
-  declare scssGuardAnd: typeof productions.scssGuardAnd;
-  declare scssGuardInParens: typeof productions.scssGuardInParens;
-  declare scssGuardInner: typeof productions.scssGuardInner;
+  declare scssConditionOr: typeof productions.scssConditionOr;
+  declare scssConditionAnd: typeof productions.scssConditionAnd;
+  declare scssConditionInParens: typeof productions.scssConditionInParens;
+  declare scssConditionInner: typeof productions.scssConditionInner;
   declare scssComparison: typeof productions.scssComparison;
   declare scssMapLiteral: typeof productions.scssMapLiteral;
   declare scssUseAtRule: typeof productions.scssUseAtRule;

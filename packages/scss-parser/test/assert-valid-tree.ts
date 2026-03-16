@@ -100,6 +100,8 @@ export function assertValidTree(root: unknown) {
         || key === 'sourceParent'
         || key === 'treeContext'
         || key === 'sourceNode'
+        || key === 'pre'
+        || key === 'post'
       ) {
         continue;
       }

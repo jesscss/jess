@@ -21,11 +21,7 @@ export function stylesheet(this: P, options: Record<string, any> = {}) {
   /** Auto-creates tree context */
   let context = $.context;
 
-  let charset: IToken | undefined;
-
-  $.OPTION(() => {
-    charset = $.CONSUME($.T.Charset);
-  });
+  const charset = $.OPTION(() => $.CONSUME($.T.Charset));
 
   const ctx: RuleContext = { isRoot: true };
   let root: Node = $.main();

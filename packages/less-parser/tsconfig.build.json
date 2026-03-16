@@ -7,9 +7,6 @@
   },
   "include": ["src/**/*"],
   "exclude": [
-    "src/lessActionsParser.ts",
-    "src/lessErrorMessageProvider.ts",
-    "src/productions.ts",
     "src/**/__tests__/**"
   ]
 }

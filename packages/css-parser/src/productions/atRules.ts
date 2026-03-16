@@ -648,7 +648,7 @@ export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Pr
   if (preludeRule) {
     const resolvedPreludeRule = resolvePreludeRule(this, preludeRule);
     if (typeof resolvedPreludeRule === 'function') {
-      (resolvedPreludeRule as any).call(this, ctx);
+      prelude = (resolvedPreludeRule as any).call(this, ctx);
     }
   } else {
     $.OR([

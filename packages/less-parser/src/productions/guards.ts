@@ -782,7 +782,7 @@ export function mixinArg(this: P, ctx: RuleContext = {}) {
         let name = $.varName();
         $.CONSUME($.T.Colon);
         /** Default value */
-        let value = $.callArgument({ ...ctx, allowComma: false, detachedRulesetUsage: 'default-param' });
+        let value = $.callArgument({ ...ctx, detachedRulesetUsage: 'default-param' });
 
         let location = $.endRule();
         return new VarDeclaration({

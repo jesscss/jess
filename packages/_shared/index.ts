@@ -70,8 +70,6 @@ export const invalidLess: string[] = [
   'tests-unit/permissive-parse/permissive-parse.less',
   'tests-unit/permissive-parse/legacy/permissive-parse.less',
   'tests-unit/property-name-interp/property-name-interp.less',
-  // 'tests-config/compression/compression.less',
-
   // // 'tests-config/math/parens-division/new-division.less',
   // 'tests-config/math-strict/css.less',
   // 'tests-unit/import/invalid-css.less',
@@ -110,5 +108,7 @@ export const invalidLess: string[] = [
   'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
 
   /** Inline JavaScript using backticks is intentionally unsupported */
-  'tests-unit/javascript/javascript.less'
+  'tests-unit/javascript/javascript.less',
+  'tests-config/js-type-errors/js-type-error.less',
+  'tests-config/no-js-errors/no-js-errors.less'
 ];

@@ -74,8 +74,8 @@ export function createLexerDefinition(
 
   /** Build fragment replacements */
   const entries = Object.entries(rawTokens.modes);
-  entries.forEach(([mode, modeTokens]) => {
-    modeTokens.forEach((rawToken) => {
+  entries.forEach(([mode, modeTokens]: [string, ReadonlyArray<string | Readonly<RawToken>>]) => {
+    modeTokens.forEach((rawToken: string | Readonly<RawToken>) => {
       const addToken = (token: TokenType) => {
         if (lexer.modes[mode] === undefined) {
           lexer.modes[mode] = [token];
@@ -127,7 +127,7 @@ export function createLexerDefinition(
         : group ? { group } : {};
       const tokenCategories = categories
         ? {
-            categories: categories.map((category) => {
+            categories: categories.map((category: string) => {
               return T[category];
             })
           }
