@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType, F_STATIC } from './node.js';
+import { defineType, F_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 
 export interface BasicSelector extends SimpleSelector<string> {
@@ -14,42 +14,46 @@ export interface BasicSelector extends SimpleSelector<string> {
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  constructor(...args: ConstructorParameters<typeof SimpleSelector<string>>) {
-    super(...args);
+  static override childKeys = null as null;
+
+  value!: string;
+
+  declare readonly data: Readonly<string>;
+
+  constructor(
+    value: string,
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
     this.addFlag(F_STATIC);
   }
 
-  get value() {
-    return this.data;
-  }
-
-  set value(val: string) {
-    this.setData(val);
-  }
-
   get isClass() {
-    return /^\./.test(this.data);
+    return /^\./.test(this.value);
   }
 
   get isId() {
-    return /^#/.test(this.data);
+    return /^#/.test(this.value);
   }
 
   /** A tag-type selector */
   get isTag() {
-    return /^[^.#*]/.test(this.data);
+    return /^[^.#*]/.test(this.value);
   }
 
   override evalNode(context: Context): BasicSelector {
     const node = super.evalNode(context) as BasicSelector;
     if (node.isClass) {
-      context.hashClass(node.data);
+      context.hashClass(node.value);
     }
     return node;
   }
 
   override valueOf(): string {
-    return (this._valueOf ??= (this.isTag ? this.data.toLowerCase() : this.data));
+    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value));
   }
 
   /** @todo - move to visitors */
@@ -68,6 +72,13 @@ export class BasicSelector extends SimpleSelector<string> {
   //   out.add(')')
   // }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(BasicSelector.prototype, 'data', {
+  get(this: BasicSelector) { return this.value; },
+  configurable: true,
+  enumerable: true
+});
 
 /** Short form of a basic selector is a short 'el' for 'element' */
 export const el = defineType(BasicSelector, 'BasicSelector', 'el');

@@ -29,12 +29,16 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
+  static override childKeys = null as null;
+
+  declare readonly data: Readonly<''>;
+
   constructor(
     value?: any,
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext) {
-    super('', options, location, treeContext);
+    super('' as any, options, location, treeContext);
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlag(F_STATIC);
@@ -51,5 +55,12 @@ export class Nil extends Node<''> {
     return '';
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Nil.prototype, 'data', {
+  get() { return ''; },
+  configurable: true,
+  enumerable: true
+});
 
 export const nil = defineType(Nil, 'Nil');
