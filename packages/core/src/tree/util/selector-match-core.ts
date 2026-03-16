@@ -907,7 +907,7 @@ function matchGroupNodes(
 
     for (let i = 0; i < findBranches.length; i++) {
       for (let j = 0; j < targetBranches.length; j++) {
-        const nested = selectorMatchInternal(findBranches[i]!, targetBranches[j]!, undefined, context);
+        const nested = selectorMatchInternal(findBranches[i]!, targetBranches[j]!, parent, context);
         matched ||= nested.partialMatch;
         exact ||= nested.fullMatch;
 
@@ -929,7 +929,7 @@ function matchGroupNodes(
     let exact = false;
 
     for (let i = 0; i < targetBranches.length; i++) {
-      const nested = selectorMatchInternal(findNode as Selector, targetBranches[i]!, undefined, context);
+      const nested = selectorMatchInternal(findNode as Selector, targetBranches[i]!, parent, context);
       matched ||= nested.partialMatch;
       exact ||= nested.fullMatch;
 
@@ -948,12 +948,13 @@ function pushNestedBranchMatches(
   findNode: Node,
   target: Selector,
   matches: SelectorMatchLocation[],
-  context: SelectorMatchContext
+  context: SelectorMatchContext,
+  parent?: Selector
 ): void {
   const branches = getBranchAlternatives(findNode);
   if (branches) {
     for (let i = 0; i < branches.length; i++) {
-      const nested = selectorMatchInternal(target, branches[i]!, undefined, context);
+      const nested = selectorMatchInternal(target, branches[i]!, parent, context);
       if (!nested.fullMatch) {
         continue;
       }
@@ -976,7 +977,7 @@ function pushNestedBranchMatches(
   const children = findNode.children();
   let child = children.next();
   while (!child.done) {
-    pushNestedBranchMatches(child.value, target, matches, context);
+    pushNestedBranchMatches(child.value, target, matches, context, parent);
     child = children.next();
   }
 }
@@ -1286,6 +1287,12 @@ function pushNestedPseudoMatches(
  * progress; matches that exist only inside the parent do not get added on
  * their own.
  *
+ * That same `parent` context is preserved when matching through nested
+ * selector-list and `:is(...)` alternatives, because those are still the same
+ * authored match route. It is not preserved for root-like searches inside
+ * non-`:is()` pseudo-selector boundaries, because those searches must not
+ * continue the outer route through that boundary.
+ *
  * Complex selector branches inside `:is(...)` or selector lists are treated as
  * alternate branch routes. Matching may succeed inside one branch, but the
  * outer route cannot continue leftward through that branch unless that branch
@@ -1321,10 +1328,10 @@ function selectorMatchUncached(
         return emptySelectorMatchState();
       }
 
-      return selectorMatchInternal(find.data.arg as Selector, target.arg as Selector, undefined, context);
+      return selectorMatchInternal(find.data.arg as Selector, target.arg as Selector, parent, context);
     }
 
-    const nested = selectorMatchInternal(find.data.arg as Selector, target, undefined, context);
+    const nested = selectorMatchInternal(find.data.arg as Selector, target, parent, context);
     if (!nested.partialMatch) {
       return nested;
     }
@@ -1378,7 +1385,7 @@ function selectorMatchUncached(
         };
       }
 
-      const nested = selectorMatchInternal(find, sel, undefined, context);
+      const nested = selectorMatchInternal(find, sel, parent, context);
       if (nested.partialMatch) {
         return {
           fullMatch: nested.fullMatch,
@@ -1581,6 +1588,124 @@ function selectorMatchUncached(
     return finalizeMatchState(result);
   };
 
+  const pushMidRouteAmpersandMatches = (
+    matches: SelectorMatchLocation[],
+    routePlan: RouteMatchPlan
+  ): void => {
+    const routeUnits = routePlan.units;
+    const findUnits = findPlan.units;
+
+    const pushMatchesForResolvedPlan = (
+      plan: MatchPlan,
+      ampStart: number,
+      ampUnit: MatchPlanUnit & { kind: 'group' },
+      tailLength: number,
+      tailMatch: MatchWindowResult
+    ): void => {
+      if (plan.kind === 'list') {
+        for (let i = 0; i < plan.alternates.length; i++) {
+          pushMatchesForResolvedPlan(plan.alternates[i]!, ampStart, ampUnit, tailLength, tailMatch);
+        }
+        return;
+      }
+
+      const remainingFindLength = findUnits.length - tailLength;
+      if (remainingFindLength <= 0) {
+        return;
+      }
+
+      const parentUnits = plan.units;
+      if (parentUnits.length < remainingFindLength) {
+        return;
+      }
+
+      const parentMatch = matchUnitWindow(
+        findUnits,
+        0,
+        parentUnits,
+        parentUnits.length - remainingFindLength,
+        remainingFindLength,
+        groupMatchCache,
+        context
+      );
+      if (!parentMatch.matched) {
+        return;
+      }
+
+      const tailEndUnit = routeUnits[ampStart + tailLength] ?? routeUnits[routeUnits.length - 1]!;
+      const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
+      const lastParentUnit = parentUnits[parentUnits.length - 1]!;
+      const exact = (
+        ampStart === 0
+        && ampStart + tailLength === routeUnits.length - 1
+        && remainingFindLength === parentUnits.length
+        && parentMatch.exact
+        && tailMatch.exact
+      );
+
+      matches.push({
+        startIndex: ampUnit.index,
+        endIndex: tailEndUnit.index,
+        containingNode: routePlan.selector,
+        exact,
+        crossesAmpersand: true,
+        consumedTarget: !!exact,
+        ampersandCrossings: [{
+          ampersandNode: ampUnit.node,
+          targetSegment: {
+            containingNode: routePlan.selector,
+            startIndex: ampUnit.index,
+            endIndex: tailEndUnit.index
+          },
+          parentSegment: {
+            containingNode: plan.selector,
+            startIndex: firstParentUnit.index,
+            endIndex: lastParentUnit.index
+          }
+        }]
+      });
+    };
+
+    for (let ampStart = 0; ampStart < routeUnits.length - 1; ampStart++) {
+      const ampUnit = routeUnits[ampStart]!;
+      if (!(ampUnit.kind === 'group' && isNode(ampUnit.node, N.Ampersand))) {
+        continue;
+      }
+
+      const resolved = ampUnit.node.getResolvedSelector() ?? parent;
+      if (!resolved || isNode(resolved, N.Nil)) {
+        continue;
+      }
+
+      const resolvedPlan = getSelectorMatchPlan(resolved as Selector);
+      const maxTailLength = Math.min(
+        routeUnits.length - (ampStart + 1),
+        findUnits.length - 1
+      );
+
+      for (let tailLength = 1; tailLength <= maxTailLength; tailLength++) {
+        const tailMatch = matchUnitWindow(
+          findUnits,
+          findUnits.length - tailLength,
+          routeUnits,
+          ampStart + 1,
+          tailLength,
+          groupMatchCache,
+          context,
+          parent
+        );
+        if (!tailMatch.matched) {
+          continue;
+        }
+
+        pushMatchesForResolvedPlan(resolvedPlan, ampStart, {
+          ...ampUnit,
+          kind: 'group'
+        }, tailLength, tailMatch);
+      }
+    }
+  };
+
   const matchTargetRoute = (
     routePlan: RouteMatchPlan,
     parentPlan?: MatchPlan
@@ -1659,6 +1784,8 @@ function selectorMatchUncached(
       }
     }
 
+    pushMidRouteAmpersandMatches(result.matches, routePlan);
+
     if (parentPlan) {
       pushMatches(result.matches, matchParentRoute(routePlan, parentPlan).matches);
     }
@@ -1687,7 +1814,7 @@ function selectorMatchUncached(
   const result = matchTargetPlan(getSelectorMatchPlan(target, parent), parentPlan);
   pushNestedPseudoMatches(find, target, result.matches, context);
   if (!result.partialMatch && result.matches.length === 0) {
-    pushNestedBranchMatches(find, target, result.matches, context);
+    pushNestedBranchMatches(find, target, result.matches, context, parent);
   }
   return finalizeMatchState(result);
 }

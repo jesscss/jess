@@ -760,6 +760,25 @@ describe('selector lists and branching', () => {
       expect(result.matches[1]!.ampersandCrossings).toHaveLength(1);
     });
 
+    it('matches one repeated ampersand compound against a fully resolved compound find', async () => {
+      let parentSelector = compound([el('.a'), el('.b')]).eval(context);
+      let sel1 = sel([
+        compound([amp({ selectorContainer: { selector: parentSelector } }), el('.x')]),
+        co(' '),
+        compound([amp({ selectorContainer: { selector: parentSelector } }), el('.x')])
+      ]);
+      let sel2 = compound([el('.a'), el('.b'), el('.x')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1, parentSelector);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.crossesAmpersand).toBe(true);
+      expect(result.matches).toHaveLength(2);
+      expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
+      expect(result.matches[1]!.ampersandCrossings).toHaveLength(1);
+    });
+
     it('matches repeated :is() compounds in one complex selector', async () => {
       let sel1 = sel([
         compound([is(compound([el('.a'), el('.b')])), el('.x')]),
@@ -774,6 +793,33 @@ describe('selector lists and branching', () => {
       expect(result.partialMatch).toBe(true);
       expect(result.crossesAmpersand).toBe(false);
       expect(result.matches).toHaveLength(2);
+    });
+
+    it('can continue through a non-leading ampersand with a complex resolved parent', async () => {
+      let parentSelector = sel([el('.grand'), co('>'), el('.parent')]).eval(context);
+      let sel1 = sel([
+        amp({ selectorContainer: { selector: parentSelector } }),
+        co(' '),
+        el('.prefix'),
+        co(' '),
+        amp({ selectorContainer: { selector: parentSelector } }),
+        co(' '),
+        el('.child')
+      ]);
+      let sel2 = sel([el('.grand'), co('>'), el('.parent'), co(' '), el('.child')]);
+      await sel1.eval(context);
+      await sel2.eval(context);
+      let result = selectorMatch(sel2, sel1, parentSelector);
+      expect(result.fullMatch).toBe(false);
+      expect(result.partialMatch).toBe(true);
+      expect(result.crossesAmpersand).toBe(true);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]!.startIndex).toBe(4);
+      expect(result.matches[0]!.endIndex).toBe(6);
+      expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
+      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.data[4]);
+      expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
+      expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode).toBe(parentSelector);
     });
 
     describe('parent selector context', () => {
