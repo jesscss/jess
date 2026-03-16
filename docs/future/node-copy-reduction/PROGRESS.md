@@ -83,18 +83,18 @@ Goal: Move all container/parent nodes to instance fields with `childKeys`.
 Each checkbox = one node class converted + tests green.
 
 **Simple containers (1-2 child fields):**
-- [ ] `Url` — `value: Quoted | Any`; childKeys=['value']
-- [ ] `Expression` — `value: Node`; childKeys=['value']
-- [ ] `Paren` — TBD
-- [ ] `Negative` — TBD
-- [ ] `Quoted` — `value`, `quote`, `escaped`; childKeys=['value']
+- [x] `Url` — `value: Quoted | Any`; childKeys=['value']
+- [x] `Expression` — `value: Node`; childKeys=['value']
+- [x] `Paren` — `value: Node | undefined`; childKeys=['value']
+- [x] `Negative` — `value: Node`; childKeys=['value']
+- [x] `Quoted` — `value: string | Any | Interpolated`; childKeys=['value']
 
 **Multi-child containers:**
-- [ ] `Operation` — `left`, `op`, `right`; childKeys=['left','right']
-- [ ] `Condition` — `left`, `op`, `right`, `negate`; childKeys=['left','right']
-- [ ] `Declaration` — `name`, `value`, `important`; childKeys=['name','value','important']
-- [ ] `Call` — `name`, `args`, `contentNode`; childKeys=['name','args','contentNode']
-- [ ] `Reference` — `target`, `key`; childKeys=['target','key']
+- [x] `Operation` — `left`, `operator`, `right`; childKeys=['left','right']
+- [x] `Condition` — `left`, `operator`, `right`; childKeys=['left','right']
+- [x] `Declaration` — `name`, `value`, `important`; childKeys=['name','value','important']
+- [x] `Call` — `name`, `args`, `contentNode`; childKeys=['name','args','contentNode']
+- [x] `Reference` — `target`, `key`; childKeys=['target','key']
 
 **Complex containers:**
 - [ ] `Ruleset` — `selector`, `rules`, `guard`; childKeys=['selector','rules','guard']
@@ -107,26 +107,32 @@ Each checkbox = one node class converted + tests green.
 - [ ] `SelectorList` — `value: Selector[]`; childKeys=['value']
 - [ ] `ComplexSelector` — `value: ComplexSelectorComponent[]`; childKeys=['value']
 - [ ] `CompoundSelector` — `value: SimpleSelector[]`; childKeys=['value']
-- [ ] `PseudoSelector` — TBD
-- [ ] `SelectorAttr` — TBD
-- [ ] `SelectorInterpolated` — TBD
+- [x] `PseudoSelector` — `name`, `arg`; childKeys=['name','arg']
+- [x] `SelectorAttr` — `name`, `value`; childKeys=['name','value']
+- [x] `SelectorInterpolated` — `value`; childKeys=['value']
 
 **Other nodes:**
 - [ ] `List` — TBD
 - [ ] `Collection` — TBD
-- [ ] `Interpolated` — TBD
-- [ ] `Rest` — TBD
-- [ ] `Range` — TBD
+- [x] `Interpolated` — `source`, `replacements`; childKeys=['source','replacements']
+- [x] `Rest` — `value`; childKeys=['value']
+- [x] `Range` — `start`, `end`, `step`; childKeys=['start','end','step']
 - [ ] `Sequence` — TBD
-- [ ] `Block` — TBD
-- [ ] `ExtendList` / `Extend` — TBD
-- [ ] `Control` — TBD
-- [ ] `Log` — TBD
-- [ ] `DefaultGuard` — TBD
-- [ ] `JsExpr` / `JsArray` / `JsObject` / `JsFunction` — TBD
-- [ ] `ImportJs` — TBD
-- [ ] `Function` — TBD
-- [ ] `DeclarationCustom` / `DeclarationVar` — TBD
+- [x] `Block` — `value`; childKeys=['value']
+- [x] `Extend` — `selector`, `target`; childKeys=['selector','target']
+- [ ] `ExtendList` — TBD
+- [ ] `Control` (If, For, Each, While) — TBD
+- [x] `Log` — `level`, `message`; childKeys=['level','message']
+- [x] `DefaultGuard` — leaf; childKeys=null
+- [x] `JsExpr` — leaf; childKeys=null
+- [x] `JsArray` — leaf; childKeys=null
+- [x] `JsObject` — leaf; childKeys=null
+- [x] `JsFunction` — leaf; childKeys=null
+- [x] `JsImport` — `path`; childKeys=['path']
+- [x] `Func` — `name`, `params`, `body`; childKeys=['name','params','body']
+- [x] `SelectorCapture` — `value`; childKeys=['value']
+- [x] `VarDeclaration` — inherits Declaration childKeys
+- [ ] `DeclarationCustom` — inherits Declaration childKeys (needs verification)
 - [ ] `RulesRaw` — TBD
 - [ ] `Tree` — TBD
 

@@ -1,4 +1,4 @@
-import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
+import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType, type LocationInfo, type TreeContext } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -31,9 +31,20 @@ export interface JsImport {
   shortType: 'js';
 }
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
+  static override childKeys = ['path'] as const;
+
+  path!: Quoted;
+  imports: JsImportSpecifier[] | undefined;
+
+  declare readonly data: Readonly<JsImportValue>;
+
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    // JS imports are always non-static and may be async
+    this.path = value.path;
+    this.imports = value.imports;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
@@ -41,9 +52,9 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this.data;
+    const { path } = this;
     const { namespace } = this.options;
-    const imports = this.data.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const imports = this.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
 
     w.add('@-from ');
     path.toString(options);
@@ -96,5 +107,14 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     return w.getSince(mark);
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(JsImport.prototype, 'data', {
+  get(this: JsImport) {
+    return { path: this.path, imports: this.imports };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const js = defineType<JsImportValue>(JsImport, 'JsImport', 'js');

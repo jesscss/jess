@@ -48,52 +48,39 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
+  static override childKeys = ['selector', 'target'] as const;
+
+  selector: ExtendValue['selector'];
+  target!: Selector;
+  namespace: string | undefined;
+  flag: ExtendFlag | undefined;
+
+  declare readonly data: Readonly<ExtendValue>;
+
   constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.selector = value.selector;
+    this.target = value.target;
+    this.namespace = value.namespace;
+    this.flag = value.flag;
+    if (this.selector instanceof Node) {
+      this.adopt(this.selector);
+    }
+    if (this.target instanceof Node) {
+      this.adopt(this.target);
+    }
     this.removeFlag(F_VISIBLE);
     this.addFlag(F_NON_STATIC);
   }
 
-  get selector() {
-    return this.data.selector;
-  }
-
-  set selector(val: ExtendValue['selector']) {
-    this.setData('selector', val as any);
-  }
-
-  get target() {
-    return this.data.target;
-  }
-
-  set target(val: ExtendValue['target']) {
-    this.setData('target', val);
-  }
-
-  get namespace() {
-    return this.data.namespace;
-  }
-
-  set namespace(val: ExtendValue['namespace']) {
-    this.setData('namespace', val as any);
-  }
-
-  get flag() {
-    return this.data.flag;
-  }
-
-  set flag(val: ExtendValue['flag']) {
-    this.setData('flag', val as any);
-  }
-
   override valueOf() {
-    return `$extend ${this.data.target.valueOf()}`;
+    return `$extend ${this.target.valueOf()}`;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector, flag, namespace } = this.data;
+    let { target, selector, flag, namespace } = this;
     const mark = w.mark();
     w.add('$extend');
     if (selector) {
@@ -119,7 +106,7 @@ export class Extend extends Node<ExtendValue> {
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    let { selector, target, flag } = this.data;
+    let { selector, target, flag } = this;
 
     const currentFrame = context.rulesetFrames.at(-1);
 
@@ -164,7 +151,7 @@ export class Extend extends Node<ExtendValue> {
           const rs = currentFrame as Ruleset;
           const fullSel = rs.data?.selector;
           let usedParentListComposition = false;
-          if (!this.data.selector) {
+          if (!this.selector) {
             const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
             const parentFrame = context.rulesetFrames.at(-2);
             const parentSel = (
@@ -186,7 +173,7 @@ export class Extend extends Node<ExtendValue> {
               usedParentListComposition = true;
             }
           }
-          if (!this.data.selector && !usedParentListComposition) {
+          if (!this.selector && !usedParentListComposition) {
             if (fullSel && !(fullSel instanceof Nil)) {
               resolvedSel = fullSel as Selector;
             } else {
@@ -232,7 +219,7 @@ export class Extend extends Node<ExtendValue> {
       const rs = currentFrame as Ruleset;
       const fullSel = rs.data?.selector;
       let usedParentListComposition = false;
-      if (!this.data.selector) {
+      if (!this.selector) {
         const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
         const parentFrame = context.rulesetFrames.at(-2);
         const parentSel = (
@@ -254,7 +241,7 @@ export class Extend extends Node<ExtendValue> {
           usedParentListComposition = true;
         }
       }
-      if (!this.data.selector && !usedParentListComposition) {
+      if (!this.selector && !usedParentListComposition) {
         if (fullSel && !(fullSel instanceof Nil)) {
           resolvedSel = fullSel as Selector;
         } else {
@@ -282,6 +269,20 @@ export class Extend extends Node<ExtendValue> {
     return new Nil();
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Extend.prototype, 'data', {
+  get(this: Extend) {
+    return {
+      selector: this.selector,
+      target: this.target,
+      namespace: this.namespace,
+      flag: this.flag
+    };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 function materializeImplicitAmpersands(
   selector: Selector,

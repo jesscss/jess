@@ -16,12 +16,23 @@ export interface JsExpression extends Node<string> {
 }
 
 export class JsExpression extends Node<string> {
+  static override childKeys = null as null;
+
+  value!: string;
+
+  declare readonly data: Readonly<string>;
+
+  constructor(value: string, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     w.add('`', this);
-    w.add(this.data);
+    w.add(this.value);
     w.add('`');
     return w.getSince(mark);
   }
@@ -32,9 +43,18 @@ export class JsExpression extends Node<string> {
    */
   override evalNode(context: Context): Promise<Node> {
     return (async () => {
-      const result = await eval(this.data);
+      const result = await eval(this.value);
       return cast(result);
     })();
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(JsExpression.prototype, 'data', {
+  get(this: JsExpression) {
+    return this.value;
+  },
+  configurable: true,
+  enumerable: true
+});
 export const jsexpr = defineType(JsExpression, 'JsExpression', 'jsexpr');
