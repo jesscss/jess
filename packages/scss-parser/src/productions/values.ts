@@ -1,7 +1,7 @@
 // Value-related production rules for ScssRecursiveParser
 // Converted from Chevrotain-based productions.ts
 import type { RuleContext } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   Any,

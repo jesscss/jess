@@ -1,5 +1,5 @@
 import type { RuleContext } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
 import {
   Condition,
   Paren,

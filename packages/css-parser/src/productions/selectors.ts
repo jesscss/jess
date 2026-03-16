@@ -1,8 +1,8 @@
 // Methods to be mixed into CssRecursiveParser
 // This file is a temporary build artifact for assembly
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken, OrAlternative } from '@jesscss/parser-runtime';
-import { tokenMatches } from '@jesscss/parser-runtime';
+import type { IToken, OrAlternative } from '@jesscss/parser';
+import { tokenMatches } from '@jesscss/parser';
 import {
   Node, Any, BasicSelector, Ampersand, CompoundSelector, ComplexSelector,
   type ComplexSelectorValue, Combinator, type Combinators, SelectorList,

@@ -1,7 +1,7 @@
 import {
   type IToken,
   type TokenType,
-} from '@jesscss/parser-runtime';
+} from '@jesscss/parser';
 
 import {
   CssRecursiveParser,

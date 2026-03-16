@@ -1,8 +1,8 @@
 // Values productions for LessRecursiveParser
 // Converted from Chevrotain-based productions.ts (lines 2060-3015)
 import type { RuleContext } from '../lessRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
-import { tokenMatches, tokenTypeInSet } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
+import { tokenMatches, tokenTypeInSet } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   type TreeContext,

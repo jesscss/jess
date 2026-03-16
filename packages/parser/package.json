@@ -1,10 +1,11 @@
 {
   "name": "@jesscss/parser",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.5",
-  "description": "Jess CST parser",
+  "version": "2.0.0-alpha.1",
+  "description": "Hand-written recursive-descent parser runtime for Jess CSS parsers",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
@@ -25,25 +26,20 @@
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
-    "prepublishOnly": "npm run build",
-    "build": "pnpm clean && pnpm compile",
-    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "prepublishOnly": "pnpm build",
+    "build": "pnpm compile",
     "compile": "tsc -p tsconfig.build.json",
-    "test": "vitest --run --passWithNoTests",
+    "dev": "tsc -p tsconfig.build.json -w",
+    "test": "cross-env TEST=true vitest --watch=false",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
-  "author": "Matthew Dean",
+  "dependencies": {},
+  "devDependencies": {},
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
-  "dependencies": {
-    "@jesscss/core": "workspace:*",
-    "@jesscss/css-parser": "workspace:*",
-    "@jesscss/less-parser": "workspace:*",
-    "@jesscss/scss-parser": "workspace:*",
-    "chevrotain": "^11.0.3",
-    "color-name": "~2.0.0"
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
   },
-  "devDependencies": {
-    "@types/color-name": "^1.1.1"
-  }
+  "homepage": "https://github.com/jesscss/jess#readme"
 }

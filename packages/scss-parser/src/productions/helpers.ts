@@ -17,7 +17,7 @@ import {
   type Node,
   type Selector
 } from '@jesscss/core';
-import type { IToken } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
 
 export type InterpolationMatch = { start: number; end: number; content: string };
 

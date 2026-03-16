@@ -3,7 +3,7 @@ import {
   type TokenType,
   buildTokenTypeSet,
   tokenMatches
-} from '@jesscss/parser-runtime';
+} from '@jesscss/parser';
 
 import {
   CssRecursiveParser,

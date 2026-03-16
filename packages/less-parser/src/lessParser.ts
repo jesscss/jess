@@ -3,7 +3,7 @@ import { lessTokens, lessFragments } from './lessTokens.js';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { LessRecursiveParser, type LessParserConfig, type TokenMap } from './lessRecursiveParser.js';
 import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
-import { type IToken, MismatchedTokenError } from '@jesscss/parser-runtime';
+import { type IToken, MismatchedTokenError } from '@jesscss/parser';
 
 export type LessRules = keyof {
   [K in keyof LessRecursiveParser as LessRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;

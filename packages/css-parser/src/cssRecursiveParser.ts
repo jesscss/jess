@@ -2,7 +2,7 @@
  * CssRecursiveParser — Hand-written recursive-descent CSS parser
  *
  * Replaces CssActionsParser (Chevrotain-based) with a hand-coded parser
- * built on @jesscss/parser-runtime. Production rule structure mirrors
+ * built on @jesscss/parser. Production rule structure mirrors
  * the original Chevrotain grammar for near-mechanical conversion.
  *
  * The DSL method names and production-rule patterns were inspired by
@@ -19,7 +19,7 @@ import {
   type TokenType,
   type LocationInfo,
   tokenMatches
-} from '@jesscss/parser-runtime';
+} from '@jesscss/parser';
 
 import {
   TreeContext,

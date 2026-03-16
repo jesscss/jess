@@ -1,8 +1,8 @@
 // SCSS at-rule production rules for ScssRecursiveParser
 // Converted from lines 1184-3096 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser-runtime';
-import { ParseError, tokenMatches } from '@jesscss/parser-runtime';
+import type { IToken } from '@jesscss/parser';
+import { ParseError, tokenMatches } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   Any,

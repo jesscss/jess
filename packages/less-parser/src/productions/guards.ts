@@ -1,6 +1,6 @@
 import type { RuleContext } from '../lessRecursiveParser.js';
-import type { IToken, LocationInfo } from '@jesscss/parser-runtime';
-import { ParseError, tokenTypeInSet } from '@jesscss/parser-runtime';
+import type { IToken, LocationInfo } from '@jesscss/parser';
+import { ParseError, tokenTypeInSet } from '@jesscss/parser';
 import { CssRecursiveParser } from '@jesscss/css-parser';
 import {
   type TreeContext,
