@@ -165,8 +165,8 @@ Each checkbox = one node class converted + tests green.
 - [x] Keep `.toString()` as convenience (render delegates to toString)
 - [x] Comment suppression via `suppressComments` option in `toString()`
 - [x] Convert Ruleset/AtRule `getHeaderString` to use `suppressComments` (no `copy(true)`)
-- [ ] Convert remaining Reference output paths to use render mask
-- [ ] Convert extend output helpers to use render mask
+- [x] Audit: all remaining `copy(true)` calls are structural (selector assembly,
+  AST mutation, snapshotting) — no comment-suppression-only copies remain
 
 ---
 
@@ -214,11 +214,53 @@ These stages are deferred until Stages 1-6 are complete. See migration.md for de
 ## Future Exploration
 
 ### Pre/Post Serialization Simplification
-The current `pre`/`post` arrays on every node capture all inter-node whitespace and comments from the original source. This was designed to preserve exact formatting (line breaks, comment placement, etc.), but in practice most output normalizes spacing anyway. Worth investigating:
-- How much of pre/post is actually meaningful vs redundant with normalized spacing?
-- Could we drop pre/post for most node types and only preserve it where formatting matters (e.g., top-level comments, intentional blank lines)?
-- Would a simpler model (e.g., "has leading newline" flag + optional attached comment) cover 95% of cases with far less overhead?
-- Impact on `copy(true)` / `stripPrePost` — if pre/post is simpler, comment suppression becomes trivial.
+
+**Current model**: Every node has `pre?: (string | Node)[]` and `post?: (string | Node)[]`.
+The parser fills these with whitespace strings and Comment nodes to preserve exact source
+formatting. This creates overhead: every `copy(true)` must deep-clone pre/post arrays and
+replace Comment entries with Nil; `stripPrePost` exists solely for this cleanup.
+
+**Problem**: Most output normalizes spacing anyway — indentation is recalculated from depth,
+selectors get `.replace(/\s+/g, ' ')`, and declarations use fixed `: ` separators. The
+pre/post arrays are faithfully preserved but rarely matter in the final output.
+
+**Possible simpler models:**
+
+1. **Flags-only model** — Replace pre/post arrays with bit flags on the node:
+   - `HAS_LEADING_NEWLINE` — blank line before this node
+   - `HAS_TRAILING_NEWLINE` — blank line after
+   - `HAS_ATTACHED_COMMENT` — a comment is logically associated
+   - Comments become siblings in the parent `Rules` array rather than pre/post attachments
+   - Serializer uses flags + depth to reconstruct whitespace; comments serialize in order
+   - **Pro**: Zero per-node allocation for whitespace. `copy(true)` no longer needs to touch
+     pre/post at all. `stripPrePost` disappears.
+   - **Con**: Loses exact column-level whitespace fidelity (rarely matters for CSS output).
+
+2. **Enum spacing model** — Replace pre/post with a single `spacing: SpacingHint` field:
+   - `SpacingHint = 'none' | 'space' | 'newline' | 'blank-line'`
+   - Captures the meaningful intent without storing raw whitespace strings
+   - Comments stored as children or in a separate `attachedComments` array
+   - **Pro**: Simpler than flags, single field to copy. Clear semantic intent.
+   - **Con**: Can't distinguish e.g. `\n` from `\n\n` without an extra bit.
+
+3. **Comments-only pre/post** — Keep pre/post but only store Comment nodes, not whitespace:
+   - Whitespace is always recalculated from context during serialization
+   - `pre`/`post` become `Comment[] | undefined` instead of `(string | Node)[]`
+   - `copy(true)` just needs to null out pre/post (or skip Comments via suppressComments)
+   - **Pro**: Minimal change to parser; keeps comment attachment model intact.
+   - **Con**: Still allocates arrays for comments; still needs stripPrePost for copy paths.
+
+4. **processPrePost shortcodes** — Keep current model but add fast-path codes:
+   - Already partially done: `0` = "no space", `1` = "single space", `undefined` = default
+   - Extend to: `2` = "newline", `3` = "newline + indent"
+   - Only use arrays when actual Comment nodes are present
+   - **Pro**: Already partially in place (the `0`/`1` codes). Backward compatible.
+   - **Con**: Still stores Comment nodes in arrays; doesn't eliminate copy overhead for those.
+
+**Recommendation**: Option 1 (flags) or option 3 (comments-only) seem most practical.
+Option 1 is the most aggressive simplification; option 3 is the least disruptive.
+Either way, the key win is making whitespace reconstruction rule-based rather than stored,
+which eliminates the bulk of pre/post array allocations and the `stripPrePost` machinery.
 
 ---
 
