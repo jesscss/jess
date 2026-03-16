@@ -2,7 +2,7 @@ import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationIn
 import type { Context, TreeContext } from '../context.js';
 import { cast } from './util/cast.js';
 import type { FindOptions } from './util/registry-utils.js';
-import { Any, type AnyRole } from './any.js';
+import { Any, type AnyRole, Keyword } from './any.js';
 import { Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -182,6 +182,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     switch (type) {
       case 'index':
+        if (!target) {
+          w.add('$');
+        }
         w.add('[');
         emitKey(key);
         w.add(']');
@@ -458,6 +461,20 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               } else {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 if (isNode(targetRules, N.Rules)) {
+                  // If the key was a Keyword, look up as a variable first
+                  if (key instanceof Keyword) {
+                    const found = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                    if (found !== undefined) {
+                      return found;
+                    }
+                  }
+                  // If the key was a Quoted, look up as a property
+                  if (isNode(key, N.Quoted)) { // property lookup
+                    const found = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
+                    if (found !== undefined) {
+                      return found;
+                    }
+                  }
                   return targetRules.find('declaration', `${keyStr}`, undefined, opts);
                 } else if (isNode(targetRules, N.JsObject)) {
                   return (targetRules as any).data[keyStr];
@@ -635,9 +652,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           // Reference (e.g. #theme -> .dark -> .navbar), preserve the resolved
           // scope entry instead of eagerly converting it into a callable mixin.
           if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
-            const first = returnVal[0];
+            const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
-              first.sourceParent = this;
+              (first as Node).sourceParent = this;
               context.popReference();
               return cast(first);
             }

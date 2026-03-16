@@ -1,5 +1,5 @@
 /**
- * @jesscss/parser-runtime — Hand-written recursive-descent parser
+ * @jesscss/parser — Hand-written recursive-descent parser
  *
  * ## Architecture overview
  *

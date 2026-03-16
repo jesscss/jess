@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_NON_STATIC, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context, TreeContext } from '../context.js';
 import { type LocationInfo } from './node.js';
@@ -547,8 +547,28 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
+      const ownSelector = (node.options as RulesetOptions)?.ownSelector;
       return pipe(
         () => selector.eval(context),
+        (sel) => {
+          // If ownSelector has non-static children (e.g. interpolated attr values),
+          // evaluate it so extend matching uses the resolved form.
+          if (
+            ownSelector
+            && !isNode(ownSelector, N.Nil)
+            && ownSelector !== selector
+            && ownSelector.hasFlag(F_NON_STATIC)
+          ) {
+            return pipe(
+              () => ownSelector.eval(context),
+              (evaledOwn) => {
+                (node.options as RulesetOptions).ownSelector = evaledOwn as Selector;
+                return sel;
+              }
+            );
+          }
+          return sel;
+        },
         (sel) => {
           // If this ruleset shares its value with a descendant ruleset, give descendants
           // their own value before we overwrite value.selector so they keep their selector.

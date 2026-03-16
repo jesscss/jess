@@ -562,15 +562,18 @@ export class MixinRegistry extends Registry<
         const selectorVisibleKeySet = tryGetSelectorKeySet(selector);
         const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector);
         const selectorToIndex = (
-          selectorVisibleKeySet?.size
+          getSelectorKeyValues(selectorVisibleKeySet).length
             ? selector
-            : (sourceVisibleKeySet?.size ? sourceSelector : selector)
+            : (getSelectorKeyValues(sourceVisibleKeySet).length ? sourceSelector : selector)
         ) as Selector;
         let keySetToUse: SelectorKeySet | string[] | undefined;
         if (isNode(selectorToIndex, N.SelectorList)) {
           /** Selector list's selectors are individually registered */
           for (const sel of selectorToIndex.data) {
-            this._indexSelectorStart(mixin, tryGetSelectorKeySet(sel as Selector));
+            const selKeySet = tryGetSelectorKeySet(sel as Selector);
+            if (selKeySet) {
+              this._indexSelectorStart(mixin, selKeySet);
+            }
           }
           keySetToUse = undefined; // already indexed above
         } else {
@@ -616,7 +619,7 @@ export class MixinRegistry extends Registry<
             && !isNode(ownSelector, N.Nil)
           ) {
             const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector);
-            if (ownKeySet?.size) {
+            if (ownKeySet && getSelectorKeyValues(ownKeySet).length) {
               const ownKeys = getSelectorKeyValues(ownKeySet);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
               // In nested `&...` rulesets, ownKeySet may include inherited parent key first.
@@ -673,13 +676,13 @@ export class MixinRegistry extends Registry<
         });
       }
       const keySet = tryGetSelectorKeySet(selector, false);
-      if (!keySet || keySet.size === 0) {
+      if (!keySet || getSelectorKeyValues(keySet).length === 0) {
         return false;
       }
       indexableKeys = getIndexableSelectorKeys(keySet);
     } else {
       const keySet = value.keySet;
-      if (!keySet || keySet.size === 0) {
+      if (!keySet || getSelectorKeyValues(keySet).length === 0) {
         return false;
       }
       indexableKeys = getIndexableSelectorKeys(keySet);
