@@ -19,6 +19,26 @@ const { isArray } = Array;
 type SelectorKeySet = Set<string> | BitSet<string>;
 type SelectorKeySource = SelectorKeySet | string[];
 
+const NON_INDEXABLE_SELECTOR_KEYS = new Set(['', ' ', '>', '+', '~', '||']);
+
+function isIndexableSelectorKey(key: string): boolean {
+  return !key.startsWith(':') && !NON_INDEXABLE_SELECTOR_KEYS.has(key);
+}
+
+function tryGetSelectorKeySet(
+  selector: Selector | Nil | undefined,
+  visible: boolean = true
+): SelectorKeySet | undefined {
+  if (!selector || selector instanceof Nil) {
+    return undefined;
+  }
+  try {
+    return visible ? selector.visibleKeySet : selector.keySet;
+  } catch {
+    return undefined;
+  }
+}
+
 function getSelectorKeyValues(keySet: SelectorKeySource | undefined): string[] {
   if (!keySet) {
     return [];
@@ -44,7 +64,7 @@ function hasSelectorKey(keySet: SelectorKeySet | undefined, key: string): boolea
 
 function getIndexableSelectorKeys(keySet: SelectorKeySource | undefined): string[] {
   return getSelectorKeyValues(keySet).filter(
-    key => typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
+    key => typeof key === 'string' && !key.startsWith('*') && isIndexableSelectorKey(key)
   );
 }
 
@@ -493,7 +513,7 @@ export class MixinRegistry extends Registry<
     const index = this.index;
 
     const candidateKeys = (isArray(keySet) ? keySet : getSelectorKeyValues(keySet)).filter(
-      key => typeof key === 'string' && !key.startsWith(':')
+      key => typeof key === 'string' && isIndexableSelectorKey(key)
     );
     if (!candidateKeys.length) {
       return;
@@ -539,20 +559,22 @@ export class MixinRegistry extends Registry<
         // Prefer evaluated selector keys; they resolve interpolations (e.g. .@{a0} -> .\123).
         // Fall back to source selector only when evaluated keys are empty.
         const sourceSelector = selector.sourceNode as Selector | undefined;
+        const selectorVisibleKeySet = tryGetSelectorKeySet(selector);
+        const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector);
         const selectorToIndex = (
-          selector.visibleKeySet?.size
+          selectorVisibleKeySet?.size
             ? selector
-            : (sourceSelector?.visibleKeySet?.size ? sourceSelector : selector)
+            : (sourceVisibleKeySet?.size ? sourceSelector : selector)
         ) as Selector;
         let keySetToUse: SelectorKeySet | string[] | undefined;
         if (isNode(selectorToIndex, N.SelectorList)) {
           /** Selector list's selectors are individually registered */
           for (const sel of selectorToIndex.data) {
-            this._indexSelectorStart(mixin, sel.visibleKeySet);
+            this._indexSelectorStart(mixin, tryGetSelectorKeySet(sel as Selector));
           }
           keySetToUse = undefined; // already indexed above
         } else {
-          keySetToUse = selectorToIndex.visibleKeySet;
+          keySetToUse = tryGetSelectorKeySet(selectorToIndex);
         }
         // Normalize nested `&...` selectors to local keys when possible.
         // Evaluated key sets can include inherited parent keys (e.g. [".b",".bb",".foo-xxx",...]),
@@ -563,24 +585,25 @@ export class MixinRegistry extends Registry<
           && ownSelector
           && !isNode(ownSelector, N.Nil)
         ) {
+          const resolvedKeys = getSelectorKeyValues(keySetToUse);
           const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
-          const ownKeys = getSelectorKeyValues((ownSelector as Selector).visibleKeySet);
+          const ownKeys = getSelectorKeyValues(tryGetSelectorKeySet(ownSelector as Selector));
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).data.selector
             : undefined;
           const parentKeys = (
             parentSelector && !isNode(parentSelector, N.Nil)
-              ? getSelectorKeyValues(parentSelector.visibleKeySet)
+              ? getSelectorKeyValues(tryGetSelectorKeySet(parentSelector))
               : []
           );
           if (
             parentKeys.length > 0
-            && ownKeys.length > parentKeys.length
-            && parentKeys.every((k, i) => ownKeys[i] === k)
+            && resolvedKeys.length > parentKeys.length
+            && parentKeys.every((k, i) => resolvedKeys[i] === k)
           ) {
-            keySetToUse = new Set(ownKeys.slice(parentKeys.length));
+            keySetToUse = resolvedKeys.slice(parentKeys.length);
           } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
-            keySetToUse = new Set(ownKeys.slice(1));
+            keySetToUse = ownKeys.slice(1);
           }
         }
         // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
@@ -592,7 +615,7 @@ export class MixinRegistry extends Registry<
             && ownSelector
             && !isNode(ownSelector, N.Nil)
           ) {
-            const ownKeySet = (ownSelector as Selector).visibleKeySet;
+            const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector);
             if (ownKeySet?.size) {
               const ownKeys = getSelectorKeyValues(ownKeySet);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
@@ -641,7 +664,7 @@ export class MixinRegistry extends Registry<
       if (isNode(selector, N.SelectorList)) {
         // For selector lists, check if any selector matches
         return selector.data.some((sel) => {
-          const selKeys = getIndexableSelectorKeys(sel.keySet);
+          const selKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(sel as Selector, false));
           if (selKeys.length === 0) {
             return false;
           }
@@ -649,7 +672,7 @@ export class MixinRegistry extends Registry<
           return this._checkKeysSubsequence(selKeys, keys);
         });
       }
-      const keySet = selector.keySet;
+      const keySet = tryGetSelectorKeySet(selector, false);
       if (!keySet || keySet.size === 0) {
         return false;
       }

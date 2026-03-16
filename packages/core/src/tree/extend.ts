@@ -6,11 +6,11 @@ import type { Ruleset } from './ruleset.js';
 import { Nil } from './nil.js';
 import { ComplexSelector } from './selector-complex.js';
 import { Combinator } from './combinator.js';
-import { PseudoSelector } from './selector-pseudo.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -178,13 +178,8 @@ export class Extend extends Node<ExtendValue> {
               && !(parentSel instanceof Nil)
               && isNode(parentSel, N.SelectorList)
             ) {
-              const parentIs = PseudoSelector.create({
-                name: ':is',
-                arg: (parentSel as Selector).copy(true)
-              });
-              parentIs.generated = true;
               resolvedSel = ComplexSelector.create([
-                parentIs,
+                wrapParentSelectorForNestedContext(parentSel as Selector),
                 Combinator.create(' '),
                 ownSel.copy(true)
               ]) as unknown as Selector;
@@ -251,13 +246,8 @@ export class Extend extends Node<ExtendValue> {
           && !(parentSel instanceof Nil)
           && isNode(parentSel, N.SelectorList)
         ) {
-          const parentIs = PseudoSelector.create({
-            name: ':is',
-            arg: (parentSel as Selector).copy(true)
-          });
-          parentIs.generated = true;
           resolvedSel = ComplexSelector.create([
-            parentIs,
+            wrapParentSelectorForNestedContext(parentSel as Selector),
             Combinator.create(' '),
             ownSel.copy(true)
           ]) as unknown as Selector;

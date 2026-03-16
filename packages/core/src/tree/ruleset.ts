@@ -13,14 +13,12 @@ import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { SelectorList } from './selector-list.js';
-import { PseudoSelector } from './selector-pseudo.js';
 import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { processLeadingIs } from './util/process-leading-is.js';
-import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
 export type RulesetValue = {
@@ -134,12 +132,94 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   protected _valueOf: string | undefined;
 
+  /**
+   * Returns the selector shape that should be printed for this ruleset.
+   *
+   * Nested rulesets keep rendering their local selector shape unless they are
+   * being serialized from root (`hoistToRoot`) or collapse nesting is enabled.
+   * In those cases, the selector must be recomposed against its parent.
+   */
+  getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false): Selector | Nil {
+    const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+    const parentRuleset = (
+      this.parent?.parent && isNode(this.parent.parent, N.Ruleset)
+        ? this.parent.parent as Ruleset
+        : undefined
+    );
+    if (
+      !this.hoistToRoot
+      && !collapseNesting
+      && parentRuleset
+      && ownSelector
+      && !(ownSelector instanceof Nil)
+    ) {
+      return ownSelector as Selector;
+    }
+
+    return this.getEffectiveSelector(collapseNesting);
+  }
+
+  /**
+   * Returns the selector that should be used for matching/rendering right now.
+   *
+   * For nested rulesets that keep a local `ownSelector`, this recomposes the
+   * selector against the current parent selector on demand instead of requiring
+   * eager mutation of `data.selector` after extends. Hoisted rulesets keep their
+   * concrete selector unchanged because they already serialize from root.
+   */
+  getEffectiveSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false): Selector | Nil {
+    const selector = this.data.selector;
+    if (!selector || selector instanceof Nil) {
+      return selector;
+    }
+
+    const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+    const parentRuleset = (
+      this.parent?.parent && isNode(this.parent.parent, N.Ruleset)
+        ? this.parent.parent as Ruleset
+        : undefined
+    );
+    const parentSelector = parentRuleset?.getEffectiveSelector(collapseNesting);
+
+    if (
+      collapseNesting
+      && this.hoistToRoot
+      && !this.data.selectorBeforeExtend
+      && ownSelector
+      && !(ownSelector instanceof Nil)
+      && parentSelector
+      && !(parentSelector instanceof Nil)
+    ) {
+      return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, false);
+    }
+
+    if (this.hoistToRoot) {
+      return selector;
+    }
+
+    if (
+      ownSelector
+      && !(ownSelector instanceof Nil)
+      && parentSelector
+      && !(parentSelector instanceof Nil)
+      && ownSelector.valueOf() !== selector.valueOf()
+    ) {
+      return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, collapseNesting);
+    }
+
+    return selector;
+  }
+
   /** Used for equality comparison with other rulesets */
   override valueOf() {
     if (this._valueOf !== undefined) {
       return this._valueOf;
     }
-    const selector = this.selector;
+    const selector = (
+      this.hoistToRoot || this.treeContext?.opts?.collapseNesting === true
+    )
+      ? this.getEffectiveSelector()
+      : this.data.selector;
     if (selector instanceof Nil) {
       this._valueOf = '';
       return this._valueOf;
@@ -326,9 +406,56 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return SelectorList.create(kept).inherit(sel);
   }
 
+  /**
+   * In reference rendering, once a referenced ruleset has been extended, only
+   * selector items introduced by the extend should remain visible. Original
+   * referenced selector items stay in the selector AST for further matching,
+   * but should not continue to render.
+   */
+  private static filterReferenceVisibleSelectorItems(
+    current: Selector,
+    original?: Selector | Nil
+  ): Selector | Nil {
+    if (!original || original instanceof Nil) {
+      return Ruleset.filterExtendedTopLevelSelectorItems(current);
+    }
+
+    const originalValues = new Set<string>();
+    if (isNode(original, N.SelectorList)) {
+      for (const item of original.data) {
+        originalValues.add(item.valueOf());
+      }
+    } else {
+      originalValues.add(original.valueOf());
+    }
+
+    if (!isNode(current, N.SelectorList)) {
+      return originalValues.has(current.valueOf()) ? new Nil() : current;
+    }
+
+    const seen = new Set<string>();
+    const kept: Selector[] = [];
+    for (const item of current.data) {
+      const key = item.valueOf();
+      if (originalValues.has(key) || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      kept.push(item.copy(true) as Selector);
+    }
+
+    if (kept.length === 0) {
+      return new Nil();
+    }
+    if (kept.length === 1) {
+      return kept[0]!;
+    }
+    return SelectorList.create(kept).inherit(current);
+  }
+
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const { selector } = this.data;
+    const selector = this.getRenderableSelector(options.collapseNesting);
     const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
@@ -336,15 +463,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector instanceof Nil) {
       return '';
     }
-
-    const normalizedResult = processLeadingIs(selector as Selector);
-    const normalizedSelector = Array.isArray(normalizedResult)
-      ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
-      : (normalizedResult as Selector);
-    this.setData('selector', normalizedSelector as typeof selector);
-    this.invalidateSelectorValueCache();
-
-    let renderSelector = withoutComments ? (this.data.selector.copy(true) as typeof selector) : this.data.selector;
+    let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
@@ -358,12 +477,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !(renderSelector instanceof Nil)
       && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
     ) {
-      renderSelector = Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector;
+      renderSelector = Ruleset.filterReferenceVisibleSelectorItems(
+        renderSelector as Selector,
+        this.data.selectorBeforeExtend
+      ) as typeof renderSelector;
       if (renderSelector instanceof Nil) {
         return '';
       }
-      this.setData('selector', renderSelector as typeof selector);
-      this.invalidateSelectorValueCache();
     }
     const prevReferenceFilterTargets = options.referenceFilterTargets === true;
     const disableTargetFilteringForTopLevelList = (
@@ -430,18 +550,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         node.options = { ownSelector: selector } as RulesetOptions;
       }
       if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil) && parentRuleset) {
-        let selectorForImplicit = selector;
-        const shouldCanonicalizeSelectorList = (
-          !context.opts.collapseNesting
-          && isNode(selector, N.SelectorList)
-          && (selector as SelectorList).data.some(item => isNode(item, N.ComplexSelector))
-        );
-        if (shouldCanonicalizeSelectorList) {
-          const synthetic = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
-          synthetic.generated = true;
-          selectorForImplicit = synthetic;
-        }
-        selector = getImplicitSelectorUtil(selectorForImplicit as Selector, parentRuleset as Ruleset, context.opts.collapseNesting);
+        selector = getImplicitSelectorUtil(selector as Selector, parentRuleset as Ruleset, false);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
@@ -462,7 +571,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           if (extendRoot) {
             extendRoot.getRegistry('ruleset').add(node as Ruleset);
             // Keep a per-root registry list for visibility processing
-            registerRulesetWithRoot(extendRoot, node as Ruleset);
+            context.extendRoots.registerRuleset(extendRoot, node as Ruleset);
           }
           // Depth-first: preEval child rules immediately so all nested rulesets/extends
           // are registered in source order before we process extends.

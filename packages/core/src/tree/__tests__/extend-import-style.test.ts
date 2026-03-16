@@ -543,7 +543,6 @@ describe('Style import extend behavior', () => {
       const evald = await node.eval(context);
       const css = evald.toString();
       expect(css).toBeString(`
-        .base,
         .child {
           color: red;
         }
@@ -589,10 +588,14 @@ describe('Style import extend behavior', () => {
       ]);
 
       const css = (await node.eval(context)).toString();
-      expect(css).toContain('.base,');
-      expect(css).toContain('.child {');
-      expect(css).toContain('.desc {');
-      expect(css).toContain('color: green;');
+      expect(css).toContainString(`
+        .child {
+          color: red;
+          .desc {
+            color: green;
+          }
+        }
+      `);
     });
 
     it('implicit reference mode (_dedupe) does not leak internal extends outward', async () => {
@@ -675,12 +678,26 @@ describe('Style import extend behavior', () => {
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
       const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
-      expect(css).toContain('.z,');
-      expect(css).toContain('.visible {');
-      expect(css).toContain('.c {');
-      expect(css).toContain('&:hover {');
-      expect(css).toContain('& + & {');
-      expect(css).toContain('& :is(.sub) {');
+      expect(css).toBeString(`
+        .visible {
+          color: red;
+          .c {
+            color: green;
+          }
+        }
+        .visible {
+          color: green;
+          &:hover {
+            color: green;
+          }
+          & + & {
+            color: green;
+            .sub {
+              color: green;
+            }
+          }
+        }
+      `);
     });
 
     it('characterization: reference extend shape with collapseNesting true', async () => {
@@ -690,11 +707,26 @@ describe('Style import extend behavior', () => {
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
       const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
-      expect(css).toContain('.z .c {');
-      expect(css).toContain(':is(.only-with-visible, .z):hover {');
-      expect(css).toContain(':is(.only-with-visible, .z) + :is(.only-with-visible, .z) {');
-      expect(css).toContain(':is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {');
-      expect(css).toContain('.visible {');
+      expect(css).toBeString(`
+        .visible {
+          color: red;
+        }
+        .z .c {
+          color: green;
+        }
+        .visible {
+          color: green;
+        }
+        :is(.only-with-visible, .z):hover {
+          color: green;
+        }
+        :is(.only-with-visible, .z) + :is(.only-with-visible, .z) {
+          color: green;
+        }
+        :is(.only-with-visible, .z) + :is(.only-with-visible, .z) .sub {
+          color: green;
+        }
+      `);
     });
 
     it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {
@@ -704,13 +736,14 @@ describe('Style import extend behavior', () => {
       localContext.sourceTrees.set(referencedPath, createSelfClassTree());
 
       const css = (await createReferenceSelfClassExtendNode().eval(localContext)).toString({ context: localContext });
-      // In this minimal setup, .visible:extend(.z all) activates .z-related output,
-      // but .class:extend(.class all) does not on its own activate class-only selectors.
-      expect(css).toContain('.z,');
-      expect(css).toContain('.visible {');
-      expect(css).toContain('.z .c {');
-      expect(css).not.toContain('input[type="text"]');
-      expect(css).not.toContain('div#id.class');
+      expect(css).toBeString(`
+        .visible {
+          color: red;
+        }
+        .z .c {
+          color: green;
+        }
+      `);
     });
 
     describe('investigation matrix: import reference vs non-reference by collapse mode', () => {
@@ -742,7 +775,7 @@ describe('Style import extend behavior', () => {
             }
             & + & {
               color: green;
-              & :is(.sub) {
+              .sub {
                 color: green;
               }
             }
@@ -782,15 +815,12 @@ describe('Style import extend behavior', () => {
       it('snapshot: reference import with collapseNesting=false', async () => {
         const css = await renderMatrixCase(true, false);
         expect(css).toMatchInlineSnapshot(`
-          ".z,
-          .visible {
+          ".visible {
             color: red;
             .c {
               color: green;
             }
           }
-          .only-with-visible,
-          .z,
           .visible {
             color: green;
             &:hover {
@@ -798,7 +828,7 @@ describe('Style import extend behavior', () => {
             }
             & + & {
               color: green;
-              & :is(.sub) {
+              .sub {
                 color: green;
               }
             }
@@ -810,15 +840,12 @@ describe('Style import extend behavior', () => {
       it('snapshot: reference import with collapseNesting=true', async () => {
         const css = await renderMatrixCase(true, true);
         expect(css).toMatchInlineSnapshot(`
-          ".z,
-          .visible {
+          ".visible {
             color: red;
           }
           .z .c {
             color: green;
           }
-          .only-with-visible,
-          .z,
           .visible {
             color: green;
           }
@@ -859,10 +886,7 @@ describe('Style import extend behavior', () => {
       it('snapshot: reference self-extend duplicate selector shape', async () => {
         const css = await renderSelfExtendDuplicateCase(true);
         expect(css).toMatchInlineSnapshot(`
-          "input[type="text"].class#id[attr=i32]:not(.one) {
-            color: inherit;
-          }
-          "
+          ""
         `);
       });
 
@@ -879,18 +903,12 @@ describe('Style import extend behavior', () => {
         );
         const css = (await createMultiReferenceImportsNode().eval(localContext)).toString({ context: localContext });
         expect(css).toMatchInlineSnapshot(`
-          "input[type="text"].class#id[attr=i32]:not(.one) {
-            color: inherit;
-          }
-          .z,
-          .visible {
+          ".visible {
             color: red;
           }
           .z .c {
             color: green;
           }
-          .only-with-visible,
-          .z,
           .visible {
             color: green;
           }

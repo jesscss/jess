@@ -19,6 +19,7 @@ import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
+import type { BitSet } from './util/bitset.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -75,6 +76,14 @@ export type ReferenceOptions = {
   role?: AnyRole;
 };
 const { isArray } = Array;
+
+function getSelectorReferenceKeys(selector: Selector): string[] {
+  const keySet = selector.keySet as Set<string> | BitSet<string>;
+  if (keySet instanceof Set) {
+    return [...keySet];
+  }
+  return keySet._library?.valuesOf(keySet) ?? [];
+}
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
   let cursor: Node | undefined = node;
@@ -251,7 +260,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           return out.then((k: any) => {
             // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
             if (isNode(k, N.Selector)) {
-              const keyArray = Array.from(k.keySet);
+              const keyArray = getSelectorReferenceKeys(k as Selector);
               return [resolvedTarget, keyArray] as [any, string[]];
             }
             // If k is already an array, preserve it
@@ -263,7 +272,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
         if (isNode(out, N.Selector)) {
-          const keyArray = Array.from(out.keySet);
+          const keyArray = getSelectorReferenceKeys(out as Selector);
           return [resolvedTarget, keyArray] as [any, string[]];
         }
         // If key is already an array, preserve it
@@ -283,7 +292,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * (We have to do this for Less.)
          */
         if (resolvedTarget instanceof Node) {
-          if (!isNode(resolvedTarget, N.Rules | N.JsFunction | N.Mixin)) {
+          if (!isNode(resolvedTarget, N.Rules | N.Ruleset | N.JsFunction | N.Mixin)) {
             let targetKey = isNode(resolvedTarget as Node, N.Color) ? String((resolvedTarget as Color).data.node) : (resolvedTarget as Node).valueOf();
             if (typeof targetKey === 'string') {
               let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
@@ -533,9 +542,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         // Lookup is driven by the resolved target scope.
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
+        const lookupTarget = isNode(resolvedTarget, N.Ruleset)
+          ? resolvedTarget.data.rules
+          : resolvedTarget;
         let returnVal: any;
-        if (isNode(resolvedTarget, N.Rules)) {
-          returnVal = performLookup(resolvedTarget);
+        if (isNode(lookupTarget, N.Rules)) {
+          returnVal = performLookup(lookupTarget);
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
@@ -612,14 +624,30 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
           );
         } else if (isArray(returnVal)) {
+          // When a mixin-ruleset reference is used as the target of another
+          // Reference (e.g. #theme -> .dark -> .navbar), preserve the resolved
+          // scope entry instead of eagerly converting it into a callable mixin.
+          if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
+            const first = returnVal[0];
+            if (first && isNode(first, N.Mixin | N.Ruleset)) {
+              first.sourceParent = this;
+              context.popReference();
+              return cast(first);
+            }
+            context.popReference();
+            return cast(undefined);
+          }
+
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           for (let item of returnVal) {
             item.sourceParent = this;
             if (!isNode(item, N.Mixin | N.Ruleset)) {
+              context.popReference();
               return cast(undefined);
             }
           }
           const func = getFunctionFromMixins(returnVal as MixinEntry[]);
+          context.popReference();
           return cast(func);
         }
         const result = cast(returnVal);

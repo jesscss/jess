@@ -717,6 +717,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.a')
     )
     (Ruleset
       selector: 
@@ -732,6 +734,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.b')
     )
     (Ruleset
       selector: 
@@ -768,6 +772,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.e')
     )
     (Ruleset
       selector: 
@@ -794,6 +800,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.f')
     )
     (Comment '//extend with all')
     (Ruleset
@@ -843,6 +851,13 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.g')
+            (BasicSelector '.h')
+          ]
+        )
     )
     (Ruleset
       selector: 
@@ -871,6 +886,13 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
               value: 
                 (Any 'inherit')
             )
+          ]
+        )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.i')
+            (BasicSelector '.j')
           ]
         )
     )
@@ -916,6 +938,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.l')
     )
     (Ruleset
       selector: 
@@ -937,6 +961,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.m')
     )
     (Ruleset
       selector: 
@@ -957,6 +983,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.n')
     )
     (Ruleset
       selector: 
@@ -976,6 +1004,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.o')
     )
     (Ruleset
       selector: 
@@ -994,6 +1024,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.p')
     )
     (Ruleset
       selector: 
@@ -1011,6 +1043,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.q')
     )
     (Ruleset
       selector: 
@@ -1027,6 +1061,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.r')
     )
     (Ruleset
       selector: 
@@ -1042,6 +1078,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.s')
     )
     (Ruleset
       selector: 
@@ -1084,28 +1122,15 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.u')
     )
     (Ruleset
       selector: 
         (CompoundSelector
           [
             (BasicSelector '.v')
-            (PseudoSelector
-              name: ':is'
-              arg: 
-                (SelectorList
-                  [
-                    (BasicSelector '.u')
-                    (CompoundSelector
-                      [
-                        (BasicSelector '.v')
-                        (BasicSelector '.u')
-                        (BasicSelector '.v')
-                      ]
-                    )
-                  ]
-                )
-            )
+            (BasicSelector '.u')
             (BasicSelector '.v')
           ]
         )
@@ -1113,6 +1138,14 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
         (Rules
           [
             (Nil '')
+          ]
+        )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (BasicSelector '.u')
+            (BasicSelector '.v')
           ]
         )
     )
@@ -1148,28 +1181,15 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.w')
     )
     (Ruleset
       selector: 
         (CompoundSelector
           [
             (BasicSelector '.v')
-            (PseudoSelector
-              name: ':is'
-              arg: 
-                (SelectorList
-                  [
-                    (BasicSelector '.w')
-                    (CompoundSelector
-                      [
-                        (BasicSelector '.v')
-                        (BasicSelector '.w')
-                        (BasicSelector '.v')
-                      ]
-                    )
-                  ]
-                )
-            )
+            (BasicSelector '.w')
             (BasicSelector '.v')
           ]
         )
@@ -1177,6 +1197,14 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
         (Rules
           [
             (Nil '')
+          ]
+        )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (BasicSelector '.w')
+            (BasicSelector '.v')
           ]
         )
     )
@@ -1202,6 +1230,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.x')
     )
     (Ruleset
       selector: 
@@ -1224,6 +1254,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.y')
     )
     (Ruleset
       selector: 
@@ -1246,6 +1278,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.z')
     )
     (Comment '//very simple chaining, but with the extend inside the ruleset')
     (Ruleset
@@ -1273,6 +1307,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.va')
     )
     (Ruleset
       selector: 
@@ -1295,6 +1331,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.vb')
     )
     (Ruleset
       selector: 
@@ -1348,6 +1386,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                     )
                   ]
                 )
+              selectorBeforeExtend: 
+                (BasicSelector '.ma')
             )
             (Ruleset
               selector: 
@@ -1370,6 +1410,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                     )
                   ]
                 )
+              selectorBeforeExtend: 
+                (BasicSelector '.md')
             )
             (AtRule
               name: 
@@ -1436,6 +1478,8 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.mb')
     )
     (Ruleset
       selector: 

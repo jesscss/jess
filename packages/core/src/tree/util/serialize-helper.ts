@@ -39,6 +39,9 @@ export function indent(depth: number): string {
 }
 
 function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
+  if (node.hasFlag(F_EXTENDED)) {
+    return true;
+  }
   const selector = node.data.selector;
   if (!selector || selector instanceof Nil) {
     return false;
@@ -72,6 +75,14 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
   options.referenceMode = inReferenceMode;
   options.referenceRenderEnabled = renderEnabled;
+  if (node.type === 'Ruleset' && inReferenceMode && renderEnabled) {
+    const previewHeader = node.getHeaderString(options, false);
+    if (!previewHeader) {
+      options.referenceMode = previousReferenceMode;
+      options.referenceRenderEnabled = previousReferenceRenderEnabled;
+      return '';
+    }
+  }
   const rules = node.data.rules;
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {

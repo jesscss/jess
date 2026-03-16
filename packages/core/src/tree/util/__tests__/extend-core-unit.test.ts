@@ -52,6 +52,17 @@ describe('tryExtendSelector', () => {
     expect(serialize(result.value)).toBe('.parent .child, .other');
   });
 
+  it('materializes an implicit parent boundary before exact extend output', () => {
+    const parent = el('.parent');
+    const target = el('.child');
+    const find = sel([el('.parent'), co(' '), el('.child')]);
+    const result = tryExtendSelector(target, find, el('.other'), false, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBeFalsy();
+    expect(serialize(result.value)).toBe('.parent .child, .other');
+  });
+
   it('wraps a selector-list parent before exact extend output', () => {
     const parent = sellist([el('div'), el('span')]);
     const target = sel([amp(), co(' '), el('.child')]);
@@ -263,6 +274,17 @@ describe('tryExtendSelector', () => {
   it('replaces a crossed leading ampersand with the parent and hoists on partial rewrite', () => {
     const parent = el('.parent');
     const target = sel([amp(), co(' '), el('.child')]);
+    const find = sel([el('.parent'), co(' '), el('.child')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe('.parent .child, .other');
+  });
+
+  it('materializes an implicit parent boundary and hoists on partial rewrite', () => {
+    const parent = el('.parent');
+    const target = el('.child');
     const find = sel([el('.parent'), co(' '), el('.child')]);
     const result = tryExtendSelector(target, find, el('.other'), true, parent);
 

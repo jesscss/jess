@@ -5,7 +5,16 @@ import { ComplexSelector } from '../selector-complex.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
+import { getImplicitSelector, getParentReplacementForAmpersand, wrapParentSelectorForNestedContext } from './selector-utils.js';
 import { selectorMatch } from './selector-match-core.js';
+
+/**
+ * @todo Once extend correctness is stabilized and the remaining suites are
+ * green, do a dedicated performance review of this file. Focus on:
+ * - repeated nested `selectorMatch()` calls
+ * - unnecessary selector copying or wrapper allocation
+ * - opportunities to thread match metadata instead of recomputing it
+ */
 
 /**
  * Extend failure categories surfaced to callers while the rewrite remains
@@ -63,6 +72,82 @@ function createErrorResult(value: Selector, type: ExtendErrorType, message: stri
   };
 }
 
+function expandGeneratedIsAlternatives(selector: Selector): Selector[] {
+  if (
+    isNode(selector, N.PseudoSelector)
+    && selector.generated === true
+    && selector.data.name === ':is'
+    && isNode(selector.data.arg, N.SelectorList)
+  ) {
+    return (selector.data.arg as SelectorList).data.map(item => item.copy(true) as Selector);
+  }
+
+  return [selector.copy(true) as Selector];
+}
+
+function normalizeSelectorListAlternatives(list: SelectorList): void {
+  const flattened: Selector[] = [];
+  const seen = new Set<string>();
+
+  for (const item of list.data) {
+    if (isNode(item, N.PseudoSelector) && item.data.name === ':is' && isNode(item.data.arg, N.SelectorList)) {
+      for (const child of (item.data.arg as SelectorList).data) {
+        const copy = child.copy(true) as Selector;
+        const key = copy.valueOf();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        flattened.push(copy);
+      }
+      continue;
+    }
+
+    if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
+      const only = item.data[0]!;
+      if (isNode(only, N.PseudoSelector) && only.data.name === ':is' && isNode(only.data.arg, N.SelectorList)) {
+        for (const child of (only.data.arg as SelectorList).data) {
+          const copy = child.copy(true) as Selector;
+          const key = copy.valueOf();
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          flattened.push(copy);
+        }
+        continue;
+      }
+    }
+
+    if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
+      const only = item.data[0]!;
+      if (isNode(only, N.PseudoSelector) && only.data.name === ':is' && isNode(only.data.arg, N.SelectorList)) {
+        for (const child of (only.data.arg as SelectorList).data) {
+          const copy = child.copy(true) as Selector;
+          const key = copy.valueOf();
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          flattened.push(copy);
+        }
+        continue;
+      }
+    }
+
+    const key = item.valueOf();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    flattened.push(item);
+  }
+
+  if (flattened.length !== list.data.length) {
+    list.setData(flattened);
+  }
+}
+
 /**
  * Appends a new alternative to an existing alternate container in place.
  *
@@ -74,21 +159,31 @@ function appendAlternative(
   target: Selector,
   extendWith: Selector
 ): Selector | undefined {
-  const next = extendWith.copy(true) as Selector;
+  const next = expandGeneratedIsAlternatives(extendWith);
 
   if (isNode(target, N.SelectorList)) {
-    target.push(next);
+    normalizeSelectorListAlternatives(target);
+    for (const item of next) {
+      target.push(item);
+    }
+    normalizeSelectorListAlternatives(target);
     return target;
   }
 
   if (isNode(target, N.PseudoSelector) && target.data.name === ':is' && isNode(target.data.arg, N.Selector)) {
     const arg = target.data.arg as Selector;
     if (isNode(arg, N.SelectorList)) {
-      arg.push(next);
+      normalizeSelectorListAlternatives(arg);
+      for (const item of next) {
+        arg.push(item);
+      }
+      normalizeSelectorListAlternatives(arg);
       return target;
     }
 
-    target.setData('arg', SelectorList.create([arg, next]).inherit(arg) as Selector);
+    const list = SelectorList.create([arg, ...next]).inherit(arg) as SelectorList;
+    normalizeSelectorListAlternatives(list);
+    target.setData('arg', list as Selector);
     return target;
   }
 
@@ -128,15 +223,22 @@ function createAlternativeSelector(
  * pseudo so partial extends can preserve unmatched siblings around it.
  */
 function wrapSelectorInIs(selector: Selector, extendWith: Selector): Selector {
+  const arg = SelectorList.create([
+    selector,
+    extendWith.copy(true) as Selector
+  ]).inherit(selector) as SelectorList;
+  arg.pre = undefined;
+  arg.post = undefined;
+
   const wrapper = PseudoSelector.create({
     name: ':is',
-    arg: SelectorList.create([
-      selector,
-      extendWith.copy(true) as Selector
-    ]).inherit(selector) as Selector
+    arg: arg as Selector
   });
   wrapper.generated = true;
-  return wrapper.inherit(selector) as Selector;
+  const inherited = wrapper.inherit(selector) as Selector;
+  inherited.pre = undefined;
+  inherited.post = undefined;
+  return inherited;
 }
 
 /** Wraps a selector in a generated `:is(...)` without adding another alternate. */
@@ -312,35 +414,6 @@ function stripRedundantCompoundContext(
 }
 
 /**
- * Normalizes a parent selector into the selector fragment that should replace a
- * crossed authored ampersand in a root complex selector.
- *
- * Selector-list parents always become generated `:is(...)` wrappers. Complex
- * parents splice directly only when they replace a leading ampersand; otherwise
- * they stay wrapped so the surrounding route shape remains valid.
- */
-function getAmpersandReplacement(
-  parent: Selector,
-  atStart: boolean
-): Selector[] {
-  const parentCopy = parent.copy(true) as Selector;
-
-  if (isNode(parentCopy, N.SelectorList)) {
-    return [wrapSelectorAsGeneratedIs(parentCopy)];
-  }
-
-  if (isNode(parentCopy, N.ComplexSelector)) {
-    if (atStart) {
-      return [...parentCopy.data] as Selector[];
-    }
-
-    return [wrapSelectorAsGeneratedIs(parentCopy)];
-  }
-
-  return [parentCopy];
-}
-
-/**
  * Rewrites a compound-local partial match by replacing only the consumed
  * members with a generated `:is(...)` wrapper and leaving the unmatched
  * remainder in place.
@@ -486,7 +559,7 @@ function resolveAmpersandTarget(
         nextData.push(component.copy(true) as Selector);
         continue;
       }
-      nextData.push(...getAmpersandReplacement(resolved, i === 0));
+      nextData.push(...getParentReplacementForAmpersand(resolved, i === 0));
       replacedAny = true;
       continue;
     }
@@ -498,6 +571,31 @@ function resolveAmpersandTarget(
   }
 
   return ComplexSelector.create(nextData).inherit(target) as Selector;
+}
+
+/**
+ * Materializes the original matched target side when an extend crossed a parent
+ * boundary.
+ *
+ * Explicit authored ampersands resolve through their own replacement logic.
+ * Plain nested selectors with an implicit parent boundary are composed against
+ * `parent` on demand so the resulting selector is self-contained once hoisted
+ * or appended as an exact alternative.
+ */
+function materializeCrossedTarget(
+  target: Selector,
+  parent: Selector | undefined
+): Selector | undefined {
+  const resolvedAmpersands = resolveAmpersandTarget(target, parent);
+  if (resolvedAmpersands) {
+    return resolvedAmpersands;
+  }
+
+  if (!parent) {
+    return undefined;
+  }
+
+  return getImplicitSelector(target, parent, false);
 }
 
 /**
@@ -535,7 +633,7 @@ function materializeAmpersandsForHoist(
       if (isNode(child, N.Ampersand)) {
         const resolved = child.getResolvedSelector() ?? parent;
         const replacement = materializeAmpersandsForHoist(resolved.copy(true) as Selector, parent);
-        nextData.push(...getAmpersandReplacement(replacement, i === 0));
+        nextData.push(...getParentReplacementForAmpersand(replacement, i === 0));
         continue;
       }
 
@@ -920,6 +1018,9 @@ function tryAppendToDirectSelectorListOnFullMatch(
   }
 
   appendAlternative(list, extendWith);
+  if (innerMatch.crossesAmpersand) {
+    target.hoistToRoot = true;
+  }
   return createSuccessResult(target);
 }
 
@@ -1079,9 +1180,19 @@ function createExactExtendResult(
   target: Selector,
   extendWith: Selector,
   parent: Selector | undefined,
+  crossedAmpersand: boolean,
   finalize: (result: ExtendResult) => ExtendResult
 ): ExtendResult {
-  const resolved = resolveAmpersandTarget(target, parent);
+  if (
+    isNode(target, N.SelectorList)
+    || (isNode(target, N.PseudoSelector) && target.data.name === ':is' && isNode(target.data.arg, N.Selector))
+  ) {
+    return finalize(createSuccessResult(createAlternativeSelector(target, extendWith)));
+  }
+
+  const resolved = crossedAmpersand
+    ? materializeCrossedTarget(target, parent)
+    : resolveAmpersandTarget(target, parent);
   if (resolved) {
     return finalize(createSuccessResult(createAlternativeSelector(resolved, extendWith)));
   }
@@ -1116,6 +1227,97 @@ function tryHandleNoPartialMatch(
   }
 
   return undefined;
+}
+
+function tryHandleMultiDirectChildFullMatches(
+  target: Selector,
+  find: Selector,
+  extendWith: Selector,
+  parent: Selector | undefined,
+  finalize: (result: ExtendResult) => ExtendResult
+): ExtendResult | undefined {
+  if (!isNode(target, N.SelectorList | N.CompoundSelector | N.ComplexSelector)) {
+    return undefined;
+  }
+
+  const matchedChildren: Array<{ index: number; child: Selector }> = [];
+  for (let i = 0; i < target.data.length; i++) {
+    const child = target.data[i];
+    if (!child || !isNode(child, N.Selector)) {
+      continue;
+    }
+    if (isNode(child, N.Combinator)) {
+      continue;
+    }
+
+    const childMatch = selectorMatch(find, child as Selector, parent);
+    if (childMatch.crossesAmpersand) {
+      continue;
+    }
+    if (!childMatch.fullMatch && !childMatch.partialMatch) {
+      continue;
+    }
+    matchedChildren.push({ index: i, child: child as Selector });
+  }
+
+  if (matchedChildren.length < 2) {
+    return undefined;
+  }
+
+  let crossedAmpersand = false;
+  for (const { index, child } of matchedChildren) {
+    let replacement: Selector | undefined;
+
+    if (isNode(target, N.SelectorList)) {
+      const result = tryExtendSelector(child, find, extendWith, true, parent);
+      if (!result.error) {
+        replacement = result.value;
+        crossedAmpersand ||= !!result.value.hoistToRoot;
+      }
+    } else if (isNode(target, N.CompoundSelector)) {
+      const outsideMembers = getCompoundMembersOutsideRange(
+        target as Selector & { data: readonly Selector[] },
+        index,
+        index,
+        undefined
+      );
+      const conflict = getCompoundConflictError(outsideMembers, extendWith);
+      if (conflict) {
+        return { value: target, error: conflict };
+      }
+
+      if (isNode(child, N.CompoundSelector | N.ComplexSelector | N.PseudoSelector | N.SelectorList)) {
+        const result = tryExtendSelector(child, find, extendWith, true, parent);
+        if (!result.error) {
+          replacement = result.value;
+          crossedAmpersand ||= !!result.value.hoistToRoot;
+        }
+      } else {
+        replacement = wrapSelectorInIs(child, stripRedundantCompoundContext(extendWith, outsideMembers));
+      }
+    } else {
+      if (isNode(child, N.CompoundSelector | N.ComplexSelector | N.PseudoSelector | N.SelectorList)) {
+        const result = tryExtendSelector(child, find, extendWith, true, parent);
+        if (!result.error) {
+          replacement = result.value;
+          crossedAmpersand ||= !!result.value.hoistToRoot;
+        }
+      } else {
+        replacement = wrapSelectorInIs(child, extendWith);
+      }
+    }
+
+    if (!replacement) {
+      continue;
+    }
+    target.setData(index, replacement);
+  }
+
+  if (crossedAmpersand) {
+    target.hoistToRoot = true;
+  }
+
+  return finalize(createSuccessResult(target));
 }
 
 /**
@@ -1173,7 +1375,7 @@ export function tryExtendSelector(
       return createErrorResult(target, ExtendErrorType.NOT_FOUND, 'Selector not found');
     }
 
-    return createExactExtendResult(target, extendWith, parent, finalize);
+    return createExactExtendResult(target, extendWith, parent, match.crossesAmpersand, finalize);
   }
 
   if (!match.partialMatch || match.matches.length === 0) {
@@ -1183,6 +1385,22 @@ export function tryExtendSelector(
     }
 
     return createErrorResult(target, ExtendErrorType.NOT_FOUND, 'Selector not found');
+  }
+
+  const earlyDirectListAppend = tryAppendToDirectSelectorListOnFullMatch(target, find, extendWith, parent);
+  if (earlyDirectListAppend) {
+    return finalize(earlyDirectListAppend);
+  }
+
+  const multiDirectChildFullMatch = tryHandleMultiDirectChildFullMatches(
+    target,
+    find,
+    extendWith,
+    parent,
+    finalize
+  );
+  if (multiDirectChildFullMatch) {
+    return multiDirectChildFullMatch;
   }
 
   const location = getPreferredMatchLocation(target, match);
@@ -1252,11 +1470,11 @@ export function tryExtendSelector(
 
     const compoundOutsideMembers = isNode(target, N.CompoundSelector)
       ? getCompoundMembersOutsideRange(
-        target as Selector & { data: readonly Selector[] },
-        location.startIndex,
-        location.endIndex,
-        location.matchedIndices
-      )
+          target as Selector & { data: readonly Selector[] },
+          location.startIndex,
+          location.endIndex,
+          location.matchedIndices
+        )
       : undefined;
 
     if (isNode(target, N.CompoundSelector)) {
@@ -1494,7 +1712,10 @@ export function tryExtendSelector(
         return finishedNestedOrderedChild;
       }
 
-      const exactResult = createAlternativeSelector(target, extendWith);
+      const exactTarget = crossedAmpersand
+        ? materializeCrossedTarget(target, parent) ?? target
+        : target;
+      const exactResult = createAlternativeSelector(exactTarget, extendWith);
       if (crossedAmpersand) {
         exactResult.hoistToRoot = true;
         markTargetHoist(true);

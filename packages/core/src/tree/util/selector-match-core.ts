@@ -155,7 +155,10 @@ function createRequirement(): MatchGroupRequirement {
 }
 
 function addRequirementValue(requirement: MatchGroupRequirement, value: string): MatchGroupRequirement {
-  if (requirement.basicSelectorIndex.has(value)) {
+  const existingIndex = requirement.basicSelectorIndex.get(value);
+  if (existingIndex !== undefined) {
+    requirement.basicSelectorCounts[existingIndex]!++;
+    requirement.basicSelectorTotal++;
     return requirement;
   }
 
@@ -180,8 +183,11 @@ function mergeRequirements(
   right: MatchGroupRequirement
 ): MatchGroupRequirement {
   const merged = cloneRequirement(left);
-  for (const value of right.basicSelectorIndex.keys()) {
-    addRequirementValue(merged, value);
+  for (const [value, index] of right.basicSelectorIndex.entries()) {
+    const count = right.basicSelectorCounts[index] ?? 0;
+    for (let i = 0; i < count; i++) {
+      addRequirementValue(merged, value);
+    }
   }
   merged.hasComplexBranch ||= right.hasComplexBranch;
   merged.branchTailAmbiguous ||= right.branchTailAmbiguous;
@@ -613,6 +619,29 @@ function matchCompoundWindow(
   }
 
   const summary = summarizeStates(states);
+  if (!summary.matched && parent) {
+    let allAmpersands = true;
+    for (let i = start; i <= end; i++) {
+      if (!isNode(targetCompound.data[i]!, N.Ampersand)) {
+        allAmpersands = false;
+        break;
+      }
+    }
+
+    if (allAmpersands) {
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i]!;
+        if (state.remainingTotal !== 0) {
+          continue;
+        }
+        summary.matched = true;
+        if (state.exact) {
+          summary.exact = true;
+          break;
+        }
+      }
+    }
+  }
   if (requirement.hasComplexBranch) {
     summary.exact = false;
   }
@@ -848,12 +877,36 @@ function getCachedGroupMatch(
     return cached;
   }
 
-  const result = matchTargetGroup(
-    targetGroup,
-    findGroup,
-    parent,
-    !!parent && isNode(targetGroup, N.Ampersand)
-  );
+  let result: MatchWindowResult;
+  if (isNode(targetGroup, N.CompoundSelector)) {
+    let matched = false;
+    let exact = false;
+
+    for (let i = 0; i < findGroup.alternatives.length; i++) {
+      const windowMatch = matchCompoundWindow(
+        targetGroup,
+        0,
+        targetGroup.data.length - 1,
+        findGroup.alternatives[i]!,
+        parent
+      );
+      matched ||= windowMatch.matched;
+      exact ||= windowMatch.exact;
+
+      if (exact) {
+        break;
+      }
+    }
+
+    result = { matched, exact };
+  } else {
+    result = matchTargetGroup(
+      targetGroup,
+      findGroup,
+      parent,
+      !!parent && isNode(targetGroup, N.Ampersand)
+    );
+  }
   nodeCache.set(findGroup, result);
   return result;
 }
@@ -1424,6 +1477,18 @@ function selectorMatchUncached(
     }
   }
 
+  /**
+   * @todo Revisit fast-reject policy once the extend and selector suites are
+   * fully green.
+   *
+   * Areas to explore:
+   * - whether find-side selector lists or nested selector-list branches should
+   *   be disallowed or normalized earlier instead of weakening fast reject
+   * - whether target-side selector lists can still use cheap bitset rejection
+   *   because they only add candidate keys
+   * - whether those changes would let us simplify or remove `canFastReject`
+   *   as a separate concept
+   */
   if (
     !parent
     && !selectorHasNestedBranchAlternatives(find)

@@ -951,6 +951,48 @@ describe('selector lists and branching', () => {
         expect(result.matches).toHaveLength(1);
       });
 
+      it('does full-match a local nested selector against a simple parent context', async () => {
+        const parent = el('.aa');
+        const target = el('.dd');
+        const find = el('.dd');
+        await parent.eval(context);
+        await target.eval(context);
+        await find.eval(context);
+        const result = selectorMatch(find, target, parent as any);
+        expect(result.fullMatch).toBe(true);
+        expect(result.partialMatch).toBe(true);
+        expect(result.crossesAmpersand).toBe(false);
+      });
+
+      it('does full-match a nested selector across a parent selector list for an exact route', async () => {
+        const parent = sellist([
+          compound([el('.replace'), el('.replace')]),
+          sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+        ]);
+        const target = sellist([el('.replace'), el('.c')]);
+        const find = sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]);
+        await parent.eval(context);
+        await target.eval(context);
+        await find.eval(context);
+        const result = selectorMatch(find, target, parent as any);
+        expect(result.fullMatch).toBe(true);
+        expect(result.partialMatch).toBe(true);
+        expect(result.crossesAmpersand).toBe(true);
+      });
+
+      it('does full-match a repeated implicit ampersand compound against a simple parent', async () => {
+        const parent = el('.e');
+        const target = compound([amp(), amp()]);
+        const find = compound([el('.e'), el('.e')]);
+        await parent.eval(context);
+        await target.eval(context);
+        await find.eval(context);
+        const result = selectorMatch(find, target, parent as any);
+        expect(result.fullMatch).toBe(true);
+        expect(result.partialMatch).toBe(true);
+        expect(result.crossesAmpersand).toBe(true);
+      });
+
       it('does not continue parent matching through a non-:is() pseudo boundary', async () => {
         let parent = el('div');
         let sel1 = sel([amp(), co(' '), pseudo({ name: ':where', arg: el('.a') })]);

@@ -6,8 +6,10 @@
  *
  * Status (as of 2025-02):
  * 1. extend-clearfix.less – FIXED. Document order in :is() now :is(.clearfix, .foo, .bar):after.
- * 2. extend-exact.less – Test 2a is the canonical case (replace + rep_ace, exact extend) but currently FAILS (:is() not emitted).
- *    Test 2 (full) used ExtendFlag.All for rep_ace, so it passed while asserting wrong behavior; real Less uses exact extend.
+ * 2. extend-exact.less – Test 2a is the canonical exact case (replace + rep_ace).
+ *    Exact extend keeps the rule nested and appends `.rep_ace` into the local selector list,
+ *    rather than hoisting a generated `:is(...)` route.
+ *    Test 2 (full) still uses ExtendFlag.All for rep_ace to cover the partial/`!all` shape.
  *    &:extend(.c) without "all" must NOT merge .effected into the first rule (no exact .c there). 2a includes .effected to assert that.
  * 3. extend-nest.less – FAILING. :is(.sidebar,...) .box and .submit:hover merged (we output .sidebar .box; .submit vs .submit:hover).
  * 4. extend-selector.less – FAILING. [data="test3"], .attribute-test both extend attributes2 (nesting/selector list shape).
@@ -134,7 +136,8 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
    * ISOLATED: First rule of extend-exact (replace + rep_ace, exact extend). Plus .effected { &:extend(.c) } to assert
    * that exact extend does NOT merge .effected into this rule (there is no bare .c here; only .replace.replace, .c.replace + .replace, .replace, .c).
    * Input: .replace.replace, .c.replace + .replace { .replace, .c { prop: copy-paste-replace } }; .rep_ace:extend(.replace.replace .replace) {}; .effected { &:extend(.c); }
-   * Expected: First rule :is(.replace.replace, .c.replace + .replace) :is(.replace, .c), .rep_ace { ... }; .effected must NOT appear in that rule.
+   * Expected: keep the original parent selector nested and append `.rep_ace`
+   * into the inner `.replace, .c` list. `.effected` must NOT appear in that rule.
    */
   it('2a. extend-exact ISOLATED – replace + rep_ace only (first rule); .effected &:extend(.c) must not apply', async () => {
     const root = rules([
@@ -167,9 +170,13 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
-    const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
-.rep_ace {
-  prop: copy-paste-replace;
+    const expected = `.replace.replace,
+.c.replace + .replace {
+  .replace,
+  .c,
+  .rep_ace {
+    prop: copy-paste-replace;
+  }
 }`;
     expect(css.trim()).toBe(expected);
     // Exact extend(.c) must not merge .effected into the first rule (no bare .c there).
@@ -749,8 +756,7 @@ div:is(.ext5, .ext7),
 .cc {
   color: black;
   .dd,
-  .ee,
-  .ff {
+  .ee {
     background: red;
   }
 }

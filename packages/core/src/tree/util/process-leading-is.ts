@@ -121,20 +121,32 @@ export function processLeadingIs(
   if (isNode(selector, N.SelectorList)) {
     const list = selector as SelectorList;
     const out: Selector[] = [];
+    const seen = new Set<string>();
     let changed = false;
+    const pushUnique = (item: Selector): void => {
+      const key = item.valueOf();
+      if (seen.has(key)) {
+        changed = true;
+        return;
+      }
+      seen.add(key);
+      out.push(item);
+    };
     for (const item of list.data) {
       const result = processLeadingIs(item, { inSelectorList: true });
       if (Array.isArray(result)) {
-        out.push(...result);
+        for (const entry of result) {
+          pushUnique(entry);
+        }
         changed = true;
       } else if (isNode(result, N.SelectorList)) {
-        out.push(...(result as SelectorList).data.map(s => s.copy(true) as Selector));
+        for (const entry of (result as SelectorList).data.map(s => s.copy(true) as Selector)) {
+          pushUnique(entry);
+        }
         changed = true;
       } else {
-        out.push(result);
-        if (result !== item) {
-          changed = true;
-        }
+        pushUnique(result);
+        changed ||= result !== item;
       }
     }
     if (!changed) {
@@ -352,12 +364,25 @@ export function processLeadingIs(
       ? (arg.data[0]! as Selector)
       : arg;
     if (isNode(normalizedArg, N.SelectorList)) {
+      const normalizedList = processLeadingIs(normalizedArg as Selector, { inSelectorList: true });
       const rest = value.slice(firstSelIndex + 1).map(c => (c as Selector).copy(true) as ComplexSelectorComponent);
       // Keep :is(list) when there is a suffix (e.g. :is(.one,.two) .three) so it serializes as one selector.
       if (rest.length > 0) {
+        if (isNode(normalizedList, N.SelectorList) && normalizedList !== normalizedArg) {
+          const copy = (first as PseudoSelector).copy(true) as PseudoSelector;
+          copy.setData('arg', normalizedList);
+          return ComplexSelector.create([
+            ...value.slice(0, firstSelIndex).map(c => (c as Selector).copy(true) as ComplexSelectorComponent),
+            copy as unknown as ComplexSelectorComponent,
+            ...rest
+          ]).inherit(selector) as Selector;
+        }
         return selector;
       }
-      const expanded: Selector[] = normalizedArg.data.map((item) => {
+      const listArg = isNode(normalizedList, N.SelectorList)
+        ? normalizedList as SelectorList
+        : normalizedArg as SelectorList;
+      const expanded: Selector[] = listArg.data.map((item) => {
         if (isNode(item, N.ComplexSelector)) {
           return ComplexSelector.create([
             ...(item as ComplexSelector).data.map(c => (c as Selector).copy(true) as ComplexSelectorComponent),

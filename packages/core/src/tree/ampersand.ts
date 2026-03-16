@@ -10,6 +10,7 @@ import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
 
 export type AmpersandValue = {
   /**
@@ -142,10 +143,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    */
   getResolvedSelector(): Selector | Nil | undefined {
     const selector = this._selectorContainer?.selector;
-    if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
-      wrapped.generated = true;
-      return wrapped;
+    if (selector && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      return wrapParentSelectorForNestedContext(selector as Selector);
     }
     return selector;
   }
