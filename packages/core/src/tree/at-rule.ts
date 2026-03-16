@@ -68,56 +68,51 @@ export interface AtRule {
 }
 
 export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
+  static override childKeys = ['name', 'prelude', 'rules'] as const;
+
+  name!: Any<'atkeyword'> | Interpolated<'atkeyword'>;
+  prelude: Node | undefined;
+  rules: Rules | undefined;
   frames: (Ruleset | AtRule)[] | undefined;
+
+  declare readonly data: Readonly<AtRuleValue>;
 
   constructor(value: AtRuleValue, options?: AtRuleOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.name = value.name;
+    this.prelude = value.prelude;
+    this.rules = value.rules;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.prelude instanceof Node) {
+      this.adopt(this.prelude);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
     this.allowRoot = true;
-  }
-
-  get name() {
-    return this.data.name;
-  }
-
-  set name(val: AtRuleValue['name']) {
-    this.setData('name', val);
-  }
-
-  get prelude() {
-    return this.data.prelude;
-  }
-
-  set prelude(val: AtRuleValue['prelude']) {
-    this.setData('prelude', val as any);
-  }
-
-  get rules() {
-    return this.data.rules;
-  }
-
-  set rules(val: AtRuleValue['rules']) {
-    this.setData('rules', val as any);
   }
 
   protected _valueOf: string | undefined;
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
-    return (this._valueOf ??= (this.data.name.toString() + (this.data.prelude ? ' ' + this.data.prelude.valueOf() : '')));
+    return (this._valueOf ??= (this.name.toString() + (this.prelude ? ' ' + this.prelude.valueOf() : '')));
   }
 
   /**
    * Means: can bubble ruleset parents to children.
    */
   isNestable() {
-    return NESTABLE_AT_RULES.includes(this.data.name.valueOf() as (typeof NESTABLE_AT_RULES)[number]);
+    return NESTABLE_AT_RULES.includes(this.name.valueOf() as (typeof NESTABLE_AT_RULES)[number]);
   }
 
   /**
    * For legacy collapseNesting, will push ruleset to root silently.
    */
   isRootOnly() {
-    return ROOT_ONLY_AT_RULES.includes(this.data.name.valueOf() as (typeof ROOT_ONLY_AT_RULES)[number]);
+    return ROOT_ONLY_AT_RULES.includes(this.name.valueOf() as (typeof ROOT_ONLY_AT_RULES)[number]);
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
@@ -162,7 +157,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const { prelude, rules } = node.data;
     // Preserve @import prelude as-authored (including comments). Evaluation here can
     // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
-    const atRuleName = String(node.data.name.valueOf?.() ?? node.data.name ?? '').trim();
+    const atRuleName = String(node.name.valueOf?.() ?? node.name ?? '').trim();
     if (atRuleName === '@import') {
       if (prelude) {
         node.setData('prelude', prelude);
@@ -172,7 +167,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (!context.inReferenceImportScope) {
         const topImports = (context.topImports ??= []);
         const nodeLoc = node.location?.join(':') ?? '';
-        const nodeSig = `${node.data.name.valueOf?.() ?? node.data.name}:${node.data.prelude?.valueOf?.() ?? ''}`;
+        const nodeSig = `${node.name.valueOf?.() ?? node.name}:${node.prelude?.valueOf?.() ?? ''}`;
         const alreadyQueued = topImports.some((queuedNode) => {
           if (!isNode(queuedNode, N.AtRule)) {
             return false;
@@ -241,9 +236,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private _extractAndStoreLayerName(node: AtRule, context: Context): void {
-    const atRuleName = node.data.name?.toTrimmedString?.() ?? node.data.name?.toString?.() ?? '';
-    if (atRuleName === '@layer' && node.data.prelude) {
-      const preludeStr = String(node.data.prelude.valueOf?.() ?? node.data.prelude.toTrimmedString?.() ?? node.data.prelude.toString?.() ?? '');
+    const atRuleName = node.name?.toTrimmedString?.() ?? node.name?.toString?.() ?? '';
+    if (atRuleName === '@layer' && node.prelude) {
+      const preludeStr = String(node.prelude.valueOf?.() ?? node.prelude.toTrimmedString?.() ?? node.prelude.toString?.() ?? '');
       if (preludeStr) {
         let parentLayerName: string | undefined;
         for (let i = context.frames.length - 2; i >= 0; i--) {
@@ -264,7 +259,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    let { name, prelude, rules } = this.data;
+    let { name, prelude, rules } = this;
 
     let idt = indent(options.depth);
     let out = idt;
@@ -350,10 +345,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (process.env.ENABLE_NESTED_MEDIA_MERGE !== 'true') {
         return;
       }
-      if (node.data.name?.valueOf?.() !== '@media') {
+      if (node.name?.valueOf?.() !== '@media') {
         return;
       }
-      const outerRules = node.data.rules;
+      const outerRules = node.rules;
       if (!outerRules) {
         return;
       }
@@ -372,7 +367,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
 
       // Combine media queries using "and" like Less does.
-      const outerPrelude = node.data.prelude;
+      const outerPrelude = node.prelude;
       const innerPrelude = inner.data.prelude;
       if (outerPrelude && innerPrelude) {
         // Build a normalized text prelude to avoid double-spacing from nested sequences.
@@ -581,7 +576,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         // Pop the frame that was pushed in preEval
         // This frame was kept on the stack during rules evaluation so children could access it
         context.frames.pop();
-        let rules = node.data.rules;
+        let rules = node.rules;
         if (rules && rules.visibleRules().length === 0) {
           this.removeFlag(F_VISIBLE);
         }
@@ -624,5 +619,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   //   out.add(`\n${pre}},${JSON.stringify(this.location)})`)
   // }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(AtRule.prototype, 'data', {
+  get(this: AtRule) {
+    return { name: this.name, prelude: this.prelude, rules: this.rules };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const atrule = defineType(AtRule, 'AtRule');
