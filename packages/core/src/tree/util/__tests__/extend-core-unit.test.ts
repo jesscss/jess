@@ -159,6 +159,23 @@ describe('tryExtendSelector', () => {
     expect(serialize(result.value)).toBe(':where(.x, .b, .d)');
   });
 
+  it('appends a full crossed match into a selector-list arg inside a selector pseudo while in partial mode', () => {
+    const parent = el('.a');
+    const target = pseudo({
+      name: ':where',
+      arg: sellist([
+        compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+        el('.z')
+      ])
+    });
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':where(.a.x, .z, .other)');
+  });
+
   it('appends into a sole :is() selector-list arg while in partial mode', () => {
     const target = is(sellist([el('.x'), el('.b')]));
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
@@ -166,6 +183,20 @@ describe('tryExtendSelector', () => {
     expect(result.error).toBeUndefined();
     expect(result.value).toBe(target);
     expect(serialize(result.value)).toBe(':is(.x, .b, .d)');
+  });
+
+  it('appends a full crossed match into a sole :is() selector-list arg while in partial mode', () => {
+    const parent = el('.a');
+    const target = is(sellist([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+      el('.z')
+    ]));
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x, .z, .other)');
   });
 
   it('wraps a partial match in a compound with a pseudo-class sibling', () => {
@@ -195,6 +226,20 @@ describe('tryExtendSelector', () => {
     expect(serialize(result.value)).toBe('.x, .b, .d');
   });
 
+  it('hoists and materializes the rest of a selector list when one item crosses an ampersand', () => {
+    const parent = el('.parent');
+    const target = sellist([
+      sel([amp({ selectorContainer: { selector: parent } }), co(' '), el('.child')]),
+      sel([amp({ selectorContainer: { selector: parent } }), co(' '), el('.sibling')])
+    ]);
+    const find = sel([el('.parent'), co(' '), el('.child')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe('.parent .child, .parent .sibling, .other');
+  });
+
   it('extends within the own part of a leading ampersand when given a parent', () => {
     const parent = el('.parent');
     const target = sel([amp(), co(' '), el('.child')]);
@@ -220,6 +265,17 @@ describe('tryExtendSelector', () => {
     const target = sel([amp(), co(' '), el('.child')]);
     const find = sel([el('.parent'), co(' '), el('.child')]);
     const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe('.parent .child, .other');
+  });
+
+  it('materializes a crossed explicit ampersand on hoist even without a parent argument', () => {
+    const resolvedParent = el('.parent');
+    const target = sel([amp({ selectorContainer: { selector: resolvedParent } }), co(' '), el('.child')]);
+    const find = sel([el('.parent'), co(' '), el('.child')]);
+    const result = tryExtendSelector(target, find, el('.other'), true);
 
     expect(result.error).toBeUndefined();
     expect(result.value.hoistToRoot).toBe(true);
@@ -268,6 +324,237 @@ describe('tryExtendSelector', () => {
     expect(result.error).toBeUndefined();
     expect(result.value.hoistToRoot).toBe(true);
     expect(serialize(result.value)).toBe('.prefix :is(.grand > .parent), .other');
+  });
+
+  it('resolves only the crossed ampersand inside a partial matched span', () => {
+    const parent = el('.parent');
+    const target = sel([amp({ selectorContainer: { selector: parent } }), co(' '), el('.child'), co(' '), amp({ selectorContainer: { selector: parent } })]);
+    const find = sel([el('.parent'), co(' '), el('.child')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.parent .child, .other) .parent');
+  });
+
+  it('groups only the matched crossed seam when multiple authored ampersands exist', () => {
+    const parent = el('.a');
+    const target = sel([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+      co(' '),
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')])
+    ]);
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x, .other) .a.x');
+  });
+
+  it('creates a plain alternative when an exact match crosses multiple authored seams', () => {
+    const parent = el('.a');
+    const target = sel([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+      co('+'),
+      compound([amp({ selectorContainer: { selector: parent } }), el('.y')])
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('+'),
+      compound([el('.a'), el('.y')])
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe('.a.x + .a.y, .other');
+  });
+
+  it('groups a crossed seam as one component inside a larger root compound', () => {
+    const parent = el('.a');
+    const target = compound([
+      amp({ selectorContainer: { selector: parent } }),
+      el('.x'),
+      el('.y')
+    ]);
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x, .other).y');
+  });
+
+  it('does not over-wrap unmatched tail compound members in a crossed ordered span', () => {
+    const parent = el('.a');
+    const target = sel([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+      co('>'),
+      compound([el('.y'), el('.w')])
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x > .y, .other).w');
+  });
+
+  it('does not over-wrap an unmatched tail when a partial ordered span crosses multiple authored seams', () => {
+    const parent = el('.a');
+    const target = sel([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+      co('+'),
+      compound([amp({ selectorContainer: { selector: parent } }), el('.y'), el('.z')])
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('+'),
+      compound([el('.a'), el('.y')])
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x + .a.y, .other).z');
+  });
+
+  it('rewrites a crossed ordered span inside one selector-list item without over-wrapping sibling items', () => {
+    const parent = el('.a');
+    const target = sellist([
+      sel([
+        compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+        co('>'),
+        compound([el('.y'), el('.w')])
+      ]),
+      el('.z')
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x > .y, .other).w, .z');
+  });
+
+  it('rewrites a crossed ordered span inside a selector pseudo arg without over-wrapping the tail', () => {
+    const parent = el('.a');
+    const target = pseudo({
+      name: ':where',
+      arg: sel([
+        compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+        co('>'),
+        compound([el('.y'), el('.w')])
+      ])
+    });
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':where(:is(.a.x > .y, .other).w)');
+  });
+
+  it('rewrites a crossed ordered span inside one nested :is() alternative without over-wrapping siblings', () => {
+    const parent = el('.a');
+    const target = is(sellist([
+      sel([
+        compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+        co('>'),
+        compound([el('.y'), el('.w')])
+      ]),
+      el('.z')
+    ]));
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(:is(.a.x > .y, .other).w, .z)');
+  });
+
+  it('rewrites a crossed compound seam inside one nested :is() alternative without over-wrapping siblings', () => {
+    const parent = el('.a');
+    const target = is(sellist([
+      compound([amp({ selectorContainer: { selector: parent } }), el('.x'), el('.y')]),
+      el('.z')
+    ]));
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(:is(.a.x, .other).y, .z)');
+  });
+
+  it('rewrites a crossed compound seam inside a non-:is() selector pseudo arg without over-wrapping sibling alternatives', () => {
+    const parent = el('.a');
+    const target = pseudo({
+      name: ':where',
+      arg: sellist([
+        compound([amp({ selectorContainer: { selector: parent } }), el('.x'), el('.y')]),
+        el('.z')
+      ])
+    });
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':where(:is(.a.x, .other).y, .z)');
+  });
+
+  it('rewrites a crossed ordered span inside a non-:is() selector pseudo arg without over-wrapping sibling alternatives', () => {
+    const parent = el('.a');
+    const target = pseudo({
+      name: ':where',
+      arg: sellist([
+        sel([
+          compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+          co('>'),
+          compound([el('.y'), el('.w')])
+        ]),
+        el('.z')
+      ])
+    });
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':where(:is(.a.x > .y, .other).w, .z)');
+  });
+
+  it('materializes remaining ampersands with the normal wrapping rules after hoisting', () => {
+    const parent = sel([el('.grand'), co('>'), el('.parent')]);
+    const target = sel([amp({ selectorContainer: { selector: parent } }), co(' '), el('.prefix'), co(' '), amp({ selectorContainer: { selector: parent } }), co(' '), el('.child')]);
+    const find = sel([el('.grand'), co('>'), el('.parent'), co(' '), el('.child')]);
+    const result = tryExtendSelector(target, find, el('.other'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe('.grand > .parent .prefix :is(.grand > .parent .child, .other)');
   });
 
   it('does not extend when combinators differ (space vs +)', () => {
@@ -367,6 +654,26 @@ describe('tryExtendSelector', () => {
     expect(serialize(result.value)).toBe('div + :is(.a.c.b > .y.x, .q)');
   });
 
+  it('wraps only the matched compound subspan inside a larger root compound', () => {
+    const target = compound([el('.a'), el('.b'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = tryExtendSelector(target, find, el('.q'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe(':is(.a.b, .q).c');
+  });
+
+  it('groups non-sequential matched compound members in :is() and leaves the gap outside', () => {
+    const target = compound([el('.b'), el('.a'), el('.x')]);
+    const find = compound([el('.b'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.q'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe(':is(.b.x, .q).a');
+  });
+
   it('wraps a partial match inside one root :is() alternative only', () => {
     const target = is(sellist([
       sel([el('.foo'), co(' '), el('.bar')]),
@@ -377,5 +684,215 @@ describe('tryExtendSelector', () => {
     expect(result.error).toBeUndefined();
     expect(result.value).toBe(target);
     expect(serialize(result.value)).toBe(':is(.foo :is(.bar, .q), .baz)');
+  });
+
+  it('wraps a partial match inside one nested :is() alternative within a compound', () => {
+    const target = compound([
+      el('.outer'),
+      is(sellist([compound([el('.a'), el('.b')]), el('.x')])),
+      el('.tail')
+    ]);
+    const result = tryExtendSelector(target, el('.a'), el('.q'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe('.outer:is(:is(.a, .q).b, .x).tail');
+  });
+
+  it('appends into a nested :is() list within a compound when the inner match is full', () => {
+    const target = compound([
+      el('.a'),
+      is(sellist([el('.b'), el('.c')])),
+      el('.d')
+    ]);
+    const result = tryExtendSelector(target, el('.b'), el('.q'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe('.a:is(.b, .c, .q).d');
+  });
+
+  it('pulls an outer compound match into a nested :is() branch when they refer to the same component', () => {
+    const target = sel([
+      el('qux'),
+      co('>'),
+      compound([
+        el('.a'),
+        is(sel([el('div'), co('>'), el('.b')])),
+        el('.c')
+      ]),
+      co('>'),
+      el('qux')
+    ]);
+    const result = tryExtendSelector(target, compound([el('.a'), el('.b')]), el('.foo'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe('qux > :is(div > :is(.a.b, .foo)).c > qux');
+  });
+
+  it('can pull a target from a nested :is() branch into the surrounding compound component', () => {
+    const target = compound([
+      el('.a'),
+      is(sel([el('div'), co('>'), el('.c')])),
+      el('.b')
+    ]);
+    const result = tryExtendSelector(target, sel([el('div'), co('>'), el('.c')]), el('.foo'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe(target);
+    expect(serialize(result.value)).toBe('.a:is(div > .c, .foo).b');
+  });
+
+  it('creates a plain alternative when a full match crosses out of a nested :is() branch', () => {
+    const target = compound([
+      is(sellist([el('.a'), el('.b')])),
+      el('.c')
+    ]);
+    const result = tryExtendSelector(target, compound([el('.b'), el('.c')]), el('.d'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(serialize(result.value)).toBe(':is(.a, .b).c, .d');
+  });
+
+  it('preserves nested :is() structure when the partial match stays within the same inner group', () => {
+    const target = compound([
+      is(sellist([el('.g'), compound([el('.i'), el('.j')])])),
+      el('.h')
+    ]);
+    const result = tryExtendSelector(target, el('.i'), el('.k'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(serialize(result.value)).toBe(':is(.g, :is(.i, .k).j).h');
+  });
+
+  it('appends into a nested :is() list when a full compound match stays within that inner group', () => {
+    const target = compound([
+      is(sellist([el('.g'), compound([el('.i'), el('.j')])])),
+      el('.h')
+    ]);
+    const result = tryExtendSelector(target, compound([el('.i'), el('.j')]), el('.k'), true);
+
+    expect(result.error).toBeUndefined();
+    expect(serialize(result.value)).toBe(':is(.g, .i.j, .k).h');
+  });
+
+  it('appends a full crossed match into a nested :is() list within a compound', () => {
+    const parent = el('.a');
+    const target = compound([
+      is(sellist([
+        compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+        el('.z')
+      ])),
+      el('.h')
+    ]);
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.k'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x, .z, .k).h');
+  });
+
+  it('appends a full crossed ordered span into a nested :is() list within a compound', () => {
+    const parent = el('.a');
+    const target = compound([
+      is(sellist([
+        sel([
+          compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+          co('>'),
+          el('.y')
+        ]),
+        el('.z')
+      ])),
+      el('.h')
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.k'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':is(.a.x > .y, .z, .k).h');
+  });
+
+  it('appends a full crossed ordered span into a non-:is() selector pseudo arg within a compound', () => {
+    const parent = el('.a');
+    const target = compound([
+      pseudo({
+        name: ':where',
+        arg: sellist([
+          sel([
+            compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+            co('>'),
+            el('.y')
+          ]),
+          el('.z')
+        ])
+      }),
+      el('.h')
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.k'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':where(.a.x > .y, .z, .k).h');
+  });
+
+  it('appends a full crossed compound match into a non-:is() selector pseudo arg within a compound', () => {
+    const parent = el('.a');
+    const target = compound([
+      pseudo({
+        name: ':where',
+        arg: sellist([
+          compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+          el('.z')
+        ])
+      }),
+      el('.h')
+    ]);
+    const find = compound([el('.a'), el('.x')]);
+    const result = tryExtendSelector(target, find, el('.k'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe(':where(.a.x, .z, .k).h');
+  });
+
+  it('appends a full crossed ordered span into a non-:is() selector pseudo arg within a complex selector', () => {
+    const parent = el('.a');
+    const target = sel([
+      el('div'),
+      co('>'),
+      pseudo({
+        name: ':where',
+        arg: sellist([
+          sel([
+            compound([amp({ selectorContainer: { selector: parent } }), el('.x')]),
+            co('>'),
+            el('.y')
+          ]),
+          el('.z')
+        ])
+      })
+    ]);
+    const find = sel([
+      compound([el('.a'), el('.x')]),
+      co('>'),
+      el('.y')
+    ]);
+    const result = tryExtendSelector(target, find, el('.k'), true, parent);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value.hoistToRoot).toBe(true);
+    expect(serialize(result.value)).toBe('div > :where(.a.x > .y, .z, .k)');
   });
 });
