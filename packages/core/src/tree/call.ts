@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -78,35 +78,31 @@ export interface Call {
 }
 
 export class Call extends Node<CallValue, CallOptions> {
-  constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['name', 'args', 'contentNode'] as const;
+
+  name!: string | Node;
+  args: List<Node> | undefined;
+  contentNode: Node | undefined;
+
+  declare readonly data: Readonly<CallValue>;
+
+  constructor(value: CallValue, options?: CallOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.name = value.name;
+    this.args = value.args;
+    this.contentNode = value.contentNode;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.args instanceof Node) {
+      this.adopt(this.args);
+    }
+    if (this.contentNode instanceof Node) {
+      this.adopt(this.contentNode);
+    }
     this.requiredSemi = true;
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-  }
-
-  get name() {
-    return this.data.name;
-  }
-
-  set name(val: CallValue['name']) {
-    this.setData('name', val);
-  }
-
-  get args() {
-    return this.data.args;
-  }
-
-  set args(val: CallValue['args']) {
-    this.setData('args', val as any);
-  }
-
-  get contentNode() {
-    return this.data.contentNode;
-  }
-
-  set contentNode(val: CallValue['contentNode']) {
-    this.setData('contentNode', val as any);
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -114,8 +110,7 @@ export class Call extends Node<CallValue, CallOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, contentNode } = this.data;
-    const args = this.data.args;
+    const { name, args, contentNode } = this;
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
@@ -168,8 +163,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    let { name } = this.data;
-    let args = this.data.args;
+    let { name, args } = this;
     let { markImportant } = this.options;
     const adoptCallWhitespace = <T extends Node>(node: T): T => {
       node.pre = this.pre;
@@ -380,6 +374,15 @@ export class Call extends Node<CallValue, CallOptions> {
     };
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Call.prototype, 'data', {
+  get(this: Call) {
+    return { name: this.name, args: this.args, contentNode: this.contentNode };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 type Params = ConstructorParameters<typeof Call>;
 
