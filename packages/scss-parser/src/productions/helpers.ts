@@ -369,10 +369,3 @@ export function defaultNamespaceFromPath(path: string): string | undefined {
   return noExt || undefined;
 }
 
-export function makePublicDirectiveRules(rules: any) {
-  rules.options.rulesVisibility ??= {};
-  rules.options.rulesVisibility.Declaration = 'public';
-  rules.options.rulesVisibility.Ruleset = 'public';
-  rules.options.rulesVisibility.VarDeclaration = 'public';
-  rules.options.rulesVisibility.Mixin = 'public';
-}

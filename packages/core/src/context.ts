@@ -793,7 +793,7 @@ export class Context {
   //   filePath: string,
   //   nodeOptions: StyleImportOptions,
   //   userOptions: Record<string, any> = {},
-  //   withValues?: StyleImportValue['with']
+  //   withNode?: StyleImportValue['withNode']
   // ) {
   //   let rules = await this.getTree(filePath, userOptions);
   //   if (withValues && isNode(withValues.node, 'Rules')) {

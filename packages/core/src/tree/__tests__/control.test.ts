@@ -1,14 +1,11 @@
 import {
   Any,
-  Block,
   Call,
   For,
   If,
   JsFunction,
   List,
   Nil,
-  Paren,
-  Sequence,
   VarDeclaration,
   decl,
   expr,
@@ -29,30 +26,11 @@ function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence'
   if (kind === 'single') {
     return vars[0]!;
   }
-  if (kind === 'list') {
-    return new List(vars, { sep: ',' });
-  }
-  if (kind === 'sequence') {
-    return new Sequence(vars);
-  }
-  return new Block(
-    new List(vars, { sep: ',' }),
-    { type: 'square' }
-  );
-}
-
-function makeForHeader(pattern: any, iterable: any) {
-  return new Sequence([
-    new Paren(new Sequence([
-      pattern,
-      new Any('of', { role: 'any' }),
-      iterable
-    ])) as any
-  ]);
+  return vars;
 }
 
 function makeLoop(
-  pattern: any,
+  pattern: VarDeclaration | VarDeclaration[],
   iterable: any,
   loopRules = rules([
     decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) }),
@@ -60,33 +38,11 @@ function makeLoop(
     decl({ name: 'index', value: ref({ key: 'index' }, { type: 'variable' }) })
   ])
 ) {
-  const normalizedPattern = normalizePattern(pattern);
   return new For({
-    pattern: normalizedPattern,
-    iterable: { kind: 'node', value: iterable },
+    vars: pattern,
+    iterable,
     rules: loopRules
   });
-}
-
-function isPatternNodeTuple(pattern: any): pattern is List | Sequence {
-  return pattern instanceof List || pattern instanceof Sequence;
-}
-
-function normalizePattern(pattern: any) {
-  if (pattern instanceof VarDeclaration) {
-    return { kind: 'single' as const, value: pattern };
-  }
-  if (pattern instanceof Block && pattern.data instanceof List) {
-    const values = pattern.data.data.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
-    return { kind: 'tuple' as const, values: values as [VarDeclaration, ...VarDeclaration[]] };
-  }
-  if (isPatternNodeTuple(pattern)) {
-    const values = pattern.data.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
-    return values.length === 1
-      ? { kind: 'single' as const, value: values[0]! }
-      : { kind: 'tuple' as const, values: values as [VarDeclaration, ...VarDeclaration[]] };
-  }
-  throw new Error('Unexpected test pattern shape');
 }
 
 describe('Control Nodes', () => {
@@ -189,11 +145,10 @@ describe('Control Nodes', () => {
     expect(`${evald}`).toContain('item: a');
   });
 
-  it('throws for invalid $for header', async () => {
-    const badHeader = new Sequence([
-      new Paren(new Sequence([makePattern(['value'], 'single'), new Any('from', { role: 'any' }), list([new Any('a')])])) as any
-    ]);
-    expect(() => new For({ header: badHeader, rules: rules([]) })).toThrow('Invalid $for header');
+  it('creates For with single var binding', () => {
+    const singleVar = makePattern(['value'], 'single') as VarDeclaration;
+    const forNode = new For({ vars: singleVar, iterable: list([new Any('a')]), rules: rules([]) });
+    expect(forNode.data.vars).toBe(singleVar);
   });
 
   it('forces public rulesVisibility for $if and $for rules', () => {
@@ -206,11 +161,12 @@ describe('Control Nodes', () => {
       }
     });
     const ifNode = new If({
-      branches: [{ condition: new Any('true', { role: 'any' }), rules: privateRules }]
+      conditions: [new Any('true', { role: 'any' })],
+      bodies: [privateRules]
     });
     const forNode = new For({
-      pattern: { kind: 'single', value: makePattern(['value'], 'single') as VarDeclaration },
-      iterable: { kind: 'node', value: list([new Any('a')]) },
+      vars: makePattern(['value'], 'single') as VarDeclaration,
+      iterable: list([new Any('a')]),
       rules: rules([], {
         rulesVisibility: {
           Declaration: 'private',
@@ -220,10 +176,10 @@ describe('Control Nodes', () => {
         }
       })
     });
-    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.data.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.data.bodies[0]!.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.data.bodies[0]!.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.data.bodies[0]!.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.data.bodies[0]!.options.rulesVisibility.Mixin).toBe('public');
     expect(forNode.data.rules.options.rulesVisibility.Declaration).toBe('public');
     expect(forNode.data.rules.options.rulesVisibility.Ruleset).toBe('public');
     expect(forNode.data.rules.options.rulesVisibility.VarDeclaration).toBe('public');

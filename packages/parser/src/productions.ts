@@ -16,7 +16,6 @@ import {
   Reference,
   Condition,
   If,
-  type IfBranch,
   StyleImport,
   JsImport,
   Collection,
@@ -433,13 +432,10 @@ export function jessConditional(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      const branches: IfBranch[] = [
-        { condition, rules: thenRules }
-      ];
-      if (elseRules) {
-        branches.push({ condition: new Any('true', { role: 'any' }, loc, $.context), rules: elseRules });
-      }
-      return new If({ branches }, undefined, loc, $.context);
+      const conditions = [condition];
+      const bodies = [thenRules];
+      const elseBranch = elseRules ?? undefined;
+      return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
     }
   };
 }

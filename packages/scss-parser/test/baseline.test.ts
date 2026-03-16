@@ -81,7 +81,7 @@ describe('scss-parser (baseline)', () => {
       const ifNode = root.data.find(n => n.type === 'If');
       expect(ifNode && ifNode.type === 'If').toBe(true);
       if (ifNode && ifNode.type === 'If') {
-        const cond = ifNode.data.branches[0]?.condition;
+        const cond = ifNode.data.conditions[0];
         expect(cond && isNode(cond, N.Paren)).toBe(true);
         if (cond && isNode(cond, N.Paren)) {
           expect(cond.data instanceof Condition).toBe(true);
@@ -110,7 +110,7 @@ describe('scss-parser (baseline)', () => {
       const ifNode = root.data.find(n => n.type === 'If');
       expect(ifNode && ifNode.type === 'If').toBe(true);
       if (ifNode && ifNode.type === 'If') {
-        const cond = ifNode.data.branches[0]?.condition;
+        const cond = ifNode.data.conditions[0];
         expect(cond && isNode(cond, N.Paren)).toBe(true);
         if (cond && isNode(cond, N.Paren)) {
           expect(cond.data instanceof Condition).toBe(true);

@@ -28,7 +28,6 @@ import {
   F_VISIBLE,
   For,
   If,
-  type IfBranch,
   JsImport,
   List,
   Log,
@@ -1238,7 +1237,8 @@ export function scssUseAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       const imp = new StyleImport(
         {
           path: pathNode,
-          with: withRules ? { node: withRules, type: 'set' } : undefined
+          withNode: withRules,
+          withType: withRules ? 'set' : undefined
         },
         {
           type: 'compose',
@@ -1401,7 +1401,11 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       }
 
       return new StyleImport(
-        { path: pathNode, with: withRules ? { node: withRules, type: 'set' } : undefined },
+        {
+          path: pathNode,
+          withNode: withRules,
+          withType: withRules ? 'set' : undefined
+        },
         {
           type: 'compose',
           importOptions: {
@@ -1793,14 +1797,6 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
   };
 }
 
-function makePublicDirectiveRules(rules: any) {
-  rules.options.rulesVisibility ??= {};
-  rules.options.rulesVisibility.Declaration = 'public';
-  rules.options.rulesVisibility.Ruleset = 'public';
-  rules.options.rulesVisibility.VarDeclaration = 'public';
-  rules.options.rulesVisibility.Mixin = 'public';
-}
-
 export function scssIfAtRule(this: ScssActionsParser, T: ScssTokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
@@ -1815,11 +1811,9 @@ export function scssIfAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
     $.CONSUME(T.RCurly);
 
-    if (!RECORDING_PHASE) {
-      makePublicDirectiveRules(rules);
-    }
-
-    const branches: IfBranch[] = !RECORDING_PHASE ? [{ condition: cond, rules }] : [];
+    const conditions: Node[] = !RECORDING_PHASE ? [cond as unknown as Node] : [];
+    const bodies: Rules[] = !RECORDING_PHASE ? [rules] : [];
+    let elseBranch: Rules | undefined;
 
     // Consume chained @else / @else if
     $.MANY2({
@@ -1843,15 +1837,19 @@ export function scssIfAtRule(this: ScssActionsParser, T: ScssTokenMap) {
         const elseRules = $.SUBRULE2($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
         $.CONSUME2(T.RCurly);
         if (!RECORDING_PHASE) {
-          makePublicDirectiveRules(elseRules);
-          branches.push({ condition: elseCond, rules: elseRules });
+          if (elseCond !== undefined) {
+            conditions.push(elseCond);
+            bodies.push(elseRules);
+          } else {
+            elseBranch = elseRules;
+          }
         }
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      return new If({ branches }, undefined, loc, $.context);
+      return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
     }
   };
 }
@@ -1933,19 +1931,7 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
             ? endNodes[0]!
             : new Sequence(endNodes, undefined, $.getLocationFromNodes(endNodes), $.context);
 
-          return {
-            pattern: {
-              kind: 'single' as const,
-              value: varDecl
-            },
-            iterable: {
-              kind: 'range' as const,
-              start: startExpr,
-              end: endExpr,
-              includeStart: true,
-              includeEnd
-            }
-          };
+          return { varDecl, startExpr, endExpr };
         })()
       : undefined;
 
@@ -1953,11 +1939,15 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
     $.CONSUME(T.RCurly);
     if (!RECORDING_PHASE) {
-      makePublicDirectiveRules(rules);
       const loc = $.endRule();
       return new For({
-        pattern: forParts!.pattern,
-        iterable: forParts!.iterable,
+        vars: forParts!.varDecl,
+        iterable: new Range(
+          { start: forParts!.startExpr, end: forParts!.endExpr },
+          { includeStart: true, includeEnd },
+          loc,
+          $.context
+        ),
         rules
       }, undefined, loc, $.context);
     }
@@ -2004,16 +1994,6 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
     const forParts = !RECORDING_PHASE
       ? (() => {
-          const patternNode: Node =
-          vars.length > 1
-            ? new Block(
-              new List(vars, { sep: ',' }, $.getLocationFromNodes(vars), $.context),
-              { type: 'square' },
-              $.getLocationFromNodes(vars),
-              $.context
-            )
-            : vars[0]!;
-
           const expr = isNode(rawExpr, N.Expression)
             ? rawExpr
             : (() => {
@@ -2022,23 +2002,7 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
                 innerExpr.pre = 0;
                 return new Expression(innerExpr, undefined, $.getLocationFromNodes([rawExpr]), $.context);
               })();
-          const pattern = vars.length > 1
-            ? {
-                kind: 'tuple' as const,
-                values: vars as [VarDeclaration, ...VarDeclaration[]]
-              }
-            : {
-                kind: 'single' as const,
-                value: vars[0]!
-              };
-          void patternNode;
-          return {
-            pattern,
-            iterable: {
-              kind: 'node' as const,
-              value: expr
-            }
-          };
+          return { varsArg: vars.length === 1 ? vars[0]! : vars, iterable: expr };
         })()
       : undefined;
 
@@ -2046,10 +2010,9 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
     $.CONSUME(T.RCurly);
     if (!RECORDING_PHASE) {
-      makePublicDirectiveRules(rules);
       const loc = $.endRule();
       return new For({
-        pattern: forParts!.pattern,
+        vars: forParts!.varsArg,
         iterable: forParts!.iterable,
         rules
       }, undefined, loc, $.context);
@@ -2070,7 +2033,6 @@ export function scssWhileAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
     $.CONSUME(T.RCurly);
     if (!RECORDING_PHASE) {
-      makePublicDirectiveRules(rules);
       const loc = $.endRule();
       return new While({ condition: condition!, rules }, undefined, loc, $.context);
     }
