@@ -107,29 +107,28 @@ export interface Reference {
   shortType: 'ref';
 }
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
+  static override childKeys = ['target', 'key'] as const;
+
+  target: Reference | Call | undefined;
+  key!: ReferenceValue['key'];
+
+  declare readonly data: Readonly<ReferenceValue>;
+
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
       value = { key: value };
     }
-    super(value, options, location, treeContext);
+    super(value as any, options, location, treeContext);
+    this.target = value.target;
+    this.key = value.key;
+    if (this.target instanceof Node) {
+      this.adopt(this.target);
+    }
+    if (this.key instanceof Node) {
+      this.adopt(this.key);
+    }
     // References are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
-  }
-
-  get target() {
-    return this.data.target;
-  }
-
-  set target(val) {
-    this.setData('target', val as any);
-  }
-
-  get key() {
-    return this.data.key;
-  }
-
-  set key(val) {
-    this.setData('key', val);
   }
 
   override valueOf() {
@@ -145,7 +144,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const w = options.writer!;
     const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue, role } = this.options;
-    let { target, key } = this.data;
+    let { target, key } = this;
     const emitKey = (k: any) => {
       if (typeof k === 'string' || typeof k === 'number') {
         w.add(String(k), this);
@@ -241,7 +240,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
-    let { target, key } = this.data;
+    let { target, key } = this;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
@@ -675,5 +674,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return result as Node;
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Reference.prototype, 'data', {
+  get(this: Reference) {
+    return { target: this.target, key: this.key };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const ref = defineType(Reference, 'Reference', 'ref');
