@@ -80,41 +80,34 @@ export interface Mixin {
 }
 
 export class Mixin extends Node<MixinValue, MixinOptions> {
+  static override childKeys = ['name', 'rules', 'params', 'guard'] as const;
+
+  name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  rules!: Rules;
+  params: List<Node> | undefined;
+  guard: Condition | undefined;
+
+  declare readonly data: Readonly<MixinValue>;
+
   constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
     super(value, options, location, context);
+    this.name = value.name;
+    this.rules = value.rules;
+    this.params = value.params;
+    this.guard = value.guard;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
+    if (this.params instanceof Node) {
+      this.adopt(this.params);
+    }
+    if (this.guard instanceof Node) {
+      this.adopt(this.guard);
+    }
     this.removeFlag(F_VISIBLE);
-  }
-
-  get name() {
-    return this.data.name;
-  }
-
-  set name(val: MixinValue['name']) {
-    this.setData('name', val as any);
-  }
-
-  get rules() {
-    return this.data.rules;
-  }
-
-  set rules(val: MixinValue['rules']) {
-    this.setData('rules', val);
-  }
-
-  get params() {
-    return this.data.params;
-  }
-
-  set params(val: MixinValue['params']) {
-    this.setData('params', val as any);
-  }
-
-  get guard() {
-    return this.data.guard;
-  }
-
-  set guard(val: MixinValue['guard']) {
-    this.setData('guard', val as any);
   }
 
   // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
@@ -124,7 +117,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   get keySet() {
     let keySet = this._keySet;
     if (!keySet) {
-      let { name } = this.data;
+      let { name } = this;
       if (!name) {
         return (this._keySet = new Set());
       }
@@ -136,7 +129,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this.data;
+    let { name, rules, params, guard } = this;
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -170,7 +163,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     node.preEvaluated = true;
     node.sourceNode ??= this;
 
-    let { name, rules } = node.data;
+    let { name, rules } = node;
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope
@@ -243,6 +236,15 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   //   }
   // }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Mixin.prototype, 'data', {
+  get(this: Mixin) {
+    return { name: this.name, rules: this.rules, params: this.params, guard: this.guard };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 type MixinConstructorParams = ConstructorParameters<typeof Mixin>;
 
