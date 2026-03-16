@@ -52,7 +52,7 @@ export function transformConditionToLess(
 
     // Map 'negate' property
     if (prop === 'negate') {
-      return condition.options?.negate === true;
+      return condition.negate === true;
     }
 
     // Map 'accept' method for visitor traversal

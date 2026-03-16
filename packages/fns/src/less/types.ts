@@ -33,7 +33,7 @@ const isstring = defineFunction(
 const iskeyword = defineFunction(
   'iskeyword',
   function(value: Node) {
-    return new Bool(value instanceof Any && (value.options.role === 'keyword' || value.options.role === 'ident'));
+    return new Bool(value instanceof Any && (value.role === 'keyword' || value.role === 'ident'));
   },
   {
     params: [{ name: 'value', type: Node }]

@@ -64,7 +64,7 @@ export function processLeadingIs(
       return false;
     }
     seen.add(node);
-    if (isNode(node, N.Quoted) && Boolean(node.options?.escaped)) {
+    if (isNode(node, N.Quoted) && Boolean(node.escaped)) {
       return true;
     }
     const value = (node as unknown as { data?: unknown }).data;

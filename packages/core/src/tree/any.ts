@@ -50,6 +50,7 @@ export class Any<
   static override childKeys = null as null;
 
   value!: string;
+  role: Role | undefined;
 
   declare readonly data: Readonly<string>;
 
@@ -61,13 +62,14 @@ export class Any<
   ) {
     super(value as any, options, location, treeContext);
     this.value = value;
+    this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
   }
 
   override preEval(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules
-    if (this.options.role === 'charset') {
+    if (this.role === 'charset') {
       if (!context.currentCharset) {
         /** @todo - Throw error in the future? */
         context.currentCharset = this;

@@ -348,8 +348,8 @@ export function isScriptUsePath(path: string): boolean {
 }
 
 export function quotedLike(original: Quoted, nextValue: string, context: ScssRecursiveParser['context']): Quoted {
-  const quote = original.options?.quote ?? '"';
-  const escaped = original.options?.escaped;
+  const quote = original.quote ?? '"';
+  const escaped = original.escaped;
   const loc: LocationInfo | undefined = Array.isArray(original.location) && original.location.length === 6
     ? (original.location as LocationInfo)
     : undefined;

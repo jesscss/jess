@@ -766,7 +766,7 @@ export class MixinRegistry extends Registry<
           }
           continue;
         }
-        if (isNode(param, N.Any) && param.options.role === 'property') {
+        if (isNode(param, N.Any) && param.role === 'property') {
           return false;
         }
         return false;

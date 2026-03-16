@@ -183,7 +183,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
         return token.image;
       } else {
         const comment = new Comment(token.image, { lineComment: name.includes('Line') }, this.getLocationInfo(token), this.context);
-        if (ctx?.inCustomPropertyValue && comment.options.lineComment) {
+        if (ctx?.inCustomPropertyValue && comment.lineComment) {
           comment.addFlag(F_VISIBLE);
         }
         return comment;

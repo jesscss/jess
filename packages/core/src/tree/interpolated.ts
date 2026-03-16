@@ -208,7 +208,7 @@ export class Interpolated<
   createGeneric() {
     const trimmedString = this.toTrimmedString();
     let any = new Any<Role>(trimmedString).inherit(this);
-    any.options.role = this.options.role;
+    any.role = this.options.role;
     return any;
   }
 

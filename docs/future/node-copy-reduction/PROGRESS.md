@@ -147,13 +147,13 @@ Each checkbox = one node class converted + tests green.
 
 ## Stage 3: Less-Aligned Field Renames
 
-- [ ] Any: `.data` → `value`
-- [ ] Bool: `.data` → `value`
-- [ ] Comment: `.data` → `value`, options.lineComment → `lineComment`
-- [ ] Quoted: `.data` → `value`, options.quote → `quote`, options.escaped → `escaped`
-- [ ] Condition: options.negate → `negate`
-- [ ] Any: options.role → `role`
-- [ ] Operation: `operator` → `op`
+- [x] Any: `.data` → `value` (done in Stage 1)
+- [x] Bool: `.data` → `value` (done in Stage 1)
+- [x] Comment: `.data` → `value` (Stage 1), options.lineComment → `lineComment`
+- [x] Quoted: `.data` → `value` (Stage 2), options.quote → `quote`, options.escaped → `escaped`
+- [x] Condition: options.negate → `negate`
+- [x] Any: options.role → `role`
+- [x] Operation: keep `operator` (consistent with Condition.operator)
 
 ---
 

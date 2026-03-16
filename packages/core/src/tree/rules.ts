@@ -453,7 +453,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return false;
       }
       const only = rulesNode.data[0]!;
-      return only.type === 'Any' && (only.options as any)?.role === 'any';
+      return only.type === 'Any' && (only as Any).role === 'any';
     };
 
     let emittedCount = 0;
@@ -806,7 +806,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Process each node with static name, handling both sync and async preEval
     const processResult = serialForEach(rules.data, (node, index) => {
       // Check if node has a static name (can be registered immediately)
-      if (node.type === 'Any' && node.options.role === 'charset') {
+      if (node.type === 'Any' && node.role === 'charset') {
         /** Special case where we register the charset node immediately */
         rules.setData(index, (node as Any).preEval(context));
         return;
@@ -1939,7 +1939,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             if (param.data.value instanceof Nil) {
               requiredPositions++;
             }
-          } else if (isNode(param, N.Any) && param.options.role === 'property') {
+          } else if (isNode(param, N.Any) && param.role === 'property') {
             // Any with role: 'property' is a parameter without default (consistent with variable names)
             requiredPositions++;
           } else if (param.type !== 'Rest') {
@@ -1961,7 +1961,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
                 if (isNode(p, N.VarDeclaration)) {
                   return p.data.name.valueOf() === arg.data.name.valueOf();
                 }
-                if (isNode(p, N.Any) && p.options.role === 'property') {
+                if (isNode(p, N.Any) && p.role === 'property') {
                   return p.valueOf() === arg.data.name.valueOf();
                 }
                 return false;
@@ -1990,7 +1990,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             boundValue.frozen = true;
             normalizeBoundLeadingItemWhitespace(boundValue);
             param.setData('value', boundValue);
-          } else if (isNode(param, N.Any) && param.options.role === 'property') {
+          } else if (isNode(param, N.Any) && param.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;

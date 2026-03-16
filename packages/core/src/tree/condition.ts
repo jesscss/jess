@@ -31,6 +31,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   left!: Node;
   operator: ConditionOperator | undefined;
   right: Node | undefined;
+  negate: boolean;
 
   declare readonly data: Readonly<ConditionValue>;
 
@@ -39,6 +40,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];
+    this.negate = !!options?.negate;
     if (this.left instanceof Node) {
       this.adopt(this.left);
     }
@@ -54,8 +56,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const w = options.writer!;
     const mark = w.mark();
     let { left, operator: op, right } = this;
-    const needsParens = Boolean(right || this.options?.negate);
-    if (this.options?.negate) {
+    const needsParens = Boolean(right || this.negate);
+    if (this.negate) {
       w.add('not ');
     }
     if (needsParens) {
@@ -103,7 +105,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   override evalNode(context: Context): MaybePromise<Bool> {
     let { left, operator: op, right } = this;
-    let negated = !!this.options?.negate;
+    let negated = this.negate;
 
     return pipe(
       () => left.eval(context),

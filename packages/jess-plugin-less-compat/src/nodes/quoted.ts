@@ -44,12 +44,12 @@ export function transformQuotedToLess(
 
     // Map 'quote' property
     if (prop === 'quote') {
-      return quoted.options?.quote || '"';
+      return quoted.quote || '"';
     }
 
     // Map 'escaped' property
     if (prop === 'escaped') {
-      return quoted.options?.escaped === true;
+      return quoted.escaped === true;
     }
 
     // Map 'accept' method for visitor traversal

@@ -16,7 +16,7 @@ describe('Sass remaining string functions', () => {
     it('returns a unique unquoted string', () => {
       const result = uniqueId();
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
       expect((result as Quoted).valueOf()).toMatch(/^u[0-9a-z]{6}$/);
     });
 
@@ -75,7 +75,7 @@ describe('Sass remaining string functions', () => {
       const insert = new Quoted('X');
       const index = new Dimension({ number: 3 });
       const result = strInsert(str, insert, index);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
   });
 
@@ -161,7 +161,7 @@ describe('Sass remaining string functions', () => {
       const start = new Dimension({ number: 1 });
       const end = new Dimension({ number: 3 });
       const result = strSlice(str, start, end);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
   });
 });

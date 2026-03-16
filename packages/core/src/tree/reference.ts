@@ -587,7 +587,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
           if (fallbackValue === true) {
             const any = new Any(`${valueKey}`);
-            any.options.role = this.options.role;
+            any.role = this.options.role;
             return any;
           }
           // Evaluate the fallbackValue if it's a Node

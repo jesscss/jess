@@ -855,9 +855,9 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
       const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
       // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
-      if (node instanceof Any && node.options?.role === 'name') {
+      if (node instanceof Any && node.role === 'name') {
         // Reuse the existing Any node but change its role to 'property' for the name
-        node.options.role = 'property';
+        node.role = 'property';
         args.setData(i, new VarDeclaration({
           name: node,
           value: new Nil(undefined, undefined, location, $.context)
@@ -878,7 +878,7 @@ export function mixinOrQualifiedRule(this: P, ctx: RuleContext = {}) {
       const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
       // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
-      if (node instanceof Any && node.options?.role === 'name') {
+      if (node instanceof Any && node.role === 'name') {
         args.setData(i, new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context));
       } else if (node instanceof Rest && typeof node.data === 'string') {
         // If it's a Rest node with a string value, convert it to Rest with Reference for mixin call arguments

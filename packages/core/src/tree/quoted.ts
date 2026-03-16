@@ -24,31 +24,31 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   static override childKeys = ['value'] as const;
 
   value!: string | Any | Interpolated;
+  quote: '"' | '\'' | undefined;
+  escaped: boolean;
 
   declare readonly data: Readonly<string | Any | Interpolated>;
 
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
+    this.quote = options?.quote;
+    this.escaped = !!options?.escaped;
     if (value instanceof Node) {
       this.adopt(value);
     }
-    if (typeof value === 'string' && !options?.escaped) {
+    if (typeof value === 'string' && !this.escaped) {
       this.addFlag(F_STATIC);
     } else {
       this.addFlag(F_NON_STATIC);
     }
   }
 
-  get quote() {
-    return this.options?.quote;
-  }
-
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { quote = '"', escaped } = this.options ?? {};
+    let { quote = '"', escaped } = this;
     let escapeChar = escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
@@ -65,7 +65,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
-    if (other.type === 'Quoted' && !this.options?.escaped && !(other as any).options?.escaped) {
+    if (other.type === 'Quoted' && !this.escaped && !(other as Quoted).escaped) {
       const left = String(this.valueOf());
       const right = String(other.valueOf?.() ?? '');
       if (left === right) {
@@ -80,7 +80,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     let value: string | Any | Interpolated | Node = this.value;
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
       value = v as any;
-      if (this.options.escaped) {
+      if (this.escaped) {
         if (value instanceof Node) {
           return value as Node as Quoted | Any | Interpolated;
         }
