@@ -119,19 +119,39 @@ export interface If extends Node<IfValue> {
   shortType: 'if';
 }
 export class If extends Node<IfValue> {
-  // type = 'If' as const;
-  // shortType = 'if' as const;
+  static override childKeys = ['conditions', 'bodies', 'elseBranch'] as const;
+
+  conditions!: Node[];
+  bodies!: Rules[];
+  elseBranch: Rules | undefined;
+
+  declare readonly data: Readonly<IfValue>;
+
   constructor(value: IfValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.conditions = value.conditions;
+    this.bodies = value.bodies;
+    this.elseBranch = value.elseBranch;
+    for (const cond of this.conditions) {
+      if (cond instanceof Node) {
+        this.adopt(cond);
+      }
+    }
+    for (const body of this.bodies) {
+      if (body instanceof Node) {
+        this.adopt(body);
+      }
+      makeDirectiveRulesPublic(body);
+    }
+    if (this.elseBranch) {
+      if (this.elseBranch instanceof Node) {
+        this.adopt(this.elseBranch);
+      }
+      makeDirectiveRulesPublic(this.elseBranch);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    for (const body of value.bodies) {
-      makeDirectiveRulesPublic(body);
-    }
-    if (value.elseBranch) {
-      makeDirectiveRulesPublic(value.elseBranch);
-    }
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -139,7 +159,7 @@ export class If extends Node<IfValue> {
     const w = options.writer!;
     const mark = w.mark();
 
-    const { conditions, bodies, elseBranch } = this.data;
+    const { conditions, bodies, elseBranch } = this;
     w.add('$if', this);
     w.add(' (');
     conditions[0]?.toString(options);
@@ -162,6 +182,15 @@ export class If extends Node<IfValue> {
   }
 }
 
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(If.prototype, 'data', {
+  get(this: If) {
+    return { conditions: this.conditions, bodies: this.bodies, elseBranch: this.elseBranch };
+  },
+  configurable: true,
+  enumerable: true
+});
+
 export interface For extends Node<ForValue> {
   type: 'For';
   shortType: 'for';
@@ -170,14 +199,38 @@ export interface For extends Node<ForValue> {
  * `$for <header> { ... }`
  */
 export class For extends Node<ForValue> {
-  // type = 'For' as const;
-  // shortType = 'for' as const;
+  static override childKeys = ['vars', 'iterable', 'rules'] as const;
+
+  vars!: VarDeclaration | VarDeclaration[];
+  iterable!: Node;
+  rules!: Rules;
+
+  declare readonly data: Readonly<ForValue>;
+
   constructor(value: ForValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.vars = value.vars;
+    this.iterable = value.iterable;
+    this.rules = value.rules;
+    if (Array.isArray(this.vars)) {
+      for (const v of this.vars) {
+        if (v instanceof Node) {
+          this.adopt(v);
+        }
+      }
+    } else if (this.vars instanceof Node) {
+      this.adopt(this.vars);
+    }
+    if (this.iterable instanceof Node) {
+      this.adopt(this.iterable);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(value.rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override preEval(context: Context): MaybePromise<Node> {
@@ -190,7 +243,7 @@ export class For extends Node<ForValue> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { vars, iterable } = this.data;
+    const { vars, iterable } = this;
     const bindingNames = getBindingNames(vars);
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
@@ -200,15 +253,15 @@ export class For extends Node<ForValue> {
       let counter = 1;
       const evaluatedIterable = await iterable.eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const loopRules = this.data.rules.clone(true);
+        const loopRules = this.rules.clone(true);
         // Preserve definition-scope parent chain so nested calls/lookups
         // inside loop bodies resolve the same way as the original rules.
-        loopRules.inherit(this.data.rules);
+        loopRules.inherit(this.rules);
         if (accumulatedNodes.length > 0) {
           // Make prior iteration output visible to current iteration lookups
           // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
           const priorScope = new Rules(accumulatedNodes.map(n => n.copy(true)));
-          priorScope.inherit(this.data.rules);
+          priorScope.inherit(this.rules);
           priorScope.adopt(loopRules);
         }
         const resolvedValue = await value.eval(context);
@@ -332,15 +385,24 @@ export class For extends Node<ForValue> {
     const mark = w.mark();
     w.add('$for ', this);
     w.add('(');
-    varsToNode(this.data.vars).toString(options);
+    varsToNode(this.vars).toString(options);
     w.add(' of ');
-    this.data.iterable.toString(options);
+    this.iterable.toString(options);
     w.add(')');
     w.add(' ');
-    this.data.rules.toBraced(options);
+    this.rules.toBraced(options);
     return w.getSince(mark);
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(For.prototype, 'data', {
+  get(this: For) {
+    return { vars: this.vars, iterable: this.iterable, rules: this.rules };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 /**
  * `$each <header> { ... }`
@@ -350,10 +412,23 @@ export interface Each extends Node<LegacyLoopValue> {
   shortType: 'each';
 }
 export class Each extends Node<LegacyLoopValue> {
-  // type = 'Each' as const;
-  // shortType = 'each' as const;
+  static override childKeys = ['header', 'rules'] as const;
+
+  header!: Sequence;
+  rules!: Rules;
+
+  declare readonly data: Readonly<LegacyLoopValue>;
+
   constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.header = value.header;
+    this.rules = value.rules;
+    if (this.header instanceof Node) {
+      this.adopt(this.header);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -364,12 +439,21 @@ export class Each extends Node<LegacyLoopValue> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('$each ', this);
-    this.data.header.toString(options);
+    this.header.toString(options);
     w.add(' ');
-    this.data.rules.toBraced(options);
+    this.rules.toBraced(options);
     return w.getSince(mark);
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Each.prototype, 'data', {
+  get(this: Each) {
+    return { header: this.header, rules: this.rules };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export type WhileValue = {
   condition: Node;
@@ -384,12 +468,27 @@ export interface While {
   shortType: 'while';
 }
 export class While extends Node<WhileValue> {
+  static override childKeys = ['condition', 'rules'] as const;
+
+  condition!: Node;
+  rules!: Rules;
+
+  declare readonly data: Readonly<WhileValue>;
+
   constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.condition = value.condition;
+    this.rules = value.rules;
+    if (this.condition instanceof Node) {
+      this.adopt(this.condition);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(value.rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -397,12 +496,21 @@ export class While extends Node<WhileValue> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('$while (', this);
-    this.data.condition.toString(options);
+    this.condition.toString(options);
     w.add(') ');
-    this.data.rules.toBraced(options);
+    this.rules.toBraced(options);
     return w.getSince(mark);
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(While.prototype, 'data', {
+  get(this: While) {
+    return { condition: this.condition, rules: this.rules };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const ifNode = defineType(If, 'If', 'if');
 export const forNode = defineType(For, 'For', 'for');

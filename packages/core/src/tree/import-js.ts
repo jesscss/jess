@@ -1,4 +1,4 @@
-import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
