@@ -13,6 +13,12 @@ function* deepValues(value: unknown): Generator<unknown> {
     }
     return;
   }
+  // Yield nodes without descending — visit() handles node traversal separately.
+  // Descending into nodes here would follow .parent chains and cause infinite loops.
+  if (isNode(value)) {
+    yield value;
+    return;
+  }
   if (isRecord(value)) {
     for (const v of Object.values(value)) {
       yield* deepValues(v);
@@ -92,6 +98,7 @@ export function assertValidTree(root: unknown) {
         key === 'parent'
         || key === 'sourceParent'
         || key === 'treeContext'
+        || key === '_treeContext'
         || key === 'sourceNode'
       ) {
         continue;

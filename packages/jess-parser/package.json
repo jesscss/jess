@@ -39,6 +39,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
+    "@jesscss/parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
     "chevrotain": "^11.0.3",
     "color-name": "~2.0.0"

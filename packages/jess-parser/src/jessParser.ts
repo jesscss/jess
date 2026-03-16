@@ -1,66 +1,80 @@
-import type { TokenType, IParserConfig } from 'chevrotain';
-import type { TokenMap, Rule } from '@jesscss/css-parser';
-import { CssParser } from '@jesscss/css-parser';
-import root from './productions/root.js';
-import atRules from './productions/atRules.js';
-import blocks from './productions/blocks.js';
-import declarations from './productions/declarations.js';
-import mixin from './productions/mixin.js';
-import selectors from './productions/selectors.js';
-import interpolation from './productions/interpolation.js';
-import values from './productions/values.js';
-import variables from './productions/variables.js';
+import { Lexer } from 'chevrotain';
+import { createLexerDefinition } from '@jesscss/css-parser';
+import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
+import { type IToken, MismatchedTokenError } from '@jesscss/parser';
 
-export class JessParser extends CssParser {
-  T: TokenMap;
+import { jessFragments, jessTokens } from './jessTokens.js';
+import { JessRecursiveParser, type JessParserConfig, type TokenMap } from './jessRecursiveParser.js';
 
-  atImportCss: Rule;
-  atImportJs: Rule;
-  atImportJsBlock: Rule;
-  atImportJsArg: Rule;
+export type JessRules = keyof {
+  [K in keyof JessRecursiveParser as JessRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
+};
 
-  /** JS Stuff */
-  atLet: Rule;
-  atLetValue: Rule;
-  jsCollection: Rule;
-  jsExpression: Rule;
-  jsValue: Rule;
-  jsTokens: Rule;
+export type SyntacticContentAssistSuggestion = {
+  nextTokenType: string;
+  nextTokenLabel?: string;
+  ruleStack: string[];
+};
 
-  /** Mixins */
-  rulesMixin: Rule;
-  mixin: Rule;
-  mixinPrelude: Rule;
-  mixinArgs: Rule;
-  mixinArg: Rule;
-  atInclude: Rule;
+export class JessParser {
+  lexer: Lexer;
+  parser: JessRecursiveParser;
 
-  rulePrimary: Rule;
-  nested: Rule;
+  constructor(config: JessParserConfig = {}) {
+    const { lexer, T } = createLexerDefinition(
+      jessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
+      jessTokens()
+    );
+    this.lexer = new Lexer(lexer, {
+      ensureOptimizations: true,
+      skipValidations: process.env.TEST !== 'true'
+    });
+    this.parser = new JessRecursiveParser(T as TokenMap, config);
+    this.parse = this.parse.bind(this);
+  }
 
-  constructor(
-    tokens: TokenType[],
-    T: TokenMap,
-    config: IParserConfig = {
-      maxLookahead: 1
+  parse(text: string): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
+  parse(text: string, rule?: JessRules, options?: { context?: TreeContext }): IParseResult;
+  parse(text: string, rule: JessRules = 'stylesheet', options?: { context?: TreeContext }): IParseResult {
+    const parser = this.parser;
+    const lexerResult = this.lexer.tokenize(text);
+    parser.warnings = [];
+    if (options?.context) {
+      parser.context = options.context;
     }
-  ) {
-    super(tokens, T, config);
-    const $ = this;
-    $.T = T;
-
-    root.call($, $);
-    atRules.call($, $);
-    blocks.call($, $);
-    declarations.call($, $);
-    interpolation.call($, $);
-    mixin.call($, $);
-    selectors.call($, $);
-    values.call($, $);
-    variables.call($, $);
-
-    if ($.constructor === JessParser) {
-      $.performSelfAnalysis();
+    parser.input = lexerResult.tokens as IToken[];
+    let tree: Node | undefined;
+    try {
+      tree = (parser as any)[rule]() as Node;
+    } catch (e: any) {
+      if (e && e.token) {
+        parser.errors.push(e);
+      } else {
+        throw e;
+      }
     }
+
+    if (parser.errors.length === 0 && (parser as any).pos < (parser as any).tokens.length) {
+      const unconsumed = (parser as any).tokens[(parser as any).pos] as IToken;
+      parser.errors.push(new MismatchedTokenError(
+        unconsumed,
+        { name: 'EOF', PATTERN: undefined as any },
+        ['stylesheet']
+      ));
+    }
+
+    const warnings = [...parser.warnings];
+
+    return {
+      tree: tree!,
+      lexerResult,
+      errors: parser.errors as any,
+      warnings
+    };
+  }
+
+  suggest(_text: string, _init: { offset: number; rule?: JessRules }): SyntacticContentAssistSuggestion[] {
+    return [];
   }
 }

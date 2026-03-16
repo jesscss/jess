@@ -15,7 +15,7 @@ import {
  * for lists without keys, the first key is 1, not 0.
  *
  * @example
- * @-from '@jesscss/fns' import (each);
+ * @-use '@jesscss/fns' as fns;
  * @-let list: 1, 2, 3;
  * @-mixin iterate (value, key) {
  *   .icon-#($value) {

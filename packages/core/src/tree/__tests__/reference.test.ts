@@ -17,12 +17,12 @@ describe('reference', () => {
 
     it('should serialize a property reference', () => {
       let node = ref({ key: 'foo' }, { type: 'property' });
-      expect(`${node}`).toBe('.~foo');
+      expect(`${node}`).toBe('$[\'foo\']');
     });
 
     it('should serialize a declaration reference', () => {
       let node = ref({ key: 'foo' }, { type: 'declaration' });
-      expect(`${node}`).toBe('.foo');
+      expect(`${node}`).toBe('$.foo');
     });
 
     it('should serialize an optional reference', () => {

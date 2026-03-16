@@ -86,7 +86,7 @@ describe('jess-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString('(Paren');
+    expect(serializeTypes(tree)).toContainString('(Expression');
     expect(String(tree)).toContain('$(1 + 1)');
   });
 
@@ -97,7 +97,8 @@ describe('jess-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Mixin
-        name: 'mixin'
+        name:
+          (Any [role=name] 'mixin')
       `);
     const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
@@ -105,7 +106,7 @@ describe('jess-parser (ast serialize)', () => {
       const mixin = rules.data.find(n => isNode(n, N.Mixin));
       expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
       if (mixin && isNode(mixin, N.Mixin)) {
-        expect(mixin.data.name).toBe('mixin');
+        expect(String(mixin.data.name)).toBe('mixin');
       }
     }
   });
@@ -154,12 +155,14 @@ describe('jess-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (StyleImport
-        type: 'compose'
         path:
           (Quoted
             (Any [role=any] './theme.jess')
           )
       `);
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const si = rules?.data.find(n => isNode(n, N.StyleImport));
+    expect(isNode(si, N.StyleImport) && si.options.type).toBe('compose');
   });
 
   it('serializes @-compose with namespace', () => {
@@ -167,15 +170,15 @@ describe('jess-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (StyleImport
         type: 'compose'
         namespace: 'theme'
       `);
   });
 
-  it('serializes @-from ... import as JsImport', () => {
-    const { tree, errors, lexerResult } = parser.parse('@-from "./tokens.js" import foo;');
+  it('serializes @-from as JsImport', () => {
+    const { tree, errors, lexerResult } = parser.parse('@-from "./tokens.js" import * as foo;');
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
@@ -186,6 +189,17 @@ describe('jess-parser (ast serialize)', () => {
             (Any [role=any] './tokens.js')
           )
       `);
+    expect(String(tree)).toContain('@-from');
+    expect(String(tree)).toContain('import * as foo');
+  });
+
+  it('serializes @-from with named imports', () => {
+    const { tree, errors, lexerResult } = parser.parse('@-from "./tokens.js" import ( primary, secondary );');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString('(JsImport');
+    expect(String(tree)).toContain('import ( primary, secondary )');
   });
 
   it('serializes @-export as StyleImport with forward', () => {
@@ -193,7 +207,7 @@ describe('jess-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    expect(serializeTypes(tree)).toContainString(`
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (StyleImport
         type: 'compose'
         importOptions: {
@@ -208,8 +222,13 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Collection');
-    expect(String(tree)).toContain('primary: red;');
-    expect(String(tree)).toContain('secondary: blue;');
+    // VarDeclarations are invisible; check collection contents via AST
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const varDecl = rules?.data.find(n => isNode(n, N.VarDeclaration));
+    expect(isNode(varDecl, N.VarDeclaration)).toBe(true);
+    if (isNode(varDecl, N.VarDeclaration)) {
+      expect(isNode(varDecl.data.value, N.Collection)).toBe(true);
+    }
   });
 
   it('serializes mixin with guard', () => {

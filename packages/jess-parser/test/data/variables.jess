@@ -9,8 +9,8 @@ $collection: {
   sibling: declaration;
 }
 
-$(value.class) {}
-.class$(something) {}
+$($value.class) {}
+.class$[something] {}
 
 $foo: $(value.foo and $value.bar);
 $bar: $(value.foo or $value.bar);
@@ -18,8 +18,8 @@ $compare: $(foo > bar);
 
 .box {
   one: $collection.foo.bar.deeper;
-  two: $(some(call, with, args).foo[ ident ].stuff);
-  three: ~(
+  two: $($some(call, with, args).foo[ ident ].stuff);
+  three: $(
     var // )
   ) four;
   four: $url("???");
@@ -30,6 +30,16 @@ $compare: $(foo > bar);
   $value1: $values[0]; // 1px
   $doublelist: 1px 2px, 3px 4px;
   $item: $doublelist[0][0];
+}
+
+// Braced references
+.braced {
+  // $[myVar] — braced variable reference
+  var: $collection[foo];
+  // $['prop'] — braced property reference (quoted key)
+  prop: $collection['bar'];
+  // $[$var] — variable member name lookup
+  dynamic: $collection[$value];
 }
 
 .box {

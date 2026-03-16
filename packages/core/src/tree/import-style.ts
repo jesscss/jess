@@ -1,4 +1,5 @@
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -142,6 +143,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const { path } = this.data;
+    const { type, namespace, importOptions } = this.options;
+
+    if (type === 'compose') {
+      const keyword = importOptions?.forward ? '@-export' : '@-compose';
+      w.add(`${keyword} `);
+    } else {
+      w.add('@-import ');
+    }
+    path.toString(options);
+    if (namespace) {
+      w.add(` as ${namespace}`);
+    }
+    w.add(';');
+    return w.getSince(mark);
   }
 
   getFinalRules(evaluatedRules: Rules) {

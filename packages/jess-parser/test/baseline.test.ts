@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Parser } from '../src/index.js';
-import { isNode } from '@jesscss/core';
+import { isNode, N } from '@jesscss/core';
 import { assertValidTree } from './assert-valid-tree.js';
 
 describe('jess-parser (baseline)', () => {
@@ -22,7 +22,9 @@ describe('jess-parser (baseline)', () => {
     }
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$foo: red;');
+    // VarDeclarations are invisible in CSS output by design; check AST directly
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    expect(rules?.data.some(n => isNode(n, N.VarDeclaration))).toBe(true);
   });
 
   it('parses dollar expression in value', () => {
@@ -77,7 +79,9 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('mixin()');
+    // Mixins are invisible in CSS output by design; check AST directly
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    expect(rules?.data.some(n => isNode(n, N.Mixin))).toBe(true);
   });
 
   it('parses mixin call expression', () => {
@@ -131,14 +135,35 @@ describe('jess-parser (baseline)', () => {
     expect(String(result.tree)).toContain('theme');
   });
 
-  it('parses @-from ... import', () => {
+  it('parses @-from with namespace', () => {
     const parser = new Parser();
-    const result = parser.parse('@-from "./tokens.js" import foo;');
+    const result = parser.parse('@-from "./tokens.js" import * as tokens;');
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
     expect(String(result.tree)).toContain('@-from');
-    expect(String(result.tree)).toContain('./tokens.js');
+    expect(String(result.tree)).toContain('import * as tokens');
+  });
+
+  it('parses @-from with named imports (parens)', () => {
+    const parser = new Parser();
+    const result = parser.parse('@-from "./tokens.js" import ( primary, secondary );');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    assertValidTree(result.tree);
+    expect(String(result.tree)).toContain('@-from');
+    expect(String(result.tree)).toContain('primary');
+    expect(String(result.tree)).toContain('secondary');
+  });
+
+  it('parses @-from with named imports (braces)', () => {
+    const parser = new Parser();
+    const result = parser.parse('@-from "./tokens.js" import { primary, secondary };');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    assertValidTree(result.tree);
+    expect(String(result.tree)).toContain('@-from');
+    expect(String(result.tree)).toContain('primary');
   });
 
   it('parses @-export', () => {
@@ -157,8 +182,13 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('primary: red;');
-    expect(String(result.tree)).toContain('secondary: blue;');
+    // VarDeclarations are invisible in CSS output; verify collection via AST
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const varDecl = rules?.data.find(n => isNode(n, N.VarDeclaration));
+    expect(isNode(varDecl, N.VarDeclaration)).toBe(true);
+    if (isNode(varDecl, N.VarDeclaration)) {
+      expect(isNode(varDecl.data.value, N.Collection)).toBe(true);
+    }
   });
 
   it('parses mixin with guard', () => {
@@ -167,7 +197,13 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('when');
+    // Mixins are invisible in CSS output; verify guard via AST
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const mixin = rules?.data.find(n => isNode(n, N.Mixin));
+    expect(isNode(mixin, N.Mixin)).toBe(true);
+    if (isNode(mixin, N.Mixin)) {
+      expect(mixin.data.guard).toBeDefined();
+    }
   });
 
   it('parses chained mixin calls', () => {

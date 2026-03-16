@@ -1,173 +1,166 @@
-import type { CstChild } from '@jesscss/css-parser';
-import { CstNode } from '@jesscss/css-parser';
-import type { JessParser } from '../jessParser.js';
+import type { JessRuleContext as RuleContext } from '../jessRecursiveParser.js';
+import type { IToken } from '@jesscss/parser';
+import { ScssRecursiveParser } from '@jesscss/scss-parser';
+import {
+  JsImport,
+  Quoted,
+  StyleImport
+} from '@jesscss/core';
 
-export default function(this: JessParser, $: JessParser) {
-  $.knownAtRule = $.OVERRIDE_RULE('knownAtRule',
-    () => $.OR([
-      { ALT: () => $.SUBRULE($.mixin) },
+/** Use `any` for `this` to avoid structural incompatibility */
+type P = any;
 
-      /** In the mixin section */
-      { ALT: () => $.SUBRULE($.atInclude) },
+const scssUnknownAtRule = ScssRecursiveParser.prototype.unknownAtRule;
 
-      { ALT: () => $.SUBRULE($.atLet) },
-      { ALT: () => $.SUBRULE($.atImport) },
-      { ALT: () => $.SUBRULE($.atMedia) },
-      { ALT: () => $.SUBRULE($.atSupports) },
-      { ALT: () => $.SUBRULE($.atNested) },
-      { ALT: () => $.SUBRULE($.atNonNested) }
-    ])
+/**
+ * `@-compose './file.jess' [as namespace];`
+ * Produces StyleImport(type: 'compose').
+ */
+export function jessComposeAtRule(this: P, ctx: RuleContext = {}) {
+  const $ = this;
+  $.startRule();
+
+  $.CONSUME($.T.AtKeyword); // @-compose
+  const pathNode: Quoted = $.OR([
+    { ALT: () => $.urlFunction(ctx) },
+    { ALT: () => $.string(ctx) }
+  ]) as unknown as Quoted;
+
+  let namespace: string | undefined;
+  if ($.LA(1).image === 'as') {
+    $.CONSUME($.T.PlainIdent); // 'as'
+    const nsTok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+    namespace = nsTok.image;
+  }
+
+  $.CONSUME($.T.Semi);
+  const loc = $.endRule();
+  return new StyleImport(
+    { path: pathNode },
+    { type: 'compose', namespace, importOptions: {} },
+    loc,
+    $.context
   );
+}
 
-  $.atImport = $.OVERRIDE_RULE('atImport', () => {
-    const atRule: CstChild[] = [
-      $.CONSUME($.T.AtImport)
-    ];
-    const prelude = [];
-    $.OPTION(() => prelude.push($.CONSUME($.T.WS)));
+/**
+ * `@-from './tokens.js' import ( name [as alias], ... );`
+ * `@-from './tokens.js' import * as namespace;`
+ * Produces JsImport.
+ *
+ * Both paren and brace forms accepted for named imports:
+ *   `@-from './tokens.js' import ( primary, secondary )`
+ *   `@-from './tokens.js' import { primary, secondary }`
+ */
+export function jessFromAtRule(this: P, ctx: RuleContext = {}) {
+  const $ = this;
+  $.startRule();
 
-    $.OR([
-      {
-        ALT: () => {
-          prelude.push(
-            $.SUBRULE($.atImportCss)
-          );
-          $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)));
-          $.OPTION3(() => prelude.push($.SUBRULE($.mediaQueryList)));
-        }
-      },
-      {
-        ALT: () => {
-          prelude.push(
-            $.SUBRULE($.atImportJs)
-          );
-        }
+  $.CONSUME($.T.AtKeyword); // @-from
+  const pathNode: Quoted = $.OR([
+    { ALT: () => $.urlFunction(ctx) },
+    { ALT: () => $.string(ctx) }
+  ]) as unknown as Quoted;
+
+  let namespace: string | undefined;
+  const specifiers: Array<string | [string, string]> = [];
+
+  if ($.LA(1).tokenType === $.T.PlainIdent && $.LA(1).image === 'import') {
+    $.CONSUME($.T.PlainIdent); // 'import'
+    if ($.LA(1).tokenType === $.T.Star) {
+      // import * as namespace
+      $.CONSUME($.T.Star);
+      $.CONSUME($.T.PlainIdent); // 'as'
+      const nsTok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+      namespace = nsTok.image;
+    } else {
+      // import ( names ) or import { names }
+      const isParens = $.LA(1).tokenType === $.T.LParen;
+      if (isParens) {
+        $.CONSUME($.T.LParen);
+      } else {
+        $.CONSUME($.T.LCurly);
       }
-    ]);
-
-    $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)));
-
-    atRule.push(
-      {
-        name: 'prelude',
-        children: prelude
-      },
-      $.OPTION5(() => $.CONSUME($.T.SemiColon))
-    );
-    return {
-      name: 'atRule',
-      children: atRule
-    };
-  });
-
-  $.atImportCss = $.RULE('atImportCss',
-    () => $.OR([
-      { ALT: () => $.CONSUME($.T.StringLiteral) },
-      { ALT: () => $.CONSUME($.T.Uri) }
-    ])
-  );
-
-  /**
-   * @todo - for now, just capture the stream of tokens
-   * In the future, this should be more structured to do
-   * some static analysis at the AST phase.
-   */
-  $.atImportJs = $.RULE('atImportJs',
-    () => {
-      const children: CstChild[] = [];
-      $.OR([
-        {
-          ALT: () => {
-            children.push(
-              $.CONSUME($.T.Star),
-              $._(),
-              $.CONSUME($.T.As),
-              $._(1),
-              /** JS ident */
-              $.CONSUME($.T.Ident)
-            );
+      $.OPTION(() => {
+        $.AT_LEAST_ONE_SEP({
+          SEP: $.T.Comma,
+          DEF: () => {
+            const nameTok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+            const name = nameTok.image;
+            if ($.LA(1).tokenType === $.T.PlainIdent && $.LA(1).image === 'as') {
+              $.CONSUME($.T.PlainIdent); // 'as'
+              const aliasTok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+              specifiers.push([name, aliasTok.image]);
+            } else {
+              specifiers.push(name);
+            }
           }
-        },
-        {
-          ALT: () => {
-            /** JS ident */
-            children.push(
-              $.CONSUME2($.T.Ident),
-              $._(2)
-            );
-            $.OPTION(() => {
-              children.push(
-                $.CONSUME($.T.Comma),
-                $._(3),
-                $.SUBRULE($.atImportJsBlock)
-              );
-            });
-          }
-        },
-        {
-          ALT: () => {
-            children.push($.SUBRULE2($.atImportJsBlock));
-          }
-        }
-      ]);
-      children.push(
-        $._(4),
-        $.CONSUME($.T.From),
-        $._(5),
-        $.CONSUME($.T.StringLiteral)
-      );
-      return {
-        name: 'atImportJs',
-        children
-      };
+        });
+      });
+      if (isParens) {
+        $.CONSUME($.T.RParen);
+      } else {
+        $.CONSUME($.T.RCurly);
+      }
     }
+  }
+
+  $.CONSUME($.T.Semi);
+  const loc = $.endRule();
+  return new JsImport(
+    { path: pathNode as any, ...(specifiers.length ? { imports: specifiers } : {}) },
+    { namespace },
+    loc,
+    $.context
   );
+}
 
-  $.atImportJsBlock = $.RULE('atImportJsBlock', () => {
-    const children: CstChild[] = [
-      $.CONSUME($.T.LCurly),
-      $._(),
-      $.SUBRULE($.atImportJsArg)
-    ];
+/**
+ * `@-export './file.jess' [as namespace];`
+ * Produces StyleImport(type: 'compose', importOptions: { forward: true }).
+ */
+export function jessExportAtRule(this: P, ctx: RuleContext = {}) {
+  const $ = this;
+  $.startRule();
 
-    $.MANY(() => {
-      children.push(
-        {
-          name: 'delimiter',
-          children: [
-            $.CONSUME($.T.Comma),
-            $._(1)
-          ]
-        },
-        $.SUBRULE2($.atImportJsArg)
-      );
-    });
-    children.push($.CONSUME($.T.RCurly));
+  $.CONSUME($.T.AtKeyword); // @-export
+  const pathNode: Quoted = $.OR([
+    { ALT: () => $.urlFunction(ctx) },
+    { ALT: () => $.string(ctx) }
+  ]) as unknown as Quoted;
 
-    return {
-      name: 'atImportJsBlock',
-      children
-    };
-  });
+  let namespace: string | undefined;
+  if ($.LA(1).image === 'as') {
+    $.CONSUME($.T.PlainIdent); // 'as'
+    const nsTok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+    namespace = nsTok.image;
+  }
 
-  $.atImportJsArg = $.RULE('atImportJsArg', () => {
-    /** JS ident */
-    const children: CstChild[] = [
-      $.CONSUME($.T.PlainIdent),
-      $._()
-    ];
-    $.OPTION(() => {
-      children.push(
-        $.CONSUME($.T.As),
-        $._(1),
-        /** JS ident */
-        $.CONSUME2($.T.PlainIdent),
-        $._(2)
-      );
-    });
-    return {
-      name: 'atImportJsArg',
-      children
-    };
-  });
+  $.CONSUME($.T.Semi);
+  const loc = $.endRule();
+  return new StyleImport(
+    { path: pathNode },
+    { type: 'compose', namespace, importOptions: { forward: true } },
+    loc,
+    $.context
+  );
+}
+
+/**
+ * Override unknownAtRule to dispatch Jess-specific dashed at-rules before
+ * falling through to the SCSS handler.
+ */
+export function unknownAtRule(this: P, ctx: RuleContext = {}) {
+  const $ = this;
+  const img = $.LA(1).image;
+  if (img === '@-compose') {
+    return $.jessComposeAtRule(ctx);
+  }
+  if (img === '@-from') {
+    return $.jessFromAtRule(ctx);
+  }
+  if (img === '@-export') {
+    return $.jessExportAtRule(ctx);
+  }
+  return scssUnknownAtRule.call($, ctx);
 }
