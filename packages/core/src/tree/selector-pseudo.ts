@@ -1,6 +1,9 @@
 import {
   defineType,
-  type Node
+  Node,
+  type LocationInfo,
+  type NodeOptions,
+  type TreeContext
 } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type Context } from '../context.js';
@@ -30,20 +33,20 @@ export interface PseudoSelector {
   shortType: 'pseudo';
 }
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
-  get name() {
-    return this.data.name;
-  }
+  static override childKeys = ['name', 'arg'] as const;
 
-  set name(val: string) {
-    this.setData('name', val);
-  }
+  name!: string;
+  arg: Node | undefined;
 
-  get arg() {
-    return this.data.arg;
-  }
+  declare readonly data: Readonly<PseudoSelectorValue>;
 
-  set arg(val) {
-    this.setData('arg', val as any);
+  constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.name = value.name;
+    this.arg = value.arg;
+    if (this.arg instanceof Node) {
+      this.adopt(this.arg);
+    }
   }
 
   override computeKeySetAndFastReject(): void {
@@ -80,7 +83,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, arg } = this.data;
+    let { name, arg } = this;
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
@@ -113,7 +116,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override valueOf(): string {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, arg } = this.data;
+      let { name, arg } = this;
       /**
        * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
        * That is, anything that doesn't hold a selector as a value
@@ -134,7 +137,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
-    const currentArg = this.data.arg;
+    const currentArg = this.arg;
     const node = super.evalNode(context) as PseudoSelector;
     if (!currentArg) {
       return node;
@@ -180,6 +183,15 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 //   ['arg', new BasicSelector([['value', 'div']])]
 // ])
 // foo.arg
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(PseudoSelector.prototype, 'data', {
+  get(this: PseudoSelector) {
+    return { name: this.name, arg: this.arg };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
 

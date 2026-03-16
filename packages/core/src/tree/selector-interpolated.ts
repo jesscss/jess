@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType } from './node.js';
+import { defineType, Node, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
@@ -16,6 +16,20 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
  * This allows interpolation to be used in selector contexts
  */
 export class InterpolatedSelector extends SimpleSelector<Interpolated> {
+  static override childKeys = ['value'] as const;
+
+  value!: Interpolated;
+
+  declare readonly data: Readonly<Interpolated>;
+
+  constructor(value: Interpolated, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    if (this.value instanceof Node) {
+      this.adopt(this.value);
+    }
+  }
+
   get isClass() {
     return /^\./.test(this.valueOf());
   }
@@ -29,12 +43,21 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    return this.data.evalToSelector(context);
+    return this.value.evalToSelector(context);
   }
 
   override valueOf(): string {
-    return this.data.valueOf();
+    return this.value.valueOf();
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(InterpolatedSelector.prototype, 'data', {
+  get(this: InterpolatedSelector) {
+    return this.value;
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export const interpolatedSelector = defineType(InterpolatedSelector, 'InterpolatedSelector', 'interpolated-selector');
