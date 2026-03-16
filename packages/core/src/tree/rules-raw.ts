@@ -11,7 +11,10 @@ export interface RawRules {
   shortType: 'rules-raw';
 }
 export class RawRules extends Rules {
-  override allowRuleRoot = true;
+  constructor(...args: ConstructorParameters<typeof Rules>) {
+    super(...args);
+    this.allowRuleRoot = true;
+  }
 
   // Do not add newlines/indent; emit children exactly as-is
   override toBraced(options?: PrintOptions) {

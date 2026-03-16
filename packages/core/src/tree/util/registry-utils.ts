@@ -540,9 +540,9 @@ export class MixinRegistry extends Registry<
         // Fall back to source selector only when evaluated keys are empty.
         const sourceSelector = selector.sourceNode as Selector | undefined;
         const selectorToIndex = (
-          selector.visibleKeySet?.size
+          selector.visibleKeySet?.cardinality()
             ? selector
-            : (sourceSelector?.visibleKeySet?.size ? sourceSelector : selector)
+            : (sourceSelector?.visibleKeySet?.cardinality() ? sourceSelector : selector)
         ) as Selector;
         let keySetToUse: SelectorKeySet | string[] | undefined;
         if (isNode(selectorToIndex, N.SelectorList)) {
@@ -593,7 +593,7 @@ export class MixinRegistry extends Registry<
             && !isNode(ownSelector, N.Nil)
           ) {
             const ownKeySet = (ownSelector as Selector).visibleKeySet;
-            if (ownKeySet?.size) {
+            if (ownKeySet?.cardinality()) {
               const ownKeys = getSelectorKeyValues(ownKeySet);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
               // In nested `&...` rulesets, ownKeySet may include inherited parent key first.
@@ -650,7 +650,7 @@ export class MixinRegistry extends Registry<
         });
       }
       const keySet = selector.keySet;
-      if (!keySet || keySet.size === 0) {
+      if (!keySet || keySet.cardinality() === 0) {
         return false;
       }
       indexableKeys = getIndexableSelectorKeys(keySet);

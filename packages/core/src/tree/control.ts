@@ -121,11 +121,10 @@ export interface If extends Node<IfValue> {
 export class If extends Node<IfValue> {
   // type = 'If' as const;
   // shortType = 'if' as const;
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: IfValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const body of value.bodies) {
       makeDirectiveRulesPublic(body);
@@ -173,11 +172,10 @@ export interface For extends Node<ForValue> {
 export class For extends Node<ForValue> {
   // type = 'For' as const;
   // shortType = 'for' as const;
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: ForValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     makeDirectiveRulesPublic(value.rules);
   }
@@ -354,11 +352,10 @@ export interface Each extends Node<LegacyLoopValue> {
 export class Each extends Node<LegacyLoopValue> {
   // type = 'Each' as const;
   // shortType = 'each' as const;
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
@@ -387,11 +384,10 @@ export interface While {
   shortType: 'while';
 }
 export class While extends Node<WhileValue> {
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     makeDirectiveRulesPublic(value.rules);
   }

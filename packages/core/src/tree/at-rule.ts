@@ -68,9 +68,12 @@ export interface AtRule {
 }
 
 export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
-  override allowRoot = true;
-
   frames: (Ruleset | AtRule)[] | undefined;
+
+  constructor(value: AtRuleValue, options?: AtRuleOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.allowRoot = true;
+  }
 
   get name() {
     return this.data.name;

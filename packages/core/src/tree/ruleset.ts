@@ -1,6 +1,7 @@
 import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
-import type { Context } from '../context.js';
+import type { Context, TreeContext } from '../context.js';
+import { type LocationInfo } from './node.js';
 import { Nil } from './nil.js';
 import { Bool } from './bool.js';
 import type { Condition } from './condition.js';
@@ -66,10 +67,14 @@ export interface Ruleset {
 }
 
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
-  override allowRuleRoot = true;
-  override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
   frames: (Ruleset | AtRule)[] | undefined;
+
+  constructor(value: NarrowRulesetValue<T>, options?: RulesetOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
+  }
 
   get selector() {
     return this.data.selector;

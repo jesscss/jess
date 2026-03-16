@@ -6,6 +6,8 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { selectorMatch } from './selector-match-core.js';
+import type { Node } from '../node.js';
+import { F_AMPERSAND } from '../node-base.js';
 
 /**
  * Extend failure categories surfaced to callers while the rewrite remains
@@ -184,15 +186,16 @@ function collectCompoundConflictInfo(
   }
 
   if (isNode(selector, N.CompoundSelector | N.SelectorList)) {
-    for (const child of selector.data) {
+    for (const child of (selector as CompoundSelector | SelectorList).data) {
       collectCompoundConflictInfo(child as Selector, info);
     }
     return info;
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (let i = selector.data.length - 1; i >= 0; i--) {
-      const child = selector.data[i] as Selector;
+    const complexData = (selector as unknown as ComplexSelector).data;
+    for (let i = complexData.length - 1; i >= 0; i--) {
+      const child = complexData[i] as Selector;
       if (isNode(child, N.Combinator)) {
         continue;
       }
@@ -202,9 +205,10 @@ function collectCompoundConflictInfo(
     return info;
   }
 
-  if (isNode(selector, N.PseudoSelector) && isNode(selector.data.arg, N.Selector)) {
-    if (selector.data.name === ':is') {
-      collectCompoundConflictInfo(selector.data.arg as Selector, info);
+  if (isNode(selector, N.PseudoSelector) && isNode((selector as unknown as PseudoSelector).data.arg, N.Selector)) {
+    const pseudoData = (selector as unknown as PseudoSelector).data;
+    if (pseudoData.name === ':is') {
+      collectCompoundConflictInfo(pseudoData.arg as Selector, info);
     }
   }
 
@@ -450,7 +454,8 @@ function replaceDirectSelectorChild(
   }
 
   if (isNode(parent, N.SelectorList | N.ComplexSelector | N.CompoundSelector)) {
-    const index = parent.data.findIndex(node => node === child);
+    const parentArr = (parent as unknown as SelectorList | ComplexSelector | CompoundSelector).data as readonly unknown[];
+    const index = (parentArr as unknown[]).findIndex((node: unknown) => node === child);
     if (index !== -1) {
       parent.setData(index, replacement);
       return true;
@@ -481,11 +486,12 @@ function resolveAmpersandTarget(
   for (let i = 0; i < target.data.length; i++) {
     const component = target.data[i]!;
     if (isNode(component, N.Ampersand)) {
-      const resolved = component.getResolvedSelector() ?? parent;
-      if (!resolved) {
+      const resolvedRaw = component.getResolvedSelector() ?? parent;
+      if (!resolvedRaw || isNode(resolvedRaw, N.Nil)) {
         nextData.push(component.copy(true) as Selector);
         continue;
       }
+      const resolved = resolvedRaw as Selector;
       nextData.push(...getAmpersandReplacement(resolved, i === 0));
       replacedAny = true;
       continue;
@@ -843,7 +849,7 @@ function getSingleMatchedDirectChild(
     return undefined;
   }
 
-  return target.data[location.startIndex] as Selector | undefined;
+  return (target as SelectorList | CompoundSelector | ComplexSelector).data[location.startIndex] as Selector | undefined;
 }
 
 /** Returns the direct selector-valued arg on a pseudo selector, if any. */
@@ -969,8 +975,9 @@ function tryAppendIntoNestedIsOnFullMatch(
     return undefined;
   }
 
-  for (let i = 0; i < target.data.length; i++) {
-    const child = target.data[i] as Selector;
+  const targetData = (target as unknown as CompoundSelector | ComplexSelector).data as readonly Selector[];
+  for (let i = 0; i < targetData.length; i++) {
+    const child = targetData[i] as Selector;
     if (!(isNode(child, N.PseudoSelector) && child.data.name === ':is' && isNode(child.data.arg, N.Selector))) {
       continue;
     }
@@ -1208,13 +1215,13 @@ export function tryExtendSelector(
     preserveRootKinds: number
   ): ExtendResult => {
     if (isNode(replacement, preserveRootKinds)) {
-      target.setData([...replacement.data] as any);
+      target.setData([...(replacement as SelectorList | ComplexSelector | CompoundSelector).data] as any);
       markTargetHoist();
       return finalize(createSuccessResult(target));
     }
 
     if (crossedAmpersand) {
-      replacement.hoistToRoot = true;
+      (replacement as Selector).hoistToRoot = true;
     }
     return finalize(createSuccessResult(replacement));
   };
@@ -1252,11 +1259,11 @@ export function tryExtendSelector(
 
     const compoundOutsideMembers = isNode(target, N.CompoundSelector)
       ? getCompoundMembersOutsideRange(
-        target as Selector & { data: readonly Selector[] },
-        location.startIndex,
-        location.endIndex,
-        location.matchedIndices
-      )
+          target as Selector & { data: readonly Selector[] },
+          location.startIndex,
+          location.endIndex,
+          location.matchedIndices
+        )
       : undefined;
 
     if (isNode(target, N.CompoundSelector)) {

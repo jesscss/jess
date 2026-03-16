@@ -14,6 +14,85 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
+import { tryExtendSelector } from './extend-core.js';
+import { selectorMatch } from './selector-match-core.js';
+
+export interface ExtendInstruction {
+  target: Selector;
+  extendWith: Selector;
+  partial: boolean;
+  extendRoot?: Rules;
+}
+
+function invalidateSelectorTreeCaches(selector: Selector | Nil | undefined): void {
+  if (!selector || selector instanceof Nil) {
+    return;
+  }
+  const clear = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return;
+    }
+    if ('_valueOf' in (node as object)) {
+      (node as { _valueOf?: string })._valueOf = undefined;
+    }
+    if ('_keySet' in (node as object)) {
+      (node as { _keySet?: unknown })._keySet = undefined;
+    }
+    if ('_visibleKeySet' in (node as object)) {
+      (node as { _visibleKeySet?: unknown })._visibleKeySet = undefined;
+    }
+    if ('_canFastReject' in (node as object)) {
+      (node as { _canFastReject?: boolean })._canFastReject = undefined;
+    }
+  };
+  clear(selector);
+  for (const node of selector.nodes()) {
+    clear(node);
+  }
+}
+
+function findExtendableLocations(target: Selector, find: Selector): { hasMatches: boolean } {
+  return { hasMatches: selectorMatch(find, target).fullMatch };
+}
+
+function applyExtendsToSelector(
+  initialSelector: Selector,
+  extendsList: ExtendInstruction[]
+): Selector {
+  if (extendsList.length === 0) {
+    return initialSelector;
+  }
+  let selector = initialSelector;
+  const instructions = extendsList.slice();
+  let changed = true;
+  while (changed && instructions.length > 0) {
+    changed = false;
+    for (let i = 0; i < instructions.length; i++) {
+      const instruction = instructions[i];
+      if (!instruction) {
+        continue;
+      }
+      const { target, extendWith, partial } = instruction;
+      const result = tryExtendSelector(selector, target, extendWith, partial);
+      if (result && !result.error) {
+        const beforeValue = selector.valueOf();
+        const afterValue = result.value.valueOf();
+        if (afterValue !== beforeValue) {
+          selector = result.value;
+          instructions.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return selector;
+}
+
+function wouldInstructionChangeSel(selector: Selector, instruction: ExtendInstruction): boolean {
+  const after = applyExtendsToSelector(selector.copy(true) as Selector, [instruction]);
+  return after.valueOf() !== selector.valueOf();
+}
 
 /**
  * @todo - Rewrite entirely by hand

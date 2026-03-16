@@ -22,9 +22,6 @@ export interface Log extends Node<LogValue, NodeOptions> {
  * These are compile-time diagnostic directives that should not appear in CSS output.
  */
 export class Log extends Node<LogValue, NodeOptions> {
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(
     value: LogValue,
     options?: NodeOptions,
@@ -32,6 +29,8 @@ export class Log extends Node<LogValue, NodeOptions> {
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
     // Log nodes should not be visible (they serialize to empty strings)
     this.removeFlag(F_VISIBLE);
   }
