@@ -46,32 +46,32 @@ selector-utils.ts, extend-core.ts, registry-utils.ts, reference.ts).
 Goal: Move `.data` to instance fields for leaf/value nodes. Establish `childKeys`.
 
 ### Infrastructure (Node base class)
-- [ ] Make `childKeys` load-bearing in `clone()` — leaf fast path (`childKeys === null`)
-- [ ] Make `childKeys` load-bearing in `_adoptChildren()`
-- [ ] Make `childKeys` load-bearing in child iteration helpers
-- [ ] Add `.data` compatibility getter that synthesizes from instance fields
+- [x] Make `childKeys` load-bearing in `clone()` — leaf fast path (`childKeys === null`)
+- [x] Make `childKeys` load-bearing in `_adoptChildren()`
+- [x] Make `childKeys` load-bearing in child iteration helpers
+- [x] Add `.data` compatibility getter that synthesizes from instance fields
 
 ### Leaf Node Conversions
 Each checkbox = one node class converted + tests green.
 
-- [ ] `Dimension` — `number: number`, `unit: string | undefined`
-- [ ] `Num` — extends Dimension (no unit)
-- [ ] `Bool` — `value: boolean`
-- [ ] `Any` — `value: string`, `role: AnyRole`
-- [ ] `Keyword` — subclass of Any, role='keyword'
-- [ ] `Comment` — `value: string`, `lineComment: boolean`
-- [ ] `BasicSelector` — `value: string`
-- [ ] `Combinator` — `value: string`
-- [ ] `Ampersand` — (no data fields)
-- [ ] `Color` — `rgb`, `hsl`, `alpha`, `format`
-- [ ] `Nil` — (sentinel, no data)
+- [x] `Dimension` — `number: number`, `unit: string | undefined`
+- [x] `Num` — extends Dimension (inherits childKeys)
+- [x] `Bool` — `value: boolean`
+- [x] `Any` — `value: string` (role stays in options)
+- [x] `Keyword` — subclass of Any (inherits childKeys)
+- [x] `Comment` — `value: string` (lineComment stays in options)
+- [x] `BasicSelector` — `value: string`
+- [x] `Combinator` — `value: Combinators`
+- [x] `Ampersand` — `appendValue: string | undefined`
+- [x] `Color` — `_rgbChannels`, `_hslChannels`, `_alphaValue`, `_nodeValue`
+- [x] `Nil` — (sentinel, data always '')
 
 ### Stage 1 Exit Criteria
-- [ ] All leaf node types use instance fields
-- [ ] `childKeys = null` on all leaf types
-- [ ] `clone()` uses fast path for leaf nodes
-- [ ] All core tests pass (same baseline or better)
-- [ ] `.data` compatibility getter works for consumers still reading it
+- [x] All leaf node types use instance fields
+- [x] `childKeys = null` on all leaf types
+- [x] `clone()` uses fast path for leaf nodes
+- [x] All core tests pass (same baseline: 31 failed | 866 passed)
+- [x] `.data` compatibility getter works for consumers still reading it
 
 ---
 
