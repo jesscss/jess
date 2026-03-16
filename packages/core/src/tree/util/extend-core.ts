@@ -564,6 +564,7 @@ function resolveAmpersandTarget(
         nextData.push(component.copy(true) as Selector);
         continue;
       }
+      const resolved = resolvedRaw as Selector;
       nextData.push(...getParentReplacementForAmpersand(resolved, i === 0));
       replacedAny = true;
       continue;
