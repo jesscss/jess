@@ -496,11 +496,22 @@ export abstract class Node<
     }
     const key = args[0] as string | number;
     const val = args[1];
-    const prev = (this.data as any)[key];
-    if (prev === val) {
-      return;
+    const ck = (this.constructor as typeof Node).childKeys;
+    // Migrated containers use instance fields — write directly to `this[key]`
+    // instead of through the compat `.data` getter (which returns a temporary object).
+    if (ck) {
+      const prev = (this as any)[key];
+      if (prev === val) {
+        return;
+      }
+      (this as any)[key] = val;
+    } else {
+      const prev = (this.data as any)[key];
+      if (prev === val) {
+        return;
+      }
+      (this.data as any)[key] = val;
     }
-    (this.data as any)[key] = val;
     this._adoptValue(val);
     this._invalidateValueOf();
   }

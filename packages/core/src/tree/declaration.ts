@@ -2,11 +2,13 @@ import {
   Node,
   F_STATIC,
   defineType,
-  type LocationInfo
+  type LocationInfo,
+  type NodeOptions,
+  type TreeContext
 } from './node.js';
 import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
 import { Any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
@@ -87,44 +89,40 @@ export interface Declaration {
 }
 
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
+  static override childKeys = ['name', 'value', 'important'] as const;
+
+  name!: NameValue;
+  value!: Node;
+  important: Any<'flag'> | undefined;
+
+  declare readonly data: Readonly<DeclarationValue>;
+
   constructor(value: DeclarationValue, options?: Opts, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+    super(value as any, options, location, treeContext);
+    this.name = value.name;
+    this.value = value.value;
+    this.important = value.important;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.value instanceof Node) {
+      this.adopt(this.value);
+    }
+    if (this.important instanceof Node) {
+      this.adopt(this.important);
+    }
     this.allowRuleRoot = true;
-  }
-
-  get name() {
-    return this.data.name;
-  }
-
-  set name(val: DeclarationValue['name']) {
-    this.setData('name', val);
-  }
-
-  get value() {
-    return this.data.value;
-  }
-
-  set value(val: DeclarationValue['value']) {
-    this.setData('value', val);
-  }
-
-  get important() {
-    return this.data.important;
-  }
-
-  set important(val: DeclarationValue['important']) {
-    this.setData('important', val as any);
   }
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return !isNode(this.data.value, N.Collection) && !isNode(this.data.value, N.Mixin);
+    return !isNode(this.value, N.Collection) && !isNode(this.value, N.Mixin);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const { name, value, important } = this.data;
+    const { name, value, important } = this;
     const { assign = ':', setDefined } = this.options;
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -186,7 +184,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
-    let { name, value } = node.data;
+    let { name, value } = node;
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
@@ -224,7 +222,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            node.setData('value', value);
+            node.value = value;
             break;
           }
           case AssignmentType.Add: {
@@ -232,7 +230,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              node.setData('value', new List([
+              node.value = new List([
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
@@ -241,35 +239,35 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   filter: n => n !== node
                 }),
                 value
-              ]));
+              ]);
             } else {
-              node.setData('value', new Operation([
+              node.value = new Operation([
                 new Reference({ key }, { type }),
                 '+',
                 value
-              ]));
+              ]);
             }
             break;
           }
           case AssignmentType.CondAssign: {
-            node.setData('value', new Reference({ key }, {
+            node.value = new Reference({ key }, {
               type,
               fallbackValue: value
-            }));
+            });
             break;
           }
         }
         node.options.normalizedFromAssign = normalizedAssign;
         node.options.assign = AssignmentType.Default;
       }
-      const out = node.data.value.preEval(context);
+      const out = node.value.preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          node.setData('value', value);
+          node.value = value;
           return node;
         });
       }
-      node.setData('value', out);
+      node.value = out;
       return node;
     };
 
@@ -277,12 +275,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          node.setData('name', key);
+          node.name = key;
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      node.setData('name', key);
+      node.name = key;
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);
@@ -301,10 +299,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          if (!isListMergedAssign || !isNode(node.data.value, N.List)) {
+          if (!isListMergedAssign || !isNode(node.value, N.List)) {
             return;
           }
-          const listValue = node.data.value.data;
+          const listValue = node.value.data;
           if (listValue.length === 0) {
             return;
           }
@@ -319,20 +317,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            node.setData('value', new Nil());
+            node.value = new Nil();
             return;
           }
           if (rest.length === 1) {
-            node.setData('value', rest[0]!.copy(true));
+            node.value = rest[0]!.copy(true);
             return;
           }
-          node.setData('value', new List(rest.map(item => item.copy(true))));
+          node.value = new List(rest.map(item => item.copy(true)));
         };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
           return node;
         }
-        const { name, value } = node.data;
+        const { name, value } = node;
         if (value instanceof Node) {
           const isCustomProperty = name.valueOf().startsWith('--');
           if (isCustomProperty) {
@@ -351,11 +349,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              node.setData('value', newValue);
+              node.value = newValue;
               normalizeMergedLeadingPlaceholder();
               // Merge !important from referenced declarations
-              if (context.hasImportantSource && !node.data.important) {
-                node.setData('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
+              if (context.hasImportantSource && !node.important) {
+                node.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
               }
               // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
@@ -368,11 +366,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          node.setData('value', maybeNewValue as Node);
+          node.value = maybeNewValue as Node;
           normalizeMergedLeadingPlaceholder();
           // Merge !important from referenced declarations
-          if (context.hasImportantSource && !node.data.important) {
-            node.setData('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>);
+          if (context.hasImportantSource && !node.important) {
+            node.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
           }
           // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {
@@ -383,36 +381,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
     ) as MaybePromise<this | Nil>;
   }
-
-  /** @todo - move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   this.name.toCSS(context, out)
-  //   out.add(': ')
-  //   context.cast(this.data).toCSS(context, out)
-  //   if (this.important) {
-  //     out.add(' ')
-  //     this.important.toCSS(context, out)
-  //   }
-  //   out.add(';')
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   const pre = context.pre
-  //   const loc = this.location
-  //   out.add('$J.decl({\n', loc)
-  //   context.indent++
-  //   out.add(`  ${pre}name: `)
-  //   this.name.toModule(context, out)
-  //   out.add(`,\n  ${pre}value: `)
-  //   this.data.toModule(context, out)
-  //   if (this.important) {
-  //     out.add(`,\n  ${pre}important: `)
-  //     this.important.toModule(context, out)
-  //   }
-  //   context.indent--
-  //   out.add(`\n${pre}})`)
-  // }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Declaration.prototype, 'data', {
+  get(this: Declaration) {
+    return { name: this.name, value: this.value, important: this.important };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
