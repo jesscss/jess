@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node.js';
+import { F_NON_STATIC, F_VISIBLE, Node, defineType, type LocationInfo, type TreeContext } from './node.js';
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
@@ -26,41 +26,34 @@ export interface Condition extends Node<ConditionValue, ConditionOptions> {
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  constructor(value: ConditionValue, options?: ConditionOptions, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['left', 'right'] as const;
+
+  left!: Node;
+  operator: ConditionOperator | undefined;
+  right: Node | undefined;
+
+  declare readonly data: Readonly<ConditionValue>;
+
+  constructor(value: ConditionValue, options?: ConditionOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.left = value[0];
+    this.operator = value[1];
+    this.right = value[2];
+    if (this.left instanceof Node) {
+      this.adopt(this.left);
+    }
+    if (this.right instanceof Node) {
+      this.adopt(this.right);
+    }
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
-  }
-
-  get left() {
-    return this.data[0];
-  }
-
-  set left(val: Node) {
-    (this.data as ConditionValue)[0] = val;
-  }
-
-  get operator() {
-    return this.data[1];
-  }
-
-  set operator(val: ConditionOperator | undefined) {
-    (this.data as ConditionValue)[1] = val as any;
-  }
-
-  get right() {
-    return this.data[2];
-  }
-
-  set right(val: Node | undefined) {
-    (this.data as ConditionValue)[2] = val as any;
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.data;
+    let { left, operator: op, right } = this;
     const needsParens = Boolean(right || this.options?.negate);
     if (this.options?.negate) {
       w.add('not ');
@@ -83,7 +76,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   static getBool(node: Node, negated: boolean): Bool {
     if (node instanceof Bool) {
-      return new Bool(negated ? !node.data : node.data);
+      return new Bool(negated ? !node.value : node.value);
     }
     // Less guards treat only explicit booleans as truthy.
     // Any non-boolean (number, quoted, keyword, list, nil, etc.) is false.
@@ -92,8 +85,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
     switch (op) {
-      case 'and': return Condition.getBool(a, false).data && Condition.getBool(b, false).data;
-      case 'or': return Condition.getBool(a, false).data || Condition.getBool(b, false).data;
+      case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
+      case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
       default:
         switch (a.compare(b)) {
           case -1:
@@ -109,7 +102,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    let [left, op, right] = this.data;
+    let { left, operator: op, right } = this;
     let negated = !!this.options?.negate;
 
     return pipe(
@@ -154,4 +147,17 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     );
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Condition.prototype, 'data', {
+  get(this: Condition) {
+    if (this.operator !== undefined && this.right !== undefined) {
+      return [this.left, this.operator, this.right] as ConditionValue;
+    }
+    return [this.left] as ConditionValue;
+  },
+  configurable: true,
+  enumerable: true
+});
+
 export const condition = defineType(Condition, 'Condition');
