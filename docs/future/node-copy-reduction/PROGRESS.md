@@ -97,10 +97,10 @@ Each checkbox = one node class converted + tests green.
 - [x] `Reference` — `target`, `key`; childKeys=['target','key']
 
 **Complex containers:**
-- [ ] `Ruleset` — `selector`, `rules`, `guard`; childKeys=['selector','rules','guard']
-- [ ] `AtRule` — `name`, `prelude`, `rules`; childKeys=['name','prelude','rules']
-- [ ] `Mixin` — `name`, `rules`, `params`, `guard`; childKeys=['name','rules','params','guard']
-- [ ] `StyleImport` — `path`, `withConfig`; childKeys=['path']
+- [x] `Ruleset` — `selector`, `rules`, `guard`, `selectorBeforeExtend`; childKeys=['selector','rules','guard','selectorBeforeExtend']
+- [x] `AtRule` — `name`, `prelude`, `rules`; childKeys=['name','prelude','rules']
+- [x] `Mixin` — `name`, `rules`, `params`, `guard`; childKeys=['name','rules','params','guard']
+- [x] `StyleImport` — `path`, `withNode`; childKeys=['path','withNode']
 - [ ] `Rules` — `value: Node[]`; childKeys=['value']
 
 **Selector containers:**
@@ -121,7 +121,7 @@ Each checkbox = one node class converted + tests green.
 - [x] `Block` — `value`; childKeys=['value']
 - [x] `Extend` — `selector`, `target`; childKeys=['selector','target']
 - [ ] `ExtendList` — TBD
-- [ ] `Control` (If, For, Each, While) — TBD
+- [x] `Control` (If, For, Each, While) — converted with per-type childKeys
 - [x] `Log` — `level`, `message`; childKeys=['level','message']
 - [x] `DefaultGuard` — leaf; childKeys=null
 - [x] `JsExpr` — leaf; childKeys=null
@@ -132,9 +132,9 @@ Each checkbox = one node class converted + tests green.
 - [x] `Func` — `name`, `params`, `body`; childKeys=['name','params','body']
 - [x] `SelectorCapture` — `value`; childKeys=['value']
 - [x] `VarDeclaration` — inherits Declaration childKeys
-- [ ] `DeclarationCustom` — inherits Declaration childKeys (needs verification)
-- [ ] `RulesRaw` — TBD
-- [ ] `Tree` — TBD
+- [x] `DeclarationCustom` — N/A (class does not exist in codebase)
+- [x] `RulesRaw` — N/A (class does not exist in codebase)
+- [x] `Tree` — N/A (class does not exist in codebase)
 
 ### Stage 2 Exit Criteria
 - [ ] All node types use instance fields
