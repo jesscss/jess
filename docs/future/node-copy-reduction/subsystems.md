@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This document defines the runtime model, subsystem boundaries, and compatibility
-rules for moving from clone-before-mutate toward sessionized eval.
+This document defines the target node model, subsystem boundaries, and compatibility
+rules for the instance-field migration and sessionized eval.
 
 Use with:
 
@@ -12,47 +12,269 @@ Use with:
 
 This is the "what lives where" document.
 
-## Design Boundary
+## Target Node Model
 
-The long-term target is:
+### Every node uses instance fields
 
-- canonical AST nodes remain authored/source state
-- eval-time state moves into an `EvalSession`
-- structural rewrites become session-local first, materialized later
+No `.data` indirection. Every node class declares its fields directly:
 
-That means every piece of mutable state must be classified as one of:
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Node instance                                                │
+│                                                              │
+│  Leaf (childKeys = null):       Container (childKeys = []):  │
+│  ┌─────────────────────┐       ┌────────────────────────┐   │
+│  │ number: 10           │       │ left: Node ←(adopted)  │   │
+│  │ unit: 'px'           │       │ op: '+'                │   │
+│  │ (plain fields, no    │       │ right: Node ←(adopted) │   │
+│  │  adoption overhead)  │       │ (setters adopt child   │   │
+│  └─────────────────────┘       │  nodes on assignment)  │   │
+│                                 └────────────────────────┘   │
+│  Common:                                                     │
+│  parent, sourceNode, flags, pre, post, location, options     │
+└──────────────────────────────────────────────────────────────┘
+```
 
-1. canonical authored state
-2. session runtime state
-3. session structural patch state
-4. derived lookup/index state
-5. materialized output state
+### `childKeys` as the structural contract
 
-## Canonical AST Responsibilities
+Every node class sets a static `childKeys`:
 
-Canonical nodes should continue to own:
+- `null` → leaf node, no children to iterate.
+- `string[]` → names of instance fields that hold child `Node` instances or `Node[]` arrays.
 
-- authored `data`
-- authored `options`
-- authored `pre` / `post`
-- `sourceNode`
-- parse-time child order
-- parse-time node identity
+This replaces `getEntriesFromNode()` and the generic `.data` iteration for:
 
-Canonical nodes must not become the storage location for session-specific:
+- Constructor adoption (`_adoptChildren`)
+- `clone()` / `copy()`
+- Visitor traversal
+- Session-aware child enumeration
 
-- `parent`
-- `sourceParent`
-- `index`
-- `preEvaluated`
-- `evaluated`
-- temporary rewrites applied during import/mixin/detached-ruleset eval
+### Complete node field reference
+
+#### Leaf nodes (childKeys = null)
+
+```ts
+class Dimension extends Node {
+  static childKeys = null;
+  number: number;
+  unit: string | undefined;
+}
+
+class Num extends Dimension {
+  // Inherits number, forces unit = undefined
+}
+
+class Any extends Node {
+  static childKeys = null;
+  value: string;       // the text content
+  role: AnyRole;       // 'ident' | 'keyword' | 'property' | 'flag' | ...
+}
+
+class Keyword extends Any {
+  // role fixed to 'keyword'
+}
+
+class Bool extends Node {
+  static childKeys = null;
+  value: boolean;
+}
+
+class Comment extends Node {
+  static childKeys = null;
+  value: string;           // comment text
+  lineComment: boolean;    // true for // comments
+}
+
+class BasicSelector extends Node {
+  static childKeys = null;
+  value: string;           // '.class', '#id', 'div', etc.
+}
+
+class Combinator extends Node {
+  static childKeys = null;
+  value: string;           // '+', '>', ' ', '~', ''
+}
+
+class Ampersand extends Node {
+  static childKeys = null;
+}
+```
+
+#### Single-child container nodes
+
+```ts
+class Url extends Node {
+  static childKeys = ['value'];
+  value: Quoted | Any;        // inner content
+}
+
+class Expression extends Node {
+  static childKeys = ['value'];
+  value: Node;                // wrapped expression
+}
+
+class Quoted extends Node {
+  static childKeys = ['value'];
+  value: string | Any | Interpolated;  // may be plain string (leaf-like) or Node
+  quote: string;                       // ' or "
+  escaped: boolean;
+}
+```
+
+#### Multi-child container nodes
+
+```ts
+class Operation extends Node {
+  static childKeys = ['left', 'right'];
+  left: Node;
+  op: Operator;         // '+' | '-' | '*' | '/' | '%' — not a child
+  right: Node;
+}
+
+class Condition extends Node {
+  static childKeys = ['left', 'right'];
+  left: Node;
+  op: ConditionOperator | undefined;
+  right: Node | undefined;
+  negate: boolean;
+}
+
+class Declaration extends Node {
+  static childKeys = ['name', 'value', 'important'];
+  name: NameValue;              // string or Node
+  value: Node;
+  important: Node | undefined;
+}
+
+class Call extends Node {
+  static childKeys = ['name', 'args', 'contentNode'];
+  name: string | Node;
+  args: List<Node> | undefined;
+  contentNode: Node | undefined;
+}
+
+class Ruleset extends Node {
+  static childKeys = ['selector', 'rules', 'guard'];
+  selector: Selector | Nil;
+  rules: Rules;
+  guard: Condition | Nil | undefined;
+}
+
+class AtRule extends Node {
+  static childKeys = ['name', 'prelude', 'rules'];
+  name: Any | Interpolated;
+  prelude: Node | undefined;
+  rules: Rules | undefined;
+}
+
+class Mixin extends Node {
+  static childKeys = ['name', 'rules', 'params', 'guard'];
+  name: Any | Interpolated | undefined;
+  rules: Rules;
+  params: List<Node> | undefined;
+  guard: Condition | undefined;
+}
+
+class StyleImport extends Node {
+  static childKeys = ['path'];
+  path: Quoted | Url;
+  withConfig: { node: Node; type: 'with' | 'set' } | undefined;
+  // Note: withConfig.node needs explicit handling in clone/adopt
+}
+
+class Reference extends Node {
+  static childKeys = ['target', 'key'];
+  target: Reference | Call | undefined;
+  key: string | number | Node;  // may be Node (selector, interpolated, etc.)
+}
+```
+
+#### Array-container nodes
+
+```ts
+class Rules extends Node {
+  static childKeys = ['value'];
+  value: Node[];
+  // ... registry, visibility, etc.
+}
+
+class SelectorList extends Selector {
+  static childKeys = ['value'];
+  value: Selector[];
+}
+
+class ComplexSelector extends Selector {
+  static childKeys = ['value'];
+  value: ComplexSelectorComponent[];
+}
+
+class CompoundSelector extends Selector {
+  static childKeys = ['value'];
+  value: SimpleSelector[];
+}
+```
+
+### Options vs fields
+
+**Options** are for configuration that doesn't affect node identity or structure:
+
+- `semi` (optional semicolons)
+- `readonly`, `forward`, `local` (import visibility)
+- `rulesVisibility` (import mode)
+- `format` on Color (output format preference)
+- `assign` on Declaration (`:`, `+:`, `?:`, etc.)
+
+**Fields** are for data that IS the node:
+
+- All data content (number, value, name, left, right, etc.)
+- Structural properties (quote, escaped, lineComment, negate, role)
+- Child node references
+
+The principle: if two nodes with different values for a property represent different things,
+it's a field. If they represent the same thing rendered differently, it's an option.
+
+Exception: `format` on Color lives on the boundary. It affects rendering but not the color
+value. Keep it as an option.
+
+## Less.js Alignment Map
+
+### Field names that already match (no adapter needed)
+
+| Jess node   | Fields matching Less                    |
+|-------------|----------------------------------------|
+| Call        | `name`, `args`                          |
+| Declaration | `name`, `value`, `important`            |
+| Quoted      | `value`, `quote`, `escaped`             |
+| Any         | `value` (maps to Less Keyword/Anonymous)|
+| Bool        | `value`                                 |
+| Comment     | `value`                                 |
+| Color       | `rgb`, `alpha`                          |
+| Url         | `value`                                 |
+
+### Field names needing one rename in adapters
+
+| Jess node   | Jess field  | Less field     | Adapter mapping         |
+|-------------|-------------|----------------|-------------------------|
+| Dimension   | `number`    | `value`        | `value: d => d.number`  |
+| Comment     | `lineComment` | `isLineComment` | `isLineComment: c => c.lineComment` |
+| Operation   | `left`/`right` | `operands`  | `operands: o => [o.left, o.right]` |
+
+### Structural divergences (adapters handle the shape difference)
+
+| Area       | Less shape                | Jess shape                   |
+|------------|--------------------------|------------------------------|
+| Selectors  | flat `Element[]`          | `SelectorList > ComplexSelector > CompoundSelector > BasicSelector` |
+| Ruleset    | `selectors[]`, `rules[]`  | `selector` (SelectorList), `rules` (Rules container) |
+| Variable   | `Variable { name }`       | `Reference { key }` (more general) |
+| Mixin      | `MixinDefinition` extends Ruleset | `Mixin` is independent class |
+| Import     | `Import { path, features }` | `StyleImport { path, withConfig }` |
+
+These divergences are fundamental design differences. Adapters for these types will always
+need structural translation, but the total count is ~8 (down from 30+).
 
 ## EvalSession Responsibilities
 
-`EvalSession` should own all mutable state that differs per evaluation branch.
-
-Suggested shape:
+`EvalSession` owns all mutable state that differs per evaluation branch.
 
 ```ts
 interface EvalSession {
@@ -75,8 +297,8 @@ interface RuntimeState {
 }
 
 interface NodePatch {
+  fieldOverrides?: Map<string, unknown>;
   replaceSelf?: Node;
-  keyedWrites?: Map<string | number, unknown>;
   prependedChildren?: Node[];
   appendedChildren?: Node[];
   splices?: Array<ChildSplice>;
@@ -93,278 +315,248 @@ interface ScopeSnapshot {
 }
 ```
 
-The exact shapes can change. The key constraint is separation:
+With instance fields, `NodePatch.fieldOverrides` maps field names directly:
 
-- `RuntimeState` is bookkeeping
-- `NodePatch` is logical structure/data change
-- `ScopeSnapshot` is derived cache only
+```ts
+// Patching a Dimension's number in a session:
+session.nodePatches.get(dim)?.fieldOverrides?.get('number')  // → patched value
+dim.number  // → canonical value
+```
 
 ## Session-Aware Read Surface
 
-Any code running in a sessionized path should stop directly reading runtime fields
-from nodes.
-
-Introduce explicit helpers such as:
+Function-based, not Proxy-based:
 
 - `getParent(node, session)`
 - `getSourceParent(node, session)`
 - `getIndex(node, session)`
 - `isPreEvaluated(node, session)`
 - `isEvaluated(node, session)`
-- `getNodeOptions(node, session)`
-- `getRulesChildren(rules, session)`
-- `getLogicalNode(node, session)` when replacement/self-shadowing is in play
+- `getChildren(rules, session)`
+- `getField(node, session, key)` — generic field read through overlay
 
 Rules:
 
-- helpers must fall back to node-local fields when no session exists
-- helpers must be behavior-preserving in compatibility mode
-- newly migrated code must use helpers instead of ad hoc direct field reads
+- Fall back to instance fields when no session exists.
+- Zero allocation cost (function call + WeakMap lookup).
+- No Proxy overhead.
 
 ## Session-Aware Write Surface
 
-Mutations in sessionized paths should go through explicit session APIs.
-
-Suggested write helpers:
-
-- `setRuntimeState(node, session, patch)`
-- `setData(node, session, key, value)`
+- `patchField(node, session, key, value)` — record field override
 - `replaceNode(node, session, replacement)`
 - `prependChildren(rules, session, nodes)`
 - `appendChildren(rules, session, nodes)`
-- `spliceChildren(rules, session, start, deleteCount, nodes)`
 - `removeChild(rules, session, child)`
 - `markScopeDirty(rules, session)`
 
-Rules:
+## Adapter Architecture
 
-- direct node mutation remains allowed on non-sessionized paths during migration
-- sessionized paths must not mutate canonical `data` or ancestry directly
-- write helpers are responsible for invalidating scope snapshots conservatively
+### Node adapter interface
+
+```ts
+interface NodeAdapter<T extends Node> {
+  lessType: string;
+  fields?: Record<string, (node: T) => unknown>;
+  children?: (node: T) => Node[];
+}
+```
+
+### Adapter creation strategy
+
+```ts
+function createAdapter<T extends Node>(node: T, def: NodeAdapter<T>, cache: WeakMap) {
+  if (cache.has(node)) return cache.get(node);
+
+  if (!def.fields && !def.children) {
+    // All field names match Less — return node directly
+    cache.set(node, node);
+    return node;
+  }
+
+  if (!def.children) {
+    // Leaf with renames — plain object
+    const adapter: any = { type: def.lessType };
+    for (const [key, accessor] of Object.entries(def.fields!)) {
+      adapter[key] = accessor(node);
+    }
+    // Copy through any fields not explicitly mapped
+    for (const key of Object.keys(node)) {
+      if (!(key in adapter)) adapter[key] = (node as any)[key];
+    }
+    cache.set(node, adapter);
+    return adapter;
+  }
+
+  // Container needing child conversion — Proxy (rare)
+  // ...
+}
+```
+
+### Nodes needing no adapter
+
+With aligned field names, these can be passed directly to Less plugins:
+
+- `Quoted` (value, quote, escaped)
+- `Call` (name, args)
+- `Declaration` (name, value, important)
+- `Any` → Keyword/Anonymous (value)
+- `Bool` (value)
+- `Url` (value)
+- `Color` (rgb, alpha — partial)
+
+### Nodes needing minimal adapters
+
+- `Dimension` — synthesize `.value` from `.number`
+- `Comment` — rename `lineComment` → `isLineComment`
+- `Operation` — synthesize `operands` from `left`/`right`
+
+### Nodes needing structural adapters (~8 total)
+
+- Selector hierarchy → flat `Element[]`
+- Ruleset → `selectors[]`/`rules[]`
+- Mixin → `MixinDefinition`
+- StyleImport → `Import`
+- Reference → `Variable`
+- Condition → Less `Condition` (rename `left`/`right` to `lvalue`/`rvalue`)
+- Color → needs `.value` string synthesis
+- Rules → Less root Ruleset
 
 ## Scope Snapshot Responsibilities
 
-Lookup indexes should be derived from the session view of a scope, not from live
-mutable `Rules` internals.
-
 Each `ScopeSnapshot` should:
 
-- be scoped to one `Rules` instance and one `EvalSession`
-- be built lazily on first lookup
-- rebuild when the scope is marked dirty
-- index only names resolved by `preEval`
-- exclude unresolved dynamic-name nodes until they resolve
-
-The snapshot builder should iterate the logical child list:
-
-- untouched canonical child
-- replacement child from the session
-- prepended/appended children from the session
-- removed children omitted
-
-The snapshot must not require whole-tree cloning.
-
-## Registry and Lookup Split
-
-The current registry should be split conceptually into two parts.
-
-### RegistryIndex
-
-Per-scope indexes only:
-
-- declaration key maps
-- mixin key maps
-- optional ruleset or selector indexes if still needed
-
-### LookupWalker
-
-Traversal and visibility logic:
-
-- search current scope
-- walk parent/source-parent chains
-- child-search when required
-- visibility/private/public checks
-- `readonly`
-- `hasTarget`
-- `isMixinOutput`
-- import boundary rules
-- circular search protection
-
-`LookupWalker` should consume a `ScopeSnapshot` or a snapshot-backed view, not a
-mutable registry attached directly to `Rules`.
+- Be scoped to one `Rules` instance and one `EvalSession`.
+- Be built lazily on first lookup.
+- Rebuild when the scope is marked dirty.
+- Index only names resolved by `preEval`.
+- Iterate the logical child list (canonical value ± session patches).
 
 ## Materialization Boundary
 
-The session should not stay a pure patch graph forever. Some consumers will need
-concrete nodes.
+Materialization should be lazy, path-based, and copy-on-write.
 
-Materialization should be:
+Likely boundaries:
 
-- lazy
-- path-based
-- copy-on-write
-
-Rules:
-
-- materialize only touched paths
-- reuse untouched descendants where safe
-- preserve `sourceNode`
-- preserve lookup/render semantics
-
-Likely materialization boundaries:
-
-- final emitted/imported `Rules`
-- mixin return values
-- detached ruleset values that escape the current eval branch
-- plugin/user-facing APIs that expect concrete node objects
-
-## `preserveOriginalNodes` Transition
-
-Today `preserveOriginalNodes` effectively means:
-
-- clone before mutating
-
-Target meaning:
-
-- do not mutate canonical nodes
-- route writes through the active session
-- materialize only when a concrete node tree is required
-
-This transition should happen late, after:
-
-- session-aware reads exist
-- session-aware writes exist
-- ancestry/order runtime state is externalized
+- Final emitted/imported `Rules`.
+- Mixin return values.
+- Detached ruleset values that escape the current eval branch.
+- Adapter creation (adapters read from materialized or canonical state).
 
 ## Subsystem-by-Subsystem Scope
 
-### 1. `Context`
+### 1. `Node` base class
 
-Likely file:
+Files: `node-base.ts`, `node.ts`
 
-- `/Users/matthew/git/oss/jess/packages/core/src/context.ts`
+- `childKeys` infrastructure.
+- Updated `clone()` using `childKeys`.
+- Updated `_adoptChildren()` using `childKeys`.
+- Session-aware read/write helpers.
+- Remove `.data`, `setData()`, `getEntriesFromNode()` after migration.
 
-Responsibilities:
+### 2. All node classes (31+)
 
-- hold the active `EvalSession`
-- make session optional during migration
-- pass session through eval/preEval/render entry points
+Files: every `*.ts` under `tree/`
 
-### 2. `NodeBase` and shared node runtime helpers
+- Declare instance fields.
+- Set `static childKeys`.
+- Update constructors to destructure input.
+- Adopting setters for child-node fields on container types.
 
-Likely files:
+### 3. `Rules` container
 
-- `/Users/matthew/git/oss/jess/packages/core/src/tree/node-base.ts`
-- `/Users/matthew/git/oss/jess/packages/core/src/tree/node.ts`
+File: `rules.ts`
 
-Responsibilities:
-
-- centralize session-aware read/write helpers
-- stop newly migrated code from depending on node-local runtime fields
-
-### 3. `Rules`
-
-Likely file:
-
-- `/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts`
-
-Responsibilities:
-
-- expose logical child iteration through the session view
-- build/use scope snapshots
-- preserve linear lookup ordering and scope lookup semantics
-- route structural writes through session helpers on migrated paths
+- Use `value: Node[]` instead of array `.data`.
+- Logical child iteration through session view.
+- Scope snapshots.
+- Lookup ordering preservation.
 
 ### 4. Import evaluation
 
-Likely files:
+Files: `import-style.ts`, `reference.ts`
 
-- `/Users/matthew/git/oss/jess/packages/core/src/tree/import-style.ts`
-- `/Users/matthew/git/oss/jess/packages/core/src/tree/reference.ts`
+- Per-import sessions.
+- `with`/`set` as session-local patches.
+- Cross-session isolation.
 
-Responsibilities:
+### 5. Registry / lookup
 
-- create per-import sessions
-- apply `with` / `set` as session-local patches
-- prevent repeated imports of the same source AST from leaking mutations
+Files: `tree/util/registry-utils.ts` and adjacent
 
-### 5. Registry / lookup utilities
+- Separate index construction from traversal policy.
+- Snapshot-backed indexes.
 
-Likely files:
+### 6. Render / serialization path
 
-- `/Users/matthew/git/oss/jess/packages/core/src/tree/util/registry-utils.ts`
-- adjacent lookup helper files in `tree/util`
+Files: `tree/util/print.ts`, `node-base.ts` (toString, toTrimmedString, processPrePost)
 
-Responsibilities:
+- `render(node, options?)` as standalone entry point.
+- `RenderOptions` extends `PrintOptions` with `session?` and `mask?`.
+- Base-class `toTrimmedString()` fallback iterates `childKeys` (not `getValues(this.data)`).
+- `.toString()` delegates to `render(this)` with no session/mask.
+- `processPrePost` applies mask-aware comment filtering.
+- Session-aware rendering materializes touched paths before delegating to `toTrimmedString()`.
 
-- separate index construction from traversal policy
-- make indexes snapshot-backed rather than live-mutable
+### 7. Visitor traversal
 
-### 6. Render path
+Files: visitor infrastructure, `tree/util/collections.ts`
 
-Likely files:
+- `visitChildren(node, visitor)` uses `childKeys` for child enumeration.
+- Leaf nodes (`childKeys === null`) short-circuit — no child iteration.
+- `visitChildrenInSession(node, visitor, session)` reads children through overlay,
+  writes replacements into session patches.
+- Less-compat visitor wrapper maps `visit<LessType>()` methods using adapter definitions.
 
-- serializer/render helpers under `packages/core/src/tree`
+### 8. Selector rewrite helpers
 
-Responsibilities:
+- Path-copy container builders.
 
-- use `RenderMask` where copies exist only to suppress comments or pre/post output
+### 9. Less-compat adapter layer
 
-### 7. Selector rewrite helpers
+Files: `jess-plugin-less-compat/src/`
 
-Likely files:
+- Replace per-node Proxy transformers with declarative adapter definitions.
+- Direct node access where field names match.
+- Plain objects where renames needed.
+- Proxies only for structural translation (~8 types).
 
-- selector utilities under `packages/core/src/tree/util`
+### 10. Fns package
 
-Responsibilities:
+Files: `packages/fns/src/`
 
-- move toward path-copy container builders
-- avoid deep copy for local selector rewrites
-
-Do not make this a dependency for sessionized import eval.
+- Update `.data.number` → `.number`, `.data.unit` → `.unit`, etc.
+- No structural changes. Functions already use direct field access patterns.
 
 ## Invalidation Rules
 
-The default invalidation mode should be conservative.
-
 Mark a scope dirty when a session change may affect:
 
-- declaration name resolution
-- mixin name resolution
-- child ordering
-- visibility/read-only/forward/local options
-- parent/source-parent reachability
-- prepended/appended/replaced registerable nodes
+- Declaration name resolution
+- Mixin name resolution
+- Child ordering
+- Visibility/read-only/forward/local options
+- Parent/source-parent reachability
 
-When in doubt:
-
-- rebuild the snapshot
-
-Do not attempt fine-grained dependency tracking in v1.
+When in doubt: rebuild the snapshot. No fine-grained dependency tracking in v1.
 
 ## Invariants
 
-These must remain true throughout migration:
-
 1. No semantic change when no `EvalSession` is active.
-2. A canonical AST can participate in multiple sessions without cross-session mutation leakage.
-3. Dynamic names are indexed only after normal `preEval` resolution.
-4. Scope lookup, linear lookup, and call-time lookup preserve current behavior.
+2. A canonical AST can participate in multiple sessions without cross-session leakage.
+3. Dynamic names indexed only after `preEval` resolution.
+4. All lookup types preserve current behavior.
 5. Materialization preserves `sourceNode` and render behavior.
+6. Function authors access fields directly — no `.data`, no session awareness.
+7. Less plugins see adapted interfaces with correct Less field names.
+8. `childKeys` is the single source of truth for child enumeration.
 
 ## Non-Goals
 
-These items are intentionally out of scope for the first pass:
-
-- a fully generic immutable tree engine
-- fine-grained dependency-tracked invalidation
-- rewriting extend internals to fit the new session model
-- changing lookup semantics while refactoring storage
-
-## Recommended Reading Order During Implementation
-
-1. overview in [README.md](./README.md)
-2. staged rollout in [migration.md](./migration.md)
-3. subsystem ownership and invariants in this file
-
-When implementing a stage, update all three documents together if the design shifts.
+- A fully generic immutable tree engine.
+- Fine-grained dependency-tracked invalidation.
+- Rewriting extend internals to fit the session model.
+- Changing lookup semantics while refactoring storage.
+- Struct-of-Arrays layout (explored and rejected).
+- Matching Less.js field names where they are semantically wrong for Jess.
