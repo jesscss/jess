@@ -10,6 +10,17 @@ export interface DefaultGuard extends Node<string> {
 }
 
 export class DefaultGuard extends Node<string> {
+  static override childKeys = null as null;
+
+  value!: string;
+
+  declare readonly data: Readonly<string>;
+
+  constructor(value: string, options?: any, location?: any, treeContext?: any) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -22,4 +33,14 @@ export class DefaultGuard extends Node<string> {
     return new Bool(Boolean(context.isDefault));
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(DefaultGuard.prototype, 'data', {
+  get(this: DefaultGuard) {
+    return this.value;
+  },
+  configurable: true,
+  enumerable: true
+});
+
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

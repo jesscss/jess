@@ -1,4 +1,4 @@
-import { defineType, type LocationInfo, type Node } from './node.js';
+import { defineType, type LocationInfo, Node } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -27,13 +27,35 @@ export interface AttributeSelector {
 }
 
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
+  static override childKeys = ['name', 'value'] as const;
+
+  name!: string | Node;
+  op: string | undefined;
+  value: Node | undefined;
+  mod: string | undefined;
+
+  declare readonly data: Readonly<AttributeSelectorValue>;
+
+  constructor(data: AttributeSelectorValue, options?: undefined, location?: LocationInfo, treeContext?: TreeContext) {
+    super(data as any, options, location, treeContext);
+    this.name = data.name;
+    this.op = data.op;
+    this.value = data.value;
+    this.mod = data.mod;
+    if (this.name instanceof Node) {
+      this.adopt(this.name as Node);
+    }
+    if (this.value instanceof Node) {
+      this.adopt(this.value);
+    }
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     return pipe(
       () => {
         return super.evalNode(context) as any;
       },
       () => {
-        /** @todo - make sure we're parsing possible variables in attribute parts */
         return this;
       }
     );
@@ -43,7 +65,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, op, value, mod } = this.data;
+    const { name, op, value, mod } = this;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);
@@ -67,8 +89,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   override valueOf() {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, op, value, mod } = this.data;
-      /** Attributes are case-insensitive */
+      let { name, op, value, mod } = this;
       let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
       if (!op) {
         return `[${keyStr}]`;
@@ -79,6 +100,15 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return valueOf;
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(AttributeSelector.prototype, 'data', {
+  get(this: AttributeSelector) {
+    return { name: this.name, op: this.op, value: this.value, mod: this.mod };
+  },
+  configurable: true,
+  enumerable: true
+});
 
 /** Not sure why types couldn't be properly inferred */
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
