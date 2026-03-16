@@ -75,62 +75,38 @@ describe('BitSets and selectors', () => {
   });
 
   it('can create a bitset from a selector', async () => {
-    let library = context.selectorBits;
     let selector = el('.foo');
-    selector.eval(context);
-    /** Keysets are lazy-loaded */
-    expect(library.size).toBe(0);
-    selector.keySet;
-    expect(library.size).toBe(1);
-    expect(library.has('.foo')).toBe(true);
+    await selector.eval(context);
+    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   it('bubbles selectors into compound keysets', async () => {
-    let library = context.selectorBits;
     let selector = compound([el('.foo'), el('.bar')]);
     await selector.eval(context);
-    selector.keySet;
-    expect(library.size).toBe(2);
-    expect(library.has('.foo')).toBe(true);
-    expect(library.has('.bar')).toBe(true);
+    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #1', async () => {
-    let library = context.selectorBits;
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
-    selector.keySet;
-    expect(library.size).toBe(3);
-    expect(library.has('.foo')).toBe(true);
-    expect(library.has('.bar')).toBe(true);
-    expect(library.has(' ')).toBe(true);
+    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #2', async () => {
-    let library = context.selectorBits;
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
-    selector.keySet;
-    expect(library.size).toBe(4);
-    expect(library.has('a')).toBe(true);
-    expect(library.has('.foo')).toBe(true);
-    expect(library.has('.bar')).toBe(true);
-    expect(library.has(' ')).toBe(true);
-    expect(library.has('>')).toBe(false);
+    expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #3', async () => {
-    let library = context.selectorBits;
     let selector = sel([compound([el('a'), el('.foo')]), co('>'), el('.bar'), co('+'), el('.baz')]);
     await selector.eval(context);
-    selector.keySet;
-    expect(library.size).toBe(6);
-    expect(library.has('a')).toBe(true);
-    expect(library.has('.foo')).toBe(true);
-    expect(library.has('.bar')).toBe(true);
-    expect(library.has('>')).toBe(true);
-    expect(library.has('+')).toBe(true);
-    expect(library.has('.baz')).toBe(true);
+    expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', '>', '.bar', '+', '.baz']))).toBe(true);
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '>', '.bar', '+', '.baz']))).toBe(true);
   });
 
   it('calculates subset keysets of complex selectors', async () => {
@@ -144,30 +120,23 @@ describe('BitSets and selectors', () => {
   });
 
   test(':is doesn\'t get added to keyset', async () => {
-    let library = context.selectorBits;
     let selector = sel([pseudo({ name: ':is', arg: el('.foo') })]);
     await selector.eval(context);
-    selector.keySet;
-    expect(library.size).toBe(1);
-    expect(library.has('.foo')).toBe(true);
+    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   test('other pseudo selectors get added to keyset', async () => {
-    let library = context.selectorBits;
     let selector = sel([pseudo({ name: ':not', arg: el('.foo') })]);
     await selector.eval(context);
-    selector.keySet;
-    expect(library.size).toBe(2);
-    expect(library.has('.foo')).toBe(true);
-    expect(library.has(':not')).toBe(true);
+    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ':not']))).toBe(true);
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', ':not']))).toBe(true);
   });
 
   test('nth selectors', async () => {
-    let library = context.selectorBits;
     let sel = pseudo({ name: ':nth-child', arg: num(1) });
     await sel.eval(context);
-    sel.keySet;
-    expect(library.size).toBe(1);
-    expect(library.has(':nth-child(1)')).toBe(true);
+    expect(sel.keySet.equals(context.selectorBits.getBitset([':nth-child(1)']))).toBe(true);
+    expect(sel.visibleKeySet.equals(context.selectorBits.getBitset([':nth-child(1)']))).toBe(true);
   });
 });

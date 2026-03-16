@@ -44,6 +44,8 @@ export class BitSetLibrary<T = unknown> {
   private _bitset: BitSet<T>;
   /** Value to Bitset position map */
   private _values = new Map<T, number>();
+  /** Bitset position to value map */
+  private _positions: T[] = [];
 
   constructor(values?: T[]) {
     this._bitset = new BitSet();
@@ -69,6 +71,7 @@ export class BitSetLibrary<T = unknown> {
     }
     pos = this.size;
     values.set(value, pos);
+    this._positions[pos] = value;
     this._bitset.set(pos, 0);
     return pos;
   }
@@ -87,6 +90,51 @@ export class BitSetLibrary<T = unknown> {
       }
     }
     return bitset;
+  }
+
+  getValue(position: number): T | undefined {
+    return this._positions[position];
+  }
+
+  hasBit(bitset: BitSet<T>, value: T): boolean {
+    if (bitset._library !== this) {
+      throw new Error('Bitset must be from this library');
+    }
+    const pos = this._values.get(value);
+    return pos !== undefined ? Boolean(bitset.get(pos)) : false;
+  }
+
+  forEachValue(bitset: BitSet<T>, fn: (value: T, position: number) => void): void {
+    if (bitset._library !== this) {
+      throw new Error('Bitset must be from this library');
+    }
+
+    const data = (bitset as { data?: number[] }).data;
+    if (!data) {
+      return;
+    }
+
+    for (let wordIndex = 0; wordIndex < data.length; wordIndex++) {
+      let word = data[wordIndex] >>> 0;
+      while (word !== 0) {
+        const lowestBit = word & -word;
+        const bitIndex = 31 - Math.clz32(lowestBit);
+        const position = (wordIndex * 32) + bitIndex;
+        const value = this._positions[position];
+        if (value !== undefined) {
+          fn(value, position);
+        }
+        word &= word - 1;
+      }
+    }
+  }
+
+  valuesOf(bitset: BitSet<T>): T[] {
+    const values: T[] = [];
+    this.forEachValue(bitset, value => {
+      values.push(value);
+    });
+    return values;
   }
 }
 

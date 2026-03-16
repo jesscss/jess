@@ -1,9 +1,16 @@
 import { any, seq, decl } from '../index.js';
+import { Context } from '../../context.js';
 import { el } from '../selector-basic.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { SelectorList } from '../selector-list.js';
 
+let context: Context;
+
 describe('Node mutation methods', () => {
+  beforeEach(() => {
+    context = new Context();
+  });
+
   describe('setValue with index', () => {
     it('sets parent on the new child node', () => {
       const a = any('a');
@@ -129,40 +136,47 @@ describe('Node mutation methods', () => {
   });
 
   describe('keySet invalidation', () => {
-    it('recomputes keySet after setValue by index', () => {
+    it('recomputes keySet after setValue by index', async () => {
       const a = el('.a');
       const b = el('.b');
       const compound = (CompoundSelector as any).create([a]);
-      expect((compound as any).keySet).toEqual(new Set(['.a']));
+      await compound.eval(context);
+      await b.eval(context);
+      expect(compound.keySet.equals(context.selectorBits.getBitset(['.a']))).toBe(true);
       compound.setData(0, b);
-      expect((compound as any).keySet).toEqual(new Set(['.b']));
+      expect(compound.keySet.equals(context.selectorBits.getBitset(['.b']))).toBe(true);
     });
 
-    it('recomputes keySet after push', () => {
+    it('recomputes keySet after push', async () => {
       const a = el('.a');
       const b = el('.b');
       const compound = (CompoundSelector as any).create([a]);
-      expect((compound as any).keySet).toEqual(new Set(['.a']));
+      await compound.eval(context);
+      await b.eval(context);
+      expect(compound.keySet.equals(context.selectorBits.getBitset(['.a']))).toBe(true);
       compound.push(b);
-      expect((compound as any).keySet).toEqual(new Set(['.a', '.b']));
+      expect(compound.keySet.equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
     });
 
-    it('recomputes keySet after splice removal', () => {
+    it('recomputes keySet after splice removal', async () => {
       const a = el('.a');
       const b = el('.b');
       const compound = (CompoundSelector as any).create([a, b]);
-      expect((compound as any).keySet).toEqual(new Set(['.a', '.b']));
+      await compound.eval(context);
+      expect(compound.keySet.equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
       (compound as any).splice(0, 1);
-      expect((compound as any).keySet).toEqual(new Set(['.b']));
+      expect(compound.keySet.equals(context.selectorBits.getBitset(['.b']))).toBe(true);
     });
 
-    it('recomputes keySet on SelectorList after push', () => {
+    it('recomputes keySet on SelectorList after push', async () => {
       const a = el('.a');
       const b = el('.b');
       const list = (SelectorList as any).create([a]);
-      expect((list as any).keySet.has('.a')).toBe(true);
+      await list.eval(context);
+      await b.eval(context);
+      expect(list.keySet.equals(context.selectorBits.getBitset(['.a']))).toBe(true);
       list.push(b);
-      expect((list as any).keySet.has('.b')).toBe(true);
+      expect(list.keySet.equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
     });
   });
 });
