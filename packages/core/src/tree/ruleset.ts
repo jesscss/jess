@@ -491,7 +491,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector instanceof Nil) {
       return '';
     }
-    let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    if (withoutComments) {
+      options = { ...options, suppressComments: true };
+    }
+    let renderSelector = selector;
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }

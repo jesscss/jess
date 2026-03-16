@@ -1,6 +1,7 @@
 import type { Context } from '../../context.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
+import type { Node } from '../node.js';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -23,6 +24,8 @@ export type PrintOptions = {
   referenceRenderEnabled?: boolean;
   /** Enable SelectorList-level filtering of extend target members during reference rendering. */
   referenceFilterTargets?: boolean;
+  /** Skip Comment nodes during rendering (replaces copy(true) for comment suppression). */
+  suppressComments?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -284,4 +287,12 @@ export class OutputWriter implements OutputWriter {
   getLastNewlineOrigin(): unknown {
     return this._lastNewlineOrigin;
   }
+}
+
+/**
+ * Render a node to a string with optional print options.
+ * Use `suppressComments: true` to skip Comment nodes without cloning.
+ */
+export function render(node: Node, options?: PrintOptions): string {
+  return node.toString(options);
 }

@@ -1434,6 +1434,9 @@ export abstract class Node<
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
+    if (options?.suppressComments && this.type === 'Comment') {
+      return '';
+    }
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -1459,13 +1462,39 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (let value of getValues(this.data)) {
-      if (value instanceof Node) {
-        value.toString(options);
-      } else {
-        const s = value === undefined ? '' : String(value);
-        if (s) {
-          w.add(s, this);
+    const ck = (this.constructor as typeof Node).childKeys;
+    if (Array.isArray(ck)) {
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (isArray(field)) {
+          for (const item of field) {
+            if (item instanceof Node) {
+              item.toString(options);
+            } else {
+              const s = item === undefined ? '' : String(item);
+              if (s) {
+                w.add(s, this);
+              }
+            }
+          }
+        } else if (field instanceof Node) {
+          field.toString(options);
+        } else {
+          const s = field === undefined ? '' : String(field);
+          if (s) {
+            w.add(s, this);
+          }
+        }
+      }
+    } else {
+      for (let value of getValues(this.data)) {
+        if (value instanceof Node) {
+          value.toString(options);
+        } else {
+          const s = value === undefined ? '' : String(value);
+          if (s) {
+            w.add(s, this);
+          }
         }
       }
     }

@@ -265,10 +265,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     let out = idt;
 
     if (withoutComments) {
-      name = name.copy(true) as Any<'atkeyword'>;
-      if (prelude) {
-        prelude = prelude.copy(true) as Node;
-      }
+      options = { ...options, suppressComments: true };
     }
 
     const nameOut = w.capture(() => name.toString(options));

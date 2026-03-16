@@ -159,12 +159,13 @@ Each checkbox = one node class converted + tests green.
 
 ## Stage 4: RenderMask and `render()` Function
 
-- [ ] Define `RenderMask` interface
-- [ ] Implement `render(node, options?)` standalone function
-- [ ] Update base-class `toTrimmedString()` fallback to iterate `childKeys`
-- [ ] Keep `.toString()` as convenience delegating to `render(this)`
-- [ ] Comment suppression via mask
-- [ ] Convert Reference output paths to use render mask (not `copy(true)`)
+- [x] Define `RenderMask` interface (`suppressComments` on PrintOptions)
+- [x] Implement `render(node, options?)` standalone function
+- [x] Update base-class `toTrimmedString()` fallback to iterate `childKeys`
+- [x] Keep `.toString()` as convenience (render delegates to toString)
+- [x] Comment suppression via `suppressComments` option in `toString()`
+- [x] Convert Ruleset/AtRule `getHeaderString` to use `suppressComments` (no `copy(true)`)
+- [ ] Convert remaining Reference output paths to use render mask
 - [ ] Convert extend output helpers to use render mask
 
 ---
