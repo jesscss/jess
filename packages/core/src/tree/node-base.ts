@@ -379,7 +379,7 @@ export abstract class Node<
    * - `null` — leaf node, no children to iterate/adopt/clone
    * - `string[]` — names of instance fields holding child Node(s) or Node[]
    */
-  static childKeys: string[] | null | undefined = undefined;
+  static childKeys: readonly string[] | null | undefined = undefined;
 
   /**
    * The internal data of the node.

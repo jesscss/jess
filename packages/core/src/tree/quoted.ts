@@ -1,6 +1,6 @@
 import { type Interpolated } from './interpolated.js';
 import { Any } from './any.js';
-import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, F_NON_STATIC, defineType, type LocationInfo, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -21,8 +21,18 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
  * to avoid conflict with the built-in `String` class.
  */
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
-  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['value'] as const;
+
+  value!: string | Any | Interpolated;
+
+  declare readonly data: Readonly<string | Any | Interpolated>;
+
+  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     if (typeof value === 'string' && !options?.escaped) {
       this.addFlag(F_STATIC);
     } else {
@@ -32,14 +42,6 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   get quote() {
     return this.options?.quote;
-  }
-
-  get value() {
-    return this.data as string | Any | Interpolated;
-  }
-
-  set value(val: string | Any | Interpolated) {
-    this.setData(val);
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -58,7 +60,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override valueOf(): string {
-    const value = this.data;
+    const value = this.value;
     return value instanceof Node ? value.valueOf() : value as string;
   }
 
@@ -75,7 +77,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    let value = this.data;
+    let value: string | Any | Interpolated | Node = this.value;
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
       value = v as any;
       if (this.options.escaped) {
@@ -85,7 +87,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
         return new Any(value as string);
       }
       let quoted = this.maybeClone(context);
-      quoted.setData(value as any);
+      quoted.value = value as any;
       return quoted;
     };
     if (value instanceof Node) {
@@ -98,4 +100,12 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return cont(value as string | Any | Interpolated);
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Quoted.prototype, 'data', {
+  get(this: Quoted) { return this.value; },
+  configurable: true,
+  enumerable: true
+});
+
 export const quoted = defineType(Quoted, 'Quoted');

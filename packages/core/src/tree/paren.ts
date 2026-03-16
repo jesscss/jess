@@ -2,12 +2,10 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC } from './node.js';
+import { Node, defineType, F_NON_STATIC, type LocationInfo, type TreeContext } from './node.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-// import type { Context } from '../context.js'
-// import type { OutputCollector } from '../output'
 
 export type ParenOptions = {
   escaped: boolean;
@@ -26,19 +24,21 @@ export interface Paren {
 }
 
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['value'] as const;
+
+  value: Node | undefined;
+
+  declare readonly data: Readonly<Node | undefined>;
+
+  constructor(value?: Node, options?: ParenOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
-  }
-
-  get value() {
-    return this.data as Node | undefined;
-  }
-
-  set value(val: Node | undefined) {
-    this.setData(val);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -50,7 +50,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       w.add(escapeChar, this);
     }
     w.add('(');
-    let value = this.data;
+    let value = this.value;
     if (value) {
       if (value instanceof Node) {
         let out = w.capture(() => value.toString(options));
@@ -64,7 +64,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let value = this.data as Node | undefined;
+    let value = this.value;
     if (value) {
       let isOp = isOpOrExpression(value);
       if (isOp) {
@@ -79,15 +79,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (this.options?.escaped && value instanceof Node) {
           return value;
         }
-        /**
-         * Removing nested parens or parens around a single
-         * dimension is a bit presumptuous, but I think Less's
-         * argument is that it's unnecessary at runtime,
-         * so it's really just a DX tool that can be ignored
-         * on output.
-         */
-        while (value instanceof Paren && value.data) {
-          value = value.data as Node;
+        while (value instanceof Paren && value.value) {
+          value = value.value;
         }
         if (value instanceof Bool || value instanceof Dimension) {
           return value;
@@ -96,7 +89,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           return value;
         }
         let node = this.maybeClone(context);
-        node.setData(value);
+        node.value = value;
         return node;
       };
       if (isThenable(maybeEvald)) {
@@ -104,23 +97,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       }
       return after(maybeEvald as Node);
     }
-    let node = this;
-    node.setData(value);
-    return node;
+    return this;
   }
-
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add('(')
-  //   this.data.toCSS(context, out)
-  //   out.add(')')
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
-  //   out.add('$J.paren(', loc)
-  //   this.data.toModule(context, out)
-  //   out.add(')')
-  // }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Paren.prototype, 'data', {
+  get(this: Paren) { return this.value; },
+  configurable: true,
+  enumerable: true
+});
 
 export const paren = defineType(Paren, 'Paren');

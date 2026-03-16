@@ -1,4 +1,4 @@
-import { Node, defineType } from './node.js';
+import { Node, defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type Any } from './any.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
@@ -14,19 +14,25 @@ export interface Url {
 }
 
 export class Url extends Node<Quoted | Any> {
-  get value() {
-    return this.data as Quoted | Any;
-  }
+  static override childKeys = ['value'] as const;
 
-  set value(val: Quoted | Any) {
-    this.setData(val);
+  value!: Quoted | Any;
+
+  declare readonly data: Readonly<Quoted | Any>;
+
+  constructor(value: Quoted | Any, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
   }
 
   /**
    * @todo - enable URL rewriting
    */
   override valueOf(): string {
-    let value: Node | string = this.data as Quoted | Any;
+    let value: Node | string = this.value;
     if (isNode(value, N.Quoted)) {
       value = value.data as Node | string;
       if (isNode(value)) {
@@ -34,7 +40,7 @@ export class Url extends Node<Quoted | Any> {
       }
       return value as string;
     }
-    return (value as Any).data;
+    return (value as Any).value;
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -42,10 +48,17 @@ export class Url extends Node<Quoted | Any> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('url(');
-    this.data.toString(options);
+    this.value.toString(options);
     w.add(')');
     return w.getSince(mark);
   }
 }
+
+/** Compat: synthesize .data from instance fields */
+Object.defineProperty(Url.prototype, 'data', {
+  get(this: Url) { return this.value; },
+  configurable: true,
+  enumerable: true
+});
 
 export const url = defineType(Url, 'Url');
