@@ -12,7 +12,6 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
-import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
@@ -107,8 +106,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       () => {
         const selector = super.evalNode(context) as ComplexSelector;
         const { value } = selector;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
-          const out = sel.eval(context);
+        const indices = value.map((_: any, i: number) => i);
+        const maybe = serialForEach(indices, (i: number) => {
+          const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
               selector.setData(i, res as ComplexSelectorComponent);
