@@ -4,12 +4,14 @@ import { ComplexSelector } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
+import { BasicSelector } from '../selector-basic.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Node } from '../node.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
+import type { Ampersand } from '../ampersand.js';
 
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
 export function getParentRuleset(node: Node): Ruleset | undefined {
@@ -127,7 +129,7 @@ export function getParentReplacementForAmpersand(
   return [parentCopy];
 }
 
-function selectorHasAuthoredAmpersand(selector: Selector): boolean {
+export function selectorHasAuthoredAmpersand(selector: Selector): boolean {
   if (isNode(selector, N.Ampersand)) {
     return !selector.hasFlag(F_IMPLICIT_AMPERSAND);
   }
@@ -146,15 +148,62 @@ function selectorHasAuthoredAmpersand(selector: Selector): boolean {
   return false;
 }
 
+/**
+ * Apply an ampersand's appendValue (suffix like `-1` or template like `.&-foo`)
+ * to a resolved parent selector. Mirrors the logic in Ampersand.evalNode but
+ * operates on the already-resolved replacement selector.
+ */
+function applyAppendValue(resolved: Selector, appendValue: string, inherit: Selector): Selector {
+  const isTemplateMerge = appendValue.includes('&');
+  if (isTemplateMerge) {
+    const applyTemplate = (sel: Selector): Selector => {
+      const value = sel.toTrimmedString();
+      return new BasicSelector(appendValue.split('&').join(value)).inherit(inherit);
+    };
+    if (isNode(resolved, N.SelectorList)) {
+      const items = (resolved as SelectorList).data.map(item => applyTemplate(item as Selector));
+      return SelectorList.create(items).inherit(inherit) as Selector;
+    }
+    return applyTemplate(resolved);
+  }
+
+  const doAppend = (n: Selector): void => {
+    for (const s of n.nodes(true)) {
+      if (isNode(s, N.SimpleSelector)) {
+        if (typeof s.data === 'string') {
+          s.setData(s.data + appendValue);
+          return;
+        }
+      }
+    }
+  };
+
+  if (isNode(resolved, N.SelectorList)) {
+    (resolved as SelectorList).data.forEach(item => doAppend(item as Selector));
+  } else {
+    doAppend(resolved);
+  }
+  resolved.hoistToRoot = true;
+  return resolved;
+}
+
 function resolveAuthoredAmpersands(
   selector: Selector,
   parentSelector: Selector
 ): Selector {
   if (isNode(selector, N.Ampersand)) {
+    const appendValue = (selector as Ampersand).appendValue;
     const replacement = getParentReplacementForAmpersand(parentSelector, true);
-    return replacement.length === 1
+    let resolved = replacement.length === 1
       ? replacement[0]!
       : ComplexSelector.create(replacement as any).inherit(selector) as Selector;
+    if (appendValue) {
+      resolved = applyAppendValue(resolved, appendValue, selector);
+    }
+    if (appendValue !== undefined) {
+      resolved.hoistToRoot = true;
+    }
+    return resolved;
   }
 
   if (isNode(selector, N.SelectorList)) {
@@ -166,17 +215,60 @@ function resolveAuthoredAmpersands(
   if (isNode(selector, N.ComplexSelector | N.CompoundSelector)) {
     const data = selector.data as readonly Selector[];
     const nextData: Selector[] = [];
+    let hasAppendValue = false;
+    const isCompound = isNode(selector, N.CompoundSelector);
     for (let i = 0; i < data.length; i++) {
       const item = data[i]!;
       if (isNode(item, N.Ampersand) && !item.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        const atStart = isNode(selector, N.ComplexSelector) && i === 0;
-        nextData.push(...getParentReplacementForAmpersand(parentSelector, atStart));
+        const appendValue = (item as Ampersand).appendValue;
+        const atStart = !isCompound && i === 0;
+        const parts = getParentReplacementForAmpersand(parentSelector, atStart);
+        if (appendValue) {
+          let resolved = parts.length === 1
+            ? parts[0]!
+            : ComplexSelector.create(parts as any).inherit(item) as Selector;
+          resolved = applyAppendValue(resolved, appendValue, item);
+          nextData.push(resolved);
+          hasAppendValue = true;
+        } else {
+          nextData.push(...parts);
+        }
         continue;
+      }
+      // Fuse complex parent into compound at ComplexSelector start position:
+      // e.g. &.foo with parent .a .b → .a .b.foo (not :is(.a .b).foo)
+      if (
+        !isCompound && i === 0
+        && isNode(item, N.CompoundSelector)
+        && isNode(parentSelector, N.ComplexSelector)
+      ) {
+        const compoundData = item.data as readonly Selector[];
+        if (compoundData.length > 0 && isNode(compoundData[0], N.Ampersand) && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)) {
+          const ampAppend = (compoundData[0] as Ampersand).appendValue;
+          if (!ampAppend) {
+            const parentParts = [...parentSelector.data] as Selector[];
+            const remaining = compoundData.slice(1).map(d => resolveAuthoredAmpersands(d as Selector, parentSelector));
+            const lastParentPart = parentParts[parentParts.length - 1]!.copy(true) as Selector;
+            const compoundItems = [lastParentPart, ...remaining];
+            const fusedLast = CompoundSelector.create(compoundItems as any).inherit(item) as Selector;
+            const prefix = parentParts.slice(0, -1).map(p => p.copy(true) as Selector);
+            if (prefix.length > 0) {
+              nextData.push(...prefix, fusedLast);
+            } else {
+              nextData.push(fusedLast);
+            }
+            continue;
+          }
+        }
       }
       nextData.push(resolveAuthoredAmpersands(item, parentSelector));
     }
-    const ctor = isNode(selector, N.ComplexSelector) ? ComplexSelector : CompoundSelector;
-    return ctor.create(nextData as any).inherit(selector) as Selector;
+    const ctor = !isCompound ? ComplexSelector : CompoundSelector;
+    const result = ctor.create(nextData as any).inherit(selector) as Selector;
+    if (hasAppendValue) {
+      result.hoistToRoot = true;
+    }
+    return result;
   }
 
   if (isNode(selector, N.PseudoSelector)) {

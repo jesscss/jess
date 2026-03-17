@@ -182,6 +182,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !this.data.selectorBeforeExtend
       && ownSelector
       && !(ownSelector instanceof Nil)
+      && ownSelector.valueOf() !== selector.valueOf()
     ) {
       let parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
       if (parentSelector && !(parentSelector instanceof Nil)) {
