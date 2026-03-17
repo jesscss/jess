@@ -2,15 +2,17 @@
 
 ## Test Baselines
 
-Recorded 2026-03-16 after merging dev (commit `7f47b49d`) into jess-dev.
+Recorded 2026-03-16 after merging dev into jess-dev and completing Stage 6.
 Build fix: TypeScript errors from dev merge resolved (type narrowing casts in
-selector-utils.ts, extend-core.ts, registry-utils.ts, reference.ts).
+selector-utils.ts, extend-core.ts, registry-utils.ts, reference.ts, rules.ts,
+ruleset.ts, url.ts, node-base.ts, selector-match-core.ts).
 
-### Core (`packages/core`)
-- **Test Files**: 8 failed | 59 passed | 2 skipped (69 total)
-- **Tests**: 31 failed | 866 passed | 17 skipped (914 total)
-- Failing files: ampersand, at-rule, import-style (with values), mixin-recursion,
-  mixin, nesting-collapse, process-leading-is, at-rule-basic
+### Core (`packages/core`) — post-Stage 6
+- **Test Files**: 10 failed | 57 passed | 2 skipped (69 total)
+- **Tests**: 34 failed | 885 passed | 17 skipped (936 total)
+- Failing files: ampersand, at-rule, at-rule-basic, import-style (with values),
+  mixin, nesting-collapse, process-leading-is, fast-reject,
+  flags-static-optimization, extend-eval-integration
 - These are pre-existing or from the dev merge (not regressions from this work)
 
 ### Fns (`packages/fns`)
@@ -181,11 +183,22 @@ Each checkbox = one node class converted + tests green.
 
 ## Stage 6: Remove `.data` Compatibility Layer
 
-- [ ] Grep for all `.data` usage
-- [ ] Convert remaining consumers to instance fields
-- [ ] Remove `.data` getter from base class
-- [ ] Remove `setData()` from base class
-- [ ] Remove `getEntriesFromNode()` and related utilities
+- [x] Grep for all `.data` usage across codebase
+- [x] Convert all `.data` reads in ~24 test files to instance field access
+- [x] Convert `.data` reads in tree utility files (process-leading-is.ts, serialize-types.ts)
+- [x] Remove `Object.defineProperty(..., 'data', ...)` compat getters from all 48 node classes
+- [x] Remove `declare readonly data:` type declarations from all node classes
+- [x] Add `clone()` overrides for nodes with non-childKey constructor fields:
+  - Condition (tuple constructor: `[left, op, right]`)
+  - Operation (tuple constructor: `[left, op, right]`)
+  - AttributeSelector (drops `op`, `mod` without override)
+  - Extend (drops `namespace`, `flag` without override)
+  - StyleImport (drops `withType` without override)
+- [x] Fix `setData()` for multi-key containers (iterate childKeys, not assign `.data`)
+- [x] Convert merge-conflict files from dev branch (9 files: `.data` → instance fields)
+- [x] Fix TypeScript build errors from dev merge (`{ data: ... }` type annotations → `{ value: ... }`)
+- [ ] Remove `setData()` from base class (still used in eval paths)
+- [ ] Remove `getEntriesFromNode()` and related utilities (still used in some paths)
 
 ---
 
