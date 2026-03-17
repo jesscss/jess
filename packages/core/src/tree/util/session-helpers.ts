@@ -1,5 +1,4 @@
 import type { Node } from '../node-base.js';
-import type { EvalSession } from '../../eval-session.js';
 import type { Context } from '../../context.js';
 
 /**
@@ -27,11 +26,11 @@ export function sessionGetField<T = unknown>(
   key: string,
   ctx: Context
 ): T {
-  const session: EvalSession | undefined = (ctx as any).session;
+  const session = ctx.session;
   if (session && session.hasField(node, key)) {
     return session.getField(node, key) as T;
   }
-  return (node as any)[key];
+  return (node as Record<string, unknown>)[key] as T;
 }
 
 /**
@@ -44,11 +43,11 @@ export function sessionPatchField(
   value: unknown,
   ctx: Context
 ): void {
-  const session: EvalSession | undefined = (ctx as any).session;
+  const session = ctx.session;
   if (session) {
     session.patchField(node, key, value);
   } else {
-    (node as any)[key] = value;
+    (node as Record<string, unknown>)[key] = value;
   }
 }
 
@@ -59,7 +58,7 @@ export function sessionGetParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const session: EvalSession | undefined = (ctx as any).session;
+  const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
     if (runtime.parent !== undefined) {
@@ -77,14 +76,14 @@ export function sessionSetParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  const session: EvalSession | undefined = (ctx as any).session;
+  const session = ctx.session;
   if (session) {
     session.getRuntime(node).parent = parent;
   } else {
     if (parent) {
       parent.adopt(node);
     } else {
-      (node as any).parent = undefined;
+      (node as Record<string, unknown>).parent = undefined;
     }
   }
 }
@@ -96,7 +95,7 @@ export function sessionIsEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
-  const session: EvalSession | undefined = (ctx as any).session;
+  const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
     if (runtime.evaluated !== undefined) {
@@ -114,7 +113,7 @@ export function sessionSetEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  const session: EvalSession | undefined = (ctx as any).session;
+  const session = ctx.session;
   if (session) {
     session.getRuntime(node).evaluated = value;
   } else {
