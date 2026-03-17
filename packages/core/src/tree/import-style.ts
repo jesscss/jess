@@ -297,7 +297,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (inheritedReferenceMode && !importOptions!.multiple) {
         importOptions!.reference = true;
       }
-      if (node.treeContext) {
+      if (node.treeContext?.file) {
         context.treeContext = node.treeContext;
       }
       if (importOptions!.multiple || importOptions!.reference) {

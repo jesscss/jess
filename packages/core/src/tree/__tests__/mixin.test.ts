@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -1099,6 +1099,71 @@ describe('Mixin', () => {
           background-color: white;
         }
       `);
+    });
+  });
+
+  describe('parent selector composition in mixin calls', () => {
+    it('should resolve > li to caller context, not mixin ancestor chain, inside @media', async () => {
+      /**
+       * Less input:
+       *   .nav-justified {
+       *     @media (min-width: 480px) {
+       *       > li { display: table-cell; }
+       *     }
+       *   }
+       *   .menu {
+       *     @media (min-width: 768px) {
+       *       .nav-justified();
+       *     }
+       *   }
+       *
+       * Expected CSS (collapsed):
+       *   @media (min-width: 480px) { .nav-justified > li { ... } }
+       *   @media (min-width: 768px) { @media (min-width: 480px) { .menu > li { ... } } }
+       *
+       * Bug: produces `.menu .nav-justified > li` — the mixin body's
+       * `> li` ruleset still walks up the parent chain to `.nav-justified`
+       * instead of using the caller's captured frames.
+       */
+      const navJustified = ruleset({
+        selector: el('.nav-justified'),
+        rules: rules([
+          atrule({
+            name: any('@media'),
+            prelude: any('(min-width: 480px)'),
+            rules: rules([
+              ruleset({
+                selector: sel([co('>'), el('li')]),
+                rules: rules([
+                  decl({ name: 'display', value: any('table-cell') })
+                ])
+              })
+            ])
+          })
+        ])
+      });
+
+      const menu = ruleset({
+        selector: el('.menu'),
+        rules: rules([
+          atrule({
+            name: any('@media'),
+            prelude: any('(min-width: 768px)'),
+            rules: rules([
+              call({ name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' }) })
+            ])
+          })
+        ])
+      });
+
+      const root = rules([navJustified, menu]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.menu > li');
+      expect(css).not.toContain('.menu .nav-justified');
     });
   });
 
