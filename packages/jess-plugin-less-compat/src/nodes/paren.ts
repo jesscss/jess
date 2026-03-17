@@ -1,51 +1,13 @@
 import { Paren, Node } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy.js';
+import { createFromAdapter, selfVisitAccept } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import { mapJessTypeToLessType } from '../transform/type-map.js';
-import { fromLessNode } from '../transform/from-less.js';
-import type { LessNode } from '../types.js';
 
-/**
- * Transform a Jess Paren to a Less-compatible Paren
- */
-export function transformParenToLess(
-  jessParen: Paren,
-  cache?: WeakMap<any, any>
-): LessNode {
-  return createLessProxy(jessParen, cache, (prop, target) => {
-    const paren = target as Paren;
-
-    // Map 'type' property
-    if (prop === 'type') {
-      return mapJessTypeToLessType(paren.type);
+export const transformParenToLess = createFromAdapter<Paren>({
+  fields: {
+    value: (p, cache) => {
+      const value = p.value;
+      return value instanceof Node ? toLessNode(value, { cache }) : value;
     }
-
-    // Map 'typeIndex'
-    if (prop === 'typeIndex') {
-      return undefined;
-    }
-
-    // Map 'value' property
-    if (prop === 'value') {
-      const value = paren.value;
-      if (value instanceof Node) {
-        return toLessNode(value, { cache });
-      }
-      return value;
-    }
-
-    // Map 'accept' method for visitor traversal
-    if (prop === 'accept') {
-      return function(visitor: any) {
-        const lessParen = transformParenToLess(paren, cache);
-        const result = visitor.visit(lessParen);
-        if (result !== lessParen) {
-          return fromLessNode(result, { cache });
-        }
-        return paren;
-      };
-    }
-
-    return undefined;
-  });
-}
+  },
+  accept: selfVisitAccept()
+});

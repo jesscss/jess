@@ -1,59 +1,16 @@
 import { Operation, Node } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy.js';
+import { createFromAdapter, selfVisitAccept } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import { mapJessTypeToLessType } from '../transform/type-map.js';
-import { fromLessNode } from '../transform/from-less.js';
-import type { LessNode } from '../types.js';
 
-/**
- * Transform a Jess Operation to a Less-compatible Operation
- */
-export function transformOperationToLess(
-  jessOperation: Operation,
-  cache?: WeakMap<any, any>
-): LessNode {
-  return createLessProxy(jessOperation, cache, (prop, target) => {
-    const op = target as Operation;
-
-    // Map 'type' property
-    if (prop === 'type') {
-      return mapJessTypeToLessType(op.type);
-    }
-
-    // Map 'typeIndex'
-    if (prop === 'typeIndex') {
-      return undefined;
-    }
-
-    // Map 'op' property (operator)
-    if (prop === 'op') {
-      return op.operator || '';
-    }
-
-    // Map 'operands' property
-    if (prop === 'operands') {
+export const transformOperationToLess = createFromAdapter<Operation>({
+  fields: {
+    op: (o) => o.operator || '',
+    operands: (o, cache) => {
       const operands: Node[] = [];
-      if (op.left instanceof Node) {
-        operands.push(op.left);
-      }
-      if (op.right instanceof Node) {
-        operands.push(op.right);
-      }
-      return operands.map(o => toLessNode(o, { cache }));
+      if (o.left instanceof Node) operands.push(o.left);
+      if (o.right instanceof Node) operands.push(o.right);
+      return operands.map(n => toLessNode(n, { cache }));
     }
-
-    // Map 'accept' method for visitor traversal
-    if (prop === 'accept') {
-      return function(visitor: any) {
-        const lessOp = transformOperationToLess(op, cache);
-        const result = visitor.visit(lessOp);
-        if (result !== lessOp) {
-          return fromLessNode(result, { cache });
-        }
-        return op;
-      };
-    }
-
-    return undefined;
-  });
-}
+  },
+  accept: selfVisitAccept()
+});

@@ -174,10 +174,19 @@ Each checkbox = one node class converted + tests green.
 
 ## Stage 5: Declarative Adapter Layer
 
-- [ ] Define `NodeAdapter<T>` interface
-- [ ] Implement `createAdapter(node, def, cache)`
-- [ ] Convert existing transformer files to adapter definitions
-- [ ] Verify less-compat test suite passes
+- [x] Define `NodeAdapter<T>` interface in `packages/jess-plugin-less-compat/src/transform/adapter.ts`
+  - `lessType`, `fields`, `dynamicField`, `accept` properties
+  - Accept helpers: `selfVisitAccept()`, `childrenAccept()`, `singleChildAccept()`
+- [x] Implement `createFromAdapter<T>()` factory that generates a `NodeTransformer` from an adapter
+  - Auto-maps `type` and `typeIndex` properties
+  - Wraps accept functions with proper visitor binding
+- [x] Convert all 26 transformer files to declarative adapter definitions
+  - Leaf nodes (combinator, dimension, color): field mappings only
+  - Self-visit nodes (keyword, comment, quoted, paren, negative, url, operation, expression, condition, extend, import, mixin, attribute-selector): `selfVisitAccept()`
+  - Children-accept nodes (declaration, var-declaration, at-rule, call): custom accept or `childrenAccept()`/`singleChildAccept()`
+  - Complex nodes (ruleset, list, selector, sequence): custom accept functions
+  - Selector: preserves `flattenSelectorToElements()` and `createElementProxy()` with cache-write-through for Element proxy dispatch
+- [x] Verify less-compat test suite passes (54/54)
 
 ---
 
@@ -197,8 +206,12 @@ Each checkbox = one node class converted + tests green.
 - [x] Fix `setData()` for multi-key containers (iterate childKeys, not assign `.data`)
 - [x] Convert merge-conflict files from dev branch (9 files: `.data` → instance fields)
 - [x] Fix TypeScript build errors from dev merge (`{ data: ... }` type annotations → `{ value: ... }`)
-- [ ] Remove `setData()` from base class (still used in eval paths)
-- [ ] Remove `getEntriesFromNode()` and related utilities (still used in some paths)
+- [x] Remove `getEntries()` from core selector eval paths (selector-list, selector-complex, selector-compound)
+  - Replaced with direct indexed iteration over `value` arrays
+  - `getEntries()` and `getValues()` kept in collections.ts — `getValues()` still used by language-service
+- [~] `setData()` — kept as mutation API (does adoption + valueOf invalidation)
+  - Removing requires adopting setters (private fields + get/set) on all container nodes
+  - Deferred to future stage; not blocking for Stage 6 completion
 
 ---
 
