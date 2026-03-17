@@ -5,10 +5,19 @@ import { CompoundSelector } from '../selector-compound.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import type { Ruleset } from '../ruleset.js';
+import type { Node } from '../node.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
-import { F_IMPLICIT_AMPERSAND } from '../node.js';
+import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
+
+/** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
+export function getParentRuleset(node: Node): Ruleset | undefined {
+  const rules = node.parent;
+  return rules?.parent && isNode(rules.parent, N.Ruleset)
+    ? rules.parent as Ruleset
+    : undefined;
+}
 
 function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
   const flattened: Selector[] = [];
@@ -155,8 +164,8 @@ function resolveAuthoredAmpersands(
   }
 
   if (isNode(selector, N.ComplexSelector | N.CompoundSelector)) {
-    const nextData: Selector[] = [];
     const selectorData = (selector as ComplexSelector | CompoundSelector).value as Selector[];
+    const nextData: Selector[] = [];
     for (let i = 0; i < selectorData.length; i++) {
       const item = selectorData[i] as Selector;
       if (isNode(item, N.Ampersand) && !item.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -170,11 +179,11 @@ function resolveAuthoredAmpersands(
     return ctor.create(nextData as any).inherit(selector) as Selector;
   }
 
-  if (isNode(selector as Selector, N.PseudoSelector)) {
-    const pseudo = selector as PseudoSelector;
-    if (pseudo.arg && isNode(pseudo.arg, N.Selector)) {
-      const copy = pseudo.copy(true) as PseudoSelector;
-      copy.setData('arg', resolveAuthoredAmpersands(pseudo.arg as Selector, parentSelector));
+  if (isNode(selector, N.PseudoSelector)) {
+    const ps = selector as PseudoSelector;
+    if (ps.arg && isNode(ps.arg, N.Selector)) {
+      const copy = ps.copy(true) as PseudoSelector;
+      copy.setData('arg', resolveAuthoredAmpersands(ps.arg as Selector, parentSelector));
       return copy as Selector;
     }
   }
@@ -333,4 +342,15 @@ export function localizeSelectorAgainstParent(
   }
 
   return stripParentPrefix(selector);
+}
+
+/** Returns true if the selector (or any top-level SelectorList item) has F_EXTENDED. */
+export function hasExtendedSelector(sel: Selector | Nil | undefined): boolean {
+  if (!sel || sel instanceof Nil) {
+    return false;
+  }
+  if (isNode(sel, N.SelectorList)) {
+    return (sel as SelectorList).value.some(item => item.hasFlag(F_EXTENDED));
+  }
+  return (sel as Selector).hasFlag(F_EXTENDED);
 }

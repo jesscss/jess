@@ -3,7 +3,7 @@ import { SelectorList } from '../selector-list.js';
 import { F_AMPERSAND, type Node } from '../node.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { isDisjoint, isSubsetOf } from './bitset.js';
+import { isDisjoint } from './bitset.js';
 import { type PseudoSelector } from '../selector-pseudo.js';
 
 /**
@@ -126,7 +126,6 @@ type SelectorMatchContext = {
 const selectorMatchPlanCache = new WeakMap<Selector, {
   value: string;
   plan: MatchPlan;
-  hasNestedBranchAlternatives: boolean;
 }>();
 
 /**
@@ -396,23 +395,8 @@ function getSelectorMatchPlan(selector: Selector, parent?: Selector): MatchPlan 
   }
 
   const plan = buildMatchPlan(selector);
-  selectorMatchPlanCache.set(selector, {
-    value,
-    plan,
-    hasNestedBranchAlternatives: hasNestedBranchAlternatives(selector)
-  });
+  selectorMatchPlanCache.set(selector, { value, plan });
   return plan;
-}
-
-function selectorHasNestedBranchAlternatives(selector: Selector): boolean {
-  const value = selector.valueOf();
-  const cached = selectorMatchPlanCache.get(selector);
-  if (cached && cached.value === value) {
-    return cached.hasNestedBranchAlternatives;
-  }
-
-  getSelectorMatchPlan(selector);
-  return selectorMatchPlanCache.get(selector)?.hasNestedBranchAlternatives ?? false;
 }
 
 function cloneGroupStates(states: MatchGroupState[]): MatchGroupState[] {
@@ -925,23 +909,6 @@ function getBranchAlternatives(node: Node): readonly Selector[] | undefined {
   }
 
   return undefined;
-}
-
-function hasNestedBranchAlternatives(node: Node): boolean {
-  if (getBranchAlternatives(node)) {
-    return true;
-  }
-
-  const children = node.children();
-  let child = children.next();
-  while (!child.done) {
-    if (hasNestedBranchAlternatives(child.value)) {
-      return true;
-    }
-    child = children.next();
-  }
-
-  return false;
 }
 
 function matchGroupNodes(
@@ -1477,42 +1444,21 @@ function selectorMatchUncached(
     }
   }
 
-  /**
-   * @todo Revisit fast-reject policy once the extend and selector suites are
-   * fully green.
-   *
-   * Areas to explore:
-   * - whether find-side selector lists or nested selector-list branches should
-   *   be disallowed or normalized earlier instead of weakening fast reject
-   * - whether target-side selector lists can still use cheap bitset rejection
-   *   because they only add candidate keys
-   * - whether those changes would let us simplify or remove `canFastReject`
-   *   as a separate concept
-   */
   if (
     !parent
-    && !selectorHasNestedBranchAlternatives(find)
-    && !find.hasFlag(F_AMPERSAND)
-    && target.hasFlag(F_AMPERSAND)
     && find.keySetLibrary
     && target.keySetLibrary
-    && find.canFastReject
-    && target.canFastReject
-    && isDisjoint(find.visibleKeySet, target.visibleKeySet)
   ) {
-    return emptySelectorMatchState();
-  }
-
-  if (
-    !parent
-    && !selectorHasNestedBranchAlternatives(find)
-    && find.keySetLibrary
-    && target.keySetLibrary
-    && find.canFastReject
-    && target.canFastReject
-    && !isSubsetOf(find.keySet, target.keySet)
-  ) {
-    return emptySelectorMatchState();
+    if (
+      !find.hasFlag(F_AMPERSAND)
+      && target.hasFlag(F_AMPERSAND)
+      && isDisjoint(find.visibleKeySet, target.visibleKeySet)
+    ) {
+      return emptySelectorMatchState();
+    }
+    if (isDisjoint(find.requiredKeySet, target.keySet)) {
+      return emptySelectorMatchState();
+    }
   }
 
   const findPlan = getSelectorMatchPlan(find);

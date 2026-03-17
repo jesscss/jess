@@ -1,5 +1,5 @@
 /**
- * @jesscss/parser-runtime — Type definitions
+ * @jesscss/parser — Type definitions
  *
  * Token and error types are inspired by Chevrotain's interfaces but
  * simplified for a hand-coded recursive-descent parser. Category

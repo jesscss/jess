@@ -1159,8 +1159,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Only switch treeContext if the rules have one AND it's different
     // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
     // and we don't want to lose leakyRules and other settings
-    // IMPORTANT: Check _treeContext (private field) not treeContext (getter that lazily creates)
-    const rulesTreeContext = (rules as any)._treeContext as TreeContext | undefined;
+    // Check _meta.treeContext (private field) not treeContext (getter that lazily creates)
+    const rulesTreeContext = (rules as any)._meta?.treeContext as TreeContext | undefined;
     if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
       context.allRoots.push(rules);
       context.treeContext = rulesTreeContext;
@@ -1723,7 +1723,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 }
 
-
 export const rules = defineType(Rules, 'Rules');
 
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
@@ -2148,14 +2147,22 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       node.evaluated = false;
       if (isNode(node, N.Ruleset)) {
         const rulesetNode = node as Ruleset;
-        const selector = rulesetNode.selector as Selector | Nil;
-        const sourceSelector = selector?.sourceNode;
-        if (sourceSelector && isNode(sourceSelector)) {
-          // Recover definition-time selector shape (e.g. raw `&`) so call-site
-          // preEval can rebuild selectors in the caller's frame.
-          const copiedSelector = sourceSelector.copy(true) as Selector | Nil;
-          copiedSelector.sourceNode = sourceSelector;
+        // Recover the pre-composition selector (ownSelector) so call-site
+        // preEval can rebuild selectors in the caller's frame.
+        // ownSelector is the selector BEFORE parent composition (e.g. `> li`),
+        // while selector may already be composed (e.g. `.nav-justified > li`).
+        const ownSelector = (rulesetNode.options as any)?.ownSelector;
+        if (ownSelector && isNode(ownSelector) && !(ownSelector instanceof Nil)) {
+          const copiedSelector = ownSelector.copy(true) as Selector | Nil;
           rulesetNode.setData('selector', copiedSelector);
+        } else {
+          const selector = rulesetNode.selector as Selector | Nil;
+          const sourceSelector = selector?.sourceNode;
+          if (sourceSelector && isNode(sourceSelector)) {
+            const copiedSelector = sourceSelector.copy(true) as Selector | Nil;
+            copiedSelector.sourceNode = sourceSelector;
+            rulesetNode.setData('selector', copiedSelector);
+          }
         }
       }
       if (isNode(node, N.Ampersand)) {

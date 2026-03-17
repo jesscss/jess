@@ -6,6 +6,7 @@ import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.j
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
+import { hasExtendedSelector } from './selector-utils.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -39,20 +40,6 @@ export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
 
-function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
-  if (node.hasFlag(F_EXTENDED)) {
-    return true;
-  }
-  const selector = node.selector;
-  if (!selector || selector instanceof Nil) {
-    return false;
-  }
-  if (isNode(selector, N.SelectorList)) {
-    return selector.value.some(item => item.hasFlag(F_EXTENDED));
-  }
-  return selector.hasFlag(F_EXTENDED);
-}
-
 /**
  * Handles flattening and serializing of at-rules and rulesets
  */
@@ -71,7 +58,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
   const inReferenceMode = previousReferenceMode;
   const enteringReferenceMode = false;
-  const nodeExtendsReference = node.type === 'Ruleset' && rulesetHasExtendedTopLevelSelector(node as Ruleset);
+  const nodeExtendsReference = node.type === 'Ruleset' && (
+    node.hasFlag(F_EXTENDED) || hasExtendedSelector((node as Ruleset).selector)
+  );
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
   options.referenceMode = inReferenceMode;

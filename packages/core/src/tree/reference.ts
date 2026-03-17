@@ -2,7 +2,7 @@ import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationIn
 import type { Context, TreeContext } from '../context.js';
 import { cast } from './util/cast.js';
 import type { FindOptions } from './util/registry-utils.js';
-import { Any, type AnyRole } from './any.js';
+import { Any, type AnyRole, Keyword } from './any.js';
 import { Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -19,7 +19,6 @@ import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
-import type { BitSet } from './util/bitset.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -79,12 +78,34 @@ export type ReferenceOptions = {
 };
 const { isArray } = Array;
 
+/**
+ * Extract mixin reference keys from a selector in document order,
+ * skipping combinators. For `#theme > .mixin`, returns `["#theme", ".mixin"]`.
+ *
+ * Must preserve the original selector child order (not bitset order)
+ * so that MixinRegistry lookup uses the correct startKey.
+ */
 function getSelectorReferenceKeys(selector: Selector): string[] {
-  const keySet = selector.keySet as Set<string> | BitSet<string>;
-  if (keySet instanceof Set) {
-    return [...keySet];
+  const { data } = selector;
+  if (isArray(data)) {
+    const keys: string[] = [];
+    for (const child of data) {
+      if (isNode(child, N.Combinator)) {
+        continue;
+      }
+      if (isNode(child, N.Selector)) {
+        keys.push(...getSelectorReferenceKeys(child as Selector));
+      } else {
+        const val = String(child.valueOf());
+        if (val) {
+          keys.push(val);
+        }
+      }
+    }
+    return keys;
   }
-  return keySet._library?.valuesOf(keySet) ?? [];
+  const val = String(selector.valueOf());
+  return val ? [val] : [];
 }
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
@@ -179,6 +200,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     switch (type) {
       case 'index':
+        if (!target) {
+          w.add('$');
+        }
         w.add('[');
         emitKey(key);
         w.add(']');
@@ -455,6 +479,20 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               } else {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 if (isNode(targetRules, N.Rules)) {
+                  // If the key was a Keyword, look up as a variable first
+                  if (key instanceof Keyword) {
+                    const found = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                    if (found !== undefined) {
+                      return found;
+                    }
+                  }
+                  // If the key was a Quoted, look up as a property
+                  if (isNode(key, N.Quoted)) { // property lookup
+                    const found = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
+                    if (found !== undefined) {
+                      return found;
+                    }
+                  }
                   return targetRules.find('declaration', `${keyStr}`, undefined, opts);
                 } else if (isNode(targetRules, N.JsObject)) {
                   return (targetRules as any).value[keyStr];
@@ -634,7 +672,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
-              first.sourceParent = this;
+              (first as Node).sourceParent = this;
               context.popReference();
               return cast(first);
             }
@@ -672,6 +710,5 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return result as Node;
   }
 }
-
 
 export const ref = defineType(Reference, 'Reference', 'ref');

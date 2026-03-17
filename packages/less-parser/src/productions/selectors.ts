@@ -23,6 +23,7 @@ import {
   AtRule,
   Interpolated,
   InterpolatedSelector,
+  Keyword,
   Reference,
   Extend,
   Mixin,
@@ -122,7 +123,7 @@ function getAllowedExtendSelectors(context: TreeContext): ExtendSelectorKind[] |
   return context.opts.allowExtendSelectors as ExtendSelectorKind[] | undefined;
 }
 
-function findDisallowedExtendSelector(selector: Selector, allowed?: readonly ExtendSelectorKind[]) {
+function findDisallowedExtendSelector(selector: Selector, allowed?: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: Selector } | undefined {
   if (!allowed) {
     return undefined;
   }
@@ -529,7 +530,34 @@ export function simpleSelector(this: P, ctx: RuleContext = {}) {
         ctx.qualifiedRule = initialIsQualifiedRule;
       }
     } },
-    { ALT: () => $.attributeSelector() },
+    { ALT: () => $.attributeSelector(ctx, () => [
+      {
+        ALT: () => {
+          let token = $.CONSUME($.T.InterpolatedIdent);
+          let location = $.getLocationInfo(token);
+          let image = token.image;
+          let match = interpolatedRegex.exec(image);
+          interpolatedRegex.lastIndex = 0;
+          if (match && match[0] === image) {
+            return new Reference(
+              { key: new Keyword(match[2]!, undefined, location, $.context) },
+              { type: 'index' },
+              location,
+              $.context
+            );
+          }
+          return getInterpolated(image, location, $.context);
+        },
+        GATE: () => $.LA(1).tokenType === $.T.InterpolatedIdent
+      },
+      {
+        ALT: () => {
+          let token = $.CONSUME($.T.Ident);
+          return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), $.context);
+        }
+      },
+      { ALT: () => $.string() }
+    ]) },
     /** Supports keyframes selectors */
     { ALT: () => $.CONSUME($.T.DimensionInt) },
     { ALT: () => $.CONSUME($.T.DimensionNum) }

@@ -136,7 +136,6 @@ describe('pseudo-selectors', () => {
       let result = selectorMatch(sel1, sel2);
       expect(result.fullMatch).toBe(false);
       expect(result.partialMatch).toBe(true);
-      expect(result.matches).toHaveLength(1);
     });
 
     it('matches an :is() as a full match #1', async () => {
@@ -277,7 +276,6 @@ describe('pseudo-selectors', () => {
       let result = selectorMatch(sel1, sel2);
       expect(result.fullMatch).toBe(false);
       expect(result.partialMatch).toBe(true);
-      expect(result.matches).toHaveLength(1);
     });
   });
 

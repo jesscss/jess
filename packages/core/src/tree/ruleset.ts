@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_NON_STATIC, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context, TreeContext } from '../context.js';
 import { type LocationInfo } from './node.js';
@@ -18,7 +18,7 @@ import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './ut
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
-import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
+import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
 import { processLeadingIs } from './util/process-leading-is.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
@@ -145,15 +145,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false): Selector | Nil {
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-    const parentRuleset = (
-      this.parent?.parent && isNode(this.parent.parent, N.Ruleset)
-        ? this.parent.parent as Ruleset
-        : undefined
-    );
+    const parentRs = getParentRuleset(this);
     if (
       !this.hoistToRoot
       && !collapseNesting
-      && parentRuleset
+      && parentRs
       && ownSelector
       && !(ownSelector instanceof Nil)
     ) {
@@ -178,11 +174,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-    const parentRuleset = (
-      this.parent?.parent && isNode(this.parent.parent, N.Ruleset)
-        ? this.parent.parent as Ruleset
-        : undefined
-    );
+    const parentRs = getParentRuleset(this);
     if (
       collapseNesting
       && this.hoistToRoot
@@ -190,15 +182,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && ownSelector
       && !(ownSelector instanceof Nil)
     ) {
-      let parentSelector = parentRuleset?.getEffectiveSelector(collapseNesting);
+      let parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
       if (parentSelector && !(parentSelector instanceof Nil)) {
-        /** In reference mode, the parent's selector may include invisible
-         *  (original referenced) items alongside extend-added items.
-         *  Filter to only visible items so children don't inherit invisible selectors. */
-        if (parentRuleset!.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRuleset!)) {
+        if (parentRs!.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRs!)) {
           parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
             parentSelector as Selector,
-            parentRuleset!.selectorBeforeExtend
+            parentRs!.selectorBeforeExtend
           );
         }
         if (parentSelector && !(parentSelector instanceof Nil)) {
@@ -211,7 +200,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
 
-    const parentSelector = parentRuleset?.getEffectiveSelector(collapseNesting);
+    const parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
     if (
       ownSelector
       && !(ownSelector instanceof Nil)
@@ -392,24 +381,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return false;
   }
 
-  private static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
-    if (!sel || sel instanceof Nil) {
-      return false;
-    }
-    if (isNode(sel, N.SelectorList)) {
-      return (sel as SelectorList).value.some(item => item.hasFlag(F_EXTENDED));
-    }
-    return (sel as Selector).hasFlag(F_EXTENDED);
+  static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
+    return hasExtendedSelector(sel);
   }
 
-  private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
+  private static filterSelectorItems(
+    sel: Selector,
+    shouldKeep: (item: Selector) => boolean
+  ): Selector | Nil {
     if (!isNode(sel, N.SelectorList)) {
-      return (sel.hasFlag(F_EXTENDED) && !sel.hasFlag(F_EXTEND_TARGET)) ? sel : new Nil();
+      return shouldKeep(sel) ? sel : new Nil();
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
     for (const item of (sel as SelectorList).value) {
-      if (!item.hasFlag(F_EXTENDED) || item.hasFlag(F_EXTEND_TARGET)) {
+      if (!shouldKeep(item)) {
         continue;
       }
       const key = item.valueOf();
@@ -428,12 +414,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return SelectorList.create(kept).inherit(sel);
   }
 
-  /**
-   * In reference rendering, once a referenced ruleset has been extended, only
-   * selector items introduced by the extend should remain visible. Original
-   * referenced selector items stay in the selector AST for further matching,
-   * but should not continue to render.
-   */
+  private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
+    return Ruleset.filterSelectorItems(sel, item =>
+      item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
+    );
+  }
+
   private static filterReferenceVisibleSelectorItems(
     current: Selector,
     original?: Selector | Nil
@@ -441,7 +427,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!original || original instanceof Nil) {
       return Ruleset.filterExtendedTopLevelSelectorItems(current);
     }
-
     const originalValues = new Set<string>();
     if (isNode(original, N.SelectorList)) {
       for (const item of (original as SelectorList).value) {
@@ -450,29 +435,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     } else {
       originalValues.add(original.valueOf());
     }
-
-    if (!isNode(current, N.SelectorList)) {
-      return originalValues.has(current.valueOf()) ? new Nil() : current;
-    }
-
-    const seen = new Set<string>();
-    const kept: Selector[] = [];
-    for (const item of (current as SelectorList).value) {
-      const key = item.valueOf();
-      if (originalValues.has(key) || seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      kept.push(item.copy(true) as Selector);
-    }
-
-    if (kept.length === 0) {
-      return new Nil();
-    }
-    if (kept.length === 1) {
-      return kept[0]!;
-    }
-    return SelectorList.create(kept).inherit(current);
+    return Ruleset.filterSelectorItems(current, item =>
+      !originalValues.has(item.valueOf())
+    );
   }
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
@@ -580,8 +545,28 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
+      const ownSelector = (node.options as RulesetOptions)?.ownSelector;
       return pipe(
         () => selector.eval(context),
+        (sel) => {
+          // If ownSelector has non-static children (e.g. interpolated attr values),
+          // evaluate it so extend matching uses the resolved form.
+          if (
+            ownSelector
+            && !isNode(ownSelector, N.Nil)
+            && ownSelector !== selector
+            && ownSelector.hasFlag(F_NON_STATIC)
+          ) {
+            return pipe(
+              () => ownSelector.eval(context),
+              (evaledOwn) => {
+                (node.options as RulesetOptions).ownSelector = evaledOwn as Selector;
+                return sel;
+              }
+            );
+          }
+          return sel;
+        },
         (sel) => {
           // If this ruleset shares its value with a descendant ruleset, give descendants
           // their own value before we overwrite value.selector so they keep their selector.
@@ -800,7 +785,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   //   out.add(`},${JSON.stringify(this.location)})`)
   // }
 }
-
 
 type RulesetParams = ConstructorParameters<typeof Ruleset>;
 

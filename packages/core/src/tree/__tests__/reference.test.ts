@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -47,22 +47,22 @@ describe('reference', () => {
 
     it('should serialize a number index', () => {
       let node = ref({ key: 0 }, { type: 'index' });
-      expect(`${node}`).toBe('[0]');
+      expect(`${node}`).toBe('$[0]');
     });
 
     it('should serialize a string index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('[foo]');
+      expect(`${node}`).toBe('$[foo]');
     });
 
     it('should serialize a quoted index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('[foo]');
+      expect(`${node}`).toBe('$[foo]');
     });
 
     it('should serialize a selector index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
-      expect(`${node}`).toBe('["foo"]');
+      expect(`${node}`).toBe('$["foo"]');
     });
   });
 
@@ -162,6 +162,27 @@ describe('reference', () => {
       let evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
         bar: red red;
+      `);
+    });
+
+    it('should resolve a variable reference with a keyword key inside an attribute selector', async () => {
+      let node = rules([
+        vardecl({
+          name: any('attr-data'),
+          value: quoted('test3')
+        }),
+        ruleset({
+          selector: attr({ name: 'data', op: '=', value: ref({ key: keyword('attr-data') }, { type: 'index' }) }),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        [data="test3"] {
+          color: red;
+        }
       `);
     });
   });

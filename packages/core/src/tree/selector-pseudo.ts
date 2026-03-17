@@ -47,10 +47,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     }
   }
 
-  override computeKeySetAndFastReject(): void {
-    let keySet = this._keySet;
-    let visibleKeySet = this._visibleKeySet;
-    if (keySet && visibleKeySet) {
+  override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
     }
     let name = this.name;
@@ -63,18 +61,26 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       if (name === ':is') {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
+        if (isNode(arg, N.SelectorList)) {
+          // `:is()` with alternatives — none are individually required
+          this._requiredKeySet = library.getBitset();
+        } else {
+          // `:is()` with a single selector — its keys are required
+          this._requiredKeySet = arg.requiredKeySet;
+        }
       } else {
         let pos = library.add(name);
         let keySet = this._keySet = arg.keySet.clone();
         let visibleKeySet = this._visibleKeySet = arg.visibleKeySet.clone();
         keySet.set(pos, 1);
         visibleKeySet.set(pos, 1);
+        this._requiredKeySet = arg.requiredKeySet.clone();
+        this._requiredKeySet.set(pos, 1);
       }
-      this._canFastReject = arg.canFastReject;
     } else {
       this._keySet = library.getBitset([this.valueOf()]);
       this._visibleKeySet = this._keySet;
-      this._canFastReject = true;
+      this._requiredKeySet = this._keySet;
     }
   }
 
@@ -85,7 +91,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
-      out = out.replace(/\n\s*/g, ' ');
+      out = out.replace(/\n\s*/g, ' ').trimEnd();
       if (!out.includes(',')) {
         w.add(out, arg);
         return w.getSince(mark);
@@ -101,10 +107,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       w.add('(');
       if (isNode(arg, N.SelectorList)) {
         let out = w.capture(() => arg.toString(options));
-        out = out.replace(/\n\s*/g, ' ');
+        out = out.replace(/\n\s*/g, ' ').trimEnd();
         w.add(out, arg);
       } else {
-        arg.toString(options);
+        let out = w.capture(() => arg.toString(options));
+        w.add(out.trimEnd(), arg);
       }
       w.add(')');
     }
@@ -181,7 +188,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 //   ['arg', new BasicSelector([['value', 'div']])]
 // ])
 // foo.arg
-
 
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
 

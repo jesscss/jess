@@ -38,12 +38,17 @@ Node.prototype.operate = function(b: Node, op: Operator) {
 
 /**
  * Define a fallback treeContext for testing.
+ * Reads from _meta.treeContext (set by constructor), falls back to
+ * a lazily-created empty TreeContext for nodes created without one.
  */
 Object.defineProperty(Node.prototype, 'treeContext', {
   get() {
-    let context = this._treeContext;
+    let context = this._meta?.treeContext;
     if (!context) {
-      context = this._treeContext = new TreeContext();
+      context = this._treeContext;
+      if (!context) {
+        context = this._treeContext = new TreeContext();
+      }
     }
     return context;
   }
