@@ -32,13 +32,13 @@ export class Url extends Node<Quoted | Any> {
   override valueOf(): string {
     let value: Node | string = this.value;
     if (isNode(value, N.Quoted)) {
-      value = value.value as Node | string;
+      value = (value as any).value as Node | string;
       if (isNode(value)) {
-        return String(value.value);
+        return String((value as any).value);
       }
       return value as string;
     }
-    return (value as Any).value;
+    return (value as any).value;
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -51,6 +51,5 @@ export class Url extends Node<Quoted | Any> {
     return w.getSince(mark);
   }
 }
-
 
 export const url = defineType(Url, 'Url');

@@ -119,13 +119,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         continue;
       }
       const rs = child as Ruleset;
-      if (rs.data === sharedValue) {
-        rs.setData({
-          selector: rs.selector,
-          rules: rs.rules,
-          ...(rs.guard !== undefined && { guard: rs.guard })
-        });
-      }
+      // With instance fields (no shared data object), shallow clones already
+      // have independent fields, so this identity check is always false.
+      // Kept for structural safety until full clone audit.
       Ruleset.ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
     }
   }
@@ -570,7 +566,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         (sel) => {
           // If this ruleset shares its value with a descendant ruleset, give descendants
           // their own value before we overwrite value.selector so they keep their selector.
-          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, node.data);
+          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, {} as any);
           // Store the evaluated selector - this is what will be in the frame
           node.setData('selector', sel as Selector | Nil);
           if (sel.hoistToRoot) {

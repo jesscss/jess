@@ -804,7 +804,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Process each node with static name, handling both sync and async preEval
     const processResult = serialForEach(rules.value, (node, index) => {
       // Check if node has a static name (can be registered immediately)
-      if (node.type === 'Any' && node.role === 'charset') {
+      if (node.type === 'Any' && (node as any).role === 'charset') {
         /** Special case where we register the charset node immediately */
         rules.setData(index, (node as Any).preEval(context));
         return;
@@ -1856,7 +1856,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           try {
             const evald = await arg.clonedEval(thisContext);
             if (evald.type === 'Rest') {
-              let restValue = evald.value;
+              let restValue = (evald as any).value;
               // Rest's sync evalNode may not resolve an async inner Reference.
               // Explicitly evaluate the inner node if it's still a Reference.
               if (isNode(restValue as Node) && !isNode(restValue as Node, N.Sequence | N.List)) {
@@ -1893,7 +1893,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!isNode(node, N.List | N.Sequence)) {
         return;
       }
-      const items = node.value as Node[];
+      const items = (node as any).value as Node[];
       if (items.length > 0) {
         items[0]!.pre = 0;
       }
@@ -1995,7 +1995,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             });
             /** Create a new variable with the rest name */
             const restVarDecl = new VarDeclaration({
-              name: new Any(param.value ? `${param.value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
+              name: new Any((param as any).value ? `${(param as any).value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
               value: new Sequence(rest)
             });
             params.setData(i, restVarDecl);
@@ -2374,8 +2374,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Rest parameters need to be converted to VarDeclaration for registration
             // Auto-generate a name if Rest doesn't have one (Less allows unnamed rest params)
             let restName: string;
-            if (typeof param.value === 'string') {
-              restName = param.value;
+            if (typeof (param as any).value === 'string') {
+              restName = (param as any).value;
             } else {
               // Auto-generate name: "rest", "rest1", "rest2", etc. based on position
               // Check if there are other rest params to avoid conflicts
@@ -2392,8 +2392,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Convert Rest to VarDeclaration so it can be registered and referenced.
             // If matching did not populate a node value, default to an empty sequence
             // (not a literal name/Nil), so @tail... behaves as "no remaining args".
-            const restValue = isNode(param.value as any)
-              ? param.value as Node
+            const restValue = isNode((param as any).value)
+              ? (param as any).value as Node
               : (
                   thisContext.treeContext?.file
                     ? new Sequence([])

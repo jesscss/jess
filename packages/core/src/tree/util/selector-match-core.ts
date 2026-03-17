@@ -5,6 +5,8 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { isDisjoint } from './bitset.js';
 import { type PseudoSelector } from '../selector-pseudo.js';
+import { type CompoundSelector } from '../selector-compound.js';
+import { type ComplexSelector } from '../selector-complex.js';
 
 /**
  * A single located selector match.
@@ -585,7 +587,7 @@ function matchTargetGroup(
 }
 
 function matchCompoundWindow(
-  targetCompound: Selector & { data: readonly Node[] },
+  targetCompound: Selector & { value: readonly Node[] },
   start: number,
   end: number,
   requirement: MatchGroupRequirement,
@@ -1557,7 +1559,7 @@ function selectorMatchUncached(
       const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
       const lastParentUnit = parentUnits[parentUnits.length - 1]!;
       const leadingAmpersand = hasLeadingAmpersandBoundary(routePlan.selector)
-        ? (routePlan.selector as { value: readonly Node[] }).value[0]
+        ? (routePlan.selector as any).value[0]
         : undefined;
       const ampersandCrossings: SelectorMatchAmpersandCrossing[] = [{
         ampersandNode: leadingAmpersand,

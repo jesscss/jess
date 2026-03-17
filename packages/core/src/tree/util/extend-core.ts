@@ -423,7 +423,7 @@ function stripRedundantCompoundContext(
  * remainder in place.
  */
 function wrapCompoundMatchRange(
-  targetCompound: Selector & { data: readonly Selector[] },
+  targetCompound: Selector & { value: readonly Selector[] },
   startIndex: number,
   endIndex: number,
   matchedIndices: number[] | undefined,
@@ -705,7 +705,7 @@ function getCrossedAmpersandParent(location: ReturnType<typeof selectorMatch>['m
  * outside the generated `:is(...)`.
  */
 function wrapResolvedCompoundSpan(
-  targetCompound: Selector & { data: readonly Selector[] },
+  targetCompound: Selector & { value: readonly Selector[] },
   startIndex: number,
   endIndex: number,
   extendWith: Selector,
@@ -715,7 +715,7 @@ function wrapResolvedCompoundSpan(
   const matchedSelector = matchedMembers.length === 1
     ? matchedMembers[0]!
     : CompoundSelector.create(matchedMembers).inherit(targetCompound) as Selector;
-  const outsideMembers = targetCompound.value.filter((_, index) => index < startIndex || index > endIndex) as Selector[];
+  const outsideMembers = targetCompound.value.filter((_: Selector, index: number) => index < startIndex || index > endIndex) as Selector[];
   const wrapped = wrapSelectorInIs(
     materializeAmpersandsForHoist(matchedSelector, resolvedParent),
     stripRedundantCompoundContext(extendWith, outsideMembers)
@@ -754,7 +754,7 @@ function getLastOrderedSelector(selector: Selector): Selector {
 }
 
 function buildMatchedCompoundSelector(
-  targetCompound: Selector & { data: readonly Selector[] },
+  targetCompound: Selector & { value: readonly Selector[] },
   startIndex: number,
   endIndex: number,
   matchedIndices?: number[]
@@ -1616,7 +1616,7 @@ export function tryExtendSelector(
         } else {
           const conflict = getCompoundConflictError(
             getCompoundMembersOutsideRange(
-              location.containingNode as Selector & { data: readonly Selector[] },
+              location.containingNode as Selector & { value: readonly Selector[] },
               location.startIndex,
               location.endIndex,
               location.matchedIndices
@@ -1628,7 +1628,7 @@ export function tryExtendSelector(
           }
 
           replacement = wrapCompoundMatchRange(
-            location.containingNode as Selector & { data: readonly Selector[] },
+            location.containingNode as Selector & { value: readonly Selector[] },
             location.startIndex,
             location.endIndex,
             location.matchedIndices,

@@ -86,10 +86,10 @@ const { isArray } = Array;
  * so that MixinRegistry lookup uses the correct startKey.
  */
 function getSelectorReferenceKeys(selector: Selector): string[] {
-  const { data } = selector;
-  if (isArray(data)) {
+  const value = (selector as any).value;
+  if (isArray(value)) {
     const keys: string[] = [];
-    for (const child of data) {
+    for (const child of value) {
       if (isNode(child, N.Combinator)) {
         continue;
       }

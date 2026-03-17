@@ -959,8 +959,8 @@ export class MixinRegistry extends Registry<
               : (isRuleset ? (candidateNode as Ruleset).selector.valueOf?.() : '');
             const matchesStartKey = isRuleset
               ? (
-                  (!isNode((candidateNode as Ruleset).selector, N.Nil) && hasSelectorKey((candidateNode as Ruleset).selector.visibleKeySet, startKey!))
-                  || (!isNode((candidateNode as Ruleset).selector, N.Nil) && hasSelectorKey((candidateNode as Ruleset).selector.keySet, startKey!))
+                  (!isNode((candidateNode as Ruleset).selector, N.Nil) && hasSelectorKey(((candidateNode as Ruleset).selector as Selector).visibleKeySet, startKey!))
+                  || (!isNode((candidateNode as Ruleset).selector, N.Nil) && hasSelectorKey(((candidateNode as Ruleset).selector as Selector).keySet, startKey!))
                 )
               : candidateKey === startKey;
 

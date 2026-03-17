@@ -440,7 +440,7 @@ export abstract class Node<
     // For array-based containers (childKeys=['value']), numeric keys index into
     // the array field, not the instance itself.
     if (typeof key === 'number') {
-      const arr = (this as any)[ck![0]];
+      const arr = (this as any)[ck![0]!];
       const prev = arr[key];
       if (prev === val) {
         return;
@@ -472,7 +472,7 @@ export abstract class Node<
   /** Get the array field for array-valued nodes (childKeys=['value'] etc.) */
   private _getArrayField(): any[] {
     const ck = (this.constructor as typeof Node).childKeys;
-    return (this as any)[ck![0]];
+    return (this as any)[ck![0]!];
   }
 
   /** Push items onto an array-valued node. */
@@ -886,12 +886,12 @@ export abstract class Node<
 
     // Container — build constructor value from childKeys
     let cloneData: any;
-    if (ck.length === 1) {
-      const field = (this as any)[ck[0]!];
+    if (ck!.length === 1) {
+      const field = (this as any)[ck![0]!];
       cloneData = isArray(field) ? [...field] : field;
     } else {
       cloneData = {};
-      for (const key of ck) {
+      for (const key of ck!) {
         const field = (this as any)[key!];
         cloneData[key!] = isArray(field) ? [...field] : field;
       }
@@ -899,7 +899,7 @@ export abstract class Node<
 
     if (deep) {
       cloneFn ??= n => n.clone(deep);
-      if (ck.length === 1) {
+      if (ck!.length === 1) {
         if (isArray(cloneData)) {
           for (let i = 0; i < cloneData.length; i++) {
             if (cloneData[i] instanceof Node) {
@@ -910,7 +910,7 @@ export abstract class Node<
           cloneData = cloneFn(cloneData);
         }
       } else {
-        for (const key of ck) {
+        for (const key of ck!) {
           const val = cloneData[key!];
           if (isArray(val)) {
             for (let i = 0; i < val.length; i++) {
