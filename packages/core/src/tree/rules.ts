@@ -709,7 +709,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       context.depth++;
       let rules = this.maybeClone(context);
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
@@ -728,7 +728,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isWrapper) {
         rules = this;
       }
-      rules.preEvaluated = true;
+      rules._setPreEvaluated(true, context);
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
