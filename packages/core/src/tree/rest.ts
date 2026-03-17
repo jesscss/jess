@@ -16,8 +16,6 @@ export class Rest extends Node<Node | string | undefined> {
 
   value: Node | string | undefined;
 
-  declare readonly data: Readonly<Node | string | undefined>;
-
   constructor(value?: Node | string, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -47,13 +45,5 @@ export class Rest extends Node<Node | string | undefined> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Rest.prototype, 'data', {
-  get(this: Rest) {
-    return this.value;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const rest = defineType(Rest, 'Rest');

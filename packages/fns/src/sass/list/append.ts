@@ -32,7 +32,7 @@ const append = defineFunction(
     }
 
     // Create new list with appended value
-    const newList = new List([...list.data, val], { sep });
+    const newList = new List([...list.value, val], { sep });
     return newList;
   },
   {

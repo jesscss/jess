@@ -84,8 +84,6 @@ export class Color extends Node<ColorData, ColorOptions> {
   _alphaValue: AlphaValue | undefined;
   _nodeValue: string | Node | undefined;
 
-  declare readonly data: Readonly<ColorData>;
-
   constructor(
     value: ColorData | string | ColorValues,
     options?: ColorOptions,
@@ -137,12 +135,30 @@ export class Color extends Node<ColorData, ColorOptions> {
     this.addFlag(F_STATIC);
   }
 
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const colorData: any = {
+      node: this._nodeValue,
+      rgb: this._rgbChannels ? [...this._rgbChannels] : undefined,
+      hsl: this._hslChannels ? [...this._hslChannels] : undefined,
+      alpha: this._alphaValue
+    };
+    const newNode = new (this.constructor as any)(
+      colorData,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
+
   private normalizeChannelValue(value: unknown): ChannelValue {
     if (typeof value === 'number') {
       return value;
     }
     if (isNode(value, N.Dimension)) {
-      const { number, unit } = value.data;
+      const { number, unit } = value;
       return unit ? [number, unit] : number;
     }
     return value as ChannelValue;
@@ -551,7 +567,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     let newAlpha = this._alpha;
 
     if (isNode(b, N.Dimension)) {
-      const { number: bVal, unit: bUnit } = b.data;
+      const { number: bVal, unit: bUnit } = b;
       const unitMode = context?.opts?.unitMode ?? 'loose';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (bUnit && isStrictLikeMode) {
@@ -582,18 +598,5 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Color.prototype, 'data', {
-  get(this: Color) {
-    return {
-      node: this._nodeValue,
-      rgb: this._rgbChannels,
-      hsl: this._hslChannels,
-      alpha: this._alphaValue
-    };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const color = defineType(Color, 'Color');

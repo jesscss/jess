@@ -27,8 +27,6 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   quote: '"' | '\'' | undefined;
   escaped: boolean;
 
-  declare readonly data: Readonly<string | Any | Interpolated>;
-
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -101,11 +99,5 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Quoted.prototype, 'data', {
-  get(this: Quoted) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 export const quoted = defineType(Quoted, 'Quoted');

@@ -16,8 +16,6 @@ export class Bool extends Node<boolean> {
 
   value!: boolean;
 
-  declare readonly data: Readonly<boolean>;
-
   constructor(
     value: boolean,
     options?: NodeOptions,
@@ -45,11 +43,5 @@ export class Bool extends Node<boolean> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Bool.prototype, 'data', {
-  get(this: Bool) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 export const bool = defineType(Bool, 'Bool');

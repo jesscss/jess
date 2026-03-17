@@ -28,8 +28,6 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   value: Node | undefined;
 
-  declare readonly data: Readonly<Node | undefined>;
-
   constructor(value?: Node, options?: ParenOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -101,11 +99,5 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Paren.prototype, 'data', {
-  get(this: Paren) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 export const paren = defineType(Paren, 'Paren');

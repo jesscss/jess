@@ -15,8 +15,6 @@ export class Combinator extends Selector<Combinators> {
 
   value!: Combinators;
 
-  declare readonly data: Readonly<Combinators>;
-
   constructor(
     value: Combinators,
     options?: NodeOptions,
@@ -29,11 +27,5 @@ export class Combinator extends Selector<Combinators> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Combinator.prototype, 'data', {
-  get(this: Combinator) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 export const co = defineType(Combinator, 'Combinator', 'co');

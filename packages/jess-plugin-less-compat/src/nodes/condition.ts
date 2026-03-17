@@ -28,13 +28,12 @@ export function transformConditionToLess(
     // Map 'op' property (operator)
     // Condition.value is a tuple: [left, op?, right?]
     if (prop === 'op') {
-      const [, op] = condition.data;
-      return op || '';
+      return condition.operator || '';
     }
 
     // Map 'lvalue' property (left value)
     if (prop === 'lvalue') {
-      const [left] = condition.data;
+      const left = condition.left;
       if (left instanceof Node) {
         return toLessNode(left, { cache });
       }
@@ -43,7 +42,7 @@ export function transformConditionToLess(
 
     // Map 'rvalue' property (right value)
     if (prop === 'rvalue') {
-      const [, , right] = condition.data;
+      const right = condition.right;
       if (right instanceof Node) {
         return toLessNode(right, { cache });
       }

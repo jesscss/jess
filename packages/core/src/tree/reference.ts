@@ -112,8 +112,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   target: Reference | Call | undefined;
   key!: ReferenceValue['key'];
 
-  declare readonly data: Readonly<ReferenceValue>;
-
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
       value = { key: value };
@@ -299,7 +297,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          */
         if (resolvedTarget instanceof Node) {
           if (!isNode(resolvedTarget, N.Rules | N.Ruleset | N.JsFunction | N.Mixin)) {
-            let targetKey = isNode(resolvedTarget as Node, N.Color) ? String((resolvedTarget as Color).data.node) : (resolvedTarget as Node).valueOf();
+            let targetKey = isNode(resolvedTarget as Node, N.Color) ? String((resolvedTarget as Color)._nodeValue) : (resolvedTarget as Node).valueOf();
             if (typeof targetKey === 'string') {
               let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
               this.adopt(ref);
@@ -318,7 +316,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * it needs to be called first, and that it has no arguments.
          */
         if (isNode(resolvedTarget, N.JsFunction)) {
-          const jsResult = (resolvedTarget.data as (...args: any[]) => any).call(context);
+          const jsResult = ((resolvedTarget as any).value as (...args: any[]) => any).call(context);
           if (isThenable(jsResult)) {
             return (jsResult as Promise<any>).then((result) => {
               return [result, valueKey] as [any, string | string[]];
@@ -338,14 +336,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * We accumulate the new key and use registry lookup to verify the compound match
          */
         if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
-          const mixinResult = (resolvedTarget as Ruleset).data.rules.eval(context);
+          const mixinResult = (resolvedTarget as Ruleset).rules.eval(context);
           if (isThenable(mixinResult)) {
             return (mixinResult as Promise<Rules>).then((rules) => {
-              rules.inherit((resolvedTarget as Ruleset).data.rules);
+              rules.inherit((resolvedTarget as Ruleset).rules);
               return [rules, valueKey] as [Node, string | string[]];
             });
           } else {
-            mixinResult.inherit((resolvedTarget as Ruleset).data.rules);
+            mixinResult.inherit((resolvedTarget as Ruleset).rules);
             resolvedTarget = mixinResult as Rules;
             return [resolvedTarget, valueKey] as [Node, string | string[]];
           }
@@ -452,14 +450,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 if (isNode(targetRules, N.Rules)) {
                   return targetRules.at(valueKey);
                 } else if (isNode(targetRules, N.JsArray)) {
-                  return atIndex((targetRules as any).data, valueKey);
+                  return atIndex((targetRules as any).value, valueKey);
                 }
               } else {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 if (isNode(targetRules, N.Rules)) {
                   return targetRules.find('declaration', `${keyStr}`, undefined, opts);
                 } else if (isNode(targetRules, N.JsObject)) {
-                  return (targetRules as any).data[keyStr];
+                  return (targetRules as any).value[keyStr];
                 }
               }
               break;
@@ -503,7 +501,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 return undefined;
               } else if (isNode(targetRules, N.JsObject)) {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                return (targetRules as any).data[keyStr];
+                return (targetRules as any).value[keyStr];
               }
               break;
             case 'mixin':
@@ -549,7 +547,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
         const lookupTarget = isNode(resolvedTarget, N.Ruleset)
-          ? resolvedTarget.data.rules
+          ? resolvedTarget.rules
           : resolvedTarget;
         let returnVal: any;
         if (isNode(lookupTarget, N.Rules)) {
@@ -599,8 +597,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
           context.searchScope.add(returnVal as Node);
-          const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).data.important;
-          const declValue = (returnVal as Declaration).data.value;
+          const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).important;
+          const declValue = (returnVal as Declaration).value;
           // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
           // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).
           const isMixinRef = isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset';
@@ -675,13 +673,5 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Reference.prototype, 'data', {
-  get(this: Reference) {
-    return { target: this.target, key: this.key };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const ref = defineType(Reference, 'Reference', 'ref');

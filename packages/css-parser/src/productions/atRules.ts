@@ -355,7 +355,7 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
                 let seq = $.mediaRange(ctx);
                 let [startOffset, startLine, startColumn] = $.endRule();
                 const identNode = $.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context));
-                const arr = [identNode, ...seq.data];
+                const arr = [identNode, ...seq.value];
                 seq.location[0] = startOffset!;
                 seq.location[1] = startLine!;
                 seq.location[2] = startColumn!;
@@ -395,7 +395,7 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
               // Try range first: `value < ident < value` or `value < ident`
               let seq = $.mediaRange({ ...ctx });
               let [startOffset, startLine, startColumn] = $.endRule();
-              const arr = [rule1, ...seq.data];
+              const arr = [rule1, ...seq.value];
               seq.location[0] = startOffset!;
               seq.location[1] = startLine!;
               seq.location[2] = startColumn!;

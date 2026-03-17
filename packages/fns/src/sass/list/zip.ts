@@ -24,7 +24,7 @@ const zip = defineFunction(
       const row: any[] = [];
       for (const list of lists) {
         if (i < list.length) {
-          row.push(list.data[i]);
+          row.push(list.value[i]);
         } else {
           // Sass behavior: stops when any list ends
           break;

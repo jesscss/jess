@@ -21,7 +21,7 @@ const nth = defineFunction(
     }
     // Convert to 0-based index
     const zeroBasedIndex = sassIndex - 1;
-    return list.data[zeroBasedIndex];
+    return list.value[zeroBasedIndex];
   },
   {
     params: [

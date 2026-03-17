@@ -25,7 +25,7 @@ export function transformCombinatorToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      return combinator.data;
+      return combinator.value;
     }
 
     // Map 'accept' method for visitor traversal

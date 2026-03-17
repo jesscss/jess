@@ -27,8 +27,6 @@ export class Log extends Node<LogValue, NodeOptions> {
   level!: LogLevel;
   message!: Node;
 
-  declare readonly data: Readonly<LogValue>;
-
   constructor(
     value: LogValue,
     options?: NodeOptions,
@@ -86,13 +84,5 @@ export class Log extends Node<LogValue, NodeOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Log.prototype, 'data', {
-  get(this: Log) {
-    return { level: this.level, message: this.message };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const log = defineType(Log, 'Log');

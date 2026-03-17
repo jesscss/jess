@@ -41,9 +41,9 @@ export type ForValue = {
 
 function getBindingNames(vars: VarDeclaration | VarDeclaration[]): string[] {
   if (Array.isArray(vars)) {
-    return vars.map(v => v.data.name.valueOf());
+    return vars.map(v => v.name.valueOf());
   }
-  return [vars.data.name.valueOf()];
+  return [vars.name.valueOf()];
 }
 
 function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
@@ -55,7 +55,7 @@ function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.data.eval(context), context);
+    yield* resolveEntries(await input.value.eval(context), context);
     return;
   }
   if (isNode(input, N.Call)) {
@@ -67,19 +67,19 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     yield* resolveEntries(evald, context);
     return;
   }
-  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.data)) {
-    for (let key = 0; key < input.data.length; key++) {
-      const value = input.data[key]!;
+  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.value)) {
+    for (let key = 0; key < input.value.length; key++) {
+      const value = input.value[key]!;
       yield [value, key];
     }
     return;
   }
   if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
     const rules = isNode(input, N.Rules)
-      ? input.data
+      ? input.value
       : isNode(input, N.Ruleset)
-        ? (input.data.rules?.data ?? [])
-        : ((input as Mixin).data.rules?.data ?? []);
+        ? (input.rules?.value ?? [])
+        : ((input as Mixin).rules?.value ?? []);
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -87,7 +87,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.data.value, rule.data.name];
+      yield [rule.value, rule.name];
     }
     return;
   }
@@ -124,8 +124,6 @@ export class If extends Node<IfValue> {
   conditions!: Node[];
   bodies!: Rules[];
   elseBranch: Rules | undefined;
-
-  declare readonly data: Readonly<IfValue>;
 
   constructor(value: IfValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -182,14 +180,6 @@ export class If extends Node<IfValue> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(If.prototype, 'data', {
-  get(this: If) {
-    return { conditions: this.conditions, bodies: this.bodies, elseBranch: this.elseBranch };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export interface For extends Node<ForValue> {
   type: 'For';
@@ -204,8 +194,6 @@ export class For extends Node<ForValue> {
   vars!: VarDeclaration | VarDeclaration[];
   iterable!: Node;
   rules!: Rules;
-
-  declare readonly data: Readonly<ForValue>;
 
   constructor(value: ForValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -286,10 +274,10 @@ export class For extends Node<ForValue> {
         counter++;
         const result = await loopRules.eval(context);
         if (isNode(result, N.Rules)) {
-          for (const outNode of result.data) {
+          for (const outNode of result.value) {
             if (isNode(outNode, N.Declaration)) {
               const normalizedFromAssign = outNode.options.normalizedFromAssign;
-              const outName = String(outNode.data.name);
+              const outName = String(outNode.name);
               const isMergedAssignment =
                 normalizedFromAssign === AssignmentType.Add
                 || normalizedFromAssign === AssignmentType.MergeList
@@ -301,7 +289,7 @@ export class For extends Node<ForValue> {
                 let firstMatch = -1;
                 for (let i = 0; i < accumulatedNodes.length; i++) {
                   const prev = accumulatedNodes[i]!;
-                  if (isNode(prev, N.Declaration) && String(prev.data.name) === outName) {
+                  if (isNode(prev, N.Declaration) && String(prev.name) === outName) {
                     firstMatch = i;
                     break;
                   }
@@ -309,17 +297,17 @@ export class For extends Node<ForValue> {
                 if (firstMatch >= 0) {
                   const prev = accumulatedNodes[firstMatch]!;
                   if (isNode(prev, N.Declaration)) {
-                    const prevValue = prev.data.value;
-                    const nextValue = outNode.data.value;
+                    const prevValue = prev.value;
+                    const nextValue = outNode.value;
                     if (
                       normalizedFromAssign === AssignmentType.Add
                       || normalizedFromAssign === AssignmentType.MergeList
                     ) {
                       const prevItems = isNode(prevValue, N.List)
-                        ? prevValue.data
+                        ? prevValue.value
                         : [prevValue];
                       const nextItems = isNode(nextValue, N.List)
-                        ? nextValue.data
+                        ? nextValue.value
                         : [nextValue];
                       const nextAlreadyIncludesPrev =
                         nextItems.length >= prevItems.length
@@ -327,13 +315,13 @@ export class For extends Node<ForValue> {
                       const mergedItems = nextAlreadyIncludesPrev
                         ? [...nextItems]
                         : [...prevItems, ...nextItems];
-                      outNode.setData('value', new List(mergedItems).inherit(outNode.data.value));
+                      outNode.setData('value', new List(mergedItems).inherit(outNode.value));
                     } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
                       const prevItems = isNode(prevValue, N.Sequence)
-                        ? prevValue.data
+                        ? prevValue.value
                         : [prevValue];
                       const nextItems = isNode(nextValue, N.Sequence)
-                        ? nextValue.data
+                        ? nextValue.value
                         : [nextValue];
                       const nextAlreadyIncludesPrev =
                         nextItems.length >= prevItems.length
@@ -341,13 +329,13 @@ export class For extends Node<ForValue> {
                       const mergedItems = nextAlreadyIncludesPrev
                         ? [...nextItems]
                         : [...prevItems, ...nextItems];
-                      outNode.setData('value', new Sequence(mergedItems).inherit(outNode.data.value));
+                      outNode.setData('value', new Sequence(mergedItems).inherit(outNode.value));
                     }
                   }
                   accumulatedNodes[firstMatch] = outNode;
                   for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
                     const prev = accumulatedNodes[i]!;
-                    if (isNode(prev, N.Declaration) && String(prev.data.name) === outName) {
+                    if (isNode(prev, N.Declaration) && String(prev.name) === outName) {
                       accumulatedNodes.splice(i, 1);
                     }
                   }
@@ -395,14 +383,6 @@ export class For extends Node<ForValue> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(For.prototype, 'data', {
-  get(this: For) {
-    return { vars: this.vars, iterable: this.iterable, rules: this.rules };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 /**
  * `$each <header> { ... }`
@@ -416,8 +396,6 @@ export class Each extends Node<LegacyLoopValue> {
 
   header!: Sequence;
   rules!: Rules;
-
-  declare readonly data: Readonly<LegacyLoopValue>;
 
   constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -446,14 +424,6 @@ export class Each extends Node<LegacyLoopValue> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Each.prototype, 'data', {
-  get(this: Each) {
-    return { header: this.header, rules: this.rules };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export type WhileValue = {
   condition: Node;
@@ -472,8 +442,6 @@ export class While extends Node<WhileValue> {
 
   condition!: Node;
   rules!: Rules;
-
-  declare readonly data: Readonly<WhileValue>;
 
   constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -503,14 +471,6 @@ export class While extends Node<WhileValue> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(While.prototype, 'data', {
-  get(this: While) {
-    return { condition: this.condition, rules: this.rules };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const ifNode = defineType(If, 'If', 'if');
 export const forNode = defineType(For, 'For', 'for');

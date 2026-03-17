@@ -20,8 +20,6 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
 
   value!: Interpolated;
 
-  declare readonly data: Readonly<Interpolated>;
-
   constructor(value: Interpolated, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -51,13 +49,5 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(InterpolatedSelector.prototype, 'data', {
-  get(this: InterpolatedSelector) {
-    return this.value;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const interpolatedSelector = defineType(InterpolatedSelector, 'InterpolatedSelector', 'interpolated-selector');

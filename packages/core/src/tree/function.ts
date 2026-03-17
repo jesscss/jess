@@ -46,8 +46,6 @@ export class Func extends Node<FuncValue, FuncOptions> {
   params: FuncValue['params'];
   body!: Node;
 
-  declare readonly data: Readonly<FuncValue>;
-
   constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
@@ -123,7 +121,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
 
     const fn = getFunctionFromMixins(mixinLike);
-    const evaluated = await fn.call(context, ...args.data.map(a => cast(a)));
+    const evaluated = await fn.call(context, ...args.value.map(a => cast(a)));
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
@@ -138,14 +136,6 @@ export class Func extends Node<FuncValue, FuncOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Func.prototype, 'data', {
-  get(this: Func) {
-    return { name: this.name, params: this.params, body: this.body };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const fn = defineType(Func, 'Func', 'fn') as (
   value: FuncValue | { name?: string; params?: List<Node>; body: Node },

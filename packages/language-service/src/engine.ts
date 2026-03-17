@@ -445,8 +445,8 @@ function asStringName(value: unknown): string {
   if (value && typeof (value as any).valueOf === 'function') {
     return String((value as any).valueOf());
   }
-  if (value && typeof (value as any).data === 'string') {
-    return String((value as any).data);
+  if (value && typeof (value as any).value === 'string') {
+    return String((value as any).value);
   }
   return String(value ?? '');
 }
@@ -639,7 +639,7 @@ export function createEngine(): JessLanguageServiceEngine {
     for (const entry of tracked.index.nodes) {
       const n: any = entry.node;
       if (n.type === 'VarDeclaration') {
-        const nameNode = n.data?.name;
+        const nameNode = n.name;
         const declNameStr = asStringName(nameNode);
         const declName = declNameStr.replace(/^[$@]/, '');
         if (declName === normalizedName) {
@@ -684,7 +684,7 @@ export function createEngine(): JessLanguageServiceEngine {
     for (const entry of tracked.index.nodes) {
       const n: any = entry.node;
       if (n.type === 'Mixin') {
-        const nameNode = n.data?.name;
+        const nameNode = n.name;
         const declNameStr = asStringName(nameNode);
         let declName = declNameStr.trim();
         // Normalize mixin name: remove parentheses if present
@@ -739,7 +739,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Collect references
       if (n.type === 'Reference' && n.options?.type === 'variable') {
-        const k = n.data?.key;
+        const k = n.key;
         const refName = typeof k === 'string' ? k : Array.isArray(k) ? k.join('') : null;
         if (refName && refName.replace(/^[$@]/, '') === normalizedName) {
           results.push({
@@ -751,7 +751,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Collect the declaration itself
       if (n.type === 'VarDeclaration') {
-        const nameNode = n.data?.name;
+        const nameNode = n.name;
         const declNameStr = asStringName(nameNode);
         const declName = declNameStr.replace(/^[$@]/, '');
         if (declName === normalizedName) {
@@ -786,7 +786,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Collect references
       if (n.type === 'Reference' && (n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset')) {
-        const k = n.data?.key;
+        const k = n.key;
         const refName = typeof k === 'string' ? k : Array.isArray(k) ? k.join('') : null;
         let refNameStr = refName ? refName.trim() : '';
         // Normalize mixin name: remove parentheses if present
@@ -803,7 +803,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Collect the declaration itself
       if (n.type === 'Mixin') {
-        const nameNode = n.data?.name;
+        const nameNode = n.name;
         const declNameStr = asStringName(nameNode);
         const declName = declNameStr.trim();
         if (declName === mixinName) {
@@ -887,7 +887,7 @@ export function createEngine(): JessLanguageServiceEngine {
           if ((node as any).type !== 'VarDeclaration') {
             continue;
           }
-          const nameNode = (node as any).data?.name;
+          const nameNode = (node as any).name;
           if (!nameNode) {
             continue;
           }
@@ -897,8 +897,8 @@ export function createEngine(): JessLanguageServiceEngine {
             nameStr = nameNode;
           } else if (nameNode && typeof nameNode.valueOf === 'function') {
             nameStr = String(nameNode.valueOf());
-          } else if (nameNode && typeof nameNode.data === 'string') {
-            nameStr = nameNode.data;
+          } else if (nameNode && typeof nameNode.value === 'string') {
+            nameStr = nameNode.value;
           } else {
             nameStr = String(nameNode);
           }
@@ -1087,7 +1087,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Variable definition lookup: find VarDeclaration for a Reference(type=variable).
       if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
-        const key = (node as any).data?.key;
+        const key = (node as any).key;
         const name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         if (!name) {
           return null;
@@ -1100,7 +1100,7 @@ export function createEngine(): JessLanguageServiceEngine {
         for (const entry of index.nodes) {
           const n: any = entry.node;
           if (n.type === 'VarDeclaration') {
-            const nameNode = n.data?.name;
+            const nameNode = n.name;
             const declNameStr = asStringName(nameNode);
             const declName = declNameStr.replace(/^[$@]/, '');
             if (declName === normalizedName) {
@@ -1121,7 +1121,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Mixin definition lookup: find Mixin for a Reference(type=mixin or mixin-ruleset).
       if ((node as any).type === 'Reference' && ((node as any).options?.type === 'mixin' || (node as any).options?.type === 'mixin-ruleset')) {
-        const key = (node as any).data?.key;
+        const key = (node as any).key;
         const name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         if (!name) {
           return null;
@@ -1137,7 +1137,7 @@ export function createEngine(): JessLanguageServiceEngine {
         for (const entry of index.nodes) {
           const n: any = entry.node;
           if (n.type === 'Mixin') {
-            const nameNode = n.data?.name;
+            const nameNode = n.name;
             const declNameStr = asStringName(nameNode);
             let declName = declNameStr.trim();
             // Normalize mixin name: remove parentheses if present
@@ -1201,19 +1201,19 @@ export function createEngine(): JessLanguageServiceEngine {
       let isMixin = false;
 
       if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
-        const key = (node as any).data?.key;
+        const key = (node as any).key;
         targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         isVariable = true;
       } else if ((node as any).type === 'VarDeclaration') {
-        const nameNode = (node as any).data?.name;
+        const nameNode = (node as any).name;
         targetName = asStringName(nameNode);
         isVariable = true;
       } else if ((node as any).type === 'Reference' && ((node as any).options?.type === 'mixin' || (node as any).options?.type === 'mixin-ruleset')) {
-        const key = (node as any).data?.key;
+        const key = (node as any).key;
         targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         isMixin = true;
       } else if ((node as any).type === 'Mixin') {
-        const nameNode = (node as any).data?.name;
+        const nameNode = (node as any).name;
         targetName = asStringName(nameNode);
         isMixin = true;
       }
@@ -1332,28 +1332,28 @@ export function createEngine(): JessLanguageServiceEngine {
         seen.add(n as Node);
 
         if (n.type === 'Ruleset') {
-          const selector = n.data?.selector;
+          const selector = n.selector;
           const name = asStringName((n as any).valueOf?.() ?? (selector ? asStringName(selector) : 'ruleset'));
-          const bodyNode = n.data?.rules;
+          const bodyNode = n.rules;
           addDocumentSymbol(name, SymbolKind.Class, n as Node, selector as Node | null, bodyNode as Node | null);
         } else if (n.type === 'AtRule') {
-          const nameNode = n.data?.name;
+          const nameNode = n.name;
           const atRuleName = asStringName(nameNode);
-          const bodyNode = n.data?.rules;
+          const bodyNode = n.rules;
           addDocumentSymbol(atRuleName, SymbolKind.Namespace, n as Node, nameNode as Node | null, bodyNode as Node | null);
         } else if (n.type === 'VarDeclaration') {
-          const nameNode = n.data?.name;
+          const nameNode = n.name;
           const varName = formatVarName(tracked.lang, asStringName(nameNode));
           addDocumentSymbol(varName, SymbolKind.Variable, n as Node, nameNode as Node | null, null);
         } else if (n.type === 'Mixin') {
-          const nameNode = n.data?.name;
-          const mixinName = asStringName(n.data?.name ?? 'mixin');
-          const bodyNode = n.data?.rules;
+          const nameNode = n.name;
+          const mixinName = asStringName(n.name ?? 'mixin');
+          const bodyNode = n.rules;
           addDocumentSymbol(mixinName, SymbolKind.Function, n as Node, nameNode as Node | null, bodyNode as Node | null);
         } else if (n.type === 'Func') {
-          const nameNode = n.data?.name;
-          const funcName = asStringName(n.nameKey ?? n.data?.name ?? 'function');
-          const bodyNode = n.data?.body;
+          const nameNode = n.name;
+          const funcName = asStringName(n.nameKey ?? n.name ?? 'function');
+          const bodyNode = n.body;
           addDocumentSymbol(funcName, SymbolKind.Function, n as Node, nameNode as Node | null, bodyNode as Node | null);
         }
       }
@@ -1476,14 +1476,14 @@ export function createEngine(): JessLanguageServiceEngine {
 
           const n: any = node;
           if (n.type === 'VarDeclaration') {
-            const nameNode = n.data?.name;
-            const nameStr = typeof nameNode === 'string' ? nameNode : String(nameNode?.valueOf?.() ?? nameNode?.data ?? '');
+            const nameNode = n.name;
+            const nameStr = typeof nameNode === 'string' ? nameNode : String(nameNode?.valueOf?.() ?? nameNode?.value ?? '');
             const norm = normalizeVar(nameStr);
             if (norm) {
               declVars.add(norm);
             }
           } else if (n.type === 'Mixin') {
-            const nameNode = n.data?.name;
+            const nameNode = n.name;
             const nameStr = asStringName(nameNode);
             // Normalize mixin name: remove parentheses and arguments if present (e.g., ".light()" -> ".light", ".light(arg)" -> ".light")
             let norm = nameStr.trim();
@@ -1495,7 +1495,7 @@ export function createEngine(): JessLanguageServiceEngine {
               declMixins.add(norm);
             }
           } else if (n.type === 'Reference' && n.options?.type === 'variable') {
-            const key = n.data?.key;
+            const key = n.key;
             const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
             const norm = normalizeVar(raw);
             if (norm) {
@@ -1504,13 +1504,13 @@ export function createEngine(): JessLanguageServiceEngine {
           } else if (n.type === 'Call') {
             // Mixin calls can be Call nodes (e.g., .light() or .light(arg))
             // In Less, only .foo() and #foo() are mixins - everything else is a function call
-            const nameNode = n.data?.name;
+            const nameNode = n.name;
             if (nameNode) {
               // Check if the call name is a Reference to a mixin
               const nameType = typeof nameNode === 'string' ? null : (nameNode as any)?.type;
               const nameOptions = typeof nameNode === 'string' ? null : (nameNode as any)?.options;
               if (nameType === 'Reference' && (nameOptions?.type === 'mixin' || nameOptions?.type === 'mixin-ruleset')) {
-                const key = (nameNode as any).data?.key;
+                const key = (nameNode as any).key;
                 const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
                 // Normalize mixin name: remove parentheses and arguments if present
                 let nameStr = raw.trim();
@@ -1540,7 +1540,7 @@ export function createEngine(): JessLanguageServiceEngine {
               }
             }
           } else if (n.type === 'Reference' && (n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset')) {
-            const key = n.data?.key;
+            const key = n.key;
             const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
             // Normalize mixin name: remove parentheses and arguments if present
             let nameStr = raw.trim();
@@ -1557,7 +1557,7 @@ export function createEngine(): JessLanguageServiceEngine {
             // so each interpolation gets its own diagnostic span
             // IMPORTANT: We need to process replacements BEFORE getValues(value) to ensure
             // they're collected separately and not lost in the generic traversal
-            const replacements = n.data?.replacements;
+            const replacements = n.replacements;
             if (Array.isArray(replacements)) {
               for (const replacementNode of replacements) {
                 if (isNode(replacementNode)) {
@@ -1611,7 +1611,7 @@ export function createEngine(): JessLanguageServiceEngine {
               // 3. Span from the value.key if it's a node
               let actualRefSpan = getSpan(n as Node);
               if (!actualRefSpan) {
-                const key = n?.data?.key;
+                const key = n?.key;
                 if (isNode(key)) {
                   actualRefSpan = getSpan(key as Node);
                 }
@@ -1682,7 +1682,7 @@ export function createEngine(): JessLanguageServiceEngine {
               } else {
                 // Reference node doesn't have a span - this shouldn't happen for interpolations
                 // but if it does, try to get span from the key
-                const key = n?.data?.key;
+                const key = n?.key;
                 if (isNode(key)) {
                   const keySpan = getSpan(key as Node);
                   if (keySpan) {
@@ -1728,14 +1728,14 @@ export function createEngine(): JessLanguageServiceEngine {
           }
 
           // Fallback: use span of reference key (common for Less mixin-ruleset refs).
-          const key = n?.data?.key;
+          const key = n?.key;
           if (isNode(key)) {
             return getSpan(key as Node);
           }
 
           // For Call nodes, try to get span from the name node as fallback
-          if (n.type === 'Call' && n.data?.name) {
-            const nameNode = n.data.name;
+          if (n.type === 'Call' && n.name) {
+            const nameNode = n.name;
             if (isNode(nameNode)) {
               return getSpan(nameNode as Node);
             }
@@ -1936,7 +1936,7 @@ export function createEngine(): JessLanguageServiceEngine {
           const node: any = findNodeAt(diag.range?.start ?? range.start);
           let raw = '';
           if (node?.type === 'Reference' && node.options?.type === 'variable') {
-            const key = node.data?.key;
+            const key = node.key;
             raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
           } else {
             raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
@@ -1969,7 +1969,7 @@ export function createEngine(): JessLanguageServiceEngine {
           const node: any = findNodeAt(diag.range?.start ?? range.start);
           let name = '';
           if (node?.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
-            const key = node.data?.key;
+            const key = node.key;
             name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
           } else {
             name = String(diag?.message ?? '').match(/Undefined mixin\s+(.+)$/)?.[1] ?? '';
@@ -2234,7 +2234,7 @@ export function createEngine(): JessLanguageServiceEngine {
           const node = index.findNodeAtOffset(tokenOffset);
           let current: any = node;
           while (current) {
-            if (current.type === 'Quoted' && current.data && current.data.type === 'Interpolated') {
+            if (current.type === 'Quoted' && current.value && (current.value as any).type === 'Interpolated') {
               willBeSplitForInterpolation = true;
               break;
             }
@@ -2521,8 +2521,8 @@ export function createEngine(): JessLanguageServiceEngine {
               if (current.type === 'Quoted') {
                 quotedNode = current;
                 // Check if the value is an Interpolated node
-                if (current.data && current.data.type === 'Interpolated') {
-                  interpolatedNode = current.data;
+                if (current.value && (current.value as any).type === 'Interpolated') {
+                  interpolatedNode = current.value;
                 }
                 break;
               }
@@ -2536,9 +2536,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
           // If we found an Interpolated node, split the token using AST information
           // The source string contains %% placeholders that mark where interpolations occur
-          if (interpolatedNode && interpolatedNode.data && interpolatedNode.data.source && Array.isArray(interpolatedNode.data.replacements)) {
-            const source = interpolatedNode.data.source; // String with %% placeholders
-            const replacements = interpolatedNode.data.replacements; // Array of Node[]
+          if (interpolatedNode && interpolatedNode.source && Array.isArray(interpolatedNode.replacements)) {
+            const source = interpolatedNode.source; // String with %% placeholders
+            const replacements = interpolatedNode.replacements; // Array of Node[]
             const quotedSpan = getSpan(quotedNode);
 
             if (quotedSpan && source.includes('%%')) {

@@ -33,8 +33,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   value!: T[];
 
-  declare readonly data: readonly T[];
-
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
@@ -90,7 +88,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray([...this.value], [...other.data], equalityMode);
+      const result = compareNodeArray([...this.value], [...other.value], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -108,7 +106,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     let newList = this.maybeClone(context);
     if (b instanceof List) {
-      newList.push(...b.data);
+      newList.push(...b.value);
     } else {
       /** @todo - do we need to verify the list type? */
       newList.push(b as T);
@@ -163,17 +161,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // }
 }
 
-/** Compat: synthesize .data from instance field */
-Object.defineProperty(List.prototype, 'data', {
-  get(this: List) {
-    return this.value;
-  },
-  set(this: List, val: Node[]) {
-    this.value = val;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type Params = ConstructorParameters<typeof List>;
 

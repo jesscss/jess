@@ -12,10 +12,10 @@ export default defineFunction(
     return new Dimension(
       resolvedUnit
         ? {
-            number: dimension.data.number,
+            number: dimension.number,
             unit: resolvedUnit
           }
-        : { number: dimension.data.number }
+        : { number: dimension.number }
     );
   },
   {

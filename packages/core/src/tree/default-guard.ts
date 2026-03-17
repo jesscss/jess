@@ -14,8 +14,6 @@ export class DefaultGuard extends Node<string> {
 
   value!: string;
 
-  declare readonly data: Readonly<string>;
-
   constructor(value: string, options?: any, location?: any, treeContext?: any) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -34,13 +32,5 @@ export class DefaultGuard extends Node<string> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(DefaultGuard.prototype, 'data', {
-  get(this: DefaultGuard) {
-    return this.value;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

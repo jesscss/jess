@@ -14,8 +14,6 @@ export class JsFunction extends Node<Fn> {
   value!: Fn;
   name?: string | undefined;
 
-  declare readonly data: Readonly<Fn>;
-
   constructor(
     value: { name: string; fn: Fn } | Fn,
     options?: NodeOptions,
@@ -30,12 +28,4 @@ export class JsFunction extends Node<Fn> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(JsFunction.prototype, 'data', {
-  get(this: JsFunction) {
-    return this.value;
-  },
-  configurable: true,
-  enumerable: true
-});
 export const jsfunc = defineType(JsFunction, 'JsFunction', 'jsfunc');

@@ -36,8 +36,6 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
   path!: Quoted;
   imports: JsImportSpecifier[] | undefined;
 
-  declare readonly data: Readonly<JsImportValue>;
-
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.path = value.path;
@@ -108,13 +106,5 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(JsImport.prototype, 'data', {
-  get(this: JsImport) {
-    return { path: this.path, imports: this.imports };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const js = defineType<JsImportValue>(JsImport, 'JsImport', 'js');

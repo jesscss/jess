@@ -52,8 +52,6 @@ export class Any<
   value!: string;
   role: Role | undefined;
 
-  declare readonly data: Readonly<string>;
-
   constructor(
     value: string,
     options?: AnyOptions<Role>,
@@ -97,9 +95,8 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherValue = (other as any).data;
-      const otherNumber = otherValue?.number;
-      const otherUnit = otherValue?.unit;
+      const otherNumber = (other as any).number;
+      const otherUnit = (other as any).unit;
       if (typeof otherNumber !== 'number') {
         return undefined;
       }
@@ -116,12 +113,6 @@ export class Any<
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Any.prototype, 'data', {
-  get(this: Any) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 // Custom any function that properly handles role narrowing
 export function any<Role extends AnyRole = AnyRole>(

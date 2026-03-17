@@ -8,6 +8,7 @@ import {
   Interpolated,
   INTERPOLATION_PLACEHOLDER,
   isNode,
+  List,
   N,
   Quoted,
   Reference,
@@ -124,8 +125,8 @@ export function processScssStringInterpolation(
 
     const parsed = parseInterpolationExpression(match.content.trim());
     const simpleRef = asSingleVariableReference(parsed);
-    if (simpleRef && typeof simpleRef.data.key === 'string') {
-      replacements.push(new Reference({ key: simpleRef.data.key }, { type: 'variable', role: 'ident' }, location, context));
+    if (simpleRef && typeof simpleRef.key === 'string') {
+      replacements.push(new Reference({ key: simpleRef.key }, { type: 'variable', role: 'ident' }, location, context));
     } else if (isNode(parsed, N.Reference)) {
       replacements.push(new Expression(parsed, undefined, location, context));
     } else {
@@ -140,8 +141,8 @@ export function processScssStringInterpolation(
 import { Expression } from '@jesscss/core';
 
 export function unwrapSingleSequence(n: Node): Node {
-  if (isNode(n, N.Sequence) && (n as Sequence).data.length === 1) {
-    return (n as Sequence).data[0]!;
+  if (isNode(n, N.Sequence) && (n as Sequence).value.length === 1) {
+    return (n as Sequence).value[0]!;
   }
   return n;
 }
@@ -151,8 +152,8 @@ export function asSingleVariableReference(n: Node): Reference | undefined {
   if (
     isNode(node, N.Reference)
     && node.options?.type === 'variable'
-    && !node.data.target
-    && typeof node.data.key === 'string'
+    && !(node as Reference).target
+    && typeof (node as Reference).key === 'string'
   ) {
     return node as Reference;
   }
@@ -179,8 +180,8 @@ export function toNameInterpolationReplacement(
   location?: LocationInfo
 ): Node {
   const simpleRef = asSingleVariableReference(expr);
-  if (simpleRef && typeof simpleRef.data.key === 'string') {
-    return new Reference({ key: simpleRef.data.key }, { type: 'variable', role: 'ident' }, location, parser.context);
+  if (simpleRef && typeof simpleRef.key === 'string') {
+    return new Reference({ key: simpleRef.key }, { type: 'variable', role: 'ident' }, location, parser.context);
   }
   const tmpName = parser.nextTempVarName();
   parser.enqueuePendingNode(makePrivateTempVarDecl(parser, tmpName, expr, location));
@@ -200,7 +201,7 @@ export function desugarMapLookup(
   parser: ScssRecursiveParser,
   call: Call
 ): Node {
-  const name = call.data.name;
+  const name = call.name;
   if (typeof name !== 'string') {
     return call;
   }
@@ -208,8 +209,8 @@ export function desugarMapLookup(
     return call;
   }
 
-  const argsList = call.data.args;
-  const args = isNode(argsList, N.List) ? (argsList as any).data : [];
+  const argsList = call.args;
+  const args = isNode(argsList, N.List) ? (argsList as List).value : [];
   if (args.length < 2) {
     return call;
   }
@@ -268,7 +269,7 @@ export function makeNamespacedReference(
 }
 
 export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): Call {
-  const { name } = call.data;
+  const name = call.name;
   if (typeof name !== 'string') {
     return call;
   }
@@ -283,7 +284,7 @@ export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): 
     return call;
   }
   const ref = makeNamespacedReference(parser, parts, 'function');
-  return new Call({ name: ref, args: call.data.args }, call.options, call.location, parser.context);
+  return new Call({ name: ref, args: call.args }, call.options, call.location, parser.context);
 }
 
 export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {

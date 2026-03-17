@@ -13,20 +13,10 @@ export class JsObject extends Node<Record<string, any>> {
 
   value!: Record<string, any>;
 
-  declare readonly data: Readonly<Record<string, any>>;
-
   constructor(value: Record<string, any>, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(JsObject.prototype, 'data', {
-  get(this: JsObject) {
-    return this.value;
-  },
-  configurable: true,
-  enumerable: true
-});
 export const jsobj = defineType(JsObject, 'JsObject', 'jsobj');

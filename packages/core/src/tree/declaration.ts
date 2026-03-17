@@ -95,8 +95,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   value!: Node;
   important: Any<'flag'> | undefined;
 
-  declare readonly data: Readonly<DeclarationValue>;
-
   constructor(value: DeclarationValue, options?: Opts, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
@@ -302,14 +300,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (!isListMergedAssign || !isNode(node.value, N.List)) {
             return;
           }
-          const listValue = node.value.data;
+          const listValue = node.value.value;
           if (listValue.length === 0) {
             return;
           }
           const first = listValue[0]!;
           const isEmptyPlaceholder = (
             isNode(first, N.Nil)
-            || (isNode(first, N.List) && first.data.length === 0)
+            || (isNode(first, N.List) && first.value.length === 0)
             || String(first.valueOf?.() ?? '') === ''
           );
           if (!isEmptyPlaceholder) {
@@ -383,14 +381,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Declaration.prototype, 'data', {
-  get(this: Declaration) {
-    return { name: this.name, value: this.value, important: this.important };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 

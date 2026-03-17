@@ -21,8 +21,6 @@ export class Expression extends Node<Node> {
 
   value!: Node;
 
-  declare readonly data: Readonly<Node>;
-
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -54,12 +52,6 @@ export class Expression extends Node<Node> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Expression.prototype, 'data', {
-  get(this: Expression) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 type Params = ConstructorParameters<typeof Expression>;
 

@@ -36,8 +36,6 @@ export class Range extends Node<RangeValue, RangeOptions> {
   end!: Node;
   step: Node | undefined;
 
-  declare readonly data: Readonly<RangeValue>;
-
   constructor(value: RangeValue, options?: RangeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.start = value.start;
@@ -88,14 +86,6 @@ export class Range extends Node<RangeValue, RangeOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Range.prototype, 'data', {
-  get(this: Range) {
-    return { start: this.start, end: this.end, step: this.step };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type RangeParams = ConstructorParameters<typeof Range>;
 

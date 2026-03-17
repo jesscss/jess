@@ -26,8 +26,8 @@ function flattenSelectorToElements(
   if (selector instanceof SelectorList) {
     // SelectorList contains multiple selectors - Less expects a single Selector
     // For now, we'll take the first selector, but this might need special handling
-    if (selector.data.length > 0) {
-      const first = selector.data[0];
+    if (selector.value.length > 0) {
+      const first = selector.value[0];
       if (first) {
         return flattenSelectorToElements(first, cache);
       }
@@ -37,7 +37,7 @@ function flattenSelectorToElements(
 
   if (selector instanceof ComplexSelector) {
     // ComplexSelector contains CompoundSelector[] with Combinators between them
-    const compounds = selector.data;
+    const compounds = selector.value;
 
     for (let i = 0; i < compounds.length; i++) {
       const compound = compounds[i];
@@ -57,7 +57,7 @@ function flattenSelectorToElements(
 
       // Flatten compound selector
       if (compound instanceof CompoundSelector) {
-        const basicSelectors = compound.data;
+        const basicSelectors = compound.value;
         for (let j = 0; j < basicSelectors.length; j++) {
           const basic = basicSelectors[j];
           if (!basic) {
@@ -81,7 +81,7 @@ function flattenSelectorToElements(
             }
 
             if (prop === 'value') {
-              return basicSel.data;
+              return basicSel.value;
             }
 
             if (prop === 'isVariable') {
@@ -99,7 +99,7 @@ function flattenSelectorToElements(
                 }
 
                 // Visit value if it's an object/node
-                const value = basicSel.data;
+                const value = basicSel.value;
                 if (value && typeof value === 'object') {
                   const lessValue = toLessNode(value as Node, { cache });
                   if (lessValue && visitor.visit) {
@@ -130,7 +130,7 @@ function flattenSelectorToElements(
           }
 
           if (prop === 'value') {
-            return basicSel.data;
+            return basicSel.value;
           }
 
           if (prop === 'isVariable') {
@@ -145,7 +145,7 @@ function flattenSelectorToElements(
     }
   } else if (selector instanceof CompoundSelector) {
     // Single compound selector - flatten to elements
-    const basicSelectors = selector.data;
+    const basicSelectors = selector.value;
     for (let i = 0; i < basicSelectors.length; i++) {
       const basic = basicSelectors[i];
       if (!basic) {
@@ -165,7 +165,7 @@ function flattenSelectorToElements(
         }
 
         if (prop === 'value') {
-          return basicSel.data;
+          return basicSel.value;
         }
 
         if (prop === 'isVariable') {
@@ -192,7 +192,7 @@ function flattenSelectorToElements(
       }
 
       if (prop === 'value') {
-        return basicSel.data;
+        return basicSel.value;
       }
 
       if (prop === 'isVariable') {

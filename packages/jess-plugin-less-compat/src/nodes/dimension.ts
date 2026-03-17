@@ -26,10 +26,7 @@ export function transformDimensionToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      if (dim instanceof Num) {
-        return dim.data;
-      }
-      return dim.data.number;
+      return dim.number;
     }
 
     // Map 'unit' property
@@ -40,7 +37,7 @@ export function transformDimensionToLess(
       }
       // Dimension has unit as string, Less expects Unit node
       // For now, return the string and let Less handle conversion
-      return dim.data.unit || '';
+      return dim.unit || '';
     }
 
     // Map 'accept' method for visitor traversal

@@ -23,8 +23,6 @@ export class SelectorList extends Selector<Selector[]> {
 
   value!: Selector[];
 
-  declare readonly data: readonly Selector[];
-
   constructor(value: Selector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
@@ -52,29 +50,29 @@ export class SelectorList extends Selector<Selector[]> {
     for (const item of this.value) {
       // Flatten `:is(a, b)` selector-list items into `a, b`.
       // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
-      if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
-        const arg = item.data.arg;
+      if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+        const arg = item.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.data);
+          value.push(...arg.value);
           continue;
         }
       }
-      if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
-        const only = item.data[0]!;
-        if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
-          const arg = only.data.arg;
+      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+          const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.data);
+            value.push(...arg.value);
             continue;
           }
         }
       }
-      if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
-        const only = item.data[0]!;
-        if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
-          const arg = only.data.arg;
+      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+          const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.data);
+            value.push(...arg.value);
             continue;
           }
         }
@@ -162,29 +160,29 @@ export class SelectorList extends Selector<Selector[]> {
         // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
         for (const item of value) {
-          if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
-            const arg = item.data.arg;
+          if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+            const arg = item.arg;
             if (arg && isNode(arg, N.SelectorList)) {
-              flattened.push(...arg.data);
+              flattened.push(...arg.value);
               continue;
             }
           }
-          if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
-            const only = item.data[0]!;
-            if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
-              const arg = only.data.arg;
+          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+              const arg = only.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.data);
+                flattened.push(...arg.value);
                 continue;
               }
             }
           }
-          if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
-            const only = item.data[0]!;
-            if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
-              const arg = only.data.arg;
+          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+              const arg = only.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.data);
+                flattened.push(...arg.value);
                 continue;
               }
             }
@@ -203,16 +201,5 @@ export class SelectorList extends Selector<Selector[]> {
   }
 }
 
-/** Compat: synthesize .data from instance field */
-Object.defineProperty(SelectorList.prototype, 'data', {
-  get(this: SelectorList) {
-    return this.value;
-  },
-  set(this: SelectorList, val: Selector[]) {
-    this.value = val;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist');

@@ -17,14 +17,14 @@ const set = defineFunction(
     const keyStr = String(key.valueOf());
 
     // Create a new collection with the updated value
-    const newRules = [...map.data];
+    const newRules = [...map.value];
 
     // Check if key already exists
     let foundIndex = -1;
     for (let i = 0; i < newRules.length; i++) {
       const node = newRules[i];
       if (isNode(node, N.Declaration)) {
-        const nodeKey = String(node.data.name.valueOf());
+        const nodeKey = String(node.name.valueOf());
         if (nodeKey === keyStr) {
           foundIndex = i;
           break;

@@ -34,7 +34,21 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   value: Node | undefined;
   mod: string | undefined;
 
-  declare readonly data: Readonly<AttributeSelectorValue>;
+  override clone(deep?: boolean): this {
+    const newNode = new (this.constructor as any)(
+      {
+        name: deep && this.name instanceof Node ? this.name.clone(deep) : this.name,
+        op: this.op,
+        value: deep && this.value instanceof Node ? this.value.clone(deep) : this.value,
+        mod: this.mod
+      },
+      undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
 
   constructor(data: AttributeSelectorValue, options?: undefined, location?: LocationInfo, treeContext?: TreeContext) {
     super(data as any, options, location, treeContext);
@@ -101,14 +115,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(AttributeSelector.prototype, 'data', {
-  get(this: AttributeSelector) {
-    return { name: this.name, op: this.op, value: this.value, mod: this.mod };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 /** Not sure why types couldn't be properly inferred */
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (

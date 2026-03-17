@@ -6,7 +6,6 @@ import {
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
-import { getEntriesFromNode, getValues } from './util/collections.js';
 import type { Comment } from './comment.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -375,7 +374,7 @@ export abstract class Node<
   /**
    * Keys of instance fields that hold child Nodes.
    * Override per node type.
-   * - `undefined` (default) — unmigrated, uses legacy `.data` iteration
+   * - `undefined` (default) — unmigrated
    * - `null` — leaf node, no children to iterate/adopt/clone
    * - `string[]` — names of instance fields holding child Node(s) or Node[]
    */
@@ -390,11 +389,6 @@ export abstract class Node<
   // for things like code mutating arrays that are assigned to data.
   // Uses `declare` to avoid emitting a class field initializer that would
   // shadow prototype getters on migrated subclasses.
-  declare readonly data: Readonly<Data>;
-
-  private static _isOwnPlainObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && (value as any).constructor === Object;
-  }
 
   private _adoptValue(value: unknown): void {
     if (value instanceof Node) {
@@ -406,71 +400,6 @@ export abstract class Node<
         const item = value[i];
         if (item instanceof Node) {
           this.adopt(item);
-        }
-      }
-    }
-  }
-
-  private _forEachObjectChild(
-    record: Record<string, unknown>,
-    func: (n: Node, idx?: number) => Node,
-    idxRef: { value: number }
-  ) {
-    const ctor = this.constructor as typeof Node;
-    const fastKeys = ctor.childKeys;
-
-    if (fastKeys) {
-      for (let i = 0; i < fastKeys.length; i++) {
-        const key = fastKeys[i]!;
-        const v = record[key];
-        if (v instanceof Node) {
-          const result = func(v, idxRef.value++);
-          if (result !== v) {
-            record[key] = result;
-            this.adopt(result);
-            this._invalidateValueOf();
-          }
-        } else if (isArray(v)) {
-          for (let j = 0; j < v.length; j++) {
-            const item = v[j];
-            if (!(item instanceof Node)) {
-              continue;
-            }
-            const result = func(item, idxRef.value++);
-            if (result !== item) {
-              v[j] = result;
-              this.adopt(result);
-              this._invalidateValueOf();
-            }
-          }
-        }
-      }
-      return;
-    }
-
-    const keys = Object.keys(record);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i]!;
-      const v = record[k];
-      if (v instanceof Node) {
-        const result = func(v, idxRef.value++);
-        if (result !== v) {
-          record[k] = result;
-          this.adopt(result);
-          this._invalidateValueOf();
-        }
-      } else if (isArray(v)) {
-        for (let j = 0; j < v.length; j++) {
-          const item = v[j];
-          if (!(item instanceof Node)) {
-            continue;
-          }
-          const result = func(item, idxRef.value++);
-          if (result !== item) {
-            v[j] = result;
-            this.adopt(result);
-            this._invalidateValueOf();
-          }
         }
       }
     }
@@ -491,10 +420,15 @@ export abstract class Node<
       const val = args[0];
       const ck = (this.constructor as typeof Node).childKeys;
       if (Array.isArray(ck) && ck.length === 1 && (Array.isArray(val) || typeof val !== 'object')) {
-        // Migrated array container: data is stored in a single named field (e.g. 'value')
         (this as any)[ck[0]] = val;
+      } else if (Array.isArray(ck) && ck.length > 1 && typeof val === 'object' && val !== null) {
+        for (const key of ck) {
+          if (key! in (val as any)) {
+            (this as any)[key!] = (val as any)[key!];
+          }
+        }
       } else {
-        (this as unknown as { data: Data }).data = val as Data;
+        (this as any).value = val;
       }
       this._adoptValue(val);
       this._invalidateValueOf();
@@ -503,31 +437,21 @@ export abstract class Node<
     const key = args[0] as string | number;
     const val = args[1];
     const ck = (this.constructor as typeof Node).childKeys;
-    // Migrated containers use instance fields — write directly to `this[key]`
-    // instead of through the compat `.data` getter (which returns a temporary object).
-    if (Array.isArray(ck)) {
-      // For array-based containers (childKeys=['value']), numeric keys index into
-      // the array field, not the instance itself.
-      if (typeof key === 'number') {
-        const arr = (this as any)[ck[0]];
-        const prev = arr[key];
-        if (prev === val) {
-          return;
-        }
-        arr[key] = val;
-      } else {
-        const prev = (this as any)[key];
-        if (prev === val) {
-          return;
-        }
-        (this as any)[key] = val;
-      }
-    } else {
-      const prev = (this.data as any)[key];
+    // For array-based containers (childKeys=['value']), numeric keys index into
+    // the array field, not the instance itself.
+    if (typeof key === 'number') {
+      const arr = (this as any)[ck![0]];
+      const prev = arr[key];
       if (prev === val) {
         return;
       }
-      (this.data as any)[key] = val;
+      arr[key] = val;
+    } else {
+      const prev = (this as any)[key];
+      if (prev === val) {
+        return;
+      }
+      (this as any)[key] = val;
     }
     this._adoptValue(val);
     this._invalidateValueOf();
@@ -545,9 +469,15 @@ export abstract class Node<
     }
   }
 
+  /** Get the array field for array-valued nodes (childKeys=['value'] etc.) */
+  private _getArrayField(): any[] {
+    const ck = (this.constructor as typeof Node).childKeys;
+    return (this as any)[ck![0]];
+  }
+
   /** Push items onto an array-valued node. */
   push(...items: any[]): void {
-    const arr = this.data as unknown as any[];
+    const arr = this._getArrayField();
     arr.push(...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -560,7 +490,7 @@ export abstract class Node<
 
   /** Remove and/or insert items in an array-valued node. */
   splice(start: number, deleteCount: number, ...items: any[]): any[] {
-    const arr = this.data as unknown as any[];
+    const arr = this._getArrayField();
     const removed = arr.splice(start, deleteCount, ...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -574,7 +504,7 @@ export abstract class Node<
 
   /** Prepend items to an array-valued node. */
   unshift(...items: any[]): void {
-    const arr = this.data as unknown as any[];
+    const arr = this._getArrayField();
     arr.unshift(...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -643,45 +573,6 @@ export abstract class Node<
     }
   }
 
-  /**
-   * Adopt all child Nodes in the value.
-   * Uses static childKeys when available for fast path.
-   */
-  /** @internal — only called for unmigrated (childKeys === undefined) nodes */
-  private _adoptChildren(): void {
-    const value = this.data;
-    if (isArray(value)) {
-      for (let i = 0; i < value.length; i++) {
-        const item = value[i];
-        if (item instanceof Node) {
-          this.adopt(item);
-        }
-      }
-      return;
-    }
-
-    const ctor = this.constructor as typeof Node;
-    const fastKeys = ctor.childKeys;
-    if (fastKeys && Node._isOwnPlainObject(value)) {
-      const record = value as Record<string, unknown>;
-      for (let i = 0; i < fastKeys.length; i++) {
-        this._adoptValue(record[fastKeys[i]!]);
-      }
-      return;
-    }
-
-    if (Node._isOwnPlainObject(value)) {
-      const vals = Object.values(value as Record<string, unknown>);
-      for (let i = 0; i < vals.length; i++) {
-        this._adoptValue(vals[i]);
-      }
-      return;
-    }
-
-    if ((value as any) instanceof Node) {
-      this.adopt(value);
-    }
-  }
 
   constructor(
     value: Data,
@@ -691,11 +582,6 @@ export abstract class Node<
   ) {
     (this as any).parent = undefined;
     this.index = undefined as any;
-    const ck = (this.constructor as typeof Node).childKeys;
-    if (ck === undefined) {
-      // Legacy (unmigrated) path — store .data and adopt children
-      (this as unknown as { data: Data }).data = value;
-    }
     this._location = location;
     if (options !== undefined || treeContext !== undefined) {
       this._meta = {
@@ -709,9 +595,6 @@ export abstract class Node<
         sourceNode: this,
         sourceParent: undefined
       };
-    }
-    if (ck === undefined) {
-      this._adoptChildren();
     }
   }
 
@@ -797,21 +680,21 @@ export abstract class Node<
 
   private _collectChildEntries(): [unknown, string | number, any][] {
     const ck = (this.constructor as typeof Node).childKeys;
-    if (Array.isArray(ck)) {
-      const entries: [unknown, string | number, any][] = [];
-      for (const key of ck) {
-        const field = (this as any)[key!];
-        if (isArray(field)) {
-          for (let i = 0; i < field.length; i++) {
-            entries.push([field[i], i, field]);
-          }
-        } else {
-          entries.push([field, key!, this]);
-        }
-      }
-      return entries;
+    if (!ck) {
+      return [];
     }
-    return [...getEntriesFromNode({ data: this.data } as unknown as { data: unknown[] })];
+    const entries: [unknown, string | number, any][] = [];
+    for (const key of ck) {
+      const field = (this as any)[key!];
+      if (isArray(field)) {
+        for (let i = 0; i < field.length; i++) {
+          entries.push([field[i], i, field]);
+        }
+      } else {
+        entries.push([field, key!, this]);
+      }
+    }
+    return entries;
   }
 
   private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
@@ -842,40 +725,6 @@ export abstract class Node<
             this._invalidateValueOf();
           }
         }
-      }
-      return;
-    }
-
-    // Legacy (unmigrated) path
-    const idxRef = { value: 0 };
-    const data = this.data;
-    if (isArray(data)) {
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        if (!(item instanceof Node)) {
-          continue;
-        }
-        const result = func(item, idxRef.value++);
-        if (result !== item) {
-          data[i] = result;
-          this.adopt(result);
-          this._invalidateValueOf();
-        }
-      }
-      return;
-    }
-
-    if (Node._isOwnPlainObject(data)) {
-      this._forEachObjectChild(data as Record<string, unknown>, func, idxRef);
-      return;
-    }
-
-    if ((data as any) instanceof Node) {
-      const result = func(data, idxRef.value++);
-      if (result !== data) {
-        (this as unknown as { data: Data }).data = result as Data;
-        this.adopt(result);
-        this._invalidateValueOf();
       }
     }
   }
@@ -1028,90 +877,58 @@ export abstract class Node<
     let Class = this.constructor as Class<this>;
     const ck = (Class as unknown as typeof Node).childKeys;
 
-    // Migrated leaf node — no children to iterate or deep-clone
+    // Leaf node — no children to iterate or deep-clone
     if (ck === null) {
       const options = this._meta?.options;
-      const newNode = new Class(this.data as any, options ? { ...options } : undefined, this.location, this.treeContext);
+      const newNode = new Class((this as any).value, options ? { ...options } : undefined, this.location, this.treeContext);
       newNode.inherit(this);
       return newNode;
     }
 
-    if (ck) {
-      // Migrated container — use .data for full constructor shape,
-      // childKeys for targeted deep-clone of child nodes only
-      let cloneData: any = this.data;
-
-      // Shallow copy arrays/objects so we don't mutate the original
-      if (isArray(cloneData)) {
-        cloneData = [...cloneData];
-      } else if (isPlainObject(cloneData)) {
-        cloneData = { ...cloneData };
-        for (const key of ck) {
-          if (isArray(cloneData[key!])) {
-            cloneData[key!] = [...cloneData[key!]];
-          }
-        }
+    // Container — build constructor value from childKeys
+    let cloneData: any;
+    if (ck.length === 1) {
+      const field = (this as any)[ck[0]!];
+      cloneData = isArray(field) ? [...field] : field;
+    } else {
+      cloneData = {};
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        cloneData[key!] = isArray(field) ? [...field] : field;
       }
+    }
 
-      if (deep) {
-        cloneFn ??= n => n.clone(deep);
+    if (deep) {
+      cloneFn ??= n => n.clone(deep);
+      if (ck.length === 1) {
         if (isArray(cloneData)) {
           for (let i = 0; i < cloneData.length; i++) {
             if (cloneData[i] instanceof Node) {
               cloneData[i] = cloneFn(cloneData[i]);
             }
           }
-        } else if (isPlainObject(cloneData)) {
-          for (const key of ck) {
-            const val = cloneData[key!];
-            if (isArray(val)) {
-              for (let i = 0; i < val.length; i++) {
-                if (val[i] instanceof Node) {
-                  val[i] = cloneFn(val[i]);
-                }
-              }
-            } else if (val instanceof Node) {
-              cloneData[key!] = cloneFn(val);
-            }
-          }
         } else if (cloneData instanceof Node) {
           cloneData = cloneFn(cloneData);
         }
-      }
-
-      const options = this._meta?.options;
-      const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
-      newNode.inherit(this);
-      return newNode;
-    }
-
-    // Legacy (unmigrated) path
-    let originalData = this.data;
-    let newData = { data: originalData as Data };
-    if (isArray(originalData)) {
-      newData.data = [...originalData] as Data;
-    } else if (isPlainObject(originalData)) {
-      newData.data = Object.fromEntries(
-        Object.entries(originalData as Record<string, unknown>).map(([key, value]) =>
-          [key, isArray(value) ? [...value] : value]
-        )
-      ) as Data;
-    }
-
-    cloneFn ??= n => n.clone(deep);
-
-    if (deep) {
-      for (let [value, key, collection] of getEntriesFromNode(newData as { data: unknown[] })) {
-        if (value instanceof Node) {
-          collection[key] = cloneFn(value);
+      } else {
+        for (const key of ck) {
+          const val = cloneData[key!];
+          if (isArray(val)) {
+            for (let i = 0; i < val.length; i++) {
+              if (val[i] instanceof Node) {
+                val[i] = cloneFn(val[i]);
+              }
+            }
+          } else if (val instanceof Node) {
+            cloneData[key!] = cloneFn(val);
+          }
         }
       }
     }
 
     const options = this._meta?.options;
-    let newNode = new Class(newData.data, options ? { ...options } : undefined, this.location, this.treeContext);
+    const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
     newNode.inherit(this);
-
     return newNode;
   }
 
@@ -1138,7 +955,6 @@ export abstract class Node<
     nilish.shortType = 'nil';
     nilish.nodeType = nodeTypeBits['Nil']!;
     nilish.removeFlag(F_VISIBLE);
-    nilish.data = '';
     return nilish;
   }
 
@@ -1360,16 +1176,27 @@ export abstract class Node<
    * normalization algorithms.
    */
   valueOf(): Primitive {
-    let data = this.data;
-    let type = typeof data;
-    if (primitives.includes(type)) {
-      return data as unknown as Primitive;
+    const ck = (this.constructor as typeof Node).childKeys;
+    if (!ck) {
+      // Leaf node — value is a primitive
+      return (this as any).value as Primitive;
     }
-    let values = [...getValues(data)];
-    if (values.length === 1) {
-      return `${values[0]}`;
+    // Container — collect string values from children
+    const parts: string[] = [];
+    for (const key of ck) {
+      const field = (this as any)[key!];
+      if (isArray(field)) {
+        for (let i = 0; i < field.length; i++) {
+          parts.push(`${field[i]}`);
+        }
+      } else if (field !== undefined) {
+        parts.push(`${field}`);
+      }
     }
-    return values.join('');
+    if (parts.length === 1) {
+      return parts[0]!;
+    }
+    return parts.join('');
   }
 
   processPrePost(key: 'pre' | 'post', defaultVal: string = '', options: PrintOptions) {
@@ -1463,7 +1290,7 @@ export abstract class Node<
     const w = options.writer!;
     const mark = w.mark();
     const ck = (this.constructor as typeof Node).childKeys;
-    if (Array.isArray(ck)) {
+    if (ck) {
       for (const key of ck) {
         const field = (this as any)[key!];
         if (isArray(field)) {
@@ -1487,15 +1314,10 @@ export abstract class Node<
         }
       }
     } else {
-      for (let value of getValues(this.data)) {
-        if (value instanceof Node) {
-          value.toString(options);
-        } else {
-          const s = value === undefined ? '' : String(value);
-          if (s) {
-            w.add(s, this);
-          }
-        }
+      // Leaf node — render the primitive value directly
+      const s = String((this as any).value ?? '');
+      if (s) {
+        w.add(s, this);
       }
     }
     return w.getSince(mark);

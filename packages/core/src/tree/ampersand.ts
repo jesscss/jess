@@ -85,8 +85,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   appendValue: string | undefined;
 
-  declare readonly data: Readonly<{ appendValue?: string }>;
-
   private _storedSelector: Selector | Nil | undefined;
   private _selectorContainer: { selector?: Selector | Nil | undefined } | undefined;
 
@@ -263,13 +261,13 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             const baseSelectors: Selector[] = [];
             if (
               isNode(baseSelector, N.PseudoSelector)
-              && baseSelector.data.name === ':is'
-              && baseSelector.data.arg
-              && isNode(baseSelector.data.arg, N.SelectorList)
+              && baseSelector.name === ':is'
+              && baseSelector.arg
+              && isNode(baseSelector.arg, N.SelectorList)
             ) {
-              baseSelectors.push(...baseSelector.data.arg.data.map(item => item as Selector));
+              baseSelectors.push(...(baseSelector.arg as SelectorList).value.map(item => item as Selector));
             } else if (isNode(baseSelector, N.SelectorList)) {
-              baseSelectors.push(...baseSelector.data.map(item => item as Selector));
+              baseSelectors.push(...baseSelector.value.map(item => item as Selector));
             } else {
               // Handle raw comma-separated strings (e.g. from ~'apple, satsuma, banana, pear')
               // by splitting into individual items so the template distributes across all of them.
@@ -295,10 +293,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           };
           if (isNode(selector, N.SelectorList)) {
             const mergedItems: Selector[] = [];
-            for (const item of selector.data) {
+            for (const item of selector.value) {
               const merged = mergeTemplate(item as Selector);
               if (isNode(merged, N.SelectorList)) {
-                mergedItems.push(...merged.data);
+                mergedItems.push(...merged.value);
               } else {
                 mergedItems.push(merged);
               }
@@ -313,8 +311,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             for (let s of n.nodes(true)) {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
-                if (typeof s.data === 'string') {
-                  s.setData(s.data + appendValue);
+                if (typeof (s as any).value === 'string') {
+                  s.setData((s as any).value + appendValue);
                   appended = true;
                   break;
                 }
@@ -327,7 +325,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           };
 
           if (isNode(selector, N.SelectorList)) {
-            selector.data.forEach(doAppendValue);
+            selector.value.forEach(doAppendValue);
           } else {
             doAppendValue(selector);
           }
@@ -387,11 +385,5 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   // }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Ampersand.prototype, 'data', {
-  get(this: Ampersand) { return { appendValue: this.appendValue }; },
-  configurable: true,
-  enumerable: true
-});
 
 export const amp = defineType(Ampersand, 'Ampersand', 'amp');

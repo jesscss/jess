@@ -21,8 +21,6 @@ export class Block extends Node<Node, BlockOptions> {
 
   value!: Node;
 
-  declare readonly data: Readonly<Node>;
-
   constructor(value: Node, options?: BlockOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -45,14 +43,6 @@ export class Block extends Node<Node, BlockOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Block.prototype, 'data', {
-  get(this: Block) {
-    return this.value;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type BlockParams = ConstructorParameters<typeof Block>;
 

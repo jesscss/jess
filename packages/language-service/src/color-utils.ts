@@ -193,7 +193,7 @@ function isColorKeyword(node: Node): boolean {
   }
   const anyNode = node as Any;
   // Any nodes have value as a string
-  const text = typeof anyNode.data === 'string' ? anyNode.data.toLowerCase() : String(anyNode.data ?? '').toLowerCase();
+  const text = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
   if (!text || text === 'none') {
     return false;
   }
@@ -206,11 +206,11 @@ function isColorKeyword(node: Node): boolean {
 function isColorFunction(call: Call): boolean {
   let name: string | null = null;
 
-  if (typeof call.data.name === 'string') {
-    name = call.data.name.toLowerCase();
-  } else if (call.data.name) {
+  if (typeof call.name === 'string') {
+    name = call.name.toLowerCase();
+  } else if (call.name) {
     // Name is a Node - try multiple ways to extract the string value
-    const nameNode = call.data.name as any;
+    const nameNode = call.name as any;
 
     // Try valueOf first (works for most Node types)
     if (typeof nameNode.valueOf === 'function') {
@@ -225,19 +225,19 @@ function isColorFunction(call: Call): boolean {
     if (!name) {
       if (nameNode.type === 'Any') {
         // Any node - extract the data
-        const value = typeof nameNode.data === 'string' ? nameNode.data : String(nameNode.data ?? '');
+        const value = typeof nameNode.value === 'string' ? nameNode.value : String(nameNode.value ?? '');
         name = value.toLowerCase();
       } else if (nameNode.type === 'Reference') {
         // Reference node - try to get the key
-        const key = nameNode.data?.key;
+        const key = nameNode.key;
         if (typeof key === 'string') {
           name = key.toLowerCase();
         } else if (key && typeof key.valueOf === 'function') {
           name = String(key.valueOf()).toLowerCase();
         }
-      } else if (typeof nameNode.data === 'string') {
-        // Generic node with string data
-        name = nameNode.data.toLowerCase();
+      } else if (typeof nameNode.value === 'string') {
+        // Generic node with string value
+        name = nameNode.value.toLowerCase();
       }
     }
   }
@@ -341,7 +341,7 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     // Check if this is a color keyword (Any node with color keyword text)
     if (isColorKeyword(node)) {
       const anyNode = node as Any;
-      const keyword = typeof anyNode.data === 'string' ? anyNode.data.toLowerCase() : String(anyNode.data ?? '').toLowerCase();
+      const keyword = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
       if (keyword && keyword in colorKeywords) {
         const hexValue = colorKeywords[keyword];
         if (hexValue) {

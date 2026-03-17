@@ -148,7 +148,7 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
   visiting.add(n);
 
-  const value = (n as any).data as unknown;
+  const value = (n as any).value as unknown;
   const optionsStr = serializeNodeOptions(n, depth, opts, visiting);
 
   // If the main value is a primitive, include it inline

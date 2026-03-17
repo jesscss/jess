@@ -39,8 +39,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   value!: ComplexSelectorValue;
 
-  declare readonly data: readonly ComplexSelectorComponent[];
-
   constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
@@ -81,7 +79,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
-        let co = component.data;
+        let co = component.value;
         if (co !== ' ') {
           // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
           // pre spacing (default to single space when no explicit pre)
@@ -240,17 +238,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   // }
 }
 
-/** Compat: synthesize .data from instance field */
-Object.defineProperty(ComplexSelector.prototype, 'data', {
-  get(this: ComplexSelector) {
-    return this.value;
-  },
-  set(this: ComplexSelector, val: ComplexSelectorValue) {
-    this.value = val;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>;
 

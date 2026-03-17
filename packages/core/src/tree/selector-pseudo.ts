@@ -38,8 +38,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   name!: string;
   arg: Node | undefined;
 
-  declare readonly data: Readonly<PseudoSelectorValue>;
-
   constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
@@ -184,14 +182,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 // ])
 // foo.arg
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(PseudoSelector.prototype, 'data', {
-  get(this: PseudoSelector) {
-    return { name: this.name, arg: this.arg };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
 

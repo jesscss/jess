@@ -84,8 +84,6 @@ export class Call extends Node<CallValue, CallOptions> {
   args: List<Node> | undefined;
   contentNode: Node | undefined;
 
-  declare readonly data: Readonly<CallValue>;
-
   constructor(value: CallValue, options?: CallOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
@@ -121,7 +119,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const normalizedArgs = args.data.filter(Boolean);
+      const normalizedArgs = args.value.filter(Boolean);
       const last = normalizedArgs.length - 1;
       for (let i = 0; i <= last; i++) {
         const arg = normalizedArgs[i]!;
@@ -147,14 +145,14 @@ export class Call extends Node<CallValue, CallOptions> {
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
     let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
-    for (const rule of rules.data) {
+    for (const rule of rules.value) {
       if (isNode(rule, N.Declaration)) {
         rule.setData('important', important);
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
       } else if (isNode(rule, N.AtRule | N.Ruleset)) {
-        if ((rule as AtRule).data.rules) {
-          this.makeImportant((rule as AtRule).data.rules!);
+        if ((rule as AtRule).rules) {
+          this.makeImportant((rule as AtRule).rules!);
         }
       }
     }
@@ -176,7 +174,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return undefined;
       }
       const out: Node[] = [];
-      for (const node of nodes.data) {
+      for (const node of nodes.value) {
         out.push(await node.eval(context) as Node);
       }
       return list(out, nodes.options);
@@ -219,13 +217,13 @@ export class Call extends Node<CallValue, CallOptions> {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.data.length > 0) {
+      if (args && args.value.length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       const Rules = await getRules();
-      let rules = Rules.create([...n.data], n.options);
+      let rules = Rules.create([...n.value], n.options);
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
@@ -243,7 +241,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return rules;
     }
 
-    let fn = isNode(n, N.JsFunction) ? n.data : n;
+    let fn = isNode(n, N.JsFunction) ? n.value : n;
     if (typeof fn === 'function') {
       const originalCaller = context.caller;
       context.caller = this;
@@ -252,7 +250,7 @@ export class Call extends Node<CallValue, CallOptions> {
         /** Freeze args */
         if (args) {
           const copiedArgs = args.copy(true, freezeChildren);
-          for (const copied of copiedArgs.data) {
+          for (const copied of copiedArgs.value) {
             // Anchor copied references to this Call so nested property refs
             // (e.g. $list-1) can walk back to call-site Rules.
             // Also anchor copied Mixin callback args to call-site source scope
@@ -273,7 +271,7 @@ export class Call extends Node<CallValue, CallOptions> {
             ? (
                 shouldPassListArgs
                   ? callWithContext(context, fnCallable, args)
-                  : callWithContext(context, fnCallable, ...[...args.data])
+                  : callWithContext(context, fnCallable, ...[...args.value])
               )
             : callWithContext(context, fnCallable)
         );
@@ -295,8 +293,8 @@ export class Call extends Node<CallValue, CallOptions> {
           return adoptCallWhitespace(evald);
         }
         let castResult = cast(result);
-        if (isNode(castResult, N.Rules) && castResult.data.length === 1) {
-          return adoptCallWhitespace(castResult.data[0]!);
+        if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+          return adoptCallWhitespace(castResult.value[0]!);
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
@@ -307,7 +305,7 @@ export class Call extends Node<CallValue, CallOptions> {
             return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {
-            throw new ReferenceError(`No matching mixins found for '${name.data.key.valueOf()}'`);
+            throw new ReferenceError(`No matching mixins found for '${name.key.valueOf()}'`);
           }
           throw e;
         }
@@ -318,20 +316,20 @@ export class Call extends Node<CallValue, CallOptions> {
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
         newCall.setData('name', isNode(name, N.Reference) && name.options.fallbackValue === true
-          ? String(name.data.key)
+          ? String(name.key)
           : String(n.valueOf()));
         newCall.setData('args', await evalArgNodes(args));
-        newCall.data.args?.data.forEach((arg, argIndex) => {
+        newCall.args?.value.forEach((arg, argIndex) => {
           // Normalize fallback-call arg spacing to Less-style call serialization.
           arg.pre = argIndex === 0 ? 0 : 1;
           if (isNode(arg, N.Sequence)) {
-            arg.data.forEach((child, childIndex) => {
+            arg.value.forEach((child, childIndex) => {
               child.pre = childIndex === 0 ? 0 : 1;
             });
           } else if (isNode(arg, N.List)) {
-            arg.data.forEach((child) => {
+            arg.value.forEach((child) => {
               if (isNode(child, N.Sequence)) {
-                child.data.forEach((nested, nestedIndex) => {
+                child.value.forEach((nested, nestedIndex) => {
                   nested.pre = nestedIndex === 0 ? 0 : 1;
                 });
               }
@@ -362,10 +360,10 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs.data[0], N.Dimension)) {
-          return evaluatedArgs.data[0]!;
+        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
+          return evaluatedArgs.value[0]!;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.data[0]!);
+          return new Paren(evaluatedArgs.value[0]!);
         }
       }
       node.setData('name', n);
@@ -375,14 +373,6 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Call.prototype, 'data', {
-  get(this: Call) {
-    return { name: this.name, args: this.args, contentNode: this.contentNode };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type Params = ConstructorParameters<typeof Call>;
 

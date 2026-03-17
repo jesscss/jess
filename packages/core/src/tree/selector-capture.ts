@@ -19,8 +19,6 @@ export class SelectorCapture extends Node<Selector> {
 
   value!: Selector;
 
-  declare readonly data: Readonly<Selector>;
-
   constructor(value: Selector, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -54,14 +52,6 @@ export class SelectorCapture extends Node<Selector> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(SelectorCapture.prototype, 'data', {
-  get(this: SelectorCapture) {
-    return this.value;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type Params = ConstructorParameters<typeof SelectorCapture>;
 

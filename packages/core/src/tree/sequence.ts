@@ -33,8 +33,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   value!: Node[];
 
-  declare readonly data: readonly Node[];
-
   constructor(value: Node[], options?: SequenceOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
@@ -52,7 +50,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray([...this.value], [...other.data], equalityMode);
+      const result = compareNodeArray([...this.value], [...other.value], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -127,10 +125,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     let newSequence = this.maybeClone(context);
     if (b instanceof List) {
-      return new List([newSequence, ...b.data]).inherit(this);
+      return new List([newSequence, ...b.value]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.data.map(v => v.maybeClone(context));
+      const values = b.value.map(v => v.maybeClone(context));
       if (values.length) {
         values[0]!.pre = 1;
       }
@@ -210,17 +208,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // }
 }
 
-/** Compat: synthesize .data from instance field */
-Object.defineProperty(Sequence.prototype, 'data', {
-  get(this: Sequence) {
-    return this.value;
-  },
-  set(this: Sequence, val: Node[]) {
-    this.value = val;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const seq = defineType(Sequence, 'Sequence', 'seq');
 

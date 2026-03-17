@@ -24,18 +24,18 @@ export function transformSequenceToLess(
 
     // Less Expression nodes expose their members via `.value` as an array.
     if (prop === 'value') {
-      return (seq.data ?? [])
+      return (seq.value ?? [])
         .map((item: any) => item instanceof Node ? toLessNode(item, { cache }) : item)
         .filter((item: any) => item !== undefined && item !== null);
     }
 
     // Allow array-like access patterns some Less visitors use.
     if (prop === 'length') {
-      return (seq.data ?? []).filter((v: any) => v !== undefined && v !== null).length;
+      return (seq.value ?? []).filter((v: any) => v !== undefined && v !== null).length;
     }
     if (typeof prop === 'string' && /^\d+$/.test(prop)) {
       const idx = Number(prop);
-      const arr = (seq.data ?? []).filter((v: any) => v !== undefined && v !== null);
+      const arr = (seq.value ?? []).filter((v: any) => v !== undefined && v !== null);
       const item = arr[idx];
       return item instanceof Node ? toLessNode(item, { cache }) : item;
     }
@@ -43,7 +43,7 @@ export function transformSequenceToLess(
     // Traverse children (sequence members) without re-entering Jess visitor recursion.
     if (prop === 'accept') {
       return function(visitor: any) {
-        const raw = seq.data ?? [];
+        const raw = seq.value ?? [];
         if (!Array.isArray(raw) || raw.length === 0) {
           return seq;
         }
@@ -70,7 +70,7 @@ export function transformSequenceToLess(
                 (jessReplacement as any).post = (item as any).post;
               }
               seq.adopt(jessReplacement);
-              (seq.data as any[])[i] = jessReplacement;
+              (seq.value as any[])[i] = jessReplacement;
             } catch {
               // If we can't convert it back, ignore (visitor may be creating unsupported nodes)
             }

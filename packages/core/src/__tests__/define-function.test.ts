@@ -458,7 +458,7 @@ describe('defineFunction', () => {
       const calls: string[] = [];
       class TestNode extends Color {
         override async evalNode(context: any): Promise<any> {
-          calls.push(`${(this as any).data.node}`);
+          calls.push(`${(this as any)._nodeValue}`);
           return this;
         }
       }
@@ -488,7 +488,7 @@ describe('defineFunction', () => {
       const calls: string[] = [];
       class TestNode extends Color {
         override async evalNode(context: any): Promise<any> {
-          calls.push(`${(this as any).data.node}`);
+          calls.push(`${(this as any)._nodeValue}`);
           return this;
         }
       }

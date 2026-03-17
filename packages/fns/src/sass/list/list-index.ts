@@ -13,7 +13,7 @@ const index = defineFunction(
   'index',
   function(list: List, value: Node): Dimension | null {
     // Find the index of the value in the list
-    const listValue = list.data;
+    const listValue = list.value;
     for (let i = 0; i < listValue.length; i++) {
       const item = listValue[i];
       // Compare nodes - use compare method if available

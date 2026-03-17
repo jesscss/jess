@@ -31,8 +31,6 @@ export interface Nil extends Node<''> {
 export class Nil extends Node<''> {
   static override childKeys = null as null;
 
-  declare readonly data: Readonly<''>;
-
   constructor(
     value?: any,
     options?: NodeOptions,
@@ -56,11 +54,5 @@ export class Nil extends Node<''> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Nil.prototype, 'data', {
-  get() { return ''; },
-  configurable: true,
-  enumerable: true
-});
 
 export const nil = defineType(Nil, 'Nil');

@@ -49,7 +49,7 @@ describe('Visitor Pattern', () => {
       const result = declaration.accept(visitor);
 
       expect(result.type).toBe('Declaration');
-      expect((result as any).data.name.valueOf()).toBe('background');
+      expect((result as any).name.valueOf()).toBe('background');
     });
 
     it('should recursively visit children', () => {

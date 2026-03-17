@@ -32,7 +32,22 @@ export class Operation extends Node<OperationValue> {
   operator!: Operator;
   right!: Node;
 
-  declare readonly data: Readonly<OperationValue>;
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const value: OperationValue = [
+      deep ? this.left.clone(deep) : this.left,
+      this.operator,
+      deep ? this.right.clone(deep) : this.right
+    ];
+    const newNode = new (this.constructor as any)(
+      value,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
 
   constructor(value: OperationValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -136,11 +151,5 @@ export class Operation extends Node<OperationValue> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Operation.prototype, 'data', {
-  get(this: Operation) { return [this.left, this.operator, this.right] as OperationValue; },
-  configurable: true,
-  enumerable: true
-});
 
 export const op = defineType(Operation, 'Operation', 'op');

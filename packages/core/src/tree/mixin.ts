@@ -87,8 +87,6 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   params: List<Node> | undefined;
   guard: Condition | undefined;
 
-  declare readonly data: Readonly<MixinValue>;
-
   constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
     super(value, options, location, context);
     this.name = value.name;
@@ -237,14 +235,6 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   // }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Mixin.prototype, 'data', {
-  get(this: Mixin) {
-    return { name: this.name, rules: this.rules, params: this.params, guard: this.guard };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type MixinConstructorParams = ConstructorParameters<typeof Mixin>;
 

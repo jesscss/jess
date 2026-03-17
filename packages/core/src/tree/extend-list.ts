@@ -20,8 +20,6 @@ export class ExtendList extends Node<Extend[]> {
 
   value!: Extend[];
 
-  declare readonly data: readonly Extend[];
-
   constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
@@ -46,16 +44,5 @@ export class ExtendList extends Node<Extend[]> {
   }
 }
 
-/** Compat: synthesize .data from instance field */
-Object.defineProperty(ExtendList.prototype, 'data', {
-  get(this: ExtendList) {
-    return this.value;
-  },
-  set(this: ExtendList, val: Extend[]) {
-    this.value = val;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const extendList = defineType(ExtendList, 'ExtendList');

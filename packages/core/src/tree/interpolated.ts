@@ -24,7 +24,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = (replacement as unknown as { data: Node }).data;
+    const arg = (replacement as unknown as { value: Node }).value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -33,7 +33,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    return (replacement as unknown as { data: Node }).data;
+    return (replacement as unknown as { value: Node }).value;
   }
   return replacement;
 }
@@ -86,8 +86,6 @@ export class Interpolated<
 
   source!: string;
   replacements!: Node[];
-
-  declare readonly data: Readonly<InterpolatedValue>;
 
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value as any, options, location, treeContext);
@@ -258,13 +256,5 @@ export class Interpolated<
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Interpolated.prototype, 'data', {
-  get(this: Interpolated) {
-    return { source: this.source, replacements: this.replacements };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const interpolated = defineType(Interpolated, 'Interpolated');

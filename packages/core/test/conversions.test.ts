@@ -21,7 +21,7 @@ describe('Conversion Plugins', () => {
       const result = converter(input);
 
       expect(result).toBeInstanceOf(Num);
-      expect((result as Num).data.number).toBe(127.5); // 50% of 255
+      expect((result as Num).number).toBe(127.5); // 50% of 255
     });
 
     it('should pass through non-percentage values', () => {
@@ -37,7 +37,7 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: 75, unit: '%' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(75); // 75% of 100
+      expect((result as Num).number).toBe(75); // 75% of 100
     });
   });
 
@@ -47,7 +47,7 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: 0.5, unit: 'turn' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(180); // 0.5 turn = 180 degrees
+      expect((result as Num).number).toBe(180); // 0.5 turn = 180 degrees
     });
 
     it('should convert radians to degrees', () => {
@@ -55,7 +55,7 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: Math.PI, unit: 'rad' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(180); // π radians = 180 degrees
+      expect((result as Num).number).toBe(180); // π radians = 180 degrees
     });
 
     it('should convert gradians to degrees', () => {
@@ -63,7 +63,7 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: 100, unit: 'grad' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(90); // 100 grad = 90 degrees
+      expect((result as Num).number).toBe(90); // 100 grad = 90 degrees
     });
 
     it('should pass through degrees and unitless values', () => {
@@ -72,9 +72,9 @@ describe('Conversion Plugins', () => {
       const unitlessInput = new Dimension({ number: 90, unit: '' });
 
       expect(converter(degInput)).toBeInstanceOf(Num);
-      expect((converter(degInput) as Num).data.number).toBe(45);
+      expect((converter(degInput) as Num).number).toBe(45);
       expect(converter(unitlessInput)).toBeInstanceOf(Num);
-      expect((converter(unitlessInput) as Num).data.number).toBe(90);
+      expect((converter(unitlessInput) as Num).number).toBe(90);
     });
   });
 
@@ -83,9 +83,9 @@ describe('Conversion Plugins', () => {
       const converter = normalizeHue();
 
       // Test various inputs
-      expect((converter(new Dimension({ number: 400, unit: 'deg' })) as Num).data.number).toBe(40);
-      expect((converter(new Dimension({ number: -30, unit: 'deg' })) as Num).data.number).toBe(330);
-      expect((converter(new Dimension({ number: 1.5, unit: 'turn' })) as Num).data.number).toBe(180);
+      expect((converter(new Dimension({ number: 400, unit: 'deg' })) as Num).number).toBe(40);
+      expect((converter(new Dimension({ number: -30, unit: 'deg' })) as Num).number).toBe(330);
+      expect((converter(new Dimension({ number: 1.5, unit: 'turn' })) as Num).number).toBe(180);
     });
 
     it('should handle percentage inputs', () => {
@@ -93,7 +93,7 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: 50, unit: '%' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(180); // 50% of 360 = 180
+      expect((result as Num).number).toBe(180); // 50% of 360 = 180
     });
   });
 
@@ -103,14 +103,14 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: 60, unit: '%' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(0.6); // 60% = 0.6
+      expect((result as Num).number).toBe(0.6); // 60% = 0.6
     });
 
     it('should clamp values to 0-1 range', () => {
       const converter = alphaToNumber();
 
-      expect((converter(new Dimension({ number: 150, unit: '%' })) as Num).data.number).toBe(1);
-      expect((converter(new Dimension({ number: -10, unit: '%' })) as Num).data.number).toBe(0);
+      expect((converter(new Dimension({ number: 150, unit: '%' })) as Num).number).toBe(1);
+      expect((converter(new Dimension({ number: -10, unit: '%' })) as Num).number).toBe(0);
     });
 
     it('should handle unitless values', () => {
@@ -118,7 +118,7 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: 0.8, unit: '' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(0.8);
+      expect((result as Num).number).toBe(0.8);
     });
   });
 
@@ -128,7 +128,7 @@ describe('Conversion Plugins', () => {
       const input = new Dimension({ number: 42, unit: 'px' });
       const result = converter(input);
 
-      expect((result as Num).data.number).toBe(42);
+      expect((result as Num).number).toBe(42);
     });
   });
 
@@ -136,10 +136,10 @@ describe('Conversion Plugins', () => {
     it('should convert various length units to pixels', () => {
       const converter = lengthToPx(16); // 16px base font size
 
-      expect((converter(new Dimension({ number: 1, unit: 'em' })) as Num).data.number).toBe(16);
-      expect((converter(new Dimension({ number: 1, unit: 'rem' })) as Num).data.number).toBe(16);
-      expect((converter(new Dimension({ number: 1, unit: 'in' })) as Num).data.number).toBe(96);
-      expect((converter(new Dimension({ number: 1, unit: 'cm' })) as Num).data.number).toBeCloseTo(37.8, 1);
+      expect((converter(new Dimension({ number: 1, unit: 'em' })) as Num).number).toBe(16);
+      expect((converter(new Dimension({ number: 1, unit: 'rem' })) as Num).number).toBe(16);
+      expect((converter(new Dimension({ number: 1, unit: 'in' })) as Num).number).toBe(96);
+      expect((converter(new Dimension({ number: 1, unit: 'cm' })) as Num).number).toBeCloseTo(37.8, 1);
     });
   });
 
@@ -147,8 +147,8 @@ describe('Conversion Plugins', () => {
     it('should convert time units to milliseconds', () => {
       const converter = timeToMs();
 
-      expect((converter(new Dimension({ number: 1, unit: 's' })) as Num).data.number).toBe(1000);
-      expect((converter(new Dimension({ number: 500, unit: 'ms' })) as Num).data.number).toBe(500);
+      expect((converter(new Dimension({ number: 1, unit: 's' })) as Num).number).toBe(1000);
+      expect((converter(new Dimension({ number: 500, unit: 'ms' })) as Num).number).toBe(500);
     });
   });
 
@@ -156,8 +156,8 @@ describe('Conversion Plugins', () => {
     it('should convert frequency units to hertz', () => {
       const converter = frequencyToHz();
 
-      expect((converter(new Dimension({ number: 1, unit: 'khz' })) as Num).data.number).toBe(1000);
-      expect((converter(new Dimension({ number: 440, unit: 'hz' })) as Num).data.number).toBe(440);
+      expect((converter(new Dimension({ number: 1, unit: 'khz' })) as Num).number).toBe(1000);
+      expect((converter(new Dimension({ number: 440, unit: 'hz' })) as Num).number).toBe(440);
     });
   });
 
@@ -165,8 +165,8 @@ describe('Conversion Plugins', () => {
     it('should convert angle units to radians', () => {
       const converter = angleToRadians();
 
-      expect((converter(new Dimension({ number: 180, unit: 'deg' })) as Num).data.number).toBe(Math.PI);
-      expect((converter(new Dimension({ number: 0.5, unit: 'turn' })) as Num).data.number).toBe(Math.PI);
+      expect((converter(new Dimension({ number: 180, unit: 'deg' })) as Num).number).toBe(Math.PI);
+      expect((converter(new Dimension({ number: 0.5, unit: 'turn' })) as Num).number).toBe(Math.PI);
     });
   });
 });

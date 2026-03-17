@@ -57,7 +57,6 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   /** Compatibility — synthesizes the legacy .data shape from instance fields */
-  declare readonly data: Readonly<DimensionValue>;
 
   private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {
@@ -70,6 +69,18 @@ export class Dimension extends Node<DimensionValue> {
       this._unitToGroup = unitToGroup = new Map(entries);
     }
     return unitToGroup;
+  }
+
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const newNode = new (this.constructor as any)(
+      { number: this.number, unit: this.unit },
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
   }
 
   override valueOf() {
@@ -182,7 +193,7 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String((b as any).data ?? '').trim();
+      const text = String((b as any).value ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
@@ -364,14 +375,6 @@ const conversions = {
   } satisfies Record<AngleUnit, number>
 };
 
-/** Compat: synthesize .data from instance fields for unmigrated consumers */
-Object.defineProperty(Dimension.prototype, 'data', {
-  get(this: Dimension) {
-    return { number: this.number, unit: this.unit };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 defineType(Dimension, 'Dimension');
 

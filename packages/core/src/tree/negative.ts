@@ -17,8 +17,6 @@ export class Negative extends Node<Node> {
 
   value!: Node;
 
-  declare readonly data: Readonly<Node>;
-
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -42,11 +40,5 @@ export class Negative extends Node<Node> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Negative.prototype, 'data', {
-  get(this: Negative) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 export const negative = defineType(Negative, 'Negative');

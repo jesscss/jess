@@ -18,8 +18,6 @@ export class Url extends Node<Quoted | Any> {
 
   value!: Quoted | Any;
 
-  declare readonly data: Readonly<Quoted | Any>;
-
   constructor(value: Quoted | Any, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
@@ -34,9 +32,9 @@ export class Url extends Node<Quoted | Any> {
   override valueOf(): string {
     let value: Node | string = this.value;
     if (isNode(value, N.Quoted)) {
-      value = value.data as Node | string;
+      value = value.value as Node | string;
       if (isNode(value)) {
-        return String(value.data);
+        return String(value.value);
       }
       return value as string;
     }
@@ -54,11 +52,5 @@ export class Url extends Node<Quoted | Any> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Url.prototype, 'data', {
-  get(this: Url) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 export const url = defineType(Url, 'Url');

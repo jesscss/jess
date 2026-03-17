@@ -1,4 +1,5 @@
 import type { AtRule } from '../at-rule.js';
+import type { Declaration } from '../declaration.js';
 import type { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, type Node } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
@@ -42,12 +43,12 @@ function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
   if (node.hasFlag(F_EXTENDED)) {
     return true;
   }
-  const selector = node.data.selector;
+  const selector = node.selector;
   if (!selector || selector instanceof Nil) {
     return false;
   }
   if (isNode(selector, N.SelectorList)) {
-    return selector.data.some(item => item.hasFlag(F_EXTENDED));
+    return selector.value.some(item => item.hasFlag(F_EXTENDED));
   }
   return selector.hasFlag(F_EXTENDED);
 }
@@ -60,7 +61,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (node.type === 'Ruleset' && node.data.selector instanceof Nil) {
+  if (node.type === 'Ruleset' && node.selector instanceof Nil) {
     return '';
   }
   // let header = node.getHeaderString(options);
@@ -83,7 +84,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       return '';
     }
   }
-  const rules = node.data.rules;
+  const rules = node.rules;
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {
       options.referenceMode = previousReferenceMode;
@@ -138,7 +139,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
     const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-    const declProp = node.data.name.valueOf();
+    const declProp = (node as Declaration).name.valueOf();
     let seenValues = seenDeclarationsByProp.get(declProp);
     if (!seenValues) {
       seenValues = new Set<string>();
@@ -208,8 +209,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     if (isNode(n, N.Ruleset | N.AtRule)) {
       if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
-        const parentSelector = String(node.data.selector?.valueOf?.() ?? '');
-        const childSelector = String(n.data.selector?.valueOf?.() ?? '');
+        const parentSelector = String((node as Ruleset).selector?.valueOf?.() ?? '');
+        const childSelector = String((n as Ruleset).selector?.valueOf?.() ?? '');
         const isExpandedDescendant = parentSelector !== '' && (
           childSelector.startsWith(`${parentSelector} `)
           || childSelector.startsWith(`${parentSelector}.`)
@@ -241,7 +242,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
             if (current?.type !== 'Ruleset') {
               return false;
             }
-            const currentSelector = String(current.data?.selector?.valueOf?.() ?? '');
+            const currentSelector = String(current.selector?.valueOf?.() ?? '');
             return currentSelector !== '' && currentSelector === childSelector;
           });
           return !ownedByCurrentChild;
@@ -249,7 +250,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
           return otherIdx !== idx
             && isNode(other, N.Ruleset)
-            && String(other.data.selector?.valueOf?.() ?? '') === childSelector;
+            && String((other as Ruleset).selector?.valueOf?.() ?? '') === childSelector;
         });
         if (isExpandedDescendant
           && !isSelfWrappedDescendant
@@ -334,7 +335,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
         ? `${idt}${out}`
         : normalizeIndent(declIn, idt, true);
-      if (nn.data.name.valueOf().startsWith('--')) {
+      if ((nn as Declaration).name.valueOf().startsWith('--')) {
         w.add(idt);
         w.add(out, nn);
       } else {

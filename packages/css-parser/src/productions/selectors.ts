@@ -26,7 +26,7 @@ export function stylesheet(this: P, options: Record<string, any> = {}) {
   const ctx: RuleContext = { isRoot: true };
   let root: Node = $.main();
 
-  let rules = root.data as Node[];
+  let rules = (root as Rules).value as Node[];
 
   if (charset) {
     let loc = $.getLocationInfo(charset);
@@ -527,7 +527,7 @@ export function relativeSelector(this: P, ctx: RuleContext = {}) {
         let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
         if (complex instanceof ComplexSelector) {
           complex = new ComplexSelector(
-            [combinator, ...complex.data],
+            [combinator, ...complex.value],
             undefined,
             $.getLocationFromNodes([combinator, complex]),
             $.context

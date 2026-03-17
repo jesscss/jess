@@ -33,7 +33,20 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   right: Node | undefined;
   negate: boolean;
 
-  declare readonly data: Readonly<ConditionValue>;
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const value: ConditionValue = this.operator !== undefined && this.right !== undefined
+      ? [deep ? this.left.clone(deep) : this.left, this.operator, deep ? this.right.clone(deep) : this.right]
+      : [deep ? this.left.clone(deep) : this.left];
+    const newNode = new (this.constructor as any)(
+      value,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
 
   constructor(value: ConditionValue, options?: ConditionOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -150,16 +163,5 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Condition.prototype, 'data', {
-  get(this: Condition) {
-    if (this.operator !== undefined && this.right !== undefined) {
-      return [this.left, this.operator, this.right] as ConditionValue;
-    }
-    return [this.left] as ConditionValue;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const condition = defineType(Condition, 'Condition');

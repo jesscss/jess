@@ -18,8 +18,6 @@ export class BasicSelector extends SimpleSelector<string> {
 
   value!: string;
 
-  declare readonly data: Readonly<string>;
-
   constructor(
     value: string,
     options?: NodeOptions,
@@ -73,12 +71,6 @@ export class BasicSelector extends SimpleSelector<string> {
   // }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(BasicSelector.prototype, 'data', {
-  get(this: BasicSelector) { return this.value; },
-  configurable: true,
-  enumerable: true
-});
 
 /** Short form of a basic selector is a short 'el' for 'element' */
 export const el = defineType(BasicSelector, 'BasicSelector', 'el');

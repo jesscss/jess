@@ -75,8 +75,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   guard: Condition | Nil | undefined;
   selectorBeforeExtend: Selector | Nil | undefined;
 
-  declare readonly data: Readonly<NarrowRulesetValue<T>>;
-
   constructor(value: NarrowRulesetValue<T>, options?: RulesetOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.selector = value.selector;
@@ -108,11 +106,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     ruleset: Ruleset,
     sharedValue: RulesetValue
   ): void {
-    const rules = ruleset.data?.rules;
+    const rules = ruleset.rules;
     if (!rules || !isNode(rules, N.Rules)) {
       return;
     }
-    const children = (rules as Rules).data;
+    const children = (rules as Rules).value;
     if (!Array.isArray(children)) {
       return;
     }
@@ -123,9 +121,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const rs = child as Ruleset;
       if (rs.data === sharedValue) {
         rs.setData({
-          selector: rs.data.selector,
-          rules: rs.data.rules,
-          ...(rs.data.guard !== undefined && { guard: rs.data.guard })
+          selector: rs.selector,
+          rules: rs.rules,
+          ...(rs.guard !== undefined && { guard: rs.guard })
         });
       }
       Ruleset.ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
@@ -197,10 +195,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         /** In reference mode, the parent's selector may include invisible
          *  (original referenced) items alongside extend-added items.
          *  Filter to only visible items so children don't inherit invisible selectors. */
-        if (parentRuleset!.data.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRuleset!)) {
+        if (parentRuleset!.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRuleset!)) {
           parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
             parentSelector as Selector,
-            parentRuleset!.data.selectorBeforeExtend
+            parentRuleset!.selectorBeforeExtend
           );
         }
         if (parentSelector && !(parentSelector instanceof Nil)) {
@@ -295,23 +293,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     if (isNode(sel, N.SelectorList)) {
       const list = sel as SelectorList;
-      if (Array.isArray(list.data)) {
-        for (const item of list.data) {
-          Ruleset.ensureSelectorVisible(item);
-        }
+      for (const item of list.value) {
+        Ruleset.ensureSelectorVisible(item);
       }
       return;
     }
     if (isNode(sel, N.ComplexSelector)) {
-      const comps = (sel as ComplexSelector).data;
-      if (Array.isArray(comps)) {
-        for (const c of comps) {
-          Ruleset.ensureSelectorVisible(c as Selector);
-        }
+      const comps = (sel as ComplexSelector).value;
+      for (const c of comps) {
+        Ruleset.ensureSelectorVisible(c as Selector);
       }
       return;
     }
-    const v = (sel as Selector & { data?: Selector[] }).data;
+    const v = (sel as any).value;
     if (Array.isArray(v)) {
       for (const c of v) {
         Ruleset.ensureSelectorVisible(c);
@@ -337,12 +331,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       if (isNode(node, N.SelectorList)) {
         const list = node as SelectorList;
-        return SelectorList.create(list.data.map(item => materialize(item as Selector))).inherit(node) as Selector;
+        return SelectorList.create(list.value.map(item => materialize(item as Selector))).inherit(node) as Selector;
       }
       if (isNode(node, N.ComplexSelector)) {
         const complex = node as ComplexSelector;
         const parts: ComplexSelectorComponent[] = [];
-        for (const part of complex.data) {
+        for (const part of complex.value) {
           if (isNode(part, N.Ampersand)) {
             const amp = part as Ampersand;
             const n = amp as unknown as Node;
@@ -351,7 +345,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               if (resolved && !(resolved instanceof Nil)) {
                 const repl = materialize(resolved as Selector);
                 if (isNode(repl, N.ComplexSelector)) {
-                  parts.push(...(repl as ComplexSelector).data.map(c => c.copy(true) as ComplexSelectorComponent));
+                  parts.push(...(repl as ComplexSelector).value.map(c => c.copy(true) as ComplexSelectorComponent));
                 } else {
                   parts.push(repl as ComplexSelectorComponent);
                 }
@@ -363,10 +357,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         return ComplexSelector.create(parts).inherit(node) as Selector;
       }
-      const arr = (node as Selector & { data?: Selector[] }).data;
+      const arr = (node as any).value;
       if (Array.isArray(arr)) {
-        const cloned = node.copy(true) as Selector & { data?: Selector[] };
-        cloned.data = arr.map(item => materialize(item as Selector));
+        const cloned = node.copy(true) as any;
+        cloned.value = arr.map(item => materialize(item as Selector));
         return cloned as Selector;
       }
       return node.copy(true) as Selector;
@@ -382,7 +376,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return true;
     }
     if (isNode(sel, N.SelectorList)) {
-      return (sel as SelectorList).data.every(item => isNode(item, N.Ampersand));
+      return (sel as SelectorList).value.every(item => isNode(item, N.Ampersand));
     }
     return false;
   }
@@ -403,7 +397,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return false;
     }
     if (isNode(sel, N.SelectorList)) {
-      return (sel as SelectorList).data.some(item => item.hasFlag(F_EXTENDED));
+      return (sel as SelectorList).value.some(item => item.hasFlag(F_EXTENDED));
     }
     return (sel as Selector).hasFlag(F_EXTENDED);
   }
@@ -414,7 +408,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
-    for (const item of (sel as SelectorList).data) {
+    for (const item of (sel as SelectorList).value) {
       if (!item.hasFlag(F_EXTENDED) || item.hasFlag(F_EXTEND_TARGET)) {
         continue;
       }
@@ -450,7 +444,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     const originalValues = new Set<string>();
     if (isNode(original, N.SelectorList)) {
-      for (const item of original.data) {
+      for (const item of (original as SelectorList).value) {
         originalValues.add(item.valueOf());
       }
     } else {
@@ -463,7 +457,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     const seen = new Set<string>();
     const kept: Selector[] = [];
-    for (const item of current.data) {
+    for (const item of (current as SelectorList).value) {
       const key = item.valueOf();
       if (originalValues.has(key) || seen.has(key)) {
         continue;
@@ -689,7 +683,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             () => guard.eval(context),
             (guardResult) => {
               const selectorText = String(this.selector?.valueOf?.() ?? '');
-              const guardPasses = Boolean(guardResult instanceof Bool && guardResult.data === true);
+              const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
               if (selectorText.includes('#guarded') || selectorText.includes('#top') || selectorText.includes('#deeper')) {
               }
               if (!guardPasses) {
@@ -807,19 +801,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   // }
 }
 
-/** Compat: synthesize .data from instance fields */
-Object.defineProperty(Ruleset.prototype, 'data', {
-  get(this: Ruleset) {
-    return {
-      selector: this.selector,
-      rules: this.rules,
-      guard: this.guard,
-      selectorBeforeExtend: this.selectorBeforeExtend
-    };
-  },
-  configurable: true,
-  enumerable: true
-});
 
 type RulesetParams = ConstructorParameters<typeof Ruleset>;
 

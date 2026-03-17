@@ -11,9 +11,9 @@ export default defineFunction(
   'saturate',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
     const [h, s, l] = color._hsl;
-    let adjustAmount = amount.data.number / 100;
+    let adjustAmount = amount.number / 100;
 
-    if (method && method.data === 'relative') {
+    if (method && (method as any).value === 'relative') {
       adjustAmount = s * adjustAmount;
     }
 

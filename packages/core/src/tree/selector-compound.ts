@@ -28,8 +28,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   value!: SimpleSelector[];
 
-  declare readonly data: readonly SimpleSelector[];
-
   constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
@@ -164,16 +162,5 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   // }
 }
 
-/** Compat: synthesize .data from instance field */
-Object.defineProperty(CompoundSelector.prototype, 'data', {
-  get(this: CompoundSelector) {
-    return this.value;
-  },
-  set(this: CompoundSelector, val: SimpleSelector[]) {
-    this.value = val;
-  },
-  configurable: true,
-  enumerable: true
-});
 
 export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound');
