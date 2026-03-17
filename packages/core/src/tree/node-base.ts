@@ -554,6 +554,48 @@ export abstract class Node<
     }
   }
 
+  // ------------------------------------------------------------------
+  // Session-aware eval lifecycle helpers (Stage 8).
+  // Defined here (not in session-helpers.ts) to avoid a circular import:
+  // session-helpers.ts imports Node from this file, so this file cannot
+  // import from session-helpers.ts.  These mirror the public helpers in
+  // session-helpers.ts; both sets delegate to context.session when active.
+  // ------------------------------------------------------------------
+
+  private _isPreEvaluated(context: Context): boolean {
+    const session = context.session;
+    if (session?.hasRuntime(this)) {
+      const runtime = session.getRuntime(this);
+      if (runtime.preEvaluated !== undefined) return runtime.preEvaluated;
+    }
+    return this.preEvaluated;
+  }
+
+  private _setPreEvaluated(value: boolean, context: Context): void {
+    if (context.session) {
+      context.session.getRuntime(this).preEvaluated = value;
+    } else {
+      this.preEvaluated = value;
+    }
+  }
+
+  private _isEvaluated(context: Context): boolean {
+    const session = context.session;
+    if (session?.hasRuntime(this)) {
+      const runtime = session.getRuntime(this);
+      if (runtime.evaluated !== undefined) return runtime.evaluated;
+    }
+    return this.evaluated;
+  }
+
+  private _setEvaluated(value: boolean, context: Context): void {
+    if (context.session) {
+      context.session.getRuntime(this).evaluated = value;
+    } else {
+      this.evaluated = value;
+    }
+  }
+
   adopt(node: Node) {
     /** The only place we should do this */
     if (!node.frozen) {
@@ -998,9 +1040,9 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       let node = this.maybeClone(context);
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
@@ -1042,7 +1084,7 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node.evaluated) {
+    if (node.hasFlag(F_STATIC) && node._isEvaluated(context)) {
       return node;
     }
 
@@ -1054,24 +1096,28 @@ export abstract class Node<
 
     return pipe(
       () => {
-        if (!node.preEvaluated) {
+        if (!node._isPreEvaluated(context)) {
           return node.preEval(context);
         }
         return node;
       },
       (preEvald) => {
         preEvaluatedNode = preEvald;
-        preEvaluatedNode.preEvaluated = true;
+        preEvaluatedNode._setPreEvaluated(true, context);
         if (preEvald !== node) {
           preEvaluatedNode.inherit(node);
         }
-        if (!preEvaluatedNode.evaluated) {
+        if (!preEvaluatedNode._isEvaluated(context)) {
           return preEvaluatedNode.evalNode(context);
         }
         return preEvaluatedNode;
       },
       (evald) => {
-        evald.evaluated = true;
+        if (evald instanceof Node) {
+          evald._setEvaluated(true, context);
+        } else {
+          (evald as Record<string, unknown>).evaluated = true;
+        }
         if (preEvaluatedNode !== evald) {
           evald.inherit(preEvaluatedNode);
         }
@@ -1083,23 +1129,27 @@ export abstract class Node<
   private static _evalStaticSync(node: Node, context: Context): Node {
     let preEvaluatedNode: Node;
 
-    if (!node.preEvaluated) {
+    if (!node._isPreEvaluated(context)) {
       preEvaluatedNode = node.preEval(context) as Node;
     } else {
       preEvaluatedNode = node;
     }
-    preEvaluatedNode.preEvaluated = true;
+    preEvaluatedNode._setPreEvaluated(true, context);
     if (preEvaluatedNode !== node) {
       preEvaluatedNode.inherit(node);
     }
 
     let evald: Node;
-    if (!preEvaluatedNode.evaluated) {
+    if (!preEvaluatedNode._isEvaluated(context)) {
       evald = preEvaluatedNode.evalNode(context) as Node;
     } else {
       evald = preEvaluatedNode;
     }
-    evald.evaluated = true;
+    if (evald instanceof Node) {
+      evald._setEvaluated(true, context);
+    } else {
+      (evald as Record<string, unknown>).evaluated = true;
+    }
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
       evald.inherit(preEvaluatedNode);
     }

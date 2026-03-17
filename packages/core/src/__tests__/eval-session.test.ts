@@ -7,7 +7,14 @@ import {
   sessionGetParent,
   sessionSetParent,
   sessionIsEvaluated,
-  sessionSetEvaluated
+  sessionSetEvaluated,
+  sessionIsPreEvaluated,
+  sessionSetPreEvaluated,
+  sessionGetIndex,
+  sessionSetIndex,
+  sessionGetSourceParent,
+  sessionSetSourceParent,
+  sessionSetRuntimeState
 } from '../tree/util/session-helpers.js';
 
 describe('EvalSession', () => {
@@ -276,6 +283,148 @@ describe('session-aware helpers', () => {
       node.evaluated = true;
 
       expect(sessionIsEvaluated(node, ctx)).toBe(true);
+    });
+  });
+
+  describe('sessionIsPreEvaluated / sessionSetPreEvaluated', () => {
+    it('returns node.preEvaluated when no session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+      node.preEvaluated = true;
+
+      expect(sessionIsPreEvaluated(node, ctx)).toBe(true);
+    });
+
+    it('returns session preEvaluated state when set', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = new Keyword('red');
+      node.preEvaluated = false;
+
+      sessionSetPreEvaluated(node, true, ctx);
+      expect(sessionIsPreEvaluated(node, ctx)).toBe(true);
+      expect(node.preEvaluated).toBe(false);
+    });
+
+    it('falls through to node when session has no preEvaluated state', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = new Keyword('red');
+      node.preEvaluated = true;
+
+      expect(sessionIsPreEvaluated(node, ctx)).toBe(true);
+    });
+
+    it('writes directly to node when no session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+
+      sessionSetPreEvaluated(node, true, ctx);
+      expect(node.preEvaluated).toBe(true);
+    });
+
+    it('preEvaluated state is isolated between sessions', () => {
+      const ctx1 = new Context();
+      const ctx2 = new Context();
+      ctx1.createSession();
+      ctx2.createSession();
+      const node = new Keyword('red');
+
+      sessionSetPreEvaluated(node, true, ctx1);
+      sessionSetPreEvaluated(node, false, ctx2);
+
+      expect(sessionIsPreEvaluated(node, ctx1)).toBe(true);
+      expect(sessionIsPreEvaluated(node, ctx2)).toBe(false);
+      expect(node.preEvaluated).toBe(false);
+    });
+  });
+
+  describe('sessionGetIndex / sessionSetIndex', () => {
+    it('returns node.index when no session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+      node.index = 3;
+
+      expect(sessionGetIndex(node, ctx)).toBe(3);
+    });
+
+    it('returns session index when set', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = new Keyword('red');
+      node.index = 3;
+
+      sessionSetIndex(node, 7, ctx);
+      expect(sessionGetIndex(node, ctx)).toBe(7);
+      expect(node.index).toBe(3);
+    });
+
+    it('writes directly to node when no session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+
+      sessionSetIndex(node, 5, ctx);
+      expect(node.index).toBe(5);
+    });
+  });
+
+  describe('sessionGetSourceParent / sessionSetSourceParent', () => {
+    it('returns node.sourceParent when no session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+      const sp = new Keyword('sp');
+      node.sourceParent = sp;
+
+      expect(sessionGetSourceParent(node, ctx)).toBe(sp);
+    });
+
+    it('returns session sourceParent when set', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = new Keyword('red');
+      const canonical = new Keyword('canonical-sp');
+      const sessionSP = new Keyword('session-sp');
+      node.sourceParent = canonical;
+
+      sessionSetSourceParent(node, sessionSP, ctx);
+      expect(sessionGetSourceParent(node, ctx)).toBe(sessionSP);
+      expect(node.sourceParent).toBe(canonical);
+    });
+
+    it('writes directly to node when no session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+      const sp = new Keyword('sp');
+
+      sessionSetSourceParent(node, sp, ctx);
+      expect(node.sourceParent).toBe(sp);
+    });
+  });
+
+  describe('sessionSetRuntimeState', () => {
+    it('sets multiple runtime fields at once in a session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = new Keyword('red');
+
+      sessionSetRuntimeState(node, { index: 4, evaluated: true, preEvaluated: true }, ctx);
+
+      expect(sessionGetIndex(node, ctx)).toBe(4);
+      expect(sessionIsEvaluated(node, ctx)).toBe(true);
+      expect(sessionIsPreEvaluated(node, ctx)).toBe(true);
+      expect(node.index).toBeUndefined();
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
+    });
+
+    it('applies directly when no session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+
+      sessionSetRuntimeState(node, { index: 2, evaluated: true }, ctx);
+
+      expect(node.index).toBe(2);
+      expect(node.evaluated).toBe(true);
     });
   });
 });

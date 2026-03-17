@@ -246,9 +246,45 @@ layer. No production eval paths are modified — this stage is purely additive.
 
 ---
 
-## Stage 8-13: EvalSession Wiring (Future)
+## Stage 8: Session-Aware Read and Write Helpers
 
-- [ ] Stage 8: Session-aware read/write helpers wired into eval
+Goal: Complete the helper inventory and wire `evaluated`/`preEvaluated` lifecycle
+tracking into the base eval path in `node-base.ts`.
+
+- [x] Add `sourceParent` field to `RuntimeState` in `eval-session.ts`
+- [x] Add missing read helpers to `session-helpers.ts`:
+  - `sessionIsPreEvaluated` / `sessionSetPreEvaluated`
+  - `sessionGetIndex` / `sessionSetIndex`
+  - `sessionGetSourceParent` / `sessionSetSourceParent`
+  - `sessionGetChildren` (returns `rules.value`; session-local children in Stage 9)
+- [x] Add write helpers to `session-helpers.ts`:
+  - `sessionSetRuntimeState` — bulk-set multiple runtime fields
+  - `sessionAppendChildren` / `sessionPrependChildren` / `sessionRemoveChild` (direct
+    mutation for now; session overlay in Stage 9)
+  - `sessionReplaceNode` — replaces a node in its parent (session overlay in Stage 9)
+  - `sessionMarkScopeDirty` — no-op stub (session-local registry in Stage 9)
+- [x] Wire `evaluated`/`preEvaluated` into `Node.preEval`, `Node.evalStatic`,
+  `Node._evalStaticSync` via private helpers `_isPreEvaluated`, `_setPreEvaluated`,
+  `_isEvaluated`, `_setEvaluated` on the `Node` class
+  - Private helpers defined on `Node` directly (not imported from session-helpers.ts)
+    to avoid the circular import: session-helpers.ts already imports Node from node-base.ts
+  - Session is absent in all current code paths → behavior unchanged today
+  - When a session is active (Stage 9+): `evaluated`/`preEvaluated` go into the session
+    overlay, not onto the canonical node — enabling shared-node re-evaluation
+- [x] Unit tests: 16 new tests covering preEvaluated, index, sourceParent,
+  setRuntimeState helpers (no-session parity + session isolation)
+
+### Note on children helpers
+`sessionGetChildren`, `sessionAppendChildren`, `sessionPrependChildren`,
+`sessionRemoveChild`, `sessionReplaceNode`, and `sessionMarkScopeDirty` are introduced
+in Stage 8 but are **not yet session-aware** — they call through to direct mutation
+(`rules.push()`, `rules.splice()`, etc.). Session-local children arrays are introduced
+in Stage 9, at which point these helpers will route through the session overlay.
+
+---
+
+## Stage 9-13: EvalSession Wiring (Future)
+
 - [ ] Stage 9: Move import lookup to session scope
 - [ ] Stage 10: Externalize runtime state to session
 - [ ] Stage 11: Copy-on-write materialization

@@ -17,6 +17,7 @@ export interface RuntimeState {
   evaluated?: boolean;
   preEvaluated?: boolean;
   sourceNode?: Node;
+  sourceParent?: Node;
 }
 
 /**
