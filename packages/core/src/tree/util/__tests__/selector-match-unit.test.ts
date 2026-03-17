@@ -1020,6 +1020,25 @@ describe('selector lists and branching', () => {
       });
     });
   });
+
+  describe('implicit parent boundary with SelectorList', () => {
+    it('matches .replace.replace .replace against SelectorList inner with SelectorList outer parent', () => {
+      // Models the nested structure:
+      //   .replace.replace, .c.replace + .replace { .replace, .c { ... } }
+      // find: .replace.replace .replace
+      // target: inner SelectorList .replace, .c
+      // parent: outer SelectorList .replace.replace, .c.replace + .replace
+      const parent = sellist([
+        compound([el('.replace'), el('.replace')]),
+        sel([compound([el('.c'), el('.replace')]), co('+'), compound([el('.replace')])])
+      ]);
+      const target = sellist([el('.replace'), el('.c')]);
+      const find = sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]);
+
+      const result = selectorMatch(find, target, parent);
+      expect(result.fullMatch).toBe(true);
+    });
+  });
 });
 
 // // ─────────────────────────────────────────────────

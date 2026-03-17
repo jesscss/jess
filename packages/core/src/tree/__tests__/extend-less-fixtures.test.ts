@@ -170,13 +170,9 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
     const css = evald.toString({ context });
-    const expected = `.replace.replace,
-.c.replace + .replace {
-  .replace,
-  .c,
-  .rep_ace {
-    prop: copy-paste-replace;
-  }
+    const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
+.rep_ace {
+  prop: copy-paste-replace;
 }`;
     expect(css.trim()).toBe(expected);
     // Exact extend(.c) must not merge .effected into the first rule (no bare .c there).
