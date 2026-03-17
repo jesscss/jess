@@ -562,9 +562,9 @@ export class MixinRegistry extends Registry<
         const selectorVisibleKeySet = tryGetSelectorKeySet(selector);
         const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector);
         const selectorToIndex = (
-          getSelectorKeyValues(selectorVisibleKeySet).length
+          getIndexableSelectorKeys(selectorVisibleKeySet).length
             ? selector
-            : (getSelectorKeyValues(sourceVisibleKeySet).length ? sourceSelector : selector)
+            : (getIndexableSelectorKeys(sourceVisibleKeySet).length ? sourceSelector : selector)
         ) as Selector;
         let keySetToUse: SelectorKeySet | string[] | undefined;
         if (isNode(selectorToIndex, N.SelectorList)) {
@@ -584,19 +584,19 @@ export class MixinRegistry extends Registry<
         // but recursive lookup descends with local remainder keys (e.g. [".foo-xxx", ...]).
         if (
           keySetToUse
-          && getSelectorKeyValues(keySetToUse).length > 0
+          && getIndexableSelectorKeys(keySetToUse).length > 0
           && ownSelector
           && !isNode(ownSelector, N.Nil)
         ) {
-          const resolvedKeys = getSelectorKeyValues(keySetToUse);
+          const resolvedKeys = getIndexableSelectorKeys(keySetToUse);
           const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
-          const ownKeys = getSelectorKeyValues(tryGetSelectorKeySet(ownSelector as Selector));
+          const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).data.selector
             : undefined;
           const parentKeys = (
             parentSelector && !isNode(parentSelector, N.Nil)
-              ? getSelectorKeyValues(tryGetSelectorKeySet(parentSelector))
+              ? getIndexableSelectorKeys(tryGetSelectorKeySet(parentSelector))
               : []
           );
           if (
@@ -614,13 +614,13 @@ export class MixinRegistry extends Registry<
         // to index by the callable selector that was explicitly authored.
         if (keySetToUse !== undefined) {
           if (
-            getSelectorKeyValues(keySetToUse).length === 0
+            getIndexableSelectorKeys(keySetToUse).length === 0
             && ownSelector
             && !isNode(ownSelector, N.Nil)
           ) {
             const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector);
-            if (ownKeySet && getSelectorKeyValues(ownKeySet).length) {
-              const ownKeys = getSelectorKeyValues(ownKeySet);
+            if (ownKeySet && getIndexableSelectorKeys(ownKeySet).length) {
+              const ownKeys = getIndexableSelectorKeys(ownKeySet);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
               // In nested `&...` rulesets, ownKeySet may include inherited parent key first.
               // For local lookup chains we want the nested segment as the start key.
