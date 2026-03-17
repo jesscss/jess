@@ -16,10 +16,7 @@ export const transformCallToLess = createFromAdapter<Call>({
     },
     index: (c) => {
       const loc = c.location;
-      if (Array.isArray(loc) || !loc) {
-        return undefined;
-      }
-      return (loc as any).index;
+      return loc.length ? loc[0] : undefined;
     }
   },
   accept: childrenAccept((c) => {

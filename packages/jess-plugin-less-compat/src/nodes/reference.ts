@@ -4,34 +4,42 @@ import { createFromAdapter } from '../transform/adapter.js';
 export const transformReferenceToLess = createFromAdapter<Reference>({
   lessType: (ref) => {
     const refType = ref.options?.type || 'variable';
-    if (refType === 'property') return 'Property';
-    if (refType === 'function' || refType === 'mixin') return 'VariableCall';
+    if (refType === 'property') {
+      return 'Property';
+    }
+    if (refType === 'function' || refType === 'mixin') {
+      return 'VariableCall';
+    }
     return 'Variable';
   },
   fields: {
     name: (ref) => {
       const refType = ref.options?.type || 'variable';
-      const lessType = refType === 'property' ? 'Property'
-        : (refType === 'function' || refType === 'mixin') ? 'VariableCall'
-        : 'Variable';
+      const lessType = refType === 'property'
+        ? 'Property'
+        : (refType === 'function' || refType === 'mixin')
+            ? 'VariableCall'
+            : 'Variable';
       const key = ref.key;
       if (typeof key === 'string') {
-        if (lessType === 'Variable' && !key.startsWith('@')) return `@${key}`;
+        if (lessType === 'Variable' && !key.startsWith('@')) {
+          return `@${key}`;
+        }
         return key;
       }
       return String(key);
     },
     value: (ref) => {
       const refType = ref.options?.type || 'variable';
-      if (refType === 'function' || refType === 'mixin') return ref;
+      if (refType === 'function' || refType === 'mixin') {
+        return ref;
+      }
       return undefined;
     },
     index: (ref) => {
       const loc = ref.location;
-      if (Array.isArray(loc) || !loc) return undefined;
-      return (loc as any).index;
+      return loc.length ? loc[0] : undefined;
     },
-    currentFileInfo: (ref) => ref.location || {}
+    currentFileInfo: ref => ref.location || {}
   }
-  // No accept — leaf behavior (Reference has no children)
 });

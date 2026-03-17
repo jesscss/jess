@@ -11,10 +11,7 @@ export const transformExtendToLess = createFromAdapter<Extend>({
     option: e => e.flag === 1 ? 'exact' : 'all',
     index: (e) => {
       const loc = e.location;
-      if (Array.isArray(loc) || !loc) {
-        return undefined;
-      }
-      return (loc as any).index;
+      return loc.length ? loc[0] : undefined;
     }
   },
   accept: selfVisitAccept()

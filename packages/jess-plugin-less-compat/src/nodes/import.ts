@@ -11,14 +11,11 @@ export const transformImportToLess = createFromAdapter<StyleImport>({
     options: imp => imp.options?.importOptions || {},
     currentFileInfo: (imp) => {
       const loc = imp.location;
-      return (Array.isArray(loc) ? {} : loc) || {};
+      return loc.length ? loc : {};
     },
     index: (imp) => {
       const loc = imp.location;
-      if (Array.isArray(loc) || !loc) {
-        return undefined;
-      }
-      return (loc as any).index;
+      return loc.length ? loc[0] : undefined;
     }
   },
   accept: selfVisitAccept()

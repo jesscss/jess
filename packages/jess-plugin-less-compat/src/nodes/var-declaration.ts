@@ -11,10 +11,7 @@ export const transformVarDeclarationToLess = createFromAdapter<VarDeclaration>({
     },
     index: (v) => {
       const loc = v.location;
-      if (Array.isArray(loc) || !loc) {
-        return undefined;
-      }
-      return (loc as any).index;
+      return loc.length ? loc[0] : undefined;
     }
   },
   accept: singleChildAccept(v => v.value instanceof Node ? v.value as Node : undefined)
