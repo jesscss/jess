@@ -7,6 +7,7 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
+import { EvalSession } from './eval-session.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -439,6 +440,24 @@ export class Context {
 
   /** A flag to clone nodes before mutating */
   preserveOriginalNodes: boolean | undefined;
+
+  /**
+   * Optional evaluation session for mutation isolation.
+   *
+   * When set, field reads/writes should go through session-aware
+   * helpers instead of mutating canonical nodes directly. When
+   * undefined (the default), all behavior is unchanged — nodes
+   * are the source of truth and mutation works as before.
+   *
+   * @see EvalSession
+   */
+  session: EvalSession | undefined;
+
+  /** Create and attach a new EvalSession to this context. */
+  createSession(): EvalSession {
+    this.session = new EvalSession();
+    return this.session;
+  }
 
   _leakyRules: boolean | undefined;
   get leakyRules() {

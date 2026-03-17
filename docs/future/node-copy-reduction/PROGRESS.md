@@ -215,12 +215,40 @@ Each checkbox = one node class converted + tests green.
 
 ---
 
-## Stage 7-13: EvalSession (Future)
+## Stage 7: Introduce EvalSession as Optional Layer
 
-These stages are deferred until Stages 1-6 are complete. See migration.md for details.
+Goal: Define the EvalSession data structure and session-aware helpers as a container-only
+layer. No production eval paths are modified — this stage is purely additive.
 
-- [ ] Stage 7: Introduce EvalSession as optional layer
-- [ ] Stage 8: Session-aware read/write helpers
+- [x] Define `EvalSession` class (`packages/core/src/eval-session.ts`)
+  - `NodePatch` (per-node field overrides via `WeakMap<Node, Record<string, unknown>>`)
+  - `RuntimeState` (parent, index, evaluated, preEvaluated, sourceNode via `WeakMap`)
+  - `ScopeSnapshot` (variables/mixins maps for re-evaluation)
+  - Materialization tracking (`WeakSet<Node>`)
+  - Patch/read API: `patchField`, `getField`, `hasField`, `hasPatches`
+  - Runtime API: `getRuntime`, `hasRuntime`
+  - Scope API: `setScope`, `getScope`
+- [x] Define session-aware helpers (`packages/core/src/tree/util/session-helpers.ts`)
+  - `sessionGetField` / `sessionPatchField` — fall through to direct field access when no session
+  - `sessionGetParent` / `sessionSetParent` — session runtime overlay for parent
+  - `sessionIsEvaluated` / `sessionSetEvaluated` — session runtime overlay for evaluated flag
+- [x] Add `session` field to `Context` with `createSession()` factory
+- [x] Export from core index (`eval-session.js`, `session-helpers.js`)
+- [x] Unit tests (27 passing): isolation, patch/read, no-session parity, scope snapshots, materialization
+- [x] Integration test skeletons (7 skipped): import-type with ambient vars, with/set injection,
+  ambient+with interaction, compose re-imports, no-session compatibility
+
+### Cloning scenarios EvalSession will replace (Stages 8-13)
+1. `import`-type fresh eval — each import pulls in ambient variables, needs isolated session
+2. `with`/`set` injection — override specific variables in the import's scope
+3. Compose re-imports — re-eval cached tree with different context
+4. `multiple`/`_dedupe` — separate output from same source
+
+---
+
+## Stage 8-13: EvalSession Wiring (Future)
+
+- [ ] Stage 8: Session-aware read/write helpers wired into eval
 - [ ] Stage 9: Move import lookup to session scope
 - [ ] Stage 10: Externalize runtime state to session
 - [ ] Stage 11: Copy-on-write materialization

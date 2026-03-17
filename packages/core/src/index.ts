@@ -2,6 +2,7 @@ import '@ungap/set-methods';
 // export * from './scope'
 export * from './tree/index.js';
 export * from './context.js';
+export * from './eval-session.js';
 export * from './logger.js';
 export * from './logger/deprecation-processing.js';
 export * from './plugin.js';
@@ -14,6 +15,7 @@ export * from './tree/util/should-operate.js';
 export * from './tree/util/compare.js';
 export * from './tree/util/cast.js';
 export * from './tree/util/collections.js';
+export * from './tree/util/session-helpers.js';
 export * from './tree/util/print.js';
 export * from './tree/util/serialize-types.js';
 export * from './conversions.js';
