@@ -84,7 +84,7 @@ export function sessionSetParent(
     if (parent) {
       parent.adopt(node);
     } else {
-      node.orphan();
+      (node as any).parent = undefined;
     }
   }
 }
