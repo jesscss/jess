@@ -633,6 +633,80 @@ describe('Mixin', () => {
         }
       `);
     });
+
+    it('should call a namespace mixin using ComplexSelector key (parser pattern)', async () => {
+      // Mirrors the Less parser's AST for:
+      // #theme {
+      //   > .mixin {
+      //     background-color: grey;
+      //   }
+      // }
+      // #container {
+      //   #theme > .mixin();
+      // }
+      const node = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: sel([co('>'), el('.mixin')]),
+              rules: rules([
+                decl({ name: 'background-color', value: any('grey') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('#container'),
+          rules: rules([
+            call({
+              name: ref(
+                { key: sel([el('#theme'), co('>'), el('.mixin')]) },
+                { type: 'mixin-ruleset' }
+              )
+            })
+          ])
+        })
+      ]);
+      let evald = await node.eval(context);
+      const css = evald.toString();
+      expect(css).toContain('background-color: grey');
+    });
+
+    it('should call a namespace mixin using ComplexSelector key with collapseNesting', async () => {
+      // Same as above but with collapseNesting: true (matching Less compiler behavior)
+      const collapseContext = new Context({
+        leakyRules: true,
+        collapseNesting: true
+      });
+      const node = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: sel([co('>'), el('.mixin')]),
+              rules: rules([
+                decl({ name: 'background-color', value: any('grey') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('#container'),
+          rules: rules([
+            call({
+              name: ref(
+                { key: sel([el('#theme'), co('>'), el('.mixin')]) },
+                { type: 'mixin-ruleset' }
+              )
+            })
+          ])
+        })
+      ]);
+      let evald = await node.eval(collapseContext);
+      const css = evald.toString();
+      expect(css).toContain('background-color: grey');
+    });
   });
 
   describe('rest parameter matching and assignment', () => {

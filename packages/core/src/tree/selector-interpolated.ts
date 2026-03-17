@@ -2,8 +2,23 @@ import type { Context } from '../context.js';
 import { defineType } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { Selector } from './selector.js';
+import type { BitSetLibrary } from './util/bitset.js';
 import { Interpolated } from './interpolated.js';
-import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+
+const { isArray } = Array;
+
+function propagateKeySetLibrary(sel: Selector, library: BitSetLibrary<string>) {
+  sel.keySetLibrary = library;
+  let data = sel.data;
+  if (isArray(data)) {
+    for (const child of data as Selector[]) {
+      if (!child.keySetLibrary) {
+        propagateKeySetLibrary(child, library);
+      }
+    }
+  }
+}
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
   type: 'InterpolatedSelector';
@@ -29,7 +44,16 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    return this.data.evalToSelector(context);
+    const result = this.data.evalToSelector(context);
+    const library = context.selectorBits;
+    if (isThenable(result)) {
+      return (result as Promise<Selector>).then((sel) => {
+        propagateKeySetLibrary(sel, library);
+        return sel;
+      });
+    }
+    propagateKeySetLibrary(result as Selector, library);
+    return result;
   }
 
   override valueOf(): string {

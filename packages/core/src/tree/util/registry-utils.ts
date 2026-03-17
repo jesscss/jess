@@ -12,7 +12,7 @@ import type { Declaration } from '../declaration.js';
 import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
-import { type BitSet, isSubsetOf } from './bitset.js';
+import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
 
 const { isArray } = Array;
 
@@ -519,20 +519,51 @@ export class MixinRegistry extends Registry<
       return;
     }
 
-    // Keep `*` in the trailing match path so selectors like `.mixin > *` do not collide
-    // with plain `.mixin` mixin calls. Only pseudo keys are excluded from indexing.
-    const startIndex = candidateKeys.findIndex(key => !key.startsWith('*'));
-    if (startIndex === -1) {
-      return; // Only skip when there is no indexable key (e.g. :hover-only selector)
+    // Only use non-`*` keys as index start keys, but keep `*` in the match path
+    // so selectors like `.mixin > *` do not collide with plain `.mixin` mixin calls.
+    const indexableKeys = candidateKeys.filter(key => !key.startsWith('*'));
+    if (indexableKeys.length === 0) {
+      return;
     }
 
-    const startKey = candidateKeys[startIndex]!;
-    const rest = candidateKeys.slice(startIndex + 1);
-    const existing = index.get(startKey!);
-    if (existing) {
-      existing.push({ value: mixin, match: rest });
-    } else {
-      index.set(startKey!, [{ value: mixin, match: rest }]);
+    // Index under ALL indexable keys so lookups starting with any key can find this entry.
+    // Each entry's `match` contains the OTHER candidate keys (including `*` keys).
+    for (let i = 0; i < indexableKeys.length; i++) {
+      const startKey = indexableKeys[i]!;
+      const rest = candidateKeys.filter(k => k !== startKey);
+      const existing = index.get(startKey);
+      if (existing) {
+        existing.push({ value: mixin, match: rest });
+      } else {
+        index.set(startKey, [{ value: mixin, match: rest }]);
+      }
+    }
+  }
+
+  /**
+   * For un-preEvaluated mixin rules, register child Rulesets/Mixins
+   * so namespace lookup can descend into them. Also propagate
+   * keySetLibrary so selectors can compute their keySets.
+   */
+  private _ensureChildrenRegistered(rules: Rules, selectorBits?: BitSetLibrary<string>) {
+    for (const child of rules.data) {
+      if (isNode(child, N.Ruleset)) {
+        const sel = (child as Ruleset).data.selector;
+        if (sel && selectorBits && !isNode(sel, N.Nil) && !(sel as Selector).keySetLibrary) {
+          (sel as Selector).keySetLibrary = selectorBits;
+          const data = sel.data;
+          if (isArray(data)) {
+            for (const sub of data as Selector[]) {
+              if (!sub.keySetLibrary) {
+                sub.keySetLibrary = selectorBits;
+              }
+            }
+          }
+        }
+        rules.registerNode(child);
+      } else if (isNode(child, N.Mixin)) {
+        rules.registerNode(child);
+      }
     }
   }
 
@@ -602,11 +633,23 @@ export class MixinRegistry extends Registry<
           if (
             parentKeys.length > 0
             && resolvedKeys.length > parentKeys.length
-            && parentKeys.every((k, i) => resolvedKeys[i] === k)
           ) {
-            keySetToUse = resolvedKeys.slice(parentKeys.length);
+            // Use set-based parent key removal (BitSet iteration order is non-deterministic)
+            const parentKeySet = new Set(parentKeys);
+            const localKeys = resolvedKeys.filter(k => !parentKeySet.has(k));
+            if (localKeys.length > 0 && localKeys.length < resolvedKeys.length) {
+              keySetToUse = localKeys;
+            }
           } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
             keySetToUse = ownKeys.slice(1);
+          } else if (
+            parentKeys.length === 0
+            && ownKeys.length > 0
+            && resolvedKeys.length > ownKeys.length
+          ) {
+            // No parent Ruleset in chain (e.g. mixin output), but resolved keys include
+            // implicit parent context. Use ownSelector keys for local indexing.
+            keySetToUse = ownKeys;
           }
         }
         // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
@@ -837,7 +880,7 @@ export class MixinRegistry extends Registry<
           // as a candidate when search.length === 0 && match.length === 0, because that means we found the startKey
           // but haven't fully matched the compound path. The startKey should only be added as a candidate if we're
           // doing a simple lookup (keyList.length === 1), where the startKey IS the full match.
-          if (arraysEqual(match, targetMatch)) {
+          if (arraysEqualAsSet(match, targetMatch)) {
             (candidates ??= new Set()).add(value);
             continue;
           }
@@ -858,6 +901,11 @@ export class MixinRegistry extends Registry<
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.data.rules;
+              // Mixin rules aren't preEvaluated during registration — register
+              // child rulesets/mixins now so namespace lookup can descend.
+              if (!subRules.preEvaluated) {
+                this._ensureChildrenRegistered(subRules, context?.selectorBits);
+              }
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
               // With the new indexing, nested rulesets are indexed by their local visible keys
@@ -881,15 +929,16 @@ export class MixinRegistry extends Registry<
           // This handles cases where match is a prefix of search (e.g., match=[".foo"], search=[".foo", ".bar"])
           // Or when match is empty (ruleset IS the startKey) and we need to search inside for the full search
           const shouldRecurse = search.length > 0 && (search.length > match.length || match.length === 0);
-          const isPrefix = match.length > 0 && arraysEqual(match, search.slice(0, match.length));
+          const matchKeysInSearch = match.length > 0 && arrayContainsAll(search, match);
           if (shouldRecurse) {
             let searchKeys: string[];
             if (match.length === 0) {
               // Match is empty, meaning this ruleset IS the startKey, search inside for the full search
               searchKeys = search;
-            } else if (isPrefix) {
-              // Match is a prefix of search, search for the remainder after the match
-              searchKeys = search.slice(match.length);
+            } else if (matchKeysInSearch) {
+              // Match keys are all contained in search — remove them (set-based) to get the remainder
+              const matchSet = new Set(match);
+              searchKeys = search.filter(k => !matchSet.has(k));
             } else {
               // Match is not a prefix of search - skip this ruleset, it doesn't match
               continue;
@@ -899,6 +948,9 @@ export class MixinRegistry extends Registry<
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.data.rules;
+              if (!subRules.preEvaluated) {
+                this._ensureChildrenRegistered(subRules, context?.selectorBits);
+              }
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
               subMixinRegistry.find(searchKeys, filterType, {
@@ -919,6 +971,10 @@ export class MixinRegistry extends Registry<
       const candidateSizeBefore = candidates ? candidates.size : 0;
       const candidatesBefore = candidateSizeBefore > 0 ? new Set(candidates) : undefined;
       // Reuse a single child search options object
+      // For compound paths (keyList.length > 1), the first segment acts as a namespace
+      // target — allow searching inside mixin output rulesets so that e.g.
+      // `.Person("Male")` output containing `.person { .sayGender() {} }` is reachable.
+      const childHasTarget = hasTarget || keyList.length > 1;
       if (!mixinChildSearchOpts) {
         mixinChildSearchOpts = {
           searchParents: false,
@@ -928,7 +984,7 @@ export class MixinRegistry extends Registry<
           childFilterType: filterType,
           context,
           filter: options?.filter,
-          hasTarget,
+          hasTarget: childHasTarget,
           searchedRules
         };
       } else {
@@ -1443,4 +1499,35 @@ function arraysEqual(a: string[], b: string[]) {
     }
   }
   return true;
+}
+
+/**
+ * Does `a` contain all elements of `b`? (order-independent)
+ *
+ * Uses linear scan instead of `Set.prototype.isSubsetOf` because
+ * selector key arrays are typically 1–3 elements, where the overhead
+ * of allocating a Set dominates.
+ */
+function arrayContainsAll(a: string[], b: string[]): boolean {
+  if (b.length > a.length) {
+    return false;
+  }
+  if (b.length === 0) {
+    return true;
+  }
+  // For small arrays, just use includes
+  for (const item of b) {
+    if (!a.includes(item)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Are `a` and `b` equal as unordered sets? See {@link arrayContainsAll}. */
+function arraysEqualAsSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return arrayContainsAll(a, b);
 }
