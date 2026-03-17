@@ -19,7 +19,6 @@ import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
-import type { BitSet } from './util/bitset.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -79,12 +78,34 @@ export type ReferenceOptions = {
 };
 const { isArray } = Array;
 
+/**
+ * Extract mixin reference keys from a selector in document order,
+ * skipping combinators. For `#theme > .mixin`, returns `["#theme", ".mixin"]`.
+ *
+ * Must preserve the original selector child order (not bitset order)
+ * so that MixinRegistry lookup uses the correct startKey.
+ */
 function getSelectorReferenceKeys(selector: Selector): string[] {
-  const keySet = selector.keySet as Set<string> | BitSet<string>;
-  if (keySet instanceof Set) {
-    return [...keySet];
+  const { data } = selector;
+  if (isArray(data)) {
+    const keys: string[] = [];
+    for (const child of data) {
+      if (isNode(child, N.Combinator)) {
+        continue;
+      }
+      if (isNode(child, N.Selector)) {
+        keys.push(...getSelectorReferenceKeys(child as Selector));
+      } else {
+        const val = String(child.valueOf());
+        if (val) {
+          keys.push(val);
+        }
+      }
+    }
+    return keys;
   }
-  return keySet._library?.valuesOf(keySet) ?? [];
+  const val = String(selector.valueOf());
+  return val ? [val] : [];
 }
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
