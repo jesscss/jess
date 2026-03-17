@@ -283,9 +283,37 @@ in Stage 9, at which point these helpers will route through the session overlay.
 
 ---
 
-## Stage 9-13: EvalSession Wiring (Future)
+## Stage 9: Session-Based `with`/`set` Variable Injection
 
-- [ ] Stage 9: Move import lookup to session scope
+Goal: Replace `rules.clone(true)` (O(N) deep clone) in `StyleImport.evalNode()` when
+processing `with`/`set` variable injection with a linear scan + session-based approach.
+
+- [x] Remove `rules.clone(true)` from the `withValues` branch in `import-style.ts`
+- [x] Build `topLevelVarIndex` (name → position map) via linear scan of imported rules
+- [x] Build `replacementAt` (position → injected node) for vars that are overridden
+- [x] Build `newVariables` list for injected vars with no counterpart in the library
+- [x] Construct `finalRules = Rules.create([])` with injected-first ordering:
+  - New variables (no library counterpart) first
+  - Then canonical nodes with replacements applied
+- [x] Wrap the `preEval` + `eval` call in a session (`context.createSession()`)
+  - Session is created only when `withValues` is set
+  - `context.session` is restored in a `finally` block
+- [x] Fix `import-style.test.ts` `with values` block: use correct `withNode`/`withType`
+  fields on `StyleImportValue` (not `with: { node, type }`)
+- [x] Remove active debug logging from `node-base.ts` `adopt()` and `registry-utils.ts`
+  `DeclarationRegistry.find()`
+
+### Test results — post Stage 9
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 932 passed | 24 skipped
+  - Down from 10 failed files / 34 failed tests at Stage 6 baseline
+  - `import-style` with-values tests all pass (previously 7 failing)
+  - All remaining failures are pre-existing (same set as Stage 6/7/8 baseline)
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+---
+
+## Stage 10-13: EvalSession Wiring (Future)
+
 - [ ] Stage 10: Externalize runtime state to session
 - [ ] Stage 11: Copy-on-write materialization
 - [ ] Stage 12: Remove preserveOriginalNodes

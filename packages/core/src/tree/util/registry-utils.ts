@@ -1400,17 +1400,15 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       do {
         rules = rules?.parent as Rules;
-        /** If we're searching linearly, update the start position to the parent node index */
-        /**
-         * If we reach an import boundary, stop unless it's an `@import`
-         * which means these rules can reach into the parent file that imports
-         * this one.
-         */
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
         }
       } while (rules && rules.type !== 'Rules');
+      // The start constraint only applies within the originating scope.
+      // When walking up to a parent scope, drop it so declarations at any
+      // position in the parent are eligible.
+      start = undefined;
     }
     if (options && newReadonly) {
       options.readonly = true;

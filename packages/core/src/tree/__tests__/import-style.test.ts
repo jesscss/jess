@@ -517,12 +517,10 @@ describe('Style import', () => {
       const node = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'primaryColor', value: any('purple') })
-            ]) as any,
-            type: 'with'
-          }
+          withNode: rules([
+            vardecl({ name: 'primaryColor', value: any('purple') })
+          ]) as any,
+          withType: 'with'
         }, {
           type: 'compose',
           namespace: '*'
@@ -567,12 +565,10 @@ describe('Style import', () => {
       const node = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'primaryColor', value: any('orange') })
-            ]) as any,
-            type: 'set'
-          }
+          withNode: rules([
+            vardecl({ name: 'primaryColor', value: any('orange') })
+          ]) as any,
+          withType: 'set'
         }, {
           type: 'compose',
           namespace: '*'
@@ -615,12 +611,10 @@ describe('Style import', () => {
       const node = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'baseColor', value: any('blue') })
-            ]) as any,
-            type: 'with'
-          }
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('blue') })
+          ]) as any,
+          withType: 'with'
         }, {
           type: 'compose',
           namespace: '*'
@@ -655,12 +649,10 @@ describe('Style import', () => {
       const node = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'baseColor', value: any('green') })
-            ]) as any,
-            type: 'with'
-          }
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('green') })
+          ]) as any,
+          withType: 'with'
         }, {
           type: 'compose',
           namespace: '*'
@@ -695,12 +687,10 @@ describe('Style import', () => {
       const node = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'baseColor', value: any('yellow') })
-            ]) as any,
-            type: 'set'
-          }
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('yellow') })
+          ]) as any,
+          withType: 'set'
         }, {
           type: 'compose',
           namespace: '*'
@@ -735,12 +725,10 @@ describe('Style import', () => {
       const node = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'baseColor', value: any('cyan') })
-            ]) as any,
-            type: 'set'
-          }
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('cyan') })
+          ]) as any,
+          withType: 'set'
         }, {
           type: 'compose',
           namespace: '*'
@@ -781,12 +769,10 @@ describe('Style import', () => {
       const node1 = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'var', value: any('first') })
-            ]) as any,
-            type: 'set'
-          }
+          withNode: rules([
+            vardecl({ name: 'var', value: any('first') })
+          ]) as any,
+          withType: 'set'
         }, {
           type: 'compose',
           namespace: '*'
@@ -798,12 +784,10 @@ describe('Style import', () => {
       const node2 = rules([
         style({
           path: quoted(any('library.jess')),
-          with: {
-            node: rules([
-              vardecl({ name: 'var', value: any('second') })
-            ]) as any,
-            type: 'set'
-          }
+          withNode: rules([
+            vardecl({ name: 'var', value: any('second') })
+          ]) as any,
+          withType: 'set'
         }, {
           type: 'compose',
           namespace: '*'
