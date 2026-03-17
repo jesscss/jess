@@ -148,7 +148,7 @@ describe('Control Nodes', () => {
   it('creates For with single var binding', () => {
     const singleVar = makePattern(['value'], 'single') as VarDeclaration;
     const forNode = new For({ vars: singleVar, iterable: list([new Any('a')]), rules: rules([]) });
-    expect(forNode.data.vars).toBe(singleVar);
+    expect(forNode.vars).toBe(singleVar);
   });
 
   it('forces public rulesVisibility for $if and $for rules', () => {
@@ -176,13 +176,13 @@ describe('Control Nodes', () => {
         }
       })
     });
-    expect(ifNode.data.bodies[0]!.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.data.bodies[0]!.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.data.bodies[0]!.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.data.bodies[0]!.options.rulesVisibility.Mixin).toBe('public');
-    expect(forNode.data.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(forNode.data.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(forNode.data.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(forNode.data.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.bodies[0]!.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.bodies[0]!.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.bodies[0]!.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.bodies[0]!.options.rulesVisibility.Mixin).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
   });
 });
