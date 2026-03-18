@@ -496,7 +496,6 @@ function applyInstructionToRuleset(
 ): { matched: boolean; changed: boolean } {
   const targetInfo = getCachedTargetInfo(cache, ruleset, instruction);
   if (!targetInfo) {
-    clearExtendedRuleset(ruleset);
     return { matched: false, changed: false };
   }
 
@@ -508,11 +507,6 @@ function applyInstructionToRuleset(
   if (!targetMatch.partialMatch) {
     return { matched: false, changed: false };
   }
-
-  if (!ruleset.data.selectorBeforeExtend && ruleset.data.selector && !isNode(ruleset.data.selector, N.Nil)) {
-    ruleset.setData('selectorBeforeExtend', ruleset.data.selector.copy(true) as Selector);
-  }
-
   if (
     isNodeInsideRules(instruction.extendNode, ruleset.data.rules)
     && instruction.extendWith.valueOf() === targetInfo.selector.valueOf()
@@ -522,12 +516,18 @@ function applyInstructionToRuleset(
     return { matched: true, changed: false };
   }
 
-  if (selectorMatch(instruction.extendWith, targetInfo.selector, targetInfo.parent).fullMatch) {
+  const extendWithVal = instruction.extendWith.valueOf();
+  const extendWithAlreadyTopLevel = isNode(targetInfo.selector, N.SelectorList)
+    ? (targetInfo.selector.data as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
+    : targetInfo.selector.valueOf() === extendWithVal;
+  if (extendWithAlreadyTopLevel) {
     activateExtendedRuleset(ruleset, targetInfo.selector);
     return { matched: true, changed: false };
   }
 
-  const before = targetInfo.selector.valueOf();
+  const originalSelectorCopy = (!ruleset.data.selectorBeforeExtend && ruleset.data.selector && !isNode(ruleset.data.selector, N.Nil))
+    ? ruleset.data.selector.copy(true) as Selector
+    : undefined;
   const result = tryExtendSelector(
     targetInfo.selector,
     instruction.target,
@@ -536,17 +536,19 @@ function applyInstructionToRuleset(
     targetInfo.parent
   );
   if (result.error) {
-    if (instruction.extendWith.valueOf() === instruction.target.valueOf()) {
+    if (instruction.extendWith.valueOf() === targetInfo.selector.valueOf()) {
       activateExtendedRuleset(ruleset, targetInfo.selector);
     }
     return { matched: true, changed: false };
   }
 
-  const after = result.value.valueOf();
-  activateExtendedRuleset(ruleset, result.value);
-  if (before === after) {
+  if (!result.isChanged) {
     return { matched: true, changed: false };
   }
+  if (originalSelectorCopy) {
+    ruleset.setData('selectorBeforeExtend', originalSelectorCopy);
+  }
+  activateExtendedRuleset(ruleset, result.value);
 
   const shouldHoist = (
     result.value.hoistToRoot

@@ -9,7 +9,7 @@ import { N } from '../node-type.js';
 import { getImplicitSelector, getParentReplacementForAmpersand, wrapParentSelectorForNestedContext } from './selector-utils.js';
 import { selectorMatch } from './selector-match-core.js';
 import type { Node } from '../node.js';
-import { F_AMPERSAND } from '../node-base.js';
+import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node-base.js';
 
 /**
  * @todo Once extend correctness is stabilized and the remaining suites are
@@ -60,18 +60,20 @@ export class ExtendError extends Error {
 export interface ExtendResult {
   value: Selector;
   error?: ExtendError;
+  isChanged: boolean;
 }
 
 /** Creates a successful extend result around the mutated or rewritten selector. */
-function createSuccessResult(value: Selector): ExtendResult {
-  return { value };
+function createSuccessResult(value: Selector, isChanged = true): ExtendResult {
+  return { value, isChanged };
 }
 
 /** Creates a failed extend result while preserving the original selector. */
 function createErrorResult(value: Selector, type: ExtendErrorType, message: string): ExtendResult {
   return {
     value,
-    error: new ExtendError(type, message)
+    error: new ExtendError(type, message),
+    isChanged: false
   };
 }
 
@@ -224,8 +226,17 @@ function createAlternativeSelector(
 /**
  * Wraps one matched selector fragment in a generated `:is(original, extendWith)`
  * pseudo so partial extends can preserve unmatched siblings around it.
+ *
+ * When `selector` and `extendWith` are identical (e.g. `.class:extend(.class all)`),
+ * no wrapper is needed — the fragment is marked visible in place and returned as-is.
  */
 function wrapSelectorInIs(selector: Selector, extendWith: Selector): Selector {
+  if (selector.valueOf() === extendWith.valueOf()) {
+    selector.addFlag(F_EXTENDED);
+    selector.addFlag(F_VISIBLE);
+    return selector;
+  }
+
   const arg = SelectorList.create([
     selector,
     extendWith.copy(true) as Selector
@@ -435,12 +446,14 @@ function wrapCompoundMatchRange(
     : Array.from({ length: endIndex - startIndex + 1 }, (_, offset) => startIndex + offset);
   const outsideMembers = getCompoundMembersOutsideRange(targetCompound, startIndex, endIndex, matchedIndices);
   const matched = effectiveMatchedIndices.map(index => targetCompound.data[index]!);
+  const matchedSingle = matched.length === 1 ? matched[0]! : undefined;
   const wrapped = wrapSelectorInIs(
-    matched.length === 1
-      ? matched[0]!
-      : CompoundSelector.create(matched).inherit(targetCompound) as Selector,
+    matchedSingle ?? CompoundSelector.create(matched).inherit(targetCompound) as Selector,
     stripRedundantCompoundContext(extendWith, outsideMembers)
   );
+  if (matchedSingle && wrapped === matchedSingle) {
+    return targetCompound;
+  }
   const nextData: Selector[] = [];
   const matchedIndexSet = new Set(effectiveMatchedIndices);
 
@@ -910,7 +923,7 @@ function tryExtendDirectChildSelector(
       target.hoistToRoot = true;
     }
   }
-  return createSuccessResult(target);
+  return createSuccessResult(target, nested.isChanged);
 }
 
 /**
@@ -1308,7 +1321,7 @@ function tryHandleMultiDirectChildFullMatches(
       );
       const conflict = getCompoundConflictError(outsideMembers, extendWith);
       if (conflict) {
-        return { value: target, error: conflict };
+        return { value: target, error: conflict, isChanged: false };
       }
 
       if (isNode(child, N.CompoundSelector | N.ComplexSelector | N.PseudoSelector | N.SelectorList)) {
@@ -1450,6 +1463,9 @@ export function tryExtendSelector(
     replacement: Selector,
     preserveRootKinds: number
   ): ExtendResult => {
+    if (replacement === target) {
+      return finalize(createSuccessResult(target, false));
+    }
     if (isNode(replacement, preserveRootKinds)) {
       target.setData([...(replacement as SelectorList | ComplexSelector | CompoundSelector).data] as any);
       markTargetHoist();
@@ -1474,7 +1490,7 @@ export function tryExtendSelector(
     }
 
     markTargetHoist(!!nested.value.hoistToRoot);
-    return finalize(createSuccessResult(target));
+    return finalize(createSuccessResult(target, nested.isChanged));
   };
   const tryHandleRootSingleSlotPartial = (): ExtendResult | undefined => {
     const rootIsOrdered = isNode(target, N.ComplexSelector) || isNode(target, N.CompoundSelector);
@@ -1505,7 +1521,7 @@ export function tryExtendSelector(
     if (isNode(target, N.CompoundSelector)) {
       const conflict = getCompoundConflictError(compoundOutsideMembers!, extendWith);
       if (conflict) {
-        return { value: target, error: conflict };
+        return { value: target, error: conflict, isChanged: false };
       }
     }
 
@@ -1525,13 +1541,14 @@ export function tryExtendSelector(
       if (!nested.error) {
         target.setData(location.startIndex, nested.value);
         markTargetHoist(!!nested.value.hoistToRoot);
-        return finalize(createSuccessResult(target));
+        return finalize(createSuccessResult(target, nested.isChanged));
       }
     }
 
-    target.setData(location.startIndex, wrapSelectorInIs(existing, stripRedundantCompoundContext(extendWith, compoundOutsideMembers ?? [])));
+    const wrapped = wrapSelectorInIs(existing, stripRedundantCompoundContext(extendWith, compoundOutsideMembers ?? []));
+    target.setData(location.startIndex, wrapped);
     markTargetHoist();
-    return finalize(createSuccessResult(target));
+    return finalize(createSuccessResult(target, wrapped !== existing));
   };
   const tryHandleRootMultiSlotPartial = (): ExtendResult | undefined => {
     if (
@@ -1561,7 +1578,7 @@ export function tryExtendSelector(
       );
       const conflict = getCompoundConflictError(outsideMembers, extendWith);
       if (conflict) {
-        return { value: target, error: conflict };
+        return { value: target, error: conflict, isChanged: false };
       }
 
       const pulledIntoNestedIs = tryPullCompoundMatchIntoNestedIsBranch(target, location, find, extendWith);
@@ -1641,7 +1658,7 @@ export function tryExtendSelector(
             extendWith
           );
           if (conflict) {
-            return { value: target, error: conflict };
+            return { value: target, error: conflict, isChanged: false };
           }
 
           replacement = wrapCompoundMatchRange(
@@ -1667,7 +1684,7 @@ export function tryExtendSelector(
             extendWith
           );
           if (conflict) {
-            return { value: target, error: conflict };
+            return { value: target, error: conflict, isChanged: false };
           }
         }
       }
@@ -1675,9 +1692,10 @@ export function tryExtendSelector(
       replacement = wrapSelectorInIs(location.containingNode as Selector, extendWith);
     }
 
+    const childChanged = replacement !== (location.containingNode as Selector);
     if (replaceDirectSelectorChild(target, location.containingNode as Selector, replacement)) {
       markTargetHoist();
-      return finalize(createSuccessResult(target));
+      return finalize(createSuccessResult(target, childChanged));
     }
 
     return undefined;

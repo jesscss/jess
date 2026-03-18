@@ -1140,14 +1140,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Nil '')
           ]
         )
-      selectorBeforeExtend: 
-        (CompoundSelector
-          [
-            (BasicSelector '.v')
-            (BasicSelector '.u')
-            (BasicSelector '.v')
-          ]
-        )
     )
     (Comment '// circular reference because the new extend product will match the existing extend')
     (Ruleset
@@ -1197,14 +1189,6 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
         (Rules
           [
             (Nil '')
-          ]
-        )
-      selectorBeforeExtend: 
-        (CompoundSelector
-          [
-            (BasicSelector '.v')
-            (BasicSelector '.w')
-            (BasicSelector '.v')
           ]
         )
     )
