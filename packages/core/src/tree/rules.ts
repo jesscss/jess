@@ -31,6 +31,7 @@ import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import { sessionSetIndex } from './util/session-helpers.js';
+import { EvalSession } from '../eval-session.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -2464,15 +2465,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
 
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = (candidate as any).guard?.copy(true);
+      const canonicalGuard: Condition | Bool | undefined = (candidate as any).guard;
       let passes = true;
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
       thisContext.rulesContext = outerRules ?? rules;
+      const prevGuardSession = thisContext.session;
       try {
-        if (guard) {
+        if (canonicalGuard) {
+          // Create a fresh session so that adopt() and eval() mutations (parent, evaluated,
+          // preEvaluated) go to the session overlay and never corrupt canonical guard state.
+          thisContext.session = new EvalSession();
           outerRules ??= Rules.create([]);
-          outerRules.adopt(guard);
+          outerRules.adopt(canonicalGuard, thisContext);
           candidate.parent!.adopt(outerRules);
           /** Allow lookup on the inherited rules */
           passes = false;
@@ -2481,14 +2486,21 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const probeGuard = (candidate as any).guard?.copy(true);
-              if (!probeGuard) {
+              const guardNode = (candidate as any).guard as Condition | Bool | undefined;
+              if (!guardNode) {
                 return false;
               }
-              outerRules!.adopt(probeGuard);
-              thisContext.isDefault = isDefaultValue;
-              const probeResult = await probeGuard.eval(thisContext);
-              return probeResult instanceof Bool && probeResult.value === true;
+              // Fresh session per probe so each sees clean evaluated/preEvaluated state.
+              const prevSession = thisContext.session;
+              thisContext.session = new EvalSession();
+              try {
+                outerRules!.adopt(guardNode, thisContext);
+                thisContext.isDefault = isDefaultValue;
+                const probeResult = await guardNode.eval(thisContext);
+                return probeResult instanceof Bool && probeResult.value === true;
+              } finally {
+                thisContext.session = prevSession;
+              }
             };
             const passWhenDefaultFalse = await evalWithDefault(false);
             const passWhenDefaultTrue = await evalWithDefault(true);
@@ -2515,29 +2527,32 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           } else {
             /** All nodes need context to be evaluated */
             thisContext.isDefault = false;
-            guard = await guard.eval(thisContext);
+            const evaldGuard = await canonicalGuard.eval(thisContext);
             /** Less guards only pass on explicit Bool(true), never JS truthiness. */
-            guardPasses = guard instanceof Bool && guard.value === true;
+            guardPasses = evaldGuard instanceof Bool && evaldGuard.value === true;
             if (guardPasses) {
               passes = true;
               hasDefNoneCandidate = true;
             }
           }
+          // Guard eval done — restore session before candidate output evaluation.
+          thisContext.session = prevGuardSession;
         }
         if (!passes) {
           continue;
         }
-        if (!guard || !hasDefault) {
+        if (!canonicalGuard || !hasDefault) {
           // Non-default candidates are equivalent to Less's defNone group
           // (match regardless of default() assumption), so they suppress ambiguity.
           hasDefNoneCandidate = true;
         }
-        if (guard && hasDefault) {
+        if (canonicalGuard && hasDefault) {
           continue;
         }
         await evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params);
       } finally {
         thisContext.rulesContext = rulesContext;
+        thisContext.session = prevGuardSession;
       }
     }
 
