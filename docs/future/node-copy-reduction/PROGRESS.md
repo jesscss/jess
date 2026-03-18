@@ -425,9 +425,67 @@ active for all import eval paths, `maybeClone` can gate on `!!context.session` i
 
 ---
 
-## Stage 13: Expand Beyond Imports, Clean Up (Future)
+## Stage 13: Expand Beyond Imports, Clean Up
 
-- [ ] Stage 13: Expand beyond imports, clean up
+### Stage 13a: Session-Isolate Mixin Guard Evaluation
+
+Goal: Eliminate `guard.copy(true)` calls in the mixin resolution loop in `rules.ts`.
+
+- [x] Replace 3 `guard.copy(true) + adopt(guard) + guard.eval()` patterns with a session-based
+  evaluation block that evaluates the canonical guard node directly
+- [x] `prevGuardSession` save/restore pattern ensures session is always restored in `finally`
+- [x] Each `evalWithDefault` probe gets its own inner session for fresh evaluated/preEvaluated state
+- [x] Canonical guard nodes always have `evaluated = false` because they were only ever evaluated
+  as copies — session isolation is safe with no `resetEvalStateDeep` needed
+
+### Stage 13b: Fix `PseudoSelector.valueOf()` and `CompoundSelector.valueOf()` bugs
+
+Pre-existing test failures (3 in process-leading-is, 1 snapshot in extend-eval-integration)
+were caused by incorrect normalization added to these two `valueOf()` methods.
+
+- [x] `PseudoSelector.valueOf()`: Remove the `:is(BasicSelector|CompoundSelector)` normalization
+  that stripped the `:is(...)` wrapper from the value string. Non-generated `:is(.x)` should
+  preserve `:is(.x)` in `valueOf()`; inner generated `:is(.inner)` returned from
+  `processLeadingIs` should also preserve its form.
+- [x] `CompoundSelector.valueOf()`: Constrain the `:is()` component flattening to only apply when
+  the arg is a CompoundSelector (recurse into its components). Non-CompoundSelector args (e.g.
+  SelectorList) now fall through to `component.valueOf()` directly.
+- [x] Update stale `extend-eval-integration` snapshot (outdated from dev merge)
+
+### Test results — post Stage 13
+
+- **Core**: 7 failed | 61 passed | 3 skipped (71 total); 23 failed | 938 passed | 24 skipped
+  - Down from 9 failed files / 27 failed tests at Stage 12 baseline
+  - Remaining 7 failed files are all pre-existing from dev merge:
+    - `ampersand` — selector ordering during collapsing (6 tests)
+    - `at-rule` / `at-rule-basic` — parent selector prepended incorrectly inside @media (6 tests)
+    - `mixin` — mixin scope / parent context issues (2 tests)
+    - `nesting-collapse` — nesting collapse edge cases (1 test)
+    - `flags-static-optimization` — test helper using `node.value` traversal hits infinite recursion
+      after Stage 1-3 instance fields migration (4 tests)
+    - `fast-reject` — pre-existing (1 test)
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+### What's blocked for further Stage 13 work
+
+The remaining large clone sites cannot be session-isolated without additional infrastructure:
+
+1. **Mixin body eval** (`rules.ts:2313, 2336, 2348`) — Blocked on:
+   - `resetEvalStateDeep` resets Ruleset `selector` field (pre-composition recovery) and
+     Ampersand `_selectorContainer`/`_storedSelector` caches. These are structural mutations
+     during re-evaluation in a new context that require session-local field storage.
+   - Generic `sessionPatchField`/`sessionGetField` exists, but `Ruleset.preEval` and
+     `Ampersand.eval` would need to read from session instead of canonical fields.
+
+2. **`$for` loop** (`control.ts:244`) — Blocked on:
+   - `loopRules.unshift(varDecl)` injects a per-iteration loop variable into the cloned array.
+   - Session-local children arrays (`sessionGetChildren` returning a per-session copy of
+     `rules.value`) would be needed to support `unshift` without mutating canonical array.
+   - `Rules.preEval`/`evalStatic` would need to use `sessionGetChildren` instead of `this.value`.
+
+3. **Compose cached re-eval** (`import-style.ts:566`) — Blocked on session-local registries.
+   The comment says "clone BEFORE evaluation so registries are populated on the clone" — without
+   session-local registry state, canonical `evaldTrees` entry would get registration side effects.
 
 ---
 
