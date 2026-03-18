@@ -129,12 +129,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
        *
        * @todo 1n === n, 2n + 0 === 2n
        */
-      if (name === ':is' && arg && isNode(arg, N.BasicSelector | N.CompoundSelector)) {
-        /** Simples and compounds can be normalized */
-        valueOf = String(arg.valueOf());
-      } else {
-        valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
-      }
+      valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
 
       this._valueOf = valueOf;
     }
