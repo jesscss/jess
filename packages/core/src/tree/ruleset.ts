@@ -177,6 +177,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !this.selectorBeforeExtend
       && ownSelector
       && !(ownSelector instanceof Nil)
+      && ownSelector.valueOf() !== selector.valueOf()
     ) {
       let parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
       if (parentSelector && !(parentSelector instanceof Nil)) {
@@ -547,15 +548,23 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         (sel) => {
           // If ownSelector has non-static children (e.g. interpolated attr values),
           // evaluate it so extend matching uses the resolved form.
+          // Evaluate with collapseNesting=false so Ampersand nodes stay lazy
+          // (pointing at their parent container) rather than expanding into
+          // :is(parent). The combined selector was already correctly composed
+          // by getImplicitSelectorUtil; expanding & here corrupts the relative
+          // form and causes getEffectiveSelector to prepend the parent twice.
           if (
             ownSelector
             && !isNode(ownSelector, N.Nil)
             && ownSelector !== selector
             && ownSelector.hasFlag(F_NON_STATIC)
           ) {
+            const savedCollapseNesting = context.opts.collapseNesting;
+            context.opts.collapseNesting = false;
             return pipe(
               () => ownSelector.eval(context),
               (evaledOwn) => {
+                context.opts.collapseNesting = savedCollapseNesting;
                 (node.options as RulesetOptions).ownSelector = evaledOwn as Selector;
                 return sel;
               }

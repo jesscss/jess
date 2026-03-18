@@ -148,7 +148,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
           if (node.type !== 'Call') {
             return node;
           }
-          const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
+          const callName = String((node as unknown as { name?: Node }).name?.valueOf?.() ?? '');
           if (callName === 'default' || callName === '??') {
             return new Bool(Boolean(context.isDefault));
           }
@@ -162,6 +162,5 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     );
   }
 }
-
 
 export const condition = defineType(Condition, 'Condition');

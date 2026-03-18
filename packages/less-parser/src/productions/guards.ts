@@ -298,6 +298,13 @@ export function comparison(this: P, ctx: RuleContext = {}) {
     { ALT: () => $.CONSUME($.T.LtEqAlias) }
   ]);
   let right = $.valueList(ctx);
+  if (isDefaultGuardCall(right)) {
+    ctx.hasDefault = true;
+    const location = Array.isArray(right.location) && right.location.length === 6
+      ? right.location as LocationInfo
+      : undefined;
+    right = new DefaultGuard('default()', undefined, location, $.context);
+  }
   let opStr = op.image;
   if (opStr === '=>') {
     opStr = '>=';

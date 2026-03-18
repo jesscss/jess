@@ -2,8 +2,29 @@ import type { Context } from '../context.js';
 import { defineType, Node, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { Selector } from './selector.js';
+import type { BitSetLibrary } from './util/bitset.js';
 import { Interpolated } from './interpolated.js';
-import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+
+const { isArray } = Array;
+
+function propagateKeySetLibrary(sel: Selector, library: BitSetLibrary<string>) {
+  sel.keySetLibrary = library;
+  const childKeys = (sel.constructor as typeof Node).childKeys;
+  if (!childKeys) {
+    return;
+  }
+  for (const key of childKeys) {
+    const field = (sel as unknown as Record<string, unknown>)[key];
+    if (isArray(field)) {
+      for (const child of field as Selector[]) {
+        if (child && !child.keySetLibrary) {
+          propagateKeySetLibrary(child, library);
+        }
+      }
+    }
+  }
+}
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
   type: 'InterpolatedSelector';
@@ -41,13 +62,21 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    return this.value.evalToSelector(context);
+    const result = this.value.evalToSelector(context);
+    const library = context.selectorBits;
+    if (isThenable(result)) {
+      return (result as Promise<Selector>).then((sel) => {
+        propagateKeySetLibrary(sel, library);
+        return sel;
+      });
+    }
+    propagateKeySetLibrary(result as Selector, library);
+    return result;
   }
 
   override valueOf(): string {
     return this.value.valueOf();
   }
 }
-
 
 export const interpolatedSelector = defineType(InterpolatedSelector, 'InterpolatedSelector', 'interpolated-selector');

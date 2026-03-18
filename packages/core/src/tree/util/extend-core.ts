@@ -3,6 +3,7 @@ import { SelectorList } from '../selector-list.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { PseudoSelector } from '../selector-pseudo.js';
+import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { getImplicitSelector, getParentReplacementForAmpersand, wrapParentSelectorForNestedContext } from './selector-utils.js';
@@ -601,6 +602,15 @@ function materializeCrossedTarget(
     return undefined;
   }
 
+  // When both are SelectorLists, produce :is(parent) :is(inner) to avoid
+  // duplicating the parent prefix across every alternative.
+  if (isNode(target, N.SelectorList) && isNode(parent, N.SelectorList)) {
+    const parentFragment = wrapParentSelectorForNestedContext(parent, false) as Selector;
+    const innerIs = PseudoSelector.create({ name: ':is', arg: target.copy(true) as Selector }) as PseudoSelector;
+    innerIs.generated = true;
+    return ComplexSelector.create([parentFragment, Combinator.create(' '), innerIs as Selector]).inherit(target) as Selector;
+  }
+
   return getImplicitSelector(target, parent, false);
 }
 
@@ -1194,6 +1204,13 @@ function createExactExtendResult(
     isNode(target, N.SelectorList)
     || (isNode(target, N.PseudoSelector) && target.name === ':is' && isNode(target.arg, N.Selector))
   ) {
+    // When the match crossed a parent boundary, materialize before appending.
+    if (crossedAmpersand) {
+      const resolved = materializeCrossedTarget(target, parent);
+      if (resolved) {
+        return finalize(createSuccessResult(createAlternativeSelector(resolved, extendWith)));
+      }
+    }
     return finalize(createSuccessResult(createAlternativeSelector(target, extendWith)));
   }
 

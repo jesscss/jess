@@ -175,7 +175,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
     if (this.usedSkippedTokens.has(skipped)) {
       return 0;
     }
-    this.usedSkippedTokens.add(skipped);
+    this.addUsedSkippedTokens(skipped);
 
     let pre: Node['pre'] = skipped.map((token: IToken) => {
       let name = token.tokenType.name;
