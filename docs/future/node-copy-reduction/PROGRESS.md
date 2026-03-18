@@ -470,9 +470,28 @@ were caused by incorrect normalization added to these two `valueOf()` methods.
     - `fast-reject` — `:is(SelectorList)` full-match in selectorMatch (2 tests)
 - **Less-compat**: 9 passed | 54/54 tests pass (no regression)
 
+### Test results — post `617056ee` (Ampersand.clone() fix)
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 14 failed | 951 passed | 24 skipped
+  - Ampersand.clone() regression fixed: `appendValue` and `_selectorContainer` now preserved
+    across shallow clone; 5 ampersand tests and others restored to passing
+
 ### What's blocked for further Stage 13 work
 
-The remaining large clone sites cannot be session-isolated without additional infrastructure:
+The remaining large clone sites cannot be safely replaced with `clone(false)` without sessions.
+
+**Root cause: `clone(false)` without a session mutates canonical children's parents.**
+`node-base.ts clone()` (lines 986-1028) has a session-aware save/restore mechanism for
+canonical parent pointers, but it only activates when `ctx?.session` is truthy. Without a
+session, the constructor's `adopt()` calls permanently overwrite canonical children's `.parent`
+fields. Concretely: `outerRules.push(...rules.value)` (Site 3) followed by
+`outerRules.clone(false)` causes double-adopt of canonical declarations, corrupting the scope
+lookup chain across multiple mixin calls. `resetEvalStateDeep` was masking this by resetting
+state, but the underlying issue is the parent mutation.
+
+**Consequence:** `clone(false)` is only safe at these sites once `EvalSession` is active during
+mixin evaluation — at which point `clone(false, undefined, ctx)` routes parent writes through
+the session overlay and restores canonical pointers.
 
 1. **Mixin body eval** (`rules.ts:2313, 2336, 2348`) — Blocked on:
    - `resetEvalStateDeep` resets Ruleset `selector` field (pre-composition recovery) and
@@ -480,6 +499,8 @@ The remaining large clone sites cannot be session-isolated without additional in
      during re-evaluation in a new context that require session-local field storage.
    - Generic `sessionPatchField`/`sessionGetField` exists, but `Ruleset.preEval` and
      `Ampersand.eval` would need to read from session instead of canonical fields.
+   - Replacing `clone(true)` with `clone(false)` here requires sessions to be active so
+     canonical parent pointers are protected via the session overlay.
 
 2. **`$for` loop** (`control.ts:244`) — Blocked on:
    - `loopRules.unshift(varDecl)` injects a per-iteration loop variable into the cloned array.
