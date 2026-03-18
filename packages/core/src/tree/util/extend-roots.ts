@@ -12,7 +12,7 @@ import { Nil } from '../nil.js';
 import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
-import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset } from './selector-utils.js';
+import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -423,6 +423,12 @@ function getRulesetExtendTarget(
   }
 
   const ownSelector = (ruleset.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  // Bare `&` rulesets are pure mirrors of their parent selector and are updated
+  // by refreshNestedRulesetSelectors when the parent is extended. Skip direct
+  // extend processing so selectorBeforeExtend is not incorrectly set on them.
+  if (ownSelector && isBareAmpersandOwnSelector(ownSelector as Selector)) {
+    return undefined;
+  }
   const parentRs = getParentRuleset(ruleset);
   const parentSelector = (
     !partial
@@ -543,6 +549,7 @@ function applyInstructionToRuleset(
   }
 
   if (!result.isChanged) {
+    activateExtendedRuleset(ruleset, result.value);
     return { matched: true, changed: false };
   }
   if (originalSelectorCopy) {

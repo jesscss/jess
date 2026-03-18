@@ -13,6 +13,28 @@ import { Nil } from '../nil.js';
 import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
 import type { Ampersand } from '../ampersand.js';
 
+/**
+ * Returns true when `sel` is purely `&` with no appendValue — meaning the
+ * ruleset's selector is an unmodified mirror of its parent. Such rulesets
+ * are updated by refreshNestedRulesetSelectors and should not be directly
+ * targeted by the extend loop.
+ */
+export function isBareAmpersandOwnSelector(sel: Selector | Nil): boolean {
+  if (!sel || sel instanceof Nil) {
+    return false;
+  }
+  if (isNode(sel, N.Ampersand)) {
+    return !(sel as unknown as Ampersand).appendValue;
+  }
+  if (isNode(sel, N.CompoundSelector | N.ComplexSelector)) {
+    const items = (sel as unknown as { data: unknown[] }).data;
+    return items.length === 1
+      && isNode(items[0] as Node, N.Ampersand)
+      && !(items[0] as unknown as Ampersand).appendValue;
+  }
+  return false;
+}
+
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
 export function getParentRuleset(node: Node): Ruleset | undefined {
   const rules = node.parent;

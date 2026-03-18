@@ -1303,7 +1303,9 @@ function tryHandleMultiDirectChildFullMatches(
   }
 
   let crossedAmpersand = false;
+  let anyChanged = false;
   for (const { index, child } of matchedChildren) {
+    const childValueBefore = child.valueOf();
     let replacement: Selector | undefined;
 
     if (isNode(target, N.SelectorList)) {
@@ -1348,6 +1350,12 @@ function tryHandleMultiDirectChildFullMatches(
     if (!replacement) {
       continue;
     }
+    // A replacement that is the same object reference as child may still
+    // represent a real change if it was mutated in-place (e.g. appendAlternative
+    // pushes new items onto a SelectorList child and returns the same ref).
+    if (replacement !== child || replacement.valueOf() !== childValueBefore) {
+      anyChanged = true;
+    }
     target.setData(index, replacement);
   }
 
@@ -1355,7 +1363,7 @@ function tryHandleMultiDirectChildFullMatches(
     target.hoistToRoot = true;
   }
 
-  return finalize(createSuccessResult(target));
+  return finalize(createSuccessResult(target, anyChanged));
 }
 
 /**

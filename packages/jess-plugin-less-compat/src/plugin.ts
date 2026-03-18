@@ -401,7 +401,6 @@ export class LessCompatPlugin extends AbstractPlugin {
     this._lessPluginManager = pluginManager;
 
     const loadPluginSource = (fullPath: string, registerPlugin: (plugin: any) => void, targetJessRegistry?: any) => {
-      assertPluginJsPresent();
       const contents = fs.readFileSync(fullPath, 'utf8');
       const localModule = { exports: {} as any };
       // When loading from an @plugin directive, pass a mock that registers to the Rules containing that @plugin

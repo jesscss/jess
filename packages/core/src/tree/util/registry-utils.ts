@@ -621,6 +621,11 @@ export class MixinRegistry extends Registry<
         ) {
           const resolvedKeys = getIndexableSelectorKeys(keySetToUse);
           const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
+          // Propagate keySetLibrary to ownSelector so its keys can be computed.
+          // ownSelector may be from an imported file parsed without a selectorBits context.
+          if (!(ownSelector as any).keySetLibrary && (selectorToIndex as any).keySetLibrary) {
+            (ownSelector as any).keySetLibrary = (selectorToIndex as any).keySetLibrary;
+          }
           const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).data.selector
