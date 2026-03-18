@@ -375,6 +375,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newNode = super.clone(deep, cloneFn) as this;
+    // super.clone() for leaf nodes calls new Ampersand((this as any).value, ...).
+    // Ampersand stores its data in the appendValue instance field, not in .value,
+    // so we must patch it explicitly on the clone.
+    newNode.appendValue = this.appendValue;
     if (this._selectorContainer) {
       newNode._selectorContainer = this._selectorContainer;
     }
