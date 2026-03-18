@@ -397,6 +397,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           importOptions!._dedupe = true;
         }
 
+        // Declare here so the finally block can restore it regardless of which branch ran.
+        let prevSession: typeof context.session;
+        // Canonical node parents to restore after withValues eval. Rules.constructor calls
+        // adopt() unconditionally during clone(), bypassing session routing. We save/restore
+        // canonical library node parents so they are not permanently mutated.
+        let canonicalNodeParents: Map<Node, Node | undefined> | undefined;
         if (withValues) {
           // Once configured, cannot be configured again (handled above for compose+cache).
           if (withValues.type === 'set' && evaldRules) {
@@ -451,14 +457,35 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
           }
 
+          // Save the pre-eval parent pointers of canonical library nodes. The Rules
+          // constructor calls adopt() unconditionally, which bypasses session routing
+          // when clone() is invoked during preEval. We restore these in the finally block.
+          canonicalNodeParents = new Map<Node, Node | undefined>();
+          for (let i = 0; i < rules.value.length; i++) {
+            if (!replacementAt.has(i)) {
+              const n = rules.value[i]!;
+              canonicalNodeParents.set(n, n.parent);
+            }
+          }
+
+          // Capture the outer session BEFORE creating a new one, so it can be
+          // restored in the finally block even if there was a pre-existing session.
+          prevSession = context.session;
+          // Create a session NOW — before finalRules construction — so that the
+          // adopt() calls inside Rules.push() route parent writes into the session
+          // overlay instead of permanently mutating canonical library nodes.
+          context.createSession();
+
           // Build finalRules: new injected variables first (for linear lookup precedence),
           // then canonical nodes with injected nodes substituted at matched positions.
+          // Pass context so that adopt() routes parent writes into the session overlay
+          // instead of mutating canonical library nodes directly.
           const finalRules = Rules.create([]);
           for (const newNode of newVariables) {
-            finalRules.push(newNode);
+            finalRules.push(context, newNode);
           }
           for (let i = 0; i < rules.value.length; i++) {
-            finalRules.push(replacementAt.get(i) ?? rules.value[i]!);
+            finalRules.push(context, replacementAt.get(i) ?? rules.value[i]!);
           }
           rules = finalRules;
         }
@@ -517,12 +544,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             context.extendRoots.pushExtendRoot(rules);
           }
 
-          // For with/set imports, create a session so evaluated/preEvaluated tracking
-          // is session-local and does not permanently mark canonical nodes as evaluated.
-          const prevSession = context.session;
-          if (withValues) {
-            context.createSession();
-          }
           try {
             // Call preEval first to get the cloned Rules (if cloning occurs)
             // sourceNode is already set above, so the cloned Rules will have it
@@ -535,6 +556,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           } finally {
             if (withValues) {
               context.session = prevSession;
+              // Restore canonical library node parent pointers corrupted by Rules.constructor
+              // during clone() — adopt() is called without ctx, bypassing session routing.
+              if (canonicalNodeParents) {
+                for (const [n, savedParent] of canonicalNodeParents) {
+                  (n as any).parent = savedParent;
+                }
+              }
             }
             context.preserveOriginalNodes = preserveOriginalNodes;
             if (pushedImplicitReferenceEvalScope) {

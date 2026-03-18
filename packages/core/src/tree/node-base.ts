@@ -600,10 +600,14 @@ export abstract class Node<
     }
   }
 
-  adopt(node: Node) {
+  adopt(node: Node, ctx?: Context) {
     /** The only place we should do this */
     if (!node.frozen) {
-      (node as any).parent = this;
+      if (ctx?.session) {
+        ctx.session.getRuntime(node).parent = this;
+      } else {
+        (node as any).parent = this;
+      }
     }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);

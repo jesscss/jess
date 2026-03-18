@@ -798,6 +798,105 @@ describe('Style import', () => {
         await node2.eval(context);
       }).rejects.toThrow('Cannot configure a stylesheet more than once');
     });
+
+    it('two sequential "with" imports do not corrupt canonical node parent pointers', async () => {
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      // Library has two vars: baseColor (will be replaced by with-values) and
+      // anotherColor (not replaced — goes into finalRules as a canonical node and
+      // can have its parent corrupted by Rules.constructor during preEval clone).
+      const baseColorVar = vardecl({ name: 'baseColor', value: any('red') });
+      const anotherColorVar = vardecl({ name: 'anotherColor', value: any('purple') });
+      const sourceRules = rules([baseColorVar, anotherColorVar]);
+      context.sourceTrees.set(libraryPath, sourceRules);
+
+      // The canonical non-replaced node starts with parent = sourceRules
+      expect(anotherColorVar.parent).toBe(sourceRules);
+
+      // First with-import: override baseColor only (anotherColor stays canonical)
+      const node1 = rules([
+        style({
+          path: quoted(any('library.jess')),
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('blue') })
+          ]) as any,
+          withType: 'with'
+        }, { type: 'compose', namespace: '*' })
+      ]);
+      const evald1 = await node1.eval(context);
+      const result1 = evald1.at(0) as Rules;
+      const found1 = getVarWithContext(context, result1, 'baseColor');
+      expect(found1).toBeDefined();
+      const val1 = await (found1 as any).value.eval(context);
+      expect(`${val1}`).toBe('blue');
+
+      // After session teardown, canonical node's parent must be restored to sourceRules
+      // (not corrupted to point to a transient finalRules clone from the with-import)
+      expect(anotherColorVar.parent).toBe(sourceRules);
+
+      // Second with-import (fresh context to avoid evaldTrees caching issues): inject green
+      const context2 = createTestContext();
+      context2.sourceTrees.set(libraryPath, sourceRules);
+      const node2 = rules([
+        style({
+          path: quoted(any('library.jess')),
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('green') })
+          ]) as any,
+          withType: 'with'
+        }, { type: 'compose', namespace: '*' })
+      ]);
+      const evald2 = await node2.eval(context2);
+      const result2 = evald2.at(0) as Rules;
+      const found2 = getVarWithContext(context2, result2, 'baseColor');
+      expect(found2).toBeDefined();
+      const val2 = await (found2 as any).value.eval(context2);
+      expect(`${val2}`).toBe('green');
+
+      // After second session: canonical node again points to sourceRules (not stale)
+      expect(anotherColorVar.parent).toBe(sourceRules);
+    });
+
+    it('two sequential "with" imports resolve independently without cross-contamination', async () => {
+      const libraryPath2 = resolve(process.cwd(), 'library2.jess');
+      context.sourceTrees.set(libraryPath2, rules([
+        vardecl({ name: 'baseColor', value: any('red') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) })
+      ]));
+
+      // First import: baseColor = blue
+      const node1 = rules([
+        style({
+          path: quoted(any('library2.jess')),
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('blue') })
+          ]) as any,
+          withType: 'with'
+        }, { type: 'compose', namespace: '*' })
+      ]);
+      const evald1 = await node1.eval(context);
+      const r1 = evald1.at(0) as Rules;
+      const derived1 = getVarWithContext(context, r1, 'derivedColor');
+      const dval1 = await (derived1 as any).value.eval(context);
+      expect(`${dval1}`).toBe('blue');
+
+      // Second import (fresh context): baseColor = orange
+      const context2 = createTestContext();
+      context2.sourceTrees.set(libraryPath2, context.sourceTrees.get(libraryPath2)!);
+      const node2 = rules([
+        style({
+          path: quoted(any('library2.jess')),
+          withNode: rules([
+            vardecl({ name: 'baseColor', value: any('orange') })
+          ]) as any,
+          withType: 'with'
+        }, { type: 'compose', namespace: '*' })
+      ]);
+      const evald2 = await node2.eval(context2);
+      const r2 = evald2.at(0) as Rules;
+      const derived2 = getVarWithContext(context2, r2, 'derivedColor');
+      const dval2 = await (derived2 as any).value.eval(context2);
+      expect(`${dval2}`).toBe('orange');
+    });
   });
 
   describe('multiple imports', () => {

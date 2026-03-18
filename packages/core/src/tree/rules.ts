@@ -693,9 +693,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  override push(...nodes: Node[]) {
-    for (let node of nodes) {
-      this.adopt(node);
+  override push(...nodes: Node[]): void;
+  override push(ctx: Context, ...nodes: Node[]): void;
+  override push(...args: [Context, ...Node[]] | Node[]): void {
+    const hasCtx = args.length > 0 && args[0] instanceof Context;
+    const ctx = hasCtx ? args[0] as Context : undefined;
+    const nodes = (hasCtx ? args.slice(1) : args) as Node[];
+    for (const node of nodes) {
+      this.adopt(node, ctx);
       this.value.push(node);
       this.registerNode(node);
     }

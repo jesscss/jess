@@ -312,9 +312,51 @@ processing `with`/`set` variable injection with a linear scan + session-based ap
 
 ---
 
-## Stage 10-13: EvalSession Wiring (Future)
+## Stage 10: Externalize Runtime State — Parent Write Protection for Canonical Nodes
 
-- [ ] Stage 10: Externalize runtime state to session
+Goal: Prevent `with`/`set` variable injection from permanently mutating the `parent`
+field on canonical library nodes. Routes parent writes through the session overlay for
+nodes passed directly into `finalRules`.
+
+- [x] Make `Node.adopt()` session-aware: when `ctx?.session` is active, write
+  `parent` into `session.getRuntime(node).parent` instead of directly onto the node
+- [x] Add optional `ctx?: Context` param to `Node.adopt()` (no-op without session)
+- [x] Promote session helpers `_isPreEvaluated`, `_setPreEvaluated`, `_isEvaluated`,
+  `_setEvaluated` from `private` to `protected` (needed by `Rules.preEval`)
+- [x] Wire `Rules.preEval()` to use `_isPreEvaluated` / `_setPreEvaluated` guards
+- [x] Add context-threaded `Rules.push(ctx, ...nodes)` overload so `adopt()` inside
+  the push loop can route parent writes through the session
+- [x] Move `context.createSession()` to BEFORE `finalRules` construction in
+  `import-style.ts` `withValues` block
+- [x] Pass `context` to all `finalRules.push(context, node)` calls
+- [x] Fix `prevSession` capture ordering: capture BEFORE `createSession()` call so
+  an outer session (nested imports) is properly restored in the finally block
+- [x] Save/restore canonical node parent pointers around the eval:
+  - `Rules.constructor` calls `adopt()` unconditionally for initial children, bypassing
+    session routing during the `clone()` triggered by `preEval` + `preserveOriginalNodes`
+  - Before eval: save `node.parent` for all non-replaced canonical nodes in `rules.value`
+  - In finally: restore saved parents so canonical nodes point back to their original container
+- [x] Parity test: `'two sequential "with" imports do not corrupt canonical node parent pointers'`
+  - Uses a 2-var library (baseColor replaced, anotherColor canonical + included in finalRules)
+  - Asserts `anotherColorVar.parent === sourceRules` before and after each with-import
+
+### Known limitation (deferred to Stage 11)
+The `Rules.constructor` calls `adopt()` for all initial children without access to a
+context. This means the save/restore workaround is needed here. A proper fix would
+thread context through `clone()` → constructor, but that is a larger refactor deferred
+to Stage 11 (copy-on-write materialization).
+
+### Test results — post Stage 10
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 934 passed | 24 skipped
+  - Same baseline as Stage 9 (no regression)
+  - New parity test `'two sequential "with" imports do not corrupt canonical node parent pointers'` passes
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+- **TypeScript build**: 3 pre-existing errors in `session-helpers.ts` (unchanged from Stage 9)
+
+---
+
+## Stage 11-13: EvalSession Wiring (Future)
+
 - [ ] Stage 11: Copy-on-write materialization
 - [ ] Stage 12: Remove preserveOriginalNodes
 - [ ] Stage 13: Expand beyond imports, clean up
