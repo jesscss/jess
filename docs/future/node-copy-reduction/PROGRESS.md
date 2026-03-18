@@ -452,18 +452,22 @@ were caused by incorrect normalization added to these two `valueOf()` methods.
   SelectorList) now fall through to `component.valueOf()` directly.
 - [x] Update stale `extend-eval-integration` snapshot (outdated from dev merge)
 
+### Stage 13c: Fix `findNodeByType` test helper infinite recursion
+
+- [x] `packages/core/test/flags-static-optimization.test.ts`: Replace `Object.values(node.value)`
+  traversal with `childKeys`-based traversal. Stage 1-3 changed `declaration.value` from a plain
+  object to a Node child, causing infinite recursion when the old helper called
+  `Object.values(node.value)` on a Declaration node.
+
 ### Test results — post Stage 13
 
-- **Core**: 7 failed | 61 passed | 3 skipped (71 total); 23 failed | 938 passed | 24 skipped
+- **Core**: 6 failed | 62 passed | 3 skipped (71 total); 19 failed | 942 passed | 24 skipped
   - Down from 9 failed files / 27 failed tests at Stage 12 baseline
-  - Remaining 7 failed files are all pre-existing from dev merge:
-    - `ampersand` — selector ordering during collapsing (6 tests)
+  - Remaining 6 failed files are all pre-existing from dev merge:
+    - `ampersand` — selector ordering during collapsing (7 tests)
     - `at-rule` / `at-rule-basic` — parent selector prepended incorrectly inside @media (6 tests)
     - `mixin` — mixin scope / parent context issues (2 tests)
-    - `nesting-collapse` — nesting collapse edge cases (1 test)
-    - `flags-static-optimization` — test helper using `node.value` traversal hits infinite recursion
-      after Stage 1-3 instance fields migration (4 tests)
-    - `fast-reject` — pre-existing (1 test)
+    - `fast-reject` — `:is(SelectorList)` full-match in selectorMatch (2 tests)
 - **Less-compat**: 9 passed | 54/54 tests pass (no regression)
 
 ### What's blocked for further Stage 13 work
