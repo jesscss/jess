@@ -340,12 +340,6 @@ nodes passed directly into `finalRules`.
   - Uses a 2-var library (baseColor replaced, anotherColor canonical + included in finalRules)
   - Asserts `anotherColorVar.parent === sourceRules` before and after each with-import
 
-### Known limitation (deferred to Stage 11)
-The `Rules.constructor` calls `adopt()` for all initial children without access to a
-context. This means the save/restore workaround is needed here. A proper fix would
-thread context through `clone()` → constructor, but that is a larger refactor deferred
-to Stage 11 (copy-on-write materialization).
-
 ### Test results — post Stage 10
 - **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 934 passed | 24 skipped
   - Same baseline as Stage 9 (no regression)
@@ -355,9 +349,50 @@ to Stage 11 (copy-on-write materialization).
 
 ---
 
-## Stage 11-13: EvalSession Wiring (Future)
+## Stage 11: Thread `ctx` Through `clone()` to Replace Save/Restore Hack
 
-- [ ] Stage 11: Copy-on-write materialization
+Goal: Remove the `canonicalNodeParents` save/restore workaround from `import-style.ts`
+(added in Stage 10) by properly threading `ctx?: Context` through `Node.clone()` and
+`Node.maybeClone()`. This allows `clone()` itself to save/restore child parent pointers
+around the constructor call, instead of doing it at the import-style call site.
+
+Also fix `Node.push()` to be session-aware (accept optional `Context` as first arg) so
+that `finalRules.push(context, node)` routes parent adoption through the session overlay
+rather than mutating `node.parent` directly.
+
+- [x] Thread `ctx?: Context` into `Node.clone(deep?, cloneFn?, ctx?)` (3rd param)
+- [x] Thread `ctx` into `Node.maybeClone(context, deep?, cloneFn?)` → `this.clone(deep, cloneFn, ctx)`
+- [x] Add session-aware save/restore of child parent pointers inside `Node.clone()`:
+  - Before `new Class(cloneData, ...)`: collect `[child, child.parent]` pairs for all child
+    nodes when `!deep && ctx?.session`
+  - After construction: `session.getRuntime(child).parent = newNode`; `child.parent = priorParent`
+- [x] Update `Rules.clone()` override to accept and forward `ctx` to `super.clone()`
+- [x] Make `Node.push()` context-aware: add `push(ctx: Context, ...items)` overload that
+  routes `adopt(item, ctx)` through the session overlay, preventing direct `node.parent`
+  mutation when pushing canonical nodes into `finalRules`
+- [x] Remove `canonicalNodeParents` save/restore hack from `import-style.ts` `finally` block
+  (no longer needed — `push` + `clone` both route through session overlay now)
+- [x] Fix `push` regression: `push(context, node)` was pushing `context` as a non-Node item
+  into the value array; new overload detects Context first-arg and excludes it from the array
+
+### Root causes resolved
+1. **`finalRules.push(context, node)` was silently broken**: context object was pushed into
+   `finalRules.value`, AND adoption was done without ctx (direct mutation). Now `push` with
+   a Context first arg routes adoption through session and excludes context from the array.
+2. **`Rules.clone()` override dropped `ctx`**: `Rules.clone(deep?, cloneFn?)` only accepted
+   2 args — the 3rd `ctx` arg passed from `maybeClone` was silently discarded. Fixed by
+   updating the override signature to `clone(deep?, cloneFn?, ctx?)`.
+
+### Test results — post Stage 11
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 934 passed | 24 skipped
+  - Same baseline as Stage 10 (no regression)
+  - Parity test `'two sequential "with" imports do not corrupt canonical node parent pointers'` continues to pass
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+---
+
+## Stage 12-13: EvalSession Wiring (Future)
+
 - [ ] Stage 12: Remove preserveOriginalNodes
 - [ ] Stage 13: Expand beyond imports, clean up
 

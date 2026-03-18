@@ -399,10 +399,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
         // Declare here so the finally block can restore it regardless of which branch ran.
         let prevSession: typeof context.session;
-        // Canonical node parents to restore after withValues eval. Rules.constructor calls
-        // adopt() unconditionally during clone(), bypassing session routing. We save/restore
-        // canonical library node parents so they are not permanently mutated.
-        let canonicalNodeParents: Map<Node, Node | undefined> | undefined;
         if (withValues) {
           // Once configured, cannot be configured again (handled above for compose+cache).
           if (withValues.type === 'set' && evaldRules) {
@@ -454,17 +450,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               }
             } else {
               newVariables.push(injectedNode);
-            }
-          }
-
-          // Save the pre-eval parent pointers of canonical library nodes. The Rules
-          // constructor calls adopt() unconditionally, which bypasses session routing
-          // when clone() is invoked during preEval. We restore these in the finally block.
-          canonicalNodeParents = new Map<Node, Node | undefined>();
-          for (let i = 0; i < rules.value.length; i++) {
-            if (!replacementAt.has(i)) {
-              const n = rules.value[i]!;
-              canonicalNodeParents.set(n, n.parent);
             }
           }
 
@@ -556,13 +541,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           } finally {
             if (withValues) {
               context.session = prevSession;
-              // Restore canonical library node parent pointers corrupted by Rules.constructor
-              // during clone() — adopt() is called without ctx, bypassing session routing.
-              if (canonicalNodeParents) {
-                for (const [n, savedParent] of canonicalNodeParents) {
-                  (n as any).parent = savedParent;
-                }
-              }
             }
             context.preserveOriginalNodes = preserveOriginalNodes;
             if (pushedImplicitReferenceEvalScope) {

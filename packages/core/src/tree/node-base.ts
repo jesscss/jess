@@ -475,14 +475,25 @@ export abstract class Node<
     return (this as any)[ck![0]!];
   }
 
-  /** Push items onto an array-valued node. */
-  push(...items: any[]): void {
+  /** Push items onto an array-valued node.
+   * Pass a Context as the first argument to route parent adoption through the session overlay. */
+  push(ctx: Context, ...items: Node[]): void;
+  push(...items: Node[]): void;
+  push(ctxOrFirst: Context | Node, ...rest: Node[]): void {
+    let ctx: Context | undefined;
+    let items: Node[];
+    if (ctxOrFirst instanceof Node) {
+      items = [ctxOrFirst, ...rest];
+    } else {
+      ctx = ctxOrFirst as Context;
+      items = rest;
+    }
     const arr = this._getArrayField();
     arr.push(...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item instanceof Node) {
-        this.adopt(item);
+        this.adopt(item, ctx);
       }
     }
     this._invalidateValueOf();
@@ -891,7 +902,7 @@ export abstract class Node<
    */
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
     if (context.preserveOriginalNodes) {
-      return this.clone(deep, cloneFn);
+      return this.clone(deep, cloneFn, context);
     }
     return this;
   }
@@ -922,7 +933,7 @@ export abstract class Node<
    * object creation, and the low utility of preserving the original
    * node, I think we should just only clone when we need to.
    */
-  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     let Class = this.constructor as Class<this>;
     const ck = (Class as unknown as typeof Node).childKeys;
 
@@ -975,8 +986,50 @@ export abstract class Node<
       }
     }
 
+    // When a session is active and this is a shallow clone, the constructor will call
+    // adopt() for all child nodes without ctx, which directly mutates their parent fields.
+    // Save the pre-construction parent values so we can restore them after, routing the
+    // new parent assignment through the session overlay instead.
+    let priorChildParents: [Node, Node | undefined][] | undefined;
+    if (!deep && ctx?.session) {
+      priorChildParents = [];
+      if (isArray(cloneData)) {
+        for (const item of cloneData as unknown[]) {
+          if (item instanceof Node) {
+            priorChildParents.push([item, item.parent]);
+          }
+        }
+      } else if (cloneData instanceof Node) {
+        priorChildParents.push([cloneData, cloneData.parent]);
+      } else if (cloneData !== null && typeof cloneData === 'object') {
+        for (const key of ck!) {
+          const field = cloneData[key!];
+          if (field instanceof Node) {
+            priorChildParents.push([field, field.parent]);
+          } else if (isArray(field)) {
+            for (const item of field as unknown[]) {
+              if (item instanceof Node) {
+                priorChildParents.push([item, item.parent]);
+              }
+            }
+          }
+        }
+      }
+    }
+
     const options = this._meta?.options;
     const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
+
+    // Route the constructor's direct parent writes through the session overlay and
+    // restore canonical parent pointers so shared nodes are not permanently mutated.
+    if (priorChildParents) {
+      const session = ctx!.session!;
+      for (const [child, priorParent] of priorChildParents) {
+        session.getRuntime(child).parent = newNode;
+        (child as any).parent = priorParent;
+      }
+    }
+
     newNode.inherit(this);
     return newNode;
   }

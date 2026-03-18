@@ -171,8 +171,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * before evaluation (e.g. via visitors), those registries must survive cloning so
    * lookups during evaluation work as expected.
    */
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newRules = super.clone(deep, cloneFn);
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const newRules = super.clone(deep, cloneFn, ctx);
 
     // Only preserve *function* registry across clones.
     // This supports Less plugin compat, where plugins can inject functions into the registry
