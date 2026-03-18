@@ -11,6 +11,9 @@ import {
 } from '@jesscss/core';
 
 /**
+ * Less each() — builds a For node and delegates. All loop evaluation (including
+ * priorScope optimization) lives in the For node; each() is a thin wrapper.
+ *
  * This is a 1-based iterator. Meaning,
  * for lists without keys, the first key is 1, not 0.
  *
