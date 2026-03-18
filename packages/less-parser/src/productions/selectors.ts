@@ -547,8 +547,7 @@ export function simpleSelector(this: P, ctx: RuleContext = {}) {
             );
           }
           return getInterpolated(image, location, $.context);
-        },
-        GATE: () => $.LA(1).tokenType === $.T.InterpolatedIdent
+        }
       },
       {
         ALT: () => {
@@ -796,16 +795,7 @@ export function varDeclarationOrCall(this: P, ctx: RuleContext = {}) {
       ALT: () => {
         $.CONSUME($.T.Colon);
         return $.OR([
-          /**
-           * This needs to be gated early, even though it is
-           * gated again in the valueList production, because
-           * chevrotain-allstar needs to pick a path first.
-           */
           {
-            GATE: () => {
-              let type = $.LA(1).tokenType;
-              return type === $.T.AnonMixinStart || type === $.T.LCurly;
-            },
             ALT: () => {
               value = $.anonymousMixinDefinition(ctx);
               $.OPTION(() => $.CONSUME($.T.Semi));
@@ -813,10 +803,6 @@ export function varDeclarationOrCall(this: P, ctx: RuleContext = {}) {
             }
           },
           {
-            GATE: () => {
-              let type = $.LA(1).tokenType;
-              return type !== $.T.AnonMixinStart && type !== $.T.LCurly;
-            },
             ALT: () => {
               value = $.valueList({ ...ctx, allowMixinCallWithoutAccessor: true });
               $.OPTION(() => {
@@ -830,7 +816,6 @@ export function varDeclarationOrCall(this: P, ctx: RuleContext = {}) {
     },
     /** This is a variable call. Allow optional whitespace between name and (. */
     {
-      GATE: () => $.LA(1).tokenType === $.T.LParen,
       /**
        * This is a change from Less 1.x-4.x
        * e.g.

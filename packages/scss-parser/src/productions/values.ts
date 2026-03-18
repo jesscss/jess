@@ -58,7 +58,6 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
     },
     {
       // SCSS interpolation in values: `#{$expr}`
-      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
       ALT: () => {
         $.startRule();
         $.CONSUME($.T.InterpolationStart);
@@ -89,13 +88,13 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
       ALT: () => {
         $.startRule();
         const nsTok = $.OR([
-          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         $.CONSUME($.T.Unknown); // '.'
         $.CONSUME($.T.Unknown); // '\'
         const member = $.OR([
-          { GATE: () => $.LA(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
+          { ALT: () => $.CONSUME($.T.HashName) },
           { ALT: () => $.CONSUME($.T.DotName) }
         ]) as unknown as IToken;
         $.CONSUME($.T.LParen);
@@ -119,7 +118,7 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
       ALT: () => {
         $.startRule();
         const nsTok = $.OR([
-          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.Ident) },
           { ALT: () => $.CONSUME($.T.PlainIdent) }
         ]) as unknown as IToken;
         $.CONSUME($.T.Unknown); // '.'

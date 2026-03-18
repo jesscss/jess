@@ -4,7 +4,7 @@ import type {
   IMultiModeLexerDefinition,
   TokenPattern,
   CustomPatternMatcherFunc
-} from 'chevrotain';
+} from '@chevrotain/types';
 import {
   Lexer,
   createToken
@@ -94,15 +94,13 @@ export function createLexerDefinition(
       if (pattern !== LexerType.NA) {
         const isUnknownToken = name === 'Unknown';
         if (!isUnknownToken && (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker')))) {
-          if (!categories) {
-            categories = [];
-          } else {
-            /** Any non-blockmarker that's not an Identifier */
-            if (!categories.includes('Ident')) {
-              categories.push('NonIdent');
-            }
+          const cats: string[] = categories ? [...categories] : [];
+          /** Any non-blockmarker that's not an Identifier */
+          if (!cats.includes('Ident')) {
+            cats.push('NonIdent');
           }
-          categories.push('Value');
+          cats.push('Value');
+          categories = cats;
         }
         if (pattern instanceof RegExp) {
           regExpPattern = pattern;
@@ -118,8 +116,8 @@ export function createLexerDefinition(
       const longerAlt = longer_alt
         ? {
             longer_alt: Array.isArray(longer_alt)
-              ? longer_alt.map(val => T[val])
-              : T[longer_alt]
+              ? longer_alt.map((val: string) => T[val])
+              : T[longer_alt as string]
           }
         : {};
       const groupValue = group === LexerType.SKIPPED

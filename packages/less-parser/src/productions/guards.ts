@@ -812,7 +812,6 @@ export function callArgument(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
     {
-      GATE: () => tokenTypeInSet($.LA(1).tokenType, $.CALL_ARGUMENT_BLOCK_START),
       ALT: () => $.anonymousMixinDefinition(ctx)
     },
     {

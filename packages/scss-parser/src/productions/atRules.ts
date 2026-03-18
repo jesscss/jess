@@ -37,6 +37,7 @@ import {
   type AssignmentType,
   type Node,
   type Rules as RulesType,
+  type Selector,
 } from '@jesscss/core';
 import {
   makeNamespacedReference,
@@ -272,7 +273,7 @@ export function scssForwardAtRule(this: P, ctx: RuleContext = {}) {
     $.OPTION(() => {
       // "with" may be Ident or PlainIdent depending on token mode.
       $.OR([
-        { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+        { ALT: () => $.CONSUME($.T.Ident) },
         { ALT: () => $.CONSUME($.T.PlainIdent) }
       ]);
       withRules = $.scssWithConfig(ctx) as unknown as Collection;
