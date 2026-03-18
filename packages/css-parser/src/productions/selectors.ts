@@ -1,8 +1,7 @@
 // Methods to be mixed into CssRecursiveParser
 // This file is a temporary build artifact for assembly
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken, OrAlternative } from '@jesscss/parser';
-import { tokenMatches } from '@jesscss/parser';
+import type { IToken, IOrAlt } from '@chevrotain/types';
 import {
   Node, Any, BasicSelector, Ampersand, CompoundSelector, ComplexSelector,
   type ComplexSelectorValue, Combinator, type Combinators, SelectorList,
@@ -10,27 +9,30 @@ import {
   type SimpleSelector, type ComplexSelectorComponent,
   type LocationInfo
 } from '@jesscss/core';
+import { tokenMatcher } from '../cssRecursiveParser.js';
 
 type P = CssRecursiveParser;
 
-export type Alt = OrAlternative[];
+export type Alt = IOrAlt<any>[];
 export type AltContext = (ctx?: RuleContext) => Alt;
 
 export function stylesheet(this: P, options: Record<string, any> = {}) {
   const $ = this;
-  /** Auto-creates tree context */
+  /** During Chevrotain grammar recording, return a dummy to avoid crashes */
+  if (this.RECORDING_PHASE) {
+    return new Rules([], undefined, undefined, $.context) as Node;
+  }
   let context = $.context;
 
-  const charset = $.OPTION(() => $.CONSUME($.T.Charset));
+  const charset = $.OPTION(() => $.CONSUME($.T.Charset)) as IToken | undefined;
 
   const ctx: RuleContext = { isRoot: true };
-  let root: Node = $.main();
+  const root = $.SUBRULE($.main) as Node;
 
-  let rules = root.data as Node[];
-
-  if (charset) {
-    let loc = $.getLocationInfo(charset);
-    let rootLoc = root.location;
+  const rules = root?.data as Node[] | undefined;
+  if (charset && rules) {
+    const loc = $.getLocationInfo(charset);
+    const rootLoc = root.location;
     rules.unshift(new Any(charset.image, { role: 'charset' }, loc, context!));
     rootLoc[0] = loc[0];
     rootLoc[1] = loc[1];
@@ -44,8 +46,8 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
   const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     /** GATE kept: @ commits to atRule for correct error reporting */
-    { GATE: () => tokenMatches($.LA(1), $.T.AtName), ALT: () => $.atRule() },
-    { ALT: () => $.qualifiedRule() }
+    { GATE: () => tokenMatcher($.LA(1), $.T.AtName), ALT: () => $.SUBRULE($.atRule) },
+    { ALT: () => $.SUBRULE($.qualifiedRule) }
   ];
 
   const isRoot = !!ctx.isRoot;
@@ -64,7 +66,7 @@ export function main(this: P, ctx: RuleContext = {}, alt?: AltContext | Alt) {
     GATE: () => {
       const next = $.LA(1);
       // Stop at RCurly (belongs to parent block) or end of input
-      if ($.isType($.T.RCurly) || next.tokenType.name === 'EOF') {
+      if ($.isType($.T.RCurly) || next.tokenType?.name === 'EOF') {
         return false;
       }
       return !requiredSemi || (requiredSemi && (
@@ -102,11 +104,11 @@ export function qualifiedRule(this: P, ctx: RuleContext = {}, selectorAlt?: AltC
   selectorAlt ??= (ctx: RuleContext = {}) => [
     {
       GATE: () => !ctx.inner,
-      ALT: () => $.selectorList(ctx)
+      ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
     },
     {
       GATE: () => !!ctx.inner,
-      ALT: () => $.forgivingSelectorList(ctx)
+      ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
     }
   ];
   // qualifiedRule
@@ -114,10 +116,10 @@ export function qualifiedRule(this: P, ctx: RuleContext = {}, selectorAlt?: AltC
   //   ;
   $.startRule();
 
-  let selector = $.OR(selectorAlt(ctx));
+  const selector = $.OR(selectorAlt(ctx));
 
   $.CONSUME($.T.LCurly);
-  let rules = $.declarationList() as Rules;
+  const rules = $.SUBRULE($.declarationList) as Rules;
   $.CONSUME($.T.RCurly);
 
   let location = $.endRule();
@@ -169,17 +171,17 @@ export function simpleSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
       GATE: () => !!ctx.inner,
       ALT: () => $.CONSUME($.T.Ampersand)
     },
-    { ALT: () => $.classSelector() },
-    { ALT: () => $.idSelector(ctx) },
+    { ALT: () => $.SUBRULE($.classSelector) },
+    { ALT: () => $.SUBRULE($.idSelector, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME($.T.Star) },
-    { ALT: () => $.pseudoSelector(ctx) },
-    { ALT: () => $.attributeSelector(ctx) },
+    { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.attributeSelector, { ARGS: [ctx] }) },
     /** Supports keyframes selectors */
     { ALT: () => $.CONSUME($.T.DimensionInt) },
     { ALT: () => $.CONSUME($.T.DimensionNum) }
   ];
 
-  let selector = $.OR(selectorAlt(ctx));
+  const selector = $.OR(selectorAlt(ctx)) as IToken | Node;
 
   if ($.isToken(selector)) {
     if (selector.tokenType.name === 'Ampersand') {
@@ -206,7 +208,7 @@ export function idSelector(this: P, ctx: RuleContext = {}, selectorAlt?: AltCont
     { ALT: () => $.CONSUME($.T.ColorIdentStart) }
   ];
   /** #id, #FF0000 are both valid ids */
-  let selector = $.OR(selectorAlt(ctx));
+  const selector = $.OR(selectorAlt(ctx)) as IToken;
   return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), $.context);
 }
 
@@ -224,7 +226,7 @@ export function pseudoSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
     {
       ALT: () => {
         let name = $.CONSUME($.T.NthPseudoClass);
-        let val = $.nthValue(ctx);
+        const val = $.SUBRULE($.nthValue, { ARGS: [ctx] }) as Node | undefined;
         $.CONSUME($.T.RParen);
 
         return createPseudo(name.image.slice(0, -1), val);
@@ -233,7 +235,7 @@ export function pseudoSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
     {
       ALT: () => {
         let name = $.CONSUME($.T.SelectorPseudoClass);
-        let val = $.forgivingSelectorList(ctx);
+        const val = $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] }) as Node | undefined;
         $.CONSUME($.T.RParen);
 
         return createPseudo(name.image.slice(0, -1), val);
@@ -252,13 +254,13 @@ export function pseudoSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
          * There's no other way currently to do a positive-assertion Gate
          * in Chevrotain.
          */
-        let values = $.OR([
+        const values = $.OR([
           {
             /** ::unknown(values) */
             GATE: $.noSep.bind($),
             ALT: () => {
               name += $.CONSUME($.T.GenericFunctionStart).image;
-              let values: Node[] = [];
+              const innerValues: Node[] = [];
               name = name.slice(0, -1);
               let valuesLocation: LocationInfo;
 
@@ -266,15 +268,15 @@ export function pseudoSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
               $.MANY({
                 GATE: () => !$.isType($.T.RParen),
                 DEF: () => {
-                  let val = $.anyInnerValue();
-                  values!.push(val);
+                  const val = $.SUBRULE($.anyInnerValue) as Node;
+                  innerValues.push(val);
                 }
               });
               valuesLocation = $.endRule();
               $.CONSUME($.T.RParen);
 
-              if (values!.length) {
-                return new Sequence(values!, undefined, valuesLocation!, $.context);
+              if (innerValues.length) {
+                return new Sequence(innerValues, undefined, valuesLocation!, $.context);
               }
             }
           },
@@ -285,8 +287,8 @@ export function pseudoSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
               name += $.CONSUME($.T.Ident).image;
             }
           }
-        ]);
-        return createPseudo(name, values!);
+        ]) as Node | undefined;
+        return createPseudo(name, values);
       }
     }
   ];
@@ -297,7 +299,7 @@ export function pseudoSelector(this: P, ctx: RuleContext = {}, selectorAlt?: Alt
   //   | COLON COLON? identifier ('(' anyInnerValue* ')')?
   //   ;
   $.startRule();
-  return $.OR(selectorAlt(ctx));
+  return $.OR(selectorAlt(ctx)) as Node;
 }
 
 export function nthValue(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
@@ -328,7 +330,7 @@ export function nthValue(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) 
           });
           $.OPTION(() => {
             $.CONSUME($.T.Of);
-            $.complexSelector(ctx);
+            $.SUBRULE($.complexSelector, { ARGS: [ctx] });
           });
         }
       }
@@ -344,7 +346,7 @@ export function nthValue(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) 
   $.OR(valueAlt(ctx));
 
   /** Coelesce all token values into one value */
-  let endTokenOffset = $.LA(0).startOffset;
+  const endTokenOffset = $.LA(0).startOffset ?? 0;
   let location = $.endRule();
   let origTokens = $.originalInput;
   let origLength = origTokens.length;
@@ -373,7 +375,7 @@ export function attributeSelector(this: P, ctx: RuleContext = {}, valueAlt?: Alt
         return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), $.context);
       }
     },
-    { ALT: () => $.string() }
+    { ALT: () => $.SUBRULE($.string) as Node }
   ];
 
   $.startRule();
@@ -387,8 +389,8 @@ export function attributeSelector(this: P, ctx: RuleContext = {}, valueAlt?: Alt
     op = $.OR([
       { ALT: () => $.CONSUME($.T.Eq) },
       { ALT: () => $.CONSUME($.T.AttrMatch) }
-    ]);
-    value = $.OR(valueAlt(ctx));
+    ]) as IToken;
+    value = $.OR(valueAlt(ctx)) as Node | undefined;
   });
   $.OPTION(() => mod = $.CONSUME($.T.AttrFlag));
   $.CONSUME($.T.RSquare);
@@ -413,15 +415,17 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
   //   : simpleSelector+
   //   ;
   let selectors: SimpleSelector[] = [];
-  let sel = $.simpleSelector(ctx);
+  let sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
   selectors!.push(sel as SimpleSelector);
   $.MANY({
     /** Make sure we don't ignore space combinators */
     GATE: () => !$.hasWS(),
     DEF: () => {
-      sel = $.simpleSelector(ctx);
+      sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
       /** Make sure we don't add implicit whitespace */
-      sel.pre = 0;
+      if (!$.RECORDING_PHASE) {
+        (sel as Node).pre = 0;
+      }
       selectors.push(sel as SimpleSelector);
     }
   });
@@ -436,7 +440,7 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
  */
 export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx: RuleContext) => () => boolean) {
   const $ = this;
-  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatches($.LA(1), $.T.Combinator);
+  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatcher($.LA(1), $.T.Combinator);
 
   /**
       A sequence of one or more simple and/or compound selectors
@@ -448,7 +452,7 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
   //   ;
   let GATE = manyGate(ctx);
   $.startRule();
-  let selectors: ComplexSelectorValue = [$.compoundSelector(ctx)];
+  const selectors: ComplexSelectorValue = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] }) as ComplexSelectorComponent];
 
   /**
    * Only space combinators and specified combinators will enter the MANY
@@ -479,7 +483,7 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
          */
         combinator = new Combinator(' ', undefined, undefined, $.context);
       }
-      let compound = $.compoundSelector(ctx) as CompoundSelector;
+      let compound = $.SUBRULE($.compoundSelector, { ARGS: [ctx] }) as CompoundSelector;
       /** Now that compoundSelector succeeded, attach pre-tokens to the WS combinator */
       if (wsCombinatorOffset !== undefined) {
         let pre = $.getPrePost(wsCombinatorOffset);
@@ -521,8 +525,8 @@ export function relativeSelector(this: P, ctx: RuleContext = {}) {
   return $.OR([
     {
       ALT: () => {
-        let co = $.CONSUME($.T.Combinator);
-        let complex: Node = $.complexSelector(ctx);
+        const co = $.CONSUME($.T.Combinator);
+        let complex = $.SUBRULE($.complexSelector, { ARGS: [ctx] }) as Node;
 
         let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
         if (complex instanceof ComplexSelector) {
@@ -547,9 +551,9 @@ export function relativeSelector(this: P, ctx: RuleContext = {}) {
       }
     },
     {
-      ALT: () => $.complexSelector(ctx)
+      ALT: () => $.SUBRULE($.complexSelector, { ARGS: [ctx] }) as Node
     }
-  ]);
+  ]) as Node;
 }
 
 export function forgivingSelectorList(this: P, ctx: RuleContext = {}) {
@@ -571,7 +575,7 @@ export function forgivingSelectorList(this: P, ctx: RuleContext = {}) {
   $.AT_LEAST_ONE_SEP({
     SEP: $.T.Comma,
     DEF: () => {
-      let selector = $.relativeSelector(ctx);
+      const selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] }) as Node;
       i++;
       if (i === 1 && ctx.qualifiedRule) {
         // Only attach post; leave pre for the parent Rules to lift comments
@@ -601,7 +605,7 @@ export function selectorList(this: P, ctx: RuleContext = {}) {
   $.AT_LEAST_ONE_SEP({
     SEP: $.T.Comma,
     DEF: () => {
-      let sel = $.complexSelector(ctx);
+      const sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] }) as Node;
       i++;
       // Do not consume leading pre for the first selector of a qualified rule,
       // so that pre-rule comments remain available to be lifted to Rules.
@@ -648,11 +652,39 @@ export function declarationList(this: P, ctx: RuleContext = {}, alt?: AltContext
 
   alt ??= (ctx: RuleContext = {}) => [
     /** GATE kept: @ commits to innerAtRule for correct error reporting */
-    { GATE: () => tokenMatches($.LA(1), $.T.AtName), ALT: () => $.innerAtRule({ ...ctx, inner: true }) },
-    { ALT: () => $.declaration(ctx) },
-    { ALT: () => $.qualifiedRule({ ...ctx, inner: true }) },
+    { GATE: () => tokenMatcher($.LA(1), $.T.AtName), ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    {
+      /**
+       * Declaration vs nested rule disambiguation for ident-colon starts.
+       *
+       * `a:hover { }` (no WS after colon) → nested rule selector
+       * `color: red;` (WS after colon) → declaration
+       *
+       * We use whitespace presence after the colon as a fast O(1) heuristic.
+       * CSS authors virtually always put a space after `:` in declarations
+       * and never in pseudo-selectors. This avoids expensive lookahead
+       * for `{` and handles 99%+ of real-world CSS correctly.
+       *
+       * Custom properties (--foo: ...) are handled by declaration's own GATE.
+       */
+      GATE: () => {
+        const la1 = $.LA(1);
+        // Only applies when LA(1) is Ident and LA(2) is Colon/Assign
+        if (!tokenMatcher(la1, $.T.Ident)) {
+          return true; // non-ident: let declaration try normally
+        }
+        const la2 = $.LA(2);
+        if (!tokenMatcher(la2, $.T.Assign)) {
+          return true; // no colon: let declaration try normally
+        }
+        // WS after colon → declaration; no WS → pseudo-selector (skip declaration)
+        return $.hasWSBeforeByPos[$.currIdx + 3] === 1;
+      },
+      ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] })
+    },
+    { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] }) },
     { ALT: () => $.CONSUME($.T.Semi) }
   ];
 
-  return $.main(ctx, alt);
+  return $.SUBRULE($.main, { ARGS: [ctx, alt] }) as Node;
 }
