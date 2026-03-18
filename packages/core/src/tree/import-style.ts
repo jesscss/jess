@@ -5,6 +5,7 @@ import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
+import { EvalSession } from '../eval-session.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -498,8 +499,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the import type is `import`
       */
         if (withValues || !evaldRules || type === 'import') {
-          const preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
+          if (!withValues) {
+            prevSession = context.session;
+            context.session = new EvalSession();
+          }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
             type === 'import'
@@ -539,10 +542,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            if (withValues) {
-              context.session = prevSession;
-            }
-            context.preserveOriginalNodes = preserveOriginalNodes;
+            context.session = prevSession;
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
@@ -564,12 +564,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // This ensures registration happens post-clone, not on the cached evaldRules
         // sourceNode is already set above, so the cloned Rules will have it
           rules = rules.clone(true) as Rules;
-          let preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
           rules = await rules.eval(context);
-          context.preserveOriginalNodes = preserveOriginalNodes;
         }
 
         // Pop extend root if we pushed one

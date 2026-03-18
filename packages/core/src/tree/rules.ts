@@ -30,6 +30,7 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
+import { sessionSetIndex } from './util/session-helpers.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -166,8 +167,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Rules are often cloned during `preEval()` when `context.preserveOriginalNodes`
-   * is enabled. If callers register functions/mixins/declarations on the parsed tree
+   * Rules are often cloned during `preEval()` when a session is active.
+   * If callers register functions/mixins/declarations on the parsed tree
    * before evaluation (e.g. via visitors), those registries must survive cloning so
    * lookups during evaluation work as expected.
    */
@@ -749,7 +750,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       for (let i = 0; i < rules.value.length; i++) {
         let n = rules.value[i]!;
-        n.index = i;
+        sessionSetIndex(n, i, context);
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
@@ -817,7 +818,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Nodes that don't register by name (Call, Expression, etc.) skip
       // both preEval and dynamic resolution — they're handled by the eval queue.
       if (!this._isRegisterableType(node)) {
-        node.index = index;
+        sessionSetIndex(node, index, context);
         return;
       }
       if (this._hasStaticName(node)) {
@@ -827,7 +828,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules.setData(index, preEvaldNode);
-            (preEvaldNode as Node).index = index;
+            sessionSetIndex(preEvaldNode as Node, index, context);
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
               staticNodes.push(preEvaldNode);
@@ -838,7 +839,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
         }
         rules.setData(index, preEvald as Node);
-        (preEvald as Node).index = index;
+        sessionSetIndex(preEvald as Node, index, context);
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
         this._registerNodeIfEligible(rules, nodeToRegister, context);

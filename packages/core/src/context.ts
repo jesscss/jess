@@ -438,9 +438,6 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  /** A flag to clone nodes before mutating */
-  preserveOriginalNodes: boolean | undefined;
-
   /**
    * Optional evaluation session for mutation isolation.
    *

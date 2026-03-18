@@ -391,9 +391,42 @@ rather than mutating `node.parent` directly.
 
 ---
 
-## Stage 12-13: EvalSession Wiring (Future)
+## Stage 12: Remove `preserveOriginalNodes`
 
-- [ ] Stage 12: Remove preserveOriginalNodes
+Goal: Delete the `preserveOriginalNodes` flag from `Context` entirely. With sessions
+active for all import eval paths, `maybeClone` can gate on `!!context.session` instead.
+
+### Changes
+- [x] `rules.ts`: Replace 4 direct `n.index = i` mutations with `sessionSetIndex(n, i, context)` —
+  protects canonical node `index` fields when a session is active
+- [x] `import-style.ts`: For `!withValues` branches of the fresh-eval block (`!evaldRules`,
+  `type === 'import'`), create a new `EvalSession` before eval and restore in `finally` —
+  same isolation guarantee `preserveOriginalNodes` provided, but via session
+- [x] `import-style.ts`: Remove `preserveOriginalNodes` save/set/restore from compose-cached
+  path (lines 567-572) — already does `clone(true)` (deep clone), so canonical nodes are
+  never mutated there regardless
+- [x] `node-base.ts`: `maybeClone` now gates on `!!context.session` (was `context.preserveOriginalNodes`)
+- [x] `node-base.ts`: `clonedEval` now creates a temporary `EvalSession` instead of setting
+  `preserveOriginalNodes = true` — mixin arg eval (rules.ts line 1862) is now session-isolated
+- [x] `context.ts`: Remove `preserveOriginalNodes: boolean | undefined` field
+
+### Design notes
+- `withValues` path: session was already created at `context.createSession()` (Stage 10/11);
+  the `finally` now always restores `context.session = prevSession` (not just `if (withValues)`)
+- Non-`withValues` paths: `prevSession = context.session; context.session = new EvalSession()`
+  before eval; restored in `finally` — identical save/restore contract
+- `clonedEval` wraps `eval()` with a temporary session only when no session is already active
+  (avoids creating a nested session when one already exists)
+
+### Test results — post Stage 12
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 934 passed | 24 skipped
+  - Same baseline as Stage 11 (no regression)
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+---
+
+## Stage 13: Expand Beyond Imports, Clean Up (Future)
+
 - [ ] Stage 13: Expand beyond imports, clean up
 
 ---

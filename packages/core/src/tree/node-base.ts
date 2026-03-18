@@ -3,6 +3,7 @@ import {
   type TreeContext,
   type Context
 } from '../context.js';
+import { EvalSession } from '../eval-session.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
@@ -894,30 +895,26 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  /**
-   * @todo
-   * Write tests that make sure that a maybe clone without preserveOriginalNodes
-   * does not clone the nodes, but a maybeClone with preserveOriginalNodes
-   * does clone the nodes all through the tree.
-   */
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    if (context.preserveOriginalNodes) {
+    if (context.session) {
       return this.clone(deep, cloneFn, context);
     }
     return this;
   }
 
   clonedEval(context: Context): MaybePromise<Node> {
-    let preserveNodes = context.preserveOriginalNodes;
-    context.preserveOriginalNodes = true;
+    const prevSession = context.session;
+    if (!prevSession) {
+      context.session = new EvalSession();
+    }
     let out = this.eval(context);
     if (isThenable(out)) {
       return (out as Promise<Node>).then((result) => {
-        context.preserveOriginalNodes = preserveNodes;
+        context.session = prevSession;
         return result;
       });
     }
-    context.preserveOriginalNodes = preserveNodes;
+    context.session = prevSession;
     return out;
   }
 
