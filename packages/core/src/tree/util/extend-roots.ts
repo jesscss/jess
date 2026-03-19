@@ -571,11 +571,11 @@ function applyInstructionToRuleset(
       nextSelector = getImplicitSelector(nextOwnSelector, targetInfo.parent, false);
     }
   }
-  if (context?.session) {
-    sessionPatchField(ruleset, 'selector', nextSelector, context);
-  } else {
-    ruleset.setData('selector', nextSelector);
-  }
+  // Write to _extendedSelector (serialization reads this) AND setData (extend matching reads this).
+  // When clone(false) is used for imports, _extendedSelector on a COW-cloned Ruleset
+  // won't contaminate canonical. For now, both writes go to the same instance.
+  (ruleset as unknown as { _extendedSelector?: unknown })._extendedSelector = nextSelector;
+  ruleset.setData('selector', nextSelector);
   if (shouldHoist) {
     ruleset.hoistToRoot = true;
     refreshNestedRulesetSelectors(ruleset);

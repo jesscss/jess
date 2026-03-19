@@ -73,6 +73,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   rules!: Rules;
   guard: Condition | Nil | undefined;
   selectorBeforeExtend: Selector | Nil | undefined;
+  /** Patched selector from extend — used by serialization instead of canonical selector. */
+  _extendedSelector: Selector | Nil | undefined;
 
   constructor(value: NarrowRulesetValue<T>, options?: RulesetOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -163,10 +165,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * concrete selector unchanged because they already serialize from root.
    */
   getEffectiveSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false, context?: Context): Selector | Nil {
-    // Check session overlay for patched selector (from extend)
-    const selector = (context?.session?.hasField(this, 'selector')
-      ? context.session.getField(this, 'selector')
-      : this.selector) as Selector | Nil;
+    // Use extend-patched selector if available, else canonical
+    const selector = (this._extendedSelector ?? this.selector) as Selector | Nil;
     if (!selector || selector instanceof Nil) {
       return selector;
     }
