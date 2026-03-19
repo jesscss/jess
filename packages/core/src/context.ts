@@ -452,7 +452,7 @@ export class Context {
 
   /** Create and attach a new EvalSession to this context. */
   createSession(): EvalSession {
-    this.session = new EvalSession();
+    this.session = new EvalSession({ resetEvalState: true });
     return this.session;
   }
 

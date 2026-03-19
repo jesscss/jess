@@ -576,10 +576,16 @@ export abstract class Node<
 
   protected _isPreEvaluated(context: Context): boolean {
     const session = context.session;
-    if (session?.hasRuntime(this)) {
-      const runtime = session.getRuntime(this);
-      if (runtime.preEvaluated !== undefined) {
-        return runtime.preEvaluated;
+    if (session) {
+      if (session.hasRuntime(this)) {
+        const runtime = session.getRuntime(this);
+        if (runtime.preEvaluated !== undefined) {
+          return runtime.preEvaluated;
+        }
+      }
+      // resetEvalState sessions: unvisited nodes are "not yet evaluated"
+      if (session.resetEvalState) {
+        return false;
       }
     }
     return this.preEvaluated;
@@ -595,10 +601,15 @@ export abstract class Node<
 
   protected _isEvaluated(context: Context): boolean {
     const session = context.session;
-    if (session?.hasRuntime(this)) {
-      const runtime = session.getRuntime(this);
-      if (runtime.evaluated !== undefined) {
-        return runtime.evaluated;
+    if (session) {
+      if (session.hasRuntime(this)) {
+        const runtime = session.getRuntime(this);
+        if (runtime.evaluated !== undefined) {
+          return runtime.evaluated;
+        }
+      }
+      if (session.resetEvalState) {
+        return false;
       }
     }
     return this.evaluated;
@@ -942,7 +953,7 @@ export abstract class Node<
   }
 
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    if (context.session) {
+    if (context.session?.resetEvalState) {
       return this.clone(deep, cloneFn, context);
     }
     return this;
@@ -951,7 +962,7 @@ export abstract class Node<
   clonedEval(context: Context): MaybePromise<Node> {
     const prevSession = context.session;
     if (!prevSession) {
-      context.session = new EvalSession();
+      context.session = new EvalSession({ resetEvalState: true });
     }
     let out = this.eval(context);
     if (isThenable(out)) {

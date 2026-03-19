@@ -1684,7 +1684,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const isOutermost = rules === context.root;
 
           if (isOutermost) {
-            // Process all registered extends using the extend roots registry system
             processExtends(context);
           }
           /** Restore contexts */
@@ -2254,7 +2253,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
     const prevMixinSession = thisContext.session;
     if (!prevMixinSession) {
-      thisContext.session = new EvalSession();
+      thisContext.session = new EvalSession({ resetEvalState: true });
     }
 
     for (let candidate of evalCandidates) {
@@ -2430,7 +2429,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         if (canonicalGuard) {
           // Create a fresh session so that adopt() and eval() mutations (parent, evaluated,
           // preEvaluated) go to the session overlay and never corrupt canonical guard state.
-          thisContext.session = new EvalSession();
+          thisContext.session = new EvalSession({ resetEvalState: true });
           outerRules ??= Rules.create([]);
           outerRules.adopt(canonicalGuard, thisContext);
           candidate.parent!.adopt(outerRules);
@@ -2447,7 +2446,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               }
               // Fresh session per probe so each sees clean evaluated/preEvaluated state.
               const prevSession = thisContext.session;
-              thisContext.session = new EvalSession();
+              thisContext.session = new EvalSession({ resetEvalState: true });
               try {
                 outerRules!.adopt(guardNode, thisContext);
                 thisContext.isDefault = isDefaultValue;

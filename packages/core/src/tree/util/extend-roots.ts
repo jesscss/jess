@@ -13,6 +13,7 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset } from './selector-utils.js';
+import { sessionPatchField } from './session-helpers.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -492,7 +493,8 @@ function clearExtendedRuleset(ruleset: Ruleset): void {
 function applyInstructionToRuleset(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
-  cache?: TargetInfoCache
+  cache?: TargetInfoCache,
+  context?: Context
 ): { matched: boolean; changed: boolean } {
   const targetInfo = getCachedTargetInfo(cache, ruleset, instruction);
   if (!targetInfo) {
@@ -569,7 +571,11 @@ function applyInstructionToRuleset(
       nextSelector = getImplicitSelector(nextOwnSelector, targetInfo.parent, false);
     }
   }
-  ruleset.setData('selector', nextSelector);
+  if (context?.session) {
+    sessionPatchField(ruleset, 'selector', nextSelector, context);
+  } else {
+    ruleset.setData('selector', nextSelector);
+  }
   if (shouldHoist) {
     ruleset.hoistToRoot = true;
     refreshNestedRulesetSelectors(ruleset);
@@ -662,7 +668,7 @@ export function processExtends(context: Context): void {
               continue;
             }
 
-            const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache);
+            const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache, context);
             if (outcome.matched) {
               instructionMatched.add(instruction);
               rulesetMatched = true;

@@ -241,7 +241,7 @@ export class For extends Node<ForValue> {
       let counter = 1;
       const prevSession = context.session;
       if (!prevSession) {
-        context.session = new EvalSession();
+        context.session = new EvalSession({ resetEvalState: true });
       }
       const evaluatedIterable = await iterable.eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {

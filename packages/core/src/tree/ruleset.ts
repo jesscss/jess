@@ -138,7 +138,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * being serialized from root (`hoistToRoot`) or collapse nesting is enabled.
    * In those cases, the selector must be recomposed against its parent.
    */
-  getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false): Selector | Nil {
+  getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false, context?: Context): Selector | Nil {
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
     const parentRs = getParentRuleset(this);
     if (
@@ -151,7 +151,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return ownSelector as Selector;
     }
 
-    return this.getEffectiveSelector(collapseNesting);
+    return this.getEffectiveSelector(collapseNesting, context);
   }
 
   /**
@@ -162,8 +162,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * eager mutation of `data.selector` after extends. Hoisted rulesets keep their
    * concrete selector unchanged because they already serialize from root.
    */
-  getEffectiveSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false): Selector | Nil {
-    const selector = this.selector;
+  getEffectiveSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false, context?: Context): Selector | Nil {
+    // Check session overlay for patched selector (from extend)
+    const selector = (context?.session?.hasField(this, 'selector')
+      ? context.session.getField(this, 'selector')
+      : this.selector) as Selector | Nil;
     if (!selector || selector instanceof Nil) {
       return selector;
     }
@@ -434,7 +437,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const selector = this.getRenderableSelector(options.collapseNesting);
+    const selector = this.getRenderableSelector(options.collapseNesting, options.context);
     const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),

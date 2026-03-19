@@ -63,6 +63,16 @@ export class EvalSession {
   /** Unique session identifier */
   readonly id: number;
 
+  /**
+   * When true, _isPreEvaluated/_isEvaluated return false for nodes
+   * without explicit entries — forcing re-evaluation of shared canonical
+   * nodes. Used for clone(false) mixin eval sessions.
+   *
+   * When false (default), eval state falls through to canonical fields.
+   * Used for patch-only sessions (extend, import reference).
+   */
+  readonly resetEvalState: boolean;
+
   /** Per-node field overrides */
   private patches = new WeakMap<Node, NodePatch>();
 
@@ -75,8 +85,9 @@ export class EvalSession {
   /** Nodes that have been materialized (copied) in this session */
   private materialized = new WeakSet<Node>();
 
-  constructor() {
+  constructor(options?: { resetEvalState?: boolean }) {
     this.id = nextSessionId++;
+    this.resetEvalState = options?.resetEvalState ?? false;
   }
 
   // -- Field patch API --
@@ -123,19 +134,11 @@ export class EvalSession {
 
   // -- Runtime state API --
 
-  /**
-   * Get or create runtime state for a node in this session.
-   *
-   * Eval flags are initialized to `false` so that canonical nodes
-   * (which may have `preEvaluated = true` from a prior eval pass)
-   * are properly re-evaluated in this session's context. Without
-   * this, `_isPreEvaluated` would fall through to the canonical
-   * field and skip re-evaluation of shared (clone(false)) nodes.
-   */
+  /** Get or create runtime state for a node in this session. */
   getRuntime(node: Node): RuntimeState {
     let state = this.runtime.get(node);
     if (!state) {
-      state = { preEvaluated: false, evaluated: false };
+      state = {};
       this.runtime.set(node, state);
     }
     return state;

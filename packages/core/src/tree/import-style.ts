@@ -501,7 +501,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (withValues || !evaldRules || type === 'import') {
           if (!withValues) {
             prevSession = context.session;
-            context.session = new EvalSession();
+            context.session = new EvalSession({ resetEvalState: true });
           }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
@@ -565,7 +565,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // parent pointers are protected; preEval creates fresh clones via maybeClone.
           const prevReEvalSession = context.session;
           if (!prevReEvalSession) {
-            context.session = new EvalSession();
+            context.session = new EvalSession({ resetEvalState: true });
           }
           rules = rules.clone(false, undefined, context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
