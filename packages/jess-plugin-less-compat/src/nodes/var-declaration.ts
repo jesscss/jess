@@ -1,70 +1,18 @@
 import { VarDeclaration, Node } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy.js';
+import { createFromAdapter, singleChildAccept } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import { mapJessTypeToLessType } from '../transform/type-map.js';
-import type { LessNode } from '../types.js';
 
-/**
- * Transform a Jess VarDeclaration to a Less-compatible Assignment
- */
-export function transformVarDeclarationToLess(
-  jessVarDecl: VarDeclaration,
-  cache?: WeakMap<any, any>
-): LessNode {
-  return createLessProxy(jessVarDecl, cache, (prop, target) => {
-    const varDecl = target as VarDeclaration;
-
-    // Map 'type' property
-    if (prop === 'type') {
-      return mapJessTypeToLessType(varDecl.type);
+export const transformVarDeclarationToLess = createFromAdapter<VarDeclaration>({
+  fields: {
+    name: v => v.name,
+    value: (v, cache) => {
+      const value = v.value;
+      return value instanceof Node ? toLessNode(value, { cache }) : value;
+    },
+    index: (v) => {
+      const loc = v.location;
+      return loc.length ? loc[0] : undefined;
     }
-
-    // Map 'typeIndex'
-    if (prop === 'typeIndex') {
-      return undefined;
-    }
-
-    // Map 'name' property
-    if (prop === 'name') {
-      return varDecl.name;
-    }
-
-    // Map 'value' property
-    if (prop === 'value') {
-      const value = varDecl.value;
-      if (value instanceof Node) {
-        return toLessNode(value, { cache });
-      }
-      return value;
-    }
-
-    // Map 'index' property
-    if (prop === 'index') {
-      const loc = varDecl.location;
-      if (Array.isArray(loc) || !loc) {
-        return undefined;
-      }
-      return (loc as any).index;
-    }
-
-    // Map 'accept' method for visitor traversal
-    // Less's Visitor.visit() calls node.accept(this) to traverse children
-    // VarDeclaration's accept should traverse its value
-    if (prop === 'accept') {
-      return function(visitor: any) {
-        // VarDeclaration's accept traverses its value
-        const value = varDecl.value;
-        if (value instanceof Node) {
-          const lessValue = toLessNode(value, { cache });
-          if (lessValue && lessValue.accept) {
-            lessValue.accept(visitor);
-          } else if (lessValue && visitor.visitArray) {
-            visitor.visitArray([lessValue]);
-          }
-        }
-      };
-    }
-
-    return undefined;
-  });
-}
+  },
+  accept: singleChildAccept(v => v.value instanceof Node ? v.value as Node : undefined)
+});

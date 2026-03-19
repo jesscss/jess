@@ -170,7 +170,7 @@ export class Interpolated<
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
-        return replacement.copy(true).inherit(this) as Selector;
+        return replacement.clone(false).inherit(this) as Selector;
       }
       return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);
     }

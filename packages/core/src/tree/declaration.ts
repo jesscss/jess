@@ -176,7 +176,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override preEval(context: Context): MaybePromise<this> {
     /** We need to clone declarations, because we alter their options */
     let node = this.maybeClone(context);
-    node.preEvaluated = true;
+    node._setPreEvaluated(true, context);
     // Index should already be assigned by parent Rules
     return this._applyAssignmentNormalization(node, context);
   }
@@ -319,10 +319,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return;
           }
           if (rest.length === 1) {
-            node.value = rest[0]!.copy(true);
+            node.value = rest[0]!.clone(false);
             return;
           }
-          node.value = new List(rest.map(item => item.copy(true)));
+          node.value = new List(rest.map(item => item.clone(false)));
         };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {

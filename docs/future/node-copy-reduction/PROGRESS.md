@@ -174,10 +174,19 @@ Each checkbox = one node class converted + tests green.
 
 ## Stage 5: Declarative Adapter Layer
 
-- [ ] Define `NodeAdapter<T>` interface
-- [ ] Implement `createAdapter(node, def, cache)`
-- [ ] Convert existing transformer files to adapter definitions
-- [ ] Verify less-compat test suite passes
+- [x] Define `NodeAdapter<T>` interface in `packages/jess-plugin-less-compat/src/transform/adapter.ts`
+  - `lessType`, `fields`, `dynamicField`, `accept` properties
+  - Accept helpers: `selfVisitAccept()`, `childrenAccept()`, `singleChildAccept()`
+- [x] Implement `createFromAdapter<T>()` factory that generates a `NodeTransformer` from an adapter
+  - Auto-maps `type` and `typeIndex` properties
+  - Wraps accept functions with proper visitor binding
+- [x] Convert all 26 transformer files to declarative adapter definitions
+  - Leaf nodes (combinator, dimension, color): field mappings only
+  - Self-visit nodes (keyword, comment, quoted, paren, negative, url, operation, expression, condition, extend, import, mixin, attribute-selector): `selfVisitAccept()`
+  - Children-accept nodes (declaration, var-declaration, at-rule, call): custom accept or `childrenAccept()`/`singleChildAccept()`
+  - Complex nodes (ruleset, list, selector, sequence): custom accept functions
+  - Selector: preserves `flattenSelectorToElements()` and `createElementProxy()` with cache-write-through for Element proxy dispatch
+- [x] Verify less-compat test suite passes (54/54)
 
 ---
 
@@ -197,26 +206,399 @@ Each checkbox = one node class converted + tests green.
 - [x] Fix `setData()` for multi-key containers (iterate childKeys, not assign `.data`)
 - [x] Convert merge-conflict files from dev branch (9 files: `.data` → instance fields)
 - [x] Fix TypeScript build errors from dev merge (`{ data: ... }` type annotations → `{ value: ... }`)
-- [ ] Remove `setData()` from base class (still used in eval paths)
-- [ ] Remove `getEntriesFromNode()` and related utilities (still used in some paths)
+- [x] Remove `getEntries()` from core selector eval paths (selector-list, selector-complex, selector-compound)
+  - Replaced with direct indexed iteration over `value` arrays
+  - `getEntries()` and `getValues()` kept in collections.ts — `getValues()` still used by language-service
+- [~] `setData()` — kept as mutation API (does adoption + valueOf invalidation)
+  - Removing requires adopting setters (private fields + get/set) on all container nodes
+  - Deferred to future stage; not blocking for Stage 6 completion
 
 ---
 
-## Stage 7-13: EvalSession (Future)
+## Stage 7: Introduce EvalSession as Optional Layer
 
-These stages are deferred until Stages 1-6 are complete. See migration.md for details.
+Goal: Define the EvalSession data structure and session-aware helpers as a container-only
+layer. No production eval paths are modified — this stage is purely additive.
 
-- [ ] Stage 7: Introduce EvalSession as optional layer
-- [ ] Stage 8: Session-aware read/write helpers
-- [ ] Stage 9: Move import lookup to session scope
-- [ ] Stage 10: Externalize runtime state to session
-- [ ] Stage 11: Copy-on-write materialization
-- [ ] Stage 12: Remove preserveOriginalNodes
-- [ ] Stage 13: Expand beyond imports, clean up
+- [x] Define `EvalSession` class (`packages/core/src/eval-session.ts`)
+  - `NodePatch` (per-node field overrides via `WeakMap<Node, Record<string, unknown>>`)
+  - `RuntimeState` (parent, index, evaluated, preEvaluated, sourceNode via `WeakMap`)
+  - `ScopeSnapshot` (variables/mixins maps for re-evaluation)
+  - Materialization tracking (`WeakSet<Node>`)
+  - Patch/read API: `patchField`, `getField`, `hasField`, `hasPatches`
+  - Runtime API: `getRuntime`, `hasRuntime`
+  - Scope API: `setScope`, `getScope`
+- [x] Define session-aware helpers (`packages/core/src/tree/util/session-helpers.ts`)
+  - `sessionGetField` / `sessionPatchField` — fall through to direct field access when no session
+  - `sessionGetParent` / `sessionSetParent` — session runtime overlay for parent
+  - `sessionIsEvaluated` / `sessionSetEvaluated` — session runtime overlay for evaluated flag
+- [x] Add `session` field to `Context` with `createSession()` factory
+- [x] Export from core index (`eval-session.js`, `session-helpers.js`)
+- [x] Unit tests (27 passing): isolation, patch/read, no-session parity, scope snapshots, materialization
+- [x] Integration test skeletons (7 skipped): import-type with ambient vars, with/set injection,
+  ambient+with interaction, compose re-imports, no-session compatibility
+
+### Cloning scenarios EvalSession will replace (Stages 8-13)
+1. `import`-type fresh eval — each import pulls in ambient variables, needs isolated session
+2. `with`/`set` injection — override specific variables in the import's scope
+3. Compose re-imports — re-eval cached tree with different context
+4. `multiple`/`_dedupe` — separate output from same source
 
 ---
 
-## Stage 14: Explore Collapsing preEval / eval (Future)
+## Stage 8: Session-Aware Read and Write Helpers
+
+Goal: Complete the helper inventory and wire `evaluated`/`preEvaluated` lifecycle
+tracking into the base eval path in `node-base.ts`.
+
+- [x] Add `sourceParent` field to `RuntimeState` in `eval-session.ts`
+- [x] Add missing read helpers to `session-helpers.ts`:
+  - `sessionIsPreEvaluated` / `sessionSetPreEvaluated`
+  - `sessionGetIndex` / `sessionSetIndex`
+  - `sessionGetSourceParent` / `sessionSetSourceParent`
+  - `sessionGetChildren` (returns `rules.value`; session-local children in Stage 9)
+- [x] Add write helpers to `session-helpers.ts`:
+  - `sessionSetRuntimeState` — bulk-set multiple runtime fields
+  - `sessionAppendChildren` / `sessionPrependChildren` / `sessionRemoveChild` (direct
+    mutation for now; session overlay in Stage 9)
+  - `sessionReplaceNode` — replaces a node in its parent (session overlay in Stage 9)
+  - `sessionMarkScopeDirty` — no-op stub (session-local registry in Stage 9)
+- [x] Wire `evaluated`/`preEvaluated` into `Node.preEval`, `Node.evalStatic`,
+  `Node._evalStaticSync` via private helpers `_isPreEvaluated`, `_setPreEvaluated`,
+  `_isEvaluated`, `_setEvaluated` on the `Node` class
+  - Private helpers defined on `Node` directly (not imported from session-helpers.ts)
+    to avoid the circular import: session-helpers.ts already imports Node from node-base.ts
+  - Session is absent in all current code paths → behavior unchanged today
+  - When a session is active (Stage 9+): `evaluated`/`preEvaluated` go into the session
+    overlay, not onto the canonical node — enabling shared-node re-evaluation
+- [x] Unit tests: 16 new tests covering preEvaluated, index, sourceParent,
+  setRuntimeState helpers (no-session parity + session isolation)
+
+### Note on children helpers
+`sessionGetChildren`, `sessionAppendChildren`, `sessionPrependChildren`,
+`sessionRemoveChild`, `sessionReplaceNode`, and `sessionMarkScopeDirty` are introduced
+in Stage 8 but are **not yet session-aware** — they call through to direct mutation
+(`rules.push()`, `rules.splice()`, etc.). Session-local children arrays are introduced
+in Stage 9, at which point these helpers will route through the session overlay.
+
+---
+
+## Stage 9: Session-Based `with`/`set` Variable Injection
+
+Goal: Replace `rules.clone(true)` (O(N) deep clone) in `StyleImport.evalNode()` when
+processing `with`/`set` variable injection with a linear scan + session-based approach.
+
+- [x] Remove `rules.clone(true)` from the `withValues` branch in `import-style.ts`
+- [x] Build `topLevelVarIndex` (name → position map) via linear scan of imported rules
+- [x] Build `replacementAt` (position → injected node) for vars that are overridden
+- [x] Build `newVariables` list for injected vars with no counterpart in the library
+- [x] Construct `finalRules = Rules.create([])` with injected-first ordering:
+  - New variables (no library counterpart) first
+  - Then canonical nodes with replacements applied
+- [x] Wrap the `preEval` + `eval` call in a session (`context.createSession()`)
+  - Session is created only when `withValues` is set
+  - `context.session` is restored in a `finally` block
+- [x] Fix `import-style.test.ts` `with values` block: use correct `withNode`/`withType`
+  fields on `StyleImportValue` (not `with: { node, type }`)
+- [x] Remove active debug logging from `node-base.ts` `adopt()` and `registry-utils.ts`
+  `DeclarationRegistry.find()`
+
+### Test results — post Stage 9
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 932 passed | 24 skipped
+  - Down from 10 failed files / 34 failed tests at Stage 6 baseline
+  - `import-style` with-values tests all pass (previously 7 failing)
+  - All remaining failures are pre-existing (same set as Stage 6/7/8 baseline)
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+---
+
+## Stage 10: Externalize Runtime State — Parent Write Protection for Canonical Nodes
+
+Goal: Prevent `with`/`set` variable injection from permanently mutating the `parent`
+field on canonical library nodes. Routes parent writes through the session overlay for
+nodes passed directly into `finalRules`.
+
+- [x] Make `Node.adopt()` session-aware: when `ctx?.session` is active, write
+  `parent` into `session.getRuntime(node).parent` instead of directly onto the node
+- [x] Add optional `ctx?: Context` param to `Node.adopt()` (no-op without session)
+- [x] Promote session helpers `_isPreEvaluated`, `_setPreEvaluated`, `_isEvaluated`,
+  `_setEvaluated` from `private` to `protected` (needed by `Rules.preEval`)
+- [x] Wire `Rules.preEval()` to use `_isPreEvaluated` / `_setPreEvaluated` guards
+- [x] Add context-threaded `Rules.push(ctx, ...nodes)` overload so `adopt()` inside
+  the push loop can route parent writes through the session
+- [x] Move `context.createSession()` to BEFORE `finalRules` construction in
+  `import-style.ts` `withValues` block
+- [x] Pass `context` to all `finalRules.push(context, node)` calls
+- [x] Fix `prevSession` capture ordering: capture BEFORE `createSession()` call so
+  an outer session (nested imports) is properly restored in the finally block
+- [x] Save/restore canonical node parent pointers around the eval:
+  - `Rules.constructor` calls `adopt()` unconditionally for initial children, bypassing
+    session routing during the `clone()` triggered by `preEval` + `preserveOriginalNodes`
+  - Before eval: save `node.parent` for all non-replaced canonical nodes in `rules.value`
+  - In finally: restore saved parents so canonical nodes point back to their original container
+- [x] Parity test: `'two sequential "with" imports do not corrupt canonical node parent pointers'`
+  - Uses a 2-var library (baseColor replaced, anotherColor canonical + included in finalRules)
+  - Asserts `anotherColorVar.parent === sourceRules` before and after each with-import
+
+### Test results — post Stage 10
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 934 passed | 24 skipped
+  - Same baseline as Stage 9 (no regression)
+  - New parity test `'two sequential "with" imports do not corrupt canonical node parent pointers'` passes
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+- **TypeScript build**: 3 pre-existing errors in `session-helpers.ts` (unchanged from Stage 9)
+
+---
+
+## Stage 11: Thread `ctx` Through `clone()` to Replace Save/Restore Hack
+
+Goal: Remove the `canonicalNodeParents` save/restore workaround from `import-style.ts`
+(added in Stage 10) by properly threading `ctx?: Context` through `Node.clone()` and
+`Node.maybeClone()`. This allows `clone()` itself to save/restore child parent pointers
+around the constructor call, instead of doing it at the import-style call site.
+
+Also fix `Node.push()` to be session-aware (accept optional `Context` as first arg) so
+that `finalRules.push(context, node)` routes parent adoption through the session overlay
+rather than mutating `node.parent` directly.
+
+- [x] Thread `ctx?: Context` into `Node.clone(deep?, cloneFn?, ctx?)` (3rd param)
+- [x] Thread `ctx` into `Node.maybeClone(context, deep?, cloneFn?)` → `this.clone(deep, cloneFn, ctx)`
+- [x] Add session-aware save/restore of child parent pointers inside `Node.clone()`:
+  - Before `new Class(cloneData, ...)`: collect `[child, child.parent]` pairs for all child
+    nodes when `!deep && ctx?.session`
+  - After construction: `session.getRuntime(child).parent = newNode`; `child.parent = priorParent`
+- [x] Update `Rules.clone()` override to accept and forward `ctx` to `super.clone()`
+- [x] Make `Node.push()` context-aware: add `push(ctx: Context, ...items)` overload that
+  routes `adopt(item, ctx)` through the session overlay, preventing direct `node.parent`
+  mutation when pushing canonical nodes into `finalRules`
+- [x] Remove `canonicalNodeParents` save/restore hack from `import-style.ts` `finally` block
+  (no longer needed — `push` + `clone` both route through session overlay now)
+- [x] Fix `push` regression: `push(context, node)` was pushing `context` as a non-Node item
+  into the value array; new overload detects Context first-arg and excludes it from the array
+
+### Root causes resolved
+1. **`finalRules.push(context, node)` was silently broken**: context object was pushed into
+   `finalRules.value`, AND adoption was done without ctx (direct mutation). Now `push` with
+   a Context first arg routes adoption through session and excludes context from the array.
+2. **`Rules.clone()` override dropped `ctx`**: `Rules.clone(deep?, cloneFn?)` only accepted
+   2 args — the 3rd `ctx` arg passed from `maybeClone` was silently discarded. Fixed by
+   updating the override signature to `clone(deep?, cloneFn?, ctx?)`.
+
+### Test results — post Stage 11
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 934 passed | 24 skipped
+  - Same baseline as Stage 10 (no regression)
+  - Parity test `'two sequential "with" imports do not corrupt canonical node parent pointers'` continues to pass
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+---
+
+## Stage 12: Remove `preserveOriginalNodes`
+
+Goal: Delete the `preserveOriginalNodes` flag from `Context` entirely. With sessions
+active for all import eval paths, `maybeClone` can gate on `!!context.session` instead.
+
+### Changes
+- [x] `rules.ts`: Replace 4 direct `n.index = i` mutations with `sessionSetIndex(n, i, context)` —
+  protects canonical node `index` fields when a session is active
+- [x] `import-style.ts`: For `!withValues` branches of the fresh-eval block (`!evaldRules`,
+  `type === 'import'`), create a new `EvalSession` before eval and restore in `finally` —
+  same isolation guarantee `preserveOriginalNodes` provided, but via session
+- [x] `import-style.ts`: Remove `preserveOriginalNodes` save/set/restore from compose-cached
+  path (lines 567-572) — already does `clone(true)` (deep clone), so canonical nodes are
+  never mutated there regardless
+- [x] `node-base.ts`: `maybeClone` now gates on `!!context.session` (was `context.preserveOriginalNodes`)
+- [x] `node-base.ts`: `clonedEval` now creates a temporary `EvalSession` instead of setting
+  `preserveOriginalNodes = true` — mixin arg eval (rules.ts line 1862) is now session-isolated
+- [x] `context.ts`: Remove `preserveOriginalNodes: boolean | undefined` field
+
+### Design notes
+- `withValues` path: session was already created at `context.createSession()` (Stage 10/11);
+  the `finally` now always restores `context.session = prevSession` (not just `if (withValues)`)
+- Non-`withValues` paths: `prevSession = context.session; context.session = new EvalSession()`
+  before eval; restored in `finally` — identical save/restore contract
+- `clonedEval` wraps `eval()` with a temporary session only when no session is already active
+  (avoids creating a nested session when one already exists)
+
+### Test results — post Stage 12
+- **Core**: 9 failed | 59 passed | 3 skipped (71 total); 27 failed | 934 passed | 24 skipped
+  - Same baseline as Stage 11 (no regression)
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+---
+
+## Stage 13: Expand Beyond Imports, Clean Up
+
+### Stage 13a: Session-Isolate Mixin Guard Evaluation
+
+Goal: Eliminate `guard.copy(true)` calls in the mixin resolution loop in `rules.ts`.
+
+- [x] Replace 3 `guard.copy(true) + adopt(guard) + guard.eval()` patterns with a session-based
+  evaluation block that evaluates the canonical guard node directly
+- [x] `prevGuardSession` save/restore pattern ensures session is always restored in `finally`
+- [x] Each `evalWithDefault` probe gets its own inner session for fresh evaluated/preEvaluated state
+- [x] Canonical guard nodes always have `evaluated = false` because they were only ever evaluated
+  as copies — session isolation is safe with no `resetEvalStateDeep` needed
+
+### Stage 13b: Fix `PseudoSelector.valueOf()` and `CompoundSelector.valueOf()` bugs
+
+Pre-existing test failures (3 in process-leading-is, 1 snapshot in extend-eval-integration)
+were caused by incorrect normalization added to these two `valueOf()` methods.
+
+- [x] `PseudoSelector.valueOf()`: Remove the `:is(BasicSelector|CompoundSelector)` normalization
+  that stripped the `:is(...)` wrapper from the value string. Non-generated `:is(.x)` should
+  preserve `:is(.x)` in `valueOf()`; inner generated `:is(.inner)` returned from
+  `processLeadingIs` should also preserve its form.
+- [x] `CompoundSelector.valueOf()`: Constrain the `:is()` component flattening to only apply when
+  the arg is a CompoundSelector (recurse into its components). Non-CompoundSelector args (e.g.
+  SelectorList) now fall through to `component.valueOf()` directly.
+- [x] Update stale `extend-eval-integration` snapshot (outdated from dev merge)
+
+### Stage 13c: Fix `findNodeByType` test helper infinite recursion
+
+- [x] `packages/core/test/flags-static-optimization.test.ts`: Replace `Object.values(node.value)`
+  traversal with `childKeys`-based traversal. Stage 1-3 changed `declaration.value` from a plain
+  object to a Node child, causing infinite recursion when the old helper called
+  `Object.values(node.value)` on a Declaration node.
+
+### Test results — post Stage 13
+
+- **Core**: 6 failed | 62 passed | 3 skipped (71 total); 19 failed | 942 passed | 24 skipped
+  - Down from 9 failed files / 27 failed tests at Stage 12 baseline
+  - Remaining 6 failed files are all pre-existing from dev merge:
+    - `ampersand` — selector ordering during collapsing (7 tests)
+    - `at-rule` / `at-rule-basic` — parent selector prepended incorrectly inside @media (6 tests)
+    - `mixin` — mixin scope / parent context issues (2 tests)
+    - `fast-reject` — `:is(SelectorList)` full-match in selectorMatch (2 tests)
+- **Less-compat**: 9 passed | 54/54 tests pass (no regression)
+
+### Test results — post `617056ee` (Ampersand.clone() fix)
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 14 failed | 951 passed | 24 skipped
+  - Ampersand.clone() regression fixed: `appendValue` and `_selectorContainer` now preserved
+    across shallow clone; 5 ampersand tests and others restored to passing
+
+### What's blocked for further Stage 13 work
+
+The remaining large clone sites cannot be safely replaced with `clone(false)` without sessions.
+
+**Root cause: `clone(false)` without a session mutates canonical children's parents.**
+`node-base.ts clone()` (lines 986-1028) has a session-aware save/restore mechanism for
+canonical parent pointers, but it only activates when `ctx?.session` is truthy. Without a
+session, the constructor's `adopt()` calls permanently overwrite canonical children's `.parent`
+fields. Concretely: `outerRules.push(...rules.value)` (Site 3) followed by
+`outerRules.clone(false)` causes double-adopt of canonical declarations, corrupting the scope
+lookup chain across multiple mixin calls. `resetEvalStateDeep` was masking this by resetting
+state, but the underlying issue is the parent mutation.
+
+**Consequence:** `clone(false)` is only safe at these sites once `EvalSession` is active during
+mixin evaluation — at which point `clone(false, undefined, ctx)` routes parent writes through
+the session overlay and restores canonical pointers.
+
+1. **Mixin body eval** (`rules.ts:2313, 2336, 2348`) — Blocked on:
+   - `resetEvalStateDeep` resets Ruleset `selector` field (pre-composition recovery) and
+     Ampersand `_selectorContainer`/`_storedSelector` caches. These are structural mutations
+     during re-evaluation in a new context that require session-local field storage.
+   - Generic `sessionPatchField`/`sessionGetField` exists, but `Ruleset.preEval` and
+     `Ampersand.eval` would need to read from session instead of canonical fields.
+   - Replacing `clone(true)` with `clone(false)` here requires sessions to be active so
+     canonical parent pointers are protected via the session overlay.
+
+2. **`$for` loop** (`control.ts:244`) — Blocked on:
+   - `loopRules.unshift(varDecl)` injects a per-iteration loop variable into the cloned array.
+   - Session-local children arrays (`sessionGetChildren` returning a per-session copy of
+     `rules.value`) would be needed to support `unshift` without mutating canonical array.
+   - `Rules.preEval`/`evalStatic` would need to use `sessionGetChildren` instead of `this.value`.
+
+3. **Compose cached re-eval** (`import-style.ts:566`) — Blocked on session-local registries.
+   The comment says "clone BEFORE evaluation so registries are populated on the clone" — without
+   session-local registry state, canonical `evaldTrees` entry would get registration side effects.
+
+---
+
+## Stage 14: Eliminate resetEvalStateDeep
+
+Goal: Remove the O(N) `resetEvalStateDeep` traversal that resets eval state on mixin body
+deep clones, by fixing the root causes that made it necessary.
+
+### Root cause analysis
+
+`resetEvalStateDeep` did four things on every deep-cloned mixin body:
+1. `node.preEvaluated = false` — **already a no-op** (`_metaFlags = 0` on new clone instances)
+2. `node.evaluated = false` — **already a no-op** (same reason)
+3. Reset Ruleset selectors from `ownSelector` / `sourceNode` — **needed**: canonical
+   `Ruleset.preEval` mutates `data.selector` to the composed form during root eval;
+   `clone(true)` copies this stale composed selector, causing double-composition on re-eval.
+4. Clear Ampersand `_selectorContainer` / `_storedSelector` — **needed**: `Ampersand.clone`
+   copied the definition-site container; `evalNode` skipped rebinding when container was set.
+
+### Fixes
+
+- [x] `Ruleset.preEval`: use existing `ownSelector` (pre-composition) as starting selector
+  when re-evaluating, instead of `this.selector` (which may already be composed)
+- [x] `Ampersand.clone`: don't copy `_selectorContainer` — clones must rebind to the
+  current eval context frame (call-site, not definition-site)
+- [x] Remove `resetEvalStateDeep` function and its 3 call sites from `rules.ts`
+
+### Test results — post Stage 14
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
+  - Same-or-better than 617056ee baseline (was 14 failed | 951 passed)
+  - Mixin-recursion test confirmed passing
+
+### What's unblocked
+
+Blocker 1 from Stage 13 ("resetEvalStateDeep resets Ruleset selector / Ampersand container")
+is resolved.
+
+### Stage 14b: Session infrastructure + clone(false) at Site 1
+
+Built the infrastructure required for `clone(false)`:
+- [x] `EvalSession.getRuntime` initializes `{ preEvaluated: false, evaluated: false }`
+  so canonical eval flags don't leak into sessions
+- [x] All `preEval` overrides migrated to `_isPreEvaluated`/`_setPreEvaluated`:
+  control.ts, any.ts, mixin.ts, collection.ts, at-rule.ts, declaration.ts, ruleset.ts, rules.ts
+- [x] `Rules._multiPassPreEval` adopts preEvald results after `setData` so clones
+  from `maybeClone` get proper parent pointers for scope lookups
+- [x] Session created before mixin eval loop in `getFunctionFromMixins`
+- [x] **Site 1** (Ruleset candidate, rules.ts:2267): `clone(true)` → `clone(false, undefined, ctx)`
+
+### Stage 14c: clone(false) at Site 3 (named mixin with params)
+
+- [x] **Site 3** (named mixin with params/guard, rules.ts:2300):
+  `clone(true)` → `clone(false, undefined, ctx)`
+- [x] Fix `outerRules.push(...rules.value)`: shallow-clone each child before pushing
+  so canonical parents aren't corrupted. Clones get `parent = outerRules` from push's adopt.
+
+### Test results — post Stage 14c
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
+  - Same baseline — no regressions from clone(false) at Sites 1 and 3
+
+### Stage 14d: clone(false) for $for loop body (control.ts:243)
+
+- [x] Session created before loop, shallow clone per iteration
+- [x] `unshift` of per-iteration bindings operates on array copy, not canonical
+- [x] Each iteration sees fresh canonical preEval state (only clones get preEvaluated=true)
+
+### Stage 14e: clone(false) for compose cached re-eval (import-style.ts:566)
+
+- [x] Session created if none exists, shallow clone + eval
+- [x] Registries populated on clone's preEvald children, not canonical cache
+
+### Remaining clone(true) sites (low priority)
+
+- `rules.ts:2293` — detached ruleset unlock, no eval follows, needs independent copy
+- `import-style.ts:251` — `_dedupe`/`multiple`, markReferenceMode mutates node flags
+- `control.ts:52` — small vars clone for block expression (cheap)
+- `ampersand.ts:228` / `ruleset.ts:544` — selector clones during eval (small, targeted)
+
+### Test results — post Stage 14e
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
+  - Same baseline throughout all Stage 14 substages — zero regressions
+
+---
+
+## Stage 15: Explore Collapsing preEval / eval (Future)
 
 - [ ] Instrument preEval pass timing
 - [ ] Prototype registration-during-walk for simple case

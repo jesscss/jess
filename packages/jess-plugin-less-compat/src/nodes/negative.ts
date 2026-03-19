@@ -1,51 +1,13 @@
 import { Negative, Node } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy.js';
+import { createFromAdapter, selfVisitAccept } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import { mapJessTypeToLessType } from '../transform/type-map.js';
-import { fromLessNode } from '../transform/from-less.js';
-import type { LessNode } from '../types.js';
 
-/**
- * Transform a Jess Negative to a Less-compatible Negative
- */
-export function transformNegativeToLess(
-  jessNegative: Negative,
-  cache?: WeakMap<any, any>
-): LessNode {
-  return createLessProxy(jessNegative, cache, (prop, target) => {
-    const negative = target as Negative;
-
-    // Map 'type' property
-    if (prop === 'type') {
-      return mapJessTypeToLessType(negative.type);
+export const transformNegativeToLess = createFromAdapter<Negative>({
+  fields: {
+    value: (n, cache) => {
+      const value = n.value;
+      return value instanceof Node ? toLessNode(value, { cache }) : value;
     }
-
-    // Map 'typeIndex'
-    if (prop === 'typeIndex') {
-      return undefined;
-    }
-
-    // Map 'value' property
-    if (prop === 'value') {
-      const value = negative.value;
-      if (value instanceof Node) {
-        return toLessNode(value, { cache });
-      }
-      return value;
-    }
-
-    // Map 'accept' method for visitor traversal
-    if (prop === 'accept') {
-      return function(visitor: any) {
-        const lessNegative = transformNegativeToLess(negative, cache);
-        const result = visitor.visit(lessNegative);
-        if (result !== lessNegative) {
-          return fromLessNode(result, { cache });
-        }
-        return negative;
-      };
-    }
-
-    return undefined;
-  });
-}
+  },
+  accept: selfVisitAccept()
+});

@@ -30,6 +30,8 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
+import { sessionSetIndex } from './util/session-helpers.js';
+import { EvalSession } from '../eval-session.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -166,13 +168,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Rules are often cloned during `preEval()` when `context.preserveOriginalNodes`
-   * is enabled. If callers register functions/mixins/declarations on the parsed tree
+   * Rules are often cloned during `preEval()` when a session is active.
+   * If callers register functions/mixins/declarations on the parsed tree
    * before evaluation (e.g. via visitors), those registries must survive cloning so
    * lookups during evaluation work as expected.
    */
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newRules = super.clone(deep, cloneFn);
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const newRules = super.clone(deep, cloneFn, ctx);
 
     // Only preserve *function* registry across clones.
     // This supports Less plugin compat, where plugins can inject functions into the registry
@@ -693,9 +695,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  override push(...nodes: Node[]) {
-    for (let node of nodes) {
-      this.adopt(node);
+  override push(...nodes: Node[]): void;
+  override push(ctx: Context, ...nodes: Node[]): void;
+  override push(...args: [Context, ...Node[]] | Node[]): void {
+    const hasCtx = args.length > 0 && args[0] instanceof Context;
+    const ctx = hasCtx ? args[0] as Context : undefined;
+    const nodes = (hasCtx ? args.slice(1) : args) as Node[];
+    for (const node of nodes) {
+      this.adopt(node, ctx);
       this.value.push(node);
       this.registerNode(node);
     }
@@ -709,7 +716,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       context.depth++;
       let rules = this.maybeClone(context);
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
@@ -728,7 +735,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isWrapper) {
         rules = this;
       }
-      rules.preEvaluated = true;
+      rules._setPreEvaluated(true, context);
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
@@ -744,7 +751,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       for (let i = 0; i < rules.value.length; i++) {
         let n = rules.value[i]!;
-        n.index = i;
+        sessionSetIndex(n, i, context);
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
@@ -806,13 +813,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && (node as any).role === 'charset') {
         /** Special case where we register the charset node immediately */
-        rules.setData(index, (node as Any).preEval(context));
+        const charsetNode = (node as Any).preEval(context);
+        rules.setData(index, charsetNode);
+        rules.adopt(charsetNode);
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
       // both preEval and dynamic resolution — they're handled by the eval queue.
       if (!this._isRegisterableType(node)) {
-        node.index = index;
+        sessionSetIndex(node, index, context);
         return;
       }
       if (this._hasStaticName(node)) {
@@ -822,7 +831,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules.setData(index, preEvaldNode);
-            (preEvaldNode as Node).index = index;
+            rules.adopt(preEvaldNode);
+            sessionSetIndex(preEvaldNode as Node, index, context);
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
               staticNodes.push(preEvaldNode);
@@ -833,7 +843,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
         }
         rules.setData(index, preEvald as Node);
-        (preEvald as Node).index = index;
+        rules.adopt(preEvald as Node);
+        sessionSetIndex(preEvald as Node, index, context);
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
         this._registerNodeIfEligible(rules, nodeToRegister, context);
@@ -1608,7 +1619,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
           // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
           const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
-            if (rules.preEvaluated) {
+            if (rules._isPreEvaluated(context)) {
               return rules;
             }
             const result = rules.preEval(context);
@@ -2142,61 +2153,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let outputRules: Rules[] = [];
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const resetEvalStateDeep = (node: Node): void => {
-      node.preEvaluated = false;
-      node.evaluated = false;
-      if (isNode(node, N.Ruleset)) {
-        const rulesetNode = node as Ruleset;
-        // Recover the pre-composition selector (ownSelector) so call-site
-        // preEval can rebuild selectors in the caller's frame.
-        // ownSelector is the selector BEFORE parent composition (e.g. `> li`),
-        // while selector may already be composed (e.g. `.nav-justified > li`).
-        const ownSelector = (rulesetNode.options as any)?.ownSelector;
-        if (ownSelector && isNode(ownSelector) && !(ownSelector instanceof Nil)) {
-          const copiedSelector = ownSelector.copy(true) as Selector | Nil;
-          rulesetNode.setData('selector', copiedSelector);
-        } else {
-          const selector = rulesetNode.selector as Selector | Nil;
-          const sourceSelector = selector?.sourceNode;
-          if (sourceSelector && isNode(sourceSelector)) {
-            const copiedSelector = sourceSelector.copy(true) as Selector | Nil;
-            copiedSelector.sourceNode = sourceSelector;
-            rulesetNode.setData('selector', copiedSelector);
-          }
-        }
-      }
-      if (isNode(node, N.Ampersand)) {
-        // Ampersands cloned from mixin definitions can carry a stale selector container
-        // that points at definition-time selectors. Clear it so call-site frames rebind `&`.
-        const ampNode = node as unknown as { _selectorContainer?: unknown; _storedSelector?: unknown };
-        ampNode._selectorContainer = undefined;
-        ampNode._storedSelector = undefined;
-      }
-      const value = (node as any).value;
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            resetEvalStateDeep(child);
-          }
-        }
-        return;
-      }
-      if (isPlainObject(value)) {
-        for (const propValue of Object.values(value)) {
-          if (isNode(propValue)) {
-            resetEvalStateDeep(propValue);
-            continue;
-          }
-          if (Array.isArray(propValue)) {
-            for (const item of propValue) {
-              if (isNode(item)) {
-                resetEvalStateDeep(item);
-              }
-            }
-          }
-        }
-      }
-    };
     const getRootSourceRules = (rules: Rules): Rules => {
       let current = rules;
       const seen = new Set<Rules>();
@@ -2247,7 +2203,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
           // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
           // hide param vars from registry-based lookup.
-          outerRules.push(...rules.value);
+          // Shallow-clone each child before pushing so canonical parents
+          // aren't corrupted. The clones get parent = outerRules from push's adopt.
+          for (const child of rules.value) {
+            outerRules.push((child as Node).clone(false, undefined, thisContext));
+          }
           newRules = await outerRules.eval(thisContext);
         }
         candidate.parent!.adopt(newRules);
@@ -2292,6 +2252,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
     };
 
+    const prevMixinSession = thisContext.session;
+    if (!prevMixinSession) {
+      thisContext.session = new EvalSession();
+    }
+
     for (let candidate of evalCandidates) {
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
@@ -2303,8 +2268,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
         const candidateRules = (candidate as Ruleset).rules;
         const sourceRules = getRootSourceRules(candidateRules);
-        let rules = sourceRules.clone(true);
-        resetEvalStateDeep(rules as unknown as Node);
+        let rules = sourceRules.clone(false, undefined, thisContext);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
@@ -2327,7 +2291,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
         let unlocked = sourceRules.clone(true);
-        resetEvalStateDeep(unlocked as unknown as Node);
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
@@ -2338,8 +2301,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       let rules = (candidate as any).rules as Rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(true);
-      resetEvalStateDeep(rules as unknown as Node);
+      rules = rules.clone(false, undefined, thisContext);
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
@@ -2458,15 +2420,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
 
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = (candidate as any).guard?.copy(true);
+      const canonicalGuard: Condition | Bool | undefined = (candidate as any).guard;
       let passes = true;
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
       thisContext.rulesContext = outerRules ?? rules;
+      const prevGuardSession = thisContext.session;
       try {
-        if (guard) {
+        if (canonicalGuard) {
+          // Create a fresh session so that adopt() and eval() mutations (parent, evaluated,
+          // preEvaluated) go to the session overlay and never corrupt canonical guard state.
+          thisContext.session = new EvalSession();
           outerRules ??= Rules.create([]);
-          outerRules.adopt(guard);
+          outerRules.adopt(canonicalGuard, thisContext);
           candidate.parent!.adopt(outerRules);
           /** Allow lookup on the inherited rules */
           passes = false;
@@ -2475,14 +2441,21 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const probeGuard = (candidate as any).guard?.copy(true);
-              if (!probeGuard) {
+              const guardNode = (candidate as any).guard as Condition | Bool | undefined;
+              if (!guardNode) {
                 return false;
               }
-              outerRules!.adopt(probeGuard);
-              thisContext.isDefault = isDefaultValue;
-              const probeResult = await probeGuard.eval(thisContext);
-              return probeResult instanceof Bool && probeResult.value === true;
+              // Fresh session per probe so each sees clean evaluated/preEvaluated state.
+              const prevSession = thisContext.session;
+              thisContext.session = new EvalSession();
+              try {
+                outerRules!.adopt(guardNode, thisContext);
+                thisContext.isDefault = isDefaultValue;
+                const probeResult = await guardNode.eval(thisContext);
+                return probeResult instanceof Bool && probeResult.value === true;
+              } finally {
+                thisContext.session = prevSession;
+              }
             };
             const passWhenDefaultFalse = await evalWithDefault(false);
             const passWhenDefaultTrue = await evalWithDefault(true);
@@ -2509,29 +2482,32 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           } else {
             /** All nodes need context to be evaluated */
             thisContext.isDefault = false;
-            guard = await guard.eval(thisContext);
+            const evaldGuard = await canonicalGuard.eval(thisContext);
             /** Less guards only pass on explicit Bool(true), never JS truthiness. */
-            guardPasses = guard instanceof Bool && guard.value === true;
+            guardPasses = evaldGuard instanceof Bool && evaldGuard.value === true;
             if (guardPasses) {
               passes = true;
               hasDefNoneCandidate = true;
             }
           }
+          // Guard eval done — restore session before candidate output evaluation.
+          thisContext.session = prevGuardSession;
         }
         if (!passes) {
           continue;
         }
-        if (!guard || !hasDefault) {
+        if (!canonicalGuard || !hasDefault) {
           // Non-default candidates are equivalent to Less's defNone group
           // (match regardless of default() assumption), so they suppress ambiguity.
           hasDefNoneCandidate = true;
         }
-        if (guard && hasDefault) {
+        if (canonicalGuard && hasDefault) {
           continue;
         }
         await evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params);
       } finally {
         thisContext.rulesContext = rulesContext;
+        thisContext.session = prevGuardSession;
       }
     }
 
@@ -2571,6 +2547,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
     }
+
+    thisContext.session = prevMixinSession;
 
     /**
      * Now that we have output rules, sort them by

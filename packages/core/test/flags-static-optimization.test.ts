@@ -1,32 +1,34 @@
 import { expectFlags, DEFAULT_VARIABLE } from './helpers.js';
 import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, type Ruleset, type Declaration, type List, type Call, type Operation } from '../src/index.js';
 
-// Helper function to find a node by type
+// Helper function to find a node by type using childKeys for safe traversal
 function findNodeByType(node: any, type: string): any {
+  if (!node || typeof node !== 'object') {
+    return null;
+  }
   if (node.type === type) {
     return node;
   }
-
-  if (node.value) {
-    if (Array.isArray(node.value)) {
-      for (const child of node.value) {
+  const childKeys: string[] | null = node.constructor?.childKeys ?? null;
+  if (childKeys === null) {
+    return null;
+  }
+  for (const key of childKeys) {
+    const field = node[key];
+    if (Array.isArray(field)) {
+      for (const child of field) {
         const found = findNodeByType(child, type);
         if (found) {
           return found;
         }
       }
-    } else if (typeof node.value === 'object') {
-      for (const val of Object.values(node.value)) {
-        if (val && typeof val === 'object' && 'type' in (val as any)) {
-          const found = findNodeByType(val, type);
-          if (found) {
-            return found;
-          }
-        }
+    } else if (field && typeof field === 'object' && 'type' in field) {
+      const found = findNodeByType(field, type);
+      if (found) {
+        return found;
       }
     }
   }
-
   return null;
 }
 

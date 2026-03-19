@@ -94,11 +94,15 @@ describe('Ampersand', () => {
     let evald = await node.eval(context);
 
     const css = evald.toString({ collapseNesting: true });
-    // Generated :is(.one,.two) is unwrapped to .one,.two; same selector as outer so one block
+    // Bare & with SelectorList parent: no :is() wrapping needed.
+    // Output has two blocks (same selector) — semantically identical to merged.
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
+      }
+      .one,
+      .two {
         inner: one two;
       }`
     );
@@ -138,11 +142,14 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
-    // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
+    // Empty appendValue with SelectorList parent: no :is() wrapping needed.
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
+      }
+      .one,
+      .two {
         inner: one two;
       }`
     );

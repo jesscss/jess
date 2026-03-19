@@ -35,6 +35,57 @@ export function isBareAmpersandOwnSelector(sel: Selector | Nil): boolean {
   return false;
 }
 
+/**
+ * Smart `:is()` wrapper. Flattens nested generated `:is()`, deduplicates,
+ * and skips wrapping single items.
+ */
+export function wrapInGeneratedIs(selector: Selector): Selector {
+  const items: Selector[] = [];
+  const seen = new Set<string>();
+
+  const addItem = (item: Selector): void => {
+    let pseudo: PseudoSelector | undefined;
+    if (isNode(item, N.PseudoSelector) && (item as PseudoSelector).generated && item.name === ':is') {
+      pseudo = item as PseudoSelector;
+    } else if (isNode(item, N.CompoundSelector) && (item as CompoundSelector).value.length === 1) {
+      const only = (item as CompoundSelector).value[0]!;
+      if (isNode(only, N.PseudoSelector) && (only as PseudoSelector).generated && only.name === ':is') {
+        pseudo = only as PseudoSelector;
+      }
+    }
+    if (pseudo && isNode(pseudo.arg, N.SelectorList)) {
+      for (const child of (pseudo.arg as SelectorList).value) {
+        addItem(child as Selector);
+      }
+      return;
+    }
+    const key = item.valueOf();
+    if (!seen.has(key)) {
+      seen.add(key);
+      items.push(item);
+    }
+  };
+
+  if (isNode(selector, N.SelectorList)) {
+    for (const item of (selector as SelectorList).value) {
+      addItem(item as Selector);
+    }
+  } else {
+    addItem(selector);
+  }
+
+  if (items.length === 1) {
+    return items[0]!;
+  }
+
+  const list = SelectorList.create(items).inherit(selector) as SelectorList;
+  list.pre = undefined;
+  list.post = undefined;
+  const wrapper = PseudoSelector.create({ name: ':is', arg: list });
+  wrapper.generated = true;
+  return wrapper.inherit(selector) as Selector;
+}
+
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
 export function getParentRuleset(node: Node): Ruleset | undefined {
   const rules = node.parent;
@@ -198,10 +249,20 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
     }
   };
 
-  if (isNode(resolved, N.SelectorList)) {
-    (resolved as SelectorList).value.forEach(item => doAppend(item as Selector));
+  // Unwrap generated :is(SelectorList) so append distributes to all items
+  let target = resolved;
+  if (
+    isNode(target, N.PseudoSelector)
+    && (target as PseudoSelector).generated
+    && (target as PseudoSelector).name === ':is'
+    && isNode((target as PseudoSelector).arg, N.SelectorList)
+  ) {
+    target = (target as PseudoSelector).arg as Selector;
+  }
+  if (isNode(target, N.SelectorList)) {
+    (target as SelectorList).value.forEach(item => doAppend(item as Selector));
   } else {
-    doAppend(resolved);
+    doAppend(target);
   }
   resolved.hoistToRoot = true;
   return resolved;
@@ -209,7 +270,8 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
 
 function resolveAuthoredAmpersands(
   selector: Selector,
-  parentSelector: Selector
+  parentSelector: Selector,
+  atTopLevel: boolean = true
 ): Selector {
   if (isNode(selector, N.Ampersand)) {
     const appendValue = (selector as Ampersand).appendValue;
@@ -230,6 +292,30 @@ function resolveAuthoredAmpersands(
     return SelectorList.create(
       selector.value.map(item => resolveAuthoredAmpersands(item as Selector, parentSelector))
     ).inherit(selector) as Selector;
+  }
+
+  // CompoundSelector with leading bare & and ComplexSelector parent at top level:
+  // Fuse parent's last part with compound suffix → * b[e] instead of :is(* b)[e]
+  // Only at top level — inside a ComplexSelector (e.g. after +), keep :is() wrapping.
+  if (atTopLevel && isNode(selector, N.CompoundSelector)) {
+    const compoundData = (selector as CompoundSelector).value as Selector[];
+    if (
+      compoundData.length >= 2
+      && isNode(compoundData[0], N.Ampersand)
+      && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)
+      && !(compoundData[0] as Ampersand).appendValue
+      && isNode(parentSelector, N.ComplexSelector)
+    ) {
+      const parentParts = [...(parentSelector as ComplexSelector).value] as Selector[];
+      const remaining = compoundData.slice(1).map(d => resolveAuthoredAmpersands(d as Selector, parentSelector));
+      const lastParentPart = parentParts[parentParts.length - 1]!.clone(false) as Selector;
+      const fusedLast = CompoundSelector.create([lastParentPart, ...remaining] as any).inherit(selector) as Selector;
+      const prefix = parentParts.slice(0, -1).map(p => p.clone(false) as Selector);
+      if (prefix.length > 0) {
+        return ComplexSelector.create([...prefix, fusedLast] as any).inherit(selector) as Selector;
+      }
+      return fusedLast;
+    }
   }
 
   if (isNode(selector, N.ComplexSelector | N.CompoundSelector)) {
@@ -281,7 +367,15 @@ function resolveAuthoredAmpersands(
           }
         }
       }
-      nextData.push(resolveAuthoredAmpersands(item, parentSelector));
+      nextData.push(resolveAuthoredAmpersands(item, parentSelector, false));
+    }
+    // For compounds, sort type/element selectors before class/id/pseudo
+    if (isCompound) {
+      nextData.sort((a, b) => {
+        const aIsTag = isNode(a, N.BasicSelector) && (a as BasicSelector).isTag ? 0 : 1;
+        const bIsTag = isNode(b, N.BasicSelector) && (b as BasicSelector).isTag ? 0 : 1;
+        return aIsTag - bIsTag;
+      });
     }
     const ctor = !isCompound ? ComplexSelector : CompoundSelector;
     const result = ctor.create(nextData as any).inherit(selector) as Selector;

@@ -56,17 +56,12 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           if (
             isNode(component, N.PseudoSelector)
             && component.name === ':is'
+            && isNode(component.arg, N.CompoundSelector)
           ) {
-            let arg = component.arg;
-            if (isNode(arg, N.CompoundSelector)) {
-              processComponents(arg.value);
-              continue;
-            } else {
-              value = String(arg!.valueOf());
-            }
-          } else {
-            value = component.valueOf();
+            processComponents((component.arg as CompoundSelector).value);
+            continue;
           }
+          value = component.valueOf();
           if (!nonElementRegex.test(value)) {
             elementSelectors.push(value);
           } else {

@@ -335,24 +335,19 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
 
       let result: Selector | Nil;
-      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
+      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (this.hoistToRoot || !!appendValue);
       const shouldWrapComplexSelector = isNode(selector, N.ComplexSelector);
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
         result = PseudoSelector.create({ name: ':is', arg: selector });
-        // When create() is invoked from this eval path, generated is not set on the instance
-        // (repro: process-leading-is test "unwraps evaled &[e] with frame * b"). Set explicitly.
         result.generated = true;
       } else {
         result = selector;
       }
 
-      // If we're appending (e.g. `&-1`), we must hoist this selector out of its parent frames
-      // because it materially changes the inherited selector.
       if (appendValue !== undefined) {
         result.hoistToRoot = true;
       }
-      // Only set hoistToRoot if we actually wrapped or if it was already set
       if (shouldWrapSelectorList || shouldWrapComplexSelector || this.hoistToRoot) {
         result.hoistToRoot = true;
       }
@@ -375,9 +370,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newNode = super.clone(deep, cloneFn) as this;
-    if (this._selectorContainer) {
-      newNode._selectorContainer = this._selectorContainer;
-    }
+    // super.clone() for leaf nodes calls new Ampersand((this as any).value, ...).
+    // Ampersand stores its data in the appendValue instance field, not in .value,
+    // so we must patch it explicitly on the clone.
+    newNode.appendValue = this.appendValue;
+    // Don't copy _selectorContainer — clones must rebind to the current eval
+    // context frame (e.g. call-site for mixin clones, not definition-site).
     return newNode;
   }
 

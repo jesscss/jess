@@ -3,6 +3,7 @@ import {
   type TreeContext,
   type Context
 } from '../context.js';
+import { EvalSession } from '../eval-session.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
@@ -475,14 +476,25 @@ export abstract class Node<
     return (this as any)[ck![0]!];
   }
 
-  /** Push items onto an array-valued node. */
-  push(...items: any[]): void {
+  /** Push items onto an array-valued node.
+   * Pass a Context as the first argument to route parent adoption through the session overlay. */
+  push(ctx: Context, ...items: Node[]): void;
+  push(...items: Node[]): void;
+  push(ctxOrFirst: Context | Node, ...rest: Node[]): void {
+    let ctx: Context | undefined;
+    let items: Node[];
+    if (ctxOrFirst instanceof Node) {
+      items = [ctxOrFirst, ...rest];
+    } else {
+      ctx = ctxOrFirst as Context;
+      items = rest;
+    }
     const arr = this._getArrayField();
     arr.push(...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item instanceof Node) {
-        this.adopt(item);
+        this.adopt(item, ctx);
       }
     }
     this._invalidateValueOf();
@@ -554,10 +566,60 @@ export abstract class Node<
     }
   }
 
-  adopt(node: Node) {
+  // ------------------------------------------------------------------
+  // Session-aware eval lifecycle helpers (Stage 8).
+  // Defined here (not in session-helpers.ts) to avoid a circular import:
+  // session-helpers.ts imports Node from this file, so this file cannot
+  // import from session-helpers.ts.  These mirror the public helpers in
+  // session-helpers.ts; both sets delegate to context.session when active.
+  // ------------------------------------------------------------------
+
+  protected _isPreEvaluated(context: Context): boolean {
+    const session = context.session;
+    if (session?.hasRuntime(this)) {
+      const runtime = session.getRuntime(this);
+      if (runtime.preEvaluated !== undefined) {
+        return runtime.preEvaluated;
+      }
+    }
+    return this.preEvaluated;
+  }
+
+  protected _setPreEvaluated(value: boolean, context: Context): void {
+    if (context.session) {
+      context.session.getRuntime(this).preEvaluated = value;
+    } else {
+      this.preEvaluated = value;
+    }
+  }
+
+  protected _isEvaluated(context: Context): boolean {
+    const session = context.session;
+    if (session?.hasRuntime(this)) {
+      const runtime = session.getRuntime(this);
+      if (runtime.evaluated !== undefined) {
+        return runtime.evaluated;
+      }
+    }
+    return this.evaluated;
+  }
+
+  protected _setEvaluated(value: boolean, context: Context): void {
+    if (context.session) {
+      context.session.getRuntime(this).evaluated = value;
+    } else {
+      this.evaluated = value;
+    }
+  }
+
+  adopt(node: Node, ctx?: Context) {
     /** The only place we should do this */
     if (!node.frozen) {
-      (node as any).parent = this;
+      if (ctx?.session) {
+        ctx.session.getRuntime(node).parent = this;
+      } else {
+        (node as any).parent = this;
+      }
     }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
@@ -833,30 +895,26 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  /**
-   * @todo
-   * Write tests that make sure that a maybe clone without preserveOriginalNodes
-   * does not clone the nodes, but a maybeClone with preserveOriginalNodes
-   * does clone the nodes all through the tree.
-   */
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    if (context.preserveOriginalNodes) {
-      return this.clone(deep, cloneFn);
+    if (context.session) {
+      return this.clone(deep, cloneFn, context);
     }
     return this;
   }
 
   clonedEval(context: Context): MaybePromise<Node> {
-    let preserveNodes = context.preserveOriginalNodes;
-    context.preserveOriginalNodes = true;
+    const prevSession = context.session;
+    if (!prevSession) {
+      context.session = new EvalSession();
+    }
     let out = this.eval(context);
     if (isThenable(out)) {
       return (out as Promise<Node>).then((result) => {
-        context.preserveOriginalNodes = preserveNodes;
+        context.session = prevSession;
         return result;
       });
     }
-    context.preserveOriginalNodes = preserveNodes;
+    context.session = prevSession;
     return out;
   }
 
@@ -872,7 +930,7 @@ export abstract class Node<
    * object creation, and the low utility of preserving the original
    * node, I think we should just only clone when we need to.
    */
-  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     let Class = this.constructor as Class<this>;
     const ck = (Class as unknown as typeof Node).childKeys;
 
@@ -925,8 +983,50 @@ export abstract class Node<
       }
     }
 
+    // When a session is active and this is a shallow clone, the constructor will call
+    // adopt() for all child nodes without ctx, which directly mutates their parent fields.
+    // Save the pre-construction parent values so we can restore them after, routing the
+    // new parent assignment through the session overlay instead.
+    let priorChildParents: [Node, Node | undefined][] | undefined;
+    if (!deep && ctx?.session) {
+      priorChildParents = [];
+      if (isArray(cloneData)) {
+        for (const item of cloneData as unknown[]) {
+          if (item instanceof Node) {
+            priorChildParents.push([item, item.parent]);
+          }
+        }
+      } else if (cloneData instanceof Node) {
+        priorChildParents.push([cloneData, cloneData.parent]);
+      } else if (cloneData !== null && typeof cloneData === 'object') {
+        for (const key of ck!) {
+          const field = cloneData[key!];
+          if (field instanceof Node) {
+            priorChildParents.push([field, field.parent]);
+          } else if (isArray(field)) {
+            for (const item of field as unknown[]) {
+              if (item instanceof Node) {
+                priorChildParents.push([item, item.parent]);
+              }
+            }
+          }
+        }
+      }
+    }
+
     const options = this._meta?.options;
     const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
+
+    // Route the constructor's direct parent writes through the session overlay and
+    // restore canonical parent pointers so shared nodes are not permanently mutated.
+    if (priorChildParents) {
+      const session = ctx!.session!;
+      for (const [child, priorParent] of priorChildParents) {
+        session.getRuntime(child).parent = newNode;
+        (child as any).parent = priorParent;
+      }
+    }
+
     newNode.inherit(this);
     return newNode;
   }
@@ -998,9 +1098,9 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       let node = this.maybeClone(context);
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
@@ -1042,7 +1142,7 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node.evaluated) {
+    if (node.hasFlag(F_STATIC) && node._isEvaluated(context)) {
       return node;
     }
 
@@ -1054,24 +1154,28 @@ export abstract class Node<
 
     return pipe(
       () => {
-        if (!node.preEvaluated) {
+        if (!node._isPreEvaluated(context)) {
           return node.preEval(context);
         }
         return node;
       },
       (preEvald) => {
         preEvaluatedNode = preEvald;
-        preEvaluatedNode.preEvaluated = true;
+        preEvaluatedNode._setPreEvaluated(true, context);
         if (preEvald !== node) {
           preEvaluatedNode.inherit(node);
         }
-        if (!preEvaluatedNode.evaluated) {
+        if (!preEvaluatedNode._isEvaluated(context)) {
           return preEvaluatedNode.evalNode(context);
         }
         return preEvaluatedNode;
       },
       (evald) => {
-        evald.evaluated = true;
+        if (evald instanceof Node) {
+          evald._setEvaluated(true, context);
+        } else {
+          (evald as Record<string, unknown>).evaluated = true;
+        }
         if (preEvaluatedNode !== evald) {
           evald.inherit(preEvaluatedNode);
         }
@@ -1083,23 +1187,27 @@ export abstract class Node<
   private static _evalStaticSync(node: Node, context: Context): Node {
     let preEvaluatedNode: Node;
 
-    if (!node.preEvaluated) {
+    if (!node._isPreEvaluated(context)) {
       preEvaluatedNode = node.preEval(context) as Node;
     } else {
       preEvaluatedNode = node;
     }
-    preEvaluatedNode.preEvaluated = true;
+    preEvaluatedNode._setPreEvaluated(true, context);
     if (preEvaluatedNode !== node) {
       preEvaluatedNode.inherit(node);
     }
 
     let evald: Node;
-    if (!preEvaluatedNode.evaluated) {
+    if (!preEvaluatedNode._isEvaluated(context)) {
       evald = preEvaluatedNode.evalNode(context) as Node;
     } else {
       evald = preEvaluatedNode;
     }
-    evald.evaluated = true;
+    if (evald instanceof Node) {
+      evald._setEvaluated(true, context);
+    } else {
+      (evald as Record<string, unknown>).evaluated = true;
+    }
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
       evald.inherit(preEvaluatedNode);
     }

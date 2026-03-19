@@ -5,6 +5,7 @@ import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
+import { EvalSession } from '../eval-session.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -13,6 +14,7 @@ import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
 import type { Sequence } from './sequence.js';
+import type { VarDeclaration } from './declaration-var.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -396,100 +398,80 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           importOptions!._dedupe = true;
         }
 
+        // Declare here so the finally block can restore it regardless of which branch ran.
+        let prevSession: typeof context.session;
         if (withValues) {
-        // Once configured, cannot be configured again (handled above for compose+cache).
+          // Once configured, cannot be configured again (handled above for compose+cache).
           if (withValues.type === 'set' && evaldRules) {
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          // Clone the imported rules BEFORE evaluation so registries are populated on the clone
-          let modifiedRules = rules.clone(true) as Rules;
-          // withValues.node might be a Reference, so evaluate it first to get Rules
+          // Evaluate withValues.node if it's a Reference to get the actual Rules
           let withRulesNode = withValues.node;
           if (isNode(withRulesNode, N.Reference)) {
-          // Evaluate the reference to get the actual Rules
             const evaluated = await withRulesNode.eval(context);
             if (!isNode(evaluated, N.Collection)) {
               throw new Error('with/set node must evaluate to a Collection');
             }
             withRulesNode = evaluated;
           }
-          // withRules don't need to be cloned because they are used once
-          let withRules = withRulesNode as Rules;
+          const withRules = withRulesNode as Rules;
 
-          // Build the declaration registry for efficient lookups
-          // This avoids O(n*m) complexity when we have many injected variables
-          // First, register all nodes in modifiedRules so they're in the registry
-          for (const node of modifiedRules.value) {
-            modifiedRules.registerNode(node);
+          // Build a name→index map over canonical top-level VarDeclarations for O(1) lookup.
+          // This replaces the previous rules.clone(true) + registry approach — we no longer
+          // deep-clone the entire imported tree just to find which declarations to override.
+          // A session created in the evaluation block below ensures that evaluated/preEvaluated
+          // tracking does not permanently mark canonical nodes as evaluated.
+          const topLevelVarIndex = new Map<string, number>();
+          for (let i = 0; i < rules.value.length; i++) {
+            const n = rules.value[i]!;
+            if (isNode(n, N.VarDeclaration)) {
+              const varName = String((n as VarDeclaration).name?.valueOf() ?? '');
+              if (varName && !topLevelVarIndex.has(varName)) {
+                topLevelVarIndex.set(varName, i);
+              }
+            }
           }
-          const declarationRegistry = modifiedRules.getRegistry('declaration');
-          declarationRegistry.indexPendingItems();
 
-          // Separate injected variables into two groups:
-          // 1. Variables that replace existing ones (found in imported rules)
-          // 2. Variables that are new (not found in imported rules)
+          // Separate injected variables into replacements (matched in canonical) and new variables.
+          const replacementAt = new Map<number, Node>();
           const newVariables: Node[] = [];
 
-          // For each injected variable, find and replace the first matching declaration
-          // in the imported rules, OR if not found, add it to newVariables to inject at the top.
-          // This ensures the injected value "overrides" the original.
-          // Works correctly for both scope lookup ($var) and linear lookup ($^var):
-          // - For linear lookup: injected vars come first, so they're found first
-          // - For scope lookup: original is replaced, so injected value wins
           for (const injectedNode of withRules.value) {
             if (isNode(injectedNode, N.VarDeclaration)) {
-              const varName = (injectedNode as any).name?.toString();
+              const varName = String((injectedNode as VarDeclaration).name?.valueOf() ?? '');
               if (varName) {
-              // Use the registry for efficient lookup instead of linear search
-                const declarations = declarationRegistry.index.get(varName);
-                if (declarations) {
-                // Find the first VarDeclaration in the set (sorted by index)
-                  const existingDecl = Array.from(declarations).find(decl => isNode(decl, N.VarDeclaration));
-
-                  if (existingDecl) {
-                  // Remove the old declaration from the registry
-                    declarations.delete(existingDecl);
-                    // Find its index in the array and replace it
-                    const index = modifiedRules.value.indexOf(existingDecl);
-                    if (index !== -1) {
-                    // Adopt the new node and replace in array
-                      modifiedRules.setData(index, injectedNode);
-                      // Add the new declaration to the registry
-                      declarations.add(injectedNode);
-                      // Register the new node so it's properly indexed
-                      modifiedRules.registerNode(injectedNode);
-                    }
-                  } else {
-                  // Not found, add to newVariables to inject at the top
-                    newVariables.push(injectedNode);
-                  }
+                const existingIdx = topLevelVarIndex.get(varName);
+                if (existingIdx !== undefined) {
+                  replacementAt.set(existingIdx, injectedNode);
                 } else {
-                // Not found in registry, add to newVariables to inject at the top
                   newVariables.push(injectedNode);
                 }
               } else {
-              // Non-variable nodes (if any) are kept as-is
                 newVariables.push(injectedNode);
               }
             } else {
-            // Non-VarDeclaration nodes are kept as-is
               newVariables.push(injectedNode);
             }
           }
 
-          // Create the final rules structure:
-          // [new injected variables (not found in imported), ...all nodes from modified imported rules (with replacements)]
-          // Injected variables that aren't found should be at the TOP so they're found first
-          // for linear lookup ($^var)
-          // We flatten the structure so all variables are in the same Rules scope
+          // Capture the outer session BEFORE creating a new one, so it can be
+          // restored in the finally block even if there was a pre-existing session.
+          prevSession = context.session;
+          // Create a session NOW — before finalRules construction — so that the
+          // adopt() calls inside Rules.push() route parent writes into the session
+          // overlay instead of permanently mutating canonical library nodes.
+          context.createSession();
+
+          // Build finalRules: new injected variables first (for linear lookup precedence),
+          // then canonical nodes with injected nodes substituted at matched positions.
+          // Pass context so that adopt() routes parent writes into the session overlay
+          // instead of mutating canonical library nodes directly.
           const finalRules = Rules.create([]);
-          // First, add new injected variables that weren't found in imported rules (at the top)
           for (const newNode of newVariables) {
-            finalRules.push(newNode);
+            finalRules.push(context, newNode);
           }
-          // Then, add all nodes from the modified imported rules (flattened, with replacements)
-          for (const node of modifiedRules.value) {
-            finalRules.push(node);
+          for (let i = 0; i < rules.value.length; i++) {
+            finalRules.push(context, replacementAt.get(i) ?? rules.value[i]!);
           }
           rules = finalRules;
         }
@@ -517,8 +499,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the import type is `import`
       */
         if (withValues || !evaldRules || type === 'import') {
-          const preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
+          if (!withValues) {
+            prevSession = context.session;
+            context.session = new EvalSession();
+          }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
             type === 'import'
@@ -558,7 +542,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            context.preserveOriginalNodes = preserveOriginalNodes;
+            context.session = prevSession;
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
@@ -576,16 +560,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             context.evaldTrees.set(resolvedPath, rules);
           }
         } else {
-        // Clone the unevaluated rules BEFORE evaluation so registries are populated on the clone
-        // This ensures registration happens post-clone, not on the cached evaldRules
-        // sourceNode is already set above, so the cloned Rules will have it
-          rules = rules.clone(true) as Rules;
-          let preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
+        // Shallow-clone the cached rules BEFORE evaluation so registries are populated
+        // on the clone, not on the cached evaldRules. Session ensures canonical children's
+        // parent pointers are protected; preEval creates fresh clones via maybeClone.
+          const prevReEvalSession = context.session;
+          if (!prevReEvalSession) {
+            context.session = new EvalSession();
+          }
+          rules = rules.clone(false, undefined, context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
           rules = await rules.eval(context);
-          context.preserveOriginalNodes = preserveOriginalNodes;
+          context.session = prevReEvalSession;
         }
 
         // Pop extend root if we pushed one

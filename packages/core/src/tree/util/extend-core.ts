@@ -231,16 +231,13 @@ function createAlternativeSelector(
  * no wrapper is needed — the fragment is marked visible in place and returned as-is.
  */
 function wrapSelectorInIs(selector: Selector, extendWith: Selector): Selector {
-  if (selector.valueOf() === extendWith.valueOf()) {
-    selector.addFlag(F_EXTENDED);
-    selector.addFlag(F_VISIBLE);
-    return selector;
-  }
+  // Flatten: if selector is already a generated :is(SelectorList), extract its items
+  // instead of nesting :is(:is(...), extension).
+  const selectorItems = expandGeneratedIsAlternatives(selector);
+  const extendItems = expandGeneratedIsAlternatives(extendWith);
+  const allItems = [...selectorItems, ...extendItems];
 
-  const arg = SelectorList.create([
-    selector,
-    extendWith.copy(true) as Selector
-  ]).inherit(selector) as SelectorList;
+  const arg = SelectorList.create(allItems).inherit(selector) as SelectorList;
   arg.pre = undefined;
   arg.post = undefined;
 

@@ -19,7 +19,6 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
-import { processLeadingIs } from './util/process-leading-is.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
 export type RulesetValue = {
@@ -225,11 +224,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this._valueOf = '';
       return this._valueOf;
     }
-    const normalizedResult = processLeadingIs(selector as Selector);
-    const normalizedSelector = Array.isArray(normalizedResult)
-      ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
-      : (normalizedResult as Selector);
-    this._valueOf = (normalizedSelector as Selector | Nil) instanceof Nil ? '' : (normalizedSelector as Selector).valueOf();
+    this._valueOf = selector instanceof Nil ? '' : (selector as Selector).valueOf();
     return this._valueOf;
   }
 
@@ -462,10 +457,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
-    const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
-    renderSelector = Array.isArray(renderNormalizedResult)
-      ? SelectorList.create(renderNormalizedResult.map(s => s.copy(true) as Selector)).inherit(renderSelector as Selector) as typeof selector
-      : renderNormalizedResult as typeof selector;
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
@@ -502,12 +493,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       const node = this.maybeClone(context);
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
-      let { selector, rules, guard } = node;
+      let { rules, guard } = node;
+      // On re-eval (e.g. mixin clone), use the pre-composition ownSelector so we
+      // compose from the authored selector, not the already-composed one.
+      let selector: Selector | Nil = (node.options as RulesetOptions)?.ownSelector ?? node.selector;
       // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
       // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
       // (like Less `@base`) become inaccessible.
@@ -601,7 +595,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // Push this ruleset to the frame so nested rulesets get the correct parent selector
           // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
           const childRules = node.rules;
-          if (childRules && !childRules.preEvaluated) {
+          if (childRules && !(childRules as unknown as Ruleset)._isPreEvaluated(context)) {
             context.rulesetFrames.push(node as Ruleset);
             if (extendRoot) {
               context.extendRoots.registerRoot(childRules, extendRoot);

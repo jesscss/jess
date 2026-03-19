@@ -324,7 +324,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
 
   /** Normalize positional args into a List node for tracking original arguments */
   const originalArgsList: List = listArg
-    ? listArg.copy(true)
+    ? listArg.clone(false)
     : new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
 
   const hasParams = !!(fn as any)?.options?.params;
