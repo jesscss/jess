@@ -18,6 +18,10 @@ export interface RuntimeState {
   preEvaluated?: boolean;
   sourceNode?: Node;
   sourceParent?: Node;
+  /** Flags to add (bitwise OR) on top of canonical flags */
+  flagsAdd?: number;
+  /** Flags to remove (bitwise AND ~mask) from canonical flags */
+  flagsRemove?: number;
 }
 
 /**

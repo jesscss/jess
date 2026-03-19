@@ -612,6 +612,52 @@ export abstract class Node<
     }
   }
 
+  /**
+   * Session-aware flag check. If a session is active, applies
+   * flagsAdd/flagsRemove from the runtime overlay on top of
+   * the canonical flags.
+   */
+  _hasFlag(flag: number, context: Context): boolean {
+    if (context.session?.hasRuntime(this)) {
+      const runtime = context.session.getRuntime(this);
+      let flags = this.state;
+      if (runtime.flagsRemove) {
+        flags &= ~runtime.flagsRemove;
+      }
+      if (runtime.flagsAdd) {
+        flags |= runtime.flagsAdd;
+      }
+      return (flags & flag) !== 0;
+    }
+    return this.hasFlag(flag);
+  }
+
+  /**
+   * Session-aware flag add. Routes through session overlay if active.
+   */
+  _addFlag(flag: number, context: Context): void {
+    if (context.session) {
+      const runtime = context.session.getRuntime(this);
+      runtime.flagsAdd = (runtime.flagsAdd ?? 0) | flag;
+      runtime.flagsRemove = (runtime.flagsRemove ?? 0) & ~flag;
+    } else {
+      this.addFlag(flag);
+    }
+  }
+
+  /**
+   * Session-aware flag remove. Routes through session overlay if active.
+   */
+  _removeFlag(flag: number, context: Context): void {
+    if (context.session) {
+      const runtime = context.session.getRuntime(this);
+      runtime.flagsRemove = (runtime.flagsRemove ?? 0) | flag;
+      runtime.flagsAdd = (runtime.flagsAdd ?? 0) & ~flag;
+    } else {
+      this.removeFlag(flag);
+    }
+  }
+
   adopt(node: Node, ctx?: Context) {
     /** The only place we should do this */
     if (!node.frozen) {
