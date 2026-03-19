@@ -529,15 +529,15 @@ function applyInstructionToRuleset(
 
   const extendWithVal = instruction.extendWith.valueOf();
   const extendWithAlreadyTopLevel = isNode(targetInfo.selector, N.SelectorList)
-    ? (targetInfo.selector.data as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
+    ? (targetInfo.selector.value as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
     : targetInfo.selector.valueOf() === extendWithVal;
   if (extendWithAlreadyTopLevel) {
     activateExtendedRuleset(ruleset, targetInfo.selector);
     return { matched: true, changed: false };
   }
 
-  const originalSelectorCopy = (!ruleset.data.selectorBeforeExtend && ruleset.data.selector && !isNode(ruleset.data.selector, N.Nil))
-    ? ruleset.data.selector.copy(true) as Selector
+  const originalSelectorCopy = (!ruleset.selectorBeforeExtend && ruleset.selector && !isNode(ruleset.selector, N.Nil))
+    ? ruleset.selector.copy(true) as Selector
     : undefined;
   const result = tryExtendSelector(
     targetInfo.selector,

@@ -1,8 +1,8 @@
 /**
-  @todo - add way more CSS nesting examples
-  @see https://www.w3.org/TR/css-nesting-1/
+  CSS Nesting - https://www.w3.org/TR/css-nesting-1/
 */
 
+/* Basic nesting with & */
 a {
     two: 2;
     & b {
@@ -10,6 +10,7 @@ a {
     }
 }
 
+/* Nested @media inside rule */
 a {
   width: 10px;
   @mixin mobile {
@@ -17,3 +18,158 @@ a {
   }
 }
 
+/* Compound selector with & */
+.foo {
+    color: red;
+    &:hover {
+        color: blue;
+    }
+    &.bar {
+        font-size: 1.2em;
+    }
+    &#baz {
+        font-weight: bold;
+    }
+}
+
+/* & with combinators */
+.parent {
+    & > .child {
+        margin: 0;
+    }
+    & + .sibling {
+        padding: 0;
+    }
+    & ~ .general-sibling {
+        opacity: 0.5;
+    }
+}
+
+/* Nested rule without & (implicit nesting) */
+.parent {
+    color: red;
+    .child {
+        color: blue;
+    }
+}
+
+/* Multiple levels of nesting */
+.level1 {
+    color: red;
+    .level2 {
+        color: blue;
+        .level3 {
+            color: green;
+        }
+    }
+}
+
+/* & at non-leading position */
+.foo {
+    color: red;
+    :not(&) {
+        opacity: 0.5;
+    }
+    .bar & {
+        font-style: italic;
+    }
+}
+
+/* Nested @media */
+.card {
+    font-size: 1rem;
+    @media (min-width: 600px) {
+        font-size: 1.25rem;
+    }
+    @media (min-width: 900px) {
+        font-size: 1.5rem;
+    }
+}
+
+/* Nested @supports */
+.flex-container {
+    display: block;
+    @supports (display: flex) {
+        display: flex;
+    }
+}
+
+/* Nested @layer */
+.component {
+    color: red;
+    @layer overrides {
+        color: blue;
+    }
+}
+
+/* Multiple selectors in nested rule */
+.parent {
+    & .a,
+    & .b {
+        color: red;
+    }
+}
+
+/* & in :is() */
+.parent {
+    color: red;
+    :is(h1, h2, h3) & {
+        font-weight: bold;
+    }
+}
+
+/* Pseudo-elements nested */
+.button {
+    background: blue;
+    &::before {
+        content: '';
+        display: block;
+    }
+    &::after {
+        content: '';
+        display: block;
+    }
+}
+
+/* Deep nesting with mixed content */
+nav {
+    ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    li { display: inline-block; }
+    a {
+        display: block;
+        padding: 6px 12px;
+        text-decoration: none;
+        &:hover {
+            color: blue;
+        }
+    }
+}
+
+/* Nested rules with declarations interspersed */
+.card {
+    border: 1px solid #ccc;
+    padding: 1rem;
+    & .title {
+        font-size: 1.5rem;
+    }
+    border-radius: 4px;
+    & .body {
+        font-size: 1rem;
+    }
+    background: white;
+}
+
+/* & used in attribute selectors */
+.input {
+    border: 1px solid gray;
+    &[disabled] {
+        opacity: 0.5;
+    }
+    &[type="text"] {
+        font-family: monospace;
+    }
+}

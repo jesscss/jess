@@ -11,16 +11,17 @@ import {
 import { tokenMatcher } from '../cssRecursiveParser.js';
 import { EOF } from 'chevrotain';
 
-type P = CssRecursiveParser;
+type C = CssRecursiveParser;
 
-export type Alt = IOrAlt<any>[];
-export type AltContext = (ctx?: RuleContext) => Alt;
+export type Alt = Array<IOrAlt<any>>;
+type AltContext = (ctx?: RuleContext) => Alt;
 
-export function stylesheet(this: P, T: TokenMap) {
+export function stylesheet(this: C, T: TokenMap) {
   const $ = this;
+
   return (options: Record<string, any> = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    let context: P['context'];
+    let context: C['context'];
     if (!RECORDING_PHASE) {
       context = this.context;
     }
@@ -35,7 +36,7 @@ export function stylesheet(this: P, T: TokenMap) {
     let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
-      let rules = root.data as Node[];
+      let rules = (root as Rules).value;
 
       if (charset) {
         let loc = $.getLocationInfo(charset);
@@ -51,7 +52,7 @@ export function stylesheet(this: P, T: TokenMap) {
   };
 }
 
-export function main(this: P, T: TokenMap, alt?: AltContext | Alt) {
+export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
   let $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] }) },
@@ -62,7 +63,7 @@ export function main(this: P, T: TokenMap, alt?: AltContext | Alt) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
 
     const isRoot = !!ctx.isRoot;
-    let context: P['context'];
+    let context: C['context'];
 
     if (!RECORDING_PHASE) {
       context = this.context;
@@ -110,7 +111,7 @@ export function main(this: P, T: TokenMap, alt?: AltContext | Alt) {
   };
 }
 
-export function qualifiedRule(this: P, T: TokenMap, selectorAlt?: AltContext) {
+export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
 
   selectorAlt ??= (ctx: RuleContext = {}) => [
@@ -167,7 +168,7 @@ export function qualifiedRule(this: P, T: TokenMap, selectorAlt?: AltContext) {
 //   | pseudoSelector
 //   | attributeSelector
 //   ;
-export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
+export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
 
   selectorAlt ??= (ctx: RuleContext = {}) => [
@@ -175,6 +176,7 @@ export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
       ALT: () => $.CONSUME(T.Ident)
     },
     {
+      /** In CSS Nesting, outer selector can't contain an ampersand */
       GATE: () => !!ctx.inner,
       ALT: () => $.CONSUME(T.Ampersand)
     },
@@ -183,6 +185,7 @@ export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
     { ALT: () => $.CONSUME(T.Star) },
     { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.attributeSelector, { ARGS: [ctx] }) },
+    /** Supports keyframes selectors */
     { ALT: () => $.CONSUME(T.DimensionInt) },
     { ALT: () => $.CONSUME(T.DimensionNum) }
   ];
@@ -202,7 +205,10 @@ export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
   };
 }
 
-export function classSelector(this: P, T: TokenMap) {
+// classSelector
+//   : DOT identifier
+//   ;
+export function classSelector(this: C, T: TokenMap) {
   const $ = this;
 
   return () => {
@@ -213,14 +219,14 @@ export function classSelector(this: P, T: TokenMap) {
   };
 }
 
-export function idSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
+export function idSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
 
   selectorAlt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.CONSUME(T.HashName) },
     { ALT: () => $.CONSUME(T.ColorIdentStart) }
   ];
-
+  /** #id, #FF0000 are both valid ids */
   return (ctx: RuleContext = {}) => {
     let selector = $.OR(selectorAlt(ctx));
     if (!$.RECORDING_PHASE) {
@@ -229,7 +235,7 @@ export function idSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
   };
 }
 
-export function pseudoSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
+export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
   const createPseudo = (name: string, arg?: Node) => {
     if (!$.RECORDING_PHASE) {
@@ -271,6 +277,7 @@ export function pseudoSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
         });
         let values = $.OR4([
           {
+            /** ::unknown(values) */
             GATE: $.noSep,
             ALT: () => {
               name += $.CONSUME(T.GenericFunctionStart).image;
@@ -300,6 +307,7 @@ export function pseudoSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
             }
           },
           {
+            /** ::unknown  */
             GATE: $.noSep,
             ALT: () => {
               name += $.CONSUME(T.Ident).image;
@@ -311,40 +319,46 @@ export function pseudoSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
     }
   ];
 
+  // pseudoSelector
+  //   : NTH_PSEUDO_CLASS '(' WS* nthValue WS* ')'
+  //   | FUNCTIONAL_PSEUDO_CLASS '(' WS* forgivingSelectorList WS* ')'
+  //   | COLON COLON? identifier ('(' anyInnerValue* ')')?
+  //   ;
   return (ctx: RuleContext = {}) => {
     $.startRule();
     return $.OR(selectorAlt(ctx));
   };
 }
 
-export function nthValue(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
+export function nthValue(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
+
   valueAlt ??= (ctx: RuleContext = {}) => {
     return [
-      { ALT: () => $.CONSUME($.T.NthOdd) },
-      { ALT: () => $.CONSUME($.T.NthEven) },
-      { ALT: () => $.CONSUME($.T.Integer) },
+      { ALT: () => $.CONSUME(T.NthOdd) },
+      { ALT: () => $.CONSUME(T.NthEven) },
+      { ALT: () => $.CONSUME(T.Integer) },
       {
         ALT: () => {
-          $.OR([
-            { ALT: () => $.CONSUME($.T.NthSignedDimension) },
-            { ALT: () => $.CONSUME($.T.NthUnsignedDimension) },
-            { ALT: () => $.CONSUME($.T.NthSignedPlus) },
-            { ALT: () => $.CONSUME($.T.NthIdent) }
+          $.OR2([
+            { ALT: () => $.CONSUME(T.NthSignedDimension) },
+            { ALT: () => $.CONSUME(T.NthUnsignedDimension) },
+            { ALT: () => $.CONSUME(T.NthSignedPlus) },
+            { ALT: () => $.CONSUME(T.NthIdent) }
           ]);
           $.OPTION(() => {
-            $.OR([
-              { ALT: () => $.CONSUME($.T.SignedInt) },
+            $.OR3([
+              { ALT: () => $.CONSUME(T.SignedInt) },
               {
                 ALT: () => {
-                  $.CONSUME($.T.Minus);
-                  $.CONSUME($.T.UnsignedInt);
+                  $.CONSUME(T.Minus);
+                  $.CONSUME(T.UnsignedInt);
                 }
               }
             ]);
           });
-          $.OPTION(() => {
-            $.CONSUME($.T.Of);
+          $.OPTION2(() => {
+            $.CONSUME(T.Of);
             $.SUBRULE($.complexSelector, { ARGS: [ctx] });
           });
         }
@@ -355,71 +369,87 @@ export function nthValue(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) 
   /**
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
    */
-  $.startRule();
-  let startTokenOffset: number | undefined = $.LA(1).startOffset;
-
-  $.OR(valueAlt(ctx));
-
-  /** Coelesce all token values into one value */
-  const endTokenOffset = $.LA(0).startOffset ?? 0;
-  let location = $.endRule();
-  let origTokens = $.originalInput;
-  let origLength = origTokens.length;
-  let tokenValues = '';
-  for (let i = 0; i < origLength; i++) {
-    let token = origTokens[i]!;
-    if (token.startOffset > endTokenOffset) {
-      break;
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let startTokenOffset: number | undefined;
+    if (!RECORDING_PHASE) {
+      startTokenOffset = this.LA(1).startOffset;
     }
-    if (token.startOffset >= startTokenOffset!) {
-      tokenValues += token.image;
+
+    $.OR(valueAlt(ctx));
+
+    if (!RECORDING_PHASE) {
+      /** Coelesce all token values into one value */
+      let endTokenOffset = $.LA(-1).startOffset;
+      let location = $.endRule();
+      let origTokens = this.originalInput;
+      let origLength = origTokens.length;
+      let tokenValues = '';
+      for (let i = 0; i < origLength; i++) {
+        let token = origTokens[i]!;
+        if (token.startOffset >= startTokenOffset!) {
+          tokenValues += token.image;
+        }
+        if (token.startOffset > endTokenOffset) {
+          break;
+        }
+      }
+      return $.wrap(new Any(tokenValues, { role: 'any' }, location, this.context), 'both');
     }
-  }
-  return $.wrap(new Any(tokenValues, { role: 'any' }, location, $.context), 'both');
+  };
 }
 
 // attributeSelector
 //   : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE
 //   ;
-export function attributeSelector(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
+export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
+
   valueAlt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
-        let token = $.CONSUME($.T.Ident);
-        return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), $.context);
+        let token = $.CONSUME2(T.Ident);
+        if (!$.RECORDING_PHASE) {
+          return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), this.context);
+        }
       }
     },
-    { ALT: () => $.SUBRULE($.string) as Node }
+    { ALT: () => $.SUBRULE($.string) }
   ];
 
-  $.startRule();
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
 
-  $.CONSUME($.T.LSquare);
-  let key = $.CONSUME($.T.Ident);
-  let op: IToken | undefined;
-  let value: Node | undefined;
-  let mod: IToken | undefined;
-  $.OPTION(() => {
-    op = $.OR([
-      { ALT: () => $.CONSUME($.T.Eq) },
-      { ALT: () => $.CONSUME($.T.AttrMatch) }
-    ]) as IToken;
-    value = $.OR(valueAlt(ctx)) as Node | undefined;
-  });
-  $.OPTION(() => mod = $.CONSUME($.T.AttrFlag));
-  $.CONSUME($.T.RSquare);
+    $.CONSUME(T.LSquare);
+    let key = $.CONSUME(T.Ident);
+    let op: IToken | undefined;
+    let value: Node | undefined;
+    let mod: IToken | undefined;
+    $.OPTION(() => {
+      op = $.OR([
+        { ALT: () => $.CONSUME(T.Eq) },
+        { ALT: () => $.CONSUME(T.AttrMatch) }
+      ]);
+      value = $.OR2(valueAlt(ctx));
+    });
+    $.OPTION2(() => mod = $.CONSUME(T.AttrFlag));
+    $.CONSUME(T.RSquare);
 
-  let location = $.endRule();
-  return new AttributeSelector({
-    name: key.image,
-    op: op?.image,
-    value,
-    mod: mod?.image
-  }, undefined, location, $.context);
+    if (!RECORDING_PHASE) {
+      let location = $.endRule();
+      return new AttributeSelector({
+        name: key.image,
+        op: op?.image,
+        value,
+        mod: mod?.image
+      }, undefined, location, this.context);
+    }
+  };
 }
 
-export function compoundSelector(this: P, ctx: RuleContext = {}) {
+export function compoundSelector(this: C, T: TokenMap) {
   const $ = this;
   /**
       A sequence of simple selectors that are not separated by
@@ -429,33 +459,44 @@ export function compoundSelector(this: P, ctx: RuleContext = {}) {
   // compoundSelector
   //   : simpleSelector+
   //   ;
-  let selectors: SimpleSelector[] = [];
-  let sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
-  selectors!.push(sel as SimpleSelector);
-  $.MANY({
-    /** Make sure we don't ignore space combinators */
-    GATE: () => !$.hasWS(),
-    DEF: () => {
-      sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
-      /** Make sure we don't add implicit whitespace */
-      if (!$.RECORDING_PHASE) {
-        (sel as Node).pre = 0;
-      }
-      selectors.push(sel as SimpleSelector);
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    let selectors: SimpleSelector[];
+    if (!RECORDING_PHASE) {
+      selectors = [];
     }
-  });
-  if (selectors!.length === 1) {
-    return selectors![0]!;
-  }
-  return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), $.context);
+    let sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
+    if (!RECORDING_PHASE) {
+      selectors!.push(sel);
+    }
+    $.MANY({
+      /** Make sure we don't ignore space combinators */
+      GATE: () => !$.hasWS(),
+      DEF: () => {
+        sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          /** Make sure we don't add implicit whitespace */
+          sel.pre = 0;
+          selectors.push(sel);
+        }
+      }
+    });
+    if (!RECORDING_PHASE) {
+      if (selectors!.length === 1) {
+        return selectors![0]!;
+      }
+      return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), this.context);
+    }
+  };
 }
 
 /**
  * @param manyGate - Exposed for Less to exclude the keyword 'all' from the selector list
  */
-export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx: RuleContext) => () => boolean) {
+export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleContext) => () => boolean) {
   const $ = this;
-  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatcher($.LA(1), $.T.Combinator);
+
+  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatcher($.LA(1), T.Combinator);
 
   /**
       A sequence of one or more simple and/or compound selectors
@@ -465,66 +506,66 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
   // complexSelector
   //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
   //   ;
-  let GATE = manyGate(ctx);
-  $.startRule();
-  const selectors: ComplexSelectorValue = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] }) as ComplexSelectorComponent];
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    let GATE = manyGate(ctx);
+    $.startRule();
+    let selectors: ComplexSelectorValue = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] })];
 
-  /**
-   * Only space combinators and specified combinators will enter the MANY
-   */
-  $.MANY({
-    GATE,
-    DEF: () => {
-      let co: IToken | undefined;
-      let combinator: Combinator;
-      $.OPTION(() => {
-        co = $.CONSUME($.T.Combinator);
-      });
-      /** Capture the startOffset BEFORE compoundSelector, so we can
-       *  retroactively attach pre-tokens to the whitespace combinator
-       *  only after compoundSelector succeeds. This prevents eagerly
-       *  consuming skipped tokens (comments) that belong to the
-       *  previous selector's post when compoundSelector fails. */
-      let wsCombinatorOffset: number | undefined;
-      if (co) {
-        combinator = $.wrap(new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context), 'both');
-      } else {
-        /** Whitespace combinators are special */
-        wsCombinatorOffset = $.LA(1).startOffset;
-        /**
-         * Technically, a whitespace combinator may not actually _include_
-         * a literal space (it can be a newline, for example), but we'll just use a
-         * space for now.
-         */
-        combinator = new Combinator(' ', undefined, undefined, $.context);
-      }
-      let compound = $.SUBRULE($.compoundSelector, { ARGS: [ctx] }) as CompoundSelector;
-      /** Now that compoundSelector succeeded, attach pre-tokens to the WS combinator */
-      if (wsCombinatorOffset !== undefined) {
-        let pre = $.getPrePost(wsCombinatorOffset);
-        if (pre === 1) {
-          pre = 0;
-        } else if (pre) {
-          let last = (pre as any[])[(pre as any[]).length - 1];
-          if (typeof last === 'string' && last.endsWith(' ')) {
-            /** remove the last character if a space */
-            (pre as any[])[(pre as any[]).length - 1] = last.slice(0, -1);
+    /**
+     * Only space combinators and specified combinators will enter the MANY
+     */
+    $.MANY({
+      GATE,
+      DEF: () => {
+        let co: IToken | undefined;
+        let combinator: Combinator;
+        $.OPTION(() => {
+          co = $.CONSUME(T.Combinator);
+        });
+        if (!RECORDING_PHASE) {
+          if (co) {
+            combinator = $.wrap(new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context), 'both');
+          } else {
+            /** Whitespace combinators are special */
+            let startOffset = this.LA(1).startOffset;
+            /**
+             * Technically, a whitespace combinator may not actually _include_
+             * a literal space (it can be a newline, for example), but we'll just use a
+             * space for now.
+             */
+            combinator = new Combinator(' ', undefined, undefined, this.context);
+            let pre = $.getPrePost(startOffset);
+            if (pre === 1) {
+              pre = 0;
+            } else if (pre) {
+              let last = pre[pre.length - 1];
+              if (typeof last === 'string' && last.endsWith(' ')) {
+                /** remove the last character if a space */
+                pre[pre.length - 1] = last.slice(0, -1);
+              }
+            }
+            combinator.pre = pre;
           }
         }
-        combinator.pre = pre;
+        let compound: CompoundSelector = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          selectors.push(
+            combinator!,
+            compound
+          );
+        }
       }
-      selectors.push(
-        combinator!,
-        compound
-      );
-    }
-  });
+    });
 
-  let location = $.endRule();
-  if (selectors.length === 1) {
-    return selectors[0]!;
-  }
-  return new ComplexSelector(selectors as ComplexSelectorValue, undefined, location, $.context);
+    if (!RECORDING_PHASE) {
+      let location = $.endRule();
+      if (selectors.length === 1) {
+        return selectors[0]!;
+      }
+      return new ComplexSelector(selectors as ComplexSelectorValue, undefined, location, this.context);
+    }
+  };
 }
 
 /**
@@ -535,43 +576,44 @@ export function complexSelector(this: P, ctx: RuleContext = {}, manyGate?: (ctx:
 // relativeSelector
 //   : (combinator WS*)? complexSelector
 //   ;
-export function relativeSelector(this: P, ctx: RuleContext = {}) {
+export function relativeSelector(this: C, T: TokenMap) {
   const $ = this;
-  return $.OR([
-    {
-      ALT: () => {
-        const co = $.CONSUME($.T.Combinator);
-        let complex = $.SUBRULE($.complexSelector, { ARGS: [ctx] }) as Node;
 
-        let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
-        if (complex instanceof ComplexSelector) {
-          complex = new ComplexSelector(
-            [combinator, ...complex.data],
-            undefined,
-            $.getLocationFromNodes([combinator, complex]),
-            $.context
-          );
-          complex.location[0] = co.startOffset;
-          complex.location[1] = co.startLine;
-          complex.location[2] = co.startColumn;
-        } else {
-          complex = new ComplexSelector(
-            [combinator, complex as ComplexSelectorComponent],
-            undefined,
-            $.getLocationFromNodes([combinator, complex]),
-            $.context
-          );
+  return (ctx: RuleContext = {}) => {
+    return $.OR([
+      {
+        ALT: () => {
+          let co = $.CONSUME(T.Combinator);
+          let complex: Node = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
+
+          if (!$.RECORDING_PHASE) {
+            let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
+            if (complex instanceof ComplexSelector) {
+              complex.value.unshift(combinator);
+              let location = complex.location;
+              location[0] = co.startOffset;
+              location[1] = co.startLine;
+              location[2] = co.startColumn;
+            } else {
+              complex = new ComplexSelector(
+                [combinator, complex as ComplexSelectorComponent],
+                undefined,
+                $.getLocationFromNodes([combinator, complex]),
+                this.context
+              );
+            }
+          }
+          return complex;
         }
-        return complex;
+      },
+      {
+        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
       }
-    },
-    {
-      ALT: () => $.SUBRULE($.complexSelector, { ARGS: [ctx] }) as Node
-    }
-  ]) as Node;
+    ]);
+  };
 }
 
-export function forgivingSelectorList(this: P, ctx: RuleContext = {}) {
+export function forgivingSelectorList(this: C, T: TokenMap) {
   const $ = this;
   /**
       https://www.w3.org/TR/css-nesting-1/
@@ -582,95 +624,128 @@ export function forgivingSelectorList(this: P, ctx: RuleContext = {}) {
   // forgivingSelectorList
   //   : relativeSelector (WS* COMMA WS* relativeSelector)*
   //   ;
-  $.startRule();
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
 
-  let sequences: ComplexSelector[] = [];
-  let i = 0;
+    let sequences: ComplexSelector[];
+    let i = 0;
 
-  $.AT_LEAST_ONE_SEP({
-    SEP: $.T.Comma,
-    DEF: () => {
-      const selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] }) as Node;
-      i++;
-      if (i === 1 && ctx.qualifiedRule) {
-        // Only attach post; leave pre for the parent Rules to lift comments
-        sequences.push($.wrap(selector, true) as ComplexSelector);
-      } else {
-        sequences.push($.wrap(selector, i === 1 ? true : 'both') as ComplexSelector);
-      }
+    if (!RECORDING_PHASE) {
+      sequences = [];
     }
-  });
 
-  let location = $.endRule();
-  if (sequences!.length === 1) {
-    return sequences![0];
-  }
-  return new SelectorList(sequences!, undefined, location, $.context);
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Comma,
+      DEF: () => {
+        let selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          i++;
+          if (i === 1 && ctx.qualifiedRule) {
+            // Only attach post; leave pre for the parent Rules to lift comments
+            sequences.push($.wrap(selector, true));
+          } else {
+            sequences.push($.wrap(selector, i === 1 ? true : 'both'));
+          }
+        }
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule();
+      if (sequences!.length === 1) {
+        return sequences![0];
+      }
+      return new SelectorList(sequences!, undefined, location, this.context);
+    }
+  };
 }
 
-export function selectorList(this: P, ctx: RuleContext = {}) {
+export function selectorList(this: C, T: TokenMap) {
   const $ = this;
   // selectorList
   //   : complexSelector (WS* COMMA WS* complexSelector)*
   //   ;
-  $.startRule();
-  let i = 0;
-  let sequences: ComplexSelector[] = [];
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let i = 0;
+    let sequences: ComplexSelector[];
 
-  $.AT_LEAST_ONE_SEP({
-    SEP: $.T.Comma,
-    DEF: () => {
-      const sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] }) as Node;
-      i++;
-      // Do not consume leading pre for the first selector of a qualified rule,
-      // so that pre-rule comments remain available to be lifted to Rules.
-      if (i === 1 && ctx.qualifiedRule) {
-        // Only attach post; leave pre for the parent Rules to lift comments
-        sequences.push($.wrap(sel, true) as ComplexSelector);
-      } else {
-        sequences.push($.wrap(sel, i === 1 ? true : 'both') as ComplexSelector);
-      }
+    if (!RECORDING_PHASE) {
+      sequences = [];
     }
-  });
 
-  let location = $.endRule();
-  if (sequences!.length === 1) {
-    return sequences![0]!;
-  }
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Comma,
+      DEF: () => {
+        let sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          i++;
+          // Do not consume leading pre for the first selector of a qualified rule,
+          // so that pre-rule comments remain available to be lifted to Rules.
+          if (i === 1 && ctx.qualifiedRule) {
+            // Only attach post; leave pre for the parent Rules to lift comments
+            sequences.push($.wrap(sel, true));
+          } else {
+            sequences.push($.wrap(sel, i === 1 ? true : 'both'));
+          }
+        }
+      }
+    });
 
-  return new SelectorList(sequences!, undefined, location, $.context);
+    if (!RECORDING_PHASE) {
+      let location = $.endRule();
+      if (sequences!.length === 1) {
+        return sequences![0]!;
+      }
+
+      return new SelectorList(sequences!, undefined, location, this.context);
+    }
+  };
 }
 
-export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
+export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
+  /** * Declarations ***/
+  // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
+  // declarationList
+  //   : WS* (
+  //     declaration? (WS* SEMI declarationList)*
+  //     | innerAtRule declarationList
+  //     | innerQualifiedRule declarationList
+  //   )
+  //   ;
+
   alt ??= (ctx: RuleContext = {}) => [
-    {
-      GATE: () => {
-        let t1 = $.LA(1).tokenType;
-        if (t1 === T.CustomProperty) return true;
-        if ($.legacyMode && t1 === T.LegacyPropIdent) return true;
-        if (!tokenMatcher($.LA(1), T.Ident) || $.LA(2).tokenType !== T.Colon) return false;
-        if (!$.noSep(2)) return true;
-        let depth = 0;
-        for (let i = 3; ; i++) {
-          let tok = $.LA(i);
-          let tt = tok.tokenType;
-          if (depth === 0) {
-            if (tt === T.LCurly) return false;
-            if (tt === T.Semi || tt === T.RCurly || tt === EOF) return true;
-          }
-          if (tt === T.LParen || tokenMatcher(tok, T.FunctionStart)) depth++;
-          else if (tt === T.RParen || tt === T.UrlEnd) depth--;
-          else if (tt === T.LSquare) depth++;
-          else if (tt === T.RSquare) depth--;
-          if (tt === EOF) return true;
-        }
-      },
-      ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] })
-    },
     { ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
-    { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] }) },
-    { ALT: () => $.CONSUME(T.Semi) }
+    {
+      /**
+       * Only attempt a nested qualified rule when `{` is ahead (before `;` or `}`).
+       * This gate is essential: MANY has a precomputed first-token set (laSet) and
+       * uses a fast committed path that does NOT set IS_SPECULATING=true. Without
+       * this gate, qualifiedRule would be tried non-speculatively via the OR fast
+       * path's GATED_OFFSET dispatch, consume selector tokens, then fail at
+       * CONSUME(LCurly) with a real MismatchedTokenException that persists in
+       * _errors even after cleanup attempts.
+       *
+       * We also save/restore locationStack.length because qualifiedRule calls
+       * startRule() before any CONSUME, so a SPEC_FAIL in speculation won't
+       * restore our custom locationStack field.
+       */
+      GATE: () => $.hasLCurlyAhead(),
+      ALT: () => {
+        const stackLen = $.locationStack.length;
+        try {
+          return $.SUBRULE2($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
+        } catch (e) {
+          $.locationStack.length = stackLen;
+          throw e;
+        }
+      }
+    },
+    { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
+    { ALT: () => $.CONSUME2(T.Semi) }
   ];
 
   return main.call(this, T, alt);

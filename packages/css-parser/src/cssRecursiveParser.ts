@@ -33,10 +33,10 @@ import { type CssTokenType, SKIPPED_LABEL } from './cssTokens.js';
 
 export { tokenMatcher };
 
-type TokenMap = Record<CssTokenType, TokenType>;
+export type TokenMap = Record<CssTokenType, TokenType>;
 
 // ── Import production rule implementations ──────────────────────────
-import * as productions from './productions.js';
+import * as productions from './productions/index.js';
 
 const { isArray } = Array;
 
@@ -270,6 +270,34 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       return false;
     }
     return this.hasWSBeforeByPos[idx] === 1;
+  }
+
+  /**
+   * Scan forward from the current position and return true if an LCurly
+   * appears before a Semi or RCurly at the same nesting level.
+   * Used to disambiguate nested qualified rules from declarations when
+   * the first token is an Ident (e.g. `a:hover { }` vs `color: red;`).
+   */
+  hasLCurlyAhead(): boolean {
+    const tokens = this.tokVector;
+    const len = this.tokVectorLength;
+    const LCurly = this.T.LCurly;
+    const RCurly = this.T.RCurly;
+    const Semi = this.T.Semi;
+    let depth = 0;
+    for (let i = this.currIdx + 1; i < len; i++) {
+      const tt = tokens[i]!.tokenType;
+      if (tt === LCurly) {
+        if (depth === 0) return true;
+        depth++;
+      } else if (tt === RCurly) {
+        if (depth === 0) return false;
+        depth--;
+      } else if (tt === Semi && depth === 0) {
+        return false;
+      }
+    }
+    return false;
   }
 
   getLocationInfo(tok: IToken): LocationInfo {

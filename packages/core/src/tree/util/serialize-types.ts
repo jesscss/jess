@@ -148,7 +148,50 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
   visiting.add(n);
 
-  const value = (n as any).value as unknown;
+  const childKeys = (n.constructor as typeof Node).childKeys;
+  // Properties that are structural/internal to Node and should never be serialized as data.
+  const NODE_INTERNAL = new Set([
+    'parent', 'index', 'frames', 'pre', 'post', 'state', 'nodeType',
+    'isSelector', 'keySetLibrary',
+    '_valueOf', '_keySet', '_visibleKeySet', '_requiredKeySet'
+  ]);
+  let value: unknown;
+  if (Array.isArray(childKeys) && childKeys.length > 1) {
+    // Node stores data in named instance fields (e.g. AtRule.name, AtRule.prelude, plus
+    // non-childKey primitives like AttributeSelector.op, AttributeSelector.mod).
+    // Iterate own properties in constructor insertion order to preserve natural field order.
+    const obj: Record<string, unknown> = {};
+    for (const key of Object.keys(n)) {
+      if (key.startsWith('_') || NODE_INTERNAL.has(key)) {
+        continue;
+      }
+      const v = (n as any)[key];
+      if (v !== undefined) {
+        obj[key] = v;
+      }
+    }
+    value = Object.keys(obj).length > 0 ? obj : undefined;
+  } else {
+    value = (n as any).value as unknown;
+    // For leaf nodes with childKeys=null or undefined, `value` may be undefined even though
+    // the node stores its data in named instance fields (e.g. Dimension.number, Dimension.unit).
+    // Fall back to collecting own enumerable data properties.
+    if (value === undefined) {
+      const obj: Record<string, unknown> = {};
+      for (const key of Object.keys(n)) {
+        if (key.startsWith('_') || NODE_INTERNAL.has(key)) {
+          continue;
+        }
+        const v = (n as any)[key];
+        if (v !== undefined && !isJessNode(v) && !Array.isArray(v)) {
+          obj[key] = v;
+        }
+      }
+      if (Object.keys(obj).length > 0) {
+        value = obj;
+      }
+    }
+  }
   const optionsStr = serializeNodeOptions(n, depth, opts, visiting);
 
   // If the main value is a primitive, include it inline
