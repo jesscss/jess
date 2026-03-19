@@ -547,9 +547,27 @@ deep clones, by fixing the root causes that made it necessary.
 ### What's unblocked
 
 Blocker 1 from Stage 13 ("resetEvalStateDeep resets Ruleset selector / Ampersand container")
-is resolved. The next step toward eliminating `clone(true)` at mixin body eval sites
-(rules.ts:2273, 2295, 2306) is ensuring `EvalSession` is active during mixin evaluation
-so `clone(false, undefined, ctx)` routes parent writes through the session overlay.
+is resolved.
+
+### What's still blocked for clone(true) → clone(false)
+
+Replacing `clone(true)` with `clone(false)` at mixin body eval sites requires **session-aware
+parent access** — which does not exist yet. The fundamental issue:
+
+1. `clone(false, undefined, ctx)` shares canonical children with the shallow clone.
+2. The session overlay stores `parent = clonedRules` for each canonical child, but
+   canonical `child.parent` is restored to the original parent.
+3. During eval, `maybeClone(context)` creates NEW clone instances that have no parent
+   (neither canonical nor session-aware).
+4. Scope lookups traverse `node.parent` (direct field) → undefined → variables not found.
+
+**Required infrastructure** (future stages):
+- Session-aware parent getter: `node.getParent(context)` that checks session overlay
+- OR: `maybeClone` propagates parent from session overlay to the new clone
+- OR: `Rules._multiPassPreEval` adopts preEvald results into the Rules after `setData`
+- `Ruleset.preEval` session-aware: already partially done (`_isPreEvaluated`/`_setPreEvaluated`)
+- `EvalSession.getRuntime` initialization with `{ preEvaluated: false, evaluated: false }`
+  so canonical eval flags don't leak into sessions
 
 ---
 

@@ -494,9 +494,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       const node = this.maybeClone(context);
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
       let { rules, guard } = node;
