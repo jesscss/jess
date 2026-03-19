@@ -106,6 +106,14 @@ export const rawCssTokens = () => ({
       { name: 'FunctionalPseudoClass', pattern: LexerType.NA },
       { name: 'Assign', pattern: LexerType.NA },
       { name: 'QuoteStart', pattern: LexerType.NA },
+      /** Parser gate categories — Chevrotain bitset matching via tokenMatcher */
+      { name: 'SimpleNameStart', pattern: LexerType.NA },
+      { name: 'NestedRuleStart', pattern: LexerType.NA },
+      { name: 'DeclNameStart', pattern: LexerType.NA },
+      { name: 'IdentLikeStart', pattern: LexerType.NA },
+      { name: 'DeclValueNameStart', pattern: LexerType.NA },
+      { name: 'QueryConditionStart', pattern: LexerType.NA },
+      { name: 'FunctionLikeEnd', pattern: LexerType.NA },
       // TODO: can use string literals for simple patterns (e.g: /\)/ vs ')')
       { name: 'Gt', pattern: />/, categories: ['CompareOperator', 'Combinator', 'MfGt'] },
       { name: 'Lt', pattern: /</, categories: ['CompareOperator', 'MfLt'] },
@@ -113,9 +121,9 @@ export const rawCssTokens = () => ({
       { name: 'LtEq', pattern: /<=/, categories: ['CompareOperator', 'MfGt'] },
       { name: 'LCurly', pattern: /{/, categories: ['BlockMarker'] },
       { name: 'RCurly', pattern: /}/, categories: ['BlockMarker'] },
-      { name: 'LParen', pattern: /\(/, categories: ['BlockMarker'] },
-      { name: 'RParen', pattern: /\)/, categories: ['BlockMarker'] },
-      { name: 'LSquare', pattern: /\[/, categories: ['BlockMarker'] },
+      { name: 'LParen', pattern: /\(/, categories: ['BlockMarker', 'QueryConditionStart'] },
+      { name: 'RParen', pattern: /\)/, categories: ['BlockMarker', 'FunctionLikeEnd'] },
+      { name: 'LSquare', pattern: /\[/, categories: ['BlockMarker', 'NestedRuleStart'] },
       { name: 'RSquare', pattern: /\]/, categories: ['BlockMarker'] },
       { name: 'Semi', pattern: /;/, categories: ['BlockMarker'] },
       { name: 'AdditionOperator', pattern: LexerType.NA },
@@ -128,23 +136,23 @@ export const rawCssTokens = () => ({
       { name: 'AttrMatchOperator', pattern: LexerType.NA },
       // Some tokens have to appear after AttrMatch
       { name: 'Eq', pattern: /=/, categories: ['CompareOperator', 'AttrMatchOperator'] },
-      { name: 'Star', pattern: /\*/, categories: ['MultiplicationOperator'] },
+      { name: 'Star', pattern: /\*/, categories: ['MultiplicationOperator', 'NestedRuleStart'] },
       { name: 'Tilde', pattern: /~/, categories: ['Combinator'] },
       /** a namespace or column combinator */
       { name: 'Pipe', pattern: /\|/, categories: ['Combinator'] },
       { name: 'Column', pattern: /\|\|/, categories: ['Combinator'] },
       { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
-      { name: 'Ident', pattern: LexerType.NA },
+      { name: 'Ident', pattern: LexerType.NA, categories: ['IdentLikeStart', 'DeclValueNameStart'] },
       {
         name: 'PlainIdent',
         pattern: '{{ident}}',
-        categories: ['Ident']
+        categories: ['Ident', 'IdentLikeStart', 'DeclNameStart', 'DeclValueNameStart']
       },
-      { name: 'LegacyPropIdent', pattern: '(?:\\*|_){{ident}}' },
+      { name: 'LegacyPropIdent', pattern: '(?:\\*|_){{ident}}', categories: ['DeclNameStart'] },
       {
         name: 'CustomProperty',
         pattern: '--{{ident}}',
-        categories: ['BlockMarker']
+        categories: ['BlockMarker', 'DeclNameStart', 'DeclValueNameStart']
       },
       { name: 'CDOToken', pattern: /<!--/, group: LexerType.SKIPPED },
       { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
@@ -197,7 +205,7 @@ export const rawCssTokens = () => ({
       { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'To', pattern: /to/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
-      { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName'] },
+      { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName', 'NestedRuleStart'] },
       {
         name: 'UrlStart',
         pattern: /url\(/i,
@@ -312,12 +320,12 @@ export const rawCssTokens = () => ({
       {
         name: 'Ampersand',
         pattern: /&/,
-        categories: ['Selector']
+        categories: ['Selector', 'NestedRuleStart']
       },
       {
         name: 'DotName',
         pattern: '\\.{{ident}}',
-        categories: ['Selector']
+        categories: ['Selector', 'SimpleNameStart', 'NestedRuleStart']
       },
       /** There are some cases where we might need this tokenized separately?  */
       // {
@@ -328,17 +336,17 @@ export const rawCssTokens = () => ({
       {
         name: 'HashName',
         pattern: '#{{ident}}',
-        categories: ['Selector']
+        categories: ['Selector', 'SimpleNameStart', 'NestedRuleStart']
       },
       {
         name: 'NthPseudoClass',
         pattern: /:(?:nth-child|nth-last-child|nth-of-type|nth-last-of-type)\(/i,
-        categories: ['BlockMarker', 'FunctionalPseudoClass']
+        categories: ['BlockMarker', 'FunctionalPseudoClass', 'NestedRuleStart']
       },
       {
         name: 'SelectorPseudoClass',
         pattern: /:(?:is|not|where|has)\(/i,
-        categories: ['BlockMarker', 'FunctionalPseudoClass']
+        categories: ['BlockMarker', 'FunctionalPseudoClass', 'NestedRuleStart']
       },
 
       /** @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page */
@@ -365,7 +373,7 @@ export const rawCssTokens = () => ({
         name: 'ColorIdentStart',
         pattern: /#(?:(?:[a-f][0-9a-f]{7})|(?:[a-f][0-9a-f]{5})|(?:[a-f][0-9a-f]{2,3}))/i,
         longer_alt: 'HashName',
-        categories: ['Color', 'Selector']
+        categories: ['Color', 'Selector', 'SimpleNameStart', 'NestedRuleStart']
       },
       /**
        * CSS syntax says we should identify integers as separate from numbers,
@@ -466,7 +474,7 @@ export const rawCssTokens = () => ({
       },
 
       /** Moved under 'n' parsing */
-      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident', 'QueryConditionStart'] },
 
       {
         name: 'WS',
@@ -533,7 +541,8 @@ export const rawCssTokens = () => ({
       {
         name: 'UrlEnd',
         pattern: /\)/,
-        pop_mode: true
+        pop_mode: true,
+        categories: ['FunctionLikeEnd']
       },
       'SingleQuoteStart',
       'DoubleQuoteStart',

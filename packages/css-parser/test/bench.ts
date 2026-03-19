@@ -15,7 +15,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import type { IToken } from '@jesscss/parser';
+import type { IToken } from '@chevrotain/types';
 import { cssLexer } from '../src/cssTokens.js';
 import { CssRecursiveParser } from '../src/cssRecursiveParser.js';
 import { type TokenMap } from '../src/cssActionsParser.js';

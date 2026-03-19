@@ -614,6 +614,25 @@ importers:
 
   packages/parser: {}
 
+  packages/parser-chevrotain:
+    dependencies:
+      '@chevrotain/types':
+        specifier: link:../../../chevrotain/packages/types
+        version: link:../../../chevrotain/packages/types
+      '@jesscss/parser':
+        specifier: workspace:*
+        version: link:../parser
+      chevrotain:
+        specifier: link:../../../chevrotain/packages/chevrotain
+        version: link:../../../chevrotain/packages/chevrotain
+    devDependencies:
+      cross-env:
+        specifier: ~7.0.3
+        version: 7.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.0(@types/node@20.19.30)(vite@6.4.1)
+
   packages/patch-css: {}
 
   packages/rollup-plugin-jess:

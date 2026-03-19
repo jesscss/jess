@@ -1,8 +1,9 @@
 // Methods to be mixed into CssRecursiveParser
+import type { IToken } from '@chevrotain/types';
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken, LocationInfo } from '@jesscss/parser';
-import { tokenMatches, tokenTypeInSet } from '@jesscss/parser';
+import { tokenMatcher } from '../cssRecursiveParser.js';
 import {
+  type LocationInfo,
   Node, Any, AtRule, Rules, Sequence, List,
   QueryCondition, Keyword, Paren, Declaration, Call,
   BasicSelector
@@ -23,19 +24,19 @@ function resolvePreludeRule(parser: P, preludeRule: PreludeRule): unknown {
 export function atRule(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
-    { GATE: () => $.isType($.T.AtContainer), ALT: () => $.containerAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtScope), ALT: () => $.scopeAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtDocument), ALT: () => $.documentAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtLayer), ALT: () => $.layerAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtKeyframes), ALT: () => $.keyframesAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtImport), ALT: () => $.importAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtMedia), ALT: () => $.mediaAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtPage), ALT: () => $.pageAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtFontFace), ALT: () => $.fontFaceAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtSupports), ALT: () => $.supportsAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtNested), ALT: () => $.nestedAtRule(ctx) },
-    { GATE: () => $.isType($.T.AtNonNested), ALT: () => $.nonNestedAtRule(ctx) },
-    { ALT: () => $.unknownAtRule(ctx) }
+    { GATE: () => $.isType($.T.AtContainer), ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtScope), ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtDocument), ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtLayer), ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtKeyframes), ALT: () => $.SUBRULE($.keyframesAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtImport), ALT: () => $.SUBRULE($.importAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtMedia), ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtPage), ALT: () => $.SUBRULE($.pageAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtFontFace), ALT: () => $.SUBRULE($.fontFaceAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtSupports), ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtNested), ALT: () => $.SUBRULE($.nestedAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtNonNested), ALT: () => $.SUBRULE($.nonNestedAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.unknownAtRule, { ARGS: [ctx] }) }
   ]);
 }
 
@@ -48,40 +49,40 @@ export function innerAtRule(this: P, ctx: RuleContext = {}): Node {
   return $.OR([
     {
       GATE: () => $.isType($.T.AtContainer),
-      ALT: () => $.containerAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
       GATE: () => $.isType($.T.AtScope),
-      ALT: () => $.scopeAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
       GATE: () => $.isType($.T.AtDocument),
-      ALT: () => $.documentAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
       GATE: () => $.isType($.T.AtLayer),
-      ALT: () => $.layerAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
       GATE: () => $.isType($.T.AtKeyframes),
-      ALT: () => $.keyframesAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.keyframesAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
       GATE: () => $.isType($.T.AtMedia),
-      ALT: () => $.mediaAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
       GATE: () => $.isType($.T.AtSupports),
-      ALT: () => $.supportsAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
       GATE: () => $.isType($.T.AtNested),
-      ALT: () => $.nestedAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.nestedAtRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     {
-      ALT: () => $.unknownAtRule({ ...ctx, inner: true })
+      ALT: () => $.SUBRULE($.unknownAtRule, { ARGS: [{ ...ctx, inner: true }] })
     }
-  ]);
+  ]) as Node;
 }
 
 /**
@@ -92,13 +93,13 @@ export function atRuleBody(this: P, ctx: RuleContext = {}): Node {
   return $.OR([
     {
       GATE: () => !ctx.inner,
-      ALT: () => $.main(ctx)
+      ALT: () => $.SUBRULE($.main, { ARGS: [ctx] })
     },
     {
       GATE: () => !!ctx.inner,
-      ALT: () => $.declarationList(ctx)
+      ALT: () => $.SUBRULE($.declarationList, { ARGS: [ctx] })
     }
-  ]);
+  ]) as Node;
 }
 
 export function mediaAtRule(this: P, ctx: RuleContext = {}, preludeRule?: PreludeRule) {
@@ -108,10 +109,10 @@ export function mediaAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Prelud
   let rules: Rules;
   const resolvedPreludeRule = resolvePreludeRule(this, preludeRule);
   const prelude: Node = typeof resolvedPreludeRule === 'function'
-    ? (resolvedPreludeRule as any).call(this, ctx)
-    : $.mediaQueryList(ctx);
+    ? (resolvedPreludeRule as (ctx: RuleContext) => Node).call(this, ctx)
+    : $.SUBRULE($.mediaQueryList, { ARGS: [ctx] }) as Node;
   $.CONSUME($.T.LCurly);
-  rules = $.atRuleBody(ctx) as Rules;
+  rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
 
   let location = $.endRule();
@@ -129,7 +130,7 @@ export function mediaQueryList(this: P, ctx: RuleContext = {}) {
   $.AT_LEAST_ONE_SEP({
     SEP: $.T.Comma,
     DEF: () => {
-      let query = $.mediaQuery(ctx);
+      const query = $.SUBRULE($.mediaQuery, { ARGS: [ctx] }) as Node;
       queries.push(query);
     }
   });
@@ -147,51 +148,50 @@ export function mediaQueryList(this: P, ctx: RuleContext = {}) {
 export function mediaQuery(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
-    { ALT: () => $.mediaCondition(ctx) },
+    { ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] }) as Node },
     {
       ALT: () => {
         $.startRule();
 
-        let token: IToken | undefined;
+        let notOrOnlyToken: IToken | undefined;
+        let andToken: IToken | undefined;
         let node: Node | undefined;
         let nodes: Node[] = [];
 
         $.OPTION(() => {
           $.OR([
-            { ALT: () => token = $.CONSUME($.T.Not) },
-            { ALT: () => token = $.CONSUME($.T.Only) }
+            { ALT: () => notOrOnlyToken = $.CONSUME($.T.Not) },
+            { ALT: () => notOrOnlyToken = $.CONSUME($.T.Only) }
           ]);
         });
 
-        if (token) {
-          nodes!.push($.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), $.context), 'both'));
-          token = undefined;
+        if (notOrOnlyToken) {
+          nodes!.push($.wrap(new Keyword(notOrOnlyToken.image, undefined, $.getLocationInfo(notOrOnlyToken), $.context), 'both'));
         }
-        let type = $.mediaType(ctx);
-
+        const type = $.SUBRULE($.mediaType) as Node;
         nodes!.push(type);
 
         $.OPTION(() => {
-          token = $.CONSUME($.T.And);
-          node = $.mediaConditionWithoutOr(ctx);
+          andToken = $.CONSUME($.T.And);
+          node = $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [ctx] }) as Node;
         });
-        if (token) {
-          nodes!.push($.wrap(new Keyword((token as IToken).image, undefined, $.getLocationInfo(token as IToken), $.context), 'both'));
+        if (andToken) {
+          nodes!.push($.wrap(new Keyword(andToken.image, undefined, $.getLocationInfo(andToken), $.context), 'both'));
         }
         if (node) {
           nodes!.push(node);
         }
-        let location = $.endRule();
+        const location = $.endRule();
         return new QueryCondition(nodes!, undefined, location, $.context);
       }
     }
-  ]);
+  ]) as Node;
 }
 
 /** Doesn't include only, not, and, or, layer */
-export function mediaType(this: P, ctx: RuleContext = {}) {
+export function mediaType(this: P) {
   const $ = this;
-  let token = $.OR([
+  const token = $.OR([
     { ALT: () => $.CONSUME($.T.PlainIdent) },
     { ALT: () => $.CONSUME($.T.Screen) },
     { ALT: () => $.CONSUME($.T.Print) },
@@ -203,20 +203,19 @@ export function mediaType(this: P, ctx: RuleContext = {}) {
 export function mediaCondition(this: P, ctx: RuleContext = {}): Node {
   const $ = this;
   return $.OR([
-    { ALT: () => $.mediaNot(ctx) },
+    { ALT: () => $.SUBRULE($.mediaNot, { ARGS: [ctx] }) },
     {
       ALT: () => {
         $.startRule();
-        let nodes: Node[] = [];
-        let node = $.mediaInParens(ctx);
+        const nodes: Node[] = [];
+        const node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] }) as Node;
         nodes!.push(node);
         $.MANY(() => {
-          let rule =
-            $.OR([
-              { ALT: () => $.mediaAnd(ctx) },
-              { ALT: () => $.mediaOr(ctx) }
-            ]);
-          nodes!.push(...rule);
+          const rule = $.OR([
+            { ALT: () => $.SUBRULE($.mediaAnd, { ARGS: [ctx] }) },
+            { ALT: () => $.SUBRULE($.mediaOr, { ARGS: [ctx] }) }
+          ]);
+          if (Array.isArray(rule)) nodes!.push(...rule);
         });
         // Only wrap in QueryCondition if there are multiple nodes (AND/OR operators)
         // Otherwise, return the single node directly (like Sequence does)
@@ -227,22 +226,22 @@ export function mediaCondition(this: P, ctx: RuleContext = {}): Node {
         return new QueryCondition(nodes!, undefined, $.endRule(), $.context);
       }
     }
-  ]);
+  ]) as Node;
 }
 
 export function mediaConditionWithoutOr(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
-    { ALT: () => $.mediaNot(ctx) },
+    { ALT: () => $.SUBRULE($.mediaNot, { ARGS: [ctx] }) },
     {
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
-        let node = $.mediaInParens(ctx);
+        let node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
         nodes!.push(node);
         $.MANY(() => {
-          let rule = $.mediaAnd(ctx);
-          nodes!.push(...rule);
+          const rule = $.SUBRULE($.mediaAnd, { ARGS: [ctx] });
+          if (Array.isArray(rule)) nodes!.push(...rule);
         });
 
         // Only wrap in QueryCondition if there are multiple nodes (AND operators)
@@ -254,15 +253,15 @@ export function mediaConditionWithoutOr(this: P, ctx: RuleContext = {}) {
         return new QueryCondition(nodes!, undefined, $.endRule(), $.context);
       }
     }
-  ]);
+  ]) as Node;
 }
 
 export function mediaNot(this: P, ctx: RuleContext = {}): Node {
   const $ = this;
   $.startRule();
 
-  let token = $.CONSUME($.T.Not);
-  let node = $.mediaInParens(ctx);
+  const token = $.CONSUME($.T.Not);
+  const node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
 
   return new QueryCondition([
     $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), $.context), 'both'),
@@ -273,8 +272,8 @@ export function mediaNot(this: P, ctx: RuleContext = {}): Node {
 /** Returns an array */
 export function mediaAnd(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  let token = $.CONSUME($.T.And);
-  let node = $.mediaInParens(ctx);
+  const token = $.CONSUME($.T.And);
+  const node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
 
   return [
     $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), $.context), 'both'),
@@ -285,8 +284,8 @@ export function mediaAnd(this: P, ctx: RuleContext = {}) {
 /** Returns an array */
 export function mediaOr(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  let token = $.CONSUME($.T.Or);
-  let node = $.mediaInParens(ctx);
+  const token = $.CONSUME($.T.Or);
+  const node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
 
   return [
     $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), $.context), 'both'),
@@ -311,13 +310,13 @@ export function mediaInParens(this: P, ctx: RuleContext = {}): Node {
    * parsing would not be possible. So we only parse
    * "known" media queries.
    */
-  let node = $.OR([
-    { ALT: () => $.mediaCondition(ctx) },
-    { ALT: () => $.mediaFeature(ctx) }
-  ]);
+  const node = $.OR([
+    { ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.mediaFeature, { ARGS: [ctx] }) }
+  ]) as Node;
   $.CONSUME($.T.RParen);
 
-  let location = $.endRule();
+  const location = $.endRule();
   return $.wrap(new Paren($.wrap(node, 'both'), undefined, location, $.context));
 }
 
@@ -334,52 +333,58 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
       ALT: () => {
         $.startRule();
         let rule: Node | undefined;
-        let ident = $.CONSUME($.T.Ident);
-        $.OPTION(() => {
-          rule = $.OR([
-            {
-              ALT: () => {
-                $.CONSUME($.T.Colon);
-                let value = $.mfValue(ctx);
-                let location = $.endRule();
-                return $.wrap(
-                  new Declaration({
-                    name: $.wrap(new Any(ident.image, { role: 'property' }), true),
-                    value: $.wrap(value)
-                  }, undefined, location, $.context),
-                  'both');
-              }
-            },
-            {
-              ALT: (): Node => {
-                let seq = $.mediaRange(ctx);
-                let [startOffset, startLine, startColumn] = $.endRule();
-                const identNode = $.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context));
-                const arr = [identNode, ...seq.data];
-                seq.location[0] = startOffset!;
-                seq.location[1] = startLine!;
-                seq.location[2] = startColumn!;
-                return new QueryCondition(arr, undefined, seq.location as LocationInfo, $.context);
-              }
-            },
-            {
-              ALT: (): Node => {
-                let op = $.mfComparison(ctx);
-                let value = $.mfNonIdentifierValue(ctx);
+        const ident = $.CONSUME($.T.Ident);
+        $.OPTION({
+          DEF: () => {
+            rule = $.OR([
+              {
+                ALT: () => {
+                  $.CONSUME($.T.Colon);
+                  const value = $.SUBRULE($.mfValue, { ARGS: [ctx] }) as Node;
+                  const location = $.endRule();
+                  return $.wrap(
+                    new Declaration({
+                      name: $.wrap(new Any(ident.image, { role: 'property' }), true),
+                      value: $.wrap(value)
+                    }, undefined, location, $.context),
+                    'both');
+                }
+              },
+              {
+                ALT: (): Node => {
+                  const seq = $.SUBRULE($.mediaRange, { ARGS: [ctx] }) as Sequence;
+                  const [startOffset, startLine, startColumn] = $.endRule();
+                  const identNode = $.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context));
+                  const arr = seq?.data ? [identNode, ...seq.data] : [identNode];
+                  const loc: LocationInfo = [startOffset!, startLine!, startColumn!, startOffset!, startLine!, startColumn!];
+                  if (seq?.location) {
+                    seq.location[0] = startOffset!;
+                    seq.location[1] = startLine!;
+                    seq.location[2] = startColumn!;
+                    Object.assign(loc, seq.location);
+                  }
+                  return new QueryCondition(arr, undefined, loc, $.context);
+                }
+              },
+              {
+                ALT: (): Node => {
+                  const op = $.SUBRULE($.mfComparison, { ARGS: [ctx] });
+                  const value = $.SUBRULE($.mfNonIdentifierValue, { ARGS: [ctx] }) as Node;
 
-                let location = $.endRule();
-                return new QueryCondition([
-                  $.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context)),
-                  $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context), 'both'),
-                  value
-                ], undefined, location, $.context);
+                  const location = $.endRule();
+                  return new QueryCondition([
+                    $.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), $.context)),
+                    $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context), 'both'),
+                    value
+                  ], undefined, location, $.context);
+                }
               }
-            }
-          ]);
+            ]) as Node;
+          }
         });
         if (!rule) {
-          let location = $.endRule();
-          let anyNode = new Keyword(ident.image, undefined, location, $.context);
+          const location = $.endRule();
+          const anyNode = new Keyword(ident.image, undefined, location, $.context);
           return $.wrap(new QueryCondition([anyNode], undefined, location, $.context), 'both');
         }
         return rule;
@@ -388,26 +393,30 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
     {
       ALT: () => {
         $.startRule();
-        let rule1 = $.mfNonIdentifierValue({ ...ctx });
+        const rule1 = $.mfNonIdentifierValue({ ...ctx });
         return $.OR([
           {
             ALT: () => {
               // Try range first: `value < ident < value` or `value < ident`
-              let seq = $.mediaRange({ ...ctx });
-              let [startOffset, startLine, startColumn] = $.endRule();
-              const arr = [rule1, ...seq.data];
-              seq.location[0] = startOffset!;
-              seq.location[1] = startLine!;
-              seq.location[2] = startColumn!;
-              return new QueryCondition(arr, undefined, seq.location as LocationInfo, $.context);
+              const seq = $.SUBRULE($.mediaRange, { ARGS: [{ ...ctx }] }) as Sequence;
+              const [startOffset, startLine, startColumn] = $.endRule();
+              const arr = seq?.data ? [rule1, ...seq.data] : [rule1];
+              const loc: LocationInfo = [startOffset!, startLine!, startColumn!, startOffset!, startLine!, startColumn!];
+              if (seq?.location) {
+                seq.location[0] = startOffset!;
+                seq.location[1] = startLine!;
+                seq.location[2] = startColumn!;
+                Object.assign(loc, seq.location);
+              }
+              return new QueryCondition(arr, undefined, loc, $.context);
             }
           },
           {
             ALT: () => {
               // Simple comparison: `value = ident`  (Eq not handled by mediaRange)
-              let op = $.mfComparison({ ...ctx });
-              let value = $.CONSUME($.T.Ident);
-              let location = $.endRule();
+              const op = $.SUBRULE($.mfComparison, { ARGS: [{ ...ctx }] });
+              const value = $.CONSUME($.T.Ident);
+              const location = $.endRule();
               return new QueryCondition([
                 rule1,
                 $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context)),
@@ -415,7 +424,7 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
               ], undefined, location, $.context);
             }
           }
-        ]);
+        ]) as Node;
       }
     }
   ]);
@@ -424,54 +433,54 @@ export function mediaFeature(this: P, ctx: RuleContext = {}) {
 /**
  * @note Both comparison operators have to match.
  */
+type MediaRangeResult = [IToken, IToken, IToken | undefined, Node | undefined];
+
 export function mediaRange(this: P, ctx: RuleContext = {}) {
   const $ = this;
   $.startRule();
 
-  let op1: IToken;
-  let val1: IToken;
-  let op2: IToken | undefined;
-  let val2: Node | undefined;
-
-  let val = $.OR([
+  const val = $.OR([
     {
-      ALT: () => {
-        let op1 = $.CONSUME($.T.MfLt);
-        let val1 = $.CONSUME($.T.Ident);
+      ALT: (): MediaRangeResult => {
+        const op1 = $.CONSUME($.T.MfLt);
+        const val1 = $.CONSUME($.T.Ident);
         let op2: IToken | undefined;
         let val2: Node | undefined;
         $.OPTION(() => {
           op2 = $.CONSUME($.T.MfLt);
-          val2 = $.mfValue(ctx);
+          val2 = $.SUBRULE($.mfValue, { ARGS: [ctx] }) as Node;
         });
         return [op1, val1, op2, val2];
       }
     },
     {
-      ALT: () => {
-        let op1 = $.CONSUME($.T.MfGt);
-        let val1 = $.CONSUME($.T.Ident);
+      ALT: (): MediaRangeResult => {
+        const op1 = $.CONSUME($.T.MfGt);
+        const val1 = $.CONSUME($.T.Ident);
         let op2: IToken | undefined;
         let val2: Node | undefined;
         $.OPTION(() => {
           op2 = $.CONSUME($.T.MfGt);
-          val2 = $.mfValue(ctx);
+          val2 = $.SUBRULE($.mfValue, { ARGS: [ctx] }) as Node;
         });
         return [op1, val1, op2, val2];
       }
     }
-  ]);
+  ]) as MediaRangeResult;
 
-  ([op1!, val1!, op2, val2] = val as any);
+  if (!Array.isArray(val)) {
+    return new Sequence([], undefined, $.endRule(), $.context);
+  }
+  const [op1, val1, op2, val2] = val;
 
-  let location = $.endRule();
-  let nodes: Node[] = [
+  const location = $.endRule();
+  const nodes: Node[] = [
     $.wrap(new Any(op1!.image, { role: 'operator' }, $.getLocationInfo(op1!), $.context)),
     $.wrap(new Any(val1!.image, { role: 'ident' }, $.getLocationInfo(val1!), $.context), 'both')
   ];
-  if (op2) {
+  if (op2 && val2) {
     nodes.push($.wrap(new Any(op2.image, { role: 'operator' }, $.getLocationInfo(op2), $.context)));
-    nodes.push($.wrap(val2!, 'both'));
+    nodes.push($.wrap(val2, 'both'));
   }
   return new Sequence(nodes, undefined, location, $.context);
 }
@@ -482,24 +491,24 @@ export function mfNonIdentifierValue(this: P, ctx: RuleContext = {}) {
     {
       ALT: () => {
         $.startRule();
-        let num1 = $.CONSUME($.T.Number);
+        const num1 = $.CONSUME($.T.Number);
         let num2: IToken | undefined;
         $.OPTION(() => {
           $.CONSUME($.T.Slash);
           num2 = $.CONSUME($.T.Number);
         });
-        let location = $.endRule();
-        let num1Node = $.wrap($.processValueToken(num1), 'both');
+        const location = $.endRule();
+        const num1Node = $.wrap($.processValueToken(num1), 'both');
         if (!num2) {
           return num1Node;
         }
-        let num2Node = $.wrap($.processValueToken(num2), 'both');
+        const num2Node = $.wrap($.processValueToken(num2), 'both');
         return new List([num1Node, num2Node], { sep: '/' }, location, $.context);
       }
     },
     {
       ALT: () => {
-        let dim = $.CONSUME($.T.Dimension);
+        const dim = $.CONSUME($.T.Dimension);
         return $.wrap($.processValueToken(dim), 'both');
       }
     }
@@ -509,7 +518,7 @@ export function mfNonIdentifierValue(this: P, ctx: RuleContext = {}) {
 export function mfValue(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
-    { ALT: () => $.mfNonIdentifierValue(ctx) },
+    { ALT: () => $.SUBRULE($.mfNonIdentifierValue, { ARGS: [ctx] }) },
     {
       ALT: () => {
         let token = $.CONSUME($.T.Ident);
@@ -536,14 +545,14 @@ export function pageAtRule(this: P, ctx: RuleContext = {}) {
   const $ = this;
   $.startRule();
 
-  let name = $.CONSUME($.T.AtPage);
-  let selector: Node[] = [];
+  const name = $.CONSUME($.T.AtPage);
+  const selector: Node[] = [];
   $.MANY_SEP({
     SEP: $.T.Comma,
-    DEF: () => selector.push($.pageSelector(ctx))
+    DEF: () => selector.push($.SUBRULE($.pageSelector) as Node)
   });
   $.CONSUME($.T.LCurly);
-  let rules = $.declarationList(ctx) as Rules;
+  let rules = $.SUBRULE($.declarationList, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
 
   let location = $.endRule();
@@ -580,7 +589,7 @@ export function fontFaceAtRule(this: P, ctx: RuleContext = {}) {
 
   let name = $.CONSUME($.T.AtFontFace);
   $.CONSUME($.T.LCurly);
-  let rules = $.declarationList(ctx) as Rules;
+  let rules = $.SUBRULE($.declarationList, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
 
   let location = $.endRule();
@@ -596,9 +605,9 @@ export function keyframesAtRule(this: P, ctx: RuleContext = {}) {
 
   let atTok = $.CONSUME($.T.AtKeyframes);
   // prelude: a single animation name
-  let preludeNode: Node | undefined = $.keyframesName(ctx);
+  let preludeNode: Node | undefined = $.SUBRULE($.keyframesName);
   $.CONSUME($.T.LCurly);
-  const rules = $.declarationList(ctx) as Rules;
+  const rules = $.SUBRULE($.declarationList, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
 
   return new AtRule({
@@ -615,21 +624,18 @@ export function keyframesAtRule(this: P, ctx: RuleContext = {}) {
  */
 export function keyframesName(this: P, ctx: RuleContext = {}) {
   const $ = this;
-  let node: Node | undefined;
-  $.OR([
+  const node = $.OR([
     {
       ALT: () => {
         const tok = $.CONSUME($.T.Ident);
-        node = $.wrap($.processValueToken(tok));
+        return $.wrap($.processValueToken(tok));
       }
     },
     {
-      ALT: () => {
-        node = $.string(ctx);
-      }
+      ALT: () => $.SUBRULE($.string)
     }
-  ]);
-  return node!;
+  ]) as Node;
+  return node;
 }
 
 /**
@@ -656,24 +662,24 @@ export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Pr
         GATE: () => {
           const next = $.LA(1);
           // If it's a FunctionStart (like `size(` or `style(`), it's a query function, not a container name
-          if (tokenMatches(next, $.T.FunctionStart)) {
+          if (tokenMatcher(next, $.T.FunctionStart)) {
             return false;
           }
           // If it's an Ident (not a query keyword), it could be a container name
-          return tokenTypeInSet(next.tokenType, $.IDENT_LIKE_START)
+          return tokenMatcher(next, $.T.IdentLikeStart)
             && next.image.toLowerCase() !== 'not'
             && next.image.toLowerCase() !== 'only'
             && next.image.toLowerCase() !== 'and'
             && next.image.toLowerCase() !== 'or';
         },
         ALT: () => {
-          containerName = $.containerName(ctx);
-          queryList = $.containerQueryList(ctx);
+          containerName = $.SUBRULE($.containerName);
+          queryList = $.SUBRULE($.containerQueryList, { ARGS: [ctx] });
         }
       },
       {
         ALT: () => {
-          queryList = $.containerQueryList(ctx);
+          queryList = $.SUBRULE($.containerQueryList, { ARGS: [ctx] });
         }
       }
     ]);
@@ -682,7 +688,7 @@ export function containerAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Pr
   }
 
   $.CONSUME($.T.LCurly);
-  const rules = $.atRuleBody(ctx) as Rules;
+  const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
 
   let preludeNodes: Node[] = [];
@@ -723,7 +729,7 @@ export function containerQueryList(this: P, ctx: RuleContext = {}) {
   $.AT_LEAST_ONE_SEP({
     SEP: $.T.Comma,
     DEF: () => {
-      let query = $.containerQuery(ctx);
+      const query = $.SUBRULE($.containerQuery, { ARGS: [ctx] }) as Node;
       queries.push(query);
     }
   });
@@ -744,7 +750,7 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
   return $.OR([
     {
       // Container query type function: any FunctionStart token
-      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
+      GATE: () => tokenMatcher($.LA(1), $.T.FunctionStart),
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
@@ -760,9 +766,9 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
             $.OR([
               {
                 // QueryCondition: starts with LParen or Not
-                GATE: () => tokenTypeInSet($.LA(1).tokenType, $.QUERY_CONDITION_START),
+                GATE: () => tokenMatcher($.LA(1), $.T.QueryConditionStart),
                 ALT: () => {
-                  const arg = $.containerCondition(ctx);
+                  const arg = $.SUBRULE($.containerCondition, { ARGS: [ctx] });
                   args!.push($.wrap(arg));
                 }
               },
@@ -770,12 +776,12 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
                 // Declaration: starts with Ident or CustomProperty followed by Assign (colon)
                 GATE: () => {
                   const after = $.LA(2);
-                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                  return tokenMatcher($.LA(1), $.T.DeclValueNameStart)
                     && after
-                    && tokenMatches(after, $.T.Assign);
+                    && tokenMatcher(after, $.T.Assign);
                 },
                 ALT: () => {
-                  const arg = $.declaration(ctx);
+                  const arg = $.SUBRULE($.declaration, { ARGS: [ctx] });
                   args!.push($.wrap(arg));
                 }
               },
@@ -783,8 +789,8 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
                 // Just a name (Any): Ident, PlainIdent, or CustomProperty without Assign
                 GATE: () => {
                   const after = $.LA(2);
-                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
-                    && (!after || !tokenMatches(after, $.T.Assign));
+                  return tokenMatcher($.LA(1), $.T.DeclValueNameStart)
+                    && (!after || !tokenMatcher(after, $.T.Assign));
                 },
                 ALT: () => {
                   let nameToken: IToken | undefined;
@@ -822,16 +828,16 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
         $.MANY({
           GATE: () => $.isType($.T.And) || $.isType($.T.Or),
           DEF: () => {
-            let rule = $.OR([
+            const rule = $.OR([
               {
                 GATE: () => $.isType($.T.And),
-                ALT: () => $.containerAnd(ctx)
+                ALT: () => $.SUBRULE($.containerAnd, { ARGS: [ctx] })
               },
               {
-                ALT: () => $.containerOr(ctx)
+                ALT: () => $.SUBRULE($.containerOr, { ARGS: [ctx] })
               }
             ]) as Node[];
-            nodes!.push(...rule);
+            if (Array.isArray(rule)) nodes!.push(...rule);
           }
         });
 
@@ -842,7 +848,7 @@ export function containerQuery(this: P, ctx: RuleContext = {}): Node {
     },
     {
       // Regular container condition
-      ALT: () => $.containerCondition(ctx)
+      ALT: () => $.SUBRULE($.containerCondition, { ARGS: [ctx] })
     }
   ]);
 }
@@ -860,7 +866,7 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
         const next = $.LA(1);
         if (next.tokenType === $.T.Not) {
           const afterNot = $.LA(2);
-          return afterNot && tokenMatches(afterNot, $.T.FunctionStart);
+          return afterNot && tokenMatcher(afterNot, $.T.FunctionStart);
         }
         return false;
       },
@@ -868,7 +874,7 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
         $.startRule();
         const notToken = $.CONSUME($.T.Not);
         // Parse the function call as a container query
-        const funcQuery = $.containerQuery(ctx);
+        const funcQuery = $.SUBRULE($.containerQuery, { ARGS: [ctx] });
         return new QueryCondition([
           $.wrap(new Keyword(notToken.image, undefined, $.getLocationInfo(notToken), $.context), 'both'),
           funcQuery
@@ -881,21 +887,21 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
       ALT: () => {
         $.startRule();
         let nodes: Node[] = [];
-        let node = $.containerInParens(ctx);
+        let node = $.SUBRULE($.containerInParens, { ARGS: [ctx] });
         nodes!.push(node);
         $.MANY({
           GATE: () => $.isType($.T.And) || $.isType($.T.Or),
           DEF: () => {
-            let rule = $.OR([
+            const rule = $.OR([
               {
                 GATE: () => $.isType($.T.And),
-                ALT: () => $.containerAnd(ctx)
+                ALT: () => $.SUBRULE($.containerAnd, { ARGS: [ctx] })
               },
               {
-                ALT: () => $.containerOr(ctx)
+                ALT: () => $.SUBRULE($.containerOr, { ARGS: [ctx] })
               }
             ]) as Node[];
-            nodes!.push(...rule);
+            if (Array.isArray(rule)) nodes!.push(...rule);
           }
         });
         if (nodes!.length === 1) {
@@ -908,7 +914,7 @@ export function containerCondition(this: P, ctx: RuleContext = {}): Node {
     {
       // For cases not starting with LParen (like `not` at start), reuse media condition logic
       GATE: () => !$.isType($.T.LParen),
-      ALT: () => $.mediaCondition(ctx)
+      ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] })
     }
   ]);
 }
@@ -926,13 +932,13 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
       GATE: () => $.isType($.T.Not),
       ALT: () => {
         const notToken = $.CONSUME($.T.Not);
-        node = $.containerInParens(ctx);
+        node = $.SUBRULE($.containerInParens, { ARGS: [ctx] });
         const notNode = $.wrap(new Keyword(notToken.image, undefined, $.getLocationInfo(notToken), $.context), 'both');
         node = new QueryCondition([notNode, node!], undefined, $.getLocationFromNodes([notNode, node!]), $.context);
       }
     },
     {
-      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
+      GATE: () => tokenMatcher($.LA(1), $.T.FunctionStart),
       ALT: () => {
         // Parse function call (reuse containerQuery logic)
         const funcStart = $.CONSUME($.T.FunctionStart);
@@ -943,29 +949,29 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
           DEF: () => {
             $.OR([
               {
-                GATE: () => tokenTypeInSet($.LA(1).tokenType, $.QUERY_CONDITION_START),
+                GATE: () => tokenMatcher($.LA(1), $.T.QueryConditionStart),
                 ALT: () => {
-                  const arg = $.containerCondition(ctx);
+                  const arg = $.SUBRULE($.containerCondition, { ARGS: [ctx] });
                   args!.push($.wrap(arg));
                 }
               },
               {
                 GATE: () => {
                   const after = $.LA(2);
-                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                  return tokenMatcher($.LA(1), $.T.DeclValueNameStart)
                     && after
-                    && tokenMatches(after, $.T.Assign);
+                    && tokenMatcher(after, $.T.Assign);
                 },
                 ALT: () => {
-                  const arg = $.declaration(ctx);
+                  const arg = $.SUBRULE($.declaration, { ARGS: [ctx] });
                   args!.push($.wrap(arg));
                 }
               },
               {
                 GATE: () => {
                   const after = $.LA(2);
-                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
-                    && (!after || !tokenMatches(after, $.T.Assign));
+                  return tokenMatcher($.LA(1), $.T.DeclValueNameStart)
+                    && (!after || !tokenMatcher(after, $.T.Assign));
                 },
                 ALT: () => {
                   let nameToken: IToken | undefined;
@@ -1000,7 +1006,7 @@ export function containerAnd(this: P, ctx: RuleContext = {}) {
     },
     {
       ALT: () => {
-        node = $.containerInParens(ctx);
+        node = $.SUBRULE($.containerInParens, { ARGS: [ctx] });
       }
     }
   ]);
@@ -1025,13 +1031,13 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
       GATE: () => $.isType($.T.Not),
       ALT: () => {
         const notToken = $.CONSUME($.T.Not);
-        node = $.containerInParens(ctx);
+        node = $.SUBRULE($.containerInParens, { ARGS: [ctx] });
         const notNode = $.wrap(new Keyword(notToken.image, undefined, $.getLocationInfo(notToken), $.context), 'both');
         node = new QueryCondition([notNode, node!], undefined, $.getLocationFromNodes([notNode, node!]), $.context);
       }
     },
     {
-      GATE: () => tokenMatches($.LA(1), $.T.FunctionStart),
+      GATE: () => tokenMatcher($.LA(1), $.T.FunctionStart),
       ALT: () => {
         // Parse function call (reuse containerQuery logic)
         const funcStart = $.CONSUME($.T.FunctionStart);
@@ -1042,29 +1048,29 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
           DEF: () => {
             $.OR([
               {
-                GATE: () => tokenTypeInSet($.LA(1).tokenType, $.QUERY_CONDITION_START),
+                GATE: () => tokenMatcher($.LA(1), $.T.QueryConditionStart),
                 ALT: () => {
-                  const arg = $.containerCondition(ctx);
+                  const arg = $.SUBRULE($.containerCondition, { ARGS: [ctx] });
                   args!.push($.wrap(arg));
                 }
               },
               {
                 GATE: () => {
                   const after = $.LA(2);
-                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
+                  return tokenMatcher($.LA(1), $.T.DeclValueNameStart)
                     && after
-                    && tokenMatches(after, $.T.Assign);
+                    && tokenMatcher(after, $.T.Assign);
                 },
                 ALT: () => {
-                  const arg = $.declaration(ctx);
+                  const arg = $.SUBRULE($.declaration, { ARGS: [ctx] });
                   args!.push($.wrap(arg));
                 }
               },
               {
                 GATE: () => {
                   const after = $.LA(2);
-                  return tokenTypeInSet($.LA(1).tokenType, $.DECL_VALUE_NAME_START)
-                    && (!after || !tokenMatches(after, $.T.Assign));
+                  return tokenMatcher($.LA(1), $.T.DeclValueNameStart)
+                    && (!after || !tokenMatcher(after, $.T.Assign));
                 },
                 ALT: () => {
                   let nameToken: IToken | undefined;
@@ -1099,7 +1105,7 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
     },
     {
       ALT: () => {
-        node = $.containerInParens(ctx);
+        node = $.SUBRULE($.containerInParens, { ARGS: [ctx] });
       }
     }
   ]);
@@ -1118,7 +1124,7 @@ export function containerOr(this: P, ctx: RuleContext = {}) {
 export function containerInParens(this: P, ctx: RuleContext = {}) {
   const $ = this;
   // Reuse media in parens logic since container queries use the same syntax
-  return $.mediaInParens(ctx);
+  return $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
 }
 
 /**
@@ -1128,7 +1134,7 @@ export function containerInParens(this: P, ctx: RuleContext = {}) {
 export function containerFeature(this: P, ctx: RuleContext = {}) {
   const $ = this;
   // Reuse media feature logic since container queries use the same syntax
-  return $.mediaFeature(ctx);
+  return $.SUBRULE($.mediaFeature, { ARGS: [ctx] });
 }
 
 // scopeAtRule: @scope <prelude>? { main }
@@ -1146,14 +1152,14 @@ export function scopeAtRule(this: P, ctx: RuleContext = {}, preludeRule?: Prelud
     const preludeNodes: Node[] = [];
     $.MANY({
       GATE: () => !$.isType($.T.LCurly) && $.LA(1).tokenType.name !== 'EOF',
-      DEF: () => preludeNodes.push($.wrap($.anyOuterValue(ctx)))
+      DEF: () => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue, { ARGS: [ctx] })))
     });
     prelude = preludeNodes.length
       ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context), 'both')
       : undefined;
   }
   $.CONSUME($.T.LCurly);
-  const rules = $.atRuleBody(ctx) as Rules;
+  const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
   return new AtRule({
     name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
@@ -1170,10 +1176,10 @@ export function documentAtRule(this: P, ctx: RuleContext = {}) {
   const preludeNodes: Node[] = [];
   $.MANY({
     GATE: () => !$.isType($.T.LCurly) && $.LA(1).tokenType.name !== 'EOF',
-    DEF: () => preludeNodes.push($.wrap($.anyOuterValue(ctx)))
+    DEF: () => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue, { ARGS: [ctx] })))
   });
   $.CONSUME($.T.LCurly);
-  const rules = $.atRuleBody(ctx) as Rules;
+  const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
   return new AtRule({
     name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),

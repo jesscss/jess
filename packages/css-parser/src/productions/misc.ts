@@ -1,7 +1,7 @@
 // Methods to be mixed into CssRecursiveParser
+import type { IToken } from '@chevrotain/types';
 import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser';
-import { tokenTypeInSet } from '@jesscss/parser';
+import { tokenMatcher } from '../cssRecursiveParser.js';
 import {
   Node, Any, AtRule, Ruleset, Rules, Sequence, List, Block,
   QueryCondition, Keyword, Paren, Call, Url, RawRules,
@@ -32,11 +32,11 @@ export function layerAtRule(this: P, ctx: RuleContext = {}) {
       ALT: () => {
         const preludeNodes: Node[] = [];
         $.OPTION(() => {
-          const nameNode: Node = $.layerName(ctx);
+          const nameNode: Node = $.SUBRULE($.layerName, { ARGS: [ctx] });
           preludeNodes.push($.wrap(nameNode));
         });
         $.CONSUME($.T.LCurly);
-        const rules = $.atRuleBody(ctx) as Rules;
+        const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] }) as Rules;
         $.CONSUME($.T.RCurly);
         return new AtRule({
           name: $.wrap(new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), $.context), true),
@@ -51,7 +51,7 @@ export function layerAtRule(this: P, ctx: RuleContext = {}) {
         $.MANY_SEP({
           SEP: $.T.Comma,
           DEF: () => {
-            let nameNode: Node = $.layerName(ctx);
+            let nameNode: Node = $.SUBRULE($.layerName, { ARGS: [ctx] });
             preludeNodes.push($.wrap(nameNode));
           }
         });
@@ -96,9 +96,9 @@ export function supportsAtRule(this: P, ctx: RuleContext = {}) {
   $.startRule();
 
   let name = $.CONSUME($.T.AtSupports);
-  const prelude: Node = $.supportsCondition(ctx);
+  const prelude: Node = $.SUBRULE($.supportsCondition, { ARGS: [ctx] });
   $.CONSUME($.T.LCurly);
-  let rules = $.atRuleBody(ctx) as Rules;
+  let rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
 
   let location = $.endRule();
@@ -142,12 +142,14 @@ export function supportsCondition(this: P, ctx: RuleContext = {}): Node {
               $.AT_LEAST_ONE(() => {
                 let keyword = $.CONSUME($.T.And);
                 let right: Node = $.supportsInParens(ctx);
-                let [,,,endOffset, endLine, endColumn] = right.location;
-                left = new QueryCondition([
-                  left,
-                  $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
-                  right
-                ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
+                if (!$.RECORDING_PHASE) {
+                  let [,,,endOffset, endLine, endColumn] = right.location;
+                  left = new QueryCondition([
+                    left,
+                    $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
+                    right
+                  ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
+                }
               });
             }
           },
@@ -156,12 +158,14 @@ export function supportsCondition(this: P, ctx: RuleContext = {}): Node {
               $.AT_LEAST_ONE(() => {
                 let keyword = $.CONSUME($.T.Or);
                 let right: Node = $.supportsInParens(ctx);
-                let [,,,endOffset, endLine, endColumn] = right.location;
-                left = new QueryCondition([
-                  left,
-                  $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
-                  right
-                ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
+                if (!$.RECORDING_PHASE) {
+                  let [,,,endOffset, endLine, endColumn] = right.location;
+                  left = new QueryCondition([
+                    left,
+                    $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
+                    right
+                  ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
+                }
               });
             }
           },
@@ -189,10 +193,10 @@ export function supportsInParens(this: P, ctx: RuleContext = {}): Node {
         let args: List | undefined;
         $.OR([
           {
-            GATE: $.noSep.bind($),
+            GATE: () => $.noSep(),
             ALT: () => {
               $.CONSUME($.T.LParen);
-              args = $.valueList(ctx) as List;
+              args = $.SUBRULE($.valueList, { ARGS: [ctx] }) as List;
               $.CONSUME($.T.RParen);
             }
           }
@@ -215,7 +219,7 @@ export function supportsInParens(this: P, ctx: RuleContext = {}): Node {
          * See the note on media queries.
          */
         let value: Node = $.OR([
-          { ALT: (): Node => $.supportsCondition(ctx) },
+          { ALT: (): Node => $.SUBRULE($.supportsCondition, { ARGS: [ctx] }) },
           { ALT: (): Node => $.declaration(ctx) }
         ]);
         $.CONSUME($.T.RParen);
@@ -238,9 +242,9 @@ export function functionCallLike(this: P, ctx: RuleContext = {}) {
   let args: Node[] = [];
   let seq: Sequence | undefined;
   $.MANY({
-    GATE: () => !tokenTypeInSet($.LA(1).tokenType, $.FUNCTION_LIKE_END),
+    GATE: () => !tokenMatcher($.LA(1), $.T.FunctionLikeEnd),
     DEF: () => {
-      const node = $.anyOuterValue(ctx);
+      const node = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
       args.push($.wrap(node));
     }
   });
@@ -276,7 +280,7 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
       ALT: () => $.ifFunction(ctx)
     },
     {
-      GATE: () => $.check($.T.FunctionStart),
+      GATE: () => $.isType($.T.FunctionStart),
       ALT: () => $.knownFunctions(ctx)
     },
     {
@@ -286,7 +290,7 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
         let name = $.CONSUME($.T.FunctionStart);
         let args: List<Node> | undefined;
 
-        $.OPTION(() => args = $.functionCallArgs(ctx));
+        $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }) as List<Node>);
         $.CONSUME($.T.RParen);
 
         let location = $.endRule();
@@ -368,13 +372,13 @@ export function importAtRule(this: P, ctx: RuleContext = {}) {
   $.startRule();
   let name = $.CONSUME($.T.AtImport);
   let preludeNodes: Node[] = [];
-  let node = $.importPrelude(ctx) as Node;
+  let node = $.SUBRULE($.importPrelude, { ARGS: [ctx] }) as Node;
 
   preludeNodes!.push($.wrap(node));
 
   let extraNodes: Node[] | undefined;
   $.OPTION(() => {
-    extraNodes = $.importPostlude(ctx) as Node[];
+    extraNodes = $.SUBRULE($.importPostlude, { ARGS: [ctx] });
   });
   if (extraNodes && extraNodes.length) {
     for (const n of extraNodes) {
@@ -407,7 +411,7 @@ export function importPostlude(this: P, ctx: RuleContext = {}) {
   /** layer(responsive) */
   $.OPTION(() => {
     let start = $.CONSUME($.T.Layer);
-    let value: Node = $.layerName();
+    let value: Node = $.SUBRULE($.layerName);
     let end = $.CONSUME($.T.RParen);
     let { startOffset, startLine, startColumn } = start;
     let { endOffset, endLine, endColumn } = end;
@@ -426,8 +430,8 @@ export function importPostlude(this: P, ctx: RuleContext = {}) {
   $.OPTION(() => {
     let start = $.CONSUME($.T.Supports);
     let value = $.OR([
-      { ALT: () => $.supportsCondition(ctx) },
-      { ALT: () => $.declaration(ctx) }
+      { ALT: () => $.SUBRULE($.supportsCondition, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) }
     ]);
     let end = $.CONSUME($.T.RParen);
     let { startOffset, startLine, startColumn } = start;
@@ -445,7 +449,7 @@ export function importPostlude(this: P, ctx: RuleContext = {}) {
 
   /** media query list */
   $.OPTION(() => {
-    let mediaNode = $.mediaQueryList(ctx);
+    let mediaNode = $.SUBRULE($.mediaQueryList, { ARGS: [ctx] });
     nodes!.push(mediaNode);
   });
 
@@ -464,12 +468,12 @@ export function nestedAtRule(this: P, ctx: RuleContext = {}) {
   let rules: Rules;
 
   $.MANY(() => {
-    let value = $.anyOuterValue(ctx);
+    let value = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
     preludeNodes.push($.wrap(value));
   });
   $.CONSUME($.T.LCurly);
   // All known nested at-rules use declaration lists in their blocks
-  rules = $.declarationList(ctx) as Rules;
+  rules = $.SUBRULE($.declarationList, { ARGS: [ctx] }) as Rules;
   $.CONSUME($.T.RCurly);
 
   return new AtRule({
@@ -485,7 +489,7 @@ export function nonNestedAtRule(this: P, ctx: RuleContext = {}) {
   let preludeNodes: Node[] = [];
 
   let name = $.CONSUME($.T.AtNonNested);
-  $.MANY(() => preludeNodes.push($.wrap($.anyOuterValue(ctx))));
+  $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue, { ARGS: [ctx] }))));
   $.CONSUME($.T.Semi);
 
   return new AtRule({
@@ -528,7 +532,7 @@ export function unknownAtRule(this: P, ctx: RuleContext = {}) {
 
   let name = $.CONSUME($.T.AtKeyword);
   $.MANY(() => {
-    let val = $.anyOuterValue(ctx);
+    let val = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
     preludeNodes.push($.wrap(val, 'both'));
   });
   $.OR([
@@ -570,7 +574,7 @@ export function unknownAtRule(this: P, ctx: RuleContext = {}) {
           {
             GATE: () => assumeDeclList,
             ALT: () => {
-              declRules = $.atRuleBody({ ...ctx, inner: true }) as Rules;
+              declRules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] }) as Rules;
             }
           },
           {
@@ -578,7 +582,7 @@ export function unknownAtRule(this: P, ctx: RuleContext = {}) {
             ALT: () => {
               /** Fallback to raw capture */
               $.MANY(() => {
-                const value = $.anyInnerValue(ctx);
+                const value = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
                 valueNodes.push($.wrap(value, 'both'));
               });
             }
@@ -600,7 +604,7 @@ export function unknownAtRule(this: P, ctx: RuleContext = {}) {
       const seqLoc = $.getLocationFromNodes(valueNodes!);
       const seq = new Sequence(valueNodes!, undefined, seqLoc, $.context);
       // Use RawRules to avoid inserting newlines/indentation during serialization
-      rules = new RawRules([seq], undefined, seqLoc, $.context) as unknown as Rules;
+      rules = new RawRules([seq], undefined, seqLoc, $.context);
     }
   }
   return new AtRule({
@@ -626,7 +630,7 @@ export function anyOuterValue(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
     { ALT: () => $.extraTokens(ctx) },
-    { ALT: () => $.string(ctx) },
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
     {
       GATE: () => $.isType($.T.LParen),
       ALT: () => {
@@ -636,7 +640,7 @@ export function anyOuterValue(this: P, ctx: RuleContext = {}) {
         $.MANY({
           GATE: () => !$.isType($.T.RParen),
           DEF: () => {
-            let val = $.anyInnerValue(ctx);
+            let val = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
             nodes.push($.wrap(val));
           }
         });
@@ -661,7 +665,7 @@ export function anyOuterValue(this: P, ctx: RuleContext = {}) {
         $.MANY({
           GATE: () => !$.isType($.T.RSquare),
           DEF: () => {
-            let node = $.anyInnerValue(ctx);
+            let node = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
             nodes.push($.wrap(node));
           }
         });
@@ -686,7 +690,7 @@ export function anyOuterValue(this: P, ctx: RuleContext = {}) {
 export function anyInnerValue(this: P, ctx: RuleContext = {}) {
   const $ = this;
   return $.OR([
-    { ALT: () => $.anyOuterValue(ctx) },
+    { ALT: () => $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) },
     {
       GATE: () => $.isType($.T.LCurly),
       ALT: () => {
@@ -696,7 +700,7 @@ export function anyInnerValue(this: P, ctx: RuleContext = {}) {
         $.MANY({
           GATE: () => !$.isType($.T.RCurly),
           DEF: () => {
-            let node = $.anyInnerValue(ctx);
+            let node = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
             nodes.push(node);
           }
         });

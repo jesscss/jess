@@ -1,19 +1,28 @@
 // Methods to be mixed into CssRecursiveParser
-import type { CssRecursiveParser, RuleContext } from '../cssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser';
-import { tokenMatches } from '@jesscss/parser';
+import { tokenMatcher, type CssRecursiveParser, type RuleContext } from '../cssRecursiveParser.js';
+import type { IToken } from '@chevrotain/types';
 import {
   Node, Any, Declaration, CustomDeclaration, Sequence, List, Block,
-  Quoted, Call, Url, Paren, Operation, type AssignmentType, type Operator, Keyword
+  Quoted, Call, Url, Paren, Operation, AssignmentType, type Operator
 } from '@jesscss/core';
 
 type P = CssRecursiveParser;
 
 type Alt = Array<{ ALT: () => any; GATE?: () => boolean }>;
-type AltContext = (ctx?: RuleContext) => Alt;
+export type AltContext = (ctx?: RuleContext) => Alt;
 
 export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   const $ = this;
+  if ($.RECORDING_PHASE) {
+    $.startRule();
+    alt ??= (ctx: RuleContext = {}) => [];
+    $.OR(alt(ctx));
+    return new Declaration(
+      { name: new Any('', { role: 'property' }), value: new Any('') },
+      { assign: ':' as AssignmentType },
+      $.endRule(), $.context
+    );
+  }
   alt ??= (ctx: RuleContext = {}) => [
     {
       GATE: () => !$.isType($.T.CustomProperty),
@@ -29,7 +38,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
           }
         ]);
         let assign = $.CONSUME($.T.Assign);
-        let value = $.valueList(ctx);
+        let value = $.SUBRULE($.valueList, { ARGS: [ctx] });
         let important: IToken | undefined;
         $.OPTION(() => {
           important = $.CONSUME($.T.Important);
@@ -48,7 +57,7 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
         $.MANY({
           GATE: () => !$.isType($.T.Semi) && !$.isType($.T.RCurly) && $.LA(1).tokenType.name !== 'EOF',
           DEF: () => {
-            let val = $.customValue({ ...ctx, inCustomPropertyValue: true });
+            let val = $.SUBRULE($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
             nodes.push(val);
           }
         });
@@ -64,12 +73,19 @@ export function declaration(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   //   | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   //   ;
   $.startRule();
+  if ($.RECORDING_PHASE) {
+    $.OR(alt(ctx));
+    return new Declaration(
+      { name: new Any('', { role: 'property' }), value: new Any('') },
+      { assign: ':' as AssignmentType },
+      $.endRule(), $.context
+    );
+  }
   let name: Any<'property'> | undefined;
   let assign: IToken | undefined;
   let value: Node | undefined;
   let important: IToken | undefined;
-  let val = $.OR(alt(ctx));
-
+  const val = $.OR(alt(ctx));
   ([name, assign, value, important] = val);
 
   let location = $.endRule();
@@ -95,12 +111,12 @@ export function customValue(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
-        return $.customBlock(ctx);
+        return $.SUBRULE($.customBlock, { ARGS: [ctx] });
       }
     },
     {
       ALT: () => {
-        return $.string(ctx);
+        return $.SUBRULE($.string, { ARGS: [ctx] });
       }
     },
     {
@@ -132,7 +148,7 @@ export function innerCustomValue(this: P, ctx: RuleContext = {}, alt?: AltContex
         return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), $.context));
       }
     },
-    { ALT: () => $.customValue(ctx) }
+    { ALT: () => $.SUBRULE($.customValue, { ARGS: [ctx] }) }
   ];
 
   return $.OR(alt(ctx));
@@ -147,7 +163,7 @@ export function innerCustomValue(this: P, ctx: RuleContext = {}, alt?: AltContex
 export function extraTokens(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => $.functionCallLike(ctx) },
+    { ALT: () => $.SUBRULE($.functionCallLike, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME($.T.Value) },
     { ALT: () => $.CONSUME($.T.CustomProperty) },
     { ALT: () => $.CONSUME($.T.Colon) },
@@ -189,7 +205,7 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
         $.MANY({
           GATE: () => !$.isType($.T.RParen),
           DEF: () => {
-            let val = $.innerCustomValue(ctx);
+            let val = $.SUBRULE($.innerCustomValue, { ARGS: [ctx] });
             nodes.push(val);
           }
         });
@@ -205,7 +221,7 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
         $.MANY({
           GATE: () => !$.isType($.T.RSquare),
           DEF: () => {
-            let val = $.innerCustomValue(ctx);
+            let val = $.SUBRULE($.innerCustomValue, { ARGS: [ctx] });
             nodes.push(val);
           }
         });
@@ -222,7 +238,7 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
         $.MANY({
           GATE: () => !$.isType($.T.RCurly),
           DEF: () => {
-            let val = $.innerCustomValue(ctx);
+            let val = $.SUBRULE($.innerCustomValue, { ARGS: [ctx] });
             nodes.push(val);
           }
         });
@@ -234,12 +250,16 @@ export function customBlock(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   ];
 
   $.startRule();
+  if ($.RECORDING_PHASE) {
+    $.OR(alt(ctx));
+    const loc = $.endRule();
+    return new Block(new Sequence([], undefined, loc, $.context), { type: 'curly' }, loc, $.context);
+  }
   let start: IToken | undefined;
   let end: IToken | undefined;
   let nodes: Node[];
 
-  let val = $.OR(alt(ctx));
-
+  const val = $.OR(alt(ctx));
   ([start, nodes, end] = val);
 
   let location = $.endRule();
@@ -277,7 +297,7 @@ export function valueList(this: P, ctx: RuleContext = {}) {
   $.AT_LEAST_ONE_SEP({
     SEP: $.T.Comma,
     DEF: () => {
-      let seq = $.valueSequence(ctx);
+      let seq = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
       nodes.push(seq);
     }
   });
@@ -296,7 +316,7 @@ export function valueSequence(this: P, ctx: RuleContext = {}) {
   let nodes: Node[] = [];
 
   $.AT_LEAST_ONE(() => {
-    let value = $.value(ctx);
+    let value = $.SUBRULE($.value, { ARGS: [ctx] });
 
     nodes.push($.wrap(value));
   });
@@ -337,16 +357,16 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
   valueAlt ??= (ctx: RuleContext = {}) => [
     /** Function should appear before Ident */
     {
-      GATE: () => $.check($.T.FunctionStart),
-      ALT: () => $.functionCall(ctx)
+      GATE: () => tokenMatcher($.LA(1), $.T.FunctionStart),
+      ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] })
     },
     { ALT: () => $.CONSUME($.T.Ident) },
     { ALT: () => $.CONSUME($.T.Dimension) },
     { ALT: () => $.CONSUME($.T.Number) },
     { ALT: () => $.CONSUME($.T.Color) },
     { ALT: () => $.CONSUME($.T.UnicodeRange) },
-    { ALT: () => $.string(ctx) },
-    { ALT: () => $.squareValue(ctx) },
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
     {
       /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
       GATE: () => $.legacyMode,
@@ -369,7 +389,7 @@ export function value(this: P, ctx: RuleContext = {}, valueAlt?: AltContext) {
   let additionalValue: Node | undefined;
   $.OPTION(() => {
     $.CONSUME($.T.Slash);
-    additionalValue = $.value(ctx);
+    additionalValue = $.SUBRULE($.value, { ARGS: [ctx] });
   });
   let location = $.endRule();
   if (!(node instanceof Node)) {
@@ -440,13 +460,13 @@ export function mathSum(this: P, ctx: RuleContext = {}) {
   //   ;
   $.startRule();
 
-  let left: Node = $.mathProduct(ctx);
+  let left: Node = $.SUBRULE($.mathProduct, { ARGS: [ctx] });
 
   $.MANY({
     GATE: () => $.isType($.T.Plus) || $.isType($.T.Minus),
     DEF: () => {
       let op = $.OR(opAlt);
-      let right: Node = $.mathProduct(ctx);
+      let right: Node = $.SUBRULE($.mathProduct, { ARGS: [ctx] });
 
       left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
     }
@@ -467,13 +487,13 @@ export function mathProduct(this: P, ctx: RuleContext = {}) {
 
   $.startRule();
 
-  let left: Node = $.mathValue(ctx);
+  let left: Node = $.SUBRULE($.mathValue, { ARGS: [ctx] });
 
   $.MANY({
     GATE: () => $.isType($.T.Star) || $.isType($.T.Divide),
     DEF: () => {
       let op = $.OR(opAlt);
-      let right: Node = $.mathValue(ctx);
+      let right: Node = $.SUBRULE($.mathValue, { ARGS: [ctx] });
 
       left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
     }
@@ -498,8 +518,8 @@ export function mathValue(this: P, ctx: RuleContext = {}, alt?: AltContext) {
     // Allow identifiers like channel names in color space calcs (e.g., calc(l - 0.1))
     { ALT: () => $.CONSUME($.T.Ident) },
     { ALT: () => $.CONSUME($.T.MathConstant) },
-    { ALT: () => $.knownFunctions(ctx) },
-    { ALT: () => $.mathParen(ctx) }
+    { ALT: () => $.SUBRULE($.knownFunctions, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.mathParen, { ARGS: [ctx] }) }
   ];
 
   let node: Node = $.OR(alt(ctx));
@@ -513,7 +533,7 @@ export function mathParen(this: P, ctx: RuleContext = {}) {
   const $ = this;
   $.startRule();
   $.CONSUME($.T.LParen);
-  let node = $.mathSum(ctx);
+  let node = $.SUBRULE($.mathSum, { ARGS: [ctx] });
   $.CONSUME($.T.RParen);
   let location = $.endRule();
   return new Paren(node, undefined, location, $.context);
@@ -529,9 +549,9 @@ export function mathParen(this: P, ctx: RuleContext = {}) {
 export function knownFunctions(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => $.urlFunction(ctx) },
-    { ALT: () => $.varFunction(ctx) },
-    { ALT: () => $.calcFunction(ctx) }
+    { ALT: () => $.SUBRULE($.urlFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.varFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.calcFunction, { ARGS: [ctx] }) }
   ];
 
   return $.OR(alt(ctx));
@@ -544,12 +564,12 @@ export function ifFunctionArgs(this: P, ctx: RuleContext = {}) {
   $.AT_LEAST_ONE_SEP({
     SEP: $.T.Semi,
     DEF: () => {
-      const condition = $.valueSequence({ ...ctx, inner: true });
+      const condition = $.SUBRULE($.valueSequence, { ARGS: [{ ...ctx, inner: true }] });
       $.CONSUME($.T.Assign);
-      const value = $.valueList({ ...ctx, inner: true });
+      const value = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] });
       const sep = $.wrap(new Any(':', { role: 'operator' }, undefined, $.context), true);
-      const loc = $.getLocationFromNodes([condition as Node, value as Node].filter(Boolean));
-      branches.push(new Sequence([$.wrap(condition as Node, true), sep, $.wrap(value as Node, true)], undefined, loc, $.context));
+      const loc = $.getLocationFromNodes([condition!, value!].filter(Boolean));
+      branches.push(new Sequence([$.wrap(condition!, true), sep, $.wrap(value!, true)], undefined, loc, $.context));
     }
   });
   $.OPTION(() => $.CONSUME($.T.Semi));
@@ -564,7 +584,7 @@ export function ifFunction(this: P, ctx: RuleContext = {}) {
   const $ = this;
   $.startRule();
   const start = $.CONSUME($.T.FunctionStart);
-  const args = $.ifFunctionArgs({ ...ctx, inner: true }) as Node;
+  const args = $.SUBRULE($.ifFunctionArgs, { ARGS: [{ ...ctx, inner: true }] });
   $.CONSUME($.T.RParen);
   const location = $.endRule();
   return new Call({
@@ -581,9 +601,13 @@ export function varFunction(this: P, ctx: RuleContext = {}) {
   let args: List | undefined;
   $.OPTION(() => {
     $.CONSUME($.T.Comma);
-    args = $.valueList(ctx) as List;
+    args = $.SUBRULE($.valueList, { ARGS: [ctx] }) as List;
   });
   $.CONSUME($.T.RParen);
+
+  if ($.RECORDING_PHASE) {
+    return new Call({ name: 'var', args: new List([]) }, undefined, $.endRule(), $.context);
+  }
 
   let location = $.endRule();
   let propNode = $.wrap(new Any(prop.image, { role: 'customprop' }, $.getLocationInfo(prop), $.context), 'both');
@@ -605,7 +629,7 @@ export function calcFunction(this: P, ctx: RuleContext = {}) {
   $.startRule();
 
   $.CONSUME($.T.Calc);
-  let args = $.mathSum(ctx);
+  let args = $.SUBRULE($.mathSum, { ARGS: [ctx] });
   $.CONSUME($.T.RParen);
 
   let location = $.endRule();
@@ -618,7 +642,7 @@ export function calcFunction(this: P, ctx: RuleContext = {}) {
 export function urlFunction(this: P, ctx: RuleContext = {}, alt?: AltContext) {
   const $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => $.string(ctx) },
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME($.T.NonQuotedUrl) }
   ];
 

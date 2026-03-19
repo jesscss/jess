@@ -11,6 +11,8 @@ import {
 } from 'chevrotain';
 import { type WritableDeep } from 'type-fest';
 
+const { isArray } = Array;
+
 // TODO: get rid of xRegExp dep
 import XRegExp from 'xregexp';
 
@@ -104,7 +106,7 @@ export function createLexerDefinition(
         }
         if (pattern instanceof RegExp) {
           regExpPattern = pattern;
-        } else if (Array.isArray(pattern)) {
+        } else if (isArray(pattern)) {
           regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'yi'));
         } else {
           regExpPattern = XRegExp.build(pattern as string, fragments, 'i');
@@ -115,7 +117,7 @@ export function createLexerDefinition(
 
       const longerAlt = longer_alt
         ? {
-            longer_alt: Array.isArray(longer_alt)
+            longer_alt: isArray(longer_alt)
               ? longer_alt.map((val: string) => T[val])
               : T[longer_alt as string]
           }

@@ -1,25 +1,15 @@
 /**
- * CssRecursiveParser — Hand-written recursive-descent CSS parser
+ * CssRecursiveParser — Chevrotain EmbeddedActionsParser-based CSS parser
  *
- * Replaces CssActionsParser (Chevrotain-based) with a hand-coded parser
- * built on @jesscss/parser. Production rule structure mirrors
- * the original Chevrotain grammar for near-mechanical conversion.
- *
- * The DSL method names and production-rule patterns were inspired by
- * Chevrotain (https://chevrotain.io). The implementation is hand-coded
- * for greater performance: no RECORDING_PHASE, no numbered DSL variants,
- * no GAST construction, and zero-allocation token matching.
+ * Extends Chevrotain's EmbeddedActionsParser with Jess-specific infrastructure:
+ * - Filtered input (skipped tokens removed) with pre/post trivia maps
+ * - AST building helpers (getLocationInfo, wrap, getPrePost, startRule, endRule)
+ * - Token categories via Chevrotain bitsets (tokenMatcher for gate predicates)
  */
-import {
-  RecursiveDescentParser,
-  buildTokenMatchBitsets,
-  buildTokenTypeSet,
-  EOF_TOKEN_TYPE,
-  type IToken,
-  type TokenType,
-  type LocationInfo,
-  tokenMatches
-} from '@jesscss/parser';
+import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
+import type { IToken, TokenType } from '@chevrotain/types';
+
+import type { LocationInfo } from '@jesscss/core';
 
 import {
   TreeContext,
@@ -37,7 +27,9 @@ import {
 
 import colors from 'color-name';
 
-import { type CssTokenType } from './cssTokens.js';
+import { type CssTokenType, SKIPPED_LABEL } from './cssTokens.js';
+
+export { tokenMatcher };
 
 type TokenMap = Record<CssTokenType, TokenType>;
 
@@ -48,6 +40,10 @@ import * as atRules from './productions/atRules.js';
 import * as misc from './productions/misc.js';
 
 const { isArray } = Array;
+
+function isSkippedToken(t: IToken): boolean {
+  return (t.tokenType as { LABEL?: string }).LABEL === SKIPPED_LABEL;
+}
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -75,100 +71,287 @@ export interface CssRecursiveParserConfig {
 
 // ── Parser ───────────────────────────────────────────────────────────
 
-export class CssRecursiveParser extends RecursiveDescentParser {
+export class CssRecursiveParser extends EmbeddedActionsParser {
+  /** Chevrotain uses RECORDING_PHASE during performSelfAnalysis */
+  declare RECORDING_PHASE: boolean;
+
+  /** Chevrotain internals — not in public type defs */
+  declare tokVector: IToken[];
+  declare tokVectorLength: number;
+  declare currIdx: number;
+
   T: TokenMap;
   legacyMode: boolean;
   ruleIndex = 0;
 
-  /** Token sets for O(1) token matching */
+  /** Maps token startOffset → preceding skipped tokens (WS/comments) */
+  preSkippedTokenMap: Map<number, IToken[]> = new Map();
+  /** Maps previous token endOffset → following skipped tokens */
+  postSkippedTokenMap: Map<number, IToken[]> = new Map();
+  usedSkippedTokens: Set<IToken[]> = new Set();
+  protected usedSkippedTokensLog: IToken[][] = [];
+  originalInput: IToken[] = [];
 
-  SIMPLE_NAME_START: Uint32Array;
-  NESTED_RULE_START: Uint32Array;
-  DECL_NAME_START: Uint32Array;
-  IDENT_LIKE_START: Uint32Array;
-  DECL_VALUE_NAME_START: Uint32Array;
-  QUERY_CONDITION_START: Uint32Array;
-  FUNCTION_LIKE_END: Uint32Array;
+  protected hasWSBeforeByPos: Uint8Array = new Uint8Array(0);
+  protected hasSepBeforeByPos: Uint8Array = new Uint8Array(0);
+  protected skippedBeforeByPos: Array<IToken[] | undefined> = [];
+  protected skippedAfterByPos: Array<IToken[] | undefined> = [];
+
+  locationStack: LocationInfo[] = [];
+
+  protected _context!: TreeContext;
 
   constructor(
     T: TokenMap,
     config: CssRecursiveParserConfig = {}
   ) {
-    super({
-      recoveryEnabled: config.recoveryEnabled ?? false
+    super([...Object.values(T), EOF], {
+      recoveryEnabled: config.recoveryEnabled ?? false,
+      // TODO: Fix in fork — ambiguity validation should warn, not throw.
+      // The speculative engine handles ambiguities correctly at runtime.
+      skipValidations: true
     });
     this.T = T;
     this.legacyMode = config.legacyMode ?? true;
-    buildTokenMatchBitsets([...Object.values(T), EOF_TOKEN_TYPE]);
 
-    /** Build token sets for O(1) token matching */
-    this.SIMPLE_NAME_START = buildTokenTypeSet([
-      T.DotName,
-      T.HashName,
-      T.ColorIdentStart
-    ]);
+    for (const mod of [selectors, values, atRules, misc]) {
+      for (const [name, fn] of Object.entries(mod)) {
+        if (typeof fn === 'function') {
+          (this as Record<string, unknown>)[name] = this.RULE(name, fn.bind(this));
+        }
+      }
+    }
 
-    this.NESTED_RULE_START = buildTokenTypeSet([
-      T.DotName,
-      T.HashName,
-      T.Ampersand,
-      T.LSquare,
-      T.SelectorPseudoClass,
-      T.NthPseudoClass,
-      T.Star,
-      T.ColorIdentStart,
-      T.AtKeyword
-    ]),
+    // performSelfAnalysis() omitted for now — the fork's speculative engine
+    // doesn't need precomputed lookahead. The numbered DSL variants (OR1, OR2,
+    // CONSUME2, SUBRULE2, etc.) need to be restored before re-enabling this.
+    // See docs/investigation/chevrotain-ambiguity-handling.md
 
-    this.DECL_NAME_START = buildTokenTypeSet([
-      T.PlainIdent,
-      T.CustomProperty,
-      T.LegacyPropIdent
-    ]);
-
-    this.IDENT_LIKE_START = buildTokenTypeSet([
-      T.Ident,
-      T.PlainIdent
-    ]);
-
-    this.DECL_VALUE_NAME_START = buildTokenTypeSet([
-      T.Ident,
-      T.PlainIdent,
-      T.CustomProperty
-    ]);
-
-    this.QUERY_CONDITION_START = buildTokenTypeSet([
-      T.LParen,
-      T.Not
-    ]);
-
-    this.FUNCTION_LIKE_END = buildTokenTypeSet([
-      T.RParen,
-      T.UrlEnd
-    ]);
+    this.performSelfAnalysis();
   }
 
-  override get context(): TreeContext {
+  get context(): TreeContext {
     return (this._context ??= new TreeContext());
   }
 
-  override set context(c: TreeContext) {
+  set context(c: TreeContext) {
     this._context = c;
   }
 
-  override set input(value: IToken[]) {
+  set input(value: IToken[]) {
     this.ruleIndex = 0;
-    super.input = value;
+    const preSkippedTokenMap = (this.preSkippedTokenMap = new Map<number, IToken[]>());
+    const postSkippedTokenMap = (this.postSkippedTokenMap = new Map<number, IToken[]>());
+    const inputTokens: IToken[] = [];
+    const skippedBeforeByPos: Array<IToken[] | undefined> = [];
+    const skippedAfterByPos: Array<IToken[] | undefined> = [];
+    const hasWSBeforeByPos: number[] = [];
+    const hasSepBeforeByPos: number[] = [];
+
+    let pendingSkipped: IToken[] | undefined;
+    let pendingHasWS = false;
+    let prevFilteredIndex = -1;
+
+    for (let i = 0; i < value.length; i++) {
+      const token = value[i]!;
+      if (isSkippedToken(token)) {
+        if (pendingSkipped) {
+          pendingSkipped.push(token);
+        } else {
+          pendingSkipped = [token];
+        }
+        if (token.tokenType.name === 'WS') {
+          pendingHasWS = true;
+        }
+        continue;
+      }
+
+      const filteredIndex = inputTokens.length;
+      inputTokens.push(token);
+
+      if (pendingSkipped) {
+        skippedBeforeByPos[filteredIndex] = pendingSkipped;
+        hasWSBeforeByPos[filteredIndex] = pendingHasWS ? 1 : 0;
+        hasSepBeforeByPos[filteredIndex] = 1;
+        preSkippedTokenMap.set(token.startOffset, pendingSkipped);
+        if (prevFilteredIndex >= 0) {
+          skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
+          const prevToken = inputTokens[prevFilteredIndex]!;
+          postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+        }
+        pendingSkipped = undefined;
+        pendingHasWS = false;
+      } else {
+        skippedBeforeByPos[filteredIndex] = undefined;
+        hasWSBeforeByPos[filteredIndex] = 0;
+        hasSepBeforeByPos[filteredIndex] = 0;
+      }
+      prevFilteredIndex = filteredIndex;
+    }
+
+    if (pendingSkipped) {
+      if (prevFilteredIndex >= 0) {
+        skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
+        const prevToken = inputTokens[prevFilteredIndex]!;
+        postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+      }
+      preSkippedTokenMap.set(Infinity, pendingSkipped);
+    }
+
+    this.usedSkippedTokens = new Set();
+    this.usedSkippedTokensLog = [];
+    this.originalInput = value;
+    this.skippedBeforeByPos = skippedBeforeByPos;
+    this.skippedAfterByPos = skippedAfterByPos;
+    this.hasWSBeforeByPos = Uint8Array.from(hasWSBeforeByPos);
+    this.hasSepBeforeByPos = Uint8Array.from(hasSepBeforeByPos);
+
+    this.tokVector = inputTokens;
+    this.tokVectorLength = inputTokens.length;
+    this.reset();
   }
 
-  override get input(): IToken[] {
-    return super.input;
+  get input(): IToken[] {
+    return this.tokVector;
   }
 
-  // ── Infrastructure methods (from CssActionsParser) ──────────────
+  protected addUsedSkippedTokens(tokens: IToken[] | undefined): void {
+    if (!tokens) {
+      return;
+    }
+    if (this.usedSkippedTokens.has(tokens)) {
+      return;
+    }
+    this.usedSkippedTokens.add(tokens);
+    this.usedSkippedTokensLog.push(tokens);
+  }
+
+  // ── Domain helpers ─────────────────────────────────────────────────
+
+  /** Fast exact check, then category bitset fallback */
+  isType(expected: TokenType): boolean {
+    const la1 = this.LA(1);
+    return la1.tokenType === expected || tokenMatcher(la1, expected);
+  }
+
+  /** Exact token type check only (no category traversal) */
+  isExact(expected: TokenType): boolean {
+    return this.LA(1).tokenType === expected;
+  }
+
+  /** Alias for isType */
+  check(expected: TokenType): boolean {
+    return this.isType(expected);
+  }
+
+  isTypeAt(offset: number, expected: TokenType): boolean {
+    const tok = offset === 0
+      ? (this.currIdx > -1 ? this.tokVector[this.currIdx] : undefined)
+      : this.tokVector[this.currIdx + offset];
+    if (!tok) {
+      return expected.name === 'EOF';
+    }
+    return tokenMatcher(tok, expected);
+  }
+
+  noSep(offset = 0): boolean {
+    const idx = this.currIdx + 1 + offset;
+    if (idx >= this.tokVectorLength) {
+      return true;
+    }
+    return this.hasSepBeforeByPos[idx] === 0;
+  }
+
+  isToken(node: unknown): node is IToken {
+    return Boolean(node && typeof node === 'object' && 'tokenType' in node);
+  }
+
+  hasWS(offset = 0): boolean {
+    const idx = this.currIdx + 1 + offset;
+    if (idx >= this.tokVectorLength) {
+      return false;
+    }
+    return this.hasWSBeforeByPos[idx] === 1;
+  }
+
+  getLocationInfo(tok: IToken): LocationInfo {
+    if (tok.tokenType?.name === 'EOF') {
+      return [Infinity, Infinity, Infinity, Infinity, Infinity, Infinity];
+    }
+    return [
+      tok.startOffset ?? NaN,
+      tok.startLine ?? NaN,
+      tok.startColumn ?? NaN,
+      tok.endOffset ?? tok.startOffset ?? NaN,
+      tok.endLine ?? tok.startLine ?? NaN,
+      tok.endColumn ?? tok.startColumn ?? NaN
+    ];
+  }
+
+  getLocationFromNodes(nodes: Array<IToken | { location?: LocationInfo | [] }>): LocationInfo | undefined {
+    let startOffset = Infinity, startLine = Infinity, startColumn = Infinity;
+    let endOffset = -Infinity, endLine = -Infinity, endColumn = -Infinity;
+    let found = false;
+    for (const item of nodes) {
+      if (!item) {
+        continue;
+      }
+      if ('tokenType' in item) {
+        const t = item as IToken;
+        if (t.startOffset < startOffset) {
+          startOffset = t.startOffset;
+          startLine = t.startLine!;
+          startColumn = t.startColumn!;
+        }
+        if ((t.endOffset ?? -Infinity) > endOffset) {
+          endOffset = t.endOffset!;
+          endLine = t.endLine!;
+          endColumn = t.endColumn!;
+        }
+        found = true;
+      } else if (item.location && (item.location as LocationInfo).length === 6) {
+        const loc = item.location as LocationInfo;
+        if (loc[0] < startOffset) {
+          startOffset = loc[0];
+          startLine = loc[1];
+          startColumn = loc[2];
+        }
+        if (loc[3] > endOffset) {
+          endOffset = loc[3];
+          endLine = loc[4];
+          endColumn = loc[5];
+        }
+        found = true;
+      }
+    }
+    return found ? [startOffset, startLine, startColumn, endOffset, endLine, endColumn] : undefined;
+  }
+
+  startRule(): LocationInfo {
+    const tok = this.LA(1);
+    const location: LocationInfo = tok
+      ? [tok.startOffset ?? NaN, tok.startLine ?? NaN, tok.startColumn ?? NaN, NaN, NaN, NaN]
+      : [NaN, NaN, NaN, NaN, NaN, NaN];
+    this.locationStack.push(location);
+    return location;
+  }
+
+  endRule(): LocationInfo {
+    const tok = this.LA(0);
+    const location = this.locationStack.pop();
+    if (!location) {
+      return [NaN, NaN, NaN, NaN, NaN, NaN];
+    }
+    if (tok) {
+      location[3] = tok.endOffset ?? tok.startOffset ?? NaN;
+      location[4] = tok.endLine ?? tok.startLine ?? NaN;
+      location[5] = tok.endColumn ?? tok.startColumn ?? NaN;
+    }
+    return location;
+  }
 
   protected getPrePost(offset: number, post?: boolean, ctx?: RuleContext): Node['pre'] {
-    let skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset);
+    const skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset);
     if (!skipped) {
       return 0;
     }
@@ -177,21 +360,25 @@ export class CssRecursiveParser extends RecursiveDescentParser {
     }
     this.addUsedSkippedTokens(skipped);
 
-    let pre: Node['pre'] = skipped.map((token: IToken) => {
-      let name = token.tokenType.name;
+    const pre: Node['pre'] = skipped.map((token: IToken) => {
+      const name = token.tokenType.name;
       if (name === 'WS') {
         return token.image;
-      } else {
-        const comment = new Comment(token.image, { lineComment: name.includes('Line') }, this.getLocationInfo(token), this.context);
-        if (ctx?.inCustomPropertyValue && comment.options.lineComment) {
-          comment.addFlag(F_VISIBLE);
-        }
-        return comment;
       }
+      const comment = new Comment(
+        token.image,
+        { lineComment: name.includes('Line') },
+        this.getLocationInfo(token),
+        this.context
+      );
+      if (ctx?.inCustomPropertyValue && comment.options.lineComment) {
+        comment.addFlag(F_VISIBLE);
+      }
+      return comment;
     });
 
-    if (Array.isArray(pre) && pre.length === 1 && pre[0] === ' ') {
-      pre = 1;
+    if (isArray(pre) && pre.length === 1 && pre[0] === ' ') {
+      return 1;
     }
     return pre;
   }
@@ -199,11 +386,11 @@ export class CssRecursiveParser extends RecursiveDescentParser {
   protected getRulesWithComments(
     existingRules: Node[] = [],
     nextTokenLocation?: LocationInfo
-  ) {
+  ): Rules {
     if (!nextTokenLocation) {
       nextTokenLocation = this.getLocationInfo(this.LA(1));
     }
-    let rules: Node[] = [];
+    const rules: Node[] = [];
 
     const processPrePost = (prePost: Node['pre']) => {
       if (isArray(prePost)) {
@@ -218,7 +405,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
             }
             const next = prePost[i + 1];
             if (typeof next === 'string') {
-              (item as any).post = [next];
+              (item as Node & { post?: unknown }).post = [next];
               i++;
             }
             rules.push(item);
@@ -231,32 +418,32 @@ export class CssRecursiveParser extends RecursiveDescentParser {
       return prePost;
     };
 
-    for (let rule of existingRules) {
+    for (const rule of existingRules) {
       if (rule.pre === undefined) {
-        let pre = this.getPrePost(rule.location[0]!);
-        const processed = processPrePost(pre) as 0 | 1 | Array<string | Comment | Nil> | undefined;
-        rule.pre = processed;
+        const pre = this.getPrePost(rule.location[0]!);
+        rule.pre = processPrePost(pre) as Node['pre'];
       }
       rules.push(rule);
     }
     const tail = this.getPrePost(nextTokenLocation[0]!);
     const remainder = processPrePost(tail) as 0 | 1 | Array<string | Comment | Nil> | undefined;
-    let returnRules: Rules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
+    const returnRules = new Rules(
+      rules,
+      undefined,
+      rules.length ? this.getLocationFromNodes(rules) : undefined,
+      this.context
+    );
     returnRules.post = remainder;
     return returnRules;
   }
 
-  /**
-   * Attaches pre / post whitespace and comments.
-   * Note that nodes can be wrapped more than once.
-   */
   protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', ctx?: RuleContext): T {
     if (!(node instanceof Node)) {
       return node;
     }
     if (post) {
       if (node.post === undefined) {
-        let offset = node.location[3];
+        const offset = node.location[3];
         if (offset !== undefined) {
           node.post = this.getPrePost(offset, true, ctx);
         }
@@ -265,99 +452,72 @@ export class CssRecursiveParser extends RecursiveDescentParser {
         return node;
       }
     }
-    if ((!post || post === 'both')) {
-      let offset = node.location[0];
+    if (!post || post === 'both') {
+      const offset = node.location[0];
       if (offset !== undefined && node.pre === undefined) {
-        const pre = this.getPrePost(offset, false, ctx);
-        node.pre = pre as any;
+        node.pre = this.getPrePost(offset, false, ctx) as Node['pre'];
       }
     }
     return node;
   }
 
-  protected processValueToken(
-    token: IToken,
-    _ctx?: RuleContext
-  ): Node {
-    let tokValue = token.image;
-    let tokType = token.tokenType;
-    let tokName = tokType.name;
-    let T = this.T;
+  protected processValueToken(token: IToken, _ctx?: RuleContext): Node {
+    const tokValue = token.image;
+    const tokName = token.tokenType?.name ?? '';
+    const T = this.T;
     let dimValue: { number: number; unit?: string } | undefined;
     let numValue: number | undefined;
-    const getDimension = (finalValue: Exclude<typeof dimValue, undefined>) =>
-      new Dimension(finalValue, undefined, this.getLocationInfo(token), this.context);
-    const getNumber = (finalValue: number) =>
-      new Num(finalValue, undefined, this.getLocationInfo(token), this.context);
+    const getDimension = (v: Exclude<typeof dimValue, undefined>) =>
+      new Dimension(v, undefined, this.getLocationInfo(token), this.context);
+    const getNumber = (v: number) => new Num(v, undefined, this.getLocationInfo(token), this.context);
 
-    let result: Node;
-    if (tokenMatches(token, T.Ident)) {
+    if (tokenMatcher(token, T.Ident)) {
       const colorKey = tokValue.toLowerCase();
       if (colorKey === 'transparent') {
-        result = new Color(
-          {
-            node: 'transparent',
-            rgb: [0, 0, 0],
-            alpha: 0
-          },
+        return new Color(
+          { node: 'transparent', rgb: [0, 0, 0], alpha: 0 },
           { format: ColorFormat.HEX },
           this.getLocationInfo(token),
           this.context
         );
-      } else if (colors[colorKey as keyof typeof colors]) {
-        const colorValue = colors[colorKey as keyof typeof colors];
-        const colorNode = new Color(
-          {
-            node: tokValue,
-            rgb: colorValue,
-            alpha: 1
-          },
+      }
+      if (colors[colorKey as keyof typeof colors]) {
+        const cv = colors[colorKey as keyof typeof colors];
+        return new Color(
+          { node: tokValue, rgb: cv, alpha: 1 },
           { format: ColorFormat.HEX },
           this.getLocationInfo(token),
           this.context
         );
-        result = colorNode;
-      } else {
-        result = new Any(tokValue, { role: 'ident' }, this.getLocationInfo(token), this.context);
       }
-    } else if (tokenMatches(token, T.Dimension)) {
-      dimValue = { number: parseFloat(token.payload?.[0] ?? '0'), unit: token.payload?.[1] ?? '' };
-      result = getDimension(dimValue);
-    } else if (tokName === 'MathConstant') {
-      switch (tokValue.toLowerCase()) {
-        case 'pi':
-          numValue = Math.PI;
-          break;
-        case 'infinity':
-          numValue = Infinity;
-          break;
-        case '-infinity':
-          numValue = -Infinity;
-          break;
-        case 'e':
-          numValue = Math.E;
-          break;
-        case 'nan':
-          numValue = NaN;
-      }
-      result = getNumber(numValue!);
-    } else if (tokenMatches(token, T.Number)) {
-      numValue = parseFloat(tokValue);
-      result = getNumber(numValue);
-    } else if (tokenMatches(token, T.Color)) {
-      result = new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
-    } else {
-      result = new Any(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
+      return new Any(tokValue, { role: 'ident' }, this.getLocationInfo(token), this.context);
     }
-    return result;
+    if (tokenMatcher(token, T.Dimension)) {
+      const pl = token.payload as [string, string] | undefined;
+      dimValue = { number: parseFloat(pl?.[0] ?? '0'), unit: pl?.[1] ?? '' };
+      return getDimension(dimValue);
+    }
+    if (tokName === 'MathConstant') {
+      switch (tokValue.toLowerCase()) {
+        case 'pi': numValue = Math.PI; break;
+        case 'infinity': numValue = Infinity; break;
+        case '-infinity': numValue = -Infinity; break;
+        case 'e': numValue = Math.E; break;
+        case 'nan': numValue = NaN; break;
+      }
+      return getNumber(numValue!);
+    }
+    if (tokenMatcher(token, T.Number)) {
+      return getNumber(parseFloat(tokValue));
+    }
+    if (tokenMatcher(token, T.Color)) {
+      return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
+    }
+    return new Any(tokValue, { type: tokName }, this.getLocationInfo(token), this.context);
   }
 
-  // ════════════════════════════════════════════════════════════════════
-  // PRODUCTION RULES — method declarations
-  // Implementations are assigned via prototype below.
-  // ════════════════════════════════════════════════════════════════════
-
-  // ── Selectors (structure + selectors) ──────────────────────────────
+  // ── Production rules (assigned in constructor via RULE) ─────────────
+  // Selectors
   declare stylesheet: typeof selectors.stylesheet;
   declare main: typeof selectors.main;
   declare qualifiedRule: typeof selectors.qualifiedRule;
@@ -374,7 +534,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
   declare selectorList: typeof selectors.selectorList;
   declare declarationList: typeof selectors.declarationList;
 
-  // ── Values (declarations, math, functions) ───────────────────────
+  // Values
   declare declaration: typeof values.declaration;
   declare customValue: typeof values.customValue;
   declare innerCustomValue: typeof values.innerCustomValue;
@@ -396,7 +556,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
   declare calcFunction: typeof values.calcFunction;
   declare urlFunction: typeof values.urlFunction;
 
-  // ── At-rules (media, container, keyframes, etc.) ─────────────────
+  // At-rules
   declare atRule: typeof atRules.atRule;
   declare innerAtRule: typeof atRules.innerAtRule;
   declare atRuleBody: typeof atRules.atRuleBody;
@@ -432,7 +592,7 @@ export class CssRecursiveParser extends RecursiveDescentParser {
   declare scopeAtRule: typeof atRules.scopeAtRule;
   declare documentAtRule: typeof atRules.documentAtRule;
 
-  // ── Misc (layer, supports, imports, function calls) ──────────────
+  // Misc
   declare layerAtRule: typeof misc.layerAtRule;
   declare layerName: typeof misc.layerName;
   declare supportsAtRule: typeof misc.supportsAtRule;
@@ -449,25 +609,4 @@ export class CssRecursiveParser extends RecursiveDescentParser {
   declare unknownAtRule: typeof misc.unknownAtRule;
   declare anyOuterValue: typeof misc.anyOuterValue;
   declare anyInnerValue: typeof misc.anyInnerValue;
-}
-
-// ── Attach production methods to prototype ────────────────────────────
-// This avoids duplicating ~3000 lines of code inside the class body
-// while keeping full TypeScript type safety via `declare` above.
-
-const proto = CssRecursiveParser.prototype as any;
-
-for (const mod of [selectors, values, atRules, misc]) {
-  for (const [name, fn] of Object.entries(mod)) {
-    if (typeof fn === 'function') {
-      // Wrap each production to auto-push/pop ruleStack for error context.
-      // No try/finally needed: or() saves/restores ruleStack.length on backtrack.
-      proto[name] = function(this: CssRecursiveParser, ...args: unknown[]) {
-        this.ruleStack.push(name);
-        const result = (fn as Function).apply(this, args);
-        this.ruleStack.pop();
-        return result;
-      };
-    }
-  }
 }

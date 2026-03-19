@@ -2,7 +2,7 @@ import { Lexer } from 'chevrotain';
 import { cssLexer } from './cssTokens.js';
 import { CssRecursiveParser, type CssRecursiveParserConfig } from './cssRecursiveParser.js';
 import { type Node, type Rules, type IParseResult } from '@jesscss/core';
-import type { IToken } from '@jesscss/parser';
+import type { IToken } from '@chevrotain/types';
 
 export type CssRules = keyof {
   [K in keyof CssRecursiveParser as CssRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
