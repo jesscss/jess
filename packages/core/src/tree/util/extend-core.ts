@@ -226,10 +226,13 @@ function createAlternativeSelector(
  * pseudo so partial extends can preserve unmatched siblings around it.
  */
 function wrapSelectorInIs(selector: Selector, extendWith: Selector): Selector {
-  const arg = SelectorList.create([
-    selector,
-    extendWith.copy(true) as Selector
-  ]).inherit(selector) as SelectorList;
+  // Flatten: if selector is already a generated :is(SelectorList), extract its items
+  // instead of nesting :is(:is(...), extension).
+  const selectorItems = expandGeneratedIsAlternatives(selector);
+  const extendItems = expandGeneratedIsAlternatives(extendWith);
+  const allItems = [...selectorItems, ...extendItems];
+
+  const arg = SelectorList.create(allItems).inherit(selector) as SelectorList;
   arg.pre = undefined;
   arg.post = undefined;
 

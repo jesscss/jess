@@ -450,7 +450,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
-    // TODO: remove once extend stops producing nested :is(:is(...))
+    // Unwrap leading generated :is() for rendering (e.g. :is(* b)[e] → * b[e]).
+    // TODO: move this logic to PseudoSelector.toTrimmedString or composition.
     const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
     renderSelector = Array.isArray(renderNormalizedResult)
       ? SelectorList.create(renderNormalizedResult as Selector[]).inherit(renderSelector as Selector) as typeof selector
