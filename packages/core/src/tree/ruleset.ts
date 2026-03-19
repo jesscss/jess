@@ -225,11 +225,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this._valueOf = '';
       return this._valueOf;
     }
-    const normalizedResult = processLeadingIs(selector as Selector);
-    const normalizedSelector = Array.isArray(normalizedResult)
-      ? SelectorList.create(normalizedResult as Selector[]).inherit(selector as Selector)
-      : (normalizedResult as Selector);
-    this._valueOf = (normalizedSelector as Selector | Nil) instanceof Nil ? '' : (normalizedSelector as Selector).valueOf();
+    this._valueOf = selector instanceof Nil ? '' : (selector as Selector).valueOf();
     return this._valueOf;
   }
 
@@ -454,6 +450,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
+    // TODO: remove once extend stops producing nested :is(:is(...))
     const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
     renderSelector = Array.isArray(renderNormalizedResult)
       ? SelectorList.create(renderNormalizedResult as Selector[]).inherit(renderSelector as Selector) as typeof selector

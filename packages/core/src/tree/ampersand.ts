@@ -335,7 +335,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
 
       let result: Selector | Nil;
-      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (this.hoistToRoot || appendValue !== undefined);
+      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (this.hoistToRoot || !!appendValue);
       const shouldWrapComplexSelector = isNode(selector, N.ComplexSelector);
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
