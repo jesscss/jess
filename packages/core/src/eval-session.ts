@@ -119,11 +119,19 @@ export class EvalSession {
 
   // -- Runtime state API --
 
-  /** Get or create runtime state for a node in this session. */
+  /**
+   * Get or create runtime state for a node in this session.
+   *
+   * Eval flags are initialized to `false` so that canonical nodes
+   * (which may have `preEvaluated = true` from a prior eval pass)
+   * are properly re-evaluated in this session's context. Without
+   * this, `_isPreEvaluated` would fall through to the canonical
+   * field and skip re-evaluation of shared (clone(false)) nodes.
+   */
   getRuntime(node: Node): RuntimeState {
     let state = this.runtime.get(node);
     if (!state) {
-      state = {};
+      state = { preEvaluated: false, evaluated: false };
       this.runtime.set(node, state);
     }
     return state;

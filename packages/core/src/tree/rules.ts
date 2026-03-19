@@ -813,7 +813,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && (node as any).role === 'charset') {
         /** Special case where we register the charset node immediately */
-        rules.setData(index, (node as Any).preEval(context));
+        const charsetNode = (node as Any).preEval(context);
+        rules.setData(index, charsetNode);
+        rules.adopt(charsetNode);
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
@@ -829,6 +831,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules.setData(index, preEvaldNode);
+            rules.adopt(preEvaldNode);
             sessionSetIndex(preEvaldNode as Node, index, context);
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
@@ -840,6 +843,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
         }
         rules.setData(index, preEvald as Node);
+        rules.adopt(preEvald as Node);
         sessionSetIndex(preEvald as Node, index, context);
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
@@ -1615,7 +1619,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
           // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
           const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
-            if (rules.preEvaluated) {
+            if (rules._isPreEvaluated(context)) {
               return rules;
             }
             const result = rules.preEval(context);
@@ -2244,6 +2248,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
     };
 
+    const prevMixinSession = thisContext.session;
+    if (!prevMixinSession) {
+      thisContext.session = new EvalSession();
+    }
+
     for (let candidate of evalCandidates) {
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
@@ -2255,7 +2264,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
         const candidateRules = (candidate as Ruleset).rules;
         const sourceRules = getRootSourceRules(candidateRules);
-        let rules = sourceRules.clone(true);
+        let rules = sourceRules.clone(false, undefined, thisContext);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
@@ -2534,6 +2543,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
     }
+
+    thisContext.session = prevMixinSession;
 
     /**
      * Now that we have output rules, sort them by

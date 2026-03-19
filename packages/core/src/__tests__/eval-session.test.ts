@@ -103,12 +103,12 @@ describe('EvalSession', () => {
   });
 
   describe('runtime state', () => {
-    it('creates empty runtime on first access', () => {
+    it('creates runtime with fresh eval flags on first access', () => {
       const session = new EvalSession();
       const node = new Keyword('red');
 
       const runtime = session.getRuntime(node);
-      expect(runtime).toEqual({});
+      expect(runtime).toEqual({ preEvaluated: false, evaluated: false });
     });
 
     it('returns same runtime object on repeated access', () => {

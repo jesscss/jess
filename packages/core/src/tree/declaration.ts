@@ -176,7 +176,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override preEval(context: Context): MaybePromise<this> {
     /** We need to clone declarations, because we alter their options */
     let node = this.maybeClone(context);
-    node.preEvaluated = true;
+    node._setPreEvaluated(true, context);
     // Index should already be assigned by parent Rules
     return this._applyAssignmentNormalization(node, context);
   }
@@ -380,7 +380,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     ) as MaybePromise<this | Nil>;
   }
 }
-
 
 export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 

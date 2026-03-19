@@ -180,7 +180,6 @@ export class If extends Node<IfValue> {
   }
 }
 
-
 export interface For extends Node<ForValue> {
   type: 'For';
   shortType: 'for';
@@ -222,9 +221,9 @@ export class For extends Node<ForValue> {
   }
 
   override preEval(context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       const node = this.maybeClone(context) as For;
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
       return node;
     }
     return this;
@@ -383,7 +382,6 @@ export class For extends Node<ForValue> {
   }
 }
 
-
 /**
  * `$each <header> { ... }`
  */
@@ -423,7 +421,6 @@ export class Each extends Node<LegacyLoopValue> {
     return w.getSince(mark);
   }
 }
-
 
 export type WhileValue = {
   condition: Node;
@@ -470,7 +467,6 @@ export class While extends Node<WhileValue> {
     return w.getSince(mark);
   }
 }
-
 
 export const ifNode = defineType(If, 'If', 'if');
 export const forNode = defineType(For, 'For', 'for');

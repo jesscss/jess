@@ -549,25 +549,31 @@ deep clones, by fixing the root causes that made it necessary.
 Blocker 1 from Stage 13 ("resetEvalStateDeep resets Ruleset selector / Ampersand container")
 is resolved.
 
-### What's still blocked for clone(true) → clone(false)
+### Stage 14b: Session infrastructure + clone(false) at Site 1
 
-Replacing `clone(true)` with `clone(false)` at mixin body eval sites requires **session-aware
-parent access** — which does not exist yet. The fundamental issue:
-
-1. `clone(false, undefined, ctx)` shares canonical children with the shallow clone.
-2. The session overlay stores `parent = clonedRules` for each canonical child, but
-   canonical `child.parent` is restored to the original parent.
-3. During eval, `maybeClone(context)` creates NEW clone instances that have no parent
-   (neither canonical nor session-aware).
-4. Scope lookups traverse `node.parent` (direct field) → undefined → variables not found.
-
-**Required infrastructure** (future stages):
-- Session-aware parent getter: `node.getParent(context)` that checks session overlay
-- OR: `maybeClone` propagates parent from session overlay to the new clone
-- OR: `Rules._multiPassPreEval` adopts preEvald results into the Rules after `setData`
-- `Ruleset.preEval` session-aware: already partially done (`_isPreEvaluated`/`_setPreEvaluated`)
-- `EvalSession.getRuntime` initialization with `{ preEvaluated: false, evaluated: false }`
+Built the infrastructure required for `clone(false)`:
+- [x] `EvalSession.getRuntime` initializes `{ preEvaluated: false, evaluated: false }`
   so canonical eval flags don't leak into sessions
+- [x] All `preEval` overrides migrated to `_isPreEvaluated`/`_setPreEvaluated`:
+  control.ts, any.ts, mixin.ts, collection.ts, at-rule.ts, declaration.ts, ruleset.ts, rules.ts
+- [x] `Rules._multiPassPreEval` adopts preEvald results after `setData` so clones
+  from `maybeClone` get proper parent pointers for scope lookups
+- [x] Session created before mixin eval loop in `getFunctionFromMixins`
+- [x] **Site 1** (Ruleset candidate, rules.ts:2267): `clone(true)` → `clone(false, undefined, ctx)`
+
+### Test results — post Stage 14b
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
+  - Same as Stage 14 baseline — no regressions from clone(false) at Site 1
+
+### What's still blocked
+
+- **Site 3** (named mixin with params/guard, rules.ts:2300): `outerRules.push(...rules.value)`
+  pushes canonical children into outerRules. With `clone(false)`, these canonical children's
+  parent fields can't be set without corrupting the canonical tree. Session-aware `adopt`
+  (via ctx) stores parent in overlay but scope lookups use direct `node.parent`.
+  Needs either session-aware parent getter or a different mechanism for outerRules adoption.
+- **Site 2** (detached ruleset, rules.ts:2289): kept as `clone(true)` — no eval follows
 
 ---
 

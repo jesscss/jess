@@ -127,9 +127,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * This allows us to extract layer names before rules are evaluated
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       const node = this.maybeClone(context);
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
 
@@ -614,6 +614,5 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   //   out.add(`\n${pre}},${JSON.stringify(this.location)})`)
   // }
 }
-
 
 export const atrule = defineType(AtRule, 'AtRule');
