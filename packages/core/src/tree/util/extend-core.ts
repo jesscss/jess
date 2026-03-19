@@ -82,10 +82,10 @@ function expandGeneratedIsAlternatives(selector: Selector): Selector[] {
     && selector.name === ':is'
     && isNode(selector.arg, N.SelectorList)
   ) {
-    return (selector.arg as SelectorList).value.map(item => item.copy(true) as Selector);
+    return [...(selector.arg as SelectorList).value] as Selector[];
   }
 
-  return [selector.copy(true) as Selector];
+  return [selector];
 }
 
 function normalizeSelectorListAlternatives(list: SelectorList): void {
@@ -95,13 +95,11 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
   for (const item of list.value) {
     if (isNode(item, N.PseudoSelector) && item.name === ':is' && isNode(item.arg, N.SelectorList)) {
       for (const child of (item.arg as SelectorList).value) {
-        const copy = child.copy(true) as Selector;
-        const key = copy.valueOf();
-        if (seen.has(key)) {
-          continue;
+        const key = child.valueOf();
+        if (!seen.has(key)) {
+          seen.add(key);
+          flattened.push(child as Selector);
         }
-        seen.add(key);
-        flattened.push(copy);
       }
       continue;
     }
@@ -110,13 +108,11 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
       const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
         for (const child of (only.arg as SelectorList).value) {
-          const copy = child.copy(true) as Selector;
-          const key = copy.valueOf();
-          if (seen.has(key)) {
-            continue;
+          const key = child.valueOf();
+          if (!seen.has(key)) {
+            seen.add(key);
+            flattened.push(child as Selector);
           }
-          seen.add(key);
-          flattened.push(copy);
         }
         continue;
       }
@@ -126,13 +122,11 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
       const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
         for (const child of (only.arg as SelectorList).value) {
-          const copy = child.copy(true) as Selector;
-          const key = copy.valueOf();
-          if (seen.has(key)) {
-            continue;
+          const key = child.valueOf();
+          if (!seen.has(key)) {
+            seen.add(key);
+            flattened.push(child as Selector);
           }
-          seen.add(key);
-          flattened.push(copy);
         }
         continue;
       }
@@ -335,7 +329,7 @@ function getCompoundConflictError(
     collectCompoundConflictInfo(member, surrounding);
   }
 
-  const extension = collectCompoundConflictInfo(extendWith.copy(true) as Selector);
+  const extension = collectCompoundConflictInfo(extendWith);
   const surroundingElement = surrounding.elements.size > 0 ? [...surrounding.elements][0]! : undefined;
   const conflictingElement = [...extension.elements].find(element => surroundingElement && element !== surroundingElement);
   if (conflictingElement) {
@@ -376,7 +370,7 @@ function stripRedundantCompoundContext(
       if (node.isId && surrounding.ids.has(node.valueOf())) {
         return undefined;
       }
-      return node.copy(true) as Selector;
+      return node;
     }
 
     if (isNode(node, N.CompoundSelector)) {
@@ -397,7 +391,7 @@ function stripRedundantCompoundContext(
         .map(child => normalize(child as Selector))
         .filter(Boolean) as Selector[];
       if (next.length === 0) {
-        return node.copy(true) as Selector;
+        return node;
       }
       if (next.length === 1) {
         return next[0]!;
@@ -415,10 +409,10 @@ function stripRedundantCompoundContext(
       return copy as Selector;
     }
 
-    return node.copy(true) as Selector;
+    return node;
   };
 
-  return normalize(selector) ?? selector.copy(true) as Selector;
+  return normalize(selector) ?? selector;
 }
 
 /**

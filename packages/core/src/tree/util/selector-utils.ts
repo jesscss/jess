@@ -88,7 +88,7 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
   for (const item of list.value) {
     if (isNode(item, N.PseudoSelector) && item.name === ':is' && isNode(item.arg, N.SelectorList)) {
       for (const child of (item.arg as SelectorList).value) {
-        pushUnique(child.copy(true) as Selector);
+        pushUnique(child as Selector);
       }
       continue;
     }
@@ -97,7 +97,7 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
       const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
         for (const child of (only.arg as SelectorList).value) {
-          pushUnique(child.copy(true) as Selector);
+          pushUnique(child as Selector);
         }
         continue;
       }
@@ -107,7 +107,7 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
       const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
         for (const child of (only.arg as SelectorList).value) {
-          pushUnique(child.copy(true) as Selector);
+          pushUnique(child as Selector);
         }
         continue;
       }

@@ -305,10 +305,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
           const resolved = amp.getResolvedSelector();
           if (resolved && !(resolved instanceof Nil)) {
-            return (resolved.copy(true) as Selector);
+            return resolved as Selector;
           }
         }
-        return node.copy(true) as Selector;
+        return node;
       }
       if (isNode(node, N.SelectorList)) {
         const list = node as SelectorList;
@@ -326,7 +326,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               if (resolved && !(resolved instanceof Nil)) {
                 const repl = materialize(resolved as Selector);
                 if (isNode(repl, N.ComplexSelector)) {
-                  parts.push(...(repl as ComplexSelector).value.map(c => c.copy(true) as ComplexSelectorComponent));
+                  parts.push(...(repl as ComplexSelector).value as ComplexSelectorComponent[]);
                 } else {
                   parts.push(repl as ComplexSelectorComponent);
                 }
@@ -344,7 +344,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         cloned.value = arr.map(item => materialize(item as Selector));
         return cloned as Selector;
       }
-      return node.copy(true) as Selector;
+      return node;
     };
     return materialize(sel as Selector);
   }
@@ -395,7 +395,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         continue;
       }
       seen.add(key);
-      kept.push(item.copy(true) as Selector);
+      kept.push(item as Selector);
     }
     if (kept.length === 0) {
       return new Nil();
