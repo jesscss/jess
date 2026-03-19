@@ -27,12 +27,12 @@ export function transformMixinToLess(
 
     // Map 'name' property
     if (prop === 'name') {
-      return mixin.data.name;
+      return mixin.name;
     }
 
     // Map 'params' property
     if (prop === 'params') {
-      const params = mixin.data.params;
+      const params = mixin.params;
       if (params instanceof Node) {
         return toLessNode(params, { cache });
       }
@@ -41,16 +41,16 @@ export function transformMixinToLess(
 
     // Map 'rules' property
     if (prop === 'rules') {
-      const rules = mixin.data.rules;
-      if (rules && rules.data) {
-        return rules.data.map((r: Node) => toLessNode(r, { cache }));
+      const rules = mixin.rules;
+      if (rules && rules.value) {
+        return rules.value.map((r: Node) => toLessNode(r, { cache }));
       }
       return [];
     }
 
     // Map 'condition' property (from guard)
     if (prop === 'condition') {
-      const guard = mixin.data.guard;
+      const guard = mixin.guard;
       if (guard instanceof Node) {
         return toLessNode(guard, { cache });
       }

@@ -15,10 +15,10 @@ const values = defineFunction(
   function(this: FunctionThis | Context | undefined, map: Collection): List {
     // Get all declaration values from the collection
     const valueNodes: any[] = [];
-    for (const node of map.data) {
+    for (const node of map.value) {
       if (isNode(node, N.Declaration)) {
         // The value is the declaration's value (already a Node)
-        valueNodes.push(node.data.value);
+        valueNodes.push(node.value);
       }
     }
     return new List(valueNodes, { sep: ',' });

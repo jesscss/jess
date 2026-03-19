@@ -30,13 +30,13 @@ export function transformAtRuleToLess(
 
     // Map 'name' property
     if (prop === 'name') {
-      return atRule.data.name;
+      return atRule.name;
     }
 
     // Map 'value' property (Less expects Value node or array)
     // Jess uses 'prelude' instead of 'value'
     if (prop === 'value') {
-      const prelude = atRule.data.prelude;
+      const prelude = atRule.prelude;
       if (prelude instanceof Node) {
         return toLessNode(prelude, { cache });
       }
@@ -45,9 +45,9 @@ export function transformAtRuleToLess(
 
     // Map 'rules' property (for @media, @keyframes, etc.)
     if (prop === 'rules') {
-      const rules = atRule.data.rules;
+      const rules = atRule.rules;
       if (rules) {
-        return rules.data.map((r: Node) => toLessNode(r, { cache }));
+        return rules.value.map((r: Node) => toLessNode(r, { cache }));
       }
       return [];
     }
@@ -59,9 +59,9 @@ export function transformAtRuleToLess(
       return function(visitor: any) {
         // AtRule's accept only traverses its rules (children)
         // Less.js AtRule.accept() pattern: visitor.visitArray(this.rules)
-        const rules = atRule.data.rules;
-        if (rules && rules.data && rules.data.length > 0) {
-          const lessRules = rules.data.map((r: Node) => toLessNode(r, { cache }));
+        const rules = atRule.rules;
+        if (rules && rules.value && rules.value.length > 0) {
+          const lessRules = rules.value.map((r: Node) => toLessNode(r, { cache }));
           if (visitor.visitArray) {
             visitor.visitArray(lessRules);
           } else {

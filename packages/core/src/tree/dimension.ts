@@ -39,26 +39,24 @@ export interface Dimension extends Node<DimensionValue> {
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
-  constructor(...args: ConstructorParameters<typeof Node<DimensionValue>>) {
-    super(...args);
+  static override childKeys = null as null;
+
+  number!: number;
+  unit: string | undefined;
+
+  constructor(
+    value: DimensionValue,
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value as any, options, location, treeContext);
+    this.number = value.number;
+    this.unit = value.unit;
     this.addFlag(F_STATIC);
   }
 
-  get number() {
-    return this.data.number;
-  }
-
-  set number(val: number) {
-    this.setData('number', val);
-  }
-
-  get unit() {
-    return this.data.unit;
-  }
-
-  set unit(val: string | undefined) {
-    this.setData('unit', val as any);
-  }
+  /** Compatibility — synthesizes the legacy .data shape from instance fields */
 
   private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {
@@ -73,8 +71,20 @@ export class Dimension extends Node<DimensionValue> {
     return unitToGroup;
   }
 
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const newNode = new (this.constructor as any)(
+      { number: this.number, unit: this.unit },
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
+
   override valueOf() {
-    let { number, unit } = this.data;
+    const { number, unit } = this;
     return unit ? `${number}${unit}` : number;
   }
 
@@ -84,7 +94,7 @@ export class Dimension extends Node<DimensionValue> {
     }
     let unitToGroup = this.unitToGroup;
     if (b instanceof Color) {
-      let { number, unit } = this.data;
+      let { number, unit } = this;
       const unitMode = context?.opts?.unitMode ?? 'loose';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (unit && isStrictLikeMode) {
@@ -96,8 +106,8 @@ export class Dimension extends Node<DimensionValue> {
       ).inherit(this);
       return thisColor.operate(b, op, context).inherit(this);
     }
-    let { number: aVal, unit: aUnit } = this.data;
-    let { number: bVal, unit: bUnit } = b.data;
+    let { number: aVal, unit: aUnit } = this;
+    let { number: bVal, unit: bUnit } = b;
     let unitMode = context?.opts.unitMode ?? 'loose';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
@@ -183,11 +193,11 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String((b as any).data ?? '').trim();
+      const text = String((b as any).value ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      return this.data.number === Number(text) ? 0 : undefined;
+      return this.number === Number(text) ? 0 : undefined;
     }
     if (b.type === 'Quoted') {
       return undefined;
@@ -202,7 +212,7 @@ export class Dimension extends Node<DimensionValue> {
     let unitMode = context?.opts?.unitMode ?? 'loose';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
-    let { number: aVal, unit: aUnit } = this.data;
+    let { number: aVal, unit: aUnit } = this;
 
     /** Normalize percentages to a number for numerical comparison */
     if (aUnit === '%') {
@@ -222,7 +232,7 @@ export class Dimension extends Node<DimensionValue> {
       let thisColor = new Color({ rgb: [aVal, aVal, aVal] }, { format: ColorFormat.RGB }).inherit(this);
       return thisColor.compare(b);
     }
-    let { number: bVal, unit: bUnit } = b.data;
+    let { number: bVal, unit: bUnit } = b;
     if (bUnit === '%') {
       bVal = bVal / 100;
       bUnit = undefined;
@@ -267,7 +277,7 @@ export class Dimension extends Node<DimensionValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { number, unit = '' } = this.data;
+    let { number, unit = '' } = this;
 
     // Check if unit is compound (contains '/', '*', or '±')
     const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));

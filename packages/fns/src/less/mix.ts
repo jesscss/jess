@@ -15,7 +15,7 @@ const mix = defineFunction(
     if (!weight) {
       weight = new Dimension({ number: 50, unit: '%' });
     }
-    const p = weight.data.number / 100.0;
+    const p = weight.number / 100.0;
     const w = p * 2 - 1;
     const a = toHSL(color1).a - toHSL(color2).a;
 

@@ -7,7 +7,9 @@
  * - Token categories via Chevrotain bitsets (tokenMatcher for gate predicates)
  */
 import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
-import type { IToken, TokenType } from '@chevrotain/types';
+import type { IToken, TokenType, ParserMethod } from '@chevrotain/types';
+
+export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
 import type { LocationInfo } from '@jesscss/core';
 
@@ -34,10 +36,7 @@ export { tokenMatcher };
 type TokenMap = Record<CssTokenType, TokenType>;
 
 // ── Import production rule implementations ──────────────────────────
-import * as selectors from './productions/selectors.js';
-import * as values from './productions/values.js';
-import * as atRules from './productions/atRules.js';
-import * as misc from './productions/misc.js';
+import * as productions from './productions.js';
 
 const { isArray } = Array;
 
@@ -114,11 +113,10 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     this.T = T;
     this.legacyMode = config.legacyMode ?? true;
 
-    for (const mod of [selectors, values, atRules, misc]) {
-      for (const [name, fn] of Object.entries(mod)) {
-        if (typeof fn === 'function') {
-          (this as Record<string, unknown>)[name] = this.RULE(name, fn.bind(this));
-        }
+    for (const [name, factory] of Object.entries(productions)) {
+      if (typeof factory === 'function') {
+        const rule = (factory as Function).call(this, T);
+        this.RULE(name, rule);
       }
     }
 
@@ -517,96 +515,97 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   }
 
   // ── Production rules (assigned in constructor via RULE) ─────────────
-  // Selectors
-  declare stylesheet: typeof selectors.stylesheet;
-  declare main: typeof selectors.main;
-  declare qualifiedRule: typeof selectors.qualifiedRule;
-  declare simpleSelector: typeof selectors.simpleSelector;
-  declare classSelector: typeof selectors.classSelector;
-  declare idSelector: typeof selectors.idSelector;
-  declare pseudoSelector: typeof selectors.pseudoSelector;
-  declare nthValue: typeof selectors.nthValue;
-  declare attributeSelector: typeof selectors.attributeSelector;
-  declare compoundSelector: typeof selectors.compoundSelector;
-  declare complexSelector: typeof selectors.complexSelector;
-  declare relativeSelector: typeof selectors.relativeSelector;
-  declare forgivingSelectorList: typeof selectors.forgivingSelectorList;
-  declare selectorList: typeof selectors.selectorList;
-  declare declarationList: typeof selectors.declarationList;
+  stylesheet!: Rule<(options?: Record<string, any>) => void>;
+  main!: Rule;
+  qualifiedRule!: Rule;
+  atRule!: Rule;
+  selectorList!: Rule;
+  declarationList!: Rule;
+  forgivingSelectorList!: Rule;
+  classSelector!: Rule;
+  idSelector!: Rule;
+  pseudoSelector!: Rule;
+  attributeSelector!: Rule;
+  nthValue!: Rule;
+  complexSelector!: Rule;
+  simpleSelector!: Rule;
+  compoundSelector!: Rule;
+  relativeSelector!: Rule;
 
-  // Values
-  declare declaration: typeof values.declaration;
-  declare customValue: typeof values.customValue;
-  declare innerCustomValue: typeof values.innerCustomValue;
-  declare extraTokens: typeof values.extraTokens;
-  declare customBlock: typeof values.customBlock;
-  declare valueList: typeof values.valueList;
-  declare valueSequence: typeof values.valueSequence;
-  declare squareValue: typeof values.squareValue;
-  declare value: typeof values.value;
-  declare string: typeof values.string;
-  declare mathSum: typeof values.mathSum;
-  declare mathProduct: typeof values.mathProduct;
-  declare mathValue: typeof values.mathValue;
-  declare mathParen: typeof values.mathParen;
-  declare knownFunctions: typeof values.knownFunctions;
-  declare ifFunctionArgs: typeof values.ifFunctionArgs;
-  declare ifFunction: typeof values.ifFunction;
-  declare varFunction: typeof values.varFunction;
-  declare calcFunction: typeof values.calcFunction;
-  declare urlFunction: typeof values.urlFunction;
+  declaration!: Rule;
+  valueList!: Rule;
+  valueSequence!: Rule;
+  value!: Rule;
+  squareValue!: Rule;
+  customValue!: Rule;
+  innerCustomValue!: Rule;
 
-  // At-rules
-  declare atRule: typeof atRules.atRule;
-  declare innerAtRule: typeof atRules.innerAtRule;
-  declare atRuleBody: typeof atRules.atRuleBody;
-  declare mediaAtRule: typeof atRules.mediaAtRule;
-  declare mediaQueryList: typeof atRules.mediaQueryList;
-  declare mediaQuery: typeof atRules.mediaQuery;
-  declare mediaType: typeof atRules.mediaType;
-  declare mediaCondition: typeof atRules.mediaCondition;
-  declare mediaConditionWithoutOr: typeof atRules.mediaConditionWithoutOr;
-  declare mediaNot: typeof atRules.mediaNot;
-  declare mediaAnd: typeof atRules.mediaAnd;
-  declare mediaOr: typeof atRules.mediaOr;
-  declare mediaInParens: typeof atRules.mediaInParens;
-  declare mediaFeature: typeof atRules.mediaFeature;
-  declare mediaRange: typeof atRules.mediaRange;
-  declare mfNonIdentifierValue: typeof atRules.mfNonIdentifierValue;
-  declare mfValue: typeof atRules.mfValue;
-  declare mfComparison: typeof atRules.mfComparison;
-  declare pageAtRule: typeof atRules.pageAtRule;
-  declare pageSelector: typeof atRules.pageSelector;
-  declare fontFaceAtRule: typeof atRules.fontFaceAtRule;
-  declare keyframesAtRule: typeof atRules.keyframesAtRule;
-  declare keyframesName: typeof atRules.keyframesName;
-  declare containerAtRule: typeof atRules.containerAtRule;
-  declare containerName: typeof atRules.containerName;
-  declare containerQueryList: typeof atRules.containerQueryList;
-  declare containerQuery: typeof atRules.containerQuery;
-  declare containerCondition: typeof atRules.containerCondition;
-  declare containerAnd: typeof atRules.containerAnd;
-  declare containerOr: typeof atRules.containerOr;
-  declare containerInParens: typeof atRules.containerInParens;
-  declare containerFeature: typeof atRules.containerFeature;
-  declare scopeAtRule: typeof atRules.scopeAtRule;
-  declare documentAtRule: typeof atRules.documentAtRule;
+  functionCall!: Rule;
+  functionCallLike!: Rule;
+  functionCallArgs!: Rule;
+  ifFunction!: Rule;
+  ifFunctionArgs!: Rule;
+  knownFunctions!: Rule;
+  varFunction!: Rule;
+  calcFunction!: Rule;
+  urlFunction!: Rule;
+  unknownValue!: Rule;
+  string!: Rule;
 
-  // Misc
-  declare layerAtRule: typeof misc.layerAtRule;
-  declare layerName: typeof misc.layerName;
-  declare supportsAtRule: typeof misc.supportsAtRule;
-  declare supportsCondition: typeof misc.supportsCondition;
-  declare supportsInParens: typeof misc.supportsInParens;
-  declare functionCallLike: typeof misc.functionCallLike;
-  declare functionCall: typeof misc.functionCall;
-  declare functionCallArgs: typeof misc.functionCallArgs;
-  declare importAtRule: typeof misc.importAtRule;
-  declare importPrelude: typeof misc.importPrelude;
-  declare importPostlude: typeof misc.importPostlude;
-  declare nestedAtRule: typeof misc.nestedAtRule;
-  declare nonNestedAtRule: typeof misc.nonNestedAtRule;
-  declare unknownAtRule: typeof misc.unknownAtRule;
-  declare anyOuterValue: typeof misc.anyOuterValue;
-  declare anyInnerValue: typeof misc.anyInnerValue;
+  mathSum!: Rule;
+  mathProduct!: Rule;
+  mathValue!: Rule;
+  mathParen!: Rule;
+
+  innerAtRule!: Rule;
+  importAtRule!: Rule;
+  importPrelude!: Rule;
+  importPostlude!: Rule;
+  mediaAtRule!: Rule;
+  supportsAtRule!: Rule;
+  containerAtRule!: Rule;
+  containerName!: Rule;
+  containerQueryList!: Rule;
+  containerQuery!: Rule;
+  containerCondition!: Rule;
+  containerInParens!: Rule;
+  containerFeature!: Rule;
+  containerAnd!: Rule;
+  containerOr!: Rule;
+  atRuleBody!: Rule;
+  pageAtRule!: Rule;
+  keyframesAtRule!: Rule;
+  keyframesName!: Rule;
+  layerAtRule!: Rule;
+  layerName!: Rule;
+  scopeAtRule!: Rule;
+  documentAtRule!: Rule;
+  pageSelector!: Rule;
+  fontFaceAtRule!: Rule;
+  nestedAtRule!: Rule;
+  nonNestedAtRule!: Rule;
+  unknownAtRule!: Rule;
+
+  mediaQueryList!: Rule;
+  mediaQuery!: Rule;
+  mediaCondition!: Rule;
+  mediaType!: Rule;
+  mediaConditionWithoutOr!: Rule;
+  mediaNot!: Rule;
+  mediaInParens!: Rule;
+  mediaAnd!: Rule;
+  mediaOr!: Rule;
+  mediaFeature!: Rule;
+  mfValue!: Rule;
+  mediaRange!: Rule;
+  mfComparison!: Rule;
+  mfNonIdentifierValue!: Rule;
+
+  supportsCondition!: Rule;
+  supportsInParens!: Rule;
+
+  anyOuterValue!: Rule;
+  anyInnerValue!: Rule;
+  extraTokens!: Rule;
+  customBlock!: Rule;
 }

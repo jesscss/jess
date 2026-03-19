@@ -26,7 +26,7 @@ export function transformListToLess(
 
     // Get filtered, converted value array (used by multiple properties)
     const getFilteredValue = () => {
-      const data = list.data;
+      const data = list.value;
       if (Array.isArray(data)) {
         return data
           .map((item: any) => {
@@ -82,7 +82,7 @@ export function transformListToLess(
       return function* (deep?: boolean, reverse?: boolean, includePrePost?: boolean) {
         // Use the filtered value from our value property getter
         // This ensures we get the same filtered array that the value property returns
-        const filteredValue = list.data
+        const filteredValue = list.value
           .filter((item: any) => item !== undefined && item !== null)
           .map((item: any) => {
             if (item instanceof Node) {
@@ -128,7 +128,7 @@ export function transformListToLess(
         // But we don't call visitor.visit() here to avoid infinite loops
         // The visitor's visit() method will handle traversal
         // If value exists, we should traverse items using visitArray
-        const value = list.data;
+        const value = list.value;
         if (Array.isArray(value) && value.length > 0) {
           const lessItems = value
             .map((item: any) => {

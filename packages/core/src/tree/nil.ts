@@ -29,12 +29,14 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
+  static override childKeys = null as null;
+
   constructor(
     value?: any,
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext) {
-    super('', options, location, treeContext);
+    super('' as any, options, location, treeContext);
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlag(F_STATIC);

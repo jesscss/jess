@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType, F_STATIC } from './node.js';
+import { defineType, F_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { Selector } from './selector.js';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
@@ -11,28 +11,20 @@ export interface Combinator extends Selector<Combinators> {
 }
 
 export class Combinator extends Selector<Combinators> {
-  constructor(...args: ConstructorParameters<typeof Selector<Combinators>>) {
-    super(...args);
+  static override childKeys = null as null;
+
+  value!: Combinators;
+
+  constructor(
+    value: Combinators,
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
     this.addFlag(F_STATIC);
   }
-
-  get value() {
-    return this.data;
-  }
-
-  set value(val: Combinators) {
-    this.setData(val);
-  }
-
-  /** @todo move to visitor */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   const val = this.data
-  //   out.add(val === ' ' ? val : ` ${val} `, this.location)
-  // }
-
-  /** @todo move to visitor */
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add(`$J.co("${this.data}")`)
-  // }
 }
+
 export const co = defineType(Combinator, 'Combinator', 'co');

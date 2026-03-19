@@ -12,7 +12,6 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
-import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
@@ -35,8 +34,22 @@ export interface ComplexSelector {
   shortType: 'sel';
 }
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
+  static override childKeys = ['value'] as const;
+
+  value!: ComplexSelectorValue;
+
+  constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child);
+      }
+    }
+  }
+
   get length() {
-    return this.data.length;
+    return this.value.length;
   }
 
   /**
@@ -45,27 +58,27 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    *
    */
   override valueOf() {
-    if (!Array.isArray(this.data)) {
-      this.setData([this.data as unknown as ComplexSelectorComponent]);
+    if (!Array.isArray(this.value)) {
+      this.setData([this.value as unknown as ComplexSelectorComponent]);
     }
-    return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
+    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { data } = this;
-    let length = data.length;
+    let { value } = this;
+    let length = value.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      let component = data[i]!;
+      let component = value[i]!;
       /** Add some combinator spacing */
       if (isNode(component, N.Combinator)) {
         /** Skip spacing if the previous node is a Nil */
-        if (isNode(data[i - 1], N.Nil)) {
+        if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
-        let co = component.data;
+        let co = component.value;
         if (co !== ' ') {
           // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
           // pre spacing (default to single space when no explicit pre)
@@ -92,9 +105,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return pipe(
       () => {
         const selector = super.evalNode(context) as ComplexSelector;
-        const { data } = selector;
-        const maybe = serialForEach(Array.from(getEntries(data)), ([sel, i]) => {
-          const out = sel.eval(context);
+        const { value } = selector;
+        const indices = value.map((_: any, i: number) => i);
+        const maybe = serialForEach(indices, (i: number) => {
+          const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
               selector.setData(i, res as ComplexSelectorComponent);
@@ -112,9 +126,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         return selector;
       },
       (selector) => {
-        const { data } = selector;
-        if (data.length === 1) {
-          const only = data[0]!.inherit(selector);
+        const { value } = selector;
+        if (value.length === 1) {
+          const only = value[0]!.inherit(selector);
           if (selector.hoistToRoot) {
             (only as any).hoistToRoot = true;
           }

@@ -138,7 +138,7 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? (n as any).shortType : (n as any).type;
   const pad = indent(depth, opts.indentSize);
-  const role = (n as any)?.options?.role as string | undefined;
+  const role = (n as any)?.role as string | undefined;
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;
 
@@ -148,7 +148,7 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
   visiting.add(n);
 
-  const value = (n as any).data as unknown;
+  const value = (n as any).value as unknown;
   const optionsStr = serializeNodeOptions(n, depth, opts, visiting);
 
   // If the main value is a primitive, include it inline

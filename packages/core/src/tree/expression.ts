@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_NON_STATIC, defineType } from './node.js';
+import { Node, F_NON_STATIC, defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -17,21 +17,21 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  constructor(value: Node, options?: any, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['value'] as const;
+
+  value!: Node;
+
+  constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     this.addFlag(F_NON_STATIC);
   }
 
-  get value() {
-    return this.data as Node;
-  }
-
-  set value(val: Node) {
-    this.setData(val);
-  }
-
   override evalNode(context: Context): MaybePromise<Node> {
-    const value = this.data;
+    const value = this.value;
     const out = value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
@@ -46,7 +46,7 @@ export class Expression extends Node<Node> {
     const mark = w.mark();
     w.add('$', this);
     w.add('(');
-    this.data.toString(options);
+    this.value.toString(options);
     w.add(')');
     return w.getSince(mark);
   }

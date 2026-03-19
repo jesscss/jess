@@ -6,20 +6,20 @@ function hueChannelFromNode(node: unknown, hueValue: number): number | [number, 
   if (!(node instanceof Dimension)) {
     return hueValue;
   }
-  const unit = node.data.unit ?? '';
+  const unit = node.unit ?? '';
   return unit ? [hueValue, unit] : hueValue;
 }
 
 function getRawHueChannel(rawArgs: any, hueValue: number): number | [number, string] {
-  const firstRawArg = rawArgs?.data?.[0];
+  const firstRawArg = rawArgs?.value?.[0];
   if (!firstRawArg) {
     return hueValue;
   }
   if (firstRawArg instanceof Dimension) {
     return hueChannelFromNode(firstRawArg, hueValue);
   }
-  if (Array.isArray(firstRawArg?.data) && firstRawArg.data[0] instanceof Dimension) {
-    return hueChannelFromNode(firstRawArg.data[0], hueValue);
+  if (Array.isArray(firstRawArg?.value) && firstRawArg.value[0] instanceof Dimension) {
+    return hueChannelFromNode(firstRawArg.value[0], hueValue);
   }
   return hueValue;
 }
@@ -28,9 +28,9 @@ function alphaChannelFromNode(node: unknown, alphaValue: number): number | [numb
   if (!(node instanceof Dimension)) {
     return alphaValue;
   }
-  const unit = node.data.unit ?? '';
+  const unit = node.unit ?? '';
   if (unit === '%') {
-    const percentValue = Math.max(0, Math.min(100, node.data.number));
+    const percentValue = Math.max(0, Math.min(100, node.number));
     return [percentValue, '%'];
   }
   return alphaValue;
@@ -48,8 +48,8 @@ function collectDimensions(node: unknown, out: Dimension[]): void {
     node.forEach(child => collectDimensions(child, out));
     return;
   }
-  if (typeof node === 'object' && node !== null && 'data' in node) {
-    const value = (node as { data?: unknown }).data;
+  if (typeof node === 'object' && node !== null && 'value' in node) {
+    const value = (node as { value?: unknown }).value;
     if (Array.isArray(value)) {
       value.forEach(child => collectDimensions(child, out));
     }
@@ -57,11 +57,11 @@ function collectDimensions(node: unknown, out: Dimension[]): void {
 }
 
 function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
-  if (!hasExplicitAlpha || !rawArgs?.data?.length) {
+  if (!hasExplicitAlpha || !rawArgs?.value?.length) {
     return alphaValue;
   }
   const dimensions: Dimension[] = [];
-  collectDimensions(rawArgs.data, dimensions);
+  collectDimensions(rawArgs.value, dimensions);
   const lastDimension = dimensions.at(-1);
   if (lastDimension) {
     return alphaChannelFromNode(lastDimension, alphaValue);
@@ -113,8 +113,8 @@ const hsl = defineFunction(
           // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
           const evaluated = await relativeData.alpha.eval(this.context);
           if (evaluated instanceof Dimension) {
-            const alphaNumber = evaluated.data.number;
-            const alphaUnit = evaluated.data.unit;
+            const alphaNumber = evaluated.number;
+            const alphaUnit = evaluated.unit;
             if (alphaUnit === '%') {
               alpha = alphaNumber / 100;
             } else if (alphaUnit === '' || alphaUnit === undefined) {
@@ -129,8 +129,8 @@ const hsl = defineFunction(
           }
         } else if (alphaChannel) {
           // Check if it's a channel reference (alpha) or an explicit value
-          if (alphaChannel instanceof Any && typeof alphaChannel.data === 'string') {
-            const channelName = alphaChannel.data.toLowerCase();
+          if (alphaChannel instanceof Any && typeof alphaChannel.value === 'string') {
+            const channelName = alphaChannel.value.toLowerCase();
             if (channelName === 'alpha') {
               alpha = originAlpha;
             } else {
@@ -140,8 +140,8 @@ const hsl = defineFunction(
             // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
             const evaluated = await alphaChannel.eval(this.context);
             if (evaluated instanceof Dimension) {
-              const alphaNumber = evaluated.data.number;
-              const alphaUnit = evaluated.data.unit;
+              const alphaNumber = evaluated.number;
+              const alphaUnit = evaluated.unit;
               if (alphaUnit === '%') {
                 alpha = alphaNumber / 100;
               } else if (alphaUnit === '' || alphaUnit === undefined) {

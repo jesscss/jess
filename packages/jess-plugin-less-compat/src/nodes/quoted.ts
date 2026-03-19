@@ -27,29 +27,29 @@ export function transformQuotedToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = quoted.data;
+      const value = quoted.value;
       if (typeof value === 'string') {
         return value;
       }
       if (value instanceof Any) {
-        return value.data;
+        return value.value;
       }
       if (value instanceof Interpolated) {
         // Convert interpolated to string representation
         // Less handles interpolation differently, so we convert to string
-        return String(value.data);
+        return String(value.value);
       }
       return String(value);
     }
 
     // Map 'quote' property
     if (prop === 'quote') {
-      return quoted.options?.quote || '"';
+      return quoted.quote || '"';
     }
 
     // Map 'escaped' property
     if (prop === 'escaped') {
-      return quoted.options?.escaped === true;
+      return quoted.escaped === true;
     }
 
     // Map 'accept' method for visitor traversal

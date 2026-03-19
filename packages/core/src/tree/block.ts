@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, defineType, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type BlockOptions = {
@@ -17,6 +17,18 @@ export interface Block extends Node<Node, BlockOptions> {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
+  static override childKeys = ['value'] as const;
+
+  value!: Node;
+
+  constructor(value: Node, options?: BlockOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    if (this.value instanceof Node) {
+      this.adopt(this.value);
+    }
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;

@@ -15,22 +15,22 @@ export interface Comment extends Node<string, CommentOptions> {
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
+  static override childKeys = null as null;
+
+  value!: string;
+  lineComment: boolean;
+
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    this.lineComment = !!options?.lineComment;
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlag(F_STATIC);
-    if (this.options.lineComment || value.startsWith('//')) {
+    if (this.lineComment || value.startsWith('//')) {
       this.removeFlag(F_VISIBLE);
     }
   }
-
-  get value() {
-    return this.data;
-  }
-
-  set value(val: string) {
-    this.setData(val);
-  }
 }
+
 export const comment = defineType(Comment, 'Comment');

@@ -1,4 +1,4 @@
-import { dimension, num } from '..';
+import { dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -20,7 +20,7 @@ describe('Dimension', () => {
     // });
     it('should make a dimension from a number', () => {
       let rule = num(10);
-      expect(rule.data.number).toBe(10);
+      expect(rule.number).toBe(10);
       expect(rule.toString()).toBe('10');
     });
   });

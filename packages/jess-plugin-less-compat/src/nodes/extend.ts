@@ -27,7 +27,7 @@ export function transformExtendToLess(
 
     // Map 'selector' property
     if (prop === 'selector') {
-      const selector = extend.data.selector;
+      const selector = extend.selector;
       if (selector instanceof Selector) {
         return toLessNode(selector, { cache });
       }
@@ -37,7 +37,7 @@ export function transformExtendToLess(
     // Map 'option' property (Less uses this for extend options)
     // Jess uses 'flag' (ExtendFlag), Less uses 'option' string
     if (prop === 'option') {
-      const flag = extend.data.flag;
+      const flag = extend.flag;
       // ExtendFlag.All = 0 (default), ExtendFlag.Exact = 1
       return flag === 1 ? 'exact' : 'all';
     }

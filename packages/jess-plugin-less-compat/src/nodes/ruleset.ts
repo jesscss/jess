@@ -23,7 +23,7 @@ export function transformRulesetToLess(
 
     // Map 'selectors' property (Less expects array, Jess has single Selector | Nil)
     if (prop === 'selectors') {
-      const selector = ruleset.data.selector;
+      const selector = ruleset.selector;
 
       // Handle Nil selector
       if (selector instanceof Nil) {
@@ -32,7 +32,7 @@ export function transformRulesetToLess(
 
       // Handle SelectorList - convert to array
       if (selector instanceof SelectorList) {
-        return selector.data.map((s: Selector) => toLessNode(s, { cache }));
+        return selector.value.map((s: Selector) => toLessNode(s, { cache }));
       }
 
       // Single selector - wrap in array
@@ -41,9 +41,9 @@ export function transformRulesetToLess(
 
     // Map 'rules' property (Less expects array, Jess has Rules container)
     if (prop === 'rules') {
-      const rules = ruleset.data.rules;
+      const rules = ruleset.rules;
       // Rules has a value array of nodes
-      return rules.data.map((r: Node) => toLessNode(r, { cache }));
+      return rules.value.map((r: Node) => toLessNode(r, { cache }));
     }
 
     // Map 'accept' method for visitor traversal
@@ -54,15 +54,15 @@ export function transformRulesetToLess(
         // CRITICAL: The visitor passed here is the Less visitor, not the plugin visitor
         // Less's Ruleset.accept() traverses selectors and rules
         // Use visitArray which handles the traversal correctly
-        const selector = ruleset.data.selector;
-        const rules = ruleset.data.rules;
+        const selector = ruleset.selector;
+        const rules = ruleset.rules;
 
         // Traverse selectors using visitArray (Less's pattern)
         if (selector && !(selector instanceof Nil)) {
           if (selector instanceof SelectorList) {
             // Convert all selectors to Less format BEFORE calling visitArray
             // This ensures visitArray receives Less proxies, not Jess nodes
-            const lessSelectors = selector.data.map((s: Selector) => {
+            const lessSelectors = selector.value.map((s: Selector) => {
               const lessSel = toLessNode(s, { cache });
               // Ensure we have a Less proxy, not a Jess node
               return lessSel;
@@ -91,10 +91,10 @@ export function transformRulesetToLess(
         }
 
         // Traverse rules using visitArray (Less's pattern)
-        if (rules && rules.data && rules.data.length > 0) {
+        if (rules && rules.value && rules.value.length > 0) {
           // Convert all rules to Less format BEFORE calling visitArray
           // This ensures visitArray receives Less proxies, not Jess nodes
-          const lessRules = rules.data.map((r: Node) => {
+          const lessRules = rules.value.map((r: Node) => {
             const lessRule = toLessNode(r, { cache });
             // Ensure we have a Less proxy, not a Jess node
             return lessRule;

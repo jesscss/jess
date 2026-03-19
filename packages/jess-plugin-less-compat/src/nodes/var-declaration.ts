@@ -26,12 +26,12 @@ export function transformVarDeclarationToLess(
 
     // Map 'name' property
     if (prop === 'name') {
-      return varDecl.data.name;
+      return varDecl.name;
     }
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = varDecl.data.value;
+      const value = varDecl.value;
       if (value instanceof Node) {
         return toLessNode(value, { cache });
       }
@@ -53,7 +53,7 @@ export function transformVarDeclarationToLess(
     if (prop === 'accept') {
       return function(visitor: any) {
         // VarDeclaration's accept traverses its value
-        const value = varDecl.data.value;
+        const value = varDecl.value;
         if (value instanceof Node) {
           const lessValue = toLessNode(value, { cache });
           if (lessValue && lessValue.accept) {

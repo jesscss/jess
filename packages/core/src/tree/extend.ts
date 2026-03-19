@@ -48,52 +48,54 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
+  static override childKeys = ['selector', 'target'] as const;
+
+  selector: ExtendValue['selector'];
+  target!: Selector;
+  namespace: string | undefined;
+  flag: ExtendFlag | undefined;
+
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const newNode = new (this.constructor as any)(
+      {
+        selector: deep && this.selector instanceof Node ? this.selector.clone(deep) : this.selector,
+        target: deep ? this.target.clone(deep) : this.target,
+        namespace: this.namespace,
+        flag: this.flag
+      },
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
+
   constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.selector = value.selector;
+    this.target = value.target;
+    this.namespace = value.namespace;
+    this.flag = value.flag;
+    if (this.selector instanceof Node) {
+      this.adopt(this.selector);
+    }
+    if (this.target instanceof Node) {
+      this.adopt(this.target);
+    }
     this.removeFlag(F_VISIBLE);
     this.addFlag(F_NON_STATIC);
   }
 
-  get selector() {
-    return this.data.selector;
-  }
-
-  set selector(val: ExtendValue['selector']) {
-    this.setData('selector', val as any);
-  }
-
-  get target() {
-    return this.data.target;
-  }
-
-  set target(val: ExtendValue['target']) {
-    this.setData('target', val);
-  }
-
-  get namespace() {
-    return this.data.namespace;
-  }
-
-  set namespace(val: ExtendValue['namespace']) {
-    this.setData('namespace', val as any);
-  }
-
-  get flag() {
-    return this.data.flag;
-  }
-
-  set flag(val: ExtendValue['flag']) {
-    this.setData('flag', val as any);
-  }
-
   override valueOf() {
-    return `$extend ${this.data.target.valueOf()}`;
+    return `$extend ${this.target.valueOf()}`;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector, flag, namespace } = this.data;
+    let { target, selector, flag, namespace } = this;
     const mark = w.mark();
     w.add('$extend');
     if (selector) {
@@ -119,7 +121,7 @@ export class Extend extends Node<ExtendValue> {
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    let { selector, target, flag } = this.data;
+    let { selector, target, flag } = this;
 
     const currentFrame = context.rulesetFrames.at(-1);
 
@@ -162,14 +164,14 @@ export class Extend extends Node<ExtendValue> {
         // selector (e.g. .issue-2586-somepage .content not just .content).
         if (currentFrame && isNode(currentFrame, N.Ruleset)) {
           const rs = currentFrame as Ruleset;
-          const fullSel = rs.data?.selector;
+          const fullSel = rs.selector;
           let usedParentListComposition = false;
-          if (!this.data.selector) {
+          if (!this.selector) {
             const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
             const parentFrame = context.rulesetFrames.at(-2);
             const parentSel = (
               parentFrame && isNode(parentFrame, N.Ruleset)
-                ? (parentFrame as Ruleset).data?.selector
+                ? (parentFrame as Ruleset).selector
                 : undefined
             );
             if (
@@ -186,14 +188,14 @@ export class Extend extends Node<ExtendValue> {
               usedParentListComposition = true;
             }
           }
-          if (!this.data.selector && !usedParentListComposition) {
+          if (!this.selector && !usedParentListComposition) {
             if (fullSel && !(fullSel instanceof Nil)) {
               resolvedSel = fullSel as Selector;
             } else {
               // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
               // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
               if (isNode(currentFrame, N.Ruleset)) {
-                const parentSel = (currentFrame as Ruleset).data?.selector;
+                const parentSel = (currentFrame as Ruleset).selector;
                 if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
                   resolvedSel = ComplexSelector.create([
                     (parentSel as Selector).copy(true),
@@ -230,14 +232,14 @@ export class Extend extends Node<ExtendValue> {
     // selector (e.g. .issue-2586-somepage .content not just .content).
     if (currentFrame && isNode(currentFrame, N.Ruleset)) {
       const rs = currentFrame as Ruleset;
-      const fullSel = rs.data?.selector;
+      const fullSel = rs.selector;
       let usedParentListComposition = false;
-      if (!this.data.selector) {
+      if (!this.selector) {
         const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
         const parentFrame = context.rulesetFrames.at(-2);
         const parentSel = (
           parentFrame && isNode(parentFrame, N.Ruleset)
-            ? (parentFrame as Ruleset).data?.selector
+            ? (parentFrame as Ruleset).selector
             : undefined
         );
         if (
@@ -254,14 +256,14 @@ export class Extend extends Node<ExtendValue> {
           usedParentListComposition = true;
         }
       }
-      if (!this.data.selector && !usedParentListComposition) {
+      if (!this.selector && !usedParentListComposition) {
         if (fullSel && !(fullSel instanceof Nil)) {
           resolvedSel = fullSel as Selector;
         } else {
           // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
           // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
           if (isNode(currentFrame, N.Ruleset)) {
-            const parentSel = (currentFrame as Ruleset).data?.selector;
+            const parentSel = (currentFrame as Ruleset).selector;
             if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
               resolvedSel = ComplexSelector.create([
                 (parentSel as Selector).copy(true),
@@ -307,7 +309,7 @@ function materializeImplicitAmpersands(
     if (isNode(node, N.ComplexSelector)) {
       const complex = node as ComplexSelector;
       const parts: Selector[] = [];
-      for (const part of complex.data as unknown as Selector[]) {
+      for (const part of complex.value as unknown as Selector[]) {
         if (isNode(part, N.Ampersand)) {
           const amp = part as Ampersand;
           const n = amp as unknown as Node;
@@ -320,7 +322,7 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(resolved.copy(true) as Selector);
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...((repl as ComplexSelector).data as unknown as Selector[]).map(x => x.copy(true) as Selector));
+                parts.push(...((repl as ComplexSelector).value as unknown as Selector[]).map(x => x.copy(true) as Selector));
               } else {
                 parts.push(repl);
               }
@@ -334,10 +336,10 @@ function materializeImplicitAmpersands(
       return ComplexSelector.create(parts as any).inherit(node) as Selector;
     }
 
-    const value = (node as Selector & { data?: Selector[] }).data;
+    const value = (node as Selector & { value?: Selector[] }).value;
     if (Array.isArray(value)) {
-      const cloned = node.copy(true) as Selector & { data?: Selector[] };
-      cloned.data = value.map(item => materialize(item as Selector));
+      const cloned = node.copy(true) as Selector & { value?: Selector[] };
+      cloned.value = value.map(item => materialize(item as Selector));
       return cloned as Selector;
     }
 

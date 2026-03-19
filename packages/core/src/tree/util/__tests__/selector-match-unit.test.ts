@@ -703,7 +703,7 @@ describe('selector lists and branching', () => {
       expect(result.crossesAmpersand).toBe(true);
       expect(result.matches).toHaveLength(1);
       expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
-      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.data[0]);
+      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.value[0]);
       expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
       expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode.valueOf()).toBe('a');
     });
@@ -815,7 +815,7 @@ describe('selector lists and branching', () => {
       expect(result.matches[0]!.startIndex).toBe(4);
       expect(result.matches[0]!.endIndex).toBe(6);
       expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
-      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.data[4]);
+      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.value[4]);
       expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
       expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode).toBe(parentSelector);
     });

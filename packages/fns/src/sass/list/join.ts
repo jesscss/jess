@@ -36,7 +36,7 @@ const join = defineFunction(
     }
 
     // Join the lists
-    const newList = new List([...list1.data, ...list2.data], { sep });
+    const newList = new List([...list1.value, ...list2.value], { sep });
 
     // Note: bracketed parameter is not yet fully supported in Jess AST
     // TODO: Handle bracketed lists when Jess AST supports it

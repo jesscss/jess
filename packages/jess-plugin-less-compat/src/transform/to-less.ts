@@ -67,24 +67,26 @@ export function toLessNode(
     // typeIndex is handled automatically by the base proxy handler
 
     // For child nodes, convert them lazily
-    if (prop === 'value' && target.data) {
-      // If data is a Node, convert it
-      if (target.data instanceof Node) {
-        return toLessNode(target.data, options);
+    // Use instance field `.value` (the canonical accessor for leaf nodes)
+    if (prop === 'value' && (target as any).value !== undefined) {
+      const nodeValue = (target as any).value;
+      // If value is a Node, convert it
+      if (nodeValue instanceof Node) {
+        return toLessNode(nodeValue, options);
       }
-      // If data is an array, convert each element
-      if (Array.isArray(target.data)) {
-        return target.data.map((item: any) => {
+      // If value is an array, convert each element
+      if (Array.isArray(nodeValue)) {
+        return nodeValue.map((item: any) => {
           if (item instanceof Node) {
             return toLessNode(item, options);
           }
           return item;
         });
       }
-      // If data is an object, convert nested nodes
-      if (typeof target.data === 'object' && target.data !== null) {
+      // If value is an object, convert nested nodes
+      if (typeof nodeValue === 'object' && nodeValue !== null) {
         const converted: any = {};
-        for (const [key, val] of Object.entries(target.data)) {
+        for (const [key, val] of Object.entries(nodeValue)) {
           if (val instanceof Node) {
             converted[key] = toLessNode(val, options);
           } else if (Array.isArray(val)) {

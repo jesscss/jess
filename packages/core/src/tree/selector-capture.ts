@@ -1,7 +1,6 @@
 import { type Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { Selector } from './selector.js';
-import { SelectorList } from './selector-list.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -13,19 +12,23 @@ export interface SelectorCapture extends Node<Selector> {
 
 /**
  * Explicit selector-capture wrapper used by parsers for selector-valued payloads
- * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
+ * (e.g. Less `*[ ... ]`, Sass `selector.parse("...")`).
  */
 export class SelectorCapture extends Node<Selector> {
-  get value() {
-    return this.data as Selector;
-  }
+  static override childKeys = ['value'] as const;
 
-  set value(val: Selector) {
-    this.setData(val);
+  value!: Selector;
+
+  constructor(value: Selector, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    if (this.value instanceof Node) {
+      this.adopt(this.value);
+    }
   }
 
   override valueOf(): string {
-    return String(this.data.valueOf());
+    return String(this.value.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -33,13 +36,13 @@ export class SelectorCapture extends Node<Selector> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('*[', this);
-    this.data.toString(options);
+    this.value.toString(options);
     w.add(']', this);
     return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.data.eval(context);
+    const out = this.value.eval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then((selector) => {
         return selector;

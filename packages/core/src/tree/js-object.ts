@@ -9,5 +9,14 @@ export interface JsObject {
 }
 
 export class JsObject extends Node<Record<string, any>> {
+  static override childKeys = null as null;
+
+  value!: Record<string, any>;
+
+  constructor(value: Record<string, any>, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+  }
 }
+
 export const jsobj = defineType(JsObject, 'JsObject', 'jsobj');

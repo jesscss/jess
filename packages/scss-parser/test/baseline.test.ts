@@ -86,7 +86,7 @@ describe('scss-parser (baseline)', () => {
         if (cond && isNode(cond, N.Paren)) {
           expect(cond.data instanceof Condition).toBe(true);
           if (cond.data instanceof Condition) {
-            expect(cond.data.options?.negate).not.toBe(true);
+            expect(cond.data.negate).not.toBe(true);
           }
         }
       }
@@ -115,7 +115,7 @@ describe('scss-parser (baseline)', () => {
         if (cond && isNode(cond, N.Paren)) {
           expect(cond.data instanceof Condition).toBe(true);
           if (cond.data instanceof Condition) {
-            expect(cond.data.options?.negate).toBe(true);
+            expect(cond.data.negate).toBe(true);
           }
         }
       }

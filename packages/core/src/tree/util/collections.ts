@@ -115,14 +115,14 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
   } else if (isNode(collection, N.Mixin | N.Ruleset | N.Rules)) {
     let rules: Node[];
     if ((collection as Node).type === 'Mixin') {
-      if ((collection as Mixin).data.params?.length) {
+      if ((collection as Mixin).params?.length) {
         throw new Error('We can\'t iterate over a mixin with parameters');
       }
-      rules = [...(collection as Mixin).data.rules.data];
+      rules = [...(collection as Mixin).rules.value];
     } else if ((collection as Node).type === 'Ruleset') {
-      rules = [...(collection as Ruleset).data.rules.data];
+      rules = [...(collection as Ruleset).rules.value];
     } else if ((collection as Node).type === 'Rules') {
-      rules = [...(collection as Rules).data];
+      rules = [...(collection as Rules).value];
     }
     for (let [, value] of rules!.entries()) {
       if (value.type === 'Comment') {
@@ -131,38 +131,12 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       if (!isNode(value, N.Declaration)) {
         throw new Error('We can\'t iterate over rules with non-declarations');
       }
-      yield [value.data.value, value.data.name, rules!] as unknown as GetEntriesOf<T>;
+      yield [(value as any).value, (value as any).name, rules!] as unknown as GetEntriesOf<T>;
     }
-  } else if (isNode(collection) && isArray((collection as Node).data)) {
-    yield* getEntries((collection as Node).data as unknown[], reverse) as Generator<GetEntriesOf<T>>;
+  } else if (isNode(collection) && isArray((collection as any).value)) {
+    yield* getEntries((collection as any).value as unknown[], reverse) as Generator<GetEntriesOf<T>>;
   } else {
-    yield [collection, 'data', collection] as unknown as GetEntriesOf<T>;
-  }
-}
-
-/**
- * We use { data: unknown } as the type for the node so that
- * we can easily override the data type when calling.
- */
-export function* getValuesFromNode<T extends { data: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>[0]> {
-  let data = node.data;
-  if (isArray(data) || isPlainObject(data)) {
-    yield* getValues(data, reverse) as Generator<GetEntriesOf<T>[0]>;
-  } else {
-    yield data;
-  }
-}
-
-/**
- * This is especially useful, because we don't have to care about what the Node's data is,
- * we can just iterate over it and get the entries, and replace as necessary.
- */
-export function* getEntriesFromNode<T extends { data: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>> {
-  let data = node.data;
-  if (isArray(data) || isPlainObject(data)) {
-    yield* getEntries(data, reverse) as Generator<GetEntriesOf<T>[0]>;
-  } else {
-    yield [data, 'data', node] as GetEntriesOf<T>;
+    yield [collection, 'value', collection] as unknown as GetEntriesOf<T>;
   }
 }
 
@@ -207,25 +181,27 @@ function collectDirectNodes(
   includePrePost = false
 ): Node[] {
   const result: Node[] = [];
-  const keys = (node.constructor as typeof Node).childNodeKeys;
+  const keys = (node.constructor as typeof Node).childKeys;
 
   if (keys) {
     const keyList = reverse ? [...keys].reverse() : keys;
-    const val = node.data as Record<string, unknown>;
 
     for (const key of keyList) {
-      const nodeVal = val[key!];
-      if (isNode(nodeVal)) {
-        if (includePrePost) {
-          result.push(...nodeVal.nodeAndPrePost());
-        } else {
-          result.push(nodeVal);
+      // Read from instance field directly (node[key]) instead of node.data[key],
+      // because array containers' .data getter returns the array itself, not { value: array }.
+      const nodeVal = (node as any)[key!];
+      if (isArray(nodeVal)) {
+        const items = reverse ? [...nodeVal].reverse() : nodeVal;
+        for (const item of items) {
+          if (isNode(item)) {
+            if (includePrePost) {
+              result.push(...item.nodeAndPrePost());
+            } else {
+              result.push(item);
+            }
+          }
         }
-      }
-    }
-  } else {
-    for (const nodeVal of getValues(node.data, reverse)) {
-      if (isNode(nodeVal)) {
+      } else if (isNode(nodeVal)) {
         if (includePrePost) {
           result.push(...nodeVal.nodeAndPrePost());
         } else {
@@ -234,6 +210,7 @@ function collectDirectNodes(
       }
     }
   }
+  // Leaf nodes (keys === null) have no child nodes to collect
 
   return result;
 }

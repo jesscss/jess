@@ -27,7 +27,7 @@ export function transformParenToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = paren.data;
+      const value = paren.value;
       if (value instanceof Node) {
         return toLessNode(value, { cache });
       }

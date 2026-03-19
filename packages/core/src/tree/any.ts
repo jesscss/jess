@@ -2,8 +2,8 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
-import type { Context, TreeContext } from '../context.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, type TreeContext, F_STATIC } from './node-base.js';
+import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 
@@ -47,23 +47,27 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
-    super(...args);
+  static override childKeys = null as null;
+
+  value!: string;
+  role: Role | undefined;
+
+  constructor(
+    value: string,
+    options?: AnyOptions<Role>,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+    this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
-  }
-
-  get value() {
-    return this.data;
-  }
-
-  set value(val: string) {
-    this.setData(val);
   }
 
   override preEval(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules
-    if (this.options.role === 'charset') {
+    if (this.role === 'charset') {
       if (!context.currentCharset) {
         /** @todo - Throw error in the future? */
         context.currentCharset = this;
@@ -84,16 +88,15 @@ export class Any<
       return undefined;
     }
     if (other.type === 'Any' || other.type === 'Keyword') {
-      return this.data === String(other.valueOf?.() ?? '') ? 0 : undefined;
+      return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
     }
     if (other.type === 'Num' || other.type === 'Dimension') {
-      const text = this.data.trim();
+      const text = this.value.trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherValue = (other as any).data;
-      const otherNumber = otherValue?.number;
-      const otherUnit = otherValue?.unit;
+      const otherNumber = (other as any).number;
+      const otherUnit = (other as any).unit;
       if (typeof otherNumber !== 'number') {
         return undefined;
       }

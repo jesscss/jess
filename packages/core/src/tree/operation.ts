@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_STATIC  } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_STATIC, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -26,41 +26,49 @@ export interface Operation {
  * as an operation.
  */
 export class Operation extends Node<OperationValue> {
-  constructor(value: OperationValue, options?: any, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['left', 'right'] as const;
+
+  left!: Node;
+  operator!: Operator;
+  right!: Node;
+
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const value: OperationValue = [
+      deep ? this.left.clone(deep) : this.left,
+      this.operator,
+      deep ? this.right.clone(deep) : this.right
+    ];
+    const newNode = new (this.constructor as any)(
+      value,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
+
+  constructor(value: OperationValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value as any, options, location, treeContext);
+    this.left = value[0];
+    this.operator = value[1];
+    this.right = value[2];
+    if (this.left instanceof Node) {
+      this.adopt(this.left);
+    }
+    if (this.right instanceof Node) {
+      this.adopt(this.right);
+    }
     // Operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
-  }
-
-  get left() {
-    return this.data[0];
-  }
-
-  set left(val: Node) {
-    (this.data as OperationValue)[0] = val;
-  }
-
-  get operator() {
-    return this.data[1];
-  }
-
-  set operator(val: Operator) {
-    (this.data as OperationValue)[1] = val;
-  }
-
-  get right() {
-    return this.data[2];
-  }
-
-  set right(val: Node) {
-    (this.data as OperationValue)[2] = val;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.data;
+    let { left, operator: op, right } = this;
     let leftStr = w.capture(() => left.toString(options));
     let rightStr = w.capture(() => right.toString(options));
     w.add(leftStr.trimEnd(), left);
@@ -71,14 +79,15 @@ export class Operation extends Node<OperationValue> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     let n = this;
-    let [left, op, right] = n.data;
+    let { left, operator: op, right } = n;
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (context.shouldOperate(op, l, r)) {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          n.setData([l, op, r]);
+          n.left = l;
+          n.right = r;
           return n;
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -95,7 +104,8 @@ export class Operation extends Node<OperationValue> {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
               // Update the existing operation with evaluated nodes and mark as evaluated
-              n.setData([l, op, r]);
+              n.left = l;
+              n.right = r;
               n.evaluated = true;
               // Mark child nodes as evaluated too
               l.evaluated = true;
@@ -120,7 +130,8 @@ export class Operation extends Node<OperationValue> {
         out.post = right.post;
         return out;
       }
-      n.setData([l, op, r]);
+      n.left = l;
+      n.right = r;
       return n;
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {

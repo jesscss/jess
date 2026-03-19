@@ -135,6 +135,10 @@ export interface Rules {
   shortType: 'rules' | 'rules-raw' | 'coll';
 }
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  static override childKeys = ['value'] as const;
+
+  value!: Node[];
+
   rulesetRegistry: Registries.RulesetRegistry | undefined;
   mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
@@ -149,7 +153,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this._indexing = true;
     try {
-      let value = this.data;
+      let value = this.value;
       let length = value.length;
       for (let i = this.rulesIndexed; i < length; i++) {
         const node = value[i]!;
@@ -226,7 +230,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
     }
-    if (this.rulesIndexed < this.data.length) {
+    if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     }
     return registry;
@@ -285,7 +289,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return isNode(node, N.Comment) || isNode(node, N.Any);
       };
       if (ctx?.topImports?.length) {
-        for (const node of this.data) {
+        for (const node of this.value) {
           if (!isCommentLike(node)) {
             break;
           }
@@ -303,7 +307,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (ctx?.topImports?.length) {
         for (const importRule of ctx.topImports) {
           if (isNode(importRule, N.AtRule)) {
-            const importPrelude = importRule.data.prelude;
+            const importPrelude = (importRule as any).prelude;
             if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
               if (!isThenable(maybePrelude)) {
@@ -369,13 +373,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
-    super(value ?? [], mergedOptions, location, treeContext);
+    const normalized = value ?? [];
+    super(normalized, mergedOptions, location, treeContext);
+    this.value = normalized;
+    for (const child of normalized) {
+      if (child instanceof Node) {
+        this.adopt(child);
+      }
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
   }
 
   * [Symbol.iterator]() {
-    let value = this.data;
+    let value = this.value;
     /**
      * This should always be the case? But at one point something somewhere
      * set the value to undefined I think, so just leaving this defensively.
@@ -417,7 +428,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const w = options.writer!;
     const depth = options.depth ?? 0;
     const space = indent(depth);
-    const value = this.data;
+    const value = this.value;
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
@@ -436,11 +447,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return false;
       }
       const rulesNode = node as Rules;
-      if (rulesNode.data.length !== 1) {
+      if (rulesNode.value.length !== 1) {
         return false;
       }
-      const only = rulesNode.data[0]!;
-      return only.type === 'Any' && (only.options as any)?.role === 'any';
+      const only = rulesNode.value[0]!;
+      return only.type === 'Any' && (only as Any).role === 'any';
     };
 
     let emittedCount = 0;
@@ -518,7 +529,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   flatRules(visibleOnly: boolean = false) {
     const finalRules: Node[] = [];
     const iterateRules = (rules: Rules) => {
-      for (let n of rules.data) {
+      for (let n of rules.value) {
         if (isNode(n, N.Rules)) {
           // Preserve reference-mode Rules as containers so the serializer
           // can detect the referenceMode flag and suppress output.
@@ -539,7 +550,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   visibleRules() {
-    return this.data.filter(n => n.visible);
+    return this.value.filter(n => n.visible);
   }
 
   /**
@@ -551,9 +562,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   toObject(convertToPrimitives: boolean = true): Record<string, string | number | boolean | Node> {
     let output = new Map<string, boolean | string | number | Node>();
     const iterateRules = (rules: Rules) => {
-      for (let n of rules.data) {
+      for (let n of rules.value) {
         if (isNode(n, N.Declaration)) {
-          let { name, value, important } = n.data;
+          let { name, value, important } = n as any;
           if (convertToPrimitives) {
             let primitive = value.valueOf();
             let outputValue = important ? `${primitive} ${important}` : primitive;
@@ -621,7 +632,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return;
         }
 
-        let key = node.data.name?.toString();
+        let key = (node as any).name?.toString();
         /** Don't set within sibling rules */
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
@@ -652,7 +663,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
           // Add to the value array AFTER the found declaration
           // This ensures it shadows the original and is evaluated after it
-          const foundIndex = foundRules.data.indexOf(result);
+          const foundIndex = foundRules.value.indexOf(result);
           if (foundIndex !== -1) {
             foundRules.splice(foundIndex + 1, 0, newDeclaration);
           } else {
@@ -685,13 +696,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override push(...nodes: Node[]) {
     for (let node of nodes) {
       this.adopt(node);
-      (this.data as Node[]).push(node);
+      this.value.push(node);
       this.registerNode(node);
     }
   }
 
   at(index: number) {
-    return atIndex(this.data, index);
+    return atIndex(this.value, index);
   }
 
   /**
@@ -707,13 +718,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
       const isNestableAtRuleBody =
         parentAtRule
-        && nestableAtRuleNames.has(String((parentAtRule as { data?: { name?: { valueOf?(): string } } }).data?.name?.valueOf?.() ?? ''));
-      const first = rules.data?.[0];
+        && nestableAtRuleNames.has(String((parentAtRule as any).name?.valueOf?.() ?? ''));
+      const first = rules.value?.[0];
       const isWrapper =
         isNestableAtRuleBody
-        && rules.data?.length === 1
+        && rules.value?.length === 1
         && isNode(first, N.Ruleset)
-        && isNode((first as Ruleset).data?.selector, N.Ampersand);
+        && isNode((first as Ruleset).selector, N.Ampersand);
       if (isWrapper) {
         rules = this;
       }
@@ -731,8 +742,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       /**
        * I think maybe we can just set the index to the actual order?
        */
-      for (let i = 0; i < rules.data.length; i++) {
-        let n = rules.data[i]!;
+      for (let i = 0; i < rules.value.length; i++) {
+        let n = rules.value[i]!;
         n.index = i;
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
@@ -791,9 +802,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const dynamicNodes: Node[] = [];
 
     // Process each node with static name, handling both sync and async preEval
-    const processResult = serialForEach(rules.data, (node, index) => {
+    const processResult = serialForEach(rules.value, (node, index) => {
       // Check if node has a static name (can be registered immediately)
-      if (node.type === 'Any' && node.options.role === 'charset') {
+      if (node.type === 'Any' && (node as any).role === 'charset') {
         /** Special case where we register the charset node immediately */
         rules.setData(index, (node as Any).preEval(context));
         return;
@@ -880,23 +891,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _hasStaticName(node: Node): boolean {
     if (isNode(node, N.VarDeclaration)) {
-      const name = node.data.name;
+      const name = (node as any).name;
       return this._isStatic(name);
     }
     if (isNode(node, N.Mixin)) {
-      const name = node.data.name;
+      const name = (node as any).name;
       return this._isStatic(name);
     }
     if (isNode(node, N.Declaration)) {
-      const name = node.data.name;
+      const name = (node as any).name;
       return this._isStatic(name);
     }
     if (node.type === 'StyleImport') {
-      const path = (node as any).data.path;
+      const path = (node as any).path;
       return this._isStatic(path);
     }
     if (isNode(node, N.Ruleset)) {
-      const selector = node.data.selector;
+      const selector = (node as any).selector;
       // BasicSelector, CompoundSelector, ComplexSelector etc. are always static
       // Only Interpolated selectors need resolution
       if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.ComplexSelector | N.SelectorList)) {
@@ -957,8 +968,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const applyResolvedNodes = () => {
-      for (let i = 0; i < rules.data.length; i++) {
-        const node = rules.data[i]!;
+      for (let i = 0; i < rules.value.length; i++) {
+        const node = rules.value[i]!;
         const resolvedNode = resolvedNodes.find(n => n.index === node.index);
         if (resolvedNode && resolvedNode !== node) {
           rules.setData(i, resolvedNode.inherit(node));
@@ -1082,8 +1093,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Helper method to continue preEval'ing remaining children after an async preEval.
    */
   private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number, saved?: any): MaybePromise<this> {
-    for (let i = startIndex; i < rules.data.length; i++) {
-      const node = rules.data[i]!;
+    for (let i = startIndex; i < rules.value.length; i++) {
+      const node = rules.value[i]!;
 
       // Always call preEval to ensure deep traversal and name resolution
       const result = node.preEval(context);
@@ -1162,7 +1173,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /** Assign depth-first document order to every Ruleset under the given Rules (single walk, source order). */
   private _assignDocumentOrderDepthFirst(rules: Rules, map: WeakMap<Ruleset, number>, counter: { value: number }): void {
-    const value = rules.data;
+    const value = rules.value;
     if (!isArray(value)) {
       return;
     }
@@ -1171,7 +1182,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         map.set(node as Ruleset, counter.value);
         counter.value++;
       }
-      const innerRules = (node as Node & { data?: { rules?: unknown } }).data?.rules;
+      const innerRules = (node as any).rules;
       if (innerRules && isNode(innerRules, N.Rules)) {
         this._assignDocumentOrderDepthFirst(innerRules as Rules, map, counter);
       }
@@ -1189,20 +1200,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // value is a detached ruleset containing mixin definitions). This avoids changing evaluation
       // order for regular detached rulesets like `@ruleset()` used for property blocks.
       if (priority === Priority.None && rules.treeContext?.leakyRules === true && isNode(rule, N.Expression)) {
-        const inner = (rule as any).data;
-        if (isNode(inner, N.Call) && isNode((inner as any).data?.name, N.Reference)) {
-          const ref = (inner as any).data.name;
+        const inner = (rule as any).value;
+        if (isNode(inner, N.Call) && isNode((inner as any).name, N.Reference)) {
+          const ref = (inner as any).name;
           const refType = String(ref?.options?.type ?? '');
           if (refType === 'variable') {
-            const raw = ref.data?.key;
+            const raw = ref.key;
             const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
             // Only if variable exists and its value is a detached ruleset Mixin with nested Mixin definitions.
             const decl = rules.find('declaration', keyStr, 'VarDeclaration') as any;
-            const val = decl?.data?.value;
+            const val = decl?.value;
             const hasNestedMixinDefinitions =
               isNode(val, N.Mixin)
-              && Array.isArray(val.data?.rules?.data)
-              && val.data.rules.data.some((n: any) => n?.type === 'Mixin');
+              && Array.isArray((val as any).rules?.value)
+              && (val as any).rules.value.some((n: any) => n?.type === 'Mixin');
             if (hasNestedMixinDefinitions) {
               priority = Priority.High;
             }
@@ -1373,31 +1384,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     );
     const isDeclarationOnlyRules = (node: Node): node is Rules => (
       isNode(node, N.Rules)
-      && node.data.length > 0
-      && node.data.every(child => isNode(child, N.Declaration | N.Comment))
+      && node.value.length > 0
+      && node.value.every(child => isNode(child, N.Declaration | N.Comment))
     );
     const composeMergedValue = (decl: Node, prior: Node, assign: string): void => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return;
       }
-      const priorValue = prior.data.value.copy(true, freezeChildren);
-      const nextValue = decl.data.value.copy(true, freezeChildren);
+      const priorValue = (prior as any).value.copy(true, freezeChildren);
+      const nextValue = (decl as any).value.copy(true, freezeChildren);
       decl.setData('value', assign === '&_:'
         ? spaced([priorValue, nextValue])
         : new List([priorValue, nextValue]));
-      if (!decl.data.important && prior.data.important) {
-        decl.setData('important', prior.data.important);
+      if (!(decl as any).important && (prior as any).important) {
+        decl.setData('important', (prior as any).important);
       }
     };
     const normalizeMergedDeclarationValue = (node: Node): void => {
       if (!isNode(node, N.Declaration)) {
         return;
       }
-      const current = node.data.value;
-      if (!isNode(current, N.List) || current.data.length === 0) {
+      const current = (node as any).value;
+      if (!isNode(current, N.List) || current.value.length === 0) {
         return;
       }
-      const [first, ...rest] = current.data;
+      const [first, ...rest] = current.value;
       let firstIsEmptyString = false;
       try {
         firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
@@ -1408,7 +1419,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         first
         && (
           isNode(first, N.Nil)
-          || (isNode(first, N.List) && first.data.length === 0)
+          || (isNode(first, N.List) && first.value.length === 0)
           || firstIsEmptyString
         )
       );
@@ -1430,13 +1441,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mergedAnchorByName = new Map<string, Node>();
     const stream: Node[] = [];
 
-    for (const node of rules.data) {
+    for (const node of rules.value) {
       if (isNode(node, N.Declaration)) {
         stream.push(node);
         continue;
       }
       if (isDeclarationOnlyRules(node)) {
-        for (const child of node.data) {
+        for (const child of node.value) {
           if (isNode(child, N.Declaration)) {
             stream.push(child);
           }
@@ -1448,7 +1459,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.Declaration)) {
         continue;
       }
-      const name = String(node.data.name);
+      const name = String((node as any).name);
       const assign = String(node.options.normalizedFromAssign ?? '');
       const merged = isMergedAssign(assign);
 
@@ -1468,9 +1479,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const existingAnchor = mergedAnchorByName.get(name);
       if (existingAnchor && existingAnchor !== node && isNode(existingAnchor, N.Declaration)) {
-        existingAnchor.setData('value', node.data.value.copy(true));
-        if (!existingAnchor.data.important && node.data.important) {
-          existingAnchor.setData('important', node.data.important);
+        existingAnchor.setData('value', (node as any).value.copy(true));
+        if (!(existingAnchor as any).important && (node as any).important) {
+          existingAnchor.setData('important', (node as any).important);
         }
         node.removeFlag(F_VISIBLE);
         if (existingAnchor.visible) {
@@ -1494,22 +1505,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This runs after queue evaluation to avoid mutating rule indices mid-eval.
    */
   private _normalizeCallDeclarationRulesOrder(rules: Rules): void {
-    const firstNestedIdx = rules.data.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
+    const firstNestedIdx = rules.value.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
     if (firstNestedIdx < 0) {
       return;
     }
-    const beforeNested = rules.data.slice(0, firstNestedIdx);
-    const afterNested = rules.data.slice(firstNestedIdx);
+    const beforeNested = rules.value.slice(0, firstNestedIdx);
+    const afterNested = rules.value.slice(firstNestedIdx);
     const shouldMove = (n: Node) => {
       if (
         !isNode(n, N.Rules)
         || !isNode(n.sourceParent, N.Call)
-        || n.data.length === 0
-        || !n.data.every(child => isNode(child, N.Declaration | N.Comment))
+        || n.value.length === 0
+        || !n.value.every(child => isNode(child, N.Declaration | N.Comment))
       ) {
         return false;
       }
-      const sourceName = n.sourceParent.data.name;
+      const sourceName = (n.sourceParent as any).name;
       // Keep mixin-call declaration blocks in source order relative to nested rulesets.
       if (
         isNode(sourceName, N.Reference)
@@ -1819,8 +1830,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       thisContext = new Context();
     }
     let caller = thisContext.caller;
-    let sourceParent = caller?.data.name instanceof Node
-      ? caller.data.name.sourceParent
+    let sourceParent = (caller as any)?.name instanceof Node
+      ? (caller as any).name.sourceParent
       : caller?.sourceParent;
     let nodeArgs: Node[] = [];
     const savedRulesContext = thisContext.rulesContext;
@@ -1845,14 +1856,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           try {
             const evald = await arg.clonedEval(thisContext);
             if (evald.type === 'Rest') {
-              let restValue = evald.data;
+              let restValue = (evald as any).value;
               // Rest's sync evalNode may not resolve an async inner Reference.
               // Explicitly evaluate the inner node if it's still a Reference.
               if (isNode(restValue as Node) && !isNode(restValue as Node, N.Sequence | N.List)) {
                 restValue = await (restValue as Node).eval(thisContext);
               }
               if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
-                for (const restArg of restValue.data) {
+                for (const restArg of (restValue as any).value) {
                   const frozenRestArg = restArg.copy(true, freezeChildren);
                   frozenRestArg.frozen = true;
                   nodeArgs.push(frozenRestArg);
@@ -1882,7 +1893,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!isNode(node, N.List | N.Sequence)) {
         return;
       }
-      const items = node.data as Node[];
+      const items = (node as any).value as Node[];
       if (items.length > 0) {
         items[0]!.pre = 0;
       }
@@ -1895,7 +1906,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, N.Rules);
-      let paramLength = isPlainRule ? 0 : (mixin as Mixin).data.params?.length ?? 0;
+      let paramLength = isPlainRule ? 0 : (mixin as Mixin).params?.length ?? 0;
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
         if (args.length) {
@@ -1904,17 +1915,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         mixinCandidates.push(mixin);
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
-        let params = (mixin as Mixin).data.params!.copy(true);
-        const hasRestParamOriginal = (mixin as Mixin).data.params!.data.some(p => p.type === 'Rest');
+        let params = (mixin as Mixin).params!.copy(true);
+        const hasRestParamOriginal = (mixin as Mixin).params!.value.some(p => p.type === 'Rest');
         const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : params.length;
         let positions = params.length;
         let requiredPositions = 0;
-        for (let param of params.data) {
+        for (let param of params.value) {
           if (isNode(param, N.VarDeclaration)) {
-            if (param.data.value instanceof Nil) {
+            if ((param as any).value instanceof Nil) {
               requiredPositions++;
             }
-          } else if (isNode(param, N.Any) && param.options.role === 'property') {
+          } else if (isNode(param, N.Any) && param.role === 'property') {
             // Any with role: 'property' is a parameter without default (consistent with variable names)
             requiredPositions++;
           } else if (param.type !== 'Rest') {
@@ -1931,25 +1942,25 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           let param: Node | undefined;
           let argValue: Node;
           if (isNode(arg, N.VarDeclaration)) {
-            param = params.data.find(
+            param = params.value.find(
               (p) => {
                 if (isNode(p, N.VarDeclaration)) {
-                  return p.data.name.valueOf() === arg.data.name.valueOf();
+                  return (p as any).name.valueOf() === (arg as any).name.valueOf();
                 }
-                if (isNode(p, N.Any) && p.options.role === 'property') {
-                  return p.valueOf() === arg.data.name.valueOf();
+                if (isNode(p, N.Any) && p.role === 'property') {
+                  return p.valueOf() === (arg as any).name.valueOf();
                 }
                 return false;
               }
             );
             if (param) {
-              argValue = arg.data.value;
+              argValue = (arg as any).value;
             } else {
               match = false;
               break;
             }
           } else {
-            param = params.data[i];
+            param = params.value[i];
             if (!param) {
               match = false;
               break;
@@ -1965,7 +1976,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             boundValue.frozen = true;
             normalizeBoundLeadingItemWhitespace(boundValue);
             param.setData('value', boundValue);
-          } else if (isNode(param, N.Any) && param.options.role === 'property') {
+          } else if (isNode(param, N.Any) && param.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
@@ -1984,7 +1995,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             });
             /** Create a new variable with the rest name */
             const restVarDecl = new VarDeclaration({
-              name: new Any(param.data ? `${param.data}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
+              name: new Any((param as any).value ? `${(param as any).value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
               value: new Sequence(rest)
             });
             params.setData(i, restVarDecl);
@@ -2010,7 +2021,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           /** This mixin is not a match */
           continue;
         }
-        if (nodeArgs.length > 1 && params.data.length === 1 && requiredPositions === 1) {
+        if (nodeArgs.length > 1 && params.value.length === 1 && requiredPositions === 1) {
           // Less should not match single required-parameter overloads against extra positional args.
           continue;
         }
@@ -2040,12 +2051,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         return true;
       }
       if (node.type === 'Call') {
-        const callName = String((node as any).data?.name?.valueOf?.() ?? (node as any).data?.name ?? '');
+        const callName = String((node as any).name?.valueOf?.() ?? (node as any).name ?? '');
         if (callName === 'default' || callName === '??') {
           return true;
         }
       }
-      const value = (node as { data?: unknown }).data;
+      const value = (node as any).value;
       if (Array.isArray(value)) {
         for (const item of value) {
           if (isNode(item) && guardContainsDefault(item)) {
@@ -2074,7 +2085,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let current: any = node.parent;
       while (current) {
         if (isNode(current, N.Ruleset)) {
-          const guardNode = (current as Ruleset).data.guard;
+          const guardNode = (current as Ruleset).guard;
           if (guardNode instanceof Nil) {
             return true;
           }
@@ -2085,13 +2096,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     };
     evalCandidates = mixinCandidates
       .filter((candidate) => {
-        const inStack = thisContext.rulesEvalStack.includes(candidate.data.rules.sourceNode as Rules);
+        const inStack = thisContext.rulesEvalStack.includes((candidate as any).rules.sourceNode as Rules);
         const blockedByFailedGuardAncestor = hasFailedGuardAncestor(candidate as unknown as Node);
         return !inStack && !blockedByFailedGuardAncestor;
       })
       .map<MixinEntry>(
         (candidate) => {
-          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(candidate.data.guard as unknown as Node | undefined);
+          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault((candidate as any).guard as unknown as Node | undefined);
           if (hasDefaultGuard) {
             candidate.options ??= {};
             candidate.options.hasDefault = true;
@@ -2139,13 +2150,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Recover the pre-composition selector (ownSelector) so call-site
         // preEval can rebuild selectors in the caller's frame.
         // ownSelector is the selector BEFORE parent composition (e.g. `> li`),
-        // while data.selector may already be composed (e.g. `.nav-justified > li`).
+        // while selector may already be composed (e.g. `.nav-justified > li`).
         const ownSelector = (rulesetNode.options as any)?.ownSelector;
         if (ownSelector && isNode(ownSelector) && !(ownSelector instanceof Nil)) {
           const copiedSelector = ownSelector.copy(true) as Selector | Nil;
           rulesetNode.setData('selector', copiedSelector);
         } else {
-          const selector = rulesetNode.data.selector as Selector | Nil;
+          const selector = rulesetNode.selector as Selector | Nil;
           const sourceSelector = selector?.sourceNode;
           if (sourceSelector && isNode(sourceSelector)) {
             const copiedSelector = sourceSelector.copy(true) as Selector | Nil;
@@ -2161,7 +2172,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         ampNode._selectorContainer = undefined;
         ampNode._storedSelector = undefined;
       }
-      const value = (node as { data?: unknown }).data;
+      const value = (node as any).value;
       if (Array.isArray(value)) {
         for (const child of value) {
           if (isNode(child)) {
@@ -2236,7 +2247,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
           // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
           // hide param vars from registry-based lookup.
-          outerRules.push(...rules.data);
+          outerRules.push(...rules.value);
           newRules = await outerRules.eval(thisContext);
         }
         candidate.parent!.adopt(newRules);
@@ -2285,12 +2296,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
         // guard === undefined means passed, guard instanceof Nil means failed
-        const rulesetGuard = (candidate as Ruleset).data.guard;
+        const rulesetGuard = (candidate as Ruleset).guard;
         if (rulesetGuard instanceof Nil) {
           // Guard failed at definition time - skip this ruleset
           continue;
         }
-        const candidateRules = (candidate as Ruleset).data.rules;
+        const candidateRules = (candidate as Ruleset).rules;
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true);
         resetEvalStateDeep(rules as unknown as Node);
@@ -2313,8 +2324,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Less detached rulesets are represented as anonymous mixins (name is undefined).
       // Calling `@rulesetVar();` should *unlock* the rules into scope (including mixin definitions),
       // not eagerly execute/flatten them.
-      if (!candidate.data.name && !candidate.data.params && !candidate.data.guard) {
-        const sourceRules = getRootSourceRules(candidate.data.rules);
+      if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
+        const sourceRules = getRootSourceRules((candidate as any).rules);
         let unlocked = sourceRules.clone(true);
         resetEvalStateDeep(unlocked as unknown as Node);
         candidate.parent!.adopt(unlocked);
@@ -2325,7 +2336,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         outputRules.push(unlocked);
         continue;
       }
-      let rules = candidate.data.rules;
+      let rules = (candidate as any).rules as Rules;
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(true);
       resetEvalStateDeep(rules as unknown as Node);
@@ -2344,7 +2355,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let outerRules: Rules | undefined;
 
       /** Now we need to add our parameters, if any */
-      let params = candidate.data.params;
+      let params = (candidate as any).params as List<Node> | undefined;
       if (params) {
         outerRules = Rules.create([], {
           rulesVisibility: {
@@ -2357,20 +2368,20 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
         outerRules.index = candidate.index;
 
-        for (let i = 0; i < params.data.length; i++) {
-          let param = params.data[i]!;
+        for (let i = 0; i < params.value.length; i++) {
+          let param = params.value[i]!;
           if (param.type === 'Rest') {
             // Rest parameters need to be converted to VarDeclaration for registration
             // Auto-generate a name if Rest doesn't have one (Less allows unnamed rest params)
             let restName: string;
-            if (typeof param.data === 'string') {
-              restName = param.data;
+            if (typeof (param as any).value === 'string') {
+              restName = (param as any).value;
             } else {
               // Auto-generate name: "rest", "rest1", "rest2", etc. based on position
               // Check if there are other rest params to avoid conflicts
               let restCount = 0;
               for (let j = 0; j < i; j++) {
-                const p = params.data[j]!;
+                const p = params.value[j]!;
                 if (p.type === 'Rest') {
                   restCount++;
                 }
@@ -2381,8 +2392,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Convert Rest to VarDeclaration so it can be registered and referenced.
             // If matching did not populate a node value, default to an empty sequence
             // (not a literal name/Nil), so @tail... behaves as "no remaining args".
-            const restValue = isNode(param.data)
-              ? param.data
+            const restValue = isNode((param as any).value)
+              ? (param as any).value as Node
               : (
                   thisContext.treeContext?.file
                     ? new Sequence([])
@@ -2424,15 +2435,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }, { readonly: true, paramVar: true });
           argumentsDecl.removeFlag(F_VISIBLE);
           outerRules.push(argumentsDecl);
-          const paramValues = params?.data
+          const paramValues = params?.value
             .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
-            .map(p => p.data.value);
+            .map(p => (p as any).value);
           const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
           for (const argNode of argumentNodes) {
             /** If a Rest param collected args into a Sequence, spread
              *  its items so @arguments reflects the actual arg count. */
-            if (isNode(argNode, N.Sequence) && (argNode as Sequence).data.length > 1) {
-              for (const item of (argNode as Sequence).data) {
+            if (isNode(argNode, N.Sequence) && (argNode as Sequence).value.length > 1) {
+              for (const item of (argNode as Sequence).value) {
                 const cloned = item.copy(true, freezeChildren);
                 cloned.frozen = true;
                 argumentsArgs.push(cloned);
@@ -2447,7 +2458,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
 
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = candidate.data.guard?.copy(true);
+      let guard: Condition | Bool | undefined = (candidate as any).guard?.copy(true);
       let passes = true;
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
@@ -2464,14 +2475,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const probeGuard = candidate.data.guard?.copy(true);
+              const probeGuard = (candidate as any).guard?.copy(true);
               if (!probeGuard) {
                 return false;
               }
               outerRules!.adopt(probeGuard);
               thisContext.isDefault = isDefaultValue;
               const probeResult = await probeGuard.eval(thisContext);
-              return probeResult instanceof Bool && probeResult.data === true;
+              return probeResult instanceof Bool && probeResult.value === true;
             };
             const passWhenDefaultFalse = await evalWithDefault(false);
             const passWhenDefaultTrue = await evalWithDefault(true);
@@ -2500,7 +2511,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             thisContext.isDefault = false;
             guard = await guard.eval(thisContext);
             /** Less guards only pass on explicit Bool(true), never JS truthiness. */
-            guardPasses = guard instanceof Bool && guard.data === true;
+            guardPasses = guard instanceof Bool && guard.value === true;
             if (guardPasses) {
               passes = true;
               hasDefNoneCandidate = true;
@@ -2610,7 +2621,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     if (this instanceof Context) {
       output.index ??= this.ruleCounter++;
       // If the output Rules is empty, return Nil instead
-      if (output.data.length === 0) {
+      if (output.value.length === 0) {
         return new Nil();
       }
       return output;

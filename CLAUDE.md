@@ -45,4 +45,30 @@
 
 ## Project Notes
 
-<!-- Add your custom notes here -->
+### Node Copy Reduction (active work on jess-dev branch)
+
+**Reference docs**: `docs/future/node-copy-reduction/` — README.md (architecture), migration.md (staged plan), subsystems.md (field reference), PROGRESS.md (tracking)
+
+**Current stage**: Stage 0/1 preparation. Test baselines recorded in PROGRESS.md.
+
+**Critical rules for this work**:
+1. Convert ONE node class at a time. Run `cd packages/core && pnpm test` after each. Confirm same-or-better baseline before proceeding.
+2. Commit after each successful node conversion.
+3. When renaming fields: grep ALL packages before renaming. Update all consumers in the same commit.
+4. The `.data` compatibility getter must be preserved until Stage 6.
+5. `static childKeys: string[] | null` already exists on Node base (`childNodeKeys`). The migration makes it load-bearing — populate it on every subclass.
+6. Leaf nodes (`childKeys = null`): plain instance fields, no adoption overhead.
+7. Container nodes (`childKeys = [...]`): use private fields + adopting setters for child Node fields.
+8. Build core before running jess tests: `pnpm --filter @jesscss/core build`
+9. Jess package tests have pre-existing failures from Node v24 CJS/ESM resolution (`ERR_PACKAGE_PATH_NOT_EXPORTED` for plugin-js). These are NOT regressions.
+
+**Test commands**:
+- Core: `cd packages/core && pnpm test`
+- Fns: `cd packages/fns && pnpm test`
+- Jess: `cd packages/jess && pnpm test` (build core first)
+
+**Key files**:
+- Node base: `packages/core/src/tree/node-base.ts`
+- All node classes: `packages/core/src/tree/*.ts`
+- Collections/iteration: `packages/core/src/tree/util/collections.ts`
+- Clone infrastructure: in node-base.ts `clone()`, `_adoptChildren()`, `getEntriesFromNode()`

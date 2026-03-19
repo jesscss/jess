@@ -23,12 +23,12 @@ export function transformDeclarationToLess(
 
     // Map 'name' property
     if (prop === 'name') {
-      return decl.data.name;
+      return decl.name;
     }
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = decl.data.value;
+      const value = decl.value;
       if (value instanceof Node) {
         return toLessNode(value, { cache });
       }
@@ -37,7 +37,7 @@ export function transformDeclarationToLess(
 
     // Map 'important' property
     if (prop === 'important') {
-      return decl.data.important || false;
+      return decl.important || false;
     }
 
     // Map 'variable' property (from options.assign)
@@ -58,8 +58,8 @@ export function transformDeclarationToLess(
     if (prop === 'accept') {
       return function(visitor: any) {
         // Declaration's accept only traverses its value (children)
-        // Base Node.accept() pattern: visitor.visit(this.data)
-        const value = decl.data.value;
+        // Base Node.accept() pattern: visitor.visit(this.value)
+        const value = decl.value;
         if (value instanceof Node) {
           const lessValue = toLessNode(value, { cache });
           if (lessValue && lessValue.accept) {

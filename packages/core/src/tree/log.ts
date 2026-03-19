@@ -22,37 +22,29 @@ export interface Log extends Node<LogValue, NodeOptions> {
  * These are compile-time diagnostic directives that should not appear in CSS output.
  */
 export class Log extends Node<LogValue, NodeOptions> {
+  static override childKeys = ['level', 'message'] as const;
+
+  level!: LogLevel;
+  message!: Node;
+
   constructor(
     value: LogValue,
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    super(value, options, location, treeContext);
+    super(value as any, options, location, treeContext);
+    this.level = value.level;
+    this.message = value.message;
+    if (this.message instanceof Node) {
+      this.adopt(this.message);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
-    // Log nodes should not be visible (they serialize to empty strings)
     this.removeFlag(F_VISIBLE);
   }
 
-  get level() {
-    return this.data.level;
-  }
-
-  set level(val: LogLevel) {
-    this.setData('level', val);
-  }
-
-  get message() {
-    return this.data.message;
-  }
-
-  set message(val: Node) {
-    this.setData('message', val);
-  }
-
   override toTrimmedString() {
-    // Log nodes serialize to empty string since they're not supported in Jess syntax
     return '';
   }
 
@@ -61,10 +53,8 @@ export class Log extends Node<LogValue, NodeOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    // Evaluate the message expression
-    const messageResult = this.data.message.eval(context);
+    const messageResult = this.message.eval(context);
 
-    // Handle async evaluation if needed
     if (messageResult && typeof (messageResult as any).then === 'function') {
       return (messageResult as Promise<Node>).then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
@@ -72,14 +62,13 @@ export class Log extends Node<LogValue, NodeOptions> {
       });
     }
 
-    // Synchronous evaluation
     this._logMessage(messageResult as Node);
     return new Nil();
   }
 
-  private _logMessage(message: Node): void {
-    const messageStr = String(message);
-    const { level } = this.data;
+  private _logMessage(msg: Node): void {
+    const messageStr = String(msg);
+    const { level } = this;
 
     switch (level) {
       case 'debug':

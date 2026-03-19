@@ -31,9 +31,18 @@ export interface JsImport {
   shortType: 'js';
 }
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
+  static override childKeys = ['path'] as const;
+
+  path!: Quoted;
+  imports: JsImportSpecifier[] | undefined;
+
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    // JS imports are always non-static and may be async
+    this.path = value.path;
+    this.imports = value.imports;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
@@ -41,9 +50,9 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this.data;
+    const { path } = this;
     const { namespace } = this.options;
-    const imports = this.data.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const imports = this.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
 
     w.add('@-from ');
     path.toString(options);

@@ -12,11 +12,11 @@ const unquote = defineFunction(
   'unquote',
   function(string: Quoted): Quoted {
     // If already unquoted (no quote option), return as-is
-    if (!string.options?.quote) {
+    if (!string.quote) {
       return string;
     }
     // Create new Quoted without quote option (unquoted)
-    const value = typeof string.data === 'string' ? string.data : string.valueOf();
+    const value = typeof string.value === 'string' ? string.value : string.valueOf();
     return new Quoted(value);
   },
   {

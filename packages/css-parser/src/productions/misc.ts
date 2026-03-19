@@ -267,11 +267,11 @@ export function functionCall(this: P, ctx: RuleContext = {}) {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    if (!args || args.data.length !== 1) {
+    if (!args || args.value.length !== 1) {
       return false;
     }
-    const firstArg = args.data[0];
-    return Boolean(firstArg instanceof Sequence && firstArg.data.length >= 2);
+    const firstArg = args.value[0];
+    return Boolean(firstArg instanceof Sequence && firstArg.value.length >= 2);
   };
 
   return $.OR([

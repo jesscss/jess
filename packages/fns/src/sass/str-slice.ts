@@ -13,7 +13,7 @@ import { toNumber } from '@jesscss/core';
 const strSlice = defineFunction(
   'str-slice',
   function(string: Quoted, startAt: Dimension, endAt?: Dimension): Quoted {
-    const strValue = typeof string.data === 'string' ? string.data : string.valueOf();
+    const strValue = typeof string.value === 'string' ? string.value : string.valueOf();
     const startValue = toNumber()(startAt) as number;
     const startInt = Math.floor(startValue);
 

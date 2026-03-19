@@ -87,9 +87,9 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       throw new Error('Selector keySet library not found');
     }
 
-    let data = this.data;
-    if (isArray(data)) {
-      for (const child of data as Selector[]) {
+    let children = (this as any).value;
+    if (isArray(children)) {
+      for (const child of children as Selector[]) {
         let childKeySet = child.keySet;
         this._keySet = this._keySet ? this._keySet.or(childKeySet) : childKeySet.clone();
         this._visibleKeySet = this._visibleKeySet

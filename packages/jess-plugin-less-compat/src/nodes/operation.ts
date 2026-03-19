@@ -27,32 +27,19 @@ export function transformOperationToLess(
 
     // Map 'op' property (operator)
     if (prop === 'op') {
-      // Jess stores as [left, op, right], extract op
-      const value = op.data;
-      if (Array.isArray(value) && value.length >= 2) {
-        return value[1]; // Operator is in the middle
-      }
-      return '';
+      return op.operator || '';
     }
 
     // Map 'operands' property
     if (prop === 'operands') {
-      const value = op.data;
-      if (Array.isArray(value)) {
-        // Extract left and right operands, skip operator
-        const operands: Node[] = [];
-        for (let i = 0; i < value.length; i++) {
-          const item = value[i];
-          if (item instanceof Node) {
-            operands.push(item);
-          } else if (typeof item === 'string' && i === 1) {
-            // Skip operator
-            continue;
-          }
-        }
-        return operands.map(o => toLessNode(o, { cache }));
+      const operands: Node[] = [];
+      if (op.left instanceof Node) {
+        operands.push(op.left);
       }
-      return [];
+      if (op.right instanceof Node) {
+        operands.push(op.right);
+      }
+      return operands.map(o => toLessNode(o, { cache }));
     }
 
     // Map 'accept' method for visitor traversal

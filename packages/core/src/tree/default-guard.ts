@@ -10,6 +10,15 @@ export interface DefaultGuard extends Node<string> {
 }
 
 export class DefaultGuard extends Node<string> {
+  static override childKeys = null as null;
+
+  value!: string;
+
+  constructor(value: string, options?: any, location?: any, treeContext?: any) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -22,4 +31,5 @@ export class DefaultGuard extends Node<string> {
     return new Bool(Boolean(context.isDefault));
   }
 }
+
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

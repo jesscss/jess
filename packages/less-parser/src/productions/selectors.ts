@@ -128,7 +128,7 @@ function findDisallowedExtendSelector(selector: Selector, allowed?: readonly Ext
     return undefined;
   }
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.data) {
+    for (const item of selector.value) {
       const disallowed = findDisallowedExtendSelector(item, allowed);
       if (disallowed) {
         return disallowed;
@@ -192,8 +192,8 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext.data.target;
-    let flag = ext.data.flag ?? 1; // ExtendFlag.Exact = 1
+    let target = ext.target;
+    let flag = ext.flag ?? 1; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -235,11 +235,11 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      let target = currentNode.data.target;
+      let target = currentNode.target;
       if (!(target instanceof SelectorList)) {
         currentNode.target = new SelectorList([target, ext.target], undefined, location, context);
       } else {
-        target.setData([...target.data, ext.target]);
+        target.setData([...target.value, ext.target]);
       }
     } else {
       if (!extendNodes || !extendNodes.includes(currentNode)) {
@@ -275,7 +275,7 @@ function isSelectorLikeListItem(node: Node): boolean {
     return node.options.type === 'mixin-ruleset';
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).data.length > 0 && (node as List).data.every(isSelectorLikeListItem);
+    return (node as List).value.length > 0 && (node as List).value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -289,7 +289,7 @@ function isLegacySelectorLikeValue(node: Node): boolean {
     return false; // Single mixin reference is valid.
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).data.length > 1 && (node as List).data.every(isSelectorLikeListItem);
+    return (node as List).value.length > 1 && (node as List).value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -312,11 +312,11 @@ export function relativeSelector(this: P, ctx: RuleContext = {}) {
         let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
         let targetNode =
           node instanceof Extend
-            ? node.data.selector
+            ? node.selector
             : node;
         if (targetNode instanceof ComplexSelector) {
-          targetNode.setData([combinator, ...targetNode.data]);
-          targetNode._location = $.getLocationFromNodes(targetNode.data);
+          targetNode.setData([combinator, ...targetNode.value]);
+          targetNode._location = $.getLocationFromNodes(targetNode.value);
         } else {
           let nodes = [combinator, targetNode as ComplexSelectorComponent];
           let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
@@ -619,7 +619,7 @@ export function anonymousMixinDefinition(this: P, ctx: RuleContext = {}) {
     // Check if this should be parsed as Collection or Rules
     const shouldBeCollection = (() => {
       let properties: Declaration[] = [];
-      for (const node of rules.data) {
+      for (const node of rules.value) {
         if (node.type === 'Declaration') {
           properties.push(node);
         } else if (node.type === 'Comment' || node.type === 'VarDeclaration') {
@@ -636,7 +636,7 @@ export function anonymousMixinDefinition(this: P, ctx: RuleContext = {}) {
       }
 
       const validPropertyCount = properties.filter((decl) => {
-        const name = decl.data.name;
+        const name = decl.name;
         const propName = typeof name === 'string' ? name : name.valueOf();
         // Skip custom properties (--*)
         if (propName.startsWith('--')) {
@@ -658,7 +658,7 @@ export function anonymousMixinDefinition(this: P, ctx: RuleContext = {}) {
       || usage === 'default-param';
     const shouldBeCollectionFinal = shouldBeCollection && !forceMixinForDynamicUsage;
     if (shouldBeCollectionFinal) {
-      return new Collection(rules.data, rules.options, $.endRule(), $.context);
+      return new Collection(rules.value, rules.options, $.endRule(), $.context);
     }
   }
 

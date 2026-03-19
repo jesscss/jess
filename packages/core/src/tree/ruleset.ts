@@ -65,37 +65,36 @@ export interface Ruleset {
 }
 
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
+  static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
+
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
   frames: (Ruleset | AtRule)[] | undefined;
 
+  selector!: Selector | Nil;
+  rules!: Rules;
+  guard: Condition | Nil | undefined;
+  selectorBeforeExtend: Selector | Nil | undefined;
+
   constructor(value: NarrowRulesetValue<T>, options?: RulesetOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.selector = value.selector;
+    this.rules = value.rules;
+    this.guard = value.guard;
+    this.selectorBeforeExtend = value.selectorBeforeExtend;
+    if (this.selector instanceof Node) {
+      this.adopt(this.selector);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
+    if (this.guard instanceof Node) {
+      this.adopt(this.guard);
+    }
+    if (this.selectorBeforeExtend instanceof Node) {
+      this.adopt(this.selectorBeforeExtend);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
-  }
-
-  get selector() {
-    return this.data.selector;
-  }
-
-  set selector(val: NarrowRulesetValue<T>['selector']) {
-    this.setData('selector', val);
-  }
-
-  get rules() {
-    return this.data.rules;
-  }
-
-  set rules(val: NarrowRulesetValue<T>['rules']) {
-    this.setData('rules', val);
-  }
-
-  get guard() {
-    return this.data.guard;
-  }
-
-  set guard(val: NarrowRulesetValue<T>['guard']) {
-    this.setData('guard', val as any);
   }
 
   /**
@@ -107,11 +106,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     ruleset: Ruleset,
     sharedValue: RulesetValue
   ): void {
-    const rules = ruleset.data?.rules;
+    const rules = ruleset.rules;
     if (!rules || !isNode(rules, N.Rules)) {
       return;
     }
-    const children = (rules as Rules).data;
+    const children = (rules as Rules).value;
     if (!Array.isArray(children)) {
       return;
     }
@@ -120,13 +119,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         continue;
       }
       const rs = child as Ruleset;
-      if (rs.data === sharedValue) {
-        rs.setData({
-          selector: rs.data.selector,
-          rules: rs.data.rules,
-          ...(rs.data.guard !== undefined && { guard: rs.data.guard })
-        });
-      }
+      // With instance fields (no shared data object), shallow clones already
+      // have independent fields, so this identity check is always false.
+      // Kept for structural safety until full clone audit.
       Ruleset.ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
     }
   }
@@ -169,7 +164,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * concrete selector unchanged because they already serialize from root.
    */
   getEffectiveSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false): Selector | Nil {
-    const selector = this.data.selector;
+    const selector = this.selector;
     if (!selector || selector instanceof Nil) {
       return selector;
     }
@@ -179,17 +174,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (
       collapseNesting
       && this.hoistToRoot
-      && !this.data.selectorBeforeExtend
+      && !this.selectorBeforeExtend
       && ownSelector
       && !(ownSelector instanceof Nil)
       && ownSelector.valueOf() !== selector.valueOf()
     ) {
       let parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
       if (parentSelector && !(parentSelector instanceof Nil)) {
-        if (parentRs!.data.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRs!)) {
+        if (parentRs!.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRs!)) {
           parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
             parentSelector as Selector,
-            parentRs!.data.selectorBeforeExtend
+            parentRs!.selectorBeforeExtend
           );
         }
         if (parentSelector && !(parentSelector instanceof Nil)) {
@@ -225,7 +220,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.hoistToRoot || this.treeContext?.opts?.collapseNesting === true
     )
       ? this.getEffectiveSelector()
-      : this.data.selector;
+      : this.selector;
     if (selector instanceof Nil) {
       this._valueOf = '';
       return this._valueOf;
@@ -284,23 +279,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     if (isNode(sel, N.SelectorList)) {
       const list = sel as SelectorList;
-      if (Array.isArray(list.data)) {
-        for (const item of list.data) {
-          Ruleset.ensureSelectorVisible(item);
-        }
+      for (const item of list.value) {
+        Ruleset.ensureSelectorVisible(item);
       }
       return;
     }
     if (isNode(sel, N.ComplexSelector)) {
-      const comps = (sel as ComplexSelector).data;
-      if (Array.isArray(comps)) {
-        for (const c of comps) {
-          Ruleset.ensureSelectorVisible(c as Selector);
-        }
+      const comps = (sel as ComplexSelector).value;
+      for (const c of comps) {
+        Ruleset.ensureSelectorVisible(c as Selector);
       }
       return;
     }
-    const v = (sel as Selector & { data?: Selector[] }).data;
+    const v = (sel as any).value;
     if (Array.isArray(v)) {
       for (const c of v) {
         Ruleset.ensureSelectorVisible(c);
@@ -326,12 +317,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       if (isNode(node, N.SelectorList)) {
         const list = node as SelectorList;
-        return SelectorList.create(list.data.map(item => materialize(item as Selector))).inherit(node) as Selector;
+        return SelectorList.create(list.value.map(item => materialize(item as Selector))).inherit(node) as Selector;
       }
       if (isNode(node, N.ComplexSelector)) {
         const complex = node as ComplexSelector;
         const parts: ComplexSelectorComponent[] = [];
-        for (const part of complex.data) {
+        for (const part of complex.value) {
           if (isNode(part, N.Ampersand)) {
             const amp = part as Ampersand;
             const n = amp as unknown as Node;
@@ -340,7 +331,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               if (resolved && !(resolved instanceof Nil)) {
                 const repl = materialize(resolved as Selector);
                 if (isNode(repl, N.ComplexSelector)) {
-                  parts.push(...(repl as ComplexSelector).data.map(c => c.copy(true) as ComplexSelectorComponent));
+                  parts.push(...(repl as ComplexSelector).value.map(c => c.copy(true) as ComplexSelectorComponent));
                 } else {
                   parts.push(repl as ComplexSelectorComponent);
                 }
@@ -352,10 +343,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         return ComplexSelector.create(parts).inherit(node) as Selector;
       }
-      const arr = (node as Selector & { data?: Selector[] }).data;
+      const arr = (node as any).value;
       if (Array.isArray(arr)) {
-        const cloned = node.copy(true) as Selector & { data?: Selector[] };
-        cloned.data = arr.map(item => materialize(item as Selector));
+        const cloned = node.copy(true) as any;
+        cloned.value = arr.map(item => materialize(item as Selector));
         return cloned as Selector;
       }
       return node.copy(true) as Selector;
@@ -377,7 +368,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         && !(items[0] as Ampersand).appendValue;
     }
     if (isNode(sel, N.SelectorList)) {
-      return (sel as SelectorList).data.every(
+      return (sel as SelectorList).value.every(
         item => isNode(item, N.Ampersand) && !(item as Ampersand).appendValue
       );
     }
@@ -408,7 +399,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
-    for (const item of (sel as SelectorList).data) {
+    for (const item of (sel as SelectorList).value) {
       if (!shouldKeep(item)) {
         continue;
       }
@@ -443,7 +434,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     const originalValues = new Set<string>();
     if (isNode(original, N.SelectorList)) {
-      for (const item of original.data) {
+      for (const item of (original as SelectorList).value) {
         originalValues.add(item.valueOf());
       }
     } else {
@@ -464,7 +455,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector instanceof Nil) {
       return '';
     }
-    let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    if (withoutComments) {
+      options = { ...options, suppressComments: true };
+    }
+    let renderSelector = selector;
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
@@ -480,7 +474,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     ) {
       renderSelector = Ruleset.filterReferenceVisibleSelectorItems(
         renderSelector as Selector,
-        this.data.selectorBeforeExtend
+        this.selectorBeforeExtend
       ) as typeof renderSelector;
       if (renderSelector instanceof Nil) {
         return '';
@@ -513,7 +507,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node.preEvaluated = true;
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
-      let { selector, rules, guard } = node.data;
+      let { selector, rules, guard } = node;
       // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
       // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
       // (like Less `@base`) become inaccessible.
@@ -589,7 +583,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         (sel) => {
           // If this ruleset shares its value with a descendant ruleset, give descendants
           // their own value before we overwrite value.selector so they keep their selector.
-          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, node.data);
+          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, {} as any);
           // Store the evaluated selector - this is what will be in the frame
           node.setData('selector', sel as Selector | Nil);
           if (sel.hoistToRoot) {
@@ -606,7 +600,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // are registered in source order before we process extends.
           // Push this ruleset to the frame so nested rulesets get the correct parent selector
           // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
-          const childRules = node.data.rules;
+          const childRules = node.rules;
           if (childRules && !childRules.preEvaluated) {
             context.rulesetFrames.push(node as Ruleset);
             if (extendRoot) {
@@ -646,9 +640,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override copy(deep?: boolean): this {
     const node = super.copy(deep);
-    const selectorSourceNode = this.data.selector.sourceNode;
+    const selectorSourceNode = this.selector.sourceNode;
     node.setData('selector', selectorSourceNode.copy(true) as Selector | Nil);
-    node.data.selector.sourceNode = selectorSourceNode;
+    node.selector.sourceNode = selectorSourceNode;
     return node;
   }
 
@@ -668,14 +662,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     return pipe(
       () => {
-        const selectorText = String(this.data.selector?.valueOf?.() ?? '');
+        const selectorText = String(this.selector?.valueOf?.() ?? '');
         if (
           selectorText.includes('.call-lock-mixin')
           || selectorText.includes('#guarded-caller')
           || selectorText.includes('#guarded-deeper')
         ) {
         }
-        let { guard } = this.data;
+        let { guard } = this;
         // Guard was already set to Nil (failed in a previous eval)
         if (guard instanceof Nil) {
           return guard;
@@ -686,8 +680,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return pipe(
             () => guard.eval(context),
             (guardResult) => {
-              const selectorText = String(this.data.selector?.valueOf?.() ?? '');
-              const guardPasses = Boolean(guardResult instanceof Bool && guardResult.data === true);
+              const selectorText = String(this.selector?.valueOf?.() ?? '');
+              const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
               if (selectorText.includes('#guarded') || selectorText.includes('#top') || selectorText.includes('#deeper')) {
               }
               if (!guardPasses) {
@@ -708,7 +702,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (guardResult instanceof Nil) {
           return guardResult;
         }
-        let { selector } = this.data;
+        let { selector } = this;
         const frame = atIndex(context.rulesetFrames, -1);
         if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
           this.hoistToRoot = true;
@@ -720,8 +714,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // We don't push frames because there's no selector context
           // Store Nil in selector so next step can detect this case
           this.setData('selector', selector as Selector | Nil);
-          const evaluatedRules = this.data.rules.eval(context);
-          // Update this.data.rules to point to evaluated Rules to prevent circular reference
+          const evaluatedRules = this.rules.eval(context);
+          // Update this.rules to point to evaluated Rules to prevent circular reference
           // when debug code traverses the AST
           if (isThenable(evaluatedRules)) {
             return (evaluatedRules as Promise<Rules>).then((rules) => {
@@ -733,11 +727,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
-        const preservedSourceNode = this.data.selector?.sourceNode;
+        const preservedSourceNode = this.selector?.sourceNode;
         this.setData('selector', selector as Selector | Nil);
         // Restore the sourceNode on the new selector so it's available when copying
-        if (preservedSourceNode && this.data.selector) {
-          this.data.selector.sourceNode = preservedSourceNode;
+        if (preservedSourceNode && this.selector) {
+          this.selector.sourceNode = preservedSourceNode;
         }
         if (context.opts.collapseNesting) {
           this.hoistToRoot = true;
@@ -745,7 +739,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
         pushedFrames = true;
-        return this.data.rules.eval(context);
+        return this.rules.eval(context);
       },
       (evaluatedRules: Rules | Nil) => {
         if (pushedFrames) {
@@ -755,7 +749,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (evaluatedRules instanceof Nil) {
           return evaluatedRules;
         }
-        const selectorText = String(this.data.selector?.valueOf?.() ?? '');
+        const selectorText = String(this.selector?.valueOf?.() ?? '');
         if (
           selectorText.includes('.call-lock-mixin')
           || selectorText.includes('#guarded-caller')
@@ -765,13 +759,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
         // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)
         // In that case, return it directly without wrapping back in Ruleset
-        if (this.data.selector instanceof Nil) {
+        if (this.selector instanceof Nil) {
           // Selector was Nil, so we already returned Rules directly - just return it
           return evaluatedRules;
         }
 
         this.setData('rules', evaluatedRules as Rules);
-        const rules = this.data.rules;
+        const rules = this.rules;
 
         if (rules.visibleRules().length === 0) {
           this.removeFlag(F_VISIBLE);

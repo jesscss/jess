@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Bool extends Node<boolean> {
@@ -12,22 +12,24 @@ export interface Bool extends Node<boolean> {
  * A boolean. Named `Bool` to avoid conflict with the built-in `Boolean` class.
  */
 export class Bool extends Node<boolean> {
-  constructor(...args: ConstructorParameters<typeof Node<boolean>>) {
-    super(...args);
+  static override childKeys = null as null;
+
+  value!: boolean;
+
+  constructor(
+    value: boolean,
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value as any, options, location, treeContext);
+    this.value = value;
     this.addFlag(F_STATIC);
-  }
-
-  get value() {
-    return this.data;
-  }
-
-  set value(val: boolean) {
-    this.setData(val);
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
     if (other instanceof Bool) {
-      return this.data === other.data ? 0 : undefined;
+      return this.value === other.value ? 0 : undefined;
     }
     return undefined;
   }
@@ -36,8 +38,9 @@ export class Bool extends Node<boolean> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    w.add(this.data ? 'true' : 'false', this);
+    w.add(this.value ? 'true' : 'false', this);
     return w.getSince(mark);
   }
 }
+
 export const bool = defineType(Bool, 'Bool');

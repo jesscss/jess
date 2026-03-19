@@ -12,8 +12,8 @@ import { defineFunction, Quoted, Dimension } from '@jesscss/core';
 const strIndex = defineFunction(
   'str-index',
   function(string: Quoted, substring: Quoted): Dimension | null {
-    const strValue = typeof string.data === 'string' ? string.data : string.valueOf();
-    const subValue = typeof substring.data === 'string' ? substring.data : substring.valueOf();
+    const strValue = typeof string.value === 'string' ? string.value : string.valueOf();
+    const subValue = typeof substring.value === 'string' ? substring.value : substring.valueOf();
 
     const index = strValue.indexOf(subValue);
     if (index === -1) {

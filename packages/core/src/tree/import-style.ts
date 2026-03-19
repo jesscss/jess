@@ -139,9 +139,39 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  static override childKeys = ['path', 'withNode'] as const;
+
+  path!: Quoted | Url;
+  withNode: Reference | Collection | undefined;
+  withType: 'with' | 'set' | undefined;
+
+  override clone(deep?: boolean): this {
+    const options = (this as any)._meta?.options;
+    const newNode = new (this.constructor as any)(
+      {
+        path: deep ? this.path.clone(deep) : this.path,
+        withNode: deep && this.withNode instanceof Node ? this.withNode.clone(deep) : this.withNode,
+        withType: this.withType
+      },
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    return newNode;
+  }
+
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    // Style imports are always non-static and may be async
+    this.path = value.path;
+    this.withNode = value.withNode;
+    this.withType = value.withType;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
+    if (this.withNode instanceof Node) {
+      this.adopt(this.withNode);
+    }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
@@ -149,7 +179,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this.data;
+    const { path } = this;
     const { type, namespace, importOptions } = this.options;
 
     if (type === 'compose') {
@@ -258,7 +288,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { path, withNode, withType } = node.data;
+    const { path, withNode, withType } = node;
     const withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
     const { options } = node;
     options.importOptions ??= {};
@@ -389,7 +419,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Build the declaration registry for efficient lookups
           // This avoids O(n*m) complexity when we have many injected variables
           // First, register all nodes in modifiedRules so they're in the registry
-          for (const node of modifiedRules.data) {
+          for (const node of modifiedRules.value) {
             modifiedRules.registerNode(node);
           }
           const declarationRegistry = modifiedRules.getRegistry('declaration');
@@ -406,9 +436,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Works correctly for both scope lookup ($var) and linear lookup ($^var):
           // - For linear lookup: injected vars come first, so they're found first
           // - For scope lookup: original is replaced, so injected value wins
-          for (const injectedNode of withRules.data) {
+          for (const injectedNode of withRules.value) {
             if (isNode(injectedNode, N.VarDeclaration)) {
-              const varName = injectedNode.data.name?.toString();
+              const varName = (injectedNode as any).name?.toString();
               if (varName) {
               // Use the registry for efficient lookup instead of linear search
                 const declarations = declarationRegistry.index.get(varName);
@@ -420,7 +450,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                   // Remove the old declaration from the registry
                     declarations.delete(existingDecl);
                     // Find its index in the array and replace it
-                    const index = modifiedRules.data.indexOf(existingDecl);
+                    const index = modifiedRules.value.indexOf(existingDecl);
                     if (index !== -1) {
                     // Adopt the new node and replace in array
                       modifiedRules.setData(index, injectedNode);
@@ -458,7 +488,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             finalRules.push(newNode);
           }
           // Then, add all nodes from the modified imported rules (flattened, with replacements)
-          for (const node of modifiedRules.data) {
+          for (const node of modifiedRules.value) {
             finalRules.push(node);
           }
           rules = finalRules;
@@ -634,17 +664,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     let wrapped: Node = sourceNode;
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).data] : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).value] : [postlude];
 
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       const body = Rules.create([wrapped]);
 
       if (isNode(current, N.Call)) {
-        const callName = String(current.data.name).toLowerCase();
+        const callName = String(current.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.data.args?.data ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.data.args;
+          const args = current.args?.value ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.args;
           if (prelude) {
             wrapped = new AtRule({
               name: new Any(`@${callName}`, { role: 'atkeyword' }),
@@ -674,15 +704,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return rules;
     }
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).data] : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).value] : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       if (isNode(current, N.Call)) {
-        const callName = String(current.data.name).toLowerCase();
+        const callName = String(current.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.data.args?.data ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.data.args;
+          const args = current.args?.value ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.args;
           if (prelude) {
             const wrappedAtRule = new AtRule({
               name: new Any(`@${callName}`, { role: 'atkeyword' }),

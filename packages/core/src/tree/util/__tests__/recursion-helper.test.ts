@@ -41,7 +41,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.data as any
+        args: list1.value as any
       });
 
       // First call with list1
@@ -57,7 +57,7 @@ describe('CallMap', () => {
       const list2 = list([num(1), num(2)]); // Same content, different instance
       const call1 = call({
         name: ref('mixin'),
-        args: list1.data as any
+        args: list1.value as any
       });
 
       // First call with list1
@@ -73,7 +73,7 @@ describe('CallMap', () => {
       const list2 = list([num(3), num(4)]); // Different content
       const call1 = call({
         name: ref('mixin'),
-        args: list1.data as any
+        args: list1.value as any
       });
 
       // First call with list1
@@ -88,7 +88,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.data as any
+        args: list1.value as any
       });
 
       // First call - should return false
@@ -103,11 +103,11 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin1'),
-        args: list1.data as any
+        args: list1.value as any
       });
       const call2 = call({
         name: ref('mixin2'),
-        args: list1.data as any
+        args: list1.value as any
       });
 
       // First call with list1
@@ -128,7 +128,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.data as any
+        args: list1.value as any
       });
 
       // Add once - this adds the entry to the set
@@ -150,7 +150,7 @@ describe('CallMap', () => {
       const list2 = list([num(3), num(4)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.data as any
+        args: list1.value as any
       });
 
       // Add first list

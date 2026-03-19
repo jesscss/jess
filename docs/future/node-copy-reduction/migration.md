@@ -363,6 +363,29 @@ ones most used in functions and most visible in less-compat adapters.
 Eliminate copies that exist only to strip comments from output. Introduce `render()` as
 the primary serialization API.
 
+### Why this matters
+
+/**
+ * In the current architecture, the most common reason for calling `copy(true)` is
+ * **comment suppression** — not structural mutation. When a variable value, mixin
+ * return, or extend selector is rendered, the engine deep-clones the entire subtree
+ * just to replace `Comment` nodes with `Nil` and clear `pre`/`post` whitespace arrays.
+ * This is pure waste: the underlying data is unchanged, only the output policy differs.
+ *
+ * A `RenderMask` makes this a serialization-time decision rather than a materialization
+ * decision. The canonical node stays unmodified; the mask tells the serializer "skip
+ * comments in this subtree." Zero allocation, same output.
+ *
+ * This is the single highest-ROI optimization in the copy-reduction plan because it
+ * addresses the most frequent clone site (Reference output) without touching eval
+ * semantics, lookup ordering, or parent/child relationships.
+ *
+ * The `render()` function is the delivery mechanism: unlike `.toString()` (which takes
+ * no parameters per `Object.prototype`), `render(node, options)` can accept a session
+ * and a mask. `.toString()` becomes shorthand for `render(this)` — zero-config for
+ * canonical output, explicit options when needed.
+ */
+
 ### Work
 
 1. Define `RenderMask` interface.
@@ -473,6 +496,35 @@ Remove the `.data` getter and all remaining code that reads `.data`.
 
 Add the session object without changing default eval behavior.
 
+### Why this matters
+
+/**
+ * Today, when the same stylesheet is `@import`-ed multiple times with different
+ * `with`/`set` configurations, the engine deep-clones the *entire* parsed AST for
+ * each import. This is the second-largest allocation cost (after comment-driven copies)
+ * and scales linearly with file size × import count.
+ *
+ * The fundamental insight: most of the tree is identical across imports. Only the
+ * nodes that are *actually mutated* by evaluation (variable values, mixin bodies,
+ * resolved references) differ. Everything else — the structural skeleton, the selector
+ * shapes, the static declarations — is shared.
+ *
+ * `EvalSession` implements this insight as a **persistent-tree overlay**. One canonical
+ * AST exists in memory. Each import/eval context gets a lightweight session object that
+ * stores only the *deltas* — field overrides, child mutations, runtime bookkeeping
+ * (parent, evaluated, index). Untouched nodes remain shared with zero per-session cost.
+ *
+ * This is the same principle behind persistent data structures (Clojure's maps, Git's
+ * object store): the "new version" is `canonical + patch`, not a full copy. The first
+ * write to a shared node creates a patch record; subsequent reads in that session see
+ * the patched value; other sessions see the canonical value.
+ *
+ * Stage 7 introduces the *container* (`EvalSession` on `Context`) without migrating
+ * any subsystem to use it. This is the compatibility bridge: when no session exists,
+ * all code paths behave exactly as they do today, reading and writing node-local fields.
+ * Later stages (8-13) incrementally move subsystems behind the session abstraction.
+ */
+
 ### Work
 
 Introduce an `EvalSession` object that can hold:
@@ -501,6 +553,37 @@ When no `EvalSession` exists:
 ### Goal
 
 Stop reading/writing runtime eval state directly from/to nodes in migrated code.
+
+### Why this matters
+
+/**
+ * The session overlay is only useful if code actually reads and writes through it.
+ * Today, eval code directly mutates node fields: `node.parent = newParent`,
+ * `node.evaluated = true`, `rules.value.push(newDecl)`. These mutations are the
+ * reason we clone — once you mutate a shared node, every context that references it
+ * sees the mutation.
+ *
+ * Session-aware helpers solve this by intercepting reads and writes:
+ *
+ * - **Reads** check the session overlay first, fall back to the canonical node field.
+ *   `getParent(node, session)` returns the session-local parent if one was patched,
+ *   otherwise `node.parent`. Zero allocation — just a WeakMap lookup + fallback.
+ *
+ * - **Writes** go into the session overlay, never touching the canonical node.
+ *   `patchField(node, session, 'parent', newParent)` creates a `RuntimeState` entry
+ *   for that node in that session. Other sessions (or no-session code) still see
+ *   `node.parent` unchanged.
+ *
+ * The critical design constraint: **when no session exists, the helpers must have
+ * zero overhead.** This is why they are plain functions, not Proxies. A function call
+ * with an early `if (!session) return node.field` compiles to a single branch — far
+ * cheaper than Proxy traps (already measured at ~1.2% CPU overhead for the less-compat
+ * Proxy layer).
+ *
+ * Stage 8 introduces the helpers and wires them into one subsystem (likely import
+ * evaluation). The rest of the codebase continues using direct field access until
+ * later stages migrate them.
+ */
 
 ### Work
 
@@ -534,6 +617,31 @@ All helpers fall back to node-local fields when no session exists.
 
 Stop cloning imported trees for lookup/configuration.
 
+### Why this matters
+
+/**
+ * This is where the session model pays off concretely. Today, `@import "theme.less"
+ * with (@primary: red)` deep-clones the entire theme AST, injects a `@primary: red`
+ * VarDeclaration at the top, and re-evaluates the whole tree. A second import with
+ * `(@primary: blue)` clones again. For a 2,000-node theme file imported 5 times with
+ * different configs, that is 10,000 new node objects — most of which are identical.
+ *
+ * With sessions, each import gets its own `EvalSession` backed by the same canonical
+ * theme AST. The `with (@primary: red)` becomes a session-local field override on the
+ * `@primary` VarDeclaration node — one `NodePatch` entry, not 2,000 cloned nodes.
+ * Evaluation reads through the overlay, so `@primary`'s value resolves to `red` in
+ * session A and `blue` in session B, all from the same canonical tree.
+ *
+ * The lookup infrastructure (declaration index, mixin index) also becomes session-scoped
+ * via `ScopeSnapshot`. Each session builds its own index lazily on first lookup, then
+ * caches it. Index invalidation is session-local — re-evaluating one import's config
+ * doesn't dirty another session's cached index.
+ *
+ * The key invariant: **the canonical AST is never mutated.** All mutations go into
+ * session patches. This means the canonical AST can be shared across any number of
+ * concurrent sessions without synchronization.
+ */
+
 ### Work
 
 Use the session to represent:
@@ -554,6 +662,40 @@ Use the session to represent:
 Stop using canonical nodes as storage for eval bookkeeping (`preEvaluated`, `evaluated`,
 `index`, `parent`, `sourceParent`).
 
+### Why this matters
+
+/**
+ * Even after field overrides (Stage 9) and child mutations are session-scoped, the
+ * *runtime bookkeeping* fields are still written directly onto canonical nodes:
+ *
+ * - `node.parent` — set during adoption, used for scope walks
+ * - `node.sourceParent` — the "original" parent for provenance
+ * - `node.index` — position in parent's child array
+ * - `node.preEvaluated` — flag preventing double preEval
+ * - `node.evaluated` — flag preventing double eval
+ *
+ * These are the sneakiest sharing violation. If two sessions share a canonical node
+ * and both set `node.parent`, the second write clobbers the first. This is why
+ * today's import evaluation must clone: not just for data isolation, but for
+ * **runtime state isolation**.
+ *
+ * Moving these into `RuntimeState` (a per-node, per-session record in the session's
+ * `WeakMap<Node, RuntimeState>`) gives each session its own independent view of
+ * ancestry and eval status. The canonical node's `parent`/`evaluated`/etc. become
+ * the "default" values — used when no session is active.
+ *
+ * This is the most delicate stage because **lookup semantics depend on ancestry**.
+ * `getParent()` is called during scope walks, mixin resolution, and extend
+ * reachability checks. Every one of these call sites must be migrated to use
+ * `getParent(node, session)` instead of `node.parent`. Miss one, and lookups
+ * silently read stale ancestry from the wrong session (or the canonical default).
+ *
+ * Strategy: migrate one lookup type at a time (declarations first, then mixins,
+ * then rulesets), with parity tests verifying that lookup results match the
+ * clone-based baseline. Only after all lookup types are verified do we remove
+ * the direct field writes.
+ */
+
 ### Work
 
 Move these fields into session runtime state for migrated paths. This is the most delicate
@@ -569,6 +711,40 @@ stage because lookup semantics depend on ancestry.
 ### Goal
 
 Create concrete node trees only for touched paths.
+
+### Why this matters
+
+/**
+ * Sessions store deltas, but some consumers need concrete node objects:
+ *
+ * - **Import results** returned to the caller's scope must be real nodes that can
+ *   be adopted, registered, and serialized without a session reference.
+ * - **Mixin return values** are injected into the caller's Rules array.
+ * - **Detached ruleset values** that escape the eval branch where they were created.
+ * - **Plugin/user-facing APIs** (less-compat visitors, function return values) that
+ *   expect concrete node instances.
+ *
+ * Materialization is the process of turning `canonical + session patches` into a
+ * concrete node tree. The critical optimization: **only the rewritten path needs
+ * new nodes.** If a session patched `@primary`'s value deep inside a theme file,
+ * materialization creates new nodes for: the VarDeclaration, the Rules that contains
+ * it, and the Ruleset that contains those Rules — the "spine" from root to the
+ * changed node. Everything else (all sibling declarations, all other rulesets, the
+ * selector trees) is reused by reference.
+ *
+ * This is path-copy materialization, the same strategy used by persistent data
+ * structures and virtual DOM diffing. For a 2,000-node theme with 5 patched nodes,
+ * materialization creates ~15-20 new nodes (the spines), not 2,000.
+ *
+ * Implementation: walk from the patched node toward the root. At each level, if the
+ * node or any descendant has a session patch, shallow-copy the node and update the
+ * child reference to point to the materialized child. If no descendant is patched,
+ * reuse the canonical node as-is.
+ *
+ * Materialization is always the *last* step. Sessions accumulate patches during eval;
+ * materialization happens once at the session boundary (import return, mixin return,
+ * etc.). This keeps the number of materializations minimal.
+ */
 
 ### Work
 
@@ -590,6 +766,29 @@ When a migrated path needs a concrete node:
 Delete `preserveOriginalNodes` entirely. With sessionized eval, canonical nodes are never
 mutated — they are inherently preserved. The flag has no remaining job.
 
+### Why this matters
+
+/**
+ * `preserveOriginalNodes` is a flag that triggers clone-before-mutate behavior during
+ * evaluation. It exists because eval mutates nodes in place (replacing values,
+ * updating parents, marking as evaluated), and some callers need the pre-eval state
+ * (source maps, error reporting, re-evaluation).
+ *
+ * With sessions, eval mutations go into the session overlay, not into the canonical
+ * node. The canonical AST is inherently preserved — it was never mutated. The flag's
+ * job (protect the original) is now the session model's job (isolate mutations).
+ *
+ * Removing this flag eliminates:
+ * - The clone-before-mutate code paths in `preEval` and `eval`
+ * - The `sourceNode` tracking that was needed to link mutated clones back to originals
+ *   (canonical nodes ARE the originals — no linking needed)
+ * - The cognitive overhead of "which copy am I looking at?"
+ *
+ * This is a cleanup stage, not a behavior change. By this point, all eval paths should
+ * be session-aware, and the flag should be unreachable. If any code path still depends
+ * on it, that is a signal that the session migration in Stages 8-11 is incomplete.
+ */
+
 ### Work
 
 1. Remove the flag and all code paths that check it.
@@ -608,6 +807,36 @@ mutated — they are inherently preserved. The flag has no remaining job.
 Apply sessionized eval to detached rulesets, mixin calls, broader eval paths.
 Delete obsolete clone-backed code.
 
+### Why this matters
+
+/**
+ * Stages 7-12 focus on the import path because it is the most expensive and most
+ * isolated clone site. But imports are not the only place where deep clones happen:
+ *
+ * - **Mixin calls**: Each `.mixin()` call clones the mixin body before evaluation.
+ *   With sessions, mixin bodies can be evaluated in a child session, and only the
+ *   return value (the resolved declarations/rules) needs materialization.
+ *
+ * - **Detached rulesets**: `@dr: { ... }; .use { @dr(); }` currently clones the
+ *   ruleset block. With sessions, the block is evaluated in a session scoped to the
+ *   call site.
+ *
+ * - **Each/For loops**: Loop bodies are cloned per iteration. With sessions, each
+ *   iteration gets a child session with the loop variable patched.
+ *
+ * - **Guard evaluation**: Mixin guards clone to test without side effects. With
+ *   sessions, guard evaluation runs in a throw-away session.
+ *
+ * This stage is intentionally broad and incremental. Each clone site is migrated
+ * independently, verified independently, and committed independently. The goal is
+ * not to eliminate every last clone (some clones are structurally necessary), but to
+ * eliminate the ones where the only reason for cloning was mutation isolation.
+ *
+ * By the end of this stage, `clone()` should only be called for genuinely structural
+ * reasons: creating new nodes during selector assembly, building extend output,
+ * user-facing copy APIs. The "clone to protect" pattern should be gone.
+ */
+
 ### Exit Criteria
 
 - Clone-heavy eval paths shrink over time.
@@ -619,6 +848,28 @@ Delete obsolete clone-backed code.
 
 Investigate whether the current two-pass tree traversal (preEval then eval) can be
 collapsed into a single pass to avoid traversing the tree twice.
+
+### Why this might matter
+
+/**
+ * With session-based eval, preEval's primary job — cloning nodes for mutation safety —
+ * is gone. What remains is **name registration**: walking the tree to discover
+ * declarations, mixins, and rulesets, building the scope indexes that eval depends on.
+ *
+ * If name registration can happen inline during a single walk (register on first
+ * encounter, then evaluate in priority order from the queue), we eliminate one full
+ * traversal of the AST. For a 2,000-node tree, that is 2,000 fewer function calls,
+ * 2,000 fewer `instanceof` checks, and 2,000 fewer stack frames.
+ *
+ * The question is whether this savings is meaningful. If preEval is <10% of total eval
+ * time (likely for small-to-medium stylesheets), collapsing the passes saves very
+ * little. If preEval is >25% (possible for deeply nested mixin-heavy code where preEval
+ * triggers cascading dynamic name resolution), the savings could be significant.
+ *
+ * This stage is explicitly exploratory. It starts with instrumentation, prototypes a
+ * simple case, and only proceeds to full implementation if the data justifies it.
+ * The exit criterion is a *decision* (merge or keep separate), not a shipped feature.
+ */
 
 ### Background
 

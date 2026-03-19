@@ -43,14 +43,14 @@ function invalidateSelectorCache(selector?: Selector | Nil): void {
 
 function invalidateRulesetSelectorCaches(ruleset: Ruleset): void {
   ruleset.invalidateSelectorValueCache();
-  invalidateSelectorCache(ruleset.data.selector);
+  invalidateSelectorCache(ruleset.selector);
   invalidateSelectorCache((ruleset.options as { ownSelector?: Selector | Nil }).ownSelector);
-  invalidateSelectorCache(ruleset.data.selectorBeforeExtend as Selector | Nil | undefined);
-  const rules = ruleset.data?.rules;
+  invalidateSelectorCache(ruleset.selectorBeforeExtend as Selector | Nil | undefined);
+  const rules = ruleset.rules;
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
-  for (const child of (rules as Rules).data) {
+  for (const child of (rules as Rules).value) {
     if (isNode(child, N.Ruleset)) {
       invalidateRulesetSelectorCaches(child as Ruleset);
     }
@@ -58,7 +58,7 @@ function invalidateRulesetSelectorCaches(ruleset: Ruleset): void {
 }
 
 function refreshNestedRulesetSelectors(parentRuleset: Ruleset): void {
-  const rules = parentRuleset.data?.rules;
+  const rules = parentRuleset.rules;
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
@@ -68,7 +68,7 @@ function refreshNestedRulesetSelectors(parentRuleset: Ruleset): void {
     return;
   }
 
-  for (const child of (rules as Rules).data) {
+  for (const child of (rules as Rules).value) {
     if (!isNode(child, N.Ruleset)) {
       continue;
     }
@@ -373,11 +373,11 @@ function getCachedTargetInfo(
 
 function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset): void {
   cache.delete(ruleset);
-  const rules = ruleset.data?.rules;
+  const rules = ruleset.rules;
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
-  for (const child of (rules as Rules).data) {
+  for (const child of (rules as Rules).value) {
     if (isNode(child, N.Ruleset)) {
       invalidateTargetInfoCacheTree(cache, child as Ruleset);
     }
@@ -417,7 +417,7 @@ function getRulesetExtendTarget(
   find: Selector,
   partial: boolean
 ): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
-  const selector = ruleset.data.selector;
+  const selector = ruleset.selector;
   if (!selector || isNode(selector, N.Nil)) {
     return undefined;
   }
@@ -432,9 +432,9 @@ function getRulesetExtendTarget(
   const parentRs = getParentRuleset(ruleset);
   const parentSelector = (
     !partial
-    && parentRs?.data.selectorBeforeExtend
-    && !isNode(parentRs.data.selectorBeforeExtend, N.Nil)
-      ? parentRs.data.selectorBeforeExtend as Selector
+    && parentRs?.selectorBeforeExtend
+    && !isNode(parentRs.selectorBeforeExtend, N.Nil)
+      ? parentRs.selectorBeforeExtend as Selector
       : parentRs?.getEffectiveSelector()
   );
   if (
@@ -474,7 +474,7 @@ function markExtendedSelector(selector: Selector): void {
   selector.addFlag(F_EXTENDED);
   selector.addFlag(F_VISIBLE);
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.data) {
+    for (const item of selector.value) {
       (item as Selector).addFlag(F_EXTENDED);
       (item as Selector).addFlag(F_VISIBLE);
     }
@@ -489,7 +489,7 @@ function activateExtendedRuleset(ruleset: Ruleset, selector: Selector): void {
 
 function clearExtendedRuleset(ruleset: Ruleset): void {
   ruleset.removeFlag(F_EXTENDED);
-  const selector = ruleset.data.selector;
+  const selector = ruleset.selector;
   if (selector && !isNode(selector, N.Nil)) {
     selector.removeFlag(F_EXTENDED);
   }
@@ -513,8 +513,13 @@ function applyInstructionToRuleset(
   if (!targetMatch.partialMatch) {
     return { matched: false, changed: false };
   }
+
+  if (!ruleset.selectorBeforeExtend && ruleset.selector && !isNode(ruleset.selector, N.Nil)) {
+    ruleset.setData('selectorBeforeExtend', ruleset.selector.copy(true) as Selector);
+  }
+
   if (
-    isNodeInsideRules(instruction.extendNode, ruleset.data.rules)
+    isNodeInsideRules(instruction.extendNode, ruleset.rules)
     && instruction.extendWith.valueOf() === targetInfo.selector.valueOf()
     && targetMatch.fullMatch
   ) {

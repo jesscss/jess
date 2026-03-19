@@ -5,7 +5,6 @@ import type { Context } from '../context.js';
 import { Nil } from './nil.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
-import { getEntries } from './util/collections.js';
 import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
@@ -24,12 +23,22 @@ export interface CompoundSelector {
   shortType: 'compound';
 }
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  get length() {
-    return this.data.length;
+  static override childKeys = ['value'] as const;
+
+  value!: SimpleSelector[];
+
+  constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child);
+      }
+    }
   }
 
-  get value() {
-    return this.data as SimpleSelector[];
+  get length() {
+    return this.value.length;
   }
 
   override valueOf() {
@@ -79,7 +88,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     // Components in a compound selector are joined without spaces.
     // However, parser/copy/extend pipelines can preserve `post=1` (single space) on components,
     // which would serialize `.e.e` as `.e .e`. Normalize here as a final guard.
-    const data = this.data;
+    const data = this.value;
     for (let i = 0; i < data.length - 1; i++) {
       (data[i] as any).post = undefined;
     }
@@ -90,9 +99,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return pipe(
       () => {
         const sel = super.evalNode(context) as CompoundSelector;
-        const { data } = sel;
-        const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
-          const out = item.eval(context);
+        const { value } = sel;
+        const indices = value.map((_: any, i: number) => i);
+        const maybe = serialForEach(indices, (i: number) => {
+          const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<SimpleSelector>).then((res) => {
               sel.setData(i, res as SimpleSelector);
@@ -108,7 +118,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         return sel;
       },
       (sel) => {
-        let data: SimpleSelector[] = [...sel.data].filter(n => n && !(n instanceof Nil));
+        let data: SimpleSelector[] = [...sel.value].filter(n => n && !(n instanceof Nil));
         data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
           let aIsElement = !nonElementRegex.test(a.valueOf());
           let bIsElement = !nonElementRegex.test(b.valueOf());

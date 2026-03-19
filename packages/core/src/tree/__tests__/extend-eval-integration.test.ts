@@ -229,19 +229,19 @@ describe('extend integration (eval -> toString)', () => {
     const evald = await root.eval(context);
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
     const evaldRoot = evald as import('../rules.js').Rules;
-    const outerBb = evaldRoot.data.find(
+    const outerBb = evaldRoot.value.find(
       (n: any) =>
         n?.type === 'Ruleset'
-        && Array.isArray(n.data?.rules?.data)
-        && n.data.rules.data.some((r: any) => r?.type === 'Declaration' && (r.data?.name?.valueOf?.() ?? r.data?.name) === 'background')
-        && n.data.rules.data.some((r: any) => r?.type === 'Ruleset')
+        && Array.isArray(n.rules?.value)
+        && n.rules.value.some((r: any) => r?.type === 'Declaration' && (r.name?.valueOf?.() ?? r.name) === 'background')
+        && n.rules.value.some((r: any) => r?.type === 'Ruleset')
     );
     expect(outerBb).toBeTruthy();
-    const inner = (outerBb as any).data.rules.data.find(
-      (n: any) => n?.type === 'Ruleset' && n.data?.rules?.data?.some((d: any) => (d?.data?.name?.valueOf?.() ?? d?.data?.name) === 'color')
+    const inner = (outerBb as any).rules.value.find(
+      (n: any) => n?.type === 'Ruleset' && n.rules?.value?.some((d: any) => (d?.name?.valueOf?.() ?? d?.name) === 'color')
     );
     expect(inner).toBeTruthy();
-    const innerSelectorStr = typeof (inner as any).data?.selector?.valueOf === 'function' ? (inner as any).data.selector.valueOf() : '';
+    const innerSelectorStr = typeof (inner as any).selector?.valueOf === 'function' ? (inner as any).selector.valueOf() : '';
     // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
     expect(innerSelectorStr).toContain('.bb');
     expect(innerSelectorStr).not.toContain('.ee');

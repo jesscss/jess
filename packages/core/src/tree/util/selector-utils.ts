@@ -56,28 +56,28 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
     flattened.push(selector);
   };
 
-  for (const item of list.data) {
-    if (isNode(item, N.PseudoSelector) && item.data.name === ':is' && isNode(item.data.arg, N.SelectorList)) {
-      for (const child of (item.data.arg as SelectorList).data) {
+  for (const item of list.value) {
+    if (isNode(item, N.PseudoSelector) && item.name === ':is' && isNode(item.arg, N.SelectorList)) {
+      for (const child of (item.arg as SelectorList).value) {
         pushUnique(child.copy(true) as Selector);
       }
       continue;
     }
 
-    if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
-      const only = item.data[0]!;
-      if (isNode(only, N.PseudoSelector) && only.data.name === ':is' && isNode(only.data.arg, N.SelectorList)) {
-        for (const child of (only.data.arg as SelectorList).data) {
+    if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
+        for (const child of (only.arg as SelectorList).value) {
           pushUnique(child.copy(true) as Selector);
         }
         continue;
       }
     }
 
-    if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
-      const only = item.data[0]!;
-      if (isNode(only, N.PseudoSelector) && only.data.name === ':is' && isNode(only.data.arg, N.SelectorList)) {
-        for (const child of (only.data.arg as SelectorList).data) {
+    if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
+        for (const child of (only.arg as SelectorList).value) {
           pushUnique(child.copy(true) as Selector);
         }
         continue;
@@ -87,7 +87,7 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
     pushUnique(item);
   }
 
-  if (flattened.length === list.data.length) {
+  if (flattened.length === list.value.length) {
     return list;
   }
 
@@ -137,7 +137,7 @@ export function getParentReplacementForAmpersand(
 
   if (isNode(parentCopy, N.ComplexSelector)) {
     if (atStart) {
-      return [...parentCopy.data] as Selector[];
+      return [...(parentCopy as ComplexSelector).value] as Selector[];
     }
 
     const wrapped = PseudoSelector.create({
@@ -157,7 +157,7 @@ export function selectorHasAuthoredAmpersand(selector: Selector): boolean {
   }
 
   if (isNode(selector, N.SelectorList | N.ComplexSelector | N.CompoundSelector)) {
-    return (selector.data as readonly Selector[]).some(item => selectorHasAuthoredAmpersand(item));
+    return ((selector as SelectorList | ComplexSelector | CompoundSelector).value as Selector[]).some(item => selectorHasAuthoredAmpersand(item));
   }
 
   if (isNode(selector, N.PseudoSelector)) {
@@ -183,7 +183,7 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
       return new BasicSelector(appendValue.split('&').join(value)).inherit(inherit);
     };
     if (isNode(resolved, N.SelectorList)) {
-      const items = (resolved as SelectorList).data.map(item => applyTemplate(item as Selector));
+      const items = (resolved as SelectorList).value.map(item => applyTemplate(item as Selector));
       return SelectorList.create(items).inherit(inherit) as Selector;
     }
     return applyTemplate(resolved);
@@ -191,17 +191,15 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
 
   const doAppend = (n: Selector): void => {
     for (const s of n.nodes(true)) {
-      if (isNode(s, N.SimpleSelector)) {
-        if (typeof s.data === 'string') {
-          s.setData(s.data + appendValue);
-          return;
-        }
+      if (isNode(s, N.BasicSelector)) {
+        (s as BasicSelector).setData((s as BasicSelector).value + appendValue);
+        return;
       }
     }
   };
 
   if (isNode(resolved, N.SelectorList)) {
-    (resolved as SelectorList).data.forEach(item => doAppend(item as Selector));
+    (resolved as SelectorList).value.forEach(item => doAppend(item as Selector));
   } else {
     doAppend(resolved);
   }
@@ -230,17 +228,17 @@ function resolveAuthoredAmpersands(
 
   if (isNode(selector, N.SelectorList)) {
     return SelectorList.create(
-      (selector as SelectorList).data.map(item => resolveAuthoredAmpersands(item as Selector, parentSelector))
+      selector.value.map(item => resolveAuthoredAmpersands(item as Selector, parentSelector))
     ).inherit(selector) as Selector;
   }
 
   if (isNode(selector, N.ComplexSelector | N.CompoundSelector)) {
-    const data = selector.data as readonly Selector[];
+    const selectorData = (selector as ComplexSelector | CompoundSelector).value as Selector[];
     const nextData: Selector[] = [];
     let hasAppendValue = false;
     const isCompound = isNode(selector, N.CompoundSelector);
-    for (let i = 0; i < data.length; i++) {
-      const item = data[i]!;
+    for (let i = 0; i < selectorData.length; i++) {
+      const item = selectorData[i] as Selector;
       if (isNode(item, N.Ampersand) && !item.hasFlag(F_IMPLICIT_AMPERSAND)) {
         const appendValue = (item as Ampersand).appendValue;
         const atStart = !isCompound && i === 0;
@@ -264,11 +262,11 @@ function resolveAuthoredAmpersands(
         && isNode(item, N.CompoundSelector)
         && isNode(parentSelector, N.ComplexSelector)
       ) {
-        const compoundData = item.data as readonly Selector[];
+        const compoundData = (item as CompoundSelector).value as readonly Selector[];
         if (compoundData.length > 0 && isNode(compoundData[0], N.Ampersand) && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)) {
           const ampAppend = (compoundData[0] as Ampersand).appendValue;
           if (!ampAppend) {
-            const parentParts = [...parentSelector.data] as Selector[];
+            const parentParts = [...(parentSelector as ComplexSelector).value] as Selector[];
             const remaining = compoundData.slice(1).map(d => resolveAuthoredAmpersands(d as Selector, parentSelector));
             const lastParentPart = parentParts[parentParts.length - 1]!.copy(true) as Selector;
             const compoundItems = [lastParentPart, ...remaining];
@@ -318,14 +316,14 @@ function composeSelectorRouteWithParent(
 
   if (isNode(childCopy, N.ComplexSelector)) {
     const nextData = isNode(parentFragment, N.ComplexSelector)
-      ? [...parentFragment.data]
+      ? [...parentFragment.value]
       : [parentFragment];
 
-    if (!isNode(childCopy.data[0], N.Combinator)) {
+    if (!isNode(childCopy.value[0], N.Combinator)) {
       nextData.push(Combinator.create(' '));
     }
 
-    nextData.push(...childCopy.data);
+    nextData.push(...childCopy.value);
     return ComplexSelector.create(nextData).inherit(selector) as Selector;
   }
 
@@ -370,8 +368,8 @@ export function getImplicitSelector(
   if (
     !collapseNesting
     && isNode(selector, N.SelectorList)
-    && selector.data.some(item =>
-      isNode(item, N.ComplexSelector) && (item as ComplexSelector).data.length > 1
+    && selector.value.some(item =>
+      isNode(item, N.ComplexSelector) && (item as ComplexSelector).value.length > 1
     )
     && !selectorHasAuthoredAmpersand(selector)
   ) {
@@ -382,7 +380,7 @@ export function getImplicitSelector(
     grouped.generated = true;
     selector = grouped as Selector;
   } else if (isNode(selector, N.SelectorList)) {
-    const next = selector.data.map(item =>
+    const next = selector.value.map(item =>
       composeSelectorRouteWithParent(item as Selector, parentSelector as Selector, collapseNesting)
     );
     const list = SelectorList.create(next).inherit(selector) as Selector;
@@ -415,7 +413,7 @@ export function localizeSelectorAgainstParent(
 ): Selector {
   const wrappedParent = wrapParentSelectorForNestedContext(parent, false);
   const parentPrefix = isNode(wrappedParent, N.ComplexSelector)
-    ? [...wrappedParent.data] as Selector[]
+    ? [...(wrappedParent as ComplexSelector).value] as Selector[]
     : [wrappedParent];
 
   const stripParentPrefix = (route: Selector): Selector => {
@@ -423,7 +421,7 @@ export function localizeSelectorAgainstParent(
       return route.copy(true) as Selector;
     }
 
-    const data = route.data as Selector[];
+    const data = (route as ComplexSelector).value as Selector[];
     if (data.length <= parentPrefix.length) {
       return route.copy(true) as Selector;
     }
@@ -451,7 +449,7 @@ export function localizeSelectorAgainstParent(
 
   if (isNode(selector, N.SelectorList)) {
     return SelectorList.create(
-      selector.data.map(item => stripParentPrefix(item as Selector))
+      selector.value.map(item => stripParentPrefix(item as Selector))
     ).inherit(selector) as Selector;
   }
 
@@ -464,7 +462,7 @@ export function hasExtendedSelector(sel: Selector | Nil | undefined): boolean {
     return false;
   }
   if (isNode(sel, N.SelectorList)) {
-    return (sel as SelectorList).data.some(item => item.hasFlag(F_EXTENDED));
+    return (sel as SelectorList).value.some(item => item.hasFlag(F_EXTENDED));
   }
   return (sel as Selector).hasFlag(F_EXTENDED);
 }

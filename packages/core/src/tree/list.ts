@@ -29,25 +29,39 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+  static override childKeys = ['value'] as const;
+
+  value!: T[];
+
+  constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Node) {
+        this.adopt(child);
+      }
+    }
+  }
+
   get length() {
-    return this.data.length;
+    return this.value.length;
   }
 
   * [Symbol.iterator]() {
-    yield* this.data.entries();
+    yield* this.value.entries();
   }
 
   private _valueOf: string | undefined;
 
   override valueOf() {
-    return (this._valueOf ??= this.data.map(v => v.valueOf()).join(';'));
+    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let value = this.data;
+    let value = this.value;
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
@@ -74,7 +88,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
+      const result = compareNodeArray([...this.value], [...other.value], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -92,7 +106,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     let newList = this.maybeClone(context);
     if (b instanceof List) {
-      newList.push(...b.data);
+      newList.push(...b.value);
     } else {
       /** @todo - do we need to verify the list type? */
       newList.push(b as T);

@@ -14,19 +14,19 @@ const merge = defineFunction(
   'merge',
   function(this: FunctionThis, map1: Collection, map2: Collection): Collection {
     // Start with all declarations from map1
-    const newRules = [...map1.data];
+    const newRules = [...map1.value];
 
     // Add declarations from map2, overwriting any with the same key
-    for (const node of map2.data) {
+    for (const node of map2.value) {
       if (isNode(node, N.Declaration)) {
-        const keyStr = String(node.data.name.valueOf());
+        const keyStr = String(node.name.valueOf());
 
         // Check if this key already exists in map1
         let foundIndex = -1;
         for (let i = 0; i < newRules.length; i++) {
           const existingNode = newRules[i];
           if (isNode(existingNode, N.Declaration)) {
-            const existingKey = String(existingNode.data.name.valueOf());
+            const existingKey = String(existingNode.name.valueOf());
             if (existingKey === keyStr) {
               foundIndex = i;
               break;

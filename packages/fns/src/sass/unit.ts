@@ -14,15 +14,15 @@ const unit = defineFunction(
   function(number: Dimension, newUnit?: Any<'keyword'>): Quoted | Dimension {
     // If newUnit is provided, change the unit
     if (newUnit) {
-      const unitValue = typeof newUnit.data === 'string' ? newUnit.data : newUnit.valueOf();
+      const unitValue = typeof newUnit.value === 'string' ? newUnit.value : newUnit.valueOf();
       return new Dimension({
-        number: number.data.number,
+        number: number.number,
         unit: unitValue
       });
     }
 
     // Otherwise, return the unit as a quoted string
-    const unitStr = number.data.unit || '';
+    const unitStr = number.unit || '';
     return new Quoted(unitStr, { quote: '"' });
   },
   {
