@@ -596,7 +596,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // Push this ruleset to the frame so nested rulesets get the correct parent selector
           // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
           const childRules = node.rules;
-          if (childRules && !childRules._isPreEvaluated(context)) {
+          if (childRules && !(childRules as unknown as Ruleset)._isPreEvaluated(context)) {
             context.rulesetFrames.push(node as Ruleset);
             if (extendRoot) {
               context.extendRoots.registerRoot(childRules, extendRoot);

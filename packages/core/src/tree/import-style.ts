@@ -560,13 +560,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             context.evaldTrees.set(resolvedPath, rules);
           }
         } else {
-        // Clone the unevaluated rules BEFORE evaluation so registries are populated on the clone
-        // This ensures registration happens post-clone, not on the cached evaldRules
-        // sourceNode is already set above, so the cloned Rules will have it
-          rules = rules.clone(true) as Rules;
+        // Shallow-clone the cached rules BEFORE evaluation so registries are populated
+        // on the clone, not on the cached evaldRules. Session ensures canonical children's
+        // parent pointers are protected; preEval creates fresh clones via maybeClone.
+          const prevReEvalSession = context.session;
+          if (!prevReEvalSession) {
+            context.session = new EvalSession();
+          }
+          rules = rules.clone(false, undefined, context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
           rules = await rules.eval(context);
+          context.session = prevReEvalSession;
         }
 
         // Pop extend root if we pushed one
