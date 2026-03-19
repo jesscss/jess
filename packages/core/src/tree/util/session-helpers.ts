@@ -32,7 +32,7 @@ export function sessionGetField<T = unknown>(
   if (session && session.hasField(node, key)) {
     return session.getField(node, key) as T;
   }
-  return (node as Record<string, unknown>)[key] as T;
+  return (node as unknown as Record<string, unknown>)[key] as T;
 }
 
 /**
@@ -49,7 +49,7 @@ export function sessionPatchField(
   if (session) {
     session.patchField(node, key, value);
   } else {
-    (node as Record<string, unknown>)[key] = value;
+    (node as unknown as Record<string, unknown>)[key] = value;
   }
 }
 
@@ -85,7 +85,7 @@ export function sessionSetParent(
     if (parent) {
       parent.adopt(node);
     } else {
-      (node as Record<string, unknown>).parent = undefined;
+      (node as unknown as Record<string, unknown>).parent = undefined;
     }
   }
 }
@@ -234,19 +234,43 @@ export function sessionSetRuntimeState(
   const session = ctx.session;
   if (session) {
     const runtime = session.getRuntime(node);
-    if (patch.parent !== undefined) runtime.parent = patch.parent;
-    if (patch.index !== undefined) runtime.index = patch.index;
-    if (patch.evaluated !== undefined) runtime.evaluated = patch.evaluated;
-    if (patch.preEvaluated !== undefined) runtime.preEvaluated = patch.preEvaluated;
-    if (patch.sourceParent !== undefined) runtime.sourceParent = patch.sourceParent;
-    if (patch.sourceNode !== undefined) runtime.sourceNode = patch.sourceNode;
+    if (patch.parent !== undefined) {
+      runtime.parent = patch.parent;
+    }
+    if (patch.index !== undefined) {
+      runtime.index = patch.index;
+    }
+    if (patch.evaluated !== undefined) {
+      runtime.evaluated = patch.evaluated;
+    }
+    if (patch.preEvaluated !== undefined) {
+      runtime.preEvaluated = patch.preEvaluated;
+    }
+    if (patch.sourceParent !== undefined) {
+      runtime.sourceParent = patch.sourceParent;
+    }
+    if (patch.sourceNode !== undefined) {
+      runtime.sourceNode = patch.sourceNode;
+    }
   } else {
-    if (patch.parent !== undefined) patch.parent.adopt(node);
-    if (patch.index !== undefined) node.index = patch.index;
-    if (patch.evaluated !== undefined) node.evaluated = patch.evaluated;
-    if (patch.preEvaluated !== undefined) node.preEvaluated = patch.preEvaluated;
-    if (patch.sourceParent !== undefined) node.sourceParent = patch.sourceParent;
-    if (patch.sourceNode !== undefined) node.sourceNode = patch.sourceNode;
+    if (patch.parent !== undefined) {
+      patch.parent.adopt(node);
+    }
+    if (patch.index !== undefined) {
+      node.index = patch.index;
+    }
+    if (patch.evaluated !== undefined) {
+      node.evaluated = patch.evaluated;
+    }
+    if (patch.preEvaluated !== undefined) {
+      node.preEvaluated = patch.preEvaluated;
+    }
+    if (patch.sourceParent !== undefined) {
+      node.sourceParent = patch.sourceParent;
+    }
+    if (patch.sourceNode !== undefined) {
+      node.sourceNode = patch.sourceNode;
+    }
   }
 }
 
