@@ -573,10 +573,28 @@ Built the infrastructure required for `clone(false)`:
 - **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
   - Same baseline — no regressions from clone(false) at Sites 1 and 3
 
-### Remaining clone(true) sites in mixin eval
+### Stage 14d: clone(false) for $for loop body (control.ts:243)
 
-- **Site 2** (detached ruleset, rules.ts:2289): kept as `clone(true)` — no eval follows,
-  children must be independent copies since they're unlocked into caller scope
+- [x] Session created before loop, shallow clone per iteration
+- [x] `unshift` of per-iteration bindings operates on array copy, not canonical
+- [x] Each iteration sees fresh canonical preEval state (only clones get preEvaluated=true)
+
+### Stage 14e: clone(false) for compose cached re-eval (import-style.ts:566)
+
+- [x] Session created if none exists, shallow clone + eval
+- [x] Registries populated on clone's preEvald children, not canonical cache
+
+### Remaining clone(true) sites (low priority)
+
+- `rules.ts:2293` — detached ruleset unlock, no eval follows, needs independent copy
+- `import-style.ts:251` — `_dedupe`/`multiple`, markReferenceMode mutates node flags
+- `control.ts:52` — small vars clone for block expression (cheap)
+- `ampersand.ts:228` / `ruleset.ts:544` — selector clones during eval (small, targeted)
+
+### Test results — post Stage 14e
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
+  - Same baseline throughout all Stage 14 substages — zero regressions
 
 ---
 
