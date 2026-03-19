@@ -252,7 +252,7 @@ export class For extends Node<ForValue> {
         if (accumulatedNodes.length > 0) {
           // Make prior iteration output visible to current iteration lookups
           // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
-          const priorScope = new Rules(accumulatedNodes.map(n => n.copy(true)));
+          const priorScope = new Rules(accumulatedNodes.map(n => n.clone(false)));
           priorScope.inherit(this.rules);
           priorScope.adopt(loopRules);
         }
