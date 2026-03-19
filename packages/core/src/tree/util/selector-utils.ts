@@ -227,10 +227,20 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
     }
   };
 
-  if (isNode(resolved, N.SelectorList)) {
-    (resolved as SelectorList).value.forEach(item => doAppend(item as Selector));
+  // Unwrap generated :is(SelectorList) so append distributes to all items
+  let target = resolved;
+  if (
+    isNode(target, N.PseudoSelector)
+    && (target as PseudoSelector).generated
+    && (target as PseudoSelector).name === ':is'
+    && isNode((target as PseudoSelector).arg, N.SelectorList)
+  ) {
+    target = (target as PseudoSelector).arg as Selector;
+  }
+  if (isNode(target, N.SelectorList)) {
+    (target as SelectorList).value.forEach(item => doAppend(item as Selector));
   } else {
-    doAppend(resolved);
+    doAppend(target);
   }
   resolved.hoistToRoot = true;
   return resolved;
@@ -336,6 +346,14 @@ function resolveAuthoredAmpersands(
         }
       }
       nextData.push(resolveAuthoredAmpersands(item, parentSelector, false));
+    }
+    // For compounds, sort type/element selectors before class/id/pseudo
+    if (isCompound) {
+      nextData.sort((a, b) => {
+        const aIsTag = isNode(a, N.BasicSelector) && (a as BasicSelector).isTag ? 0 : 1;
+        const bIsTag = isNode(b, N.BasicSelector) && (b as BasicSelector).isTag ? 0 : 1;
+        return aIsTag - bIsTag;
+      });
     }
     const ctor = !isCompound ? ComplexSelector : CompoundSelector;
     const result = ctor.create(nextData as any).inherit(selector) as Selector;
