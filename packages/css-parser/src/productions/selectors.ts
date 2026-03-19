@@ -8,8 +8,6 @@ import {
   type SimpleSelector, type ComplexSelectorComponent,
   type LocationInfo
 } from '@jesscss/core';
-import { tokenMatcher } from '../cssRecursiveParser.js';
-import { EOF } from 'chevrotain';
 
 type C = CssRecursiveParser;
 
@@ -496,7 +494,7 @@ export function compoundSelector(this: C, T: TokenMap) {
 export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleContext) => () => boolean) {
   const $ = this;
 
-  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatcher($.LA(1), T.Combinator);
+  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || $.isTypeAt(1, T.Combinator);
 
   /**
       A sequence of one or more simple and/or compound selectors
@@ -729,20 +727,27 @@ export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
        * CONSUME(LCurly) with a real MismatchedTokenException that persists in
        * _errors even after cleanup attempts.
        *
-       * We also save/restore locationStack.length because qualifiedRule calls
-       * startRule() before any CONSUME, so a SPEC_FAIL in speculation won't
-       * restore our custom locationStack field.
+       * Fast early-exit tiers (O(1) each) before falling back to the O(N) scan:
+       *   1. Non-Ident start → must be a selector, allow immediately.
+       *   2. Ident + no Colon → complex selector, allow immediately.
+       *   3. Ident + Colon + whitespace after colon → `prop: value`, reject.
+       *   4. Otherwise (ident:no-space) → ambiguous, fall back to full scan.
+       *
+       * locationStack is restored automatically via restoreCheckpoint() override.
        */
-      GATE: () => $.hasLCurlyAhead(),
-      ALT: () => {
-        const stackLen = $.locationStack.length;
-        try {
-          return $.SUBRULE2($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
-        } catch (e) {
-          $.locationStack.length = stackLen;
-          throw e;
+      GATE: () => {
+        if (!$.isTypeAt(1, T.Ident)) {
+          return true;
         }
-      }
+        if (!$.isTypeAt(2, T.Assign)) {
+          return true;
+        }
+        if ($.hasWS(2)) {
+          return false;
+        }
+        return $.hasLCurlyAhead();
+      },
+      ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME2(T.Semi) }

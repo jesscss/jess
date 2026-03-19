@@ -510,9 +510,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
             },
             {
               /** mediaRange: MfLt/MfGt followed by Ident */
-              GATE: () => {
-                return (tokenMatcher($.LA(1), T.MfLt) || tokenMatcher($.LA(1), T.MfGt)) && tokenMatcher($.LA(2), T.Ident);
-              },
+              GATE: () => ($.isTypeAt(1, T.MfLt) || $.isTypeAt(1, T.MfGt)) && $.isTypeAt(2, T.Ident),
               ALT: () => {
                 let seq = $.SUBRULE($.mediaRange, { ARGS: [ctx] });
 
@@ -529,10 +527,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
             },
             {
               /** mfComparison: MfLt/MfGt/Eq followed by non-identifier value */
-              GATE: () => {
-                let t1 = $.LA(1).tokenType;
-                return tokenMatcher($.LA(1), T.MfLt) || tokenMatcher($.LA(1), T.MfGt) || t1 === T.Eq;
-              },
+              GATE: () => $.isTypeAt(1, T.MfLt) || $.isTypeAt(1, T.MfGt) || $.LA(1).tokenType === T.Eq,
               ALT: () => {
                 let op = $.SUBRULE($.mfComparison, { ARGS: [ctx] });
                 let value = $.SUBRULE($.mfNonIdentifierValue, { ARGS: [ctx] });
@@ -566,12 +561,10 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
           {
             /** mfComparison + Ident: operator followed by ident (simple comparison, not a range) */
             GATE: () => {
-              let t1 = $.LA(1).tokenType;
-              if (!((tokenMatcher($.LA(1), T.MfLt) || tokenMatcher($.LA(1), T.MfGt) || t1 === T.Eq) && tokenMatcher($.LA(2), T.Ident))) {
+              if (!(($.isTypeAt(1, T.MfLt) || $.isTypeAt(1, T.MfGt) || $.LA(1).tokenType === T.Eq) && $.isTypeAt(2, T.Ident))) {
                 return false;
               }
-              let t3 = $.LA(3);
-              if (tokenMatcher(t3, T.MfLt) || tokenMatcher(t3, T.MfGt)) {
+              if ($.isTypeAt(3, T.MfLt) || $.isTypeAt(3, T.MfGt)) {
                 return false;
               }
               return true;
@@ -1033,7 +1026,7 @@ export function containerQuery(this: C, T: TokenMap) {
       {
         // Container query type function: any FunctionStart token
         // This allows for size(...), style(...), scroll-state(...), and any Less-evaluated functions
-        GATE: () => tokenMatcher($.LA(1), T.FunctionStart),
+        GATE: () => $.isTypeAt(1, T.FunctionStart),
         ALT: () => {
           $.startRule();
           let nodes: Node[];
@@ -1243,7 +1236,7 @@ export function containerAnd(this: C, T: TokenMap) {
         }
       },
       {
-        GATE: () => tokenMatcher($.LA(1), T.FunctionStart),
+        GATE: () => $.isTypeAt(1, T.FunctionStart),
         ALT: () => {
           // Parse function call (reuse containerQuery logic)
           const funcStart = $.CONSUME(T.FunctionStart);
@@ -1347,7 +1340,7 @@ export function containerOr(this: C, T: TokenMap) {
         }
       },
       {
-        GATE: () => tokenMatcher($.LA(1), T.FunctionStart),
+        GATE: () => $.isTypeAt(1, T.FunctionStart),
         ALT: () => {
           // Parse function call (reuse containerQuery logic)
           const funcStart = $.CONSUME(T.FunctionStart);

@@ -1,7 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { IToken } from '@chevrotain/types';
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
-import { tokenMatcher } from '../cssRecursiveParser.js';
 import { EMPTY_ALT } from 'chevrotain';
 import {
   type LocationInfo,
@@ -282,7 +281,7 @@ export function supportsInParens(this: C, T: TokenMap) {
                 return true;
               }
               // Ident followed by ( is a function-like call in supportsInParens
-              if (tokenMatcher($.LA(1), T.Ident) && $.LA(2).tokenType === T.LParen) {
+              if ($.isTypeAt(1, T.Ident) && $.isTypeAt(2, T.LParen)) {
                 return true;
               }
               return false;
@@ -364,7 +363,7 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
 
   alt ??= (ctx: RuleContext = {}) => [
     {
-      GATE: () => tokenMatcher($.LA(1), T.FunctionStart) && $.LA(1).image.slice(0, -1).toLowerCase() === 'if',
+      GATE: () => $.isTypeAt(1, T.FunctionStart) && $.LA(1).image.slice(0, -1).toLowerCase() === 'if',
       ALT: () => $.SUBRULE($.ifFunction, { ARGS: [ctx] })
     },
     {
@@ -573,7 +572,7 @@ export function importPostlude(this: C, T: TokenMap) {
             if (t1 === T.Not || t1 === T.LParen) {
               return true;
             }
-            if (tokenMatcher($.LA(1), T.Ident) && $.LA(2).tokenType === T.LParen) {
+            if ($.isTypeAt(1, T.Ident) && $.isTypeAt(2, T.LParen)) {
               return true;
             }
             return false;
