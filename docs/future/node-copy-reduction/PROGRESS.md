@@ -514,7 +514,46 @@ the session overlay and restores canonical pointers.
 
 ---
 
-## Stage 14: Explore Collapsing preEval / eval (Future)
+## Stage 14: Eliminate resetEvalStateDeep
+
+Goal: Remove the O(N) `resetEvalStateDeep` traversal that resets eval state on mixin body
+deep clones, by fixing the root causes that made it necessary.
+
+### Root cause analysis
+
+`resetEvalStateDeep` did four things on every deep-cloned mixin body:
+1. `node.preEvaluated = false` — **already a no-op** (`_metaFlags = 0` on new clone instances)
+2. `node.evaluated = false` — **already a no-op** (same reason)
+3. Reset Ruleset selectors from `ownSelector` / `sourceNode` — **needed**: canonical
+   `Ruleset.preEval` mutates `data.selector` to the composed form during root eval;
+   `clone(true)` copies this stale composed selector, causing double-composition on re-eval.
+4. Clear Ampersand `_selectorContainer` / `_storedSelector` — **needed**: `Ampersand.clone`
+   copied the definition-site container; `evalNode` skipped rebinding when container was set.
+
+### Fixes
+
+- [x] `Ruleset.preEval`: use existing `ownSelector` (pre-composition) as starting selector
+  when re-evaluating, instead of `this.selector` (which may already be composed)
+- [x] `Ampersand.clone`: don't copy `_selectorContainer` — clones must rebind to the
+  current eval context frame (call-site, not definition-site)
+- [x] Remove `resetEvalStateDeep` function and its 3 call sites from `rules.ts`
+
+### Test results — post Stage 14
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
+  - Same-or-better than 617056ee baseline (was 14 failed | 951 passed)
+  - Mixin-recursion test confirmed passing
+
+### What's unblocked
+
+Blocker 1 from Stage 13 ("resetEvalStateDeep resets Ruleset selector / Ampersand container")
+is resolved. The next step toward eliminating `clone(true)` at mixin body eval sites
+(rules.ts:2273, 2295, 2306) is ensuring `EvalSession` is active during mixin evaluation
+so `clone(false, undefined, ctx)` routes parent writes through the session overlay.
+
+---
+
+## Stage 15: Explore Collapsing preEval / eval (Future)
 
 - [ ] Instrument preEval pass timing
 - [ ] Prototype registration-during-walk for simple case

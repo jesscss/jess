@@ -2149,61 +2149,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let outputRules: Rules[] = [];
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const resetEvalStateDeep = (node: Node): void => {
-      node.preEvaluated = false;
-      node.evaluated = false;
-      if (isNode(node, N.Ruleset)) {
-        const rulesetNode = node as Ruleset;
-        // Recover the pre-composition selector (ownSelector) so call-site
-        // preEval can rebuild selectors in the caller's frame.
-        // ownSelector is the selector BEFORE parent composition (e.g. `> li`),
-        // while selector may already be composed (e.g. `.nav-justified > li`).
-        const ownSelector = (rulesetNode.options as any)?.ownSelector;
-        if (ownSelector && isNode(ownSelector) && !(ownSelector instanceof Nil)) {
-          const copiedSelector = ownSelector.copy(true) as Selector | Nil;
-          rulesetNode.setData('selector', copiedSelector);
-        } else {
-          const selector = rulesetNode.selector as Selector | Nil;
-          const sourceSelector = selector?.sourceNode;
-          if (sourceSelector && isNode(sourceSelector)) {
-            const copiedSelector = sourceSelector.copy(true) as Selector | Nil;
-            copiedSelector.sourceNode = sourceSelector;
-            rulesetNode.setData('selector', copiedSelector);
-          }
-        }
-      }
-      if (isNode(node, N.Ampersand)) {
-        // Ampersands cloned from mixin definitions can carry a stale selector container
-        // that points at definition-time selectors. Clear it so call-site frames rebind `&`.
-        const ampNode = node as unknown as { _selectorContainer?: unknown; _storedSelector?: unknown };
-        ampNode._selectorContainer = undefined;
-        ampNode._storedSelector = undefined;
-      }
-      const value = (node as any).value;
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            resetEvalStateDeep(child);
-          }
-        }
-        return;
-      }
-      if (isPlainObject(value)) {
-        for (const propValue of Object.values(value)) {
-          if (isNode(propValue)) {
-            resetEvalStateDeep(propValue);
-            continue;
-          }
-          if (Array.isArray(propValue)) {
-            for (const item of propValue) {
-              if (isNode(item)) {
-                resetEvalStateDeep(item);
-              }
-            }
-          }
-        }
-      }
-    };
     const getRootSourceRules = (rules: Rules): Rules => {
       let current = rules;
       const seen = new Set<Rules>();
@@ -2311,7 +2256,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const candidateRules = (candidate as Ruleset).rules;
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true);
-        resetEvalStateDeep(rules as unknown as Node);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
@@ -2334,7 +2278,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
         let unlocked = sourceRules.clone(true);
-        resetEvalStateDeep(unlocked as unknown as Node);
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
@@ -2346,7 +2289,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let rules = (candidate as any).rules as Rules;
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(true);
-      resetEvalStateDeep(rules as unknown as Node);
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};

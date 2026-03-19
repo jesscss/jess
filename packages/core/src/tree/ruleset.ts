@@ -499,7 +499,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node.preEvaluated = true;
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
-      let { selector, rules, guard } = node;
+      let { rules, guard } = node;
+      // On re-eval (e.g. mixin clone), use the pre-composition ownSelector so we
+      // compose from the authored selector, not the already-composed one.
+      let selector: Selector | Nil = (node.options as RulesetOptions)?.ownSelector ?? node.selector;
       // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
       // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
       // (like Less `@base`) become inaccessible.

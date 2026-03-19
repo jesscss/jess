@@ -379,9 +379,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     // Ampersand stores its data in the appendValue instance field, not in .value,
     // so we must patch it explicitly on the clone.
     newNode.appendValue = this.appendValue;
-    if (this._selectorContainer) {
-      newNode._selectorContainer = this._selectorContainer;
-    }
+    // Don't copy _selectorContainer — clones must rebind to the current eval
+    // context frame (e.g. call-site for mixin clones, not definition-site).
     return newNode;
   }
 
