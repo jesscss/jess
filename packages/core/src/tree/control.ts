@@ -10,6 +10,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { EvalSession } from '../eval-session.js';
 import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
@@ -238,9 +239,13 @@ export class For extends Node<ForValue> {
     const run = async (): Promise<Node> => {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
+      const prevSession = context.session;
+      if (!prevSession) {
+        context.session = new EvalSession();
+      }
       const evaluatedIterable = await iterable.eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const loopRules = this.rules.clone(true);
+        const loopRules = this.rules.clone(false, undefined, context);
         // Preserve definition-scope parent chain so nested calls/lookups
         // inside loop bodies resolve the same way as the original rules.
         loopRules.inherit(this.rules);
@@ -361,6 +366,7 @@ export class For extends Node<ForValue> {
           accumulatedNodes.push(result);
         }
       }
+      context.session = prevSession;
       return new Rules(accumulatedNodes);
     };
     return run();
