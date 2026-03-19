@@ -140,18 +140,28 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false): Selector | Nil {
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-    const parentRs = getParentRuleset(this);
     if (
       !this.hoistToRoot
       && !collapseNesting
-      && parentRs
       && ownSelector
       && !(ownSelector instanceof Nil)
+      && this._hasAncestorRuleset()
     ) {
       return ownSelector as Selector;
     }
 
     return this.getEffectiveSelector(collapseNesting);
+  }
+
+  private _hasAncestorRuleset(): boolean {
+    let current = this.parent;
+    while (current) {
+      if (isNode(current, N.Ruleset)) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
   }
 
   /**

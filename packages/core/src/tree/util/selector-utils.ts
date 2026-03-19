@@ -229,24 +229,76 @@ export function selectorHasAuthoredAmpersand(selector: Selector): boolean {
 function applyAppendValue(resolved: Selector, appendValue: string, inherit: Selector): Selector {
   const isTemplateMerge = appendValue.includes('&');
   if (isTemplateMerge) {
+    const isIdentJoinChar = (char: string | undefined): boolean =>
+      !!char && /[a-zA-Z0-9_-]/.test(char);
+    const assertValidTemplateJoin = (template: string, replacement: string): void => {
+      if (!replacement) {
+        return;
+      }
+      let searchFrom = 0;
+      while (true) {
+        const idx = template.indexOf('&', searchFrom);
+        if (idx === -1) {
+          break;
+        }
+        const before = idx > 0 ? template[idx - 1] : undefined;
+        const after = idx < template.length - 1 ? template[idx + 1] : undefined;
+        const first = replacement[0];
+        const last = replacement[replacement.length - 1];
+        const invalidHeadJoin = (first === '.' || first === '#') && isIdentJoinChar(before);
+        const invalidTailJoin = (last === '.' || last === '#') && isIdentJoinChar(after);
+        if (invalidHeadJoin || invalidTailJoin) {
+          throw new SyntaxError(`Invalid ampersand merge template "${template}" with parent selector "${replacement}"`);
+        }
+        searchFrom = idx + 1;
+      }
+    };
     const applyTemplate = (sel: Selector): Selector => {
       const value = sel.toTrimmedString();
+      assertValidTemplateJoin(appendValue, value);
       return new BasicSelector(appendValue.split('&').join(value)).inherit(inherit);
     };
-    if (isNode(resolved, N.SelectorList)) {
-      const items = (resolved as SelectorList).value.map(item => applyTemplate(item as Selector));
-      return SelectorList.create(items).inherit(inherit) as Selector;
-    }
-    return applyTemplate(resolved);
+    const distributeTemplate = (sel: Selector): Selector => {
+      if (
+        isNode(sel, N.PseudoSelector)
+        && (sel as PseudoSelector).generated
+        && (sel as PseudoSelector).name === ':is'
+        && isNode((sel as PseudoSelector).arg, N.SelectorList)
+      ) {
+        return distributeTemplate((sel as PseudoSelector).arg as Selector);
+      }
+      if (isNode(sel, N.SelectorList)) {
+        const items = (sel as SelectorList).value.map(item => distributeTemplate(item as Selector));
+        const result = SelectorList.create(
+          items.flatMap(item => isNode(item, N.SelectorList) ? (item as SelectorList).value : [item])
+        ).inherit(inherit) as Selector;
+        return result;
+      }
+      const selectorStr = sel.toTrimmedString();
+      if (selectorStr.includes(',')) {
+        const parts = selectorStr.split(',').map(s => s.trim()).filter(Boolean);
+        const mapped = parts.map((part) => {
+          assertValidTemplateJoin(appendValue, part);
+          return new BasicSelector(appendValue.split('&').join(part)).inherit(inherit);
+        });
+        return mapped.length === 1 ? mapped[0]! : SelectorList.create(mapped).inherit(inherit) as Selector;
+      }
+      return applyTemplate(sel);
+    };
+    return distributeTemplate(resolved);
   }
 
   const doAppend = (n: Selector): void => {
     for (const s of n.nodes(true)) {
-      if (isNode(s, N.BasicSelector)) {
-        (s as BasicSelector).setData((s as BasicSelector).value + appendValue);
-        return;
+      if (isNode(s, N.SimpleSelector)) {
+        if (isNode(s, N.BasicSelector)) {
+          (s as BasicSelector).setData((s as BasicSelector).value + appendValue);
+          return;
+        }
+        throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
       }
     }
+    throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
   };
 
   // Unwrap generated :is(SelectorList) so append distributes to all items
