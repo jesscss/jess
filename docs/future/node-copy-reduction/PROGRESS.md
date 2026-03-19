@@ -598,7 +598,51 @@ Built the infrastructure required for `clone(false)`:
 
 ---
 
-## Stage 15: Explore Collapsing preEval / eval (Future)
+## Stage 15: copy(true) elimination + processLeadingIs removal
+
+### copy(true) → clone(false) in selector rendering
+
+- [x] 39 `copy(true)` → `clone(false)` in `process-leading-is.ts`
+- [x] 5 `copy(true)` → `clone(false)` in define-function, control, declaration, interpolated
+- Remaining ~65 in extend-core, selector-utils, extend.ts, ruleset.ts need structural
+  copies for mutation safety (extend mutates selectors, Ampersand appends mutate BasicSelector)
+
+### processLeadingIs removed from Ruleset render path
+
+`processLeadingIs` ran on EVERY selector during serialization, doing expensive copy(true)
+to unwrap generated `:is()` wrappers. Now dead code in production.
+
+**Upstream fixes that made removal possible:**
+
+- [x] **Ampersand eval**: skip `:is()` wrapping for collapseNesting SelectorList —
+  resolve parent but don't wrap. Composition handles `:is()` where structurally needed.
+- [x] **Ampersand eval**: skip `:is()` wrapping for empty appendValue (`!!appendValue`)
+- [x] **extend-core `wrapSelectorInIs`**: flatten nested `:is()` using existing
+  `expandGeneratedIsAlternatives` — prevents `:is(:is(.a, .b), .c)` nesting
+- [x] **selector-utils `resolveAuthoredAmpersands`**: fuse complex parent's last part
+  with compound suffix at top level (`&[e]` + parent `* b` → `* b[e]`)
+- [x] **`wrapInGeneratedIs`** utility added to selector-utils.ts (flattens, deduplicates,
+  skips single-item wraps)
+
+### Selector bug fixes (pre-existing, fixed this session)
+
+- [x] **Compound ordering**: type selectors sort before class/id after `&` merge
+  (`h2.one.two` not `.one.twoh2`) — sort in `resolveAuthoredAmpersands`
+- [x] **Append distribution**: unwrap generated `:is(SelectorList)` in `applyAppendValue`
+  so `-1` appends to ALL items (`.one-1, .two-1` not `.one, .two-1`)
+
+### Test results — post Stage 15
+
+- **Core**: 5 failed | 63 passed | 3 skipped (71 total); 11 failed | 954 passed | 24 skipped
+  - Down from 13 failed — 2 pre-existing selector bugs fixed
+
+### Merged to dev
+
+All work through `ce113f49` merged to `origin/dev` at `4d8ac5dd`.
+
+---
+
+## Stage 16: Explore Collapsing preEval / eval (Future)
 
 - [ ] Instrument preEval pass timing
 - [ ] Prototype registration-during-walk for simple case
