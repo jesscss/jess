@@ -238,7 +238,8 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
 
 function resolveAuthoredAmpersands(
   selector: Selector,
-  parentSelector: Selector
+  parentSelector: Selector,
+  atTopLevel: boolean = true
 ): Selector {
   if (isNode(selector, N.Ampersand)) {
     const appendValue = (selector as Ampersand).appendValue;
@@ -259,6 +260,30 @@ function resolveAuthoredAmpersands(
     return SelectorList.create(
       selector.value.map(item => resolveAuthoredAmpersands(item as Selector, parentSelector))
     ).inherit(selector) as Selector;
+  }
+
+  // CompoundSelector with leading bare & and ComplexSelector parent at top level:
+  // Fuse parent's last part with compound suffix → * b[e] instead of :is(* b)[e]
+  // Only at top level — inside a ComplexSelector (e.g. after +), keep :is() wrapping.
+  if (atTopLevel && isNode(selector, N.CompoundSelector)) {
+    const compoundData = (selector as CompoundSelector).value as Selector[];
+    if (
+      compoundData.length >= 2
+      && isNode(compoundData[0], N.Ampersand)
+      && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)
+      && !(compoundData[0] as Ampersand).appendValue
+      && isNode(parentSelector, N.ComplexSelector)
+    ) {
+      const parentParts = [...(parentSelector as ComplexSelector).value] as Selector[];
+      const remaining = compoundData.slice(1).map(d => resolveAuthoredAmpersands(d as Selector, parentSelector));
+      const lastParentPart = parentParts[parentParts.length - 1]!.clone(false) as Selector;
+      const fusedLast = CompoundSelector.create([lastParentPart, ...remaining] as any).inherit(selector) as Selector;
+      const prefix = parentParts.slice(0, -1).map(p => p.clone(false) as Selector);
+      if (prefix.length > 0) {
+        return ComplexSelector.create([...prefix, fusedLast] as any).inherit(selector) as Selector;
+      }
+      return fusedLast;
+    }
   }
 
   if (isNode(selector, N.ComplexSelector | N.CompoundSelector)) {
@@ -310,7 +335,7 @@ function resolveAuthoredAmpersands(
           }
         }
       }
-      nextData.push(resolveAuthoredAmpersands(item, parentSelector));
+      nextData.push(resolveAuthoredAmpersands(item, parentSelector, false));
     }
     const ctor = !isCompound ? ComplexSelector : CompoundSelector;
     const result = ctor.create(nextData as any).inherit(selector) as Selector;

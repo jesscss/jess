@@ -805,7 +805,7 @@ describe('Style import extend behavior', () => {
           :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) {
             color: green;
           }
-          :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) .sub {
+          :is(:is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible)) .sub {
             color: green;
           }
           "

@@ -19,7 +19,6 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
-import { processLeadingIs } from './util/process-leading-is.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
 export type RulesetValue = {
@@ -450,12 +449,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
-    // Unwrap leading generated :is() for rendering (e.g. :is(* b)[e] → * b[e]).
-    // TODO: move this logic to PseudoSelector.toTrimmedString or composition.
-    const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
-    renderSelector = Array.isArray(renderNormalizedResult)
-      ? SelectorList.create(renderNormalizedResult as Selector[]).inherit(renderSelector as Selector) as typeof selector
-      : renderNormalizedResult as typeof selector;
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
