@@ -2203,7 +2203,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
           // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
           // hide param vars from registry-based lookup.
-          outerRules.push(...rules.value);
+          // Shallow-clone each child before pushing so canonical parents
+          // aren't corrupted. The clones get parent = outerRules from push's adopt.
+          for (const child of rules.value) {
+            outerRules.push((child as Node).clone(false, undefined, thisContext));
+          }
           newRules = await outerRules.eval(thisContext);
         }
         candidate.parent!.adopt(newRules);
@@ -2297,7 +2301,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       let rules = (candidate as any).rules as Rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(true);
+      rules = rules.clone(false, undefined, thisContext);
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};

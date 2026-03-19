@@ -561,19 +561,22 @@ Built the infrastructure required for `clone(false)`:
 - [x] Session created before mixin eval loop in `getFunctionFromMixins`
 - [x] **Site 1** (Ruleset candidate, rules.ts:2267): `clone(true)` → `clone(false, undefined, ctx)`
 
-### Test results — post Stage 14b
+### Stage 14c: clone(false) at Site 3 (named mixin with params)
+
+- [x] **Site 3** (named mixin with params/guard, rules.ts:2300):
+  `clone(true)` → `clone(false, undefined, ctx)`
+- [x] Fix `outerRules.push(...rules.value)`: shallow-clone each child before pushing
+  so canonical parents aren't corrupted. Clones get `parent = outerRules` from push's adopt.
+
+### Test results — post Stage 14c
 
 - **Core**: 5 failed | 63 passed | 3 skipped (71 total); 13 failed | 952 passed | 24 skipped
-  - Same as Stage 14 baseline — no regressions from clone(false) at Site 1
+  - Same baseline — no regressions from clone(false) at Sites 1 and 3
 
-### What's still blocked
+### Remaining clone(true) sites in mixin eval
 
-- **Site 3** (named mixin with params/guard, rules.ts:2300): `outerRules.push(...rules.value)`
-  pushes canonical children into outerRules. With `clone(false)`, these canonical children's
-  parent fields can't be set without corrupting the canonical tree. Session-aware `adopt`
-  (via ctx) stores parent in overlay but scope lookups use direct `node.parent`.
-  Needs either session-aware parent getter or a different mechanism for outerRules adoption.
-- **Site 2** (detached ruleset, rules.ts:2289): kept as `clone(true)` — no eval follows
+- **Site 2** (detached ruleset, rules.ts:2289): kept as `clone(true)` — no eval follows,
+  children must be independent copies since they're unlocked into caller scope
 
 ---
 
