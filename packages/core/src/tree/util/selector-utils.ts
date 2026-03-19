@@ -13,6 +13,57 @@ import { Nil } from '../nil.js';
 import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
 import type { Ampersand } from '../ampersand.js';
 
+/**
+ * Smart `:is()` wrapper. Flattens nested generated `:is()`, deduplicates,
+ * and skips wrapping single items.
+ */
+export function wrapInGeneratedIs(selector: Selector): Selector {
+  const items: Selector[] = [];
+  const seen = new Set<string>();
+
+  const addItem = (item: Selector): void => {
+    let pseudo: PseudoSelector | undefined;
+    if (isNode(item, N.PseudoSelector) && (item as PseudoSelector).generated && item.name === ':is') {
+      pseudo = item as PseudoSelector;
+    } else if (isNode(item, N.CompoundSelector) && (item as CompoundSelector).value.length === 1) {
+      const only = (item as CompoundSelector).value[0]!;
+      if (isNode(only, N.PseudoSelector) && (only as PseudoSelector).generated && only.name === ':is') {
+        pseudo = only as PseudoSelector;
+      }
+    }
+    if (pseudo && isNode(pseudo.arg, N.SelectorList)) {
+      for (const child of (pseudo.arg as SelectorList).value) {
+        addItem(child as Selector);
+      }
+      return;
+    }
+    const key = item.valueOf();
+    if (!seen.has(key)) {
+      seen.add(key);
+      items.push(item);
+    }
+  };
+
+  if (isNode(selector, N.SelectorList)) {
+    for (const item of (selector as SelectorList).value) {
+      addItem(item as Selector);
+    }
+  } else {
+    addItem(selector);
+  }
+
+  if (items.length === 1) {
+    return items[0]!;
+  }
+
+  const list = SelectorList.create(items).inherit(selector) as SelectorList;
+  list.pre = undefined;
+  list.post = undefined;
+  const wrapper = PseudoSelector.create({ name: ':is', arg: list });
+  wrapper.generated = true;
+  return wrapper.inherit(selector) as Selector;
+}
+
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
 export function getParentRuleset(node: Node): Ruleset | undefined {
   const rules = node.parent;
