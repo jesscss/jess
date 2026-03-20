@@ -650,6 +650,101 @@ All work through `ce113f49` merged to `origin/dev` at `4d8ac5dd`.
 
 ---
 
+## Stage 17: Immutable Selectors
+
+Goal: Stop `setData('selector', ...)` mutations in extend paths. All extend output goes
+through `_extendedSelector` only. Makes selector nodes safe to share across clones, which
+unblocks eliminating ~50 remaining `copy(true)` calls in extend-core and selector-utils.
+
+See [dependency-graph.md](./dependency-graph.md#stage-17-immutable-selectors) for full checklist.
+
+- [ ] `extend-roots.ts` `applyInstructionToRuleset`: stop `setData('selector', ...)` — write `_extendedSelector` only
+- [ ] `extend-roots.ts`: remove `selectorBeforeExtend` save/restore (`copy(true)` at line ~515)
+- [ ] Verify all callers use `getEffectiveSelector()` / `_extendedSelector ?? selector` not raw `.selector`
+- [ ] Structural sharing builder helpers (`selector-builders.ts`): `appendSelectorAlternative`, `rewriteCompound`, `rewriteSelectorPath`
+- [ ] `extend-core.ts`: replace mutation-safety `copy(true)` calls with path-copy builders
+- [ ] `selector-utils.ts`: same — replace mutation-safety `copy(true)` calls
+- [ ] `ruleset.ts:544`: `selector.clone(true)` for sourceNode — reference canonical instead
+- [ ] `ampersand.ts:228`: evaluate necessity of `selector.clone(true)`
+- [ ] Tests green: target 5 failed / 63 passed baseline maintained or better
+- [ ] `copy(true)` count in extend paths: target ≤ 5 remaining
+
+---
+
+## Stage 18: Dependency Graph Infrastructure
+
+Goal: Track which top-level `VarDeclaration`s flow into each output node during eval.
+Enables incremental re-eval (Stage 20) and Live Patch API (Stage 21). Built once, used
+by both consumers.
+
+See [dependency-graph.md](./dependency-graph.md#stage-18-dependency-graph-infrastructure) for full checklist.
+
+- [ ] Add `EvalDependency` interface to `eval-session.ts` (`dependsOn: Set<VarDeclaration>`, `sourceExpr: Node`)
+- [ ] Add `dependencyMap: WeakMap<Node, EvalDependency>` to `EvalSession`
+- [ ] Session helpers: `sessionGetDependency`, `sessionSetDependency`, `sessionIsStatic`, `sessionMergeDependencies`
+- [ ] `Reference.evalNode()`: seed `dependsOn` when target is root-scope `VarDeclaration`
+- [ ] `Operation.evalNode()`, `Call.evalNode()`, `Expression.evalNode()`: propagate (union) child dependencies
+- [ ] `Declaration.evalNode()`: propagate from value node
+- [ ] Helper: `isTopLevelVarDeclaration(node, ctx)` — checks declaring `Rules` is root scope
+- [ ] Unit tests: static literal → null; direct var → {varDecl}; mixin boundary absorption; no-session parity
+
+---
+
+## Stage 19: WeakMap-Keyed Shared Registries
+
+Goal: Detach registry indices from `Rules` instance identity. Key off `rules.value` (array
+reference) into a module-level `WeakMap`. COW shallow clones share the index automatically.
+Array mutation creates a new index slot automatically.
+
+See [dependency-graph.md](./dependency-graph.md#stage-19-weakmap-keyed-shared-registries) for full checklist.
+
+- [ ] Add module-level `globalRegistryCache: WeakMap<Node[], RegistryData>` to `registry-utils.ts`
+- [ ] Refactor `Rules.getRegistry(type)` to key off `this.value`; incremental indexing against `indexedLength`
+- [ ] Refactor `Rules.register(type, node)` to write into `globalRegistryCache` entry
+- [ ] Remove from `Rules`: `rulesetRegistry`, `mixinRegistry`, `declarationRegistry`, `rulesIndexed`, `_indexing`, `_indexRules()`
+- [ ] Keep `functionRegistry` as instance field (plugin-injected, not content-derived)
+- [ ] Update `Rules.clone()`: remove registry/rulesIndexed reset lines
+- [ ] Update `Registry` base class / `_searchRulesChildren` to key off `rules.value` for lookups
+- [ ] Tests: shallow clone shares index (no re-indexing); value mutation creates new index slot
+
+---
+
+## Stage 20: Session-local Registry Deltas + Eliminate Import Cloning
+
+Goal: Session-added nodes (mixin expansion, injected vars) go into a per-session delta
+registry rather than the canonical index. Import paths no longer need to clone `Rules`
+at all — the canonical index is shared, session carries isolated parent state.
+
+See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-deltas--eliminate-import-cloning) for full checklist.
+
+- [ ] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
+- [ ] `sessionRegister(rules, type, node, ctx)` helper — writes to session delta when session active
+- [ ] Update `Rules.register()` to route through session delta when `ctx?.session` active
+- [ ] Update `Rules.getRegistry()` lookup: session delta first, then canonical WeakMap
+- [ ] Activate `sessionMarkScopeDirty` stub in `session-helpers.ts`
+- [ ] Dependency-aware partial re-eval: skip re-eval for entries whose `dependsOn ∩ changedVars = ∅`
+- [ ] **Eliminate import cloning** in `getFinalRules` (`import-style.ts`): replace `clone(false)` + COW selector loop with direct reference + session for isolation
+- [ ] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock — replace with session-isolated eval
+- [ ] Tests: two sequential `_dedupe` imports share canonical registry; mixin expansion in session delta only
+
+---
+
+## Stage 21: Live Patch API
+
+Goal: Emit `var(--jess-id, fallback)` for patchable Declaration values, plus a `patch.js`
+bundle that re-expresses downstream transformations using `@jesscss/fns`.
+
+See [dependency-graph.md](./dependency-graph.md#stage-21-live-patch-api) for full checklist.
+
+- [ ] Add `PatchSideTable` to `Context` — collects `(varDecl, sourceExpr, cssId, fallback)` during serialization
+- [ ] Serialization: check `sessionGetDependency` on Declaration value node; emit `var(--jess-<id>, <fallback>)` when non-null
+- [ ] `PatchSideTable.register()` deduplicates by `(varDecl, sourceExpr)` identity
+- [ ] New `patch-emitter.ts` module: walk side table → resolve `@jesscss/fns` imports → emit update functions + `patch()` entry point
+- [ ] CLI: `--patch` flag enables side table collection and `patch.js` emission
+- [ ] Tests: static → no `var()`; direct var → `var()`; mixin absorption → static; selector interpolation → not patchable
+
+---
+
 ## Future Exploration
 
 ### Pre/Post Serialization Simplification

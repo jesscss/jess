@@ -8,12 +8,15 @@ Use it together with:
 
 - [migration.md](./migration.md) for the staged refactor sequence
 - [subsystems.md](./subsystems.md) for subsystem responsibilities, APIs, and invariants
+- [dependency-graph.md](./dependency-graph.md) for the dependency graph, session-local
+  registries, and Live Patch API — Stages 17–21
 
 Recommended reading order:
 
 1. this file
 2. `migration.md`
 3. `subsystems.md`
+4. `dependency-graph.md` (Stages 17–21 and reactive eval model)
 
 ## Goal
 
@@ -718,7 +721,8 @@ No per-visitor Proxy wrapping needed.
 
 ## Migration Phases
 
-See [migration.md](./migration.md) for detailed stages.
+See [migration.md](./migration.md) for detailed stages, and [dependency-graph.md](./dependency-graph.md)
+for Stages 17–21 (reactive eval, session-local registries, Live Patch API).
 
 Summary order (maximum return for minimum risk):
 
@@ -728,7 +732,12 @@ Summary order (maximum return for minimum risk):
 4. **RenderMask + `render()` function** — eliminate comment-driven copies; session-aware serialization.
 5. **Declarative adapter layer** — replace less-compat Proxies.
 6. **Selector path-copy builders** — reduce extend allocations.
-7. **Import EvalSession** — copy-on-write for repeated imports.
+7. **Import EvalSession** — copy-on-write for repeated imports. (Stages 7–15, complete.)
+8. **Immutable selectors** — stop mutating `selector` in extend; use `_extendedSelector` only. (Stage 17)
+9. **Dependency graph** — track which top-level vars flow into each output. (Stage 18)
+10. **WeakMap-keyed registries** — detach index from `Rules` instance; share across clones. (Stage 19)
+11. **Session-local registry deltas + eliminate import cloning** — session carries only delta; no clone needed. (Stage 20)
+12. **Live Patch API** — emit `var(--id, fallback)` + `patch.js` from same dependency graph. (Stage 21)
 
 ## Possible: Collapsing preEval / eval into One Pass
 
@@ -781,6 +790,7 @@ And less on physical duplication of source nodes.
    overlay-aware at once.
 4. The instance-field migration is a large refactor touching every node class.
 5. Registries and caches may currently assume concrete node identity after cloning.
+   (Addressed by WeakMap-keyed shared registries in Stage 19 — see `dependency-graph.md`.)
 
 ## Validation Strategy
 
