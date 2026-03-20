@@ -10,6 +10,22 @@ Use with:
 - [README.md](./README.md)
 - [subsystems.md](./subsystems.md)
 
+## Status Snapshot
+
+Current branch status on `jess-dev`:
+
+- Stages 0–20 have landed as roadmap slices.
+- Stage 21 has not started.
+- Stage 21 is blocked until the pre-Stage-21 threshold is met:
+  remaining clone removal, remaining sessionization of eval-time mutation/replacement,
+  baseline validation, and merge readiness.
+
+For exact implementation state, use:
+
+- [PROGRESS.md](./PROGRESS.md) for the committed done-vs-remaining checklist
+- [HANDOFF.md](./HANDOFF.md) for the current next-task summary
+- [dependency-graph.md](./dependency-graph.md) for the Stage 17–21 design details
+
 ## Core Refactor Rule
 
 Do not do a flag-day rewrite.

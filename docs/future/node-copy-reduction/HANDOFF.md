@@ -20,13 +20,21 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 ### Branch: `jess-dev`
 ### Last commit: `99065d2f` — docs(progress): add Live Patch API vision
 
-### Working tree (uncommitted changes)
-```
-M  docs/future/node-copy-reduction/PROGRESS.md   ← new Stages 17–21 added
-M  docs/future/node-copy-reduction/README.md     ← doc map updated
-?? docs/future/node-copy-reduction/dependency-graph.md  ← new architecture doc
-```
-These docs-only changes should be committed before starting implementation.
+### Stage status
+- Stage 17: complete and committed
+- Stage 18: complete and committed
+- Stage 19: complete and committed
+- Stage 20: completed as a slice, but not yet sufficient to advance the roadmap
+  - done: session-local registry deltas, session-aware register/find plumbing, scope-dirty invalidation, dependency-aware partial re-eval in declaration lookup, detached-ruleset unlock off `clone(true)`, and Stage 20 characterization coverage
+  - note: plain `@import` no longer adds a finalization wrapper; compose still keeps a shallow per-import wrapper because separate import sites can require different visibility / reference metadata on the same cached module
+- Stage 21: not started and explicitly blocked on the pre-Stage-21 threshold below
+
+### Working tree expectation
+- Stage boundaries on this branch are committed and pushed.
+- If the working tree is dirty when you pick this up, assume it is either:
+  - the Stage 20 completion commit being prepared, or
+  - the first Stage 21 slice
+- Do not discard unrecognized changes without checking them first.
 
 ### Test baseline (post Stage 15, confirmed clean)
 - **Core** (`packages/core`): 5 failed | 63 passed | 3 skipped; 11 failed | 954 passed | 24 skipped
@@ -62,24 +70,21 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 
 ---
 
-## Next task: Stage 17 — Immutable Selectors
+## Pre-Stage-21 Threshold
 
-**Goal**: Stop mutating `ruleset.selector` in extend paths. All extend output goes into
-`_extendedSelector` only. This makes selector nodes safe to share across clones and
-unblocks eliminating ~50 remaining `copy(true)` calls in `extend-core.ts` and `selector-utils.ts`.
+Do not begin Stage 21 until all four conditions are true:
+
+1. All cloning that this refactor intends to remove is actually removed.
+2. All eval-time writes, mutations, and node replacements that are in scope for this refactor route through sessions.
+3. Tests pass to the accepted baseline with (1) and (2) true.
+4. A merge back to `dev` is credible without changing existing behavior.
 
 ### Why this is the right next step
 
-Currently `applyInstructionToRuleset` in `extend-roots.ts` writes to BOTH:
-- `ruleset._extendedSelector` (the new field added in the recent session)
-- `ruleset.setData('selector', ...)` (mutates the canonical selector)
-
-It also saves `selectorBeforeExtend` via `copy(true)` at line ~515 because `selector`
-gets mutated in-place. If `selector` is immutable, that snapshot is unnecessary.
-
-`getEffectiveSelector()` on `Ruleset` already returns `this._extendedSelector ?? this.selector`,
-so the render path is already set up to use `_extendedSelector`. We just need to stop the
-`setData('selector', ...)` mutation.
+1. Inventory and classify all remaining `clone()` / `copy()` sites still on the critical eval/import/extend path.
+2. Finish routing remaining eval-time writes / node replacement paths through session helpers.
+3. Re-run the baseline and verify that the no-regression claim still holds under the stricter threshold.
+4. Only after that, reassess readiness for Stage 21.
 
 ### Key files to read first
 - `packages/core/src/tree/util/extend-roots.ts` — `applyInstructionToRuleset` (~line 495)
@@ -115,7 +120,7 @@ See `dependency-graph.md` Stage 18 section for the full checklist.
 2. **Run tests after every meaningful change**: `cd packages/core && pnpm test`. Baseline is 5 failed / 63 passed.
 3. **Do not fix pre-existing failures** unless asked. Only your changes should affect the count.
 4. **Commit after each successful stage** (or sub-stage). If tests break, fix before committing.
-5. **One stage at a time**. Do not start Stage 18 before Stage 17 is green and committed.
+5. **One stage at a time**. Stage 20 is not the only prerequisite; the pre-Stage-21 threshold above must also be met before any Stage 21 work starts.
 6. **No destructive git ops** without explicit user permission (`git reset --hard`, `git restore`, etc.).
 7. **Never work directly in `~/git/oss/less.js`** — always use worktrees.
 
@@ -227,4 +232,4 @@ pnpm --filter @jesscss/core build
 - Do not run tests from the repo root with `pnpm test` unless you expect Jess package
   failures — the Node v24 CJS issue makes that noisy.
 - Do not create new abstraction layers or helpers that are only used once.
-- Do not begin Stage 18+ work until Stage 17 is committed and green.
+- Do not start Stage 21 merely because the Stage 20 slice is committed. The threshold above is the real gate.

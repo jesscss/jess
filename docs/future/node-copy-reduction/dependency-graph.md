@@ -525,6 +525,13 @@ AND `selector` on `Ruleset`. Stopping the `selector` mutation makes selector nod
 
 ### Stage 21: Live Patch API
 
+Precondition: do not start this stage until the branch clears the pre-Stage-21 threshold:
+
+- remaining clone/copy sites targeted by this refactor are removed
+- remaining eval-time writes / mutations / node replacements in scope route through sessions
+- tests pass to the accepted baseline with those conditions true
+- merge back to `dev` is credible without behavior drift
+
 - [ ] Add `PatchSideTable` to `Context`:
   ```ts
   interface PatchSideTable {
@@ -581,6 +588,7 @@ Stage 20 (session deltas + no import clone)
 
 Stage 21 (Live Patch API)
   └─ all prior stages required
+  └─ blocked until the pre-Stage-21 threshold is satisfied
 ```
 
 Stages 17 and 18 can proceed in parallel. Stage 19 depends on 17 (immutable selectors
