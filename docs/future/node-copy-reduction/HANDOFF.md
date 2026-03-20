@@ -1,0 +1,230 @@
+# Agent Handoff — Jess Node Copy Reduction (jess-dev branch)
+
+## What this project is
+
+**Jess** is a CSS preprocessor / transpiler (TypeScript, monorepo at `~/git/oss/jess`, active
+work in worktree at `~/git/worktrees/jess-dev`). This branch (`jess-dev`) is a long-running
+refactor to eliminate unnecessary `clone()` / `copy()` calls in the AST evaluation engine.
+
+The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
+1. `README.md` — architecture overview and philosophy
+2. `migration.md` — stage-by-stage plan (Stages 0–15 complete)
+3. `dependency-graph.md` — **new** — Stages 17–21 (dependency graph, session-local
+   registries, Live Patch API). This is the active roadmap.
+4. `PROGRESS.md` — implementation checklist, test baselines, what's done
+
+---
+
+## Current state
+
+### Branch: `jess-dev`
+### Last commit: `99065d2f` — docs(progress): add Live Patch API vision
+
+### Working tree (uncommitted changes)
+```
+M  docs/future/node-copy-reduction/PROGRESS.md   ← new Stages 17–21 added
+M  docs/future/node-copy-reduction/README.md     ← doc map updated
+?? docs/future/node-copy-reduction/dependency-graph.md  ← new architecture doc
+```
+These docs-only changes should be committed before starting implementation.
+
+### Test baseline (post Stage 15, confirmed clean)
+- **Core** (`packages/core`): 5 failed | 63 passed | 3 skipped; 11 failed | 954 passed | 24 skipped
+- **Less-compat** (`packages/jess-plugin-less-compat`): 9 passed | 54/54 tests pass
+- **Fns** (`packages/fns`): 1 failed | 64 passed (pre-existing `iif.test.ts` failure)
+- **Jess** (`packages/jess`): many failures from Node v24 CJS `ERR_PACKAGE_PATH_NOT_EXPORTED` — NOT regressions
+
+The 5 failed core test files are all **pre-existing** from the dev merge (not regressions):
+- `ampersand` — selector ordering during collapsing
+- `at-rule` / `at-rule-basic` — parent selector inside @media
+- `mixin` — mixin scope issues
+- `fast-reject` — `:is(SelectorList)` full-match
+
+**Do not fix these pre-existing failures unless specifically asked. They are the accepted baseline.**
+
+---
+
+## What was just done (this session)
+
+1. Fixed the last failing `extend-import-style.test.ts` test after converting `getFinalRules`
+   in `import-style.ts` from `clone(true)` to COW shallow `clone(false)`. Root cause: a
+   shallow-cloned Ruleset's `selector` was shared with the canonical tree; outer extend
+   mutated it via `appendAlternative`. Fix: deep-clone only the `selector` field per COW
+   Ruleset in `getFinalRules`.
+
+2. Wrote `dependency-graph.md` — a full architectural design for Stages 17–21, covering:
+   - **Dependency graph**: `dependsOn: Set<VarDeclaration>` tracked session-locally during eval
+   - **WeakMap-keyed shared registries**: detach index from `Rules` instance, key off `value[]`
+   - **Session-local registry deltas**: session carries only newly-added nodes
+   - **Live Patch API**: `var(--id, fallback)` CSS + `patch.js` from the same dependency graph
+
+3. Updated `PROGRESS.md` with Stages 17–21 checklists.
+
+---
+
+## Next task: Stage 17 — Immutable Selectors
+
+**Goal**: Stop mutating `ruleset.selector` in extend paths. All extend output goes into
+`_extendedSelector` only. This makes selector nodes safe to share across clones and
+unblocks eliminating ~50 remaining `copy(true)` calls in `extend-core.ts` and `selector-utils.ts`.
+
+### Why this is the right next step
+
+Currently `applyInstructionToRuleset` in `extend-roots.ts` writes to BOTH:
+- `ruleset._extendedSelector` (the new field added in the recent session)
+- `ruleset.setData('selector', ...)` (mutates the canonical selector)
+
+It also saves `selectorBeforeExtend` via `copy(true)` at line ~515 because `selector`
+gets mutated in-place. If `selector` is immutable, that snapshot is unnecessary.
+
+`getEffectiveSelector()` on `Ruleset` already returns `this._extendedSelector ?? this.selector`,
+so the render path is already set up to use `_extendedSelector`. We just need to stop the
+`setData('selector', ...)` mutation.
+
+### Key files to read first
+- `packages/core/src/tree/util/extend-roots.ts` — `applyInstructionToRuleset` (~line 495)
+  - Look for: `ruleset.setData('selector', ...)` and `selectorBeforeExtend` copy
+- `packages/core/src/tree/ruleset.ts` — `getEffectiveSelector()`, `_extendedSelector` field
+- `packages/core/src/tree/util/extend-core.ts` — the ~14 `copy(true)` calls here are
+  mutation-safety copies for selector assembly; become eliminable once selector is immutable
+- `packages/core/src/tree/util/selector-utils.ts` — same, ~14 `copy(true)` calls
+
+### Stage 17 checklist (from PROGRESS.md)
+- [ ] `extend-roots.ts` `applyInstructionToRuleset`: stop `setData('selector', ...)` — write `_extendedSelector` only
+- [ ] `extend-roots.ts`: remove `selectorBeforeExtend` save/restore (`copy(true)` at line ~515)
+- [ ] Verify all callers use `getEffectiveSelector()` / `_extendedSelector ?? selector`, not raw `.selector`
+- [ ] New file `selector-builders.ts` with structural-sharing helpers:
+  - `appendSelectorAlternative(target, added)` — new SelectorList container, reuse existing items
+  - `rewriteCompound(compound, mapper)` — new CompoundSelector if any item changes
+  - `rewriteSelectorPath(root, path, replacement)` — path-copy from root to changed item
+- [ ] `extend-core.ts`: replace mutation-safety `copy(true)` calls with path-copy builders
+- [ ] `selector-utils.ts`: same
+- [ ] `ruleset.ts:544`: `selector.clone(true)` for sourceNode storage — reference canonical instead
+- [ ] `ampersand.ts:228`: evaluate necessity of `selector.clone(true)`
+- [ ] Tests green after each change: `cd packages/core && pnpm test extend` (fast); full suite before commit
+- [ ] Target: `copy(true)` count in extend paths ≤ 5
+
+### After Stage 17: proceed to Stage 18 (Dependency Graph Infrastructure)
+See `dependency-graph.md` Stage 18 section for the full checklist.
+
+---
+
+## Non-negotiable rules
+
+1. **Never use `as any`**. Use proper type guards, type assertions, or fix the type definition.
+2. **Run tests after every meaningful change**: `cd packages/core && pnpm test`. Baseline is 5 failed / 63 passed.
+3. **Do not fix pre-existing failures** unless asked. Only your changes should affect the count.
+4. **Commit after each successful stage** (or sub-stage). If tests break, fix before committing.
+5. **One stage at a time**. Do not start Stage 18 before Stage 17 is green and committed.
+6. **No destructive git ops** without explicit user permission (`git reset --hard`, `git restore`, etc.).
+7. **Never work directly in `~/git/oss/less.js`** — always use worktrees.
+
+---
+
+## Architecture summary (enough to work without reading everything)
+
+### The eval model
+
+```
+CANONICAL TREE (parsed once, never mutated after eval starts)
+  └─ Rules.value[]  ←── WeakMap-keyed registry index (Stage 19)
+
+EVAL SESSION (one per import / mixin call / with-import)
+  ├─ runtimeState: WeakMap<Node, {parent, index, evaluated, preEvaluated}>
+  ├─ nodePatches: WeakMap<Node, Record<string, unknown>>
+  ├─ dependencyMap: WeakMap<Node, {dependsOn, sourceExpr}>  ← Stage 18
+  └─ registryDeltas: WeakMap<Node[], SessionRegistryDelta>  ← Stage 20
+```
+
+Session helpers (`session-helpers.ts`) provide the read/write surface:
+- `sessionGetField` / `sessionPatchField`
+- `sessionIsEvaluated` / `sessionSetEvaluated`
+- `sessionIsPreEvaluated` / `sessionSetPreEvaluated`
+- `sessionGetParent` / `sessionSetParent`
+- etc.
+
+When no session is active, every helper falls through to the direct field — zero cost,
+zero behavior change for non-session code paths.
+
+### The `_extendedSelector` pattern (current state going into Stage 17)
+
+`Ruleset` has:
+- `selector`: the original authored selector (canonical, should be immutable)
+- `_extendedSelector`: the extend-patched selector (set only during extend, session-local eventually)
+- `getEffectiveSelector()`: returns `_extendedSelector ?? selector`
+
+The extend path currently writes to BOTH `_extendedSelector` and `selector` (via `setData`).
+Stage 17 removes the `setData` write. After Stage 17, `selector` is truly immutable and safe
+to share across shallow clones.
+
+### Registry structure (current, going into Stage 19)
+
+```
+Rules instance
+  ├─ rulesetRegistry: RulesetRegistry
+  ├─ mixinRegistry: MixinRegistry
+  ├─ declarationRegistry: DeclarationRegistry
+  └─ functionRegistry: FunctionRegistry
+```
+
+Each registry is built lazily from `rules.value[]` on first access. Clone resets
+`rulesIndexed = 0`, forcing full rebuild on the clone. Stage 19 moves the first three
+to a `WeakMap<Node[], RegistryData>` keyed by array reference — COW clones share for free.
+
+### Copy-on-write pattern
+
+`clone(false, undefined, ctx)` with an active session:
+- Shallow-copies all fields
+- Routes child parent-pointer writes through `session.runtimeState` (not onto canonical node)
+- Canonical nodes' `.parent` fields are preserved
+
+This is the mechanism that lets mixin bodies and imported trees share the canonical tree
+across multiple eval sessions without corruption.
+
+---
+
+## Key files reference
+
+| File | Role |
+|------|------|
+| `packages/core/src/tree/node-base.ts` | Node base class, `clone()`, `adopt()`, `maybeClone()`, eval dispatch |
+| `packages/core/src/eval-session.ts` | `EvalSession` class — all session state |
+| `packages/core/src/tree/util/session-helpers.ts` | Session-aware read/write helpers |
+| `packages/core/src/tree/import-style.ts` | Import eval — where most session work has landed |
+| `packages/core/src/tree/rules.ts` | `Rules` class — registry host, mixin eval, `$for` loops |
+| `packages/core/src/tree/util/extend-roots.ts` | `applyInstructionToRuleset` — extend engine |
+| `packages/core/src/tree/util/extend-core.ts` | Selector assembly for extend — `copy(true)` sites |
+| `packages/core/src/tree/util/selector-utils.ts` | Selector helpers — more `copy(true)` sites |
+| `packages/core/src/tree/util/registry-utils.ts` | `RulesetRegistry`, `MixinRegistry`, etc. |
+| `packages/core/src/tree/ruleset.ts` | `Ruleset` — `_extendedSelector`, `getEffectiveSelector()` |
+
+---
+
+## Test commands
+
+```bash
+# Fast extend-only run (during Stage 17 work)
+cd packages/core && pnpm test extend
+
+# Full core suite (before commits)
+cd packages/core && pnpm test
+
+# Less-compat regression check
+cd packages/jess-plugin-less-compat && pnpm test
+
+# Build core (required before running jess package tests)
+pnpm --filter @jesscss/core build
+```
+
+---
+
+## What NOT to do
+
+- Do not change `.css` fixture files without user review — they are Less v5 alpha expected
+  outputs maintained by the user, not Less.js 4.x outputs.
+- Do not add unnecessary comments to code. Avoid comments that restate what the code does.
+- Do not add `as any` casts.
+- Do not run tests from the repo root with `pnpm test` unless you expect Jess package
+  failures — the Node v24 CJS issue makes that noisy.
+- Do not create new abstraction layers or helpers that are only used once.
+- Do not begin Stage 18+ work until Stage 17 is committed and green.
