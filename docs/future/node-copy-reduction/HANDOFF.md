@@ -108,6 +108,11 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - runtime overlay semantics were tightened so `parent: undefined` and `sourceParent: undefined` are representable as explicit session-local clears, not mistaken for “no override”
     - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`173 passed, 9 skipped`)
     - this is still foundational only: `Rules.ts` call sites are not broadly routed through the new child-overlay helpers yet
+20. The first production consumer of that child overlay is now in the working tree:
+    - `Rules` render-side reads (`_emitRulesBody()`, `flatRules()`, and `visibleRules()`) now consult the session-local child overlay when a `Context` is present
+    - `src/__tests__/eval-session.test.ts` now proves `Rules.toTrimmedString({ context })` sees overlay replacements/appends while canonical output stays unchanged
+    - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`174 passed, 9 skipped`)
+    - eval/preEval/indexing/registry loops still read `rules.value` directly, so structural session replacement is only partially integrated so far
 
 ---
 
@@ -129,8 +134,8 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Known blockers from recent reduction attempts
 
-1. Child-array isolation and session-local replacement are now partially implemented but not yet broadly consumed.
-   The registry-delta keying problem is fixed, and `EvalSession` now has a child-array overlay for `Rules`, but most production `Rules.ts` call sites still read/write `rules.value` directly instead of routing through the helper layer.
+1. Child-array isolation and session-local replacement are now partially implemented and partially consumed.
+   The registry-delta keying problem is fixed, `EvalSession` now has a child-array overlay for `Rules`, and render-side `Rules` reads use it, but most eval/preEval/indexing/registry call sites still read/write `rules.value` directly instead of routing through the helper layer.
 
 2. Remaining high-signal clone/copy pressure is still concentrated in:
    - `packages/core/src/tree/rules.ts` — mixin arg binding and output shaping

@@ -845,8 +845,14 @@ Current blocker notes from live reduction attempts:
   - verified with:
   - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
   - Result: `173 passed, 9 skipped`
+- First production consumer of that overlay now landed in the working tree:
+  - `Rules._emitRulesBody()`, `Rules.flatRules()`, and `Rules.visibleRules()` now read the session-local child overlay when a `Context` is present
+  - `src/__tests__/eval-session.test.ts` now proves `Rules.toTrimmedString({ context })` sees overlay replacement/append operations while canonical output stays unchanged
+  - verified with:
+  - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
+  - Result: `174 passed, 9 skipped`
 - This does **not** change the real blocker: generic session-local node replacement / `Rules.value[]` overlay semantics are still incomplete, so these slices only move lower-order field/render reads toward the intended immutable-node architecture.
-- The next integration step is to route real production `Rules` mutation/replacement paths through these helpers instead of directly reading/writing `rules.value`.
+- The next integration step is to route eval/preEval/indexing/registry `Rules` loops through these helpers instead of directly reading/writing `rules.value`.
 
 ---
 

@@ -31,6 +31,7 @@ import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import {
+  sessionGetChildren,
   sessionGetDependency,
   sessionMergeDependencies,
   sessionSetDependency,
@@ -391,6 +392,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
+  private _getChildren(context?: Context): readonly Node[] {
+    return context
+      ? sessionGetChildren(this, context)
+      : this.value;
+  }
+
   /**
    * Used by Ruleset, Mixins, and AtRules etc to render
    * rules with braces.
@@ -423,7 +430,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const w = options.writer!;
     const depth = options.depth ?? 0;
     const space = indent(depth);
-    const value = this.value;
+    const value = this._getChildren(options.context);
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
@@ -442,10 +449,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return false;
       }
       const rulesNode = node as Rules;
-      if (rulesNode.value.length !== 1) {
+      const rulesValue = rulesNode._getChildren(options.context);
+      if (rulesValue.length !== 1) {
         return false;
       }
-      const only = rulesNode.value[0]!;
+      const only = rulesValue[0]!;
       return only.type === 'Any' && (only as Any).role === 'any';
     };
 
@@ -521,10 +529,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /** All rules, with nested rules flattened */
-  flatRules(visibleOnly: boolean = false) {
+  flatRules(visibleOnly: boolean = false, context?: Context) {
     const finalRules: Node[] = [];
     const iterateRules = (rules: Rules) => {
-      for (let n of rules.value) {
+      for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Rules)) {
           // Preserve reference-mode Rules as containers so the serializer
           // can detect the referenceMode flag and suppress output.
@@ -544,8 +552,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return finalRules;
   }
 
-  visibleRules() {
-    return this.value.filter(n => n.visible);
+  visibleRules(context?: Context) {
+    return this._getChildren(context).filter(n => n.visible);
   }
 
   /**

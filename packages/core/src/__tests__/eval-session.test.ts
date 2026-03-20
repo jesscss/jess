@@ -660,6 +660,26 @@ describe('session-aware helpers', () => {
       expect(sessionGetParent(first, ctx)).toBeUndefined();
       expect(first.parent).toBe(node);
     });
+
+    it('Rules rendering reads the session-local child overlay without mutating canonical output', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'background', value: any('blue') });
+      const replacement = decl({ name: 'border', value: any('black') });
+      const appended = decl({ name: 'margin', value: any('1px') });
+      const node = rules([first, second]);
+
+      sessionReplaceNode(first, replacement, ctx);
+      sessionAppendChildren(node, [appended], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toContain('border: black;');
+      expect(node.toTrimmedString({ context: ctx })).toContain('margin: 1px;');
+      expect(node.toTrimmedString({ context: ctx })).not.toContain('color: red;');
+      expect(node.toTrimmedString()).toContain('color: red;');
+      expect(node.toTrimmedString()).not.toContain('border: black;');
+      expect(node.toTrimmedString()).not.toContain('margin: 1px;');
+    });
   });
 
   describe('sessionIsEvaluated / sessionSetEvaluated', () => {
