@@ -703,6 +703,51 @@ which eliminates the bulk of pre/post array allocations and the `stripPrePost` m
 
 ---
 
+### Live Patch API (CSS Custom Property + JS Bundle Output)
+
+**Goal**: Emit two outputs from a single Jess compilation:
+
+1. **CSS** — every Declaration value that is dynamic and traces to a top-level
+   `VarDeclaration` is emitted as `var(--generated-id, compile-time-value)` instead of
+   a bare value. The compile-time value is the fallback for environments without JS.
+
+2. **patch.js** — a tree-shakeable JS module that imports only the `@jesscss/fns`
+   functions that were actually used, re-expressing each top-level variable's downstream
+   transformations as a JS call graph. Consumers call a generated `patch(overrides)`
+   function at runtime to update custom properties without re-running the compiler.
+
+**Eligibility rule**: a Declaration value is patchable if:
+- It is dynamic (`F_NON_STATIC`) — i.e., it wasn't collapsed at compile time, AND
+- Its dependency chain includes at least one **top-level** `VarDeclaration` (root scope,
+  not a mixin parameter or block-local variable)
+
+Values that are dynamic but only depend on mixin params / local vars are emitted
+statically (those knobs can't be turned from outside the compiled stylesheet).
+
+**Why this depends on canonical tree preservation**: The pre-eval expression
+`lighten(@primary, 10%)` in the canonical source tree IS the patch.js expression — it
+uses the same `@jesscss/fns` function that ran at compile time. The evaluated value
+`#4477aa` is the CSS fallback. Both must be simultaneously available, which requires
+the canonical (unevaluated) tree to remain unmutated alongside the evaluated output.
+The COW / EvalSession work (Stages 7–15) is the prerequisite.
+
+**Implementation sketch (not yet started)**:
+- `Reference.eval()`: when resolving a top-level `VarDeclaration`, tag the returned
+  node with `_sourceVariable` (pointer back to the `VarDeclaration`)
+- Tag propagation: `Operation` / `Call` nodes propagate `_sourceVariable` to their
+  output if any input carries one (the output "depends on" that variable)
+- Serialization: if a Declaration value node carries `_sourceVariable`, emit
+  `var(--generated-id, compile-time-value)` and record `(varDecl, sourceExpr, id)` in
+  a side table on the context
+- patch.js emitter: walk the side table, import referenced fns, emit update functions
+
+**Tier coverage**: all value-level variables are patchable — `darken`, `lighten`, `fade`,
+arithmetic, etc. — because the same `@jesscss/fns` functions run at both compile time and
+runtime. Genuinely unpatchable: selector interpolation (`.icon-@{name}`), variables that
+gate mixin application, structural conditionals that change the AST shape.
+
+---
+
 ## Notes
 
 ### Working procedure
