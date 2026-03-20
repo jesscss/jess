@@ -12,7 +12,7 @@ import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { sessionMergeDependencies, sessionSetDependency } from './util/session-helpers.js';
+import { sessionGetField, sessionMergeDependencies, sessionSetDependency } from './util/session-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -104,12 +104,33 @@ export class Call extends Node<CallValue, CallOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
+  private _getName(context?: Context): string | Node {
+    return context
+      ? sessionGetField<string | Node>(this, 'name', context)
+      : this.name;
+  }
+
+  private _getArgs(context?: Context): List<Node> | undefined {
+    return context
+      ? sessionGetField<List<Node> | undefined>(this, 'args', context)
+      : this.args;
+  }
+
+  private _getContentNode(context?: Context): Node | undefined {
+    return context
+      ? sessionGetField<Node | undefined>(this, 'contentNode', context)
+      : this.contentNode;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     const { silentFail } = this.options;
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, args, contentNode } = this;
+    const context = options.context;
+    const name = this._getName(context);
+    const args = this._getArgs(context);
+    const contentNode = this._getContentNode(context);
     if (typeof name === 'string') {
       w.add(name, this);
     } else {

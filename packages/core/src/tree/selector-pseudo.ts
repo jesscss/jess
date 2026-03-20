@@ -12,6 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 export type PseudoSelectorValue = {
   /**
@@ -45,6 +46,18 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (this.arg instanceof Node) {
       this.adopt(this.arg);
     }
+  }
+
+  private _getName(context?: Context): string {
+    return context
+      ? sessionGetField<string>(this, 'name', context)
+      : this.name;
+  }
+
+  private _getArg(context?: Context): Node | undefined {
+    return context
+      ? sessionGetField<Node | undefined>(this, 'arg', context)
+      : this.arg;
   }
 
   override computeKeySets(): void {
@@ -87,7 +100,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, arg } = this;
+    const context = options.context;
+    const name = this._getName(context);
+    const arg = this._getArg(context);
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));

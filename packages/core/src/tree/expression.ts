@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetDependency, sessionSetDependency } from './util/session-helpers.js';
+import { sessionGetDependency, sessionGetField, sessionSetDependency } from './util/session-helpers.js';
 
 /**
  * An expression is a node that returns a value.
@@ -31,8 +31,14 @@ export class Expression extends Node<Node> {
     this.addFlag(F_NON_STATIC);
   }
 
+  private _getValue(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'value', context)
+      : this.value;
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
-    const value = this.value;
+    const value = this._getValue(context);
     const out = value.eval(context);
     const applyDependency = (result: Node): Node => {
       const dependency = sessionGetDependency(result, context);
@@ -55,9 +61,10 @@ export class Expression extends Node<Node> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const value = this._getValue(options.context);
     w.add('$', this);
     w.add('(');
-    this.value.toString(options);
+    value.toString(options);
     w.add(')');
     return w.getSince(mark);
   }

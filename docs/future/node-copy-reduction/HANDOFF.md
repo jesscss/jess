@@ -19,7 +19,7 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 ## Current state
 
 ### Branch: `jess-dev`
-### Latest pushed clean boundary: `29f611a8` — `refactor(core): decouple registry deltas from Rules arrays`
+### Latest pushed merge-safe boundary before the current fundamentals slice: `c379624f` — `Merge branch 'dev' into jess-dev`
 
 ### Stage status
 - Stage 17: complete and committed
@@ -91,6 +91,13 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `StyleImport.getFinalRules()` materializes raw `.parent` links only for cloned descendants in the returned import tree, so import output survives session teardown without mutating canonical shared nodes
     - mixin guard wrapper scopes (`outerRules`) now materialize their local param/`@arguments` bindings directly, so fresh guard-probe sessions still resolve bound params
     - focused verification is green: `src/tree/__tests__/extend-import-style.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, `src/tree/__tests__/control.test.ts`, `src/tree/__tests__/declaration.test.ts`, and `src/tree/__tests__/call.test.ts`
+16. The current working slice continued the same bottom-up approach instead of jumping to `Rules` replacement:
+    - session-aware render reads now cover lower-order selector/value wrappers and containers: `PseudoSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`, `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`, `List`, `Sequence`, `QueryCondition`, `Condition`, and `Func`
+    - this specifically avoided the bad leaf-selector experiment where overriding `BasicSelector` / `Combinator` `toTrimmedString()` broke the writer contract; those changes were reverted
+    - broad focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/extend-import-style.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/control.test.ts`, `src/tree/__tests__/declaration.test.ts`, `src/tree/__tests__/call.test.ts`, `src/tree/__tests__/condition.test.ts`, `src/tree/__tests__/list.test.ts`, `src/tree/__tests__/sequence.test.ts`, `src/tree/__tests__/func.test.ts`, and `src/tree/__tests__/at-rule.test.ts` (`229 passed, 9 skipped`)
+17. The next logical target after this slice is still below `Rules`:
+    - either remaining low-order render/eval readers like `Reference` / `Interpolated` / `ImportJs`, or
+    - true generic session-local replacement semantics (`sessionReplaceNode()` + `Rules.value[]` overlay), if the next reduction needs structural writes instead of just field reads
 
 ---
 
@@ -124,14 +131,17 @@ Do not begin Stage 21 until all four conditions are true:
 3. `sessionReplaceNode()` is still a stub for true session-local replacement semantics.
    Generic eval-time node replacement is not fully sessionized yet.
 
-4. A small sessionization cleanup landed after that blocker was identified:
+4. Low-order field/read coverage is no longer the immediate weak point.
+   The recent work proved that a lot of wrapper/container rendering can move to session-backed reads safely.
+   The harder remaining work is structural replacement and session-local child overlays, not another round of speculative selector-leaf overrides.
+5. A small sessionization cleanup landed after that blocker was identified:
    - `declaration.ts`, `ruleset.ts`, and preserve-mode fallback in `operation.ts` no longer rely on direct canonical `.evaluated` writes in their active eval paths
    - `src/__tests__/eval-session.test.ts` now proves preserve-mode operation fallback does not mark the canonical operation tree evaluated when a session is active
 
-5. New characterization now proves session registry deltas survive a shallow clone swapping to a new `value[]`.
+6. New characterization now proves session registry deltas survive a shallow clone swapping to a new `value[]`.
    That specific `Rules.value` / session-registry blocker should be treated as resolved.
 
-6. One more previously fuzzy boundary is now clearer:
+7. One more previously fuzzy boundary is now clearer:
    - ephemeral wrapper scopes created during mixin guard evaluation should be materialized directly
    - returned import trees can materialize clone-only parent links after session teardown
    - but generic session-local node replacement for `Rules.value[]` is still unresolved and should not be papered over with global `adopt()` behavior changes

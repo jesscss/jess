@@ -4,6 +4,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 export type ListOptions = {
   /**
@@ -53,6 +54,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   private _valueOf: string | undefined;
 
+  private _getValue(context?: Context): T[] {
+    return context
+      ? sessionGetField<T[]>(this, 'value', context)
+      : this.value;
+  }
+
   override valueOf() {
     return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
@@ -61,7 +68,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let value = this.value;
+    let value = this._getValue(options.context);
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {

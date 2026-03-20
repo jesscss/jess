@@ -7,6 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -112,10 +113,43 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   /** Return a selector-like keySet */
   private _keySet: Set<string> | undefined;
+
+  private _getName(context?: Context): Any<AnyRole> | Interpolated<AnyRole> | undefined {
+    return context
+      ? sessionGetField<Any<AnyRole> | Interpolated<AnyRole> | undefined>(this, 'name', context)
+      : this.name;
+  }
+
+  private _setName(name: Any<AnyRole> | Interpolated<AnyRole> | undefined, context: Context): void {
+    if (name instanceof Node) {
+      this.adopt(name, context);
+    }
+    this.name = name;
+    this._keySet = undefined;
+  }
+
+  private _getRulesContainer(context?: Context): Rules {
+    return context
+      ? sessionGetField<Rules>(this, 'rules', context)
+      : this.rules;
+  }
+
+  private _getParams(context?: Context): List<Node> | undefined {
+    return context
+      ? sessionGetField<List<Node> | undefined>(this, 'params', context)
+      : this.params;
+  }
+
+  private _getGuard(context?: Context): Condition | undefined {
+    return context
+      ? sessionGetField<Condition | undefined>(this, 'guard', context)
+      : this.guard;
+  }
+
   get keySet() {
     let keySet = this._keySet;
     if (!keySet) {
-      let { name } = this;
+      const name = this.name;
       if (!name) {
         return (this._keySet = new Set());
       }
@@ -127,7 +161,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this;
+    const context = options.context;
+    const name = this._getName(context);
+    const rules = this._getRulesContainer(context);
+    const params = this._getParams(context);
+    const guard = this._getGuard(context);
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -161,7 +199,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     node._setPreEvaluated(true, context);
     node.sourceNode ??= this;
 
-    let { name, rules } = node;
+    let name = node.name;
+    const rules = node.rules;
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope
@@ -175,11 +214,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          node.setData('name', key);
+          node._setName(key, context);
           return node;
         });
       }
-      node.setData('name', maybeKey as Any<'name'>);
+      node._setName(maybeKey as Any<'name'>, context);
     }
     return node;
   }

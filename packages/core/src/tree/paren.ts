@@ -6,6 +6,7 @@ import { Node, defineType, F_NON_STATIC, type LocationInfo, type TreeContext } f
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 export type ParenOptions = {
   escaped: boolean;
@@ -39,6 +40,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
   }
 
+  private _getValue(context?: Context): Node | undefined {
+    return context
+      ? sessionGetField<Node | undefined>(this, 'value', context)
+      : this.value;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -48,7 +55,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       w.add(escapeChar, this);
     }
     w.add('(');
-    let value = this.value;
+    let value = this._getValue(options.context);
     if (value) {
       if (value instanceof Node) {
         let out = w.capture(() => value.toString(options));
@@ -62,7 +69,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let value = this.value;
+    let value = this._getValue(context);
     if (value) {
       let isOp = isOpOrExpression(value);
       if (isOp) {

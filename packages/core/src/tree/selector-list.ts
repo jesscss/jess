@@ -10,6 +10,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorMatch } from './util/selector-match-core.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 export interface SelectorList {
   type: 'SelectorList';
@@ -36,6 +37,12 @@ export class SelectorList extends Selector<Selector[]> {
     return this.value.length;
   }
 
+  private _getValue(context?: Context): Selector[] {
+    return context
+      ? sessionGetField<Selector[]>(this, 'value', context)
+      : this.value;
+  }
+
   /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
@@ -45,8 +52,9 @@ export class SelectorList extends Selector<Selector[]> {
     // Flatten generated top-level `:is(...)` items into the selector list.
     // This matches Less output expectations when an extend created an :is() and it ended up being
     // the whole selector-list item.
+    const sourceValue = this._getValue(options.context);
     const value: Selector[] = [];
-    for (const item of this.value) {
+    for (const item of sourceValue) {
       // Flatten `:is(a, b)` selector-list items into `a, b`.
       // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
       if (isNode(item, N.PseudoSelector) && item.name === ':is') {

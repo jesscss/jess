@@ -14,6 +14,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -52,6 +53,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return this.value.length;
   }
 
+  private _getValue(context?: Context): ComplexSelectorValue {
+    return context
+      ? sessionGetField<ComplexSelectorValue>(this, 'value', context)
+      : this.value;
+  }
+
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators
@@ -67,7 +74,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { value } = this;
+    const value = this._getValue(options.context);
     let length = value.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {

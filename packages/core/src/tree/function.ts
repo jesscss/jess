@@ -9,6 +9,7 @@ import { Mixin } from './mixin.js';
 import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -71,11 +72,32 @@ export class Func extends Node<FuncValue, FuncOptions> {
     return String(name.valueOf());
   }
 
+  private _getName(context?: Context): FuncValue['name'] {
+    return context
+      ? sessionGetField<FuncValue['name']>(this, 'name', context)
+      : this.name;
+  }
+
+  private _getParams(context?: Context): FuncValue['params'] {
+    return context
+      ? sessionGetField<FuncValue['params']>(this, 'params', context)
+      : this.params;
+  }
+
+  private _getBody(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'body', context)
+      : this.body;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, params, body } = this;
+    const context = options.context;
+    const name = this._getName(context);
+    const params = this._getParams(context);
+    const body = this._getBody(context);
 
     w.add('$function', this);
     w.add(' ');

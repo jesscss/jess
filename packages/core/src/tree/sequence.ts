@@ -7,6 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 export type SequenceOptions = {
   /**
@@ -47,6 +48,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return this.value.length;
   }
 
+  protected _getValue(context?: Context): Node[] {
+    return context
+      ? sessionGetField<Node[]>(this, 'value', context)
+      : this.value;
+  }
+
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
@@ -69,7 +76,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.value;
+    const value = this._getValue(options.context);
     const length = value.length;
 
     if (length === 0) {

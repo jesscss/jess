@@ -828,6 +828,14 @@ Current blocker notes from live reduction attempts:
 - The next safe order is bottom-up: finish `Declaration` and `Ruleset` session-backed field writes/read paths before attempting broader `Rules` or import-facing structural reduction again.
 - New bottom-up slice now landed in the working tree: `Declaration` reads/writes use session-aware accessors in eval and serialization, `Ruleset` has matching selector/rules/guard accessors on its active eval/render paths, and `serialize-helper.ts` now reads a session-patched `rules` body when a `Context` is present.
 - Follow-up on that slice is also now landed in the working tree: nested selector ancestry is session-aware on `Ruleset` / extend paths, returned import trees materialize clone-only parent links after session teardown, and mixin guard wrapper scopes no longer lose bound params when guard evaluation swaps to a fresh session.
+- The current bottom-up render-read pass is now broader and still green on the focused safety set:
+  - selector-side containers: `PseudoSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`
+  - wrapper/value nodes: `AtRule`, `Mixin`, `Call`, `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`
+  - container/value nodes: `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`
+- Verified together:
+  - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/extend-import-style.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/control.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/condition.test.ts src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts src/tree/__tests__/func.test.ts src/tree/__tests__/at-rule.test.ts`
+  - Result: `229 passed, 9 skipped`
+- This does **not** change the real blocker: generic session-local node replacement / `Rules.value[]` overlay semantics are still incomplete, so these slices only move lower-order field/render reads toward the intended immutable-node architecture.
 
 ---
 

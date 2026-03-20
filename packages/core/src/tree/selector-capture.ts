@@ -3,6 +3,7 @@ import { Node, defineType, type LocationInfo, type NodeOptions, type TreeContext
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 export interface SelectorCapture extends Node<Selector> {
   type: 'SelectorCapture';
@@ -27,6 +28,12 @@ export class SelectorCapture extends Node<Selector> {
     }
   }
 
+  private _getValue(context?: Context): Selector {
+    return context
+      ? sessionGetField<Selector>(this, 'value', context)
+      : this.value;
+  }
+
   override valueOf(): string {
     return String(this.value.valueOf());
   }
@@ -35,14 +42,15 @@ export class SelectorCapture extends Node<Selector> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const value = this._getValue(options.context);
     w.add('*[', this);
-    this.value.toString(options);
+    value.toString(options);
     w.add(']', this);
     return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.value.eval(context);
+    const out = this._getValue(context).eval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then((selector) => {
         return selector;

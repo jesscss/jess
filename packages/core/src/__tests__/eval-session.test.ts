@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, ruleset } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -269,6 +269,243 @@ describe('session-aware helpers', () => {
       expect(sessionOut).toContain('background: blue;');
       expect(canonicalOut).toContain('.a');
       expect(canonicalOut).toContain('color: red;');
+    });
+
+    it('AtRule rendering reads patched name, prelude, and rules from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = atrule({
+        name: any('@media', { role: 'atkeyword' }),
+        prelude: seq([any('screen', { role: 'keyword' })]),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      });
+      const patchedRules = rules([decl({ name: 'background', value: any('blue') })]);
+
+      sessionPatchField(node, 'name', any('@supports', { role: 'atkeyword' }), ctx);
+      sessionPatchField(node, 'prelude', seq([any('(display:grid)')]), ctx);
+      sessionPatchField(node, 'rules', patchedRules, ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('@supports (display:grid) {\n  background: blue;\n}\n');
+      expect(node.toTrimmedString()).toBe('@media screen {\n  color: red;\n}\n');
+    });
+
+    it('Mixin rendering reads patched name, params, guard, and rules from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = mixin({
+        name: any('.base'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      });
+      const patchedRules = rules([decl({ name: 'background', value: any('blue') })]);
+
+      sessionPatchField(node, 'name', any('.patched'), ctx);
+      sessionPatchField(node, 'params', list([any('size', { role: 'property' })]), ctx);
+      sessionPatchField(node, 'guard', condition([any('true')]), ctx);
+      sessionPatchField(node, 'rules', patchedRules, ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('.patched(size) when true {\n  background: blue;\n}');
+      expect(node.toTrimmedString()).toBe('.base(color) {\n  color: red;\n}');
+    });
+
+    it('Call rendering reads patched name, args, and content from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = call({
+        name: any('rgb'),
+        args: list([any('red'), any('blue')]),
+        contentNode: any('fallback')
+      });
+
+      sessionPatchField(node, 'name', any('hsl'), ctx);
+      sessionPatchField(node, 'args', list([any('120deg'), any('50%')]), ctx);
+      sessionPatchField(node, 'contentNode', any('patched'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('hsl(120deg, 50%): patched');
+      expect(node.toTrimmedString()).toBe('rgb(red, blue): fallback');
+    });
+
+    it('PseudoSelector rendering reads patched name and arg from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = pseudo({
+        name: ':not',
+        arg: any('red')
+      });
+
+      sessionPatchField(node, 'name', ':where', ctx);
+      sessionPatchField(node, 'arg', any('blue'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe(':where(blue)');
+      expect(node.toTrimmedString()).toBe(':not(red)');
+    });
+
+    it('SelectorList rendering reads patched items from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = sellist([el('.a'), el('.b')]);
+
+      sessionPatchField(node, 'value', [el('.x'), el('.y')], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('.x,\n.y');
+      expect(node.toTrimmedString()).toBe('.a,\n.b');
+    });
+
+    it('ComplexSelector rendering reads patched components from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = sel([el('.a'), co('>'), el('.b') as any]);
+
+      sessionPatchField(node, 'value', [el('.x'), co('>'), el('.y') as any], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('.x > .y');
+      expect(node.toTrimmedString()).toBe('.a > .b');
+    });
+
+    it('CompoundSelector rendering reads patched components from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = compound([el('button') as any, el('.a') as any]);
+
+      sessionPatchField(node, 'value', [el('input') as any, el('.b') as any], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('input.b');
+      expect(node.toTrimmedString()).toBe('button.a');
+    });
+
+    it('Expression rendering reads a patched child from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = expr(any('red'));
+
+      sessionPatchField(node, 'value', any('blue'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('$(blue)');
+      expect(node.toTrimmedString()).toBe('$(red)');
+    });
+
+    it('Paren rendering reads a patched child from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = paren(any('red'));
+
+      sessionPatchField(node, 'value', any('blue'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('(blue)');
+      expect(node.toTrimmedString()).toBe('(red)');
+    });
+
+    it('Quoted rendering reads a patched child from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = quoted('red');
+
+      sessionPatchField(node, 'value', any('blue'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('\"blue\"');
+      expect(node.toTrimmedString()).toBe('\"red\"');
+    });
+
+    it('Url rendering reads a patched child from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = url(quoted('a.png'));
+
+      sessionPatchField(node, 'value', quoted('b.png'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('url(\"b.png\")');
+      expect(node.toTrimmedString()).toBe('url(\"a.png\")');
+    });
+
+    it('SelectorCapture rendering reads a patched child from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = selcap(el('.a'));
+
+      sessionPatchField(node, 'value', sellist([el('.x'), el('.y')]), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('*[.x,\n.y]');
+      expect(node.toTrimmedString()).toBe('*[.a]');
+    });
+
+    it('List rendering reads patched items from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = list([any('red'), any('blue')]);
+
+      sessionPatchField(node, 'value', [any('cyan'), any('magenta')], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('cyan, magenta');
+      expect(node.toTrimmedString()).toBe('red, blue');
+    });
+
+    it('Sequence rendering reads patched items from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = seq([any('red'), any('blue')]);
+
+      sessionPatchField(node, 'value', [any('cyan'), any('magenta')], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('cyan magenta');
+      expect(node.toTrimmedString()).toBe('red blue');
+    });
+
+    it('QueryCondition rendering reads patched items from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = query([any('screen'), any('and'), paren(any('color'))]);
+
+      sessionPatchField(node, 'value', [any('print'), any('and'), paren(any('monochrome'))], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('print and (monochrome)');
+      expect(node.toTrimmedString()).toBe('screen and (color)');
+    });
+
+    it('Condition rendering reads patched operands from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = condition([any('a'), '=', any('b')]);
+
+      sessionPatchField(node, 'left', any('x'), ctx);
+      sessionPatchField(node, 'operator', '>=', ctx);
+      sessionPatchField(node, 'right', any('y'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('(x >= y)');
+      expect(node.toTrimmedString()).toBe('(a = b)');
+    });
+
+    it('Func rendering reads patched name, params, and body from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = fn({
+        name: any('base'),
+        params: list([any('color')]),
+        body: rules([decl({ name: 'return', value: any('red') })])
+      });
+      const patchedBody = rules([decl({ name: 'return', value: any('blue') })]);
+
+      sessionPatchField(node, 'name', any('patched'), ctx);
+      sessionPatchField(node, 'params', list([any('size')]), ctx);
+      sessionPatchField(node, 'body', patchedBody, ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('$function patched(size) {\n  return: blue;\n}');
+      expect(node.toTrimmedString()).toBe('$function base(color) {\n  return: red;\n}');
+    });
+
+    it('Range rendering reads patched bounds from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = range(
+        { start: any('1'), end: any('3'), step: any('2') },
+        { includeEnd: false }
+      );
+
+      sessionPatchField(node, 'start', any('2'), ctx);
+      sessionPatchField(node, 'end', any('4'), ctx);
+      sessionPatchField(node, 'step', any('3'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('2 to <4 step 3');
+      expect(node.toTrimmedString()).toBe('1 to <3 step 2');
     });
   });
 

@@ -4,6 +4,8 @@ import { type Any } from './any.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import type { Context } from '../context.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * e.g. url('foo.png')
@@ -26,6 +28,12 @@ export class Url extends Node<Quoted | Any> {
     }
   }
 
+  private _getValue(context?: Context): Quoted | Any {
+    return context
+      ? sessionGetField<Quoted | Any>(this, 'value', context)
+      : this.value;
+  }
+
   /**
    * @todo - enable URL rewriting
    */
@@ -45,8 +53,9 @@ export class Url extends Node<Quoted | Any> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const value = this._getValue(options.context);
     w.add('url(');
-    this.value.toString(options);
+    value.toString(options);
     w.add(')');
     return w.getSince(mark);
   }

@@ -1,7 +1,9 @@
+import type { Context } from '../context.js';
 import type { PrintOptions } from '..';
 import { getPrintOptions } from './util/print.js';
 import { defineType } from './node.js';
 import { Sequence } from './sequence.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * Used by `@media`, `@supports`, and `@container`
@@ -17,11 +19,17 @@ export interface QueryCondition {
 }
 
 export class QueryCondition extends Sequence {
+  private _getValue(context?: Context) {
+    return context
+      ? sessionGetField<typeof this.value>(this, 'value', context)
+      : this.value;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let value = this.value;
+    let value = this._getValue(options.context);
     let length = value.length;
 
     if (length === 0) {

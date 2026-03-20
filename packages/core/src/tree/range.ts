@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
 import { Node, defineType, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 export type RangeValue = {
   start: Node;
@@ -56,11 +57,32 @@ export class Range extends Node<RangeValue, RangeOptions> {
     return this;
   }
 
+  private _getStart(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'start', context)
+      : this.start;
+  }
+
+  private _getEnd(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'end', context)
+      : this.end;
+  }
+
+  private _getStep(context?: Context): Node | undefined {
+    return context
+      ? sessionGetField<Node | undefined>(this, 'step', context)
+      : this.step;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { start, end, step } = this;
+    const context = options.context;
+    const start = this._getStart(context);
+    const end = this._getEnd(context);
+    const step = this._getStep(context);
     const includeStart = this.options?.includeStart !== false;
     const includeEnd = this.options?.includeEnd !== false;
 

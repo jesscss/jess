@@ -4,6 +4,7 @@ import { Node, F_STATIC, F_NON_STATIC, defineType, type LocationInfo, type TreeC
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -42,17 +43,28 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     }
   }
 
+  private _getValue(context?: Context): string | Any | Interpolated {
+    return context
+      ? sessionGetField<string | Any | Interpolated>(this, 'value', context)
+      : this.value;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const value = this._getValue(options.context);
     let { quote = '"', escaped } = this;
     let escapeChar = escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
     w.add(quote);
-    super.toTrimmedString(options);
+    if (value instanceof Node) {
+      value.toString(options);
+    } else if (value !== undefined && value !== '') {
+      w.add(String(value), this);
+    }
     w.add(quote);
     return w.getSince(mark);
   }
@@ -75,7 +87,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    let value: string | Any | Interpolated | Node = this.value;
+    let value: string | Any | Interpolated | Node = this._getValue(context);
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
       value = v as any;
       if (this.escaped) {

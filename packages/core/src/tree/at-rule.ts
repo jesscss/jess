@@ -12,6 +12,7 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -94,6 +95,45 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   protected _valueOf: string | undefined;
+
+  private _getName(context?: Context): Any<'atkeyword'> | Interpolated<'atkeyword'> {
+    return context
+      ? sessionGetField<Any<'atkeyword'> | Interpolated<'atkeyword'>>(this, 'name', context)
+      : this.name;
+  }
+
+  private _setName(name: Any<'atkeyword'> | Interpolated<'atkeyword'>, context: Context): void {
+    this.adopt(name, context);
+    this.name = name;
+    this._valueOf = undefined;
+  }
+
+  private _getPrelude(context?: Context): Node | undefined {
+    return context
+      ? sessionGetField<Node | undefined>(this, 'prelude', context)
+      : this.prelude;
+  }
+
+  private _setPrelude(prelude: Node | undefined, context: Context): void {
+    if (prelude instanceof Node) {
+      this.adopt(prelude, context);
+    }
+    this.prelude = prelude;
+    this._valueOf = undefined;
+  }
+
+  private _getRulesContainer(context?: Context): Rules | undefined {
+    return context
+      ? sessionGetField<Rules | undefined>(this, 'rules', context)
+      : this.rules;
+  }
+
+  private _setRulesContainer(rules: Rules | undefined, context: Context): void {
+    if (rules instanceof Node) {
+      this.adopt(rules, context);
+    }
+    this.rules = rules;
+  }
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
@@ -258,7 +298,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    let { name, prelude, rules } = this;
+    const name = this._getName(options.context);
+    const prelude = this._getPrelude(options.context);
+    const rules = this._getRulesContainer(options.context);
 
     let idt = indent(options.depth);
     let out = idt;

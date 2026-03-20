@@ -3,6 +3,7 @@ import { F_NON_STATIC, F_VISIBLE, Node, defineType, type LocationInfo, type Tree
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -64,11 +65,32 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  private _getLeft(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'left', context)
+      : this.left;
+  }
+
+  private _getOperator(context?: Context): ConditionOperator | undefined {
+    return context
+      ? sessionGetField<ConditionOperator | undefined>(this, 'operator', context)
+      : this.operator;
+  }
+
+  private _getRight(context?: Context): Node | undefined {
+    return context
+      ? sessionGetField<Node | undefined>(this, 'right', context)
+      : this.right;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { left, operator: op, right } = this;
+    const context = options.context;
+    let left = this._getLeft(context);
+    let op = this._getOperator(context);
+    let right = this._getRight(context);
     const needsParens = Boolean(right || this.negate);
     if (this.negate) {
       w.add('not ');

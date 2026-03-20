@@ -7,8 +7,9 @@ import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { N } from './node-type.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * @example
@@ -39,6 +40,12 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   get length() {
     return this.value.length;
+  }
+
+  private _getValue(context?: Context): SimpleSelector[] {
+    return context
+      ? sessionGetField<SimpleSelector[]>(this, 'value', context)
+      : this.value;
   }
 
   override valueOf() {
@@ -80,14 +87,21 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     // Components in a compound selector are joined without spaces.
     // However, parser/copy/extend pipelines can preserve `post=1` (single space) on components,
     // which would serialize `.e.e` as `.e .e`. Normalize here as a final guard.
-    const data = this.value;
+    const data = this._getValue(options.context);
+    const mark = w.mark();
     for (let i = 0; i < data.length - 1; i++) {
       (data[i] as any).post = undefined;
     }
-    return super.toTrimmedString(options);
+    for (const item of data) {
+      const out = w.capture(() => item.toString(options));
+      w.add(out.trim(), item);
+    }
+    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
