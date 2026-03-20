@@ -112,14 +112,14 @@ type RegistryIndexKey = keyof Pick<
   'rulesetIndex' | 'mixinIndex' | 'declarationIndex'
 >;
 
-export const globalRegistryCache = new WeakMap<Node[], RegistryData>();
-const indexingRegistryValues = new WeakSet<Node[]>();
+export const globalRegistryCache = new WeakMap<readonly Node[], RegistryData>();
+const indexingRegistryValues = new WeakSet<readonly Node[]>();
 
-export function peekRegistryData(value: Node[]): RegistryData | undefined {
+export function peekRegistryData(value: readonly Node[]): RegistryData | undefined {
   return globalRegistryCache.get(value);
 }
 
-export function ensureRegistryData(value: Node[]): RegistryData {
+export function ensureRegistryData(value: readonly Node[]): RegistryData {
   let data = globalRegistryCache.get(value);
   if (!data) {
     data = { indexedLength: 0 };
@@ -129,14 +129,14 @@ export function ensureRegistryData(value: Node[]): RegistryData {
 }
 
 function getSessionRegistryDelta(
-  value: Node[],
+  rules: Rules,
   context?: Context
 ): SessionRegistryDelta | undefined {
-  return context?.session?.getRegistryDelta(value);
+  return context?.session?.getRegistryDelta(rules);
 }
 
 function ensureSessionRegistryIndex<K extends RegistryIndexKey>(
-  value: Node[],
+  rules: Rules,
   key: K,
   context: Context | undefined,
   create: () => NonNullable<SessionRegistryDelta[K]>
@@ -145,27 +145,27 @@ function ensureSessionRegistryIndex<K extends RegistryIndexKey>(
   if (!session) {
     return undefined;
   }
-  const delta = session.ensureRegistryDelta(value);
+  const delta = session.ensureRegistryDelta(rules);
   return (delta[key] ??= create()) as NonNullable<SessionRegistryDelta[K]>;
 }
 
 function getSessionRegistryIndex<K extends RegistryIndexKey>(
-  value: Node[],
+  rules: Rules,
   key: K,
   context?: Context
 ): NonNullable<SessionRegistryDelta[K]> | undefined {
-  const delta = getSessionRegistryDelta(value, context);
+  const delta = getSessionRegistryDelta(rules, context);
   return delta?.[key] as NonNullable<SessionRegistryDelta[K]> | undefined;
 }
 
-export function isRegistryIndexing(rules: Rules | Node[]): boolean {
-  const value = isArray(rules) ? rules : rules.value;
+export function isRegistryIndexing(rules: Rules | readonly Node[]): boolean {
+  const value = rules instanceof Node ? rules.value : rules;
   return indexingRegistryValues.has(value);
 }
 
 export function syncRegistryCache(rules: Rules, context?: Context): void {
   const value = rules.value;
-  if (getSessionRegistryDelta(value, context)) {
+  if (getSessionRegistryDelta(rules, context)) {
     return;
   }
   const data = ensureRegistryData(value);
@@ -219,7 +219,7 @@ export function registerSessionNode(
 
   if (type === 'ruleset') {
     const index = ensureSessionRegistryIndex(
-      rules.value,
+      rules,
       'rulesetIndex',
       context,
       () => new Map<string, Set<Ruleset>>()
@@ -229,7 +229,7 @@ export function registerSessionNode(
     }
   } else if (type === 'declaration') {
     const index = ensureSessionRegistryIndex(
-      rules.value,
+      rules,
       'declarationIndex',
       context,
       () => new Map<string, Set<Declaration>>()
@@ -239,7 +239,7 @@ export function registerSessionNode(
     }
   } else {
     const index = ensureSessionRegistryIndex(
-      rules.value,
+      rules,
       'mixinIndex',
       context,
       () => new Map<string, MixinRegistryEntry[]>()
@@ -716,7 +716,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
 
     /** Just get based on first key */
     const indices = [
-      getSessionRegistryIndex(this.rules.value, 'rulesetIndex', this.context),
+      getSessionRegistryIndex(this.rules, 'rulesetIndex', this.context),
       this.index
     ].filter(Boolean) as Array<Map<string, Set<Ruleset>>>;
     for (const key of keys) {
@@ -1018,7 +1018,7 @@ export class MixinRegistry extends Registry<
       let registry = rules.getRegistry('mixin', this.context);
       registry.indexPendingItems();
       const mixinIndices = [
-        getSessionRegistryIndex(rules.value, 'mixinIndex', this.context),
+        getSessionRegistryIndex(rules, 'mixinIndex', this.context),
         registry.index
       ].filter(Boolean) as Array<Map<string, MixinRegistryEntry[]>>;
       const existing: MixinRegistryEntry[] = [];
@@ -1559,7 +1559,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       newReadonly = currentReadonly;
       let registry = rules.getRegistry('declaration', this.context);
       registry.indexPendingItems();
-      const sessionDeclarationIndex = getSessionRegistryIndex(rules.value, 'declarationIndex', this.context);
+      const sessionDeclarationIndex = getSessionRegistryIndex(rules, 'declarationIndex', this.context);
       const canonicalDeclarationIndex = registry.index;
       // Build filtered list without intermediate spread — iterate Set directly
       let list: Declaration[] | undefined;

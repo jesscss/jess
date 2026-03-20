@@ -58,6 +58,7 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 2. Stage 18 added the session-local dependency graph (`dependsOn`, `sourceExpr`) and propagation through reference/expression/operation/call/declaration paths.
 3. Stage 19 moved canonical ruleset, mixin, and declaration registries into a `WeakMap<Node[], RegistryData>` keyed by `Rules.value`.
 4. Stage 20 completed the session-local registry delta layer, dependency-aware declaration lookup, detached-ruleset unlock via shallow session-safe clone, and the remaining import finalization reductions.
+5. Follow-up threshold work decoupled session registry deltas from `Rules.value` identity by keying them to the `Rules` container itself, and `Rules.value` is now typed readonly for consumers so plugin code must go through `setData()` / container helpers rather than mutating arrays directly.
 5. Session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)` coverage now proves shared canonical nodes can be inserted into session-scoped wrappers without overwriting canonical `.parent` pointers.
 6. `src/tree/__tests__/import-style.test.ts` had two failures at committed boundary `3b4d089e`:
    - `forwarded members are not visible locally, but are visible downstream`
@@ -97,24 +98,24 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Known blockers from recent reduction attempts
 
-1. `Rules.value` identity is still load-bearing for session-local registry deltas.
-   A naive attempt to detach the child array during indexed `Rules.setData()` writes broke configured `with`/`set` imports and mixin expansion lookup.
+1. Child-array isolation and session-local replacement are still coupled.
+   The registry-delta keying problem is fixed, but generic session-local `Rules` child replacement is still missing. The next safe slice likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.
 
-2. Child-array isolation and registry/session identity are still coupled.
-   The next safe slice likely needs either session-local child storage for `Rules` or an explicit way to migrate registry-delta identity when `value[]` changes.
-
-3. Remaining high-signal clone/copy pressure is still concentrated in:
+2. Remaining high-signal clone/copy pressure is still concentrated in:
    - `packages/core/src/tree/rules.ts` — mixin arg binding and output shaping
    - `packages/core/src/tree/extend.ts`
    - `packages/core/src/tree/ruleset.ts`
    - `packages/core/src/tree/ampersand.ts`
 
-4. `sessionReplaceNode()` is still a stub for true session-local replacement semantics.
+3. `sessionReplaceNode()` is still a stub for true session-local replacement semantics.
    Generic eval-time node replacement is not fully sessionized yet.
 
-5. A small sessionization cleanup landed after that blocker was identified:
+4. A small sessionization cleanup landed after that blocker was identified:
    - `declaration.ts`, `ruleset.ts`, and preserve-mode fallback in `operation.ts` no longer rely on direct canonical `.evaluated` writes in their active eval paths
    - `src/__tests__/eval-session.test.ts` now proves preserve-mode operation fallback does not mark the canonical operation tree evaluated when a session is active
+
+5. New characterization now proves session registry deltas survive a shallow clone swapping to a new `value[]`.
+   That specific `Rules.value` / session-registry blocker should be treated as resolved.
 
 ### Key files to read first
 - `packages/core/src/tree/import-style.ts`

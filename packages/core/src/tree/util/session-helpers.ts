@@ -436,5 +436,5 @@ export function sessionMarkScopeDirty(
   rules: Rules,
   ctx: Context
 ): void {
-  ctx.session?.clearRegistryDelta(rules.value);
+  ctx.session?.clearRegistryDelta(rules);
 }

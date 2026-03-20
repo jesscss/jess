@@ -115,6 +115,7 @@ export type RulesOptions = {
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  readonly value: readonly Node[];
   get options(): RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
@@ -144,7 +145,7 @@ export interface Rules {
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   static override childKeys = ['value'] as const;
 
-  value!: Node[];
+  readonly value!: readonly Node[];
 
   functionRegistry: Registries.FunctionRegistry | undefined;
 
@@ -344,8 +345,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
+  private _setValueArray(value: Node[]): void {
+    (this as unknown as { value: Node[] }).value = value;
+  }
+
   constructor(
-    value: Node[],
+    value: readonly Node[],
     options?: RulesOptions & NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext
@@ -363,9 +368,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
-    const normalized = value ?? [];
+    const normalized = (value ?? []) as Node[];
     super(normalized, mergedOptions, location, treeContext);
-    this.value = normalized;
+    this._setValueArray(normalized);
     for (const child of normalized) {
       if (child instanceof Node) {
         this.adopt(child);
@@ -697,10 +702,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args.length > 0 && args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const nodes = (hasCtx ? args.slice(1) : args) as Node[];
-    this.value = [...this.value];
+    this._setValueArray([...this.value]);
     for (const node of nodes) {
       this.adopt(node, ctx);
-      this.value.push(node);
+      (this.value as Node[]).push(node);
       this.registerNode(node, undefined, ctx);
     }
   }
@@ -713,7 +718,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const [start, deleteCount, ...items] = (hasCtx ? args.slice(1) : args) as [number, number, ...Node[]];
     const nextValue = [...this.value];
     const removed = nextValue.splice(start, deleteCount, ...items);
-    this.value = nextValue;
+    this._setValueArray(nextValue);
     for (const item of items) {
       if (item instanceof Node) {
         this.adopt(item, ctx);
@@ -730,8 +735,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args.length > 0 && args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const items = (hasCtx ? args.slice(1) : args) as Node[];
-    this.value = [...this.value];
-    this.value.unshift(...items);
+    this._setValueArray([...this.value]);
+    (this.value as Node[]).unshift(...items);
     for (const item of items) {
       if (item instanceof Node) {
         this.adopt(item, ctx);

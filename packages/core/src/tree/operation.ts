@@ -102,7 +102,7 @@ export class Operation extends Node<OperationValue> {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
           const outOperation = context.session
-            ? n.clone(false, undefined, context) as Operation
+            ? n.clone(false) as Operation
             : n;
           outOperation.setData('left', l);
           outOperation.setData('right', r);
@@ -123,7 +123,7 @@ export class Operation extends Node<OperationValue> {
             if (error instanceof TypeError) {
               // Preserve canonical operation state by materializing an isolated wrapper when needed.
               const calcOperation = context.session
-                ? n.clone(false, undefined, context) as Operation
+                ? n.clone(false) as Operation
                 : n;
               calcOperation.setData('left', l);
               calcOperation.setData('right', r);

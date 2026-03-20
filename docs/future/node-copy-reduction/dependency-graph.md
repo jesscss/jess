@@ -502,7 +502,7 @@ Status on branch `jess-dev` at `3b4d089e`:
 
 ### Completed
 
-- [x] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
+- [x] Add `registryDeltas: WeakMap<Rules, SessionRegistryDelta>` to `EvalSession`
 - [x] Define `SessionRegistryDelta`:
   ```ts
   interface SessionRegistryDelta {
@@ -515,7 +515,7 @@ Status on branch `jess-dev` at `3b4d089e`:
 - [x] Update `Rules.register()` to call `sessionRegister` when `ctx?.session` active
 - [x] Update `Rules.getRegistry()` lookup order: session delta first, then canonical WeakMap
 - [x] Activate `sessionMarkScopeDirty`:
-  - [x] Invalidate session delta for the given `rules.value` key when scope changes
+  - [x] Invalidate session delta for the given `Rules` container when scope changes
 - [x] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock:
   - [x] Detached ruleset unlock now uses session-isolated shallow clone semantics
 - [x] `_dedupe`/`multiple` branch: remove the per-Ruleset selector deep-clone workaround from the `clone(false)` finalization path
@@ -529,6 +529,7 @@ Status on branch `jess-dev` at `3b4d089e`:
   - [x] canonical index remains shared across all of these output paths
 - [x] Tests: repeated `_dedupe` imports share canonical registry (no index rebuild)
 - [x] Tests: mixin expansion nodes appear in session delta, not canonical index
+- [x] Tests: session registry delta survives shallow clone `value[]` replacement
 
 ### Stage 21: Live Patch API
 

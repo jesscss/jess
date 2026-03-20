@@ -760,7 +760,7 @@ See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-
 
 ### Stage 20 Notes
 
-- `EvalSession` now carries session-local registry deltas keyed by `Rules.value`, and `Rules.register()`/`Rules.find()` can see those entries without polluting the canonical WeakMap-backed caches.
+- `EvalSession` now carries session-local registry deltas keyed by the `Rules` container, so `Rules.register()`/`Rules.find()` can survive session-local child-array swaps without polluting the canonical WeakMap-backed caches.
 - Added `rules.test.ts` coverage proving that session-only declaration entries are visible with a session context, invisible to canonical lookup, and cleared by `sessionMarkScopeDirty()`.
 - Added `rules.test.ts` coverage proving that changed-var sessions keep only dependency-relevant overlays; static overlays fall through to canonical declarations.
 - Added parent-isolation coverage for session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)`, so shared canonical children can be inserted into session-scoped `Rules` wrappers without overwriting their canonical `.parent` pointers.
@@ -799,8 +799,9 @@ Immediate next work before Stage 21:
 
 Current blocker notes from live reduction attempts:
 
-- `Rules.value` identity is still load-bearing for session-local registry deltas. A naive attempt to detach the child array on indexed `Rules.setData()` writes broke configured import injection and mixin expansion lookup.
-- This means child-array isolation and registry/session identity are still coupled. The next safe reduction likely needs either session-local child storage for `Rules` or an explicit migration path for registry-delta identity when `value[]` changes.
+- The `Rules.value` / session-registry identity blocker is now resolved. Session registry deltas are keyed by the `Rules` container, and characterization now proves they survive a shallow clone swapping to a new `value[]`.
+- `Rules.value` is now typed readonly for consumers. Plugin / visitor code should treat direct array mutation as invalid and go through `setData()` or container helpers instead.
+- Child-array isolation and generic session-local replacement are still coupled. The next safe reduction likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.
 - Remaining high-signal clone/copy clusters are still concentrated in `rules.ts` (mixin arg binding / output shaping), `extend.ts`, `ruleset.ts`, and `ampersand.ts`.
 - `sessionReplaceNode()` is still only a stub for true session-local replacement semantics; generic eval-time node replacement is not fully sessionized yet.
 - A smaller cleanup slice is now in place: direct eval-lifecycle writes in `declaration.ts`, `ruleset.ts`, and preserve-mode fallback in `operation.ts` were moved off raw canonical `.evaluated` writes. `src/__tests__/eval-session.test.ts` now proves preserve-mode operation fallback does not mark canonical nodes evaluated when a session is active.

@@ -750,7 +750,7 @@ Summary order (maximum return for minimum risk):
 8. **Immutable selectors** — stop mutating `selector` in extend; use `_extendedSelector` only. (Stage 17)
 9. **Dependency graph** — track which top-level vars flow into each output. (Stage 18)
 10. **WeakMap-keyed registries** — detach index from `Rules` instance; share across clones. (Stage 19)
-11. **Session-local registry deltas + eliminate import cloning** — session carries only delta; import finalization now avoids structural cloning, with only minimal shallow wrappers left where separate import sites need different metadata. (Stage 20)
+11. **Session-local registry deltas + eliminate import cloning** — session carries only delta keyed by the logical `Rules` container; import finalization now avoids structural cloning, with only minimal shallow wrappers left where separate import sites need different metadata. (Stage 20)
 12. **Live Patch API** — emit `var(--id, fallback)` + `patch.js` from same dependency graph. (Stage 21)
 
 ## Possible: Collapsing preEval / eval into One Pass

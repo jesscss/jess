@@ -284,8 +284,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (isNode(child, N.Ruleset)) {
           const rulesetClone = (child as Ruleset).clone(false) as Ruleset;
           rulesetClone.inherit(child as Ruleset);
-          out.value[i] = rulesetClone;
-          out.adopt(rulesetClone);
+          out.setData(i, rulesetClone);
         }
       }
     }

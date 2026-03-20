@@ -3,6 +3,7 @@ import type { VarDeclaration } from './tree/declaration-var.js';
 import type { Ruleset } from './tree/ruleset.js';
 import type { Mixin } from './tree/mixin.js';
 import type { Declaration } from './tree/declaration.js';
+import type { Rules } from './tree/rules.js';
 
 export interface SessionRegistryDelta {
   rulesetIndex?: Map<string, Set<Ruleset>>;
@@ -106,8 +107,8 @@ export class EvalSession {
   /** Per-node dependency annotations */
   private dependencies = new WeakMap<Node, EvalDependency>();
 
-  /** Session-local registry additions keyed by Rules.value identity */
-  private registryDeltas = new WeakMap<Node[], SessionRegistryDelta>();
+  /** Session-local registry additions keyed by the logical Rules container */
+  private registryDeltas = new WeakMap<Rules, SessionRegistryDelta>();
 
   /** Canonical top-level vars whose values changed in this session */
   private changedVars = new Set<VarDeclaration>();
@@ -230,20 +231,20 @@ export class EvalSession {
 
   // -- Registry delta API --
 
-  ensureRegistryDelta(value: Node[]): SessionRegistryDelta {
-    let delta = this.registryDeltas.get(value);
+  ensureRegistryDelta(rules: Rules): SessionRegistryDelta {
+    let delta = this.registryDeltas.get(rules);
     if (!delta) {
       delta = {};
-      this.registryDeltas.set(value, delta);
+      this.registryDeltas.set(rules, delta);
     }
     return delta;
   }
 
-  getRegistryDelta(value: Node[]): SessionRegistryDelta | undefined {
-    return this.registryDeltas.get(value);
+  getRegistryDelta(rules: Rules): SessionRegistryDelta | undefined {
+    return this.registryDeltas.get(rules);
   }
 
-  clearRegistryDelta(value: Node[]): void {
-    this.registryDeltas.delete(value);
+  clearRegistryDelta(rules: Rules): void {
+    this.registryDeltas.delete(rules);
   }
 }

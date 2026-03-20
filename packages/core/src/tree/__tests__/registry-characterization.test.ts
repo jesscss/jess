@@ -73,11 +73,31 @@ describe('registry characterization', () => {
 
     root.register('declaration', injected, context);
 
-    const delta = context.session?.getRegistryDelta(root.value);
+    const delta = context.session?.getRegistryDelta(root);
     const sessionEntries = delta?.declarationIndex?.get('bar');
 
     expect(sessionEntries?.has(injected)).toBe(true);
     expect(canonicalData?.declarationIndex?.has('bar')).toBe(false);
+  });
+
+  it('keeps session registry deltas when a clone swaps to a new child array', () => {
+    const root = rules([
+      vardecl({ name: 'foo', value: any('bar') })
+    ]);
+    const clone = root.clone(false) as Rules;
+    const context = new Context();
+    context.createSession();
+    const injected = vardecl({ name: 'bar', value: any('baz') });
+
+    clone.getRegistry('declaration');
+    clone.register('declaration', injected, context);
+    clone.setData([...clone.value, vardecl({ name: 'baz', value: any('qux') })]);
+
+    expect(clone.find('declaration', 'bar', 'VarDeclaration', {
+      context,
+      searchParents: false
+    })).toBe(injected);
+    expect(context.session?.getRegistryDelta(clone)?.declarationIndex?.get('bar')?.has(injected)).toBe(true);
   });
 
   it('reuses the evaluated import root during finalization for plain imports', () => {
@@ -185,7 +205,7 @@ describe('registry characterization', () => {
 
     const evald = await root.eval(context);
     const mixinOutput = evald.at(1) as Rules;
-    const sessionDelta = context.session?.getRegistryDelta(mixinOutput.value);
+    const sessionDelta = context.session?.getRegistryDelta(mixinOutput);
     const canonicalData = peekRegistryData(mixinOutput.value);
 
     expect(mixinOutput.type).toBe('Rules');
