@@ -198,6 +198,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return w.getSince(mark);
   }
 
+  private materializeCloneParentLinks(node: Node): void {
+    for (const child of node.children()) {
+      if (child !== child.sourceNode) {
+        (child as unknown as { parent?: Node }).parent = node;
+      }
+      this.materializeCloneParentLinks(child);
+    }
+  }
+
   getFinalRules(evaluatedRules: Rules) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
@@ -307,6 +316,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
     this.adopt(out);
+    this.materializeCloneParentLinks(out);
     return out;
   }
 

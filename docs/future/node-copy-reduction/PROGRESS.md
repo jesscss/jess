@@ -741,11 +741,15 @@ structurally — the canonical index is shared, session carries isolated parent 
 only a shallow per-import metadata wrapper remains where different import sites need
 different visibility / reference semantics on the same cached module.
 
+Important status note: this stage landed major groundwork, but it did not finish the
+broader immutable-node / session-write architecture. The branch is still in a
+fundamentals-completion gate before Stage 21.
+
 See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-deltas--eliminate-import-cloning) for the design checklist.
 
 ### Completed in Current Branch
 
-- [x] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
+- [x] Add `registryDeltas: WeakMap<Rules, SessionRegistryDelta>` to `EvalSession`
 - [x] `sessionRegister(rules, type, node, ctx)` helper — writes to session delta when session active
 - [x] Update `Rules.register()` to route through session delta when `ctx?.session` active
 - [x] Update `Rules.getRegistry()` lookup: session delta first, then canonical WeakMap
@@ -769,6 +773,9 @@ See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-
 - Reduced `import-style.ts` cloning further: `getFinalRules()` now keeps child `Ruleset` cloning only for implicit reference / `_dedupe` imports. Plain `multiple:true` imports reuse shared child `Ruleset`s under the shallow wrapper without regressing `extend-import-style`.
 - Reduced `import-style.ts` again: plain `@import` finalization no longer adds a second shallow `Rules` wrapper. The remaining shallow wrapper is now confined to compose/configured import paths where distinct import sites legitimately need different visibility / reference metadata on the same cached module.
 - Fixed configured `with` compose finalization so canonical top-level nodes have their original parents restored after session teardown, eliminating the last known `import-style` parent-pointer regression.
+- Selector ancestry for nested `Ruleset`s now reads through `sessionGetParent()` on the active render/extend paths, so clone-session descendants no longer recompute against stale canonical parents during collapse / reference rendering.
+- `StyleImport.getFinalRules()` now materializes raw `.parent` links only for cloned descendants in the returned import tree, so import output remains structurally coherent after eval session teardown without mutating canonical shared nodes.
+- Mixin guard param wrappers (`outerRules`) now materialize their local param/`@arguments` bindings directly instead of depending on session-local registry deltas, so fresh guard-probe sessions still resolve bound param vars.
 - Detached ruleset unlock now uses `clone(false, undefined, ctx)` instead of `clone(true)`, so it reuses canonical children while preserving session-isolated parent/runtime state.
 - The `_dedupe` / compose finalization paths still use the minimum shallow wrappers needed for per-import metadata or extend isolation, but the Stage 16 selector deep-clone workaround is gone and no deep/tree clone remains in the Stage 20 import path.
 - `src/tree/__tests__/import-style.test.ts` is now fully green on the working tree.
@@ -791,11 +798,24 @@ Stage 20 completion is not, by itself, the gate to Stage 21. Do not start Live P
 
 Current branch status: this threshold is **not yet met**.
 
+## Current Actual Stage: Fundamentals Completion Gate
+
+This is the real active stage on `jess-dev` right now, regardless of the numbered
+roadmap slices already landed.
+
+Definition:
+
+- Canonical nodes are immutable after construction.
+- Eval-time field writes and node replacements are session-backed operations.
+- Session layers replace clone-based divergence for the targeted eval/import/mixin paths.
+- Baseline behavior is re-proven in that stricter state.
+
 Immediate next work before Stage 21:
 
 - [ ] Inventory remaining `clone()` / `copy()` sites on the critical eval/import/extend paths
-- [ ] Finish sessionizing remaining eval-time mutation / replacement paths
+- [ ] Finish sessionizing remaining eval-time mutation / replacement paths, starting with lower-order nodes before `Rules` / import composition
 - [ ] Re-run the baseline against that stricter state and confirm behavior is preserved
+- [ ] Rewrite any misleading roadmap text whenever implementation reality changes
 
 Current blocker notes from live reduction attempts:
 
@@ -805,6 +825,9 @@ Current blocker notes from live reduction attempts:
 - Remaining high-signal clone/copy clusters are still concentrated in `rules.ts` (mixin arg binding / output shaping), `extend.ts`, `ruleset.ts`, and `ampersand.ts`.
 - `sessionReplaceNode()` is still only a stub for true session-local replacement semantics; generic eval-time node replacement is not fully sessionized yet.
 - A smaller cleanup slice is now in place: direct eval-lifecycle writes in `declaration.ts`, `ruleset.ts`, and preserve-mode fallback in `operation.ts` were moved off raw canonical `.evaluated` writes. `src/__tests__/eval-session.test.ts` now proves preserve-mode operation fallback does not mark canonical nodes evaluated when a session is active.
+- The next safe order is bottom-up: finish `Declaration` and `Ruleset` session-backed field writes/read paths before attempting broader `Rules` or import-facing structural reduction again.
+- New bottom-up slice now landed in the working tree: `Declaration` reads/writes use session-aware accessors in eval and serialization, `Ruleset` has matching selector/rules/guard accessors on its active eval/render paths, and `serialize-helper.ts` now reads a session-patched `rules` body when a `Context` is present.
+- Follow-up on that slice is also now landed in the working tree: nested selector ancestry is session-aware on `Ruleset` / extend paths, returned import trees materialize clone-only parent links after session teardown, and mixin guard wrapper scopes no longer lose bound params when guard evaluation swaps to a fresh session.
 
 ---
 

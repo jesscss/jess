@@ -12,6 +12,8 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
 import type { Ampersand } from '../ampersand.js';
+import type { Context } from '../../context.js';
+import { sessionGetParent } from './session-helpers.js';
 
 /**
  * Returns true when `sel` is purely `&` with no appendValue — meaning the
@@ -87,10 +89,11 @@ export function wrapInGeneratedIs(selector: Selector): Selector {
 }
 
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
-export function getParentRuleset(node: Node): Ruleset | undefined {
-  const rules = node.parent;
-  return rules?.parent && isNode(rules.parent, N.Ruleset)
-    ? rules.parent as Ruleset
+export function getParentRuleset(node: Node, context?: Context): Ruleset | undefined {
+  const rules = context ? sessionGetParent(node, context) : node.parent;
+  const parent = rules && (context ? sessionGetParent(rules, context) : rules.parent);
+  return parent && isNode(parent, N.Ruleset)
+    ? parent as Ruleset
     : undefined;
 }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, ruleset } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -236,6 +236,39 @@ describe('session-aware helpers', () => {
 
       sessionPatchField(node, 'number', 20, ctx);
       expect(node.number).toBe(20);
+    });
+
+    it('Declaration rendering reads patched fields from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = decl({ name: 'color', value: any('red') });
+
+      sessionPatchField(node, 'name', any('background', { role: 'property' }), ctx);
+      sessionPatchField(node, 'value', any('blue'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('background: blue');
+      expect(node.toTrimmedString()).toBe('color: red');
+    });
+
+    it('Ruleset rendering reads patched selector and rules from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = ruleset({
+        selector: el('.a'),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      });
+      const patchedRules = rules([decl({ name: 'background', value: any('blue') })]);
+
+      sessionPatchField(node, 'selector', el('.b'), ctx);
+      sessionPatchField(node, 'rules', patchedRules, ctx);
+
+      const sessionOut = node.toTrimmedString({ context: ctx });
+      const canonicalOut = node.toTrimmedString();
+
+      expect(sessionOut).toContain('.b');
+      expect(sessionOut).toContain('background: blue;');
+      expect(canonicalOut).toContain('.a');
+      expect(canonicalOut).toContain('color: red;');
     });
   });
 

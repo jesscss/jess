@@ -1,5 +1,24 @@
 # Dependency Graph, Session-Local Registries, and Live Patch API
 
+## Reality Check
+
+Stages 17–20 in this document describe the intended architecture and the major slices
+that have landed on `jess-dev`. They do not mean the branch already satisfies the full
+immutable-node plus session-layer contract.
+
+Current branch reality:
+
+- Dependency tracking exists.
+- Registry deltas exist.
+- Import-path clone reduction has gone a long way.
+- Session-aware field reads now exist on lower-order nodes, and selector ancestry reads on active `Ruleset` / extend paths are session-aware.
+- Returned import trees now materialize clone-only parent links after session teardown; ephemeral mixin guard wrapper scopes materialize their local param bindings directly.
+- The branch is still in a fundamentals-completion gate before Stage 21.
+
+That gate is only cleared when canonical nodes actually behave immutably, eval-time
+replacements/value writes are session-layer operations, tests match baseline with those
+properties true, and merge-to-`dev` is behavior-safe.
+
 ## Overview
 
 This document covers three tightly coupled architectural advances that build on the
@@ -175,7 +194,7 @@ are not in the canonical `value[]`. They live in a per-session delta:
 ```ts
 interface EvalSession {
   // ... existing fields ...
-  registryDeltas: WeakMap<Node[], SessionRegistryDelta>;
+  registryDeltas: WeakMap<Rules, SessionRegistryDelta>;
   dependencyMap: WeakMap<Node, EvalDependency>;
 }
 
@@ -187,7 +206,7 @@ interface SessionRegistryDelta {
 ```
 
 Lookup order:
-1. Check `session.registryDeltas.get(rules.value)` first (session-added nodes).
+1. Check `session.registryDeltas.get(rules)` first (session-added nodes).
 2. Fall through to `globalRegistryCache.get(rules.value)` (canonical index).
 
 This means mixin expansion nodes are visible within the session but don't pollute the
@@ -383,12 +402,12 @@ EVAL SESSION (one per import / mixin invocation / patch context)
   │    └─ { dependsOn: Set<VarDeclaration>, sourceExpr: Node }
   │         (populated by Reference.eval, propagated by Operation/Call/Expression.eval)
   │
-  └─ registryDeltas: WeakMap<Node[], SessionRegistryDelta>
+  └─ registryDeltas: WeakMap<Rules, SessionRegistryDelta>
        └─ { declarationIndex, mixinIndex, rulesetIndex }
             (session-added nodes only; canonical index from globalRegistryCache)
 
 LOOKUP FLOW (Declaration find):
-  1. session.registryDeltas.get(rules.value)?  → session-added nodes first
+  1. session.registryDeltas.get(rules)?         → session-added nodes first
   2. globalRegistryCache.get(rules.value)?       → canonical index (built once)
   3. parent chain walk (unchanged)
 
@@ -496,9 +515,11 @@ AND `selector` on `Ruleset`. Stopping the `selector` mutation makes selector nod
 
 ### Stage 20: Session-local Registry Deltas + Eliminate Import Cloning
 
-Status on branch `jess-dev` at `3b4d089e`:
-- implemented: session-local registry deltas, session-aware registry lookup/register, scope-dirty invalidation, dependency-aware partial re-eval in declaration lookup, detached-ruleset unlock via session-safe shallow clone, and import finalization reduced to the minimum shallow wrappers needed for per-import metadata / extend isolation
-- note: plain `@import` now reuses the evaluated root directly; compose keeps a shallow per-import wrapper because separate import sites can legitimately require different visibility / reference metadata on the same cached module
+Status on branch `jess-dev`:
+- the registry-delta and import-reduction slice is materially landed
+- plain `@import` now reuses the evaluated root directly
+- compose still keeps a shallow per-import wrapper where import-site metadata must differ
+- this stage did not complete the deeper immutability/session contract for all eval-time writes
 
 ### Completed
 
@@ -591,8 +612,9 @@ Stage 19 (WeakMap registries)
   └─ enables: Stage 20 import clone elimination (no re-indexing cost on shallow clone)
 
 Stage 20 (session deltas + no import clone)
-  └─ completes: elimination of all clone(true) and clone(false) at import/mixin sites
-  └─ enables: Stage 21 (patch.js needs session context during serialization)
+  └─ lands the registry-delta/import-reduction groundwork
+  └─ does not by itself complete immutable canonical nodes + session-backed writes
+  └─ requires a fundamentals-completion gate before Stage 21
 
 Stage 21 (Live Patch API)
   └─ all prior stages required
@@ -617,7 +639,7 @@ interface EvalSession {
   materializedNodes: WeakSet<Node>;                       // boundary tracking
 
   // Stage 20 (new)
-  registryDeltas: WeakMap<Node[], SessionRegistryDelta>;  // session-added registry entries
+  registryDeltas: WeakMap<Rules, SessionRegistryDelta>;   // session-added registry entries
 
   // Stage 18 (new)
   dependencyMap: WeakMap<Node, EvalDependency>;           // eval-time dependency annotations
@@ -643,6 +665,8 @@ with two concrete additions:
    WeakMap-keyed approach eliminates the assumed coupling between `Rules` identity and
    index state.
 
-Together they form the complete reactive eval model: canonical tree (immutable) +
+Together they describe the target reactive eval model: canonical tree (immutable) +
 session state (eval output) + dependency graph (what to re-eval on change) + live
-patch API (how to update CSS at runtime).
+patch API (how to update CSS at runtime). The branch is not at that finish line yet;
+the current work is to make the immutable/session contract true end-to-end before
+Stage 21 begins.

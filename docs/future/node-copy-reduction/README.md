@@ -22,10 +22,14 @@ Recommended reading order:
 
 Current branch status on `jess-dev`:
 
-- Stages 0–20 have landed as roadmap slices.
-- Stage 21 has not started.
-- Stage 21 is blocked on the pre-Stage-21 threshold in `PROGRESS.md` / `HANDOFF.md`:
-  cloning removal, sessionized eval-time mutation, baseline validation, and credible merge readiness.
+- Stages 0–19 are materially landed.
+- Stage 20 has landed as an important infrastructure slice, but it did not finish the
+  underlying immutability/session architecture.
+- The current active work is a **fundamentals-completion gate** between Stage 20 and Stage 21.
+- Stage 21 has not started and must not start until the branch actually satisfies the
+  pre-Stage-21 threshold in `PROGRESS.md` / `HANDOFF.md`:
+  clone removal in scope, sessionized eval-time writes/replacements, baseline validation,
+  and credible merge readiness.
 
 For current implementation state, prefer:
 
@@ -750,8 +754,9 @@ Summary order (maximum return for minimum risk):
 8. **Immutable selectors** — stop mutating `selector` in extend; use `_extendedSelector` only. (Stage 17)
 9. **Dependency graph** — track which top-level vars flow into each output. (Stage 18)
 10. **WeakMap-keyed registries** — detach index from `Rules` instance; share across clones. (Stage 19)
-11. **Session-local registry deltas + eliminate import cloning** — session carries only delta keyed by the logical `Rules` container; import finalization now avoids structural cloning, with only minimal shallow wrappers left where separate import sites need different metadata. (Stage 20)
-12. **Live Patch API** — emit `var(--id, fallback)` + `patch.js` from same dependency graph. (Stage 21)
+11. **Session-local registry deltas + import clone reduction** — session carries only delta keyed by the logical `Rules` container; import finalization now avoids much of the old structural cloning, but this did not finish the immutability/session migration. (Stage 20)
+12. **Fundamentals completion gate** — finish the real contract: canonical nodes immutable, eval-time field writes/replacements sessionized, and baseline parity proven before advancing. (Current work)
+13. **Live Patch API** — emit `var(--id, fallback)` + `patch.js` from the same dependency graph only after the fundamentals gate is cleared. (Stage 21)
 
 ## Possible: Collapsing preEval / eval into One Pass
 

@@ -167,7 +167,7 @@ export class Extend extends Node<ExtendValue> {
           const fullSel = rs.getEffectiveSelector(false, context);
           let usedParentListComposition = false;
           if (!this.selector) {
-            const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+            const ownSel = rs.getOwnSelector(context);
             const parentFrame = context.rulesetFrames.at(-2);
             const parentSel = (
               parentFrame && isNode(parentFrame, N.Ruleset)
@@ -235,7 +235,7 @@ export class Extend extends Node<ExtendValue> {
       const fullSel = rs.getEffectiveSelector(false, context);
       let usedParentListComposition = false;
       if (!this.selector) {
-        const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+        const ownSel = rs.getOwnSelector(context);
         const parentFrame = context.rulesetFrames.at(-2);
         const parentSel = (
           parentFrame && isNode(parentFrame, N.Ruleset)

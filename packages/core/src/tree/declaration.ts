@@ -20,7 +20,9 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   sessionGetDependency,
+  sessionGetField,
   sessionMergeDependencies,
+  sessionPatchField,
   sessionSetDependency
 } from './util/session-helpers.js';
 
@@ -122,10 +124,62 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return !isNode(this.value, N.Collection) && !isNode(this.value, N.Mixin);
   }
 
+  private _getName(context?: Context): NameValue {
+    return context
+      ? sessionGetField<NameValue>(this, 'name', context)
+      : this.name;
+  }
+
+  private _setName(name: NameValue, context: Context): void {
+    if (name instanceof Node) {
+      this.adopt(name, context);
+    }
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'name', name, context);
+      return;
+    }
+    this.name = name;
+  }
+
+  private _getValueNode(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'value', context)
+      : this.value;
+  }
+
+  private _setValueNode(value: Node, context: Context): void {
+    this.adopt(value, context);
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'value', value, context);
+      return;
+    }
+    this.value = value;
+  }
+
+  private _getImportant(context?: Context): Any<'flag'> | undefined {
+    return context
+      ? sessionGetField<Any<'flag'> | undefined>(this, 'important', context)
+      : this.important;
+  }
+
+  private _setImportant(important: Any<'flag'> | undefined, context: Context): void {
+    if (important instanceof Node) {
+      this.adopt(important, context);
+    }
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'important', important, context);
+      return;
+    }
+    this.important = important;
+  }
+
   protected declTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const { name, value, important } = this;
+    const context = options.context;
+    const name = this._getName(context);
+    const value = this._getValueNode(context);
+    const important = this._getImportant(context);
     const { assign = ':', setDefined } = this.options;
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -187,7 +241,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
-    let { name, value } = node;
+    let name = node._getName(context);
+    let value = node._getValueNode(context);
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
@@ -225,7 +280,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            node.value = value;
+            node._setValueNode(value, context);
             break;
           }
           case AssignmentType.Add: {
@@ -233,7 +288,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              node.value = new List([
+              node._setValueNode(new List([
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
@@ -242,35 +297,35 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   filter: n => n !== node
                 }),
                 value
-              ]);
+              ]), context);
             } else {
-              node.value = new Operation([
+              node._setValueNode(new Operation([
                 new Reference({ key }, { type }),
                 '+',
                 value
-              ]);
+              ]), context);
             }
             break;
           }
           case AssignmentType.CondAssign: {
-            node.value = new Reference({ key }, {
+            node._setValueNode(new Reference({ key }, {
               type,
               fallbackValue: value
-            });
+            }), context);
             break;
           }
         }
         node.options.normalizedFromAssign = normalizedAssign;
         node.options.assign = AssignmentType.Default;
       }
-      const out = node.value.preEval(context);
+      const out = node._getValueNode(context).preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          node.value = value;
+          node._setValueNode(value, context);
           return node;
         });
       }
-      node.value = out;
+      node._setValueNode(out, context);
       return node;
     };
 
@@ -278,12 +333,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          node.name = key;
+          node._setName(key, context);
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      node.name = key;
+      node._setName(key, context);
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);
@@ -316,10 +371,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          if (!isListMergedAssign || !isNode(node.value, N.List)) {
+          const nodeValue = node._getValueNode(context);
+          if (!isListMergedAssign || !isNode(nodeValue, N.List)) {
             return;
           }
-          const listValue = node.value.value;
+          const listValue = nodeValue.value;
           if (listValue.length === 0) {
             return;
           }
@@ -334,18 +390,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            node.value = new Nil();
+            node._setValueNode(new Nil(), context);
             return;
           }
           if (rest.length === 1) {
-            node.value = cloneWithDependency(rest[0]!);
+            node._setValueNode(cloneWithDependency(rest[0]!), context);
             return;
           }
           const clonedRest = rest.map(item => cloneWithDependency(item));
-          node.value = new List(clonedRest);
+          node._setValueNode(new List(clonedRest), context);
           const dependency = sessionMergeDependencies(clonedRest, context);
           if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-            sessionSetDependency(node.value, {
+            sessionSetDependency(node._getValueNode(context), {
               dependsOn: new Set(dependency.dependsOn),
               sourceExpr: dependency.sourceExpr
             }, context);
@@ -355,7 +411,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (node.type === 'VarDeclaration') {
           return node;
         }
-        const { name, value } = node;
+        const name = node._getName(context);
+        const value = node._getValueNode(context);
         if (value instanceof Node) {
           const isCustomProperty = name.valueOf().startsWith('--');
           if (isCustomProperty) {
@@ -374,12 +431,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              node.value = newValue;
+              node._setValueNode(newValue, context);
               normalizeMergedLeadingPlaceholder();
-              copyDependency(newValue, node.value);
+              copyDependency(newValue, node._getValueNode(context));
               // Merge !important from referenced declarations
-              if (context.hasImportantSource && !node.important) {
-                node.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+              if (context.hasImportantSource && !node._getImportant(context)) {
+                node._setImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
@@ -392,12 +449,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          node.value = maybeNewValue as Node;
+          node._setValueNode(maybeNewValue as Node, context);
           normalizeMergedLeadingPlaceholder();
-          copyDependency(maybeNewValue as Node, node.value);
+          copyDependency(maybeNewValue as Node, node._getValueNode(context));
           // Merge !important from referenced declarations
-          if (context.hasImportantSource && !node.important) {
-            node.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+          if (context.hasImportantSource && !node._getImportant(context)) {
+            node._setImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
           }
           // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {

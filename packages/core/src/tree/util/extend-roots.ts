@@ -17,7 +17,6 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
-import { sessionPatchField } from './session-helpers.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -43,33 +42,33 @@ function invalidateSelectorCache(selector?: Selector | Nil): void {
   if (!selector || isNode(selector, N.Nil)) {
     return;
   }
-  (selector as Selector).invalidateCache();
+  selector.invalidateCache();
 }
 
-function invalidateRulesetSelectorCaches(ruleset: Ruleset): void {
+function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): void {
   ruleset.invalidateSelectorValueCache();
-  invalidateSelectorCache(ruleset.selector);
-  invalidateSelectorCache((ruleset as { _extendedSelector?: Selector | Nil })._extendedSelector);
-  invalidateSelectorCache((ruleset.options as { ownSelector?: Selector | Nil }).ownSelector);
-  invalidateSelectorCache(ruleset.selectorBeforeExtend as Selector | Nil | undefined);
-  const rules = ruleset.rules;
+  invalidateSelectorCache(ruleset.getCurrentSelector(context));
+  invalidateSelectorCache(ruleset.getExtendedSelector(context));
+  invalidateSelectorCache(ruleset.getOwnSelector(context));
+  invalidateSelectorCache(ruleset.getSelectorBeforeExtend(context));
+  const rules = ruleset.getCurrentRules(context);
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
   for (const child of (rules as Rules).value) {
     if (isNode(child, N.Ruleset)) {
-      invalidateRulesetSelectorCaches(child as Ruleset);
+      invalidateRulesetSelectorCaches(child as Ruleset, context);
     }
   }
 }
 
 function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context): void {
-  const rules = parentRuleset.rules;
+  const rules = parentRuleset.getCurrentRules(context);
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
 
-  const parentSelector = parentRuleset.getEffectiveSelector(false);
+  const parentSelector = parentRuleset.getEffectiveSelector(false, context);
   if (!parentSelector || isNode(parentSelector, N.Nil)) {
     return;
   }
@@ -85,24 +84,21 @@ function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context
   }
 }
 
-function getDerivedSelectorFromParent(ruleset: Ruleset): Selector | Nil | undefined {
-  const ownSelector = (ruleset.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+function getDerivedSelectorFromParent(ruleset: Ruleset, context?: Context): Selector | Nil | undefined {
+  const ownSelector = ruleset.getOwnSelector(context);
   if (!ownSelector || isNode(ownSelector, N.Nil)) {
     return undefined;
   }
 
-  const parentRuleset = getParentRuleset(ruleset);
-  const parentSelector = parentRuleset?.getEffectiveSelector(false);
+  const parentRuleset = getParentRuleset(ruleset, context);
+  const parentSelector = parentRuleset?.getEffectiveSelector(false, context);
   if (!parentSelector || isNode(parentSelector, N.Nil)) {
     return undefined;
   }
 
-  const composedSelector = getImplicitSelector(ownSelector as Selector, parentSelector as Selector, false);
-  if (
-    ruleset.selector
-    && !isNode(ruleset.selector, N.Nil)
-    && composedSelector.valueOf() === ruleset.selector.valueOf()
-  ) {
+  const composedSelector = getImplicitSelector(ownSelector, parentSelector, false);
+  const currentSelector = ruleset.getCurrentSelector(context);
+  if (!isNode(currentSelector, N.Nil) && composedSelector.valueOf() === currentSelector.valueOf()) {
     return undefined;
   }
 
@@ -110,11 +106,8 @@ function getDerivedSelectorFromParent(ruleset: Ruleset): Selector | Nil | undefi
 }
 
 function syncRulesetDerivedSelector(ruleset: Ruleset, context?: Context): void {
-  const derivedSelector = getDerivedSelectorFromParent(ruleset);
-  (ruleset as { _extendedSelector?: Selector | Nil })._extendedSelector = derivedSelector;
-  if (context) {
-    sessionPatchField(ruleset, '_extendedSelector', derivedSelector, context);
-  }
+  const derivedSelector = getDerivedSelectorFromParent(ruleset, context);
+  ruleset.setExtendedSelector(derivedSelector, context);
 }
 
 function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false): Selector {
@@ -444,14 +437,15 @@ type TargetInfoCache = WeakMap<Ruleset, Map<RecordedExtendInstruction, TargetInf
 function getCachedTargetInfo(
   cache: TargetInfoCache | undefined,
   ruleset: Ruleset,
-  instruction: RecordedExtendInstruction
+  instruction: RecordedExtendInstruction,
+  context?: Context
 ): TargetInfo {
   if (cache) {
     let perRuleset = cache.get(ruleset);
     if (perRuleset?.has(instruction)) {
       return perRuleset.get(instruction);
     }
-    const result = getRulesetExtendTarget(ruleset, instruction.target, instruction.partial);
+    const result = getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
     if (!perRuleset) {
       perRuleset = new Map();
       cache.set(ruleset, perRuleset);
@@ -459,7 +453,7 @@ function getCachedTargetInfo(
     perRuleset.set(instruction, result);
     return result;
   }
-  return getRulesetExtendTarget(ruleset, instruction.target, instruction.partial);
+  return getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
 }
 
 function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset): void {
@@ -478,9 +472,10 @@ function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset)
 function getRulesetInstructionSignature(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
-  cache?: TargetInfoCache
+  cache?: TargetInfoCache,
+  context?: Context
 ): string | undefined {
-  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction);
+  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
   if (!targetInfo) {
     return undefined;
   }
@@ -506,27 +501,29 @@ function isNodeInsideRules(node: Node, rules: Rules): boolean {
 function getRulesetExtendTarget(
   ruleset: Ruleset,
   find: Selector,
-  partial: boolean
+  partial: boolean,
+  context?: Context
 ): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
-  const selector = ruleset.getEffectiveSelector(false);
+  const selector = ruleset.getEffectiveSelector(false, context);
   if (!selector || isNode(selector, N.Nil)) {
     return undefined;
   }
 
-  const ownSelector = (ruleset.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  const ownSelector = ruleset.getOwnSelector(context);
   // Bare `&` rulesets are pure mirrors of their parent selector and are updated
   // by refreshNestedRulesetSelectors when the parent is extended. Skip direct
   // extend processing so selectorBeforeExtend is not incorrectly set on them.
-  if (ownSelector && isBareAmpersandOwnSelector(ownSelector as Selector)) {
+  if (ownSelector && !isNode(ownSelector, N.Nil) && isBareAmpersandOwnSelector(ownSelector)) {
     return undefined;
   }
-  const parentRs = getParentRuleset(ruleset);
+  const parentRs = getParentRuleset(ruleset, context);
+  const parentSelectorBeforeExtend = parentRs?.getSelectorBeforeExtend(context);
   const parentSelector = (
     !partial
-    && parentRs?.selectorBeforeExtend
-    && !isNode(parentRs.selectorBeforeExtend, N.Nil)
-      ? parentRs.selectorBeforeExtend as Selector
-      : parentRs?.getEffectiveSelector(false)
+    && parentSelectorBeforeExtend
+    && !isNode(parentSelectorBeforeExtend, N.Nil)
+      ? parentSelectorBeforeExtend
+      : parentRs?.getEffectiveSelector(false, context)
   );
   if (
     ownSelector
@@ -535,15 +532,15 @@ function getRulesetExtendTarget(
     && parentSelector
     && !isNode(parentSelector, N.Nil)
   ) {
-    const ownMatch = selectorMatch(find, ownSelector as Selector, parentSelector as Selector);
+    const ownMatch = selectorMatch(find, ownSelector, parentSelector);
     const shouldUseOwnSelector = partial
       ? (ownMatch.fullMatch || ownMatch.partialMatch)
       : (ownMatch.fullMatch && ownMatch.crossesAmpersand);
 
     if (shouldUseOwnSelector) {
       return {
-        selector: ownSelector as Selector,
-        parent: parentSelector as Selector,
+        selector: ownSelector,
+        parent: parentSelector,
         usingOwnSelector: true
       };
     }
@@ -556,7 +553,7 @@ function getRulesetExtendTarget(
   }
 
   return {
-    selector: selector as Selector,
+    selector,
     usingOwnSelector: false
   };
 }
@@ -580,7 +577,7 @@ function activateExtendedRuleset(ruleset: Ruleset, selector: Selector): void {
 
 function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   ruleset.removeFlag(F_EXTENDED);
-  const selector = ((ruleset as { _extendedSelector?: Selector | Nil })._extendedSelector ?? ruleset.selector);
+  const selector = (ruleset.getExtendedSelector(context) ?? ruleset.getCurrentSelector(context));
   if (selector && !isNode(selector, N.Nil)) {
     selector.removeFlag(F_EXTENDED);
   }
@@ -593,7 +590,7 @@ function applyInstructionToRuleset(
   cache?: TargetInfoCache,
   context?: Context
 ): { matched: boolean; changed: boolean } {
-  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction);
+  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
   if (!targetInfo) {
     return { matched: false, changed: false };
   }
@@ -607,12 +604,13 @@ function applyInstructionToRuleset(
     return { matched: false, changed: false };
   }
 
-  if (!ruleset.selectorBeforeExtend && ruleset.selector && !isNode(ruleset.selector, N.Nil)) {
-    ruleset.setData('selectorBeforeExtend', ruleset.selector.copy(true) as Selector);
+  const currentSelector = ruleset.getCurrentSelector(context);
+  if (!ruleset.getSelectorBeforeExtend(context) && currentSelector && !isNode(currentSelector, N.Nil)) {
+    ruleset.setSelectorBeforeExtend(currentSelector.copy(true) as Selector, context);
   }
 
   if (
-    isNodeInsideRules(instruction.extendNode, ruleset.rules)
+    isNodeInsideRules(instruction.extendNode, ruleset.getCurrentRules(context))
     && instruction.extendWith.valueOf() === targetInfo.selector.valueOf()
     && targetMatch.fullMatch
   ) {
@@ -667,32 +665,30 @@ function applyInstructionToRuleset(
     const nextOwnSelector = targetInfo.parent
       ? localizeSelectorAgainstParent(normalizedResult, targetInfo.parent)
       : normalizedResult;
-    (ruleset.options as { ownSelector?: Selector }).ownSelector = nextOwnSelector;
+    ruleset.setOwnSelector(nextOwnSelector, context);
 
     if (!shouldHoist && targetInfo.parent) {
       nextSelector = getImplicitSelector(nextOwnSelector, targetInfo.parent, false);
     }
   }
-  (ruleset as { _extendedSelector?: Selector | Nil })._extendedSelector = nextSelector;
-  if (context) {
-    sessionPatchField(ruleset, '_extendedSelector', nextSelector, context);
-  }
+  ruleset.setExtendedSelector(nextSelector, context);
   if (shouldHoist) {
     ruleset.hoistToRoot = true;
     refreshNestedRulesetSelectors(ruleset, context);
   } else if (ruleset.hoistToRoot || ruleset.treeContext?.opts?.collapseNesting === true) {
     refreshNestedRulesetSelectors(ruleset, context);
   }
-  invalidateRulesetSelectorCaches(ruleset);
+  invalidateRulesetSelectorCaches(ruleset, context);
   return { matched: true, changed: true };
 }
 
 function instructionCouldAffectRuleset(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
-  cache?: TargetInfoCache
+  cache?: TargetInfoCache,
+  context?: Context
 ): boolean {
-  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction);
+  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
   if (!targetInfo) {
     return false;
   }
@@ -758,7 +754,7 @@ export function processExtends(context: Context): void {
               continue;
             }
 
-            const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache);
+            const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context);
             const perInstructionStates = seenRulesetInstructionStates.get(ruleset);
             if (
               signatureBefore !== undefined
@@ -781,7 +777,7 @@ export function processExtends(context: Context): void {
               }
               nextStates.set(
                 instruction,
-                getRulesetInstructionSignature(ruleset, instruction, targetInfoCache) ?? signatureBefore ?? ''
+                getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context) ?? signatureBefore ?? ''
               );
             }
             if (outcome.changed) {
@@ -798,7 +794,7 @@ export function processExtends(context: Context): void {
           }
 
           if (!rulesetMatched) {
-            clearExtendedRuleset(ruleset);
+            clearExtendedRuleset(ruleset, context);
           }
         }
       }
@@ -827,7 +823,7 @@ export function processExtends(context: Context): void {
         }
 
         for (const ruleset of rulesets) {
-          if (instructionCouldAffectRuleset(ruleset, instruction, targetInfoCache)) {
+          if (instructionCouldAffectRuleset(ruleset, instruction, targetInfoCache, context)) {
             return true;
           }
         }

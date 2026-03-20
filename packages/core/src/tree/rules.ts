@@ -2440,7 +2440,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Keep parameter vars lookupable but hidden in normal output.
             // They still render in tests that set Node.fullRender=true.
             param.removeFlag(F_VISIBLE);
-            outerRules.push(thisContext, param);
+            outerRules.push(param);
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
@@ -2453,7 +2453,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             value: new Sequence(argumentsArgs)
           }, { readonly: true, paramVar: true });
           argumentsDecl.removeFlag(F_VISIBLE);
-          outerRules.push(thisContext, argumentsDecl);
+          outerRules.push(argumentsDecl);
           const paramValues = params?.value
             .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
             .map(p => (p as any).value);

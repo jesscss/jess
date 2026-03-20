@@ -303,7 +303,7 @@ function addMixinToIndex(
     if (isNode(selector, N.Nil)) {
       return;
     }
-    const ownSelector = (mixin.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+    const ownSelector = mixin.options.ownSelector;
     const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
     if (isNode(callableSelector, N.Ampersand)) {
       return;

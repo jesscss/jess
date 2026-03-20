@@ -672,7 +672,8 @@ export abstract class Node<
   adopt(node: Node, ctx?: Context) {
     /** The only place we should do this */
     if (!node.frozen) {
-      if (ctx?.session) {
+      const shouldUseSessionParent = ctx?.session;
+      if (shouldUseSessionParent) {
         ctx.session.getRuntime(node).parent = this;
       } else {
         (node as any).parent = this;

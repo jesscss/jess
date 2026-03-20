@@ -7,6 +7,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
+import { sessionGetField } from './session-helpers.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -48,7 +49,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (node.type === 'Ruleset' && node.selector instanceof Nil) {
+  if (
+    node.type === 'Ruleset'
+    && (node as Ruleset).getRenderableSelector(options.collapseNesting, options.context) instanceof Nil
+  ) {
     return '';
   }
   // let header = node.getHeaderString(options);
@@ -74,7 +78,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       return '';
     }
   }
-  const rules = node.rules;
+  const rules = options.context
+    ? sessionGetField<typeof node.rules | undefined>(node, 'rules', options.context)
+    : node.rules;
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {
       options.referenceMode = previousReferenceMode;

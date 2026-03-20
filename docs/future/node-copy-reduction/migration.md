@@ -14,9 +14,11 @@ Use with:
 
 Current branch status on `jess-dev`:
 
-- Stages 0–20 have landed as roadmap slices.
-- Stage 21 has not started.
-- Stage 21 is blocked until the pre-Stage-21 threshold is met:
+- Stages 0–19 are materially landed.
+- Stage 20 landed as a roadmap slice, but it did not finish the core immutable-node /
+  session-layer migration.
+- The current active phase is a **fundamentals-completion gate** between Stage 20 and Stage 21.
+- Stage 21 has not started and is blocked until the pre-Stage-21 threshold is met:
   remaining clone removal, remaining sessionization of eval-time mutation/replacement,
   baseline validation, and merge readiness.
 
@@ -42,6 +44,17 @@ The migration pattern is:
 2. Route one subsystem through it.
 3. Prove parity.
 4. Expand.
+
+## Architectural Hard Rules
+
+Treat these as invariants, not preferences:
+
+- Canonical AST nodes are immutable after construction.
+- Eval-time "replacement" and "field update" are both session-layer writes.
+- Clone/copy is not a substitute for session layering.
+- Every eval-time write must have a session-backed read path for the same field.
+- Lower-order nodes must be fully session-correct before higher-order containers are reduced.
+- If a path still needs ad hoc reconstruction of returned trees, the underlying session model is incomplete.
 
 ## Migration Strategy
 
