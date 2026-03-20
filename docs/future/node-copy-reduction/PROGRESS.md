@@ -838,7 +838,15 @@ Current blocker notes from live reduction attempts:
   - Result: `230 passed, 9 skipped`
   - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/at-rule.test.ts`
   - Result: `173 passed, 1 skipped`
+- New structural-foundation slice now landed in the working tree:
+  - `EvalSession` has a session-local child-array overlay for `Rules`
+  - `sessionGetChildren()`, `sessionAppendChildren()`, `sessionPrependChildren()`, `sessionRemoveChild()`, and `sessionReplaceNode()` now operate on that overlay under an active session
+  - runtime overlay lookups now respect explicit `parent: undefined` / `sourceParent: undefined` clears in-session
+  - verified with:
+  - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
+  - Result: `173 passed, 9 skipped`
 - This does **not** change the real blocker: generic session-local node replacement / `Rules.value[]` overlay semantics are still incomplete, so these slices only move lower-order field/render reads toward the intended immutable-node architecture.
+- The next integration step is to route real production `Rules` mutation/replacement paths through these helpers instead of directly reading/writing `rules.value`.
 
 ---
 

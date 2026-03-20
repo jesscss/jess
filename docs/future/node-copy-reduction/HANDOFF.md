@@ -102,6 +102,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `Reference`, `Interpolated`, and `JsImport` now read session-patched fields during serialization
     - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/reference.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/call.test.ts`, and `src/tree/__tests__/at-rule.test.ts` (`173 passed, 1 skipped`)
     - this still does not solve structural session replacement; it only widens the lower-order immutable/read-side coverage
+19. The first structural session-replacement foundation is now in the working tree:
+    - `EvalSession` has a session-local child-array overlay for `Rules`
+    - `sessionGetChildren()`, `sessionAppendChildren()`, `sessionPrependChildren()`, `sessionRemoveChild()`, and `sessionReplaceNode()` now use that overlay instead of mutating canonical `Rules.value[]` when a session exists
+    - runtime overlay semantics were tightened so `parent: undefined` and `sourceParent: undefined` are representable as explicit session-local clears, not mistaken for “no override”
+    - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`173 passed, 9 skipped`)
+    - this is still foundational only: `Rules.ts` call sites are not broadly routed through the new child-overlay helpers yet
 
 ---
 
@@ -123,8 +129,8 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Known blockers from recent reduction attempts
 
-1. Child-array isolation and session-local replacement are still coupled.
-   The registry-delta keying problem is fixed, but generic session-local `Rules` child replacement is still missing. The next safe slice likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.
+1. Child-array isolation and session-local replacement are now partially implemented but not yet broadly consumed.
+   The registry-delta keying problem is fixed, and `EvalSession` now has a child-array overlay for `Rules`, but most production `Rules.ts` call sites still read/write `rules.value` directly instead of routing through the helper layer.
 
 2. Remaining high-signal clone/copy pressure is still concentrated in:
    - `packages/core/src/tree/rules.ts` — mixin arg binding and output shaping
@@ -132,8 +138,8 @@ Do not begin Stage 21 until all four conditions are true:
    - `packages/core/src/tree/ruleset.ts`
    - `packages/core/src/tree/ampersand.ts`
 
-3. `sessionReplaceNode()` is still a stub for true session-local replacement semantics.
-   Generic eval-time node replacement is not fully sessionized yet.
+3. `sessionReplaceNode()` is no longer a stub, but its semantics are only helper-local so far.
+   Generic eval-time node replacement is still not fully sessionized until active production paths use those helpers.
 
 4. Low-order field/read coverage is no longer the immediate weak point.
    The recent work proved that a lot of wrapper/container rendering can move to session-backed reads safely.

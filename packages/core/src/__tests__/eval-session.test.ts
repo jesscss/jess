@@ -13,10 +13,15 @@ import {
   sessionSetIndex,
   sessionMergeDependencies,
   sessionPatchField,
+  sessionGetChildren,
+  sessionAppendChildren,
+  sessionPrependChildren,
+  sessionRemoveChild,
   sessionSetDependency,
   sessionSetEvaluated,
   sessionSetParent,
   sessionSetPreEvaluated,
+  sessionReplaceNode,
   sessionSetSourceParent,
   sessionSetRuntimeState
 } from '../tree/util/session-helpers.js';
@@ -199,6 +204,20 @@ describe('EvalSession', () => {
       session1.materialize(node);
       expect(session1.isMaterialized(node)).toBe(true);
       expect(session2.isMaterialized(node)).toBe(false);
+    });
+  });
+
+  describe('rules child overlays', () => {
+    it('stores and retrieves session-local Rules children', () => {
+      const session = new EvalSession();
+      const node = rules([decl({ name: 'color', value: any('red') })]);
+      const patched = [decl({ name: 'background', value: any('blue') })];
+
+      session.setChildren(node, patched);
+
+      expect(session.getChildren(node)).toBe(patched);
+      expect(session.hasChildren(node)).toBe(true);
+      expect(node.value[0]!.toTrimmedString()).toBe('color: red');
     });
   });
 });
@@ -569,6 +588,77 @@ describe('session-aware helpers', () => {
 
       sessionSetParent(child, sessionParent, ctx);
       expect(sessionGetParent(child, ctx)).toBe(sessionParent);
+    });
+  });
+
+  describe('session Rules child helpers', () => {
+    it('sessionGetChildren falls through to canonical rules without a session overlay', () => {
+      const ctx = new Context();
+      const child = decl({ name: 'color', value: any('red') });
+      const node = rules([child]);
+
+      expect(sessionGetChildren(node, ctx)).toEqual([child]);
+    });
+
+    it('sessionAppendChildren appends without mutating canonical Rules.value', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const child = decl({ name: 'color', value: any('red') });
+      const appended = decl({ name: 'background', value: any('blue') });
+      const node = rules([child]);
+
+      sessionAppendChildren(node, [appended], ctx);
+
+      expect(sessionGetChildren(node, ctx)).toEqual([child, appended]);
+      expect(node.value).toEqual([child]);
+      expect(sessionGetParent(appended, ctx)).toBe(node);
+      expect(appended.parent).toBeUndefined();
+    });
+
+    it('sessionPrependChildren prepends without mutating canonical Rules.value', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const child = decl({ name: 'color', value: any('red') });
+      const prepended = decl({ name: 'background', value: any('blue') });
+      const node = rules([child]);
+
+      sessionPrependChildren(node, [prepended], ctx);
+
+      expect(sessionGetChildren(node, ctx)).toEqual([prepended, child]);
+      expect(node.value).toEqual([child]);
+      expect(sessionGetParent(prepended, ctx)).toBe(node);
+    });
+
+    it('sessionRemoveChild removes from the session overlay without mutating canonical Rules.value', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'background', value: any('blue') });
+      const node = rules([first, second]);
+
+      sessionRemoveChild(node, first, ctx);
+
+      expect(sessionGetChildren(node, ctx)).toEqual([second]);
+      expect(node.value).toEqual([first, second]);
+      expect(sessionGetParent(first, ctx)).toBeUndefined();
+      expect(first.parent).toBe(node);
+    });
+
+    it('sessionReplaceNode replaces inside the session overlay without mutating canonical Rules.value', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'background', value: any('blue') });
+      const replacement = decl({ name: 'border', value: any('black') });
+      const node = rules([first, second]);
+
+      sessionReplaceNode(first, replacement, ctx);
+
+      expect(sessionGetChildren(node, ctx)).toEqual([replacement, second]);
+      expect(node.value).toEqual([first, second]);
+      expect(sessionGetParent(replacement, ctx)).toBe(node);
+      expect(sessionGetParent(first, ctx)).toBeUndefined();
+      expect(first.parent).toBe(node);
     });
   });
 

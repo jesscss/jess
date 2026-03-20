@@ -141,7 +141,7 @@ export function sessionGetParent(
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
-    if (runtime.parent !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(runtime, 'parent')) {
       return runtime.parent;
     }
   }
@@ -277,7 +277,7 @@ export function sessionGetSourceParent(
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
-    if (runtime.sourceParent !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
       return runtime.sourceParent;
     }
   }
@@ -312,7 +312,7 @@ export function sessionSetRuntimeState(
   const session = ctx.session;
   if (session) {
     const runtime = session.getRuntime(node);
-    if (patch.parent !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(patch, 'parent')) {
       runtime.parent = patch.parent;
     }
     if (patch.index !== undefined) {
@@ -324,15 +324,19 @@ export function sessionSetRuntimeState(
     if (patch.preEvaluated !== undefined) {
       runtime.preEvaluated = patch.preEvaluated;
     }
-    if (patch.sourceParent !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(patch, 'sourceParent')) {
       runtime.sourceParent = patch.sourceParent;
     }
-    if (patch.sourceNode !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(patch, 'sourceNode')) {
       runtime.sourceNode = patch.sourceNode;
     }
   } else {
-    if (patch.parent !== undefined) {
-      patch.parent.adopt(node);
+    if (Object.prototype.hasOwnProperty.call(patch, 'parent')) {
+      if (patch.parent) {
+        patch.parent.adopt(node);
+      } else {
+        (node as unknown as Record<string, unknown>).parent = undefined;
+      }
     }
     if (patch.index !== undefined) {
       node.index = patch.index;
@@ -343,10 +347,10 @@ export function sessionSetRuntimeState(
     if (patch.preEvaluated !== undefined) {
       node.preEvaluated = patch.preEvaluated;
     }
-    if (patch.sourceParent !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(patch, 'sourceParent')) {
       node.sourceParent = patch.sourceParent;
     }
-    if (patch.sourceNode !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(patch, 'sourceNode')) {
       node.sourceNode = patch.sourceNode;
     }
   }
@@ -358,8 +362,12 @@ export function sessionSetRuntimeState(
  */
 export function sessionGetChildren(
   rules: Rules,
-  _ctx: Context
+  ctx: Context
 ): readonly Node[] {
+  const session = ctx.session;
+  if (session) {
+    return session.getChildren(rules) ?? rules.value;
+  }
   return rules.value;
 }
 
@@ -372,6 +380,16 @@ export function sessionAppendChildren(
   nodes: Node[],
   ctx: Context
 ): void {
+  const session = ctx.session;
+  if (session) {
+    const nextValue = [...sessionGetChildren(rules, ctx), ...nodes];
+    session.setChildren(rules, nextValue);
+    for (const node of nodes) {
+      sessionSetParent(node, rules, ctx);
+    }
+    sessionMarkScopeDirty(rules, ctx);
+    return;
+  }
   rules.push(ctx, ...nodes);
 }
 
@@ -384,6 +402,16 @@ export function sessionPrependChildren(
   nodes: Node[],
   ctx: Context
 ): void {
+  const session = ctx.session;
+  if (session) {
+    const nextValue = [...nodes, ...sessionGetChildren(rules, ctx)];
+    session.setChildren(rules, nextValue);
+    for (const node of nodes) {
+      sessionSetParent(node, rules, ctx);
+    }
+    sessionMarkScopeDirty(rules, ctx);
+    return;
+  }
   rules.unshift(ctx, ...nodes);
 }
 
@@ -396,8 +424,17 @@ export function sessionRemoveChild(
   child: Node,
   ctx: Context
 ): void {
-  const idx = rules.value.indexOf(child);
+  const currentChildren = sessionGetChildren(rules, ctx);
+  const idx = currentChildren.indexOf(child);
   if (idx >= 0) {
+    if (ctx.session) {
+      const nextValue = [...currentChildren];
+      nextValue.splice(idx, 1);
+      ctx.session.setChildren(rules, nextValue);
+      sessionSetParent(child, undefined, ctx);
+      sessionMarkScopeDirty(rules, ctx);
+      return;
+    }
     rules.splice(ctx, idx, 1);
   }
 }
@@ -412,8 +449,20 @@ export function sessionReplaceNode(
   ctx: Context
 ): void {
   if (ctx.session) {
-    // Stage 9+: store replacement in session overlay instead of mutating.
-    // For now, fall through to direct mutation.
+    const parent = sessionGetParent(node, ctx);
+    if (parent && isNode(parent, N.Rules)) {
+      const currentChildren = sessionGetChildren(parent, ctx);
+      const idx = currentChildren.indexOf(node);
+      if (idx >= 0) {
+        const nextValue = [...currentChildren];
+        nextValue[idx] = replacement;
+        ctx.session.setChildren(parent, nextValue);
+        sessionSetParent(replacement, parent, ctx);
+        sessionSetParent(node, undefined, ctx);
+        sessionMarkScopeDirty(parent, ctx);
+        return;
+      }
+    }
   }
   const parent = node.parent;
   if (parent) {

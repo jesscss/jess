@@ -110,6 +110,9 @@ export class EvalSession {
   /** Session-local registry additions keyed by the logical Rules container */
   private registryDeltas = new WeakMap<Rules, SessionRegistryDelta>();
 
+  /** Session-local child-array overlays keyed by the logical Rules container */
+  private children = new WeakMap<Rules, readonly Node[]>();
+
   /** Canonical top-level vars whose values changed in this session */
   private changedVars = new Set<VarDeclaration>();
 
@@ -246,5 +249,19 @@ export class EvalSession {
 
   clearRegistryDelta(rules: Rules): void {
     this.registryDeltas.delete(rules);
+  }
+
+  // -- Rules child overlay API --
+
+  setChildren(rules: Rules, value: readonly Node[]): void {
+    this.children.set(rules, value);
+  }
+
+  getChildren(rules: Rules): readonly Node[] | undefined {
+    return this.children.get(rules);
+  }
+
+  hasChildren(rules: Rules): boolean {
+    return this.children.has(rules);
   }
 }
