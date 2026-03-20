@@ -20,6 +20,7 @@ import {
   type Declaration,
   type Selector
 } from '../index.js';
+import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -886,5 +887,45 @@ describe('Rules', () => {
     ]);
     let evald = await node.eval(context);
     expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
+  });
+
+  describe('registry cache', () => {
+    it('shares the declaration registry cache across shallow clones', () => {
+      const root = rules([
+        vardecl({ name: 'foo', value: any('bar') })
+      ]);
+      const rootRegisterSpy = vi.spyOn(root, 'registerNode');
+
+      root.getRegistry('declaration');
+      expect(rootRegisterSpy).toHaveBeenCalledTimes(1);
+      rootRegisterSpy.mockClear();
+
+      const clone = root.clone(false);
+      const cloneRegisterSpy = vi.spyOn(clone, 'registerNode');
+
+      expect(clone.value).toBe(root.value);
+      expect(clone.find('declaration', 'foo', 'VarDeclaration', { searchParents: false })).toBeDefined();
+      expect(cloneRegisterSpy).not.toHaveBeenCalled();
+      expect(rootRegisterSpy).not.toHaveBeenCalled();
+    });
+
+    it('creates a new registry slot when a clone gets a new value array', () => {
+      const root = rules([
+        vardecl({ name: 'foo', value: any('bar') })
+      ]);
+
+      root.getRegistry('declaration');
+
+      const clone = root.clone(false);
+      const extra = vardecl({ name: 'bar', value: any('baz') });
+      const cloneRegisterSpy = vi.spyOn(clone, 'registerNode');
+
+      clone.setData([...clone.value, extra]);
+
+      expect(clone.value).not.toBe(root.value);
+      expect(clone.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBe(extra);
+      expect(root.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBeUndefined();
+      expect(cloneRegisterSpy).toHaveBeenCalledTimes(2);
+    });
   });
 });

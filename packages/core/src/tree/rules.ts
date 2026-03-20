@@ -146,31 +146,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   value!: Node[];
 
-  rulesetRegistry: Registries.RulesetRegistry | undefined;
-  mixinRegistry: Registries.MixinRegistry | undefined;
-  declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionRegistry: Registries.FunctionRegistry | undefined;
-
-  rulesIndexed = 0;
-  _indexing = false;
-
-  _indexRules() {
-    if (this._indexing) {
-      return; // Prevent recursive indexing
-    }
-    this._indexing = true;
-    try {
-      let value = this.value;
-      let length = value.length;
-      for (let i = this.rulesIndexed; i < length; i++) {
-        const node = value[i]!;
-        this.registerNode(node);
-      }
-      this.rulesIndexed = length;
-    } finally {
-      this._indexing = false;
-    }
-  }
 
   /**
    * Rules are often cloned during `preEval()` when a session is active.
@@ -179,7 +155,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * lookups during evaluation work as expected.
    */
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const newRules = super.clone(deep, cloneFn, ctx);
+    const options = (this as any)._meta?.options as (RulesOptions & NodeOptions) | undefined;
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as LocationInfo
+      : undefined;
+    const newRules = deep
+      ? super.clone(deep, cloneFn, ctx)
+      : new (this.constructor as typeof Rules)(
+          this.value,
+          options ? { ...options } : undefined,
+          location,
+          this.treeContext
+        ) as this;
+
+    if (!deep) {
+      newRules.inherit(this);
+    }
 
     // Only preserve *function* registry across clones.
     // This supports Less plugin compat, where plugins can inject functions into the registry
@@ -191,13 +182,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       newRules.functionRegistry = this.functionRegistry.cloneForRules(newRules);
     }
 
-    // IMPORTANT: cloned Rules must re-index their own registries.
-    // Otherwise, a clone can inherit `rulesIndexed` from the source Rules (often == value.length),
-    // while having an empty/incorrect registry state, causing lookup misses (e.g. @c in detached-rulesets).
-    newRules.rulesIndexed = 0;
-    newRules._indexing = false;
-    newRules._rulesSet = undefined;
-
     return newRules;
   }
 
@@ -208,15 +192,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
     node: Node
   ) {
-    let registry = this[`${type}Registry`];
-    if (!registry) {
-      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
-      let RegistryClass = Registries[`${className}Registry`];
-      registry = new RegistryClass(this);
-      (this as any)[`${type}Registry`] = registry;
+    if (type === 'function') {
+      let registry = this.functionRegistry;
+      if (!registry) {
+        registry = new Registries.FunctionRegistry(this);
+        this.functionRegistry = registry;
+      }
+      return registry.add(node as any);
     }
-    const result = (registry as any).add(node);
-    return result;
+
+    return Registries.registerCanonicalNode(this, type, node);
   }
 
   getRegistry(type: 'ruleset'): Registries.RulesetRegistry;
@@ -225,22 +210,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getRegistry(type: 'function'): Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function'): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function') {
-    let registry = this[`${type}Registry`];
-    if (!registry) {
-      /**
-       * @note - Ideally we wouldn't create a registry object if we didn't have to,
-       * just to find. But the find methods have complex logic for searching parent
-       * and children rules / registries.
-       */
-      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
-      let RegistryClass = Registries[`${className}Registry`];
-      registry = new RegistryClass(this);
-      (this as any)[`${type}Registry`] = registry;
+    if (type === 'function') {
+      this.functionRegistry ??= new Registries.FunctionRegistry(this);
+      return this.functionRegistry;
     }
-    if (this.rulesIndexed < this.value.length) {
-      this._indexRules();
-    }
-    return registry;
+
+    Registries.syncRegistryCache(this);
+    let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
+    let RegistryClass = Registries[`${className}Registry`];
+    return new RegistryClass(this);
   }
 
   /**
@@ -634,7 +612,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       if (node.options?.setDefined) {
         // Skip setDefined logic if we're currently indexing to avoid recursive calls
-        if (this._indexing) {
+        if (Registries.isRegistryIndexing(this)) {
           // We'll handle setDefined after indexing is complete
           return;
         }
@@ -706,11 +684,38 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args.length > 0 && args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const nodes = (hasCtx ? args.slice(1) : args) as Node[];
+    this.value = [...this.value];
     for (const node of nodes) {
       this.adopt(node, ctx);
       this.value.push(node);
       this.registerNode(node);
     }
+  }
+
+  override splice(start: number, deleteCount: number, ...items: Node[]): Node[] {
+    const nextValue = [...this.value];
+    const removed = nextValue.splice(start, deleteCount, ...items);
+    this.value = nextValue;
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+        this.registerNode(item);
+      }
+    }
+    (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
+    return removed as Node[];
+  }
+
+  override unshift(...items: Node[]): void {
+    this.value = [...this.value];
+    this.value.unshift(...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+        this.registerNode(item);
+      }
+    }
+    (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
   }
 
   at(index: number) {

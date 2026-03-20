@@ -710,14 +710,26 @@ Array mutation creates a new index slot automatically.
 
 See [dependency-graph.md](./dependency-graph.md#stage-19-weakmap-keyed-shared-registries) for full checklist.
 
-- [ ] Add module-level `globalRegistryCache: WeakMap<Node[], RegistryData>` to `registry-utils.ts`
-- [ ] Refactor `Rules.getRegistry(type)` to key off `this.value`; incremental indexing against `indexedLength`
-- [ ] Refactor `Rules.register(type, node)` to write into `globalRegistryCache` entry
-- [ ] Remove from `Rules`: `rulesetRegistry`, `mixinRegistry`, `declarationRegistry`, `rulesIndexed`, `_indexing`, `_indexRules()`
-- [ ] Keep `functionRegistry` as instance field (plugin-injected, not content-derived)
-- [ ] Update `Rules.clone()`: remove registry/rulesIndexed reset lines
-- [ ] Update `Registry` base class / `_searchRulesChildren` to key off `rules.value` for lookups
-- [ ] Tests: shallow clone shares index (no re-indexing); value mutation creates new index slot
+- [x] Add module-level `globalRegistryCache: WeakMap<Node[], RegistryData>` to `registry-utils.ts`
+- [x] Refactor `Rules.getRegistry(type)` to key off `this.value`; incremental indexing against `indexedLength`
+- [x] Refactor `Rules.register(type, node)` to write into `globalRegistryCache` entry
+- [x] Remove from `Rules`: `rulesetRegistry`, `mixinRegistry`, `declarationRegistry`, `rulesIndexed`, `_indexing`, `_indexRules()`
+- [x] Keep `functionRegistry` as instance field (plugin-injected, not content-derived)
+- [x] Update `Rules.clone()`: remove registry/rulesIndexed reset lines
+- [x] Update `Registry` base class / `_searchRulesChildren` to key off `rules.value` for lookups
+- [x] Tests: shallow clone shares index (no re-indexing); value mutation creates new index slot
+
+### Stage 19 Notes
+
+- Canonical ruleset, mixin, and declaration registries now live in a module-level `WeakMap<Node[], RegistryData>` keyed by `Rules.value`, so shallow `Rules` clones share the same index automatically.
+- `Rules.clone(false)` now preserves the `value` array reference, while mutating operations (`push()`, `splice()`, `unshift()`, `setData([...])`) create a fresh array slot before registration so canonical and session-local lookups stay isolated.
+- `FunctionRegistry` remains instance-owned; plugin-injected functions are still cloned with `cloneForRules()` instead of being derived from `value[]` content.
+- Added focused coverage in `src/tree/__tests__/rules.test.ts` for shared-cache shallow clones and cache invalidation when a clone moves to a new `value` array.
+- Verification:
+  - `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-import-style.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts`
+  - `cd packages/core && pnpm test extend`
+- Wider characterization:
+  - `src/tree/__tests__/mixin.test.ts > keeps param vars preferred over outer same-name vars in lazy nested mixin lookups` still fails, but it also fails on pushed Stage 17 commit `0a62dd97`, so it remains a pre-existing baseline failure.
 
 ---
 

@@ -19,6 +19,7 @@ import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
+import type { VarDeclaration } from './declaration-var.js';
 import {
   isTopLevelVarDeclaration,
   sessionGetDependency,
@@ -669,7 +670,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               out.sourceParent = this;
               const dependency = isTopLevelVarDeclaration(returnVal as Node, context)
                 ? {
-                    dependsOn: new Set([returnVal]),
+                    dependsOn: new Set<VarDeclaration>([returnVal as VarDeclaration]),
                     sourceExpr: this as Node
                   }
                 : sessionGetDependency(evald, context);

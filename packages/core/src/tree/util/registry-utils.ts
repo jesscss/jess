@@ -92,6 +92,80 @@ export type FindOptions = DeclarationFindOptions & {
   hasTarget?: boolean;
 };
 
+export type MixinRegistryEntry = {
+  value: Mixin | Ruleset;
+  match: string[];
+};
+
+export interface RegistryData {
+  rulesetIndex?: Map<string, Set<Ruleset>>;
+  mixinIndex?: Map<string, MixinRegistryEntry[]>;
+  declarationIndex?: Map<string, Set<Declaration>>;
+  indexedLength: number;
+}
+
+export const globalRegistryCache = new WeakMap<Node[], RegistryData>();
+const indexingRegistryValues = new WeakSet<Node[]>();
+
+export function peekRegistryData(value: Node[]): RegistryData | undefined {
+  return globalRegistryCache.get(value);
+}
+
+export function ensureRegistryData(value: Node[]): RegistryData {
+  let data = globalRegistryCache.get(value);
+  if (!data) {
+    data = { indexedLength: 0 };
+    globalRegistryCache.set(value, data);
+  }
+  return data;
+}
+
+export function isRegistryIndexing(rules: Rules | Node[]): boolean {
+  const value = isArray(rules) ? rules : rules.value;
+  return indexingRegistryValues.has(value);
+}
+
+export function syncRegistryCache(rules: Rules): void {
+  const value = rules.value;
+  const data = ensureRegistryData(value);
+  if (data.indexedLength >= value.length || indexingRegistryValues.has(value)) {
+    return;
+  }
+
+  indexingRegistryValues.add(value);
+  try {
+    for (let i = data.indexedLength; i < value.length; i++) {
+      rules.registerNode(value[i]!);
+    }
+    data.indexedLength = value.length;
+  } finally {
+    indexingRegistryValues.delete(value);
+  }
+}
+
+export function registerCanonicalNode(
+  rules: Rules,
+  type: 'ruleset' | 'declaration' | 'mixin',
+  node: Node
+): void {
+  const data = peekRegistryData(rules.value);
+  if (!data) {
+    return;
+  }
+
+  if (type === 'ruleset') {
+    new RulesetRegistry(rules).add(node as Ruleset);
+  } else if (type === 'declaration') {
+    new DeclarationRegistry(rules).add(node as Declaration);
+  } else {
+    new MixinRegistry(rules).add(node as Mixin | Ruleset);
+  }
+
+  if (!indexingRegistryValues.has(rules.value) && data.indexedLength === rules.value.length - 1) {
+    data.indexedLength = rules.value.length;
+  }
+}
+
 export abstract class Registry<
   Type extends Node,
   IndexType extends Type | Set<Type> | Array<{
@@ -350,14 +424,43 @@ export abstract class Registry<
  * Registry for fast selector-based ruleset lookups
  */
 export class RulesetRegistry extends Registry<Ruleset> {
-  index = new Map<string, Set<Ruleset>>();
+  get index(): Map<string, Set<Ruleset>> {
+    return (ensureRegistryData(this.rules.value).rulesetIndex ??= new Map<string, Set<Ruleset>>());
+  }
 
   /**
    * Add a ruleset to be indexed later
    */
   override add(ruleset: Ruleset) {
     if (isNode(ruleset.selector, N.Selector)) {
-      this.pendingItems.add(ruleset);
+      const selector = ruleset.selector;
+      const selectorBits = (this.rules.treeContext as any)?.selectorBits
+        ?? (this.rules.treeContext as any)?.opts?.selectorBits;
+      if (selectorBits && !selector.keySetLibrary) {
+        selector.keySetLibrary = selectorBits;
+        const selectorValue = (selector as unknown as { value?: unknown }).value;
+        if (isArray(selectorValue)) {
+          for (const child of selectorValue as Selector[]) {
+            if (child && !child.keySetLibrary) {
+              child.keySetLibrary = selectorBits;
+            }
+          }
+        }
+      }
+      let keySet: SelectorKeySource;
+      try {
+        keySet = selector.keySet;
+      } catch {
+        return;
+      }
+      for (const key of getSelectorKeyValues(keySet)) {
+        const existing = this.index.get(key);
+        if (existing) {
+          existing.add(ruleset);
+        } else {
+          this.index.set(key, new Set([ruleset]));
+        }
+      }
     }
   }
 
@@ -366,31 +469,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
    * Override the base class method to use keySet-based indexing
    */
   override indexPendingItems() {
-    if (this.pendingItems.size === 0) {
-      return;
-    }
-    const index = this.index;
-    for (const ruleset of this.pendingItems) {
-      /** Index using the ruleset's actual selector keySet - no need for getImplicitSelector here
-       * since we're indexing the selector as-is, not transforming it for parent context */
-      const selector = ruleset.selector;
-      if (selector instanceof Nil) {
-        continue;
-      }
-      if (!('keySet' in selector)) {
-        continue;
-      }
-      const keySet = selector.keySet;
-      for (const key of getSelectorKeyValues(keySet)) {
-        const existing = index.get(key);
-        if (existing) {
-          existing.add(ruleset);
-        } else {
-          index.set(key, new Set([ruleset]));
-        }
-      }
-    }
-    this.pendingItems.clear();
+    return;
   }
 
   /**
@@ -462,12 +541,11 @@ export class RulesetRegistry extends Registry<Ruleset> {
  */
 export class MixinRegistry extends Registry<
   Mixin | Ruleset,
-  Array<{
-    value: Mixin | Ruleset;
-    match: string[];
-  }>
+  MixinRegistryEntry[]
 > {
-  index = new Map();
+  get index(): Map<string, MixinRegistryEntry[]> {
+    return (ensureRegistryData(this.rules.value).mixinIndex ??= new Map<string, MixinRegistryEntry[]>());
+  }
 
   // private getSimpleKeyList(selector: Selector | Nil | undefined): string[] | undefined {
   //   let keyList: string[] | undefined;
@@ -567,120 +645,99 @@ export class MixinRegistry extends Registry<
     }
   }
 
-  override indexPendingItems() {
-    if (this.pendingItems.size === 0) {
+  override add(mixin: Mixin | Ruleset) {
+    if (isNode(mixin, N.Ruleset)) {
+      let selector = mixin.selector;
+      if (isNode(selector, N.Nil)) {
+        return;
+      }
+      const ownSelector = (mixin.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+      const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
+      if (isNode(callableSelector, N.Ampersand)) {
+        return;
+      }
+      const sourceSelector = selector.sourceNode as Selector | undefined;
+      const selectorVisibleKeySet = tryGetSelectorKeySet(selector);
+      const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector);
+      const selectorToIndex = (
+        getIndexableSelectorKeys(selectorVisibleKeySet).length
+          ? selector
+          : (getIndexableSelectorKeys(sourceVisibleKeySet).length ? sourceSelector : selector)
+      ) as Selector;
+      let keySetToUse: SelectorKeySet | string[] | undefined;
+      if (isNode(selectorToIndex, N.SelectorList)) {
+        for (const sel of selectorToIndex.value) {
+          const selKeySet = tryGetSelectorKeySet(sel as Selector);
+          if (selKeySet) {
+            this._indexSelectorStart(mixin, selKeySet);
+          }
+        }
+        keySetToUse = undefined;
+      } else {
+        keySetToUse = tryGetSelectorKeySet(selectorToIndex);
+      }
+      if (
+        keySetToUse
+        && getIndexableSelectorKeys(keySetToUse).length > 0
+        && ownSelector
+        && !isNode(ownSelector, N.Nil)
+      ) {
+        const resolvedKeys = getIndexableSelectorKeys(keySetToUse);
+        const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
+        const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
+        const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
+          ? (mixin.parent.parent as Ruleset).selector
+          : undefined;
+        const parentKeys = (
+          parentSelector && !isNode(parentSelector, N.Nil)
+            ? getIndexableSelectorKeys(tryGetSelectorKeySet(parentSelector))
+            : []
+        );
+        if (
+          parentKeys.length > 0
+          && resolvedKeys.length > parentKeys.length
+        ) {
+          const parentKeySet = new Set(parentKeys);
+          const localKeys = resolvedKeys.filter(k => !parentKeySet.has(k));
+          if (localKeys.length > 0 && localKeys.length < resolvedKeys.length) {
+            keySetToUse = localKeys;
+          }
+        } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
+          keySetToUse = ownKeys.slice(1);
+        } else if (
+          parentKeys.length === 0
+          && ownKeys.length > 0
+          && resolvedKeys.length > ownKeys.length
+        ) {
+          keySetToUse = ownKeys;
+        }
+      }
+      if (
+        keySetToUse !== undefined
+        && getIndexableSelectorKeys(keySetToUse).length === 0
+        && ownSelector
+        && !isNode(ownSelector, N.Nil)
+      ) {
+        const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector);
+        if (ownKeySet && getIndexableSelectorKeys(ownKeySet).length) {
+          const ownKeys = getIndexableSelectorKeys(ownKeySet);
+          const selectorText = String(selectorToIndex.valueOf?.() ?? '');
+          keySetToUse = selectorText.startsWith('&') && ownKeys.length > 1
+            ? new Set(ownKeys.slice(1))
+            : ownKeySet;
+        }
+      }
+      if (keySetToUse !== undefined) {
+        this._indexSelectorStart(mixin, keySetToUse);
+      }
       return;
     }
-    for (const mixin of this.pendingItems) {
-      if (isNode(mixin, N.Ruleset)) {
-        // Use the ruleset's own selector, not the implicit selector with parent context
-        // This ensures nested rulesets are indexed by their local keys, not parent keys
-        // If the selector has been evaluated/flattened, use sourceNode which has the original
-        let selector = mixin.selector;
-        if (isNode(selector, N.Nil)) {
-          continue;
-        }
-        // `&` rulesets are structural nesting selectors, not callable mixins.
-        // Determine callability from ownSelector (before implicit selector resolution) when available.
-        const ownSelector = (mixin.options as { ownSelector?: Selector } | undefined)?.ownSelector;
-        const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
-        if (isNode(callableSelector, N.Ampersand)) {
-          continue;
-        }
-        // Prefer evaluated selector keys; they resolve interpolations (e.g. .@{a0} -> .\123).
-        // Fall back to source selector only when evaluated keys are empty.
-        const sourceSelector = selector.sourceNode as Selector | undefined;
-        const selectorVisibleKeySet = tryGetSelectorKeySet(selector);
-        const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector);
-        const selectorToIndex = (
-          getIndexableSelectorKeys(selectorVisibleKeySet).length
-            ? selector
-            : (getIndexableSelectorKeys(sourceVisibleKeySet).length ? sourceSelector : selector)
-        ) as Selector;
-        let keySetToUse: SelectorKeySet | string[] | undefined;
-        if (isNode(selectorToIndex, N.SelectorList)) {
-          /** Selector list's selectors are individually registered */
-          for (const sel of selectorToIndex.value) {
-            const selKeySet = tryGetSelectorKeySet(sel as Selector);
-            if (selKeySet) {
-              this._indexSelectorStart(mixin, selKeySet);
-            }
-          }
-          keySetToUse = undefined; // already indexed above
-        } else {
-          keySetToUse = tryGetSelectorKeySet(selectorToIndex);
-        }
-        // Normalize nested `&...` selectors to local keys when possible.
-        // Evaluated key sets can include inherited parent keys (e.g. [".b",".bb",".foo-xxx",...]),
-        // but recursive lookup descends with local remainder keys (e.g. [".foo-xxx", ...]).
-        if (
-          keySetToUse
-          && getIndexableSelectorKeys(keySetToUse).length > 0
-          && ownSelector
-          && !isNode(ownSelector, N.Nil)
-        ) {
-          const resolvedKeys = getIndexableSelectorKeys(keySetToUse);
-          const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
-          const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
-          const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
-            ? (mixin.parent.parent as Ruleset).selector
-            : undefined;
-          const parentKeys = (
-            parentSelector && !isNode(parentSelector, N.Nil)
-              ? getIndexableSelectorKeys(tryGetSelectorKeySet(parentSelector))
-              : []
-          );
-          if (
-            parentKeys.length > 0
-            && resolvedKeys.length > parentKeys.length
-          ) {
-            // Use set-based parent key removal (BitSet iteration order is non-deterministic)
-            const parentKeySet = new Set(parentKeys);
-            const localKeys = resolvedKeys.filter(k => !parentKeySet.has(k));
-            if (localKeys.length > 0 && localKeys.length < resolvedKeys.length) {
-              keySetToUse = localKeys;
-            }
-          } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
-            keySetToUse = ownKeys.slice(1);
-          } else if (
-            parentKeys.length === 0
-            && ownKeys.length > 0
-            && resolvedKeys.length > ownKeys.length
-          ) {
-            // No parent Ruleset in chain (e.g. mixin output), but resolved keys include
-            // implicit parent context. Use ownSelector keys for local indexing.
-            keySetToUse = ownKeys;
-          }
-        }
-        // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
-        // would not index. Use the ruleset's ownSelector (set in preEval before getImplicitSelector)
-        // to index by the callable selector that was explicitly authored.
-        if (keySetToUse !== undefined) {
-          if (
-            getIndexableSelectorKeys(keySetToUse).length === 0
-            && ownSelector
-            && !isNode(ownSelector, N.Nil)
-          ) {
-            const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector);
-            if (ownKeySet && getIndexableSelectorKeys(ownKeySet).length) {
-              const ownKeys = getIndexableSelectorKeys(ownKeySet);
-              const selectorText = String(selectorToIndex.valueOf?.() ?? '');
-              // In nested `&...` rulesets, ownKeySet may include inherited parent key first.
-              // For local lookup chains we want the nested segment as the start key.
-              if (selectorText.startsWith('&') && ownKeys.length > 1) {
-                keySetToUse = new Set(ownKeys.slice(1));
-              } else {
-                keySetToUse = ownKeySet;
-              }
-            }
-          }
-          this._indexSelectorStart(mixin, keySetToUse);
-        }
-      } else {
-        this._indexSelectorStart(mixin, mixin.keySet);
-      }
-    }
-    this.pendingItems.clear();
+
+    this._indexSelectorStart(mixin, mixin.keySet);
+  }
+
+  override indexPendingItems() {
+    return;
   }
 
   /**
@@ -1292,22 +1349,22 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
  *         same map.
  */
 export class DeclarationRegistry extends Registry<Declaration> {
-  index = new Map<string, Set<Declaration>>();
+  get index(): Map<string, Set<Declaration>> {
+    return (ensureRegistryData(this.rules.value).declarationIndex ??= new Map<string, Set<Declaration>>());
+  }
+
+  override add(item: Declaration): void {
+    const key = item.name.valueOf();
+    const set = this.index.get(key);
+    if (set) {
+      set.add(item);
+    } else {
+      this.index.set(key, new Set([item]));
+    }
+  }
 
   override indexPendingItems() {
-    if (this.pendingItems.size === 0) {
-      return;
-    }
-    for (const item of this.pendingItems) {
-      let key = item.name.valueOf();
-      let set = this.index.get(key);
-      if (set && set instanceof Set) {
-        set.add(item);
-      } else {
-        this.index.set(key, new Set([item]));
-      }
-    }
-    this.pendingItems.clear();
+    return;
   }
 
   /**
