@@ -24,6 +24,7 @@ import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { sessionMarkScopeDirty } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -926,6 +927,46 @@ describe('Rules', () => {
       expect(clone.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBe(extra);
       expect(root.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBeUndefined();
       expect(cloneRegisterSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('session registry delta', () => {
+    it('prefers session-only declaration entries over the canonical cache', () => {
+      const root = rules([
+        vardecl({ name: 'foo', value: any('bar') })
+      ]);
+      const ctx = new Context();
+      ctx.createSession();
+      const injected = vardecl({ name: 'bar', value: any('baz') });
+
+      root.getRegistry('declaration');
+      root.register('declaration', injected, ctx);
+
+      expect(root.find('declaration', 'bar', 'VarDeclaration', {
+        context: ctx,
+        searchParents: false
+      })).toBe(injected);
+      expect(root.find('declaration', 'bar', 'VarDeclaration', {
+        searchParents: false
+      })).toBeUndefined();
+    });
+
+    it('clears session-only registry entries when the scope is marked dirty', () => {
+      const root = rules([
+        vardecl({ name: 'foo', value: any('bar') })
+      ]);
+      const ctx = new Context();
+      ctx.createSession();
+      const injected = vardecl({ name: 'bar', value: any('baz') });
+
+      root.getRegistry('declaration');
+      root.register('declaration', injected, ctx);
+      sessionMarkScopeDirty(root, ctx);
+
+      expect(root.find('declaration', 'bar', 'VarDeclaration', {
+        context: ctx,
+        searchParents: false
+      })).toBeUndefined();
     });
   });
 });

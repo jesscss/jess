@@ -1,5 +1,17 @@
 import type { Node } from './tree/node-base.js';
 import type { VarDeclaration } from './tree/declaration-var.js';
+import type { Ruleset } from './tree/ruleset.js';
+import type { Mixin } from './tree/mixin.js';
+import type { Declaration } from './tree/declaration.js';
+
+export interface SessionRegistryDelta {
+  rulesetIndex?: Map<string, Set<Ruleset>>;
+  mixinIndex?: Map<string, Array<{
+    value: Mixin | Ruleset;
+    match: string[];
+  }>>;
+  declarationIndex?: Map<string, Set<Declaration>>;
+}
 
 /**
  * Per-node field overrides stored in a session.
@@ -93,6 +105,9 @@ export class EvalSession {
 
   /** Per-node dependency annotations */
   private dependencies = new WeakMap<Node, EvalDependency>();
+
+  /** Session-local registry additions keyed by Rules.value identity */
+  private registryDeltas = new WeakMap<Node[], SessionRegistryDelta>();
 
   constructor(options?: { resetEvalState?: boolean }) {
     this.id = nextSessionId++;
@@ -194,5 +209,24 @@ export class EvalSession {
 
   hasDependency(node: Node): boolean {
     return this.dependencies.has(node);
+  }
+
+  // -- Registry delta API --
+
+  ensureRegistryDelta(value: Node[]): SessionRegistryDelta {
+    let delta = this.registryDeltas.get(value);
+    if (!delta) {
+      delta = {};
+      this.registryDeltas.set(value, delta);
+    }
+    return delta;
+  }
+
+  getRegistryDelta(value: Node[]): SessionRegistryDelta | undefined {
+    return this.registryDeltas.get(value);
+  }
+
+  clearRegistryDelta(value: Node[]): void {
+    this.registryDeltas.delete(value);
   }
 }

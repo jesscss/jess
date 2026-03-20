@@ -741,15 +741,28 @@ at all — the canonical index is shared, session carries isolated parent state.
 
 See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-deltas--eliminate-import-cloning) for full checklist.
 
-- [ ] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
-- [ ] `sessionRegister(rules, type, node, ctx)` helper — writes to session delta when session active
-- [ ] Update `Rules.register()` to route through session delta when `ctx?.session` active
-- [ ] Update `Rules.getRegistry()` lookup: session delta first, then canonical WeakMap
-- [ ] Activate `sessionMarkScopeDirty` stub in `session-helpers.ts`
+- [x] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
+- [x] `sessionRegister(rules, type, node, ctx)` helper — writes to session delta when session active
+- [x] Update `Rules.register()` to route through session delta when `ctx?.session` active
+- [x] Update `Rules.getRegistry()` lookup: session delta first, then canonical WeakMap
+- [x] Activate `sessionMarkScopeDirty` stub in `session-helpers.ts`
 - [ ] Dependency-aware partial re-eval: skip re-eval for entries whose `dependsOn ∩ changedVars = ∅`
 - [ ] **Eliminate import cloning** in `getFinalRules` (`import-style.ts`): replace `clone(false)` + COW selector loop with direct reference + session for isolation
-- [ ] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock — replace with session-isolated eval
+- [x] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock — replace with session-isolated eval
 - [ ] Tests: two sequential `_dedupe` imports share canonical registry; mixin expansion in session delta only
+
+### Stage 20 Notes
+
+- `EvalSession` now carries session-local registry deltas keyed by `Rules.value`, and `Rules.register()`/`Rules.find()` can see those entries without polluting the canonical WeakMap-backed caches.
+- Added `rules.test.ts` coverage proving that session-only declaration entries are visible with a session context, invisible to canonical lookup, and cleared by `sessionMarkScopeDirty()`.
+- Detached ruleset unlock now uses `clone(false, undefined, ctx)` instead of `clone(true)`, so it reuses canonical children while preserving session-isolated parent/runtime state.
+- The `_dedupe` / `multiple` import finalization path still uses shallow `Rules` / `Ruleset` output clones, but the Stage 16 selector deep-clone workaround has been removed. Full no-clone import output remains for the next Stage 20 slice.
+- Verification:
+  - `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts`
+  - `cd packages/core && pnpm test src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/extend-import-style.test.ts`
+  - `cd packages/core && pnpm test extend`
+- Wider characterization:
+  - `src/tree/__tests__/mixin.test.ts > keeps param vars preferred over outer same-name vars in lazy nested mixin lookups` still fails, matching the accepted pre-existing baseline.
 
 ---
 

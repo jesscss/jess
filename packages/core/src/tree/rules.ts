@@ -190,7 +190,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   register(
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
-    node: Node
+    node: Node,
+    context?: Context
   ) {
     if (type === 'function') {
       let registry = this.functionRegistry;
@@ -201,15 +202,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return registry.add(node as any);
     }
 
+    if (Registries.registerSessionNode(this, type, node, context)) {
+      return;
+    }
+
     return Registries.registerCanonicalNode(this, type, node);
   }
 
-  getRegistry(type: 'ruleset'): Registries.RulesetRegistry;
-  getRegistry(type: 'declaration'): Registries.DeclarationRegistry;
-  getRegistry(type: 'mixin'): Registries.MixinRegistry;
-  getRegistry(type: 'function'): Registries.FunctionRegistry;
-  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function'): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
-  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function') {
+  getRegistry(type: 'ruleset', context?: Context): Registries.RulesetRegistry;
+  getRegistry(type: 'declaration', context?: Context): Registries.DeclarationRegistry;
+  getRegistry(type: 'mixin', context?: Context): Registries.MixinRegistry;
+  getRegistry(type: 'function', context?: Context): Registries.FunctionRegistry;
+  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
+  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context) {
     if (type === 'function') {
       this.functionRegistry ??= new Registries.FunctionRegistry(this);
       return this.functionRegistry;
@@ -218,7 +223,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     Registries.syncRegistryCache(this);
     let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
     let RegistryClass = Registries[`${className}Registry`];
-    return new RegistryClass(this);
+    return new RegistryClass(this, context);
   }
 
   /**
@@ -236,7 +241,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType?: string,
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    let registry = this.getRegistry(type);
+    let registry = this.getRegistry(type, options.context);
     return (registry as any).find(keys, filterType, options);
   }
 
@@ -665,16 +670,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
 
-      this.register('declaration', node);
+      this.register('declaration', node, _context);
     } else if (isNode(node, N.Ruleset)) {
       // Register to 'mixin' for mixin calls
       // Always register - guard filtering happens at call time in getFunctionFromMixins
       // Note: 'ruleset' registration for extends now happens in Ruleset.preEval to the extend root's registry
-      this.register('mixin', node);
+      this.register('mixin', node, _context);
     } else if (isNode(node, N.Mixin)) {
-      this.register('mixin', node);
+      this.register('mixin', node, _context);
     } else if (isNode(node, N.Func)) {
-      this.register('function', node);
+      this.register('function', node, _context);
     }
   }
 
@@ -688,7 +693,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (const node of nodes) {
       this.adopt(node, ctx);
       this.value.push(node);
-      this.registerNode(node);
+      this.registerNode(node, undefined, ctx);
     }
   }
 
@@ -2319,7 +2324,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // not eagerly execute/flatten them.
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
-        let unlocked = sourceRules.clone(true);
+        let unlocked = sourceRules.clone(false, undefined, thisContext);
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true

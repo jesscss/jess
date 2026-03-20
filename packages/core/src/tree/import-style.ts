@@ -251,12 +251,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (isNode(child, N.Ruleset)) {
           const rulesetClone = (child as Ruleset).clone(false) as Ruleset;
           rulesetClone.inherit(child as Ruleset);
-          // Deep-clone the selector so extend mutations (appendAlternative mutates in-place)
-          // on the canonical preEvalRulesetClone don't contaminate this COW clone's selector.
-          const sel = rulesetClone.selector;
-          if (sel && !isNode(sel, N.Nil)) {
-            rulesetClone.setData('selector', sel.clone(true));
-          }
           out.value[i] = rulesetClone;
           out.adopt(rulesetClone);
         }

@@ -433,9 +433,8 @@ export function sessionReplaceNode(
  * Stage 9 will make this session-local when session-local children are active.
  */
 export function sessionMarkScopeDirty(
-  _rules: Rules,
-  _ctx: Context
+  rules: Rules,
+  ctx: Context
 ): void {
-  // No-op until session-local children are introduced in Stage 9.
-  // At that point, this will clear the session-local registry snapshot.
+  ctx.session?.clearRegistryDelta(rules.value);
 }
