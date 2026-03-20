@@ -241,11 +241,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
-    // Shallow clone + per-Ruleset COW: the Rules container gets a new array,
-    // and each Ruleset child is shallow-cloned so extend mutations (selector
-    // additions) don't contaminate the canonical/cached tree.
+    // Shallow clone: the import wrapper still carries per-import visibility
+    // and source metadata. `_dedupe` still needs child Ruleset isolation so
+    // implicit-reference extends don't contaminate the cached tree, but
+    // `multiple:true` can reuse shared child Rulesets.
     let out = evaluatedRules.clone(false) as Rules;
-    if (type === 'import' && (importOptions!.multiple === true || importOptions!._dedupe === true)) {
+    if (type === 'import' && importOptions!._dedupe === true) {
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
         if (isNode(child, N.Ruleset)) {

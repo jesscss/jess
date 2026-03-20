@@ -62,6 +62,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
    - `forwarded members are not visible locally, but are visible downstream`
    - `two sequential "with" imports do not corrupt canonical node parent pointers`
    These are not regressions from the current working tree.
+7. `src/tree/__tests__/registry-characterization.test.ts` now proves two Stage 20 properties in isolation:
+   - cached compose imports reuse the same canonical WeakMap-backed registry slot
+   - session-only declaration registrations stay in `EvalSession.registryDeltas` instead of polluting the canonical cache
+8. `packages/core/src/tree/import-style.ts` no longer clones child `Ruleset`s for plain `multiple:true` imports.
+   The child-clone path is now kept only for implicit reference / `_dedupe` imports, because
+   removing it there regressed `extend-import-style` (`implicit reference mode (_dedupe) remains externally extendable`).
 
 ---
 

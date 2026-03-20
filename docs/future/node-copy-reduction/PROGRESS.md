@@ -762,11 +762,15 @@ See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-
 - `EvalSession` now carries session-local registry deltas keyed by `Rules.value`, and `Rules.register()`/`Rules.find()` can see those entries without polluting the canonical WeakMap-backed caches.
 - Added `rules.test.ts` coverage proving that session-only declaration entries are visible with a session context, invisible to canonical lookup, and cleared by `sessionMarkScopeDirty()`.
 - Added parent-isolation coverage for session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)`, so shared canonical children can be inserted into session-scoped `Rules` wrappers without overwriting their canonical `.parent` pointers.
+- Added `src/tree/__tests__/registry-characterization.test.ts` coverage proving that cached compose imports reuse the same canonical WeakMap-backed registry slot and that session-only declaration registrations stay in `EvalSession.registryDeltas` instead of polluting the canonical cache.
+- Reduced `import-style.ts` cloning further: `getFinalRules()` now keeps child `Ruleset` cloning only for implicit reference / `_dedupe` imports. Plain `multiple:true` imports reuse shared child `Ruleset`s under the shallow wrapper without regressing `extend-import-style`.
 - Detached ruleset unlock now uses `clone(false, undefined, ctx)` instead of `clone(true)`, so it reuses canonical children while preserving session-isolated parent/runtime state.
 - The `_dedupe` / `multiple` import finalization path still uses shallow `Rules` / `Ruleset` output clones, but the Stage 16 selector deep-clone workaround has been removed. Full no-clone import output remains for the next Stage 20 slice.
 - `src/tree/__tests__/import-style.test.ts` still has two failures (`forwarded members are not visible locally, but are visible downstream` and `two sequential "with" imports do not corrupt canonical node parent pointers`) at committed Stage 20 boundary `3b4d089e`; they are not regressions from the current working tree.
 - Verification:
   - `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts`
+  - `cd packages/core && pnpm test src/tree/__tests__/registry-characterization.test.ts src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/control.test.ts`
+  - `cd packages/core && pnpm test src/tree/__tests__/extend-import-style.test.ts src/tree/__tests__/import-style.test.ts`
   - `cd packages/core && pnpm test src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/extend-import-style.test.ts`
   - `cd packages/core && pnpm test extend`
 - Wider characterization:
