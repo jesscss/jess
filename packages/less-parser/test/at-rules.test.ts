@@ -66,6 +66,16 @@ describe('mediaInParens', () => {
     const { errors } = parse('@media ~"screen" { }', 'stylesheet');
     expect(errors.length).toBe(0);
   });
+
+  it('should parse variable media query at top level', () => {
+    const { errors } = parse('@media @breakpoint, print { }', 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse namespaced reference media query at top level', () => {
+    const { errors } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
 });
 
 describe('mfValue', () => {
@@ -91,4 +101,3 @@ describe('exportAtRule', () => {
     expect(errors.length).toBe(0);
   });
 });
-

@@ -1,5 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
+import { tokenMatcher } from '../cssRecursiveParser.js';
 import type { IToken, IOrAlt } from '@chevrotain/types';
 import {
   Node, Any, BasicSelector, Ampersand, CompoundSelector, ComplexSelector,
@@ -249,16 +250,7 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
     {
       ALT: () => {
         let name = $.CONSUME(T.NthPseudoClass);
-        let val = $.SUBRULE($.nthValue, { ARGS: [ctx] });
-        $.CONSUME(T.RParen);
-
-        return createPseudo(name.image.slice(0, -1), val);
-      }
-    },
-    {
-      ALT: () => {
-        let name = $.CONSUME(T.SelectorPseudoClass);
-        let val = $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
+        let val = $.SUBRULE2($.nthValue, { ARGS: [ctx] });
         $.CONSUME2(T.RParen);
 
         return createPseudo(name.image.slice(0, -1), val);
@@ -266,11 +258,20 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
     },
     {
       ALT: () => {
-        let name = $.CONSUME(T.Colon).image;
+        let name = $.CONSUME3(T.SelectorPseudoClass);
+        let val = $.SUBRULE3($.forgivingSelectorList, { ARGS: [ctx] });
+        $.CONSUME4(T.RParen);
+
+        return createPseudo(name.image.slice(0, -1), val);
+      }
+    },
+    {
+      ALT: () => {
+        let name = $.CONSUME5(T.Colon).image;
         $.OPTION({
           GATE: $.noSep,
           DEF: () => {
-            name += $.CONSUME2(T.Colon).image;
+            name += $.CONSUME6(T.Colon).image;
           }
         });
         let values = $.OR4([
@@ -278,7 +279,7 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
             /** ::unknown(values) */
             GATE: $.noSep,
             ALT: () => {
-              name += $.CONSUME(T.GenericFunctionStart).image;
+              name += $.CONSUME7(T.GenericFunctionStart).image;
               let RECORDING_PHASE = $.RECORDING_PHASE;
               let values: Node[];
               if (!RECORDING_PHASE) {
@@ -289,7 +290,7 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
 
               $.startRule();
               $.MANY(() => {
-                let val = $.SUBRULE($.anyInnerValue);
+                let val = $.SUBRULE4($.anyInnerValue);
                 if (!RECORDING_PHASE) {
                   values!.push(val);
                 }
@@ -297,7 +298,7 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
               if (!RECORDING_PHASE) {
                 valuesLocation = $.endRule();
               }
-              $.CONSUME3(T.RParen);
+              $.CONSUME8(T.RParen);
 
               if (!RECORDING_PHASE && values!.length) {
                 return new Sequence(values!, undefined, valuesLocation!, this.context);
@@ -308,7 +309,7 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
             /** ::unknown  */
             GATE: $.noSep,
             ALT: () => {
-              name += $.CONSUME(T.Ident).image;
+              name += $.CONSUME9(T.Ident).image;
             }
           }
         ]);
@@ -407,7 +408,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   valueAlt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
-        let token = $.CONSUME2(T.Ident);
+        let token = $.CONSUME5(T.Ident);
         if (!$.RECORDING_PHASE) {
           return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), this.context);
         }
@@ -420,20 +421,20 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    $.CONSUME(T.LSquare);
-    let key = $.CONSUME(T.Ident);
+    $.CONSUME2(T.LSquare);
+    let key = $.CONSUME3(T.Ident);
     let op: IToken | undefined;
     let value: Node | undefined;
     let mod: IToken | undefined;
     $.OPTION(() => {
       op = $.OR([
-        { ALT: () => $.CONSUME(T.Eq) },
-        { ALT: () => $.CONSUME(T.AttrMatch) }
+        { ALT: () => $.CONSUME4(T.Eq) },
+        { ALT: () => $.CONSUME6(T.AttrMatch) }
       ]);
       value = $.OR2(valueAlt(ctx));
     });
-    $.OPTION2(() => mod = $.CONSUME(T.AttrFlag));
-    $.CONSUME(T.RSquare);
+    $.OPTION2(() => mod = $.CONSUME7(T.AttrFlag));
+    $.CONSUME8(T.RSquare);
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
@@ -582,7 +583,7 @@ export function relativeSelector(this: C, T: TokenMap) {
       {
         ALT: () => {
           let co = $.CONSUME(T.Combinator);
-          let complex: Node = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
+          let complex: Node = $.SUBRULE2($.complexSelector, { ARGS: [ctx] });
 
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
@@ -605,7 +606,7 @@ export function relativeSelector(this: C, T: TokenMap) {
         }
       },
       {
-        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE3($.complexSelector, { ARGS: [ctx] })
       }
     ]);
   };
@@ -705,6 +706,44 @@ export function selectorList(this: C, T: TokenMap) {
 
 export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
+  const shouldTryQualifiedRule = () => {
+    const isSelectorLikeContinuation = (offset: number) => {
+      const tok = $.LA(offset);
+      return (
+        tokenMatcher(tok, T.LCurly)
+        || tokenMatcher(tok, T.Comma)
+        || tokenMatcher(tok, T.Combinator)
+        || tokenMatcher(tok, T.LSquare)
+        || tokenMatcher(tok, T.Colon)
+        || tokenMatcher(tok, T.NthPseudoClass)
+        || tokenMatcher(tok, T.SelectorPseudoClass)
+      );
+    };
+    if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
+      return $.shouldTryQualifiedRuleInDeclarationList();
+    }
+    if (!$.isTypeAt(1, T.Ident)) {
+      return true;
+    }
+    if (!$.isTypeAt(2, T.Assign)) {
+      return true;
+    }
+    if ($.hasWS(2)) {
+      return false;
+    }
+    const tt3 = $.LA(3).tokenType;
+    if (
+      tt3 === T.Colon
+      || tt3 === T.NthPseudoClass
+      || tt3 === T.SelectorPseudoClass
+    ) {
+      return true;
+    }
+    if (!tokenMatcher($.LA(3), T.Ident)) {
+      return false;
+    }
+    return isSelectorLikeContinuation(4);
+  };
   /** * Declarations ***/
   // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
   // declarationList
@@ -718,35 +757,8 @@ export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
   alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
     {
-      /**
-       * Only attempt a nested qualified rule when `{` is ahead (before `;` or `}`).
-       * This gate is essential: MANY has a precomputed first-token set (laSet) and
-       * uses a fast committed path that does NOT set IS_SPECULATING=true. Without
-       * this gate, qualifiedRule would be tried non-speculatively via the OR fast
-       * path's GATED_OFFSET dispatch, consume selector tokens, then fail at
-       * CONSUME(LCurly) with a real MismatchedTokenException that persists in
-       * _errors even after cleanup attempts.
-       *
-       * Fast early-exit tiers (O(1) each) before falling back to the O(N) scan:
-       *   1. Non-Ident start → must be a selector, allow immediately.
-       *   2. Ident + no Colon → complex selector, allow immediately.
-       *   3. Ident + Colon + whitespace after colon → `prop: value`, reject.
-       *   4. Otherwise (ident:no-space) → ambiguous, fall back to full scan.
-       *
-       * locationStack is restored automatically via restoreCheckpoint() override.
-       */
-      GATE: () => {
-        if (!$.isTypeAt(1, T.Ident)) {
-          return true;
-        }
-        if (!$.isTypeAt(2, T.Assign)) {
-          return true;
-        }
-        if ($.hasWS(2)) {
-          return false;
-        }
-        return $.hasLCurlyAhead();
-      },
+      /** Keep this routing bounded; do not scan ahead to the closing delimiter. */
+      GATE: shouldTryQualifiedRule,
       ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] })
     },
     { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },

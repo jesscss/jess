@@ -156,8 +156,8 @@ export function supportsCondition(this: C, T: TokenMap) {
       GATE: () => $.LA(1).tokenType === T.Not,
       ALT: () => {
         $.startRule();
-        let keyword = $.CONSUME(T.Not);
-        let value = $.SUBRULE($.supportsInParens, { ARGS: [ctx] });
+        let keyword = $.CONSUME2(T.Not);
+        let value = $.SUBRULE2($.supportsInParens, { ARGS: [ctx] });
 
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
@@ -175,7 +175,7 @@ export function supportsCondition(this: C, T: TokenMap) {
         let RECORDING_PHASE = $.RECORDING_PHASE;
         let [startOffset, startLine, startColumn] = start ?? [];
 
-        let left = $.SUBRULE2($.supportsInParens, { ARGS: [ctx] });
+        let left = $.SUBRULE3($.supportsInParens, { ARGS: [ctx] });
 
         /**
          * Can be followed by many ands or many ors
@@ -183,9 +183,9 @@ export function supportsCondition(this: C, T: TokenMap) {
         $.OR2([
           {
             ALT: () => {
-              $.AT_LEAST_ONE(() => {
-                let keyword = $.CONSUME(T.And);
-                let right: Node = $.SUBRULE3($.supportsInParens, { ARGS: [ctx] });
+              $.AT_LEAST_ONE2(() => {
+                let keyword = $.CONSUME3(T.And);
+                let right: Node = $.SUBRULE4($.supportsInParens, { ARGS: [ctx] });
                 if (!RECORDING_PHASE) {
                   let [,,,endOffset, endLine, endColumn] = right.location;
                   left = new QueryCondition([
@@ -199,8 +199,8 @@ export function supportsCondition(this: C, T: TokenMap) {
           },
           {
             ALT: () => {
-              $.AT_LEAST_ONE2(() => {
-                let keyword = $.CONSUME(T.Or);
+              $.AT_LEAST_ONE3(() => {
+                let keyword = $.CONSUME4(T.Or);
                 let right: Node = $.SUBRULE5($.supportsInParens, { ARGS: [ctx] });
                 if (!RECORDING_PHASE) {
                   let [,,,endOffset, endLine, endColumn] = right.location;
@@ -244,9 +244,9 @@ export function supportsInParens(this: C, T: TokenMap) {
           {
             GATE: $.noSep,
             ALT: () => {
-              $.CONSUME(T.LParen);
-              args = $.SUBRULE($.valueList, { ARGS: [ctx] });
-              $.CONSUME(T.RParen);
+              $.CONSUME2(T.LParen);
+              args = $.SUBRULE2($.valueList, { ARGS: [ctx] });
+              $.CONSUME3(T.RParen);
             }
           }
         ]);
@@ -264,7 +264,7 @@ export function supportsInParens(this: C, T: TokenMap) {
       ALT: () => {
         $.startRule();
         let values: Node[] = [];
-        $.CONSUME2(T.LParen);
+        $.CONSUME4(T.LParen);
         /**
          * Intentionally omits "generalEnclosed" from spec.
          * See the note on media queries.
@@ -286,14 +286,14 @@ export function supportsInParens(this: C, T: TokenMap) {
               }
               return false;
             },
-            ALT: () => $.SUBRULE($.supportsCondition, { ARGS: [ctx] })
+            ALT: () => $.SUBRULE3($.supportsCondition, { ARGS: [ctx] })
           },
           {
             /** declaration: Ident/CustomProperty followed by Colon */
-            ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] })
+            ALT: () => $.SUBRULE4($.declaration, { ARGS: [ctx] })
           }
         ]);
-        $.CONSUME2(T.RParen);
+        $.CONSUME5(T.RParen);
 
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();

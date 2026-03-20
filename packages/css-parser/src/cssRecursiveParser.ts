@@ -35,6 +35,18 @@ export { tokenMatcher };
 
 export type TokenMap = Record<CssTokenType, TokenType>;
 
+type RuntimeLookaheadCacheState = {
+  _orFastMaps: Record<number, Record<number, number>>;
+  _orFastMapAltsRef: Record<number, unknown>;
+  _orGatedPrefixAlts: Record<number, number[]>;
+  _orCounterDeltas: Record<number, number>;
+  _orAltCounterStarts: Record<number, number[]>;
+  _orCommittable: Record<number, Record<number, boolean>>;
+  _orLookahead: Record<number, unknown>;
+  _orLookaheadLL1: Array<unknown>;
+  _prodLookahead: Record<number, () => boolean>;
+};
+
 // ── Import production rule implementations ──────────────────────────
 import * as productions from './productions/index.js';
 
@@ -106,9 +118,10 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   ) {
     super([...Object.values(T), EOF], {
       recoveryEnabled: config.recoveryEnabled ?? false,
+      maxLookahead: 1
       // TODO: Fix in fork — ambiguity validation should warn, not throw.
       // The speculative engine handles ambiguities correctly at runtime.
-      skipValidations: true
+      // skipValidations: true
     });
     this.T = T;
     this.legacyMode = config.legacyMode ?? true;
@@ -120,12 +133,10 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       }
     }
 
-    // performSelfAnalysis() omitted for now — the fork's speculative engine
-    // doesn't need precomputed lookahead. The numbered DSL variants (OR1, OR2,
-    // CONSUME2, SUBRULE2, etc.) need to be restored before re-enabling this.
-    // See docs/investigation/chevrotain-ambiguity-handling.md
-
-    this.performSelfAnalysis();
+    /** Disable self-analysis. Our current Chevrotain fork allows us to immediately parse. */
+    if (this.constructor === CssRecursiveParser) {
+      this.performSelfAnalysis();
+    }
   }
 
   get context(): TreeContext {
@@ -199,6 +210,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     this.usedSkippedTokens = new Set();
     this.usedSkippedTokensLog = [];
     this.originalInput = value;
+    this.locationStack = [];
     this.skippedBeforeByPos = skippedBeforeByPos;
     this.skippedAfterByPos = skippedAfterByPos;
     this.hasWSBeforeByPos = Uint8Array.from(hasWSBeforeByPos);
@@ -252,6 +264,15 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     return tokenMatcher(tok, expected);
   }
 
+  /**
+   * Shared bounded prefix check for structured media/container conditions.
+   * Commits only on immediate condition starts: `(` or `not (`.
+   */
+  startsMediaCondition(T: TokenMap): boolean {
+    const t1 = this.LA(1).tokenType;
+    return t1 === T.LParen || (t1 === T.Not && this.LA(2).tokenType === T.LParen);
+  }
+
   noSep(offset = 0): boolean {
     const idx = this.currIdx + 1 + offset;
     if (idx >= this.tokVectorLength) {
@@ -273,6 +294,68 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   }
 
   /**
+   * Decide whether an inner declaration-list entry should be treated as a
+   * nested qualified rule instead of a declaration.
+   *
+   * Fast early-exit tiers:
+   * 1. Non-Ident start => selector-like, allow immediately.
+   * 2. Ident + no Colon => selector-like, allow immediately.
+   * 3. Ident + Colon + whitespace after colon => declaration, reject.
+   * 4. Otherwise (ident:no-space) => use the next one or two tokens to detect
+   *    selector intent without scanning to the terminating delimiter.
+   */
+  shouldTryQualifiedRuleInDeclarationList(): boolean {
+    const {
+      Ident,
+      Assign,
+      Colon,
+      LCurly,
+      Comma,
+      Gt,
+      Plus,
+      Tilde,
+      Column,
+      Pipe,
+      LSquare,
+      NthPseudoClass,
+      SelectorPseudoClass
+    } = this.T;
+    const isSelectorLikeContinuation = (offset: number): boolean => {
+      const tok = this.LA(offset);
+      return (
+        tokenMatcher(tok, LCurly)
+        || tokenMatcher(tok, Comma)
+        || tokenMatcher(tok, this.T.Combinator)
+        || tokenMatcher(tok, LSquare)
+        || tokenMatcher(tok, Colon)
+        || tokenMatcher(tok, NthPseudoClass)
+        || tokenMatcher(tok, SelectorPseudoClass)
+      );
+    };
+    if (!this.isTypeAt(1, Ident)) {
+      return true;
+    }
+    if (!this.isTypeAt(2, Assign)) {
+      return true;
+    }
+    if (this.hasWS(2)) {
+      return false;
+    }
+    const tt3 = this.LA(3).tokenType;
+    if (
+      tt3 === Colon
+      || tt3 === NthPseudoClass
+      || tt3 === SelectorPseudoClass
+    ) {
+      return true;
+    }
+    if (!tokenMatcher(this.LA(3), Ident)) {
+      return false;
+    }
+    return isSelectorLikeContinuation(4);
+  }
+
+  /**
    * Scan forward from the current position and return true if an LCurly
    * appears before a Semi or RCurly at the same nesting level.
    * Used to disambiguate nested qualified rules from declarations when
@@ -288,10 +371,14 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     for (let i = this.currIdx + 1; i < len; i++) {
       const tt = tokens[i]!.tokenType;
       if (tt === LCurly) {
-        if (depth === 0) return true;
+        if (depth === 0) {
+          return true;
+        }
         depth++;
       } else if (tt === RCurly) {
-        if (depth === 0) return false;
+        if (depth === 0) {
+          return false;
+        }
         depth--;
       } else if (tt === Semi && depth === 0) {
         return false;
@@ -630,6 +717,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
   mediaQueryList!: Rule;
   mediaQuery!: Rule;
+  mediaTypeQuery!: Rule;
   mediaCondition!: Rule;
   mediaType!: Rule;
   mediaConditionWithoutOr!: Rule;

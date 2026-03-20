@@ -164,73 +164,65 @@ export function mediaQuery(this: C, T: TokenMap, alt?: AltContext) {
 
   alt ??= (ctx: RuleContext = {}) => [
     {
-      /**
-       * mediaCondition starts with Not+( (mediaNot) or ( (mediaInParens)
-       * vs mediaType path which starts with Not/Only + mediaType ident
-       */
-      GATE: () => {
-        let t1 = $.LA(1).tokenType;
-        if (t1 === T.LParen) {
-          return true;
-        }
-        if (t1 === T.Not && $.LA(2).tokenType === T.LParen) {
-          return true;
-        }
-        return false;
-      },
-      ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] })
+      GATE: () => $.startsMediaCondition(T),
+      ALT: () => $.SUBRULE2($.mediaCondition, { ARGS: [ctx] })
     },
     {
-      ALT: () => {
-        let RECORDING_PHASE = $.RECORDING_PHASE;
-        $.startRule();
-
-        let token: IToken | undefined;
-        let node: Node | undefined;
-        let nodes: Node[];
-
-        if (!RECORDING_PHASE) {
-          nodes = [];
-        }
-
-        $.OPTION(() => {
-          $.OR2([
-            { ALT: () => token = $.CONSUME(T.Not) },
-            { ALT: () => token = $.CONSUME(T.Only) }
-          ]);
-        });
-
-        if (token && !RECORDING_PHASE) {
-          nodes!.push($.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context), 'both'));
-          token = undefined;
-        }
-        let type = $.SUBRULE($.mediaType, { ARGS: [ctx] });
-
-        if (!RECORDING_PHASE) {
-          nodes!.push(type);
-        }
-
-        $.OPTION2(() => {
-          token = $.CONSUME(T.And);
-          node = $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [ctx] });
-        });
-        if (!RECORDING_PHASE) {
-          if (token) {
-            nodes!.push($.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context), 'both'));
-          }
-          if (node) {
-            nodes!.push(node);
-          }
-        }
-        if (!RECORDING_PHASE) {
-          let location = $.endRule();
-          return new QueryCondition(nodes!, undefined, location, this.context);
-        }
-      }
+      ALT: () => $.SUBRULE3($.mediaTypeQuery, { ARGS: [ctx] })
     }
   ];
 
   return (ctx: RuleContext = {}) => $.OR(alt(ctx));
+}
+
+export function mediaTypeQuery(this: C, T: TokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let token: IToken | undefined;
+    let node: Node | undefined;
+    let nodes: Node[];
+
+    if (!RECORDING_PHASE) {
+      nodes = [];
+    }
+
+    $.OPTION2(() => {
+      $.OR([
+        { ALT: () => token = $.CONSUME2(T.Not) },
+        { ALT: () => token = $.CONSUME3(T.Only) }
+      ]);
+    });
+
+    if (token && !RECORDING_PHASE) {
+      nodes!.push($.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context), 'both'));
+      token = undefined;
+    }
+
+    const type = $.SUBRULE2($.mediaType, { ARGS: [ctx] });
+    if (!RECORDING_PHASE) {
+      nodes!.push(type);
+    }
+
+    $.OPTION3(() => {
+      token = $.CONSUME(T.And);
+      node = $.SUBRULE3($.mediaConditionWithoutOr, { ARGS: [ctx] });
+    });
+
+    if (!RECORDING_PHASE) {
+      if (token) {
+        nodes!.push($.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context), 'both'));
+      }
+      if (node) {
+        nodes!.push(node);
+      }
+      const location = $.endRule();
+      return new QueryCondition(nodes!, undefined, location, this.context);
+    }
+  };
 }
 
 /** Doesn't include only, not, and, or, layer */
@@ -417,21 +409,7 @@ export function mediaInParens(this: C, T: TokenMap, alt?: AltContext) {
 
   alt ??= (ctx: RuleContext = {}) => [
     {
-      /**
-       * mediaCondition inside parens:
-       * - Not + ( → mediaNot
-       * - ( → nested mediaInParens
-       */
-      GATE: () => {
-        let t1 = $.LA(1).tokenType;
-        if (t1 === T.LParen) {
-          return true;
-        }
-        if (t1 === T.Not && $.LA(2).tokenType === T.LParen) {
-          return true;
-        }
-        return false;
-      },
+      GATE: () => $.startsMediaCondition(T),
       ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] })
     },
     { ALT: () => $.SUBRULE($.mediaFeature, { ARGS: [ctx] }) }
@@ -619,25 +597,25 @@ export function mediaRange(this: C, T: TokenMap, alt?: AltContext) {
     {
       ALT: () => {
         let op1 = $.CONSUME(T.MfLt);
-        let val1 = $.CONSUME(T.Ident);
+        let val1 = $.CONSUME2(T.Ident);
         let op2: IToken | undefined;
         let val2: Node | undefined;
-        $.OPTION(() => {
-          op2 = $.CONSUME2(T.MfLt);
-          val2 = $.SUBRULE($.mfValue, { ARGS: [ctx] });
+        $.OPTION2(() => {
+          op2 = $.CONSUME3(T.MfLt);
+          val2 = $.SUBRULE2($.mfValue, { ARGS: [ctx] });
         });
         return [op1, val1, op2, val2];
       }
     },
     {
       ALT: () => {
-        let op1 = $.CONSUME(T.MfGt);
-        let val1 = $.CONSUME2(T.Ident);
+        let op1 = $.CONSUME4(T.MfGt);
+        let val1 = $.CONSUME5(T.Ident);
         let op2: IToken | undefined;
         let val2: Node | undefined;
-        $.OPTION2(() => {
-          op2 = $.CONSUME2(T.MfGt);
-          val2 = $.SUBRULE2($.mfValue, { ARGS: [ctx] });
+        $.OPTION3(() => {
+          op2 = $.CONSUME6(T.MfGt);
+          val2 = $.SUBRULE3($.mfValue, { ARGS: [ctx] });
         });
         return [op1, val1, op2, val2];
       }
@@ -1500,4 +1478,3 @@ export function documentAtRule(this: C, T: TokenMap) {
     }
   };
 }
-

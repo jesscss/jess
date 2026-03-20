@@ -456,7 +456,7 @@ export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
         $.startRule();
         let quote = $.CONSUME(T.SingleQuoteStart);
         let contents: IToken | undefined;
-        $.OPTION(() => contents = $.CONSUME(T.SingleQuoteStringContents));
+        $.OPTION2(() => contents = $.CONSUME(T.SingleQuoteStringContents));
         $.CONSUME(T.SingleQuoteEnd);
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
@@ -475,7 +475,7 @@ export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
         $.startRule();
         let quote = $.CONSUME(T.DoubleQuoteStart);
         let contents: IToken | undefined;
-        $.OPTION2(() => contents = $.CONSUME(T.DoubleQuoteStringContents));
+        $.OPTION3(() => contents = $.CONSUME(T.DoubleQuoteStringContents));
         $.CONSUME(T.DoubleQuoteEnd);
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();

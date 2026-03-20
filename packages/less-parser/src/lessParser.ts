@@ -1,9 +1,8 @@
-import { Lexer } from 'chevrotain';
+import { Lexer, type IToken } from 'chevrotain';
 import { lessTokens, lessFragments } from './lessTokens.js';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { LessRecursiveParser, type LessParserConfig, type TokenMap } from './lessRecursiveParser.js';
 import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
-import { type IToken, MismatchedTokenError } from '@jesscss/parser';
 
 export type LessRules = keyof {
   [K in keyof LessRecursiveParser as LessRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
@@ -53,32 +52,13 @@ export class LessParser {
     if (options?.context) {
       parser.context = options.context;
     }
-    parser.input = lexerResult.tokens as IToken[];
-    let tree: Node | undefined;
-    try {
-      tree = (parser as any)[rule]() as Node;
-    } catch (e: any) {
-      if (e && e.token) {
-        parser.errors.push(e);
-      } else {
-        throw e;
-      }
-    }
-
-    // Check for unconsumed tokens (partial parse)
-    if (parser.errors.length === 0 && (parser as any).pos < (parser as any).tokens.length) {
-      const unconsumed = (parser as any).tokens[(parser as any).pos] as IToken;
-      parser.errors.push(new MismatchedTokenError(
-        unconsumed,
-        { name: 'EOF', PATTERN: undefined as any },
-        ['stylesheet']
-      ));
-    }
+    parser.input = lexerResult.tokens;
+    const tree = (parser as any)[rule]() as Node;
 
     const warnings = [...parser.warnings];
 
     return {
-      tree: tree!,
+      tree,
       lexerResult,
       errors: parser.errors as any,
       warnings
