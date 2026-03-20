@@ -559,6 +559,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the rules have not been evaluated yet
        * - the import type is `import`
       */
+        const shouldIsolateSelectorFrames = !isNode(this.parent?.parent, N.Ruleset | N.AtRule);
+        const prevRulesetFrames = shouldIsolateSelectorFrames ? context.rulesetFrames : undefined;
+        const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {
           if (!withValues) {
             prevSession = context.session;
@@ -594,6 +597,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
 
           try {
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = [];
+              context.frames = [];
+            }
             // Call preEval first to get the cloned Rules (if cloning occurs)
             // sourceNode is already set above, so the cloned Rules will have it
             rules = await rules.preEval(context);
@@ -609,6 +616,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             if (shouldUseLocalExtendRoot) {
               context.extendRoots.popExtendRoot();
+            }
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = prevRulesetFrames!;
+              context.frames = prevFrames!;
             }
           }
 
@@ -631,8 +642,19 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           rules = rules.clone(false, undefined, context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
-          rules = await rules.eval(context);
-          context.session = prevReEvalSession;
+          try {
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = [];
+              context.frames = [];
+            }
+            rules = await rules.eval(context);
+          } finally {
+            context.session = prevReEvalSession;
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = prevRulesetFrames!;
+              context.frames = prevFrames!;
+            }
+          }
         }
 
         // Pop extend root if we pushed one

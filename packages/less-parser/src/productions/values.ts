@@ -349,54 +349,72 @@ export function ifFunction(this: P, T: TokenMap) {
     let name = $.CONSUME(T.IfFunction);
     let args = new List<Node>([]);
     let isCssBranch = false;
+    const firstNode = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
 
-    $.OR([
-      {
-        ALT: () => {
-          isCssBranch = true;
-          const cssArgs = $.SUBRULE($.ifFunctionArgs, { ARGS: [{ ...ctx, inner: true }] });
-          $.CONSUME2(T.RParen);
-          args = new List([cssArgs]);
+    if ($.isType(T.Assign)) {
+      isCssBranch = true;
+      const branches: Node[] = [];
+      const pushBranch = (condition: Node, value: Node) => {
+        const sep = $.wrap(new Any(':', { role: 'operator' }, undefined, $.context), true);
+        const loc = $.getLocationFromNodes([condition, value]);
+        branches.push(new Sequence([$.wrap(condition, true), sep, $.wrap(value, true)], undefined, loc, $.context));
+      };
+
+      $.CONSUME(T.Assign);
+      let branchValue = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] });
+      pushBranch(firstNode, branchValue);
+
+      $.MANY({
+        GATE: () => $.isType(T.Semi) && !$.isTypeAt(2, T.RParen),
+        DEF: () => {
+          $.CONSUME2(T.Semi);
+          const condition = $.SUBRULE2($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
+          $.CONSUME2(T.Assign);
+          const value = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, inner: true }] });
+          pushBranch(condition, value);
         }
-      },
-      {
-        ALT: () => {
-          isCssBranch = false;
+      });
+      $.OPTION(() => $.CONSUME3(T.Semi));
+      $.CONSUME2(T.RParen);
 
-          let node: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
-          const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
-          args = new List([condNode]);
+      const cssArgs = branches.length === 1
+        ? branches[0]!
+        : new List(branches, { sep: ';' }, $.getLocationFromNodes(branches), $.context);
+      args = new List([cssArgs]);
+    } else {
+      isCssBranch = false;
+      let node: Node = firstNode;
+      const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
+      args = new List([condNode]);
 
-          $.OR2([
-            {
-              ALT: () => {
-                $.CONSUME(T.Semi);
-                node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-                args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
-                $.OPTION(() => {
-                  $.CONSUME2(T.Semi);
-                  node = $.SUBRULE3($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-                  args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
-                });
-              }
-            },
-            {
-              ALT: () => {
-                $.CONSUME(T.Comma);
-                node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-                args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
-                $.OPTION2(() => {
-                  $.CONSUME2(T.Comma);
-                  node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-                  args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
-                });
-              }
-            }
-          ]);
-          $.CONSUME3(T.RParen);
+      $.OR([
+        {
+          ALT: () => {
+            $.CONSUME(T.Semi);
+            node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+            args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+            $.OPTION(() => {
+              $.CONSUME4(T.Semi);
+              node = $.SUBRULE3($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+              args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+            });
+          }
+        },
+        {
+          ALT: () => {
+            $.CONSUME(T.Comma);
+            node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+            args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+            $.OPTION2(() => {
+              $.CONSUME2(T.Comma);
+              node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
+              args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+            });
+          }
         }
-      }
-    ]);
+      ]);
+      $.CONSUME3(T.RParen);
+    }
 
     let location = $.endRule();
     let nameNode = new Reference('if', {

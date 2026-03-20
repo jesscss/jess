@@ -54,14 +54,14 @@ describe('serializeTypes coverage', () => {
     const { tree } = cssParser.parse('[foo=\'bar\' i] { a: b }');
     const out = serializeTypes(tree);
     expect(out).toContainString(`
-      selector:
+      selector: 
         (AttributeSelector
           name: 'foo'
-          op: '='
           value:
             (Quoted
               (Any [role=any] 'bar')
             )
+          op: '='
           mod: 'i'
         )
     `);

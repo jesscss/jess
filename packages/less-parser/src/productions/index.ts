@@ -1,6 +1,6 @@
 export {
   stylesheet, main, declarationList, declaration, mediaQuery, mediaInParens,
-  containerInParens, mfValue, mfNonIdentifierValue, wrappedDeclarationList,
+  mediaFeature, containerInParens, mfValue, mfNonIdentifierValue, wrappedDeclarationList,
   qualifiedRuleBody, qualifiedRule, mixinOrQualifiedRule
 } from './root.js';
 

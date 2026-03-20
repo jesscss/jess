@@ -1,18 +1,19 @@
 import {
   type Context,
+  Any,
   Color,
   Dimension,
-  Node,
+  Quoted,
   defineFunction,
   ColorFormat
 } from '@jesscss/core';
 
 const fadein = defineFunction(
   'fadein',
-  function(this: Context, color: Color, amount: Dimension, method?: Node) {
+  function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {
     let adjustAmount = amount.number / 100;
 
-    if (method && (method as any).value === 'relative') {
+    if (method?.valueOf() === 'relative') {
       adjustAmount = color._alpha * adjustAmount;
     }
 
@@ -43,7 +44,7 @@ const fadein = defineFunction(
       type: Dimension
     }, {
       name: 'method',
-      type: Node,
+      type: [Any, Quoted],
       optional: true
     }]
   }

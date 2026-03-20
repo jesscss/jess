@@ -28,11 +28,17 @@ export function isBareAmpersandOwnSelector(sel: Selector | Nil): boolean {
   if (isNode(sel, N.Ampersand)) {
     return !(sel as unknown as Ampersand).appendValue;
   }
-  if (isNode(sel, N.CompoundSelector | N.ComplexSelector)) {
-    const items = (sel as unknown as { value: unknown[] }).value;
+  if (isNode(sel, N.CompoundSelector)) {
+    const items = (sel as CompoundSelector).value;
     return items.length === 1
       && isNode(items[0] as Node, N.Ampersand)
-      && !(items[0] as unknown as Ampersand).appendValue;
+      && !((items[0] as Node) as Ampersand).appendValue;
+  }
+  if (isNode(sel, N.ComplexSelector)) {
+    const items = (sel as ComplexSelector).value;
+    return items.length === 1
+      && isNode(items[0] as Node, N.Ampersand)
+      && !((items[0] as Node) as Ampersand).appendValue;
   }
   return false;
 }
