@@ -181,7 +181,7 @@ interface EvalSession {
 
 interface SessionRegistryDelta {
   rulesetIndex?:     Map<string, Set<Ruleset>>;
-  mixinIndex?:       Map<string, Set<Mixin>>;
+  mixinIndex?:       Map<string, Array<{ value: Mixin | Ruleset; match: string[] }>>;
   declarationIndex?: Map<string, Set<Declaration>>;
 }
 ```
@@ -496,30 +496,39 @@ AND `selector` on `Ruleset`. Stopping the `selector` mutation makes selector nod
 
 ### Stage 20: Session-local Registry Deltas + Eliminate Import Cloning
 
-- [ ] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
-- [ ] Define `SessionRegistryDelta`:
+Status on branch `jess-dev` at `3b4d089e`:
+- implemented: session-local registry deltas, session-aware registry lookup/register, scope-dirty invalidation, detached-ruleset unlock via session-safe shallow clone, removal of the Stage 16 selector deep-clone workaround in import finalization
+- remaining: dependency-aware partial re-eval and the final import no-clone output path
+
+### Completed
+
+- [x] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
+- [x] Define `SessionRegistryDelta`:
   ```ts
   interface SessionRegistryDelta {
     rulesetIndex?:     Map<string, Set<Ruleset>>;
-    mixinIndex?:       Map<string, Set<Mixin>>;
+    mixinIndex?:       Map<string, Array<{ value: Mixin | Ruleset; match: string[] }>>;
     declarationIndex?: Map<string, Set<Declaration>>;
   }
   ```
-- [ ] `sessionRegister(rules, type, node, ctx)` helper — writes to session delta when session active
-- [ ] Update `Rules.register()` to call `sessionRegister` when `ctx?.session` active
-- [ ] Update `Rules.getRegistry()` lookup order: session delta first, then canonical WeakMap
-- [ ] Activate `sessionMarkScopeDirty` (currently a stub in `session-helpers.ts`):
-  - [ ] Invalidate session delta for the given `rules.value` key when scope changes
+- [x] `sessionRegister(rules, type, node, ctx)` helper — writes to session delta when session active
+- [x] Update `Rules.register()` to call `sessionRegister` when `ctx?.session` active
+- [x] Update `Rules.getRegistry()` lookup order: session delta first, then canonical WeakMap
+- [x] Activate `sessionMarkScopeDirty`:
+  - [x] Invalidate session delta for the given `rules.value` key when scope changes
+- [x] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock:
+  - [x] Detached ruleset unlock now uses session-isolated shallow clone semantics
+- [x] `_dedupe`/`multiple` branch: remove the per-Ruleset selector deep-clone workaround from the `clone(false)` finalization path
+
+### Remaining
+
 - [ ] Dependency-aware partial re-eval in lookup:
   - [ ] `DeclarationRegistry.find()`: when session has `changedVars`, skip entries whose `dependsOn ∩ changedVars = ∅`
   - [ ] Return canonical resolved value for static entries without re-eval
 - [ ] **Eliminate import cloning** (`import-style.ts getFinalRules`):
-  - [ ] `_dedupe`/`multiple` branch: remove `clone(false)` + per-Ruleset COW selector deep-clone
-  - [ ] Replace with: `out = evaluatedRules` (no clone) + new session per output context
+  - [ ] `_dedupe`/`multiple` branch: remove the remaining `clone(false)` output wrapper entirely
+  - [ ] Replace with: direct canonical `Rules` reuse plus a new session per output context
   - [ ] Session carries the isolated parent state; canonical index is shared
-  - [ ] Note: `selector.clone(true)` in the COW loop (added in Stage 16 fix) becomes unnecessary after Stage 17 (immutable selectors)
-- [ ] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock:
-  - [ ] Detached ruleset unlock currently makes an independent copy so the unlocked value doesn't affect the source. Replace with session-isolated eval.
 - [ ] Tests: two sequential `_dedupe` imports share canonical registry (no index rebuild)
 - [ ] Tests: mixin expansion nodes appear in session delta, not canonical index
 

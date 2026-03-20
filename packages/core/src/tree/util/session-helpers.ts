@@ -370,9 +370,9 @@ export function sessionGetChildren(
 export function sessionAppendChildren(
   rules: Rules,
   nodes: Node[],
-  _ctx: Context
+  ctx: Context
 ): void {
-  rules.push(...nodes);
+  rules.push(ctx, ...nodes);
 }
 
 /**
@@ -382,9 +382,9 @@ export function sessionAppendChildren(
 export function sessionPrependChildren(
   rules: Rules,
   nodes: Node[],
-  _ctx: Context
+  ctx: Context
 ): void {
-  rules.unshift(...nodes);
+  rules.unshift(ctx, ...nodes);
 }
 
 /**
@@ -394,11 +394,11 @@ export function sessionPrependChildren(
 export function sessionRemoveChild(
   rules: Rules,
   child: Node,
-  _ctx: Context
+  ctx: Context
 ): void {
   const idx = rules.value.indexOf(child);
   if (idx >= 0) {
-    rules.splice(idx, 1);
+    rules.splice(ctx, idx, 1);
   }
 }
 

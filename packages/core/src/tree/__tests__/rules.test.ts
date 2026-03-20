@@ -24,7 +24,7 @@ import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionMarkScopeDirty } from '../util/session-helpers.js';
+import { sessionGetParent, sessionMarkScopeDirty } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -968,5 +968,32 @@ describe('Rules', () => {
         searchParents: false
       })).toBeUndefined();
     });
+
+    it('keeps canonical parent pointers intact when unshifting shared nodes in a session', () => {
+      const shared = vardecl({ name: 'foo', value: any('bar') });
+      const source = rules([shared]);
+      const target = rules([]);
+      const ctx = new Context();
+      ctx.createSession();
+
+      target.unshift(ctx, shared);
+
+      expect(shared.parent).toBe(source);
+      expect(sessionGetParent(shared, ctx)).toBe(target);
+    });
+
+    it('keeps canonical parent pointers intact when splicing shared nodes in a session', () => {
+      const shared = vardecl({ name: 'foo', value: any('bar') });
+      const source = rules([shared]);
+      const target = rules([]);
+      const ctx = new Context();
+      ctx.createSession();
+
+      target.splice(ctx, 0, 0, shared);
+
+      expect(shared.parent).toBe(source);
+      expect(sessionGetParent(shared, ctx)).toBe(target);
+    });
+
   });
 });

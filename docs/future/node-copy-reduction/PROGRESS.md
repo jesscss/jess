@@ -739,24 +739,32 @@ Goal: Session-added nodes (mixin expansion, injected vars) go into a per-session
 registry rather than the canonical index. Import paths no longer need to clone `Rules`
 at all — the canonical index is shared, session carries isolated parent state.
 
-See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-deltas--eliminate-import-cloning) for full checklist.
+See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-deltas--eliminate-import-cloning) for the design checklist.
+
+### Completed in Current Branch
 
 - [x] Add `registryDeltas: WeakMap<Node[], SessionRegistryDelta>` to `EvalSession`
 - [x] `sessionRegister(rules, type, node, ctx)` helper — writes to session delta when session active
 - [x] Update `Rules.register()` to route through session delta when `ctx?.session` active
 - [x] Update `Rules.getRegistry()` lookup: session delta first, then canonical WeakMap
 - [x] Activate `sessionMarkScopeDirty` stub in `session-helpers.ts`
-- [ ] Dependency-aware partial re-eval: skip re-eval for entries whose `dependsOn ∩ changedVars = ∅`
-- [ ] **Eliminate import cloning** in `getFinalRules` (`import-style.ts`): replace `clone(false)` + COW selector loop with direct reference + session for isolation
 - [x] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock — replace with session-isolated eval
+- [x] Remove the Stage 16 selector deep-clone workaround from `import-style.ts`’s `_dedupe` / `multiple` finalization path
+
+### Remaining to Finish Stage 20
+
+- [ ] Dependency-aware partial re-eval: skip re-eval for entries whose `dependsOn ∩ changedVars = ∅`
+- [ ] **Eliminate import cloning** in `getFinalRules` (`import-style.ts`): replace the remaining `clone(false)`-based output wrapper with direct canonical `Rules` reuse plus session-only isolation
 - [ ] Tests: two sequential `_dedupe` imports share canonical registry; mixin expansion in session delta only
 
 ### Stage 20 Notes
 
 - `EvalSession` now carries session-local registry deltas keyed by `Rules.value`, and `Rules.register()`/`Rules.find()` can see those entries without polluting the canonical WeakMap-backed caches.
 - Added `rules.test.ts` coverage proving that session-only declaration entries are visible with a session context, invisible to canonical lookup, and cleared by `sessionMarkScopeDirty()`.
+- Added parent-isolation coverage for session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)`, so shared canonical children can be inserted into session-scoped `Rules` wrappers without overwriting their canonical `.parent` pointers.
 - Detached ruleset unlock now uses `clone(false, undefined, ctx)` instead of `clone(true)`, so it reuses canonical children while preserving session-isolated parent/runtime state.
 - The `_dedupe` / `multiple` import finalization path still uses shallow `Rules` / `Ruleset` output clones, but the Stage 16 selector deep-clone workaround has been removed. Full no-clone import output remains for the next Stage 20 slice.
+- `src/tree/__tests__/import-style.test.ts` still has two failures (`forwarded members are not visible locally, but are visible downstream` and `two sequential "with" imports do not corrupt canonical node parent pointers`) at committed Stage 20 boundary `3b4d089e`; they are not regressions from the current working tree.
 - Verification:
   - `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts`
   - `cd packages/core && pnpm test src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/extend-import-style.test.ts`

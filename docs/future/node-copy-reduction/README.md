@@ -18,6 +18,19 @@ Recommended reading order:
 3. `subsystems.md`
 4. `dependency-graph.md` (Stages 17–21 and reactive eval model)
 
+## Status Snapshot
+
+Current branch status on `jess-dev`:
+
+- Stages 0–19 are complete.
+- Stage 20 is in progress.
+- Stage 21 has not started.
+
+For current implementation state, prefer:
+
+- [PROGRESS.md](./PROGRESS.md) for what is done vs remaining
+- [HANDOFF.md](./HANDOFF.md) for the immediate next-task summary
+
 ## Goal
 
 Reduce `clone()` / `copy()` usage across the tree without changing behavior, especially in

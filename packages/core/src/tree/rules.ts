@@ -655,16 +655,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // This ensures it shadows the original and is evaluated after it
           const foundIndex = foundRules.value.indexOf(result);
           if (foundIndex !== -1) {
-            foundRules.splice(foundIndex + 1, 0, newDeclaration);
+            if (_context) {
+              foundRules.splice(_context, foundIndex + 1, 0, newDeclaration);
+            } else {
+              foundRules.splice(foundIndex + 1, 0, newDeclaration);
+            }
           } else {
             // If not found in array, add at the beginning
-            foundRules.unshift(newDeclaration);
+            if (_context) {
+              foundRules.unshift(_context, newDeclaration);
+            } else {
+              foundRules.unshift(newDeclaration);
+            }
           }
 
           // Register it via registerNode to ensure it's properly indexed
           // Note: registerNode will call register('declaration', ...) which adds to registry
           // We skip setDefined processing since we already removed the flag
-          foundRules.registerNode(newDeclaration);
+          foundRules.registerNode(newDeclaration, undefined, _context);
         } else {
           throw new ReferenceError(`"${key}" is not defined`);
         }
@@ -697,27 +705,37 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  override splice(start: number, deleteCount: number, ...items: Node[]): Node[] {
+  override splice(start: number, deleteCount: number, ...items: Node[]): Node[];
+  override splice(ctx: Context, start: number, deleteCount: number, ...items: Node[]): Node[];
+  override splice(...args: [Context, number, number, ...Node[]] | [number, number, ...Node[]]): Node[] {
+    const hasCtx = args[0] instanceof Context;
+    const ctx = hasCtx ? args[0] as Context : undefined;
+    const [start, deleteCount, ...items] = (hasCtx ? args.slice(1) : args) as [number, number, ...Node[]];
     const nextValue = [...this.value];
     const removed = nextValue.splice(start, deleteCount, ...items);
     this.value = nextValue;
     for (const item of items) {
       if (item instanceof Node) {
-        this.adopt(item);
-        this.registerNode(item);
+        this.adopt(item, ctx);
+        this.registerNode(item, undefined, ctx);
       }
     }
     (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
     return removed as Node[];
   }
 
-  override unshift(...items: Node[]): void {
+  override unshift(...items: Node[]): void;
+  override unshift(ctx: Context, ...items: Node[]): void;
+  override unshift(...args: [Context, ...Node[]] | Node[]): void {
+    const hasCtx = args.length > 0 && args[0] instanceof Context;
+    const ctx = hasCtx ? args[0] as Context : undefined;
+    const items = (hasCtx ? args.slice(1) : args) as Node[];
     this.value = [...this.value];
     this.value.unshift(...items);
     for (const item of items) {
       if (item instanceof Node) {
-        this.adopt(item);
-        this.registerNode(item);
+        this.adopt(item, ctx);
+        this.registerNode(item, undefined, ctx);
       }
     }
     (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();

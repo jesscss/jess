@@ -10,6 +10,20 @@ Use with:
 - [README.md](./README.md)
 - [subsystems.md](./subsystems.md)
 
+## Status Snapshot
+
+Current branch status on `jess-dev`:
+
+- Stages 0–19 are complete.
+- Stage 20 is in progress.
+- Stage 21 has not started.
+
+For exact implementation state, use:
+
+- [PROGRESS.md](./PROGRESS.md) for the committed done-vs-remaining checklist
+- [HANDOFF.md](./HANDOFF.md) for the current next-task summary
+- [dependency-graph.md](./dependency-graph.md) for the Stage 17–21 design details
+
 ## Core Refactor Rule
 
 Do not do a flag-day rewrite.

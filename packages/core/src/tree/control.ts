@@ -273,7 +273,7 @@ export class For extends Node<ForValue> {
             name: new Any(bindingNames[i]!, { role: 'property' }),
             value: bindings[i]!
           });
-          loopRules.unshift(varDecl);
+          loopRules.unshift(context, varDecl);
         }
         counter++;
         const result = await loopRules.eval(context);
