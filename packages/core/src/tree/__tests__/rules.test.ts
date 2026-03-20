@@ -24,7 +24,7 @@ import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetParent, sessionMarkScopeDirty } from '../util/session-helpers.js';
+import { sessionGetParent, sessionMarkScopeDirty, sessionSetDependency } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -993,6 +993,38 @@ describe('Rules', () => {
 
       expect(shared.parent).toBe(source);
       expect(sessionGetParent(shared, ctx)).toBe(target);
+    });
+
+    it('falls through to canonical declarations when a session overlay does not depend on changed vars', () => {
+      const changed = vardecl({ name: 'theme', value: any('red') });
+      const derived = vardecl({ name: 'derived', value: any('pink') });
+      const plain = vardecl({ name: 'plain', value: any('blue') });
+      const root = rules([changed, derived, plain]);
+      const ctx = new Context();
+
+      root.getRegistry('declaration');
+      ctx.createSession();
+      ctx.session?.markChangedVar(changed as VarDeclaration);
+
+      const derivedOverlay = vardecl({ name: 'derived', value: any('crimson') });
+      const plainOverlay = vardecl({ name: 'plain', value: any('cyan') });
+
+      sessionSetDependency(derivedOverlay.value, {
+        dependsOn: new Set([changed as VarDeclaration]),
+        sourceExpr: derivedOverlay.value
+      }, ctx);
+
+      root.register('declaration', derivedOverlay, ctx);
+      root.register('declaration', plainOverlay, ctx);
+
+      expect(root.find('declaration', 'derived', 'VarDeclaration', {
+        context: ctx,
+        searchParents: false
+      })).toBe(derivedOverlay);
+      expect(root.find('declaration', 'plain', 'VarDeclaration', {
+        context: ctx,
+        searchParents: false
+      })).toBe(plain);
     });
 
   });

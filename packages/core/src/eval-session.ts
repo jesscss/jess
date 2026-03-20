@@ -109,6 +109,9 @@ export class EvalSession {
   /** Session-local registry additions keyed by Rules.value identity */
   private registryDeltas = new WeakMap<Node[], SessionRegistryDelta>();
 
+  /** Canonical top-level vars whose values changed in this session */
+  private changedVars = new Set<VarDeclaration>();
+
   constructor(options?: { resetEvalState?: boolean }) {
     this.id = nextSessionId++;
     this.resetEvalState = options?.resetEvalState ?? false;
@@ -209,6 +212,20 @@ export class EvalSession {
 
   hasDependency(node: Node): boolean {
     return this.dependencies.has(node);
+  }
+
+  // -- Changed vars API --
+
+  markChangedVar(varDecl: VarDeclaration): void {
+    this.changedVars.add(varDecl);
+  }
+
+  hasChangedVars(): boolean {
+    return this.changedVars.size > 0;
+  }
+
+  getChangedVars(): ReadonlySet<VarDeclaration> {
+    return this.changedVars;
   }
 
   // -- Registry delta API --

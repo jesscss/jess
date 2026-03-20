@@ -18,21 +18,22 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 ## Current state
 
 ### Branch: `jess-dev`
-### Last committed stage boundary: `3b4d089e` — `refactor(core): add session-local registry deltas`
+### Last committed stage boundary before the Stage 20 completion slice: `3b4d089e` — `refactor(core): add session-local registry deltas`
 
 ### Stage status
 - Stage 17: complete and committed
 - Stage 18: complete and committed
 - Stage 19: complete and committed
-- Stage 20: **in progress**
-  - done: session-local registry deltas, session-aware register/find plumbing, scope-dirty invalidation, detached-ruleset unlock off `clone(true)`, removal of the Stage 16 selector deep-clone workaround in import finalization
-  - remaining: dependency-aware partial re-eval, full no-clone import finalization, and the Stage 20 characterization tests
+- Stage 20: complete in the working tree
+  - done: session-local registry deltas, session-aware register/find plumbing, scope-dirty invalidation, dependency-aware partial re-eval in declaration lookup, detached-ruleset unlock off `clone(true)`, and Stage 20 characterization coverage
+  - note: plain `@import` no longer adds a finalization wrapper; compose still keeps a shallow per-import wrapper because separate import sites can require different visibility / reference metadata on the same cached module
+- Stage 21: not started
 
 ### Working tree expectation
 - Stage boundaries on this branch are committed and pushed.
 - If the working tree is dirty when you pick this up, assume it is either:
-  - docs synchronization work, or
-  - the next in-progress Stage 20 slice
+  - the Stage 20 completion commit being prepared, or
+  - the first Stage 21 slice
 - Do not discard unrecognized changes without checking them first.
 
 ### Test baseline (post Stage 15, confirmed clean)
@@ -56,39 +57,37 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 1. Stage 17 made selectors effectively immutable in extend paths by routing extend output through `_extendedSelector`.
 2. Stage 18 added the session-local dependency graph (`dependsOn`, `sourceExpr`) and propagation through reference/expression/operation/call/declaration paths.
 3. Stage 19 moved canonical ruleset, mixin, and declaration registries into a `WeakMap<Node[], RegistryData>` keyed by `Rules.value`.
-4. Stage 20 so far added `EvalSession.registryDeltas`, session-aware registry lookup/register, `sessionMarkScopeDirty()`, detached-ruleset unlock via shallow session-safe clone, and removed the import selector deep-clone workaround.
-5. The current in-progress Stage 20 slice adds session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)` parent isolation coverage so shared canonical nodes can be inserted into session-scoped wrappers without overwriting canonical `.parent` pointers.
-6. `src/tree/__tests__/import-style.test.ts` has two failures that already reproduce at committed boundary `3b4d089e`:
+4. Stage 20 completed the session-local registry delta layer, dependency-aware declaration lookup, detached-ruleset unlock via shallow session-safe clone, and the remaining import finalization reductions.
+5. Session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)` coverage now proves shared canonical nodes can be inserted into session-scoped wrappers without overwriting canonical `.parent` pointers.
+6. `src/tree/__tests__/import-style.test.ts` had two failures at committed boundary `3b4d089e`:
    - `forwarded members are not visible locally, but are visible downstream`
    - `two sequential "with" imports do not corrupt canonical node parent pointers`
-   These are not regressions from the current working tree.
-7. `src/tree/__tests__/registry-characterization.test.ts` now proves two Stage 20 properties in isolation:
+   Both are now green on the working tree.
+7. `src/tree/__tests__/registry-characterization.test.ts` now proves four Stage 20 properties in isolation:
    - cached compose imports reuse the same canonical WeakMap-backed registry slot
    - session-only declaration registrations stay in `EvalSession.registryDeltas` instead of polluting the canonical cache
+   - repeated `_dedupe` imports reuse the same canonical registry slot
+   - mixin expansion parameter vars stay in session delta only
 8. `packages/core/src/tree/import-style.ts` no longer clones child `Ruleset`s for plain `multiple:true` imports.
    The child-clone path is now kept only for implicit reference / `_dedupe` imports, because
    removing it there regressed `extend-import-style` (`implicit reference mode (_dedupe) remains externally extendable`).
+9. `packages/core/src/tree/import-style.ts` also no longer adds a second shallow `Rules` wrapper for plain `@import` finalization.
+   `src/tree/__tests__/registry-characterization.test.ts` now proves that plain imports reuse the evaluated root and that `_dedupe` detaches the shared child array before cloning per-import `Ruleset`s.
+10. Configured `with` compose finalization now restores canonical top-level parent pointers after session teardown, so shared source nodes are no longer left pointing at transient configured-import `Rules` clones.
+11. `DeclarationRegistry.find()` now falls through to canonical declarations when a session overlay does not depend on the active `changedVars` set.
+12. `src/tree/__tests__/import-style.test.ts` includes coverage showing why a shallow compose wrapper remains intentional: repeated compose imports can require different visibility behavior at different import sites.
 
 ---
 
-## Next task: Stage 20 Remaining Slice
+## Next task: Stage 21 Start
 
-**Goal**: finish the two remaining Stage 20 items before starting Stage 21.
+**Goal**: begin the Live Patch API slice now that Stage 20 is complete.
 
-### Remaining work
+### Immediate work
 
-1. Dependency-aware partial re-eval in declaration lookup.
-   - `DeclarationRegistry.find()` should be able to use dependency metadata to skip session-local re-eval when `dependsOn ∩ changedVars = ∅`.
-   - Static declarations should continue to fall through to canonical results with no session overlay.
-
-2. Full import no-clone finalization in `import-style.ts`.
-   - `getFinalRules()` still creates a shallow `Rules` wrapper and shallow-cloned `Ruleset` children for `_dedupe` / `multiple`.
-   - The Stage 16 selector deep-clone workaround is already gone; the remaining step is to remove that output wrapper entirely and rely on session-only isolation.
-   - Preserve extend semantics and import visibility behavior while doing this.
-
-3. Stage 20 characterization tests.
-   - Add proof that repeated `_dedupe` / `multiple` imports share canonical registry state.
-   - Add proof that mixin expansion and other session-added nodes stay in session delta only.
+1. Build the `PatchSideTable` on `Context` and thread it through the serializer surface.
+2. Use the Stage 18 dependency graph to decide when declaration output should emit `var(--jess-<id>, fallback)`.
+3. Keep Stage 20’s import/registry invariants intact while adding the Stage 21 emission path.
 
 ### Key files to read first
 - `packages/core/src/tree/import-style.ts`
@@ -107,7 +106,7 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 2. **Run tests after every meaningful change**: `cd packages/core && pnpm test`. Baseline is 5 failed / 63 passed.
 3. **Do not fix pre-existing failures** unless asked. Only your changes should affect the count.
 4. **Commit after each successful stage** (or sub-stage). If tests break, fix before committing.
-5. **One stage at a time**. Do not start Stage 21 before the remaining Stage 20 items are green and committed.
+5. **One stage at a time**. Stage 20 is the committed prerequisite; do not mix unrelated Stage 21 experiments into the completion commit.
 6. **No destructive git ops** without explicit user permission (`git reset --hard`, `git restore`, etc.).
 7. **Never work directly in `~/git/oss/less.js`** — always use worktrees.
 
@@ -199,9 +198,8 @@ cd packages/core && pnpm test extend
 
 # Focused Stage 20 verification
 cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts
-
-# Wider Stage 20 characterization
-cd packages/core && pnpm test src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/extend-import-style.test.ts
+cd packages/core && pnpm test src/tree/__tests__/registry-characterization.test.ts src/tree/__tests__/control.test.ts
+cd packages/core && pnpm test src/tree/__tests__/extend-import-style.test.ts src/tree/__tests__/import-style.test.ts
 
 # Full core suite (before larger commits if needed)
 cd packages/core && pnpm test
@@ -224,4 +222,4 @@ pnpm --filter @jesscss/core build
 - Do not run tests from the repo root with `pnpm test` unless you expect Jess package
   failures — the Node v24 CJS issue makes that noisy.
 - Do not create new abstraction layers or helpers that are only used once.
-- Do not begin Stage 21 work until the remaining Stage 20 items are committed and green.
+- Do not reopen Stage 20 unless a Stage 21 change proves one of these invariants was wrong.

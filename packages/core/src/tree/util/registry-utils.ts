@@ -9,11 +9,13 @@ import { Node } from '../node.js';
 import { JsFunction } from '../js-function.js';
 import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
+import type { VarDeclaration } from '../declaration-var.js';
 import type { Context } from '../../context.js';
 import type { SessionRegistryDelta } from '../../eval-session.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
+import { sessionGetDependency } from './session-helpers.js';
 
 const { isArray } = Array;
 
@@ -161,8 +163,11 @@ export function isRegistryIndexing(rules: Rules | Node[]): boolean {
   return indexingRegistryValues.has(value);
 }
 
-export function syncRegistryCache(rules: Rules): void {
+export function syncRegistryCache(rules: Rules, context?: Context): void {
   const value = rules.value;
+  if (getSessionRegistryDelta(value, context)) {
+    return;
+  }
   const data = ensureRegistryData(value);
   if (data.indexedLength >= value.length || indexingRegistryValues.has(value)) {
     return;
@@ -1521,6 +1526,24 @@ export class DeclarationRegistry extends Registry<Declaration> {
       local = false,
       start
     } = options ?? {};
+    const changedVars = this.context?.session?.hasChangedVars()
+      ? this.context.session.getChangedVars()
+      : undefined;
+    const dependsOnChangedVar = (declaration: Declaration): boolean => {
+      if (!changedVars || changedVars.size === 0) {
+        return true;
+      }
+      const dependency = sessionGetDependency(declaration.value, this.context!);
+      if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
+        return false;
+      }
+      for (const changedVar of changedVars) {
+        if (dependency.dependsOn.has(changedVar as VarDeclaration)) {
+          return true;
+        }
+      }
+      return false;
+    };
 
     let newReadonly: boolean | undefined = false;
     let searchChildrenOptions: FindOptions | undefined;
@@ -1536,20 +1559,29 @@ export class DeclarationRegistry extends Registry<Declaration> {
       newReadonly = currentReadonly;
       let registry = rules.getRegistry('declaration', this.context);
       registry.indexPendingItems();
-      const declarationIndices = [
-        getSessionRegistryIndex(rules.value, 'declarationIndex', this.context),
-        registry.index
-      ].filter(Boolean) as Array<Map<string, Set<Declaration>>>;
+      const sessionDeclarationIndex = getSessionRegistryIndex(rules.value, 'declarationIndex', this.context);
+      const canonicalDeclarationIndex = registry.index;
       // Build filtered list without intermediate spread — iterate Set directly
       let list: Declaration[] | undefined;
       const seenDeclarations = new Set<Declaration>();
       const filter = options?.filter;
-      for (const declarationIndex of declarationIndices) {
-        const set = declarationIndex.get(key);
-        if (!set) {
-          continue;
+      let keptSessionEntries = 0;
+      const sessionSet = sessionDeclarationIndex?.get(key);
+      const canonicalSet = canonicalDeclarationIndex.get(key);
+      if (sessionSet) {
+        for (const n of sessionSet) {
+          if (canonicalSet && changedVars && !dependsOnChangedVar(n)) {
+            continue;
+          }
+          if (!seenDeclarations.has(n) && n.type === filterType && (!filter || filter(n))) {
+            seenDeclarations.add(n);
+            (list ??= []).push(n);
+            keptSessionEntries++;
+          }
         }
-        for (const n of set) {
+      }
+      if (keptSessionEntries === 0 && canonicalSet) {
+        for (const n of canonicalSet) {
           if (!seenDeclarations.has(n) && n.type === filterType && (!filter || filter(n))) {
             seenDeclarations.add(n);
             (list ??= []).push(n);

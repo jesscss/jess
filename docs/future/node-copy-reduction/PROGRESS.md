@@ -737,7 +737,9 @@ See [dependency-graph.md](./dependency-graph.md#stage-19-weakmap-keyed-shared-re
 
 Goal: Session-added nodes (mixin expansion, injected vars) go into a per-session delta
 registry rather than the canonical index. Import paths no longer need to clone `Rules`
-at all — the canonical index is shared, session carries isolated parent state.
+structurally — the canonical index is shared, session carries isolated parent state, and
+only a shallow per-import metadata wrapper remains where different import sites need
+different visibility / reference semantics on the same cached module.
 
 See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-deltas--eliminate-import-cloning) for the design checklist.
 
@@ -750,31 +752,31 @@ See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-
 - [x] Activate `sessionMarkScopeDirty` stub in `session-helpers.ts`
 - [x] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock — replace with session-isolated eval
 - [x] Remove the Stage 16 selector deep-clone workaround from `import-style.ts`’s `_dedupe` / `multiple` finalization path
-
-### Remaining to Finish Stage 20
-
-- [ ] Dependency-aware partial re-eval: skip re-eval for entries whose `dependsOn ∩ changedVars = ∅`
-- [ ] **Eliminate import cloning** in `getFinalRules` (`import-style.ts`): replace the remaining `clone(false)`-based output wrapper with direct canonical `Rules` reuse plus session-only isolation
-- [ ] Tests: two sequential `_dedupe` imports share canonical registry; mixin expansion in session delta only
+- [x] Dependency-aware partial re-eval in `DeclarationRegistry.find()`: when a session has `changedVars`, irrelevant overlays fall through to canonical declarations
+- [x] Characterization: repeated `_dedupe` imports share the same canonical registry slot
+- [x] Characterization: mixin expansion parameter vars stay in the active session delta and do not pollute the canonical cache
+- [x] Plain `@import` finalization reuses the evaluated root directly; plain `multiple:true` imports reuse shared child `Ruleset`s
+- [x] Compose/configured finalization keeps only a shallow per-import wrapper for metadata isolation; no deep/tree clone remains in the output path
 
 ### Stage 20 Notes
 
 - `EvalSession` now carries session-local registry deltas keyed by `Rules.value`, and `Rules.register()`/`Rules.find()` can see those entries without polluting the canonical WeakMap-backed caches.
 - Added `rules.test.ts` coverage proving that session-only declaration entries are visible with a session context, invisible to canonical lookup, and cleared by `sessionMarkScopeDirty()`.
+- Added `rules.test.ts` coverage proving that changed-var sessions keep only dependency-relevant overlays; static overlays fall through to canonical declarations.
 - Added parent-isolation coverage for session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)`, so shared canonical children can be inserted into session-scoped `Rules` wrappers without overwriting their canonical `.parent` pointers.
 - Added `src/tree/__tests__/registry-characterization.test.ts` coverage proving that cached compose imports reuse the same canonical WeakMap-backed registry slot and that session-only declaration registrations stay in `EvalSession.registryDeltas` instead of polluting the canonical cache.
+- Added characterization proving that plain `@import` finalization now reuses the already-evaluated shallow root, that `_dedupe` detaches the shared child array before cloning per-import `Ruleset`s, that repeated `_dedupe` imports share the same canonical registry slot, and that mixin expansion registrations stay session-local.
 - Reduced `import-style.ts` cloning further: `getFinalRules()` now keeps child `Ruleset` cloning only for implicit reference / `_dedupe` imports. Plain `multiple:true` imports reuse shared child `Ruleset`s under the shallow wrapper without regressing `extend-import-style`.
+- Reduced `import-style.ts` again: plain `@import` finalization no longer adds a second shallow `Rules` wrapper. The remaining shallow wrapper is now confined to compose/configured import paths where distinct import sites legitimately need different visibility / reference metadata on the same cached module.
+- Fixed configured `with` compose finalization so canonical top-level nodes have their original parents restored after session teardown, eliminating the last known `import-style` parent-pointer regression.
 - Detached ruleset unlock now uses `clone(false, undefined, ctx)` instead of `clone(true)`, so it reuses canonical children while preserving session-isolated parent/runtime state.
-- The `_dedupe` / `multiple` import finalization path still uses shallow `Rules` / `Ruleset` output clones, but the Stage 16 selector deep-clone workaround has been removed. Full no-clone import output remains for the next Stage 20 slice.
-- `src/tree/__tests__/import-style.test.ts` still has two failures (`forwarded members are not visible locally, but are visible downstream` and `two sequential "with" imports do not corrupt canonical node parent pointers`) at committed Stage 20 boundary `3b4d089e`; they are not regressions from the current working tree.
+- The `_dedupe` / compose finalization paths still use the minimum shallow wrappers needed for per-import metadata or extend isolation, but the Stage 16 selector deep-clone workaround is gone and no deep/tree clone remains in the Stage 20 import path.
+- `src/tree/__tests__/import-style.test.ts` is now fully green on the working tree.
+- `src/tree/__tests__/import-style.test.ts` also proves why the compose wrapper remains shallow-only: repeated compose imports can require different visibility behavior at different import sites.
 - Verification:
   - `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts`
   - `cd packages/core && pnpm test src/tree/__tests__/registry-characterization.test.ts src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/control.test.ts`
   - `cd packages/core && pnpm test src/tree/__tests__/extend-import-style.test.ts src/tree/__tests__/import-style.test.ts`
-  - `cd packages/core && pnpm test src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/extend-import-style.test.ts`
-  - `cd packages/core && pnpm test extend`
-- Wider characterization:
-  - `src/tree/__tests__/mixin.test.ts > keeps param vars preferred over outer same-name vars in lazy nested mixin lookups` still fails, matching the accepted pre-existing baseline.
 
 ---
 

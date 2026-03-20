@@ -22,8 +22,7 @@ Recommended reading order:
 
 Current branch status on `jess-dev`:
 
-- Stages 0–19 are complete.
-- Stage 20 is in progress.
+- Stages 0–20 are complete.
 - Stage 21 has not started.
 
 For current implementation state, prefer:
@@ -749,7 +748,7 @@ Summary order (maximum return for minimum risk):
 8. **Immutable selectors** — stop mutating `selector` in extend; use `_extendedSelector` only. (Stage 17)
 9. **Dependency graph** — track which top-level vars flow into each output. (Stage 18)
 10. **WeakMap-keyed registries** — detach index from `Rules` instance; share across clones. (Stage 19)
-11. **Session-local registry deltas + eliminate import cloning** — session carries only delta; no clone needed. (Stage 20)
+11. **Session-local registry deltas + eliminate import cloning** — session carries only delta; import finalization now avoids structural cloning, with only minimal shallow wrappers left where separate import sites need different metadata. (Stage 20)
 12. **Live Patch API** — emit `var(--id, fallback)` + `patch.js` from same dependency graph. (Stage 21)
 
 ## Possible: Collapsing preEval / eval into One Pass

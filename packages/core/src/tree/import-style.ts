@@ -241,12 +241,44 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
-    // Shallow clone: the import wrapper still carries per-import visibility
-    // and source metadata. `_dedupe` still needs child Ruleset isolation so
-    // implicit-reference extends don't contaminate the cached tree, but
-    // `multiple:true` can reuse shared child Rulesets.
-    let out = evaluatedRules.clone(false) as Rules;
+    const shouldCloneImportWrapper = type === 'import' && importOptions!._dedupe === true;
+    // `@import` always evaluates through a fresh shallow root clone already, so
+    // finalization can mutate that per-import Rules in place. Plain `@-compose`
+    // reuses cached evaluated Rules across imports, so it still needs a shallow
+    // wrapper for per-import visibility/source metadata. Repeated `_dedupe`
+    // imports also need an isolated shallow wrapper so the cached import root
+    // keeps its canonical child array / registry slot. `_dedupe` still needs
+    // child Ruleset isolation so implicit-reference extends don't contaminate
+    // shared selector state.
+    const materializeConfiguredComposeChildren = type === 'compose' && this.withNode != null;
+    const restoreSharedImportChildren = shouldCloneImportWrapper;
+    const originalParents = (materializeConfiguredComposeChildren || restoreSharedImportChildren)
+      ? new Map<Node, Node | undefined>(evaluatedRules.value.map((child) => [child, child.parent]))
+      : undefined;
+    let out = type === 'import' && !shouldCloneImportWrapper
+      ? evaluatedRules
+      : evaluatedRules.clone(false) as Rules;
+    if (materializeConfiguredComposeChildren) {
+      for (let i = 0; i < out.value.length; i++) {
+        const child = out.value[i]!;
+        const originalParent = originalParents!.get(child);
+        if (originalParent !== undefined) {
+          const materialized = child.clone(true);
+          out.setData(i, materialized);
+          (child as unknown as { parent?: Node }).parent = originalParent;
+        }
+        out.value[i]!.index = i;
+      }
+    } else if (restoreSharedImportChildren) {
+      for (const child of out.value) {
+        const originalParent = originalParents!.get(child);
+        (child as unknown as { parent?: Node }).parent = originalParent;
+      }
+    }
     if (type === 'import' && importOptions!._dedupe === true) {
+      // Detach the child array before swapping in per-import Ruleset clones so
+      // repeated `_dedupe` imports keep the cached import root's registry slot.
+      out.setData([...out.value]);
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
         if (isNode(child, N.Ruleset)) {
@@ -329,6 +361,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const finalize = async (finalPath: string) => {
       const previousTreeContext = context.treeContext;
+      let configuredWithCanonicalParents: Map<Node, Node | undefined> | undefined;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
       const inheritedReferenceMode = context.inReferenceImportScope;
@@ -423,6 +456,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             withRulesNode = evaluated;
           }
           const withRules = withRulesNode as Rules;
+          if (withValues.type === 'with') {
+            configuredWithCanonicalParents = new Map(
+              rules.value.map((child) => [child, child.parent] as const)
+            );
+          }
 
           // Build a name→index map over canonical top-level VarDeclarations for O(1) lookup.
           // This replaces the previous rules.clone(true) + registry approach — we no longer
@@ -469,6 +507,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // adopt() calls inside Rules.push() route parent writes into the session
           // overlay instead of permanently mutating canonical library nodes.
           context.createSession();
+          for (const index of replacementAt.keys()) {
+            const candidate = rules.value[index];
+            if (isNode(candidate, N.VarDeclaration)) {
+              context.session?.markChangedVar(candidate as VarDeclaration);
+            }
+          }
 
           // Build finalRules: new injected variables first (for linear lookup precedence),
           // then canonical nodes with injected nodes substituted at matched positions.
@@ -590,6 +634,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         let finalRules = node.getFinalRules(rules);
         if (importOptions!.postlude && !isInlineImport) {
           finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
+        }
+        if (configuredWithCanonicalParents) {
+          for (const [canonicalNode, originalParent] of configuredWithCanonicalParents) {
+            (canonicalNode as unknown as { parent?: Node }).parent = originalParent;
+          }
         }
 
         // For import type, register the final Rules as a child root of the parent

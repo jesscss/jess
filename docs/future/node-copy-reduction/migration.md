@@ -14,8 +14,7 @@ Use with:
 
 Current branch status on `jess-dev`:
 
-- Stages 0–19 are complete.
-- Stage 20 is in progress.
+- Stages 0–20 are complete.
 - Stage 21 has not started.
 
 For exact implementation state, use:

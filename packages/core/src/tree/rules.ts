@@ -220,7 +220,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this.functionRegistry;
     }
 
-    Registries.syncRegistryCache(this);
+    Registries.syncRegistryCache(this, context);
     let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
     let RegistryClass = Registries[`${className}Registry`];
     return new RegistryClass(this, context);
@@ -864,7 +864,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules.setData(index, preEvaldNode);
-            rules.adopt(preEvaldNode);
+            rules.adopt(preEvaldNode, context);
             sessionSetIndex(preEvaldNode as Node, index, context);
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
@@ -876,7 +876,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
         }
         rules.setData(index, preEvald as Node);
-        rules.adopt(preEvald as Node);
+        rules.adopt(preEvald as Node, context);
         sessionSetIndex(preEvald as Node, index, context);
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
@@ -974,14 +974,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Register a node if it's eligible for registration
    */
-  private _registerNodeIfEligible(rules: Rules, node: Node, _context: Context) {
+  private _registerNodeIfEligible(rules: Rules, node: Node, context: Context) {
     if (isNode(node, N.Declaration)) {
-      rules.registerNode(node);
+      rules.registerNode(node, undefined, context);
     } else if (isNode(node, N.Mixin)) {
-      rules.registerNode(node);
+      rules.registerNode(node, undefined, context);
     } else if (isNode(node, N.Ruleset)) {
       // registerNode handles both 'mixin' and 'ruleset' registries
-      rules.registerNode(node);
+      rules.registerNode(node, undefined, context);
     }
   }
 
@@ -999,7 +999,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         resolvedNode.sourceNode = node.sourceNode ?? node;
       }
       if (resolvedNode.type === 'Ruleset') {
-        rules.registerNode(resolvedNode);
+        rules.registerNode(resolvedNode, undefined, context);
       }
       if (isNode(resolvedNode, N.Nil) || this._hasStaticName(resolvedNode)) {
         resolvedNodes.push(resolvedNode);
@@ -1017,7 +1017,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const resolvedNode = resolvedNodes.find(n => n.index === node.index);
         if (resolvedNode && resolvedNode !== node) {
           rules.setData(i, resolvedNode.inherit(node));
-          rules.adopt(resolvedNode);
+          rules.adopt(resolvedNode, context);
         }
       }
     };
@@ -1148,12 +1148,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Update the node if preEval returned a different instance
           if (resolvedNode !== node) {
             rules.setData(i, resolvedNode);
-            rules.adopt(resolvedNode);
+            rules.adopt(resolvedNode, context);
           }
 
           // Register the node after preEval (name resolution) if not already registered
           if (!isNode(node, N.VarDeclaration)) {
-            rules.registerNode(resolvedNode);
+            rules.registerNode(resolvedNode, undefined, context);
           }
 
           // Continue with the rest of the children
@@ -1164,12 +1164,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Update the node if preEval returned a different instance
       if (result !== node) {
         rules.setData(i, result);
-        rules.adopt(result);
+        rules.adopt(result, context);
       }
 
       // Register the node after preEval (name resolution) if not already registered
       if (!isNode(node, N.VarDeclaration)) {
-        rules.registerNode(result);
+        rules.registerNode(result, undefined, context);
       }
     }
 
@@ -2258,7 +2258,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Shallow-clone each child before pushing so canonical parents
           // aren't corrupted. The clones get parent = outerRules from push's adopt.
           for (const child of rules.value) {
-            outerRules.push((child as Node).clone(false, undefined, thisContext));
+            outerRules.push(thisContext, (child as Node).clone(false, undefined, thisContext));
           }
           newRules = await outerRules.eval(thisContext);
         }
@@ -2435,7 +2435,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Keep parameter vars lookupable but hidden in normal output.
             // They still render in tests that set Node.fullRender=true.
             param.removeFlag(F_VISIBLE);
-            outerRules.push(param);
+            outerRules.push(thisContext, param);
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
@@ -2448,7 +2448,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             value: new Sequence(argumentsArgs)
           }, { readonly: true, paramVar: true });
           argumentsDecl.removeFlag(F_VISIBLE);
-          outerRules.push(argumentsDecl);
+          outerRules.push(thisContext, argumentsDecl);
           const paramValues = params?.value
             .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
             .map(p => (p as any).value);

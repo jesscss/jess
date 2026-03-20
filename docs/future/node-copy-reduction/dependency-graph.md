@@ -497,8 +497,8 @@ AND `selector` on `Ruleset`. Stopping the `selector` mutation makes selector nod
 ### Stage 20: Session-local Registry Deltas + Eliminate Import Cloning
 
 Status on branch `jess-dev` at `3b4d089e`:
-- implemented: session-local registry deltas, session-aware registry lookup/register, scope-dirty invalidation, detached-ruleset unlock via session-safe shallow clone, removal of the Stage 16 selector deep-clone workaround in import finalization
-- remaining: dependency-aware partial re-eval and the final import no-clone output path
+- implemented: session-local registry deltas, session-aware registry lookup/register, scope-dirty invalidation, dependency-aware partial re-eval in declaration lookup, detached-ruleset unlock via session-safe shallow clone, and import finalization reduced to the minimum shallow wrappers needed for per-import metadata / extend isolation
+- note: plain `@import` now reuses the evaluated root directly; compose keeps a shallow per-import wrapper because separate import sites can legitimately require different visibility / reference metadata on the same cached module
 
 ### Completed
 
@@ -519,18 +519,16 @@ Status on branch `jess-dev` at `3b4d089e`:
 - [x] Remove `rules.ts:2293` `clone(true)` for detached ruleset unlock:
   - [x] Detached ruleset unlock now uses session-isolated shallow clone semantics
 - [x] `_dedupe`/`multiple` branch: remove the per-Ruleset selector deep-clone workaround from the `clone(false)` finalization path
-
-### Remaining
-
-- [ ] Dependency-aware partial re-eval in lookup:
-  - [ ] `DeclarationRegistry.find()`: when session has `changedVars`, skip entries whose `dependsOn ∩ changedVars = ∅`
-  - [ ] Return canonical resolved value for static entries without re-eval
-- [ ] **Eliminate import cloning** (`import-style.ts getFinalRules`):
-  - [ ] `_dedupe`/`multiple` branch: remove the remaining `clone(false)` output wrapper entirely
-  - [ ] Replace with: direct canonical `Rules` reuse plus a new session per output context
-  - [ ] Session carries the isolated parent state; canonical index is shared
-- [ ] Tests: two sequential `_dedupe` imports share canonical registry (no index rebuild)
-- [ ] Tests: mixin expansion nodes appear in session delta, not canonical index
+- [x] Dependency-aware partial re-eval in lookup:
+  - [x] `DeclarationRegistry.find()`: when session has `changedVars`, skip entries whose `dependsOn ∩ changedVars = ∅`
+  - [x] Return canonical resolved value for static entries without re-eval
+- [x] **Eliminate structural import cloning** (`import-style.ts getFinalRules`):
+  - [x] plain `@import` branch: reuse the evaluated shallow root directly during finalization
+  - [x] configured compose parent cleanup: canonical top-level nodes are restored after session teardown
+  - [x] keep only shallow wrappers where import-site metadata must differ (`compose` visibility/reference surface and `_dedupe` extend isolation)
+  - [x] canonical index remains shared across all of these output paths
+- [x] Tests: repeated `_dedupe` imports share canonical registry (no index rebuild)
+- [x] Tests: mixin expansion nodes appear in session delta, not canonical index
 
 ### Stage 21: Live Patch API
 
