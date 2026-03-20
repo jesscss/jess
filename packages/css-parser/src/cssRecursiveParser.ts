@@ -654,6 +654,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   classSelector!: Rule;
   idSelector!: Rule;
   pseudoSelector!: Rule;
+  attributeName!: Rule;
   attributeSelector!: Rule;
   nthValue!: Rule;
   complexSelector!: Rule;

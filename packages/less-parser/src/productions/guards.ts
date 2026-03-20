@@ -86,6 +86,16 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
 // Save CSS production factory for super calls
 const cssUnknownAtRule = cssProductions.unknownAtRule;
 
+function isGuardComparisonToken(tt: unknown, T: TokenMap) {
+  return tt === T.Eq
+    || tt === T.Gt
+    || tt === T.GtEq
+    || tt === T.GtEqAlias
+    || tt === T.Lt
+    || tt === T.LtEq
+    || tt === T.LtEqAlias;
+}
+
 export function guard(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
@@ -189,9 +199,36 @@ export function guardAnd(this: P, T: TokenMap) {
                   && tokenType !== T.DefaultGuardFunc
                   && tokenType !== T.DefaultGuardIdent;
               },
-              ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
+              ALT: () => $.SUBRULE($.valueList, { ARGS: [ctx] })
             }
           ]);
+          $.OPTION2({
+            GATE: () => isGuardComparisonToken($.LA(1).tokenType, T),
+            DEF: () => {
+              const op = $.OR2([
+                { ALT: () => $.CONSUME(T.Eq) },
+                { ALT: () => $.CONSUME(T.Gt) },
+                { ALT: () => $.CONSUME(T.GtEq) },
+                { ALT: () => $.CONSUME(T.GtEqAlias) },
+                { ALT: () => $.CONSUME(T.Lt) },
+                { ALT: () => $.CONSUME(T.LtEq) },
+                { ALT: () => $.CONSUME(T.LtEqAlias) }
+              ]);
+              const compareRight = $.SUBRULE2($.valueList, { ARGS: [ctx] });
+              if (!$.RECORDING_PHASE) {
+                right = new Condition(
+                  [
+                    $.wrap(right, true),
+                    $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context), 'both'),
+                    $.wrap(compareRight)
+                  ],
+                  undefined,
+                  $.getLocationFromNodes([right, compareRight]),
+                  $.context
+                );
+              }
+            }
+          });
         } finally {
           ctx.allowComma = allowComma;
         }
@@ -262,29 +299,21 @@ export function guardInParens(this: P, T: TokenMap) {
 export function guardInner(this: P, _T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    return $.OR([
-      { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) },
-      {
-        ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] })
-      }
-    ]);
+    return $.SUBRULE($.guardOr, { ARGS: [ctx] });
   };
 }
 
 export function guardWithConditionValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    return $.OR([
-      {
-        ALT: () => {
-          $.OR2([
-            { ALT: () => $.CONSUME(T.DefaultGuardIdent) },
-            { ALT: () => $.CONSUME(T.DefaultGuardFunc) }
-          ]);
-        }
-      },
-      { ALT: () => $.SUBRULE($.guardInParens, { ARGS: [ctx] }) }
-    ]);
+    if ($.isType(T.DefaultGuardIdent) || $.isType(T.DefaultGuardFunc)) {
+      $.OR([
+        { ALT: () => $.CONSUME(T.DefaultGuardIdent) },
+        { ALT: () => $.CONSUME(T.DefaultGuardFunc) }
+      ]);
+      return;
+    }
+    return $.SUBRULE($.guardInParens, { ARGS: [ctx] });
   };
 }
 
@@ -387,7 +416,10 @@ export function layerName(this: P, T: TokenMap) {
     // First segment: variable reference or plain ident
     const first = $.OR([
       { ALT: () => $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
-      { ALT: () => $.CONSUME(T.Ident) }
+      {
+        GATE: () => $.LA(1).tokenType === T.Ident,
+        ALT: () => $.CONSUME(T.Ident)
+      }
     ]);
 
     if (!RECORDING_PHASE) {
@@ -427,7 +459,9 @@ export function keyframesName(this: P, T: TokenMap) {
     let node: Node | undefined;
     $.OR([
       { ALT: () => node = $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
-      { ALT: () => {
+      {
+        GATE: () => $.LA(1).tokenType === T.Ident,
+        ALT: () => {
         const tok = $.CONSUME(T.Ident);
         node = $.wrap($.processValueToken(tok));
       } },
@@ -598,7 +632,10 @@ export function lookupOrCall(this: P, T: TokenMap) {
             { ALT: () => $.CONSUME(T.AtKeyword) },
             { ALT: () => $.CONSUME(T.PropertyReference) },
             { ALT: () => $.CONSUME(T.InterpolatedIdent) },
-            { ALT: () => $.CONSUME(T.Ident) }
+            {
+              GATE: () => $.LA(1).tokenType === T.Ident,
+              ALT: () => $.CONSUME(T.Ident)
+            }
           ]));
           $.CONSUME(T.RSquare);
           if ($.RECORDING_PHASE) {
@@ -809,7 +846,7 @@ export function mixinArg(this: P, T: TokenMap) {
         GATE: () => !isDeclaration && atStart && $.isTypeAt(2, T.Ellipsis),
         ALT: () => {
           $.startRule();
-          let name = $.SUBRULE($.varName, { ARGS: [] });
+          let name = $.CONSUME(T.AtName);
           let ellipsis;
           /**
            * Mixin definitions can have a spread parameter, which
@@ -859,7 +896,7 @@ export function mixinArg(this: P, T: TokenMap) {
         GATE: () => !isDeclaration && atStart && !$.isTypeAt(2, T.Ellipsis) && ($.LA(2).tokenType === T.RParen || $.LA(2).tokenType === T.Comma || $.LA(2).tokenType === T.Semi),
         ALT: () => {
           $.startRule();
-          let name = $.SUBRULE2($.varName, { ARGS: [] });
+          let name = $.CONSUME2(T.AtName);
           if ($.RECORDING_PHASE) {
             return;
           }
@@ -871,7 +908,7 @@ export function mixinArg(this: P, T: TokenMap) {
         GATE: () => isDeclaration,
         ALT: () => {
           $.startRule();
-          let name = $.SUBRULE3($.varName, { ARGS: [] });
+          let name = $.CONSUME3(T.AtName);
           $.CONSUME(T.Colon);
           /** Default value */
           let value = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: !!ctx.allowComma, detachedRulesetUsage: 'default-param' }] });

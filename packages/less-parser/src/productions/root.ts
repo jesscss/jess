@@ -20,6 +20,7 @@ import {
   type Combinators,
   List,
   Sequence,
+  QueryCondition,
   Call,
   Paren,
   Operation,
@@ -41,6 +42,7 @@ import {
   Rest,
   StyleImport,
   Expression,
+  Keyword,
   SelectorCapture,
   ComplexSelector,
   CompoundSelector,
@@ -742,15 +744,69 @@ export function mediaQuery(this: P, T: TokenMap) {
         ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] })
       },
       {
-        GATE: () => isEscapedString($, T),
-        ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
+        GATE: () => isEscapedString($, T) || startsBareMediaQueryValue($, T),
+        ALT: () => {
+          const RECORDING_PHASE = $.RECORDING_PHASE;
+          $.startRule();
+          let nodes: Node[] | undefined;
+          if (!RECORDING_PHASE) {
+            nodes = [];
+          }
+
+          const first = $.OR3([
+            {
+              GATE: () => isEscapedString($, T),
+              ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
+            },
+            {
+              ALT: () => $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
+            }
+          ]);
+
+          if (!RECORDING_PHASE) {
+            nodes!.push(first);
+          }
+
+          $.MANY({
+            GATE: () => $.isType(T.And),
+            DEF: () => {
+              const andToken = $.CONSUME(T.And);
+              const next = $.OR4([
+                {
+                  GATE: () => isEscapedString($, T),
+                  ALT: () => $.SUBRULE3($.string, { ARGS: [ctx] })
+                },
+                {
+                  GATE: () => startsBareMediaQueryValue($, T),
+                  ALT: () => $.SUBRULE4($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
+                },
+                {
+                  GATE: () => $.startsMediaCondition(T),
+                  ALT: () => $.SUBRULE5($.mediaConditionWithoutOr, { ARGS: [ctx] })
+                },
+                {
+                  ALT: () => $.SUBRULE6($.mediaType, { ARGS: [ctx] })
+                }
+              ]);
+
+              if (!RECORDING_PHASE) {
+                nodes!.push($.wrap(new Keyword(andToken.image, undefined, $.getLocationInfo(andToken), $.context), 'both'));
+                nodes!.push(next);
+              }
+            }
+          });
+
+          if (!RECORDING_PHASE) {
+            const location = $.endRule();
+            if (nodes!.length === 1) {
+              return nodes![0]!;
+            }
+            return new QueryCondition(nodes!, undefined, location, $.context);
+          }
+        }
       },
       {
-        GATE: () => startsBareMediaQueryValue($, T),
-        ALT: () => $.SUBRULE($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
-      },
-      {
-        ALT: () => $.SUBRULE2($.mediaTypeQuery, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE7($.mediaTypeQuery, { ARGS: [ctx] })
       }
     ]);
   };
@@ -762,6 +818,145 @@ export function containerInParens(this: P, T: TokenMap) {
     // Reuse mediaInParens which already handles variables
     return $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
   };
+}
+
+export function mediaFeature(this: P, T: TokenMap) {
+  const $ = this;
+
+  const createFeatureIdentNode = (token: IToken, role: 'ident' | 'property') => {
+    const location = $.getLocationInfo(token);
+    const resolved = getInterpolatedOrString(token.image, location, $.context);
+    if (typeof resolved === 'string') {
+      return new Any(resolved, { role }, location, $.context);
+    }
+    return resolved;
+  };
+
+  return (ctx: RuleContext = {}) => $.OR([
+    {
+      GATE: () => {
+        const tt = $.LA(1).tokenType;
+        return tt === T.Ident || tt === T.InterpolatedIdent;
+      },
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        let rule: Node | undefined;
+        const ident = $.LA(1).tokenType === T.Ident
+          ? $.CONSUME(T.Ident)
+          : $.CONSUME(T.InterpolatedIdent);
+        $.OPTION(() => {
+          rule = $.OR2([
+            {
+              ALT: () => {
+                $.CONSUME(T.Colon);
+                const value = $.SUBRULE($.mfValue, { ARGS: [ctx] });
+                if (!RECORDING_PHASE) {
+                  const location = $.endRule();
+                  return $.wrap(
+                    new Declaration({
+                      name: $.wrap(createFeatureIdentNode(ident, 'property'), true),
+                      value: $.wrap(value)
+                    }, undefined, location, $.context),
+                    'both'
+                  );
+                }
+              }
+            },
+            {
+              GATE: () => ($.isTypeAt(1, T.MfLt) || $.isTypeAt(1, T.MfGt))
+                && ($.isTypeAt(2, T.Ident) || $.isTypeAt(2, T.InterpolatedIdent)),
+              ALT: () => {
+                const seq = $.SUBRULE($.mediaRange, { ARGS: [ctx] });
+
+                if (!RECORDING_PHASE) {
+                  const [startOffset, startLine, startColumn] = $.endRule();
+                  seq.value.unshift($.wrap(createFeatureIdentNode(ident, 'ident'), true));
+                  seq.location[0] = startOffset;
+                  seq.location[1] = startLine;
+                  seq.location[2] = startColumn;
+                  return new QueryCondition(seq.value, undefined, seq.location, $.context);
+                }
+                return seq;
+              }
+            },
+            {
+              GATE: () => $.isTypeAt(1, T.MfLt) || $.isTypeAt(1, T.MfGt) || $.LA(1).tokenType === T.Eq,
+              ALT: () => {
+                const op = $.SUBRULE($.mfComparison, { ARGS: [ctx] });
+                const value = $.SUBRULE($.mfNonIdentifierValue, { ARGS: [ctx] });
+
+                if (!RECORDING_PHASE) {
+                  const location = $.endRule();
+                  return new QueryCondition([
+                    $.wrap(createFeatureIdentNode(ident, 'ident'), true),
+                    $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context), 'both'),
+                    value
+                  ], undefined, location, $.context);
+                }
+              }
+            }
+          ]);
+        });
+        if (!RECORDING_PHASE && !rule) {
+          const location = $.endRule();
+          const identNode = createFeatureIdentNode(ident, 'ident');
+          return $.wrap(new QueryCondition([identNode], undefined, location, $.context), 'both');
+        }
+        return rule;
+      }
+    },
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        const left = $.SUBRULE2($.mfNonIdentifierValue, { ARGS: [{ ...ctx }] });
+        return $.OR3([
+          {
+            GATE: () => {
+              const tt2 = $.LA(2).tokenType;
+              if (!(($.isTypeAt(1, T.MfLt) || $.isTypeAt(1, T.MfGt) || $.LA(1).tokenType === T.Eq)
+                && (tt2 === T.Ident || tt2 === T.InterpolatedIdent))) {
+                return false;
+              }
+              if ($.isTypeAt(3, T.MfLt) || $.isTypeAt(3, T.MfGt)) {
+                return false;
+              }
+              return true;
+            },
+            ALT: () => {
+              const op = $.SUBRULE2($.mfComparison, { ARGS: [{ ...ctx }] });
+              const value = $.LA(1).tokenType === T.Ident
+                ? $.CONSUME2(T.Ident)
+                : $.CONSUME2(T.InterpolatedIdent);
+              if (!RECORDING_PHASE) {
+                const location = $.endRule();
+                return new QueryCondition([
+                  left,
+                  $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context)),
+                  $.wrap(createFeatureIdentNode(value, 'ident'), 'both')
+                ], undefined, location, $.context);
+              }
+            }
+          },
+          {
+            ALT: () => {
+              const seq = $.SUBRULE2($.mediaRange, { ARGS: [{ ...ctx }] });
+              if (!RECORDING_PHASE) {
+                const [startOffset, startLine, startColumn] = $.endRule();
+                seq.value.unshift(left);
+                seq.location[0] = startOffset;
+                seq.location[1] = startLine;
+                seq.location[2] = startColumn;
+                return new QueryCondition(seq.value, undefined, seq.location, $.context);
+              }
+              return seq;
+            }
+          }
+        ]);
+      }
+    }
+  ]);
 }
 
 export function mfValue(this: P, T: TokenMap) {

@@ -5,6 +5,7 @@ import {
   BasicSelector,
   SelectorList,
   Combinator,
+  Ampersand,
   Node
 } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy.js';
@@ -15,7 +16,9 @@ import type { LessNode } from '../types.js';
 /**
  * Flatten a hierarchical Jess selector into Less's flat Element array.
  * Less expects: Element[] where each Element has { combinator, value }
- * Jess has: ComplexSelector -> CompoundSelector[] -> BasicSelector[]
+ * Jess now models complex selectors as an interleaved stream of selector
+ * components and explicit combinators. Less still expects flat Elements with
+ * the combinator attached to the following selector component.
  */
 function flattenSelectorToElements(
   selector: Selector,
@@ -31,23 +34,37 @@ function flattenSelectorToElements(
   }
 
   if (selector instanceof ComplexSelector) {
-    const compounds = selector.value;
-    for (let i = 0; i < compounds.length; i++) {
-      const compound = compounds[i];
-      const combinator = new Combinator(i > 0 ? ' ' as any : ' ');
+    const components = selector.value;
+    let nextCombinatorValue = '';
 
-      if (compound instanceof CompoundSelector) {
-        for (let j = 0; j < compound.value.length; j++) {
-          const basic = compound.value[j];
-          if (!basic) {
+    for (let i = 0; i < components.length; i++) {
+      const component = components[i];
+      if (!component) {
+        continue;
+      }
+      if (component instanceof Combinator) {
+        nextCombinatorValue = component.value;
+        continue;
+      }
+
+      if (component instanceof CompoundSelector) {
+        for (let j = 0; j < component.value.length; j++) {
+          const simple = component.value[j];
+          if (!simple) {
             continue;
           }
-          const elementCombinator = j === 0 ? combinator : new Combinator(' ');
-          elements.push(createElementProxy(basic, elementCombinator, cache));
+          const elementCombinator = createLessCombinator(j === 0 ? nextCombinatorValue : '');
+          elements.push(createElementProxy(simple, elementCombinator, cache));
         }
-      } else if (compound instanceof BasicSelector) {
-        elements.push(createElementProxy(compound, combinator, cache));
+      } else if (component instanceof BasicSelector || component instanceof Ampersand) {
+        const elementCombinator = createLessCombinator(nextCombinatorValue);
+        elements.push(createElementProxy(component, elementCombinator, cache));
+      } else if (component instanceof Node) {
+        const elementCombinator = createLessCombinator(nextCombinatorValue);
+        elements.push(createElementProxy(component, elementCombinator, cache));
       }
+
+      nextCombinatorValue = '';
     }
   } else if (selector instanceof CompoundSelector) {
     for (let i = 0; i < selector.value.length; i++) {
@@ -55,18 +72,35 @@ function flattenSelectorToElements(
       if (!basic) {
         continue;
       }
-      elements.push(createElementProxy(basic, new Combinator(' '), cache));
+      const combinator = createLessCombinator(i === 0 ? '' : '');
+      elements.push(createElementProxy(basic, combinator, cache));
     }
-  } else if (selector instanceof BasicSelector) {
-    elements.push(createElementProxy(selector, new Combinator(' '), cache));
+  } else if (selector instanceof BasicSelector || selector instanceof Ampersand) {
+    elements.push(createElementProxy(selector, createLessCombinator(''), cache));
   }
 
   return elements;
 }
 
+function createLessCombinator(value: string): LessNode {
+  const base = new Combinator(' ');
+  return createLessProxy(base, undefined, (prop) => {
+    if (prop === 'type') {
+      return 'Combinator';
+    }
+    if (prop === 'value') {
+      return value;
+    }
+    if (prop === 'emptyOrWhitespace') {
+      return value === '' || value === ' ';
+    }
+    return undefined;
+  });
+}
+
 function createElementProxy(
-  basic: BasicSelector | any,
-  combinator: Combinator,
+  basic: Node,
+  combinator: LessNode,
   cache?: WeakMap<any, any>
 ): LessNode {
   // Create without sharing cache (avoids collision with any Selector proxy
@@ -74,26 +108,25 @@ function createElementProxy(
   // the shared cache so toLessNode returns it when the Jess walker visits
   // this BasicSelector — matching the original code's caching behavior.
   const proxy = createLessProxy(basic, undefined, (prop, target) => {
-    const basicSel = target as BasicSelector;
+    const basicSel = target as Node;
     if (prop === 'type') {
       return 'Element';
     }
     if (prop === 'combinator') {
-      return toLessNode(combinator, { cache });
+      return combinator;
     }
     if (prop === 'value') {
-      return basicSel.value;
+      return (basicSel as { value?: unknown }).value;
     }
     if (prop === 'isVariable') {
       return false;
     }
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessCombinator = toLessNode(combinator, { cache });
-        if (lessCombinator && visitor.visit) {
-          visitor.visit(lessCombinator);
+        if (combinator && visitor.visit) {
+          visitor.visit(combinator);
         }
-        const value = basicSel.value;
+        const value = (basicSel as { value?: unknown }).value;
         if (value && typeof value === 'object') {
           const lessValue = toLessNode(value as Node, { cache });
           if (lessValue && visitor.visit) {

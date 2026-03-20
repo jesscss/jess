@@ -1,19 +1,20 @@
 import {
   defineFunction,
   type Context,
+  Any,
   Color,
   Dimension,
-  Node,
+  Quoted,
   ColorFormat
 } from '@jesscss/core';
 
 export default defineFunction(
   'desaturate',
-  function(this: Context, color: Color, amount: Dimension, method?: Node) {
+  function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {
     const [h, s, l] = color._hsl;
     let adjustAmount = amount.number / 100;
 
-    if (method && (method as any).value === 'relative') {
+    if (method?.valueOf() === 'relative') {
       adjustAmount = s * adjustAmount;
     }
 
@@ -36,7 +37,7 @@ export default defineFunction(
       type: Dimension
     }, {
       name: 'method',
-      type: Node,
+      type: [Any, Quoted],
       optional: true
     }]
   }

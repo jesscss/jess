@@ -402,6 +402,30 @@ export function nthValue(this: C, T: TokenMap, valueAlt?: AltContext) {
 // attributeSelector
 //   : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE
 //   ;
+export function attributeName(this: C, T: TokenMap) {
+  const $ = this;
+
+  return () => {
+    let namespacePrefix = '';
+
+    if ($.isType(T.Pipe)) {
+      namespacePrefix = $.CONSUME(T.Pipe).image;
+    } else if ($.isType(T.Star) && $.isTypeAt(2, T.Pipe) && !$.hasWS() && !$.hasWS(2)) {
+      namespacePrefix = $.CONSUME2(T.Star).image;
+      namespacePrefix += $.CONSUME3(T.Pipe).image;
+    } else if ($.isType(T.Ident) && $.isTypeAt(2, T.Pipe) && !$.hasWS() && !$.hasWS(2)) {
+      namespacePrefix = $.CONSUME4(T.Ident).image;
+      namespacePrefix += $.CONSUME5(T.Pipe).image;
+    }
+
+    let key = $.CONSUME6(T.Ident);
+
+    if (!$.RECORDING_PHASE) {
+      return new Any(`${namespacePrefix}${key.image}`, { role: 'ident' }, $.getLocationInfo(key), this.context);
+    }
+  };
+}
+
 export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
 
@@ -422,7 +446,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
     $.startRule();
 
     $.CONSUME2(T.LSquare);
-    let key = $.CONSUME3(T.Ident);
+    let key = $.SUBRULE2($.attributeName) as Any;
     let op: IToken | undefined;
     let value: Node | undefined;
     let mod: IToken | undefined;
@@ -439,7 +463,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       return new AttributeSelector({
-        name: key.image,
+        name: key.valueOf(),
         op: op?.image,
         value,
         mod: mod?.image
