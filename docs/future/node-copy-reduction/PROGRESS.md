@@ -831,10 +831,10 @@ Current blocker notes from live reduction attempts:
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:
   - selector-side containers: `PseudoSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`
   - wrapper/value nodes: `AtRule`, `Mixin`, `Call`, `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`
-  - container/value nodes: `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`
+  - container/value nodes: `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`, `Range`
 - Verified together:
   - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/extend-import-style.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/control.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/condition.test.ts src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts src/tree/__tests__/func.test.ts src/tree/__tests__/at-rule.test.ts`
-  - Result: `229 passed, 9 skipped`
+  - Result: `230 passed, 9 skipped`
 - This does **not** change the real blocker: generic session-local node replacement / `Rules.value[]` overlay semantics are still incomplete, so these slices only move lower-order field/render reads toward the intended immutable-node architecture.
 
 ---

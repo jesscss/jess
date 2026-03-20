@@ -12,7 +12,7 @@ Current branch reality:
 - Registry deltas exist.
 - Import-path clone reduction has gone a long way.
 - Session-aware field reads now exist on lower-order nodes, and selector ancestry reads on active `Ruleset` / extend paths are session-aware.
-- That lower-order coverage now includes wrapper/value/container render reads for `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`, `List`, `Sequence`, `QueryCondition`, `Condition`, and `Func`, in addition to the selector-side container pass.
+- That lower-order coverage now includes wrapper/value/container render reads for `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`, `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`, and `Range`, in addition to the selector-side container pass.
 - Returned import trees now materialize clone-only parent links after session teardown; ephemeral mixin guard wrapper scopes materialize their local param bindings directly.
 - The branch is still in a fundamentals-completion gate before Stage 21.
 
