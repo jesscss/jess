@@ -43,6 +43,8 @@ type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
   ownSelector?: Selector | Nil;
+  /** Hoisted at-rule wrapper already carries the caller selector; do not prepend the parent again in preEval. */
+  resolvedHoistWrapper?: boolean;
 };
 
 /** @todo - Fix typing */
@@ -125,6 +127,38 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
   }
 
+  static collapseRedundantGeneratedChildren(ruleset: Ruleset): void {
+    const rules = ruleset.rules;
+    if (!rules || !isNode(rules, N.Rules)) {
+      return;
+    }
+    const children = [...rules.value];
+    const normalized: Node[] = [];
+    for (const child of children) {
+      if (!isNode(child, N.Ruleset)) {
+        normalized.push(child);
+        continue;
+      }
+      const childRuleset = child as Ruleset;
+      Ruleset.collapseRedundantGeneratedChildren(childRuleset);
+      const shouldInline =
+        Boolean(ruleset.options?.generated)
+        && Boolean(childRuleset.options?.generated)
+        && String(ruleset.selector?.valueOf?.() ?? '') === String(childRuleset.selector?.valueOf?.() ?? '');
+      if (shouldInline) {
+        normalized.push(...childRuleset.rules.value);
+        continue;
+      }
+      normalized.push(childRuleset);
+    }
+    if (normalized.length !== rules.value.length || normalized.some((node, index) => node !== rules.value[index])) {
+      rules.setData(normalized);
+      for (const child of normalized) {
+        rules.adopt(child);
+      }
+    }
+  }
+
   isHoisted(options: PrintOptions) {
     return this.hoistToRoot ?? options.collapseNesting ?? false;
   }
@@ -179,7 +213,37 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+    if (
+      collapseNesting
+      && this.hoistToRoot
+      && ownSelector
+      && !(ownSelector instanceof Nil)
+      && Ruleset.isBareAmpersandSelector(ownSelector)
+    ) {
+      return selector;
+    }
     const parentRs = getParentRuleset(this);
+    const normalizeParentSelector = (parentSelector: Selector | Nil | undefined): Selector | Nil | undefined => {
+      if (
+        parentRs
+        && parentSelector
+        && !(parentSelector instanceof Nil)
+        && Ruleset.isBareAmpersandSelector(parentSelector)
+      ) {
+        const parentOwn = (parentRs.options as RulesetOptions | undefined)?.ownSelector;
+        if (
+          parentOwn
+          && !(parentOwn instanceof Nil)
+          && Ruleset.isBareAmpersandSelector(parentOwn)
+          && parentRs.selector
+          && !(parentRs.selector instanceof Nil)
+          && !Ruleset.isBareAmpersandSelector(parentRs.selector)
+        ) {
+          return parentRs.selector;
+        }
+      }
+      return parentSelector;
+    };
     if (
       collapseNesting
       && this.hoistToRoot
@@ -188,7 +252,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !(ownSelector instanceof Nil)
       && ownSelector.valueOf() !== selector.valueOf()
     ) {
-      let parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
+      let parentSelector = normalizeParentSelector(parentRs?.getEffectiveSelector(collapseNesting));
       if (parentSelector && !(parentSelector instanceof Nil)) {
         if (parentRs!.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRs!)) {
           parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
@@ -206,7 +270,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
 
-    const parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
+    const parentSelector = normalizeParentSelector(parentRs?.getEffectiveSelector(collapseNesting));
     if (
       ownSelector
       && !(ownSelector instanceof Nil)
@@ -367,7 +431,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return !(sel as Ampersand).appendValue;
     }
     if (isNode(sel, N.CompoundSelector | N.ComplexSelector)) {
-      const items = (sel as unknown as { data: unknown[] }).data;
+      const items = (sel as unknown as { value?: unknown[] }).value;
+      if (!Array.isArray(items)) {
+        return false;
+      }
       return items.length === 1
         && isNode(items[0] as Node, N.Ampersand)
         && !(items[0] as Ampersand).appendValue;
@@ -463,7 +530,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (withoutComments) {
       options = { ...options, suppressComments: true };
     }
-    let renderSelector = selector;
+    let renderSelector: Selector | Nil = selector;
+    const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+    if (
+      this.hoistToRoot
+      && Ruleset.isBareAmpersandSelector(renderSelector)
+      && ownSelector
+      && !(ownSelector instanceof Nil)
+      && Ruleset.isBareAmpersandSelector(ownSelector)
+      && !Ruleset.isBareAmpersandSelector(this.selector)
+    ) {
+      renderSelector = this.selector;
+    }
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
@@ -548,7 +626,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       } else {
         node.options = { ownSelector: selector } as RulesetOptions;
       }
-      if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil) && parentRuleset) {
+      if (
+        !(node.options as RulesetOptions)?.resolvedHoistWrapper
+        && parentSelector
+        && !(parentSelector instanceof Nil)
+        && !(selector instanceof Nil)
+        && parentRuleset
+      ) {
         selector = getImplicitSelectorUtil(selector as Selector, parentRuleset as Ruleset, false);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
@@ -770,7 +854,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
         this.setData('rules', evaluatedRules as Rules);
         const rules = this.rules;
-
         if (rules.visibleRules().length === 0) {
           this.removeFlag(F_VISIBLE);
         }

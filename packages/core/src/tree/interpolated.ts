@@ -238,15 +238,19 @@ export class Interpolated<
   _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
     let { replacements } = node;
+    const markEvaluated = (result: Node): Node => {
+      result.evaluated = true;
+      return result;
+    };
 
     let maybe = serialForEach(replacements, (n, idx) => {
       const out = n.eval(context);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          replacements[idx] = result;
+          replacements[idx] = markEvaluated(result);
         });
       }
-      replacements[idx] = out as Node;
+      replacements[idx] = markEvaluated(out as Node);
       return undefined;
     });
     if (isThenable(maybe)) {

@@ -199,7 +199,7 @@ export function guardAnd(this: P, T: TokenMap) {
                   && tokenType !== T.DefaultGuardFunc
                   && tokenType !== T.DefaultGuardIdent;
               },
-              ALT: () => $.SUBRULE($.valueList, { ARGS: [ctx] })
+              ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
             }
           ]);
           $.OPTION2({
@@ -214,12 +214,18 @@ export function guardAnd(this: P, T: TokenMap) {
                 { ALT: () => $.CONSUME(T.LtEq) },
                 { ALT: () => $.CONSUME(T.LtEqAlias) }
               ]);
-              const compareRight = $.SUBRULE2($.valueList, { ARGS: [ctx] });
+              const compareRight = $.SUBRULE2($.value, { ARGS: [ctx] });
               if (!$.RECORDING_PHASE) {
+                let opStr = op.image;
+                if (opStr === '=>') {
+                  opStr = '>=';
+                } else if (opStr === '=<') {
+                  opStr = '<=';
+                }
                 right = new Condition(
                   [
                     $.wrap(right, true),
-                    $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context), 'both'),
+                    opStr as ConditionOperator,
                     $.wrap(compareRight)
                   ],
                   undefined,
@@ -340,7 +346,7 @@ export function guardWithCondition(this: P, T: TokenMap) {
 export function comparison(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    let left = $.SUBRULE($.valueList, { ARGS: [ctx] });
+    let left = $.SUBRULE($.value, { ARGS: [ctx] });
     let op = $.OR([
       { ALT: () => $.CONSUME(T.Eq) },
       { ALT: () => $.CONSUME(T.Gt) },
@@ -350,7 +356,7 @@ export function comparison(this: P, T: TokenMap) {
       { ALT: () => $.CONSUME(T.LtEq) },
       { ALT: () => $.CONSUME(T.LtEqAlias) }
     ]);
-    let right = $.SUBRULE2($.valueList, { ARGS: [ctx] });
+    let right = $.SUBRULE2($.value, { ARGS: [ctx] });
     if (isDefaultGuardCall(right)) {
       ctx.hasDefault = true;
       const location = Array.isArray(right.location) && right.location.length === 6
@@ -417,7 +423,7 @@ export function layerName(this: P, T: TokenMap) {
     const first = $.OR([
       { ALT: () => $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
       {
-        GATE: () => $.LA(1).tokenType === T.Ident,
+        GATE: () => $.isType(T.Ident),
         ALT: () => $.CONSUME(T.Ident)
       }
     ]);
@@ -460,7 +466,7 @@ export function keyframesName(this: P, T: TokenMap) {
     $.OR([
       { ALT: () => node = $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
       {
-        GATE: () => $.LA(1).tokenType === T.Ident,
+        GATE: () => $.isType(T.Ident) && !$.isType(T.InterpolatedIdent),
         ALT: () => {
         const tok = $.CONSUME(T.Ident);
         node = $.wrap($.processValueToken(tok));
@@ -633,7 +639,11 @@ export function lookupOrCall(this: P, T: TokenMap) {
             { ALT: () => $.CONSUME(T.PropertyReference) },
             { ALT: () => $.CONSUME(T.InterpolatedIdent) },
             {
-              GATE: () => $.LA(1).tokenType === T.Ident,
+              GATE: () => !$.isType(T.NestedReference)
+                && !$.isType(T.AtKeyword)
+                && !$.isType(T.PropertyReference)
+                && !$.isType(T.InterpolatedIdent)
+                && $.isType(T.Ident),
               ALT: () => $.CONSUME(T.Ident)
             }
           ]));

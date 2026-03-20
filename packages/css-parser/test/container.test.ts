@@ -78,6 +78,16 @@ describe('@container at-rule parsing and serialization', () => {
     expect(out).toContain('AtRule');
     expect(out).toContain('@container');
     expect(out).toContain('QueryCondition');
+    expect(out).toContainString(`
+      prelude: 
+        (Sequence
+          [
+            (QueryCondition
+              [
+                (Keyword [role=keyword] 'not')
+                (Paren
+                  (QueryCondition
+      `);
   });
 
   test('container query with nested conditions', () => {
@@ -184,6 +194,14 @@ describe('@media at-rule - QueryCondition parsing', () => {
     }
     expect(out).toContain('QueryCondition');
     expect(out).toContain('Paren');
+    expect(out).toContainString(`
+      prelude: 
+        (Paren
+          (QueryCondition
+            [
+              (Any [role=ident] 'width')
+              (Any [role=operator] '>')
+      `);
   });
 
   test('media query with colon syntax parses as Declaration', () => {
@@ -251,6 +269,17 @@ describe('@container - container query type functions', () => {
     expect(firstArg.value[1].value).toBe('and');
     expect(firstArg.value[2].type).toBe('Paren');
     expect(firstArg.value[2].value.type).toBe('Declaration');
+    expect(out).toContainString(`
+      (Call
+        name: 'scroll-state'
+        args: 
+          (List
+            [
+              (QueryCondition
+                [
+                  (Paren
+                    (Declaration
+      `);
   });
 
   test('not scroll-state with declaration argument', () => {
@@ -273,6 +302,17 @@ describe('@container - container query type functions', () => {
     expect(queryNode.value[1].type).toBe('QueryCondition');
     expect(queryNode.value[1].value[0].type).toBe('Call');
     expect(queryNode.value[1].value[0].name).toBe('scroll-state');
+    expect(out).toContainString(`
+      (QueryCondition
+        [
+          (Keyword [role=keyword] 'not')
+          (QueryCondition
+            [
+              (Call
+                name: 'scroll-state'
+                args: 
+                  (List
+      `);
   });
 
   test('complex style() queries with commas, and/or/not', () => {

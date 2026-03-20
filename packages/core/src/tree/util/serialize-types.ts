@@ -26,13 +26,7 @@ function isJessNode(value: unknown): value is Node {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null) {
-    return false;
-  }
-  if (Array.isArray(value)) {
-    return false;
-  }
-  return typeof value === 'object';
+  return value !== null && !Array.isArray(value) && typeof value === 'object';
 }
 
 function truncate(str: string, max: number): string {

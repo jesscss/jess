@@ -835,16 +835,15 @@ export function mediaFeature(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => $.OR([
     {
       GATE: () => {
-        const tt = $.LA(1).tokenType;
-        return tt === T.Ident || tt === T.InterpolatedIdent;
+        return $.isType(T.InterpolatedIdent) || $.isType(T.Ident);
       },
       ALT: () => {
         const RECORDING_PHASE = $.RECORDING_PHASE;
         $.startRule();
         let rule: Node | undefined;
-        const ident = $.LA(1).tokenType === T.Ident
-          ? $.CONSUME(T.Ident)
-          : $.CONSUME(T.InterpolatedIdent);
+        const ident = $.LA(1).tokenType === T.InterpolatedIdent
+          ? $.CONSUME(T.InterpolatedIdent)
+          : $.CONSUME(T.Ident);
         $.OPTION(() => {
           rule = $.OR2([
             {

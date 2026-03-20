@@ -1,3 +1,4 @@
+import { serializeTypes } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
@@ -68,13 +69,51 @@ describe('mediaInParens', () => {
   });
 
   it('should parse variable media query at top level', () => {
-    const { errors } = parse('@media @breakpoint, print { }', 'stylesheet');
+    const { errors, tree } = parse('@media @breakpoint, print { }', 'stylesheet');
     expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (AtRule
+          nestable: true
+        name: 
+          (Any [role=atkeyword]
+              role: 'atkeyword'
+            '@media'
+          )
+        prelude: 
+          (List
+            [
+              (Reference
+                  type: 'variable'
+                key: 'breakpoint'
+              )
+              (QueryCondition
+      `);
   });
 
   it('should parse namespaced reference media query at top level', () => {
-    const { errors } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'stylesheet');
+    const { errors, tree } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'stylesheet');
     expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (AtRule
+          nestable: true
+        name: 
+          (Any [role=atkeyword]
+              role: 'atkeyword'
+            '@media'
+          )
+        prelude: 
+          (Reference
+              type: 'variable'
+            target: 
+              (Call
+                name: 
+                  (Reference [role=name]
+                      type: 'mixin-ruleset'
+                      role: 'name'
+                    key:
+                      ['#ns', '.breakpoint']
+                  )
+      `);
   });
 });
 

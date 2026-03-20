@@ -1344,6 +1344,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   rulesVisibility: result.options.rulesVisibility,
                   readonly: result.options.readonly
                 }, context);
+                if (result.sourceNode?.type === 'StyleImport') {
+                  result.getRegistry('declaration').indexPendingItems();
+                  result.getRegistry('mixin').indexPendingItems();
+                }
               } else {
                 // For non-Rules results, adopt them to set up parent chain
                 rules.adopt(result);
@@ -1860,6 +1864,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // They should only be used for parameter binding.
           if (isNode(arg, N.VarDeclaration)) {
             const cloned = arg.copy(true, freezeChildren);
+            const clonedValue = (cloned as VarDeclaration).value;
+            if (clonedValue instanceof Node) {
+              const evaldValue = await clonedValue.clonedEval(thisContext);
+              evaldValue.frozen = true;
+              (cloned as VarDeclaration).setData('value', evaldValue);
+            }
             cloned.frozen = true;
             nodeArgs.push(cloned);
             continue;
@@ -1914,6 +1924,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
     };
+    const bindingSourceParent = caller ?? sourceParent;
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, N.Rules);
@@ -1985,12 +1996,18 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           if (isNode(param, N.VarDeclaration)) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
+            if (bindingSourceParent) {
+              boundValue.sourceParent = bindingSourceParent;
+            }
             normalizeBoundLeadingItemWhitespace(boundValue);
             param.setData('value', boundValue);
           } else if (isNode(param, N.Any) && param.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
+            if (bindingSourceParent) {
+              boundValue.sourceParent = bindingSourceParent;
+            }
             normalizeBoundLeadingItemWhitespace(boundValue);
             const varDecl = new VarDeclaration({
               name: param as Any<'property'>,
@@ -2206,7 +2223,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Shallow-clone each child before pushing so canonical parents
           // aren't corrupted. The clones get parent = outerRules from push's adopt.
           for (const child of rules.value) {
-            outerRules.push((child as Node).clone(false, undefined, thisContext));
+            outerRules.push((child as Node).clone(true, undefined, thisContext));
           }
           newRules = await outerRules.eval(thisContext);
         }
@@ -2268,7 +2285,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
         const candidateRules = (candidate as Ruleset).rules;
         const sourceRules = getRootSourceRules(candidateRules);
-        let rules = sourceRules.clone(false, undefined, thisContext);
+        let rules = sourceRules.clone(true, undefined, thisContext);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
@@ -2293,15 +2310,16 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let unlocked = sourceRules.clone(true);
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
-        // Mark as mixin output; caller may override when leakyRules=true
-        unlocked.options.isMixinOutput = restrictMixinOutputLookup;
+        // Detached ruleset calls in Less unlock their contents into the current scope.
+        // They must remain visible to untargeted lookups like `.mixin();`.
+        unlocked.options.isMixinOutput = false;
         unlocked.index = candidate.index;
         outputRules.push(unlocked);
         continue;
       }
       let rules = (candidate as any).rules as Rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(false, undefined, thisContext);
+      rules = rules.clone(true, undefined, thisContext);
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
@@ -2559,8 +2577,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let output: Rules;
     if (outputRules.length === 1) {
       output = outputRules[0]!;
-      // Ensure single output rule is marked as mixin output
-      output.options.isMixinOutput = restrictMixinOutputLookup;
+      // Preserve explicit visibility semantics from special cases like detached-ruleset
+      // unlocking, and only default to mixin-output visibility when not already set.
+      output.options.isMixinOutput ??= restrictMixinOutputLookup;
     } else {
       /**
        * Wrap these in rules marked as mixin output - accessible only when lookup has a target.

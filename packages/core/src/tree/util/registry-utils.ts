@@ -571,6 +571,7 @@ export class MixinRegistry extends Registry<
     if (this.pendingItems.size === 0) {
       return;
     }
+    const useVisibleKeys = this.rules.options?.referenceMode !== true;
     for (const mixin of this.pendingItems) {
       if (isNode(mixin, N.Ruleset)) {
         // Use the ruleset's own selector, not the implicit selector with parent context
@@ -590,8 +591,8 @@ export class MixinRegistry extends Registry<
         // Prefer evaluated selector keys; they resolve interpolations (e.g. .@{a0} -> .\123).
         // Fall back to source selector only when evaluated keys are empty.
         const sourceSelector = selector.sourceNode as Selector | undefined;
-        const selectorVisibleKeySet = tryGetSelectorKeySet(selector);
-        const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector);
+        const selectorVisibleKeySet = tryGetSelectorKeySet(selector, useVisibleKeys);
+        const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector, useVisibleKeys);
         const selectorToIndex = (
           getIndexableSelectorKeys(selectorVisibleKeySet).length
             ? selector
@@ -601,14 +602,14 @@ export class MixinRegistry extends Registry<
         if (isNode(selectorToIndex, N.SelectorList)) {
           /** Selector list's selectors are individually registered */
           for (const sel of selectorToIndex.value) {
-            const selKeySet = tryGetSelectorKeySet(sel as Selector);
+            const selKeySet = tryGetSelectorKeySet(sel as Selector, useVisibleKeys);
             if (selKeySet) {
               this._indexSelectorStart(mixin, selKeySet);
             }
           }
           keySetToUse = undefined; // already indexed above
         } else {
-          keySetToUse = tryGetSelectorKeySet(selectorToIndex);
+          keySetToUse = tryGetSelectorKeySet(selectorToIndex, useVisibleKeys);
         }
         // Normalize nested `&...` selectors to local keys when possible.
         // Evaluated key sets can include inherited parent keys (e.g. [".b",".bb",".foo-xxx",...]),
@@ -626,13 +627,13 @@ export class MixinRegistry extends Registry<
           if (!(ownSelector as any).keySetLibrary && (selectorToIndex as any).keySetLibrary) {
             (ownSelector as any).keySetLibrary = (selectorToIndex as any).keySetLibrary;
           }
-          const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
+          const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector, useVisibleKeys));
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).selector
             : undefined;
           const parentKeys = (
             parentSelector && !isNode(parentSelector, N.Nil)
-              ? getIndexableSelectorKeys(tryGetSelectorKeySet(parentSelector))
+              ? getIndexableSelectorKeys(tryGetSelectorKeySet(parentSelector, useVisibleKeys))
               : []
           );
           if (
@@ -666,7 +667,7 @@ export class MixinRegistry extends Registry<
             && ownSelector
             && !isNode(ownSelector, N.Nil)
           ) {
-            const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector);
+            const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector, useVisibleKeys);
             if (ownKeySet && getIndexableSelectorKeys(ownKeySet).length) {
               const ownKeys = getIndexableSelectorKeys(ownKeySet);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');

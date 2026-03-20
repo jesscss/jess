@@ -11,6 +11,7 @@ import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
+import type { Selector } from './selector.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -268,8 +269,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     const nameOut = w.capture(() => name.toString(options));
     const nameEndsWithSpace = /\s$/.test(nameOut);
-    if (prelude) {
-      const preludeOut = w.capture(() => prelude.toString(options));
+    const preludeOut = prelude ? w.capture(() => prelude.toString(options)) : '';
+    const hasPreludeContent = /\S/.test(preludeOut);
+    if (prelude && hasPreludeContent) {
       const preludeStartsWithSpace = /^\s/.test(preludeOut);
 
       out += nameOut;
@@ -435,12 +437,24 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           // Required for serialization: rulesets inside @media need this wrapper to output
           // e.g. ".parent { font-size: 14px; }" inside @media.
           if (node.isNestable() && !node.isRootOnly() && node.isHoisted(context.opts)) {
+            const parentRuleset = context.rulesetFrames.at(-1);
+            const isCallWrapped = context.callStack.length > 0
+              && parentRuleset?.selector
+              && !isNode(parentRuleset.selector, N.Nil);
             let existingRules = rules;
             rules = Rules.create([
               Ruleset.create({
-                selector: Ampersand.create(undefined),
+                selector: isCallWrapped
+                  ? (parentRuleset!.selector.copy(true) as Selector)
+                  : Ampersand.create(undefined),
                 rules: existingRules
-              }, { generated: true })
+              }, isCallWrapped
+                ? {
+                    generated: true,
+                    ownSelector: parentRuleset!.selector.copy(true) as Selector,
+                    resolvedHoistWrapper: true
+                  }
+                : { generated: true })
             ]).inherit(existingRules);
             node.adopt(rules);
           }
