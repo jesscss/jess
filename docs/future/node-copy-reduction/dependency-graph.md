@@ -1,5 +1,25 @@
 # Dependency Graph, Session-Local Registries, and Live Patch API
 
+## Reality Check
+
+Stages 17–20 in this document describe the intended architecture and the major slices
+that have landed on `jess-dev`. They do not mean the branch already satisfies the full
+immutable-node plus session-layer contract.
+
+Current branch reality:
+
+- Dependency tracking exists.
+- Registry deltas exist.
+- Import-path clone reduction has gone a long way.
+- Session-aware field reads now exist on lower-order nodes, and selector ancestry reads on active `Ruleset` / extend paths are session-aware.
+- That lower-order coverage now includes wrapper/value/container render reads for `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`, `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`, and `Range`, in addition to the selector-side container pass.
+- Returned import trees now materialize clone-only parent links after session teardown; ephemeral mixin guard wrapper scopes materialize their local param bindings directly.
+- The branch is still in a fundamentals-completion gate before Stage 21.
+
+That gate is only cleared when canonical nodes actually behave immutably, eval-time
+replacements/value writes are session-layer operations, tests match baseline with those
+properties true, and merge-to-`dev` is behavior-safe.
+
 ## Overview
 
 This document covers three tightly coupled architectural advances that build on the

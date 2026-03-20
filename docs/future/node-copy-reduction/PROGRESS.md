@@ -745,6 +745,27 @@ Immediate next work before Stage 21:
 - [ ] Inventory remaining `clone()` / `copy()` sites on the critical eval/import/extend paths
 - [ ] Finish sessionizing remaining eval-time mutation / replacement paths
 - [ ] Re-run the baseline against that stricter state and confirm behavior is preserved
+- [ ] Rewrite any misleading roadmap text whenever implementation reality changes
+
+Current blocker notes from live reduction attempts:
+
+- The `Rules.value` / session-registry identity blocker is now resolved. Session registry deltas are keyed by the `Rules` container, and characterization now proves they survive a shallow clone swapping to a new `value[]`.
+- `Rules.value` is now typed readonly for consumers. Plugin / visitor code should treat direct array mutation as invalid and go through `setData()` or container helpers instead.
+- Child-array isolation and generic session-local replacement are still coupled. The next safe reduction likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.
+- Remaining high-signal clone/copy clusters are still concentrated in `rules.ts` (mixin arg binding / output shaping), `extend.ts`, `ruleset.ts`, and `ampersand.ts`.
+- `sessionReplaceNode()` is still only a stub for true session-local replacement semantics; generic eval-time node replacement is not fully sessionized yet.
+- A smaller cleanup slice is now in place: direct eval-lifecycle writes in `declaration.ts`, `ruleset.ts`, and preserve-mode fallback in `operation.ts` were moved off raw canonical `.evaluated` writes. `src/__tests__/eval-session.test.ts` now proves preserve-mode operation fallback does not mark canonical nodes evaluated when a session is active.
+- The next safe order is bottom-up: finish `Declaration` and `Ruleset` session-backed field writes/read paths before attempting broader `Rules` or import-facing structural reduction again.
+- New bottom-up slice now landed in the working tree: `Declaration` reads/writes use session-aware accessors in eval and serialization, `Ruleset` has matching selector/rules/guard accessors on its active eval/render paths, and `serialize-helper.ts` now reads a session-patched `rules` body when a `Context` is present.
+- Follow-up on that slice is also now landed in the working tree: nested selector ancestry is session-aware on `Ruleset` / extend paths, returned import trees materialize clone-only parent links after session teardown, and mixin guard wrapper scopes no longer lose bound params when guard evaluation swaps to a fresh session.
+- The current bottom-up render-read pass is now broader and still green on the focused safety set:
+  - selector-side containers: `PseudoSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`
+  - wrapper/value nodes: `AtRule`, `Mixin`, `Call`, `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`
+  - container/value nodes: `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`, `Range`
+- Verified together:
+  - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/extend-import-style.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/control.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/condition.test.ts src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts src/tree/__tests__/func.test.ts src/tree/__tests__/at-rule.test.ts`
+  - Result: `230 passed, 9 skipped`
+- This does **not** change the real blocker: generic session-local node replacement / `Rules.value[]` overlay semantics are still incomplete, so these slices only move lower-order field/render reads toward the intended immutable-node architecture.
 
 ---
 

@@ -54,19 +54,46 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 
 ## What was just done (this session)
 
-1. Fixed the last failing `extend-import-style.test.ts` test after converting `getFinalRules`
-   in `import-style.ts` from `clone(true)` to COW shallow `clone(false)`. Root cause: a
-   shallow-cloned Ruleset's `selector` was shared with the canonical tree; outer extend
-   mutated it via `appendAlternative`. Fix: deep-clone only the `selector` field per COW
-   Ruleset in `getFinalRules`.
-
-2. Wrote `dependency-graph.md` — a full architectural design for Stages 17–21, covering:
-   - **Dependency graph**: `dependsOn: Set<VarDeclaration>` tracked session-locally during eval
-   - **WeakMap-keyed shared registries**: detach index from `Rules` instance, key off `value[]`
-   - **Session-local registry deltas**: session carries only newly-added nodes
-   - **Live Patch API**: `var(--id, fallback)` CSS + `patch.js` from the same dependency graph
-
-3. Updated `PROGRESS.md` with Stages 17–21 checklists.
+1. Stage 17 made selectors effectively immutable in extend paths by routing extend output through `_extendedSelector`.
+2. Stage 18 added the session-local dependency graph (`dependsOn`, `sourceExpr`) and propagation through reference/expression/operation/call/declaration paths.
+3. Stage 19 moved canonical ruleset, mixin, and declaration registries into a `WeakMap<Node[], RegistryData>` keyed by `Rules.value`.
+4. Stage 20 landed the session-local registry delta layer, dependency-aware declaration lookup, detached-ruleset unlock via shallow session-safe clone, and the major import finalization reductions.
+5. Follow-up threshold work decoupled session registry deltas from `Rules.value` identity by keying them to the `Rules` container itself, and `Rules.value` is now typed readonly for consumers so plugin code must go through `setData()` / container helpers rather than mutating arrays directly.
+6. Session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)` coverage now proves shared canonical nodes can be inserted into session-scoped wrappers without overwriting canonical `.parent` pointers.
+7. `src/tree/__tests__/import-style.test.ts` had two failures at committed boundary `3b4d089e`:
+   - `forwarded members are not visible locally, but are visible downstream`
+   - `two sequential "with" imports do not corrupt canonical node parent pointers`
+   Both are now green on the working tree.
+8. `src/tree/__tests__/registry-characterization.test.ts` now proves four Stage 20 properties in isolation:
+   - cached compose imports reuse the same canonical WeakMap-backed registry slot
+   - session-only declaration registrations stay in `EvalSession.registryDeltas` instead of polluting the canonical cache
+   - repeated `_dedupe` imports reuse the same canonical registry slot
+   - mixin expansion parameter vars stay in session delta only
+9. `packages/core/src/tree/import-style.ts` no longer clones child `Ruleset`s for plain `multiple:true` imports.
+   The child-clone path is now kept only for implicit reference / `_dedupe` imports, because
+   removing it there regressed `extend-import-style` (`implicit reference mode (_dedupe) remains externally extendable`).
+10. `packages/core/src/tree/import-style.ts` also no longer adds a second shallow `Rules` wrapper for plain `@import` finalization.
+   `src/tree/__tests__/registry-characterization.test.ts` now proves that plain imports reuse the evaluated root and that `_dedupe` detaches the shared child array before cloning per-import `Ruleset`s.
+11. Configured `with` compose finalization now restores canonical top-level parent pointers after session teardown, so shared source nodes are no longer left pointing at transient configured-import `Rules` clones.
+12. `DeclarationRegistry.find()` now falls through to canonical declarations when a session overlay does not depend on the active `changedVars` set.
+13. `src/tree/__tests__/import-style.test.ts` includes coverage showing why a shallow compose wrapper remains intentional: repeated compose imports can require different visibility behavior at different import sites.
+14. The current fundamentals slice in the working tree is deliberately bottom-up:
+    - `Declaration` now routes active eval/serialization field reads through session-aware accessors and only patches canonical nodes when the current object is the canonical source
+    - `Ruleset` now does the same for `selector`, `rules`, and `guard` on its active eval/render paths
+    - `serialize-helper.ts` now respects a session-patched `rules` body for `Ruleset` serialization when `PrintOptions.context` is present
+    - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, and `src/tree/__tests__/import-style.test.ts`
+15. Follow-up on that bottom-up slice is now in the working tree:
+    - nested selector ancestry on active `Ruleset` / extend render paths reads through `sessionGetParent()`, so clone-session descendants no longer recompute against stale canonical parents
+    - `StyleImport.getFinalRules()` materializes raw `.parent` links only for cloned descendants in the returned import tree, so import output survives session teardown without mutating canonical shared nodes
+    - mixin guard wrapper scopes (`outerRules`) now materialize their local param/`@arguments` bindings directly, so fresh guard-probe sessions still resolve bound params
+    - focused verification is green: `src/tree/__tests__/extend-import-style.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, `src/tree/__tests__/control.test.ts`, `src/tree/__tests__/declaration.test.ts`, and `src/tree/__tests__/call.test.ts`
+16. The current working slice continued the same bottom-up approach instead of jumping to `Rules` replacement:
+    - session-aware render reads now cover lower-order selector/value wrappers and containers: `PseudoSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`, `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`, `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`, and `Range`
+    - this specifically avoided the bad leaf-selector experiment where overriding `BasicSelector` / `Combinator` `toTrimmedString()` broke the writer contract; those changes were reverted
+    - broad focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/extend-import-style.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/control.test.ts`, `src/tree/__tests__/declaration.test.ts`, `src/tree/__tests__/call.test.ts`, `src/tree/__tests__/condition.test.ts`, `src/tree/__tests__/list.test.ts`, `src/tree/__tests__/sequence.test.ts`, `src/tree/__tests__/func.test.ts`, and `src/tree/__tests__/at-rule.test.ts` (`230 passed, 9 skipped`)
+17. The next logical target after this slice is still below `Rules`:
+    - either remaining low-order render/eval readers like `Reference` / `Interpolated` / `ImportJs`, or
+    - true generic session-local replacement semantics (`sessionReplaceNode()` + `Rules.value[]` overlay), if the next reduction needs structural writes instead of just field reads
 
 ---
 
