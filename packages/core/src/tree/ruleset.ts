@@ -20,6 +20,7 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -166,7 +167,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   getEffectiveSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false, context?: Context): Selector | Nil {
     // Use extend-patched selector if available, else canonical
-    const selector = (this._extendedSelector ?? this.selector) as Selector | Nil;
+    const extendedSelector = context
+      ? sessionGetField<Selector | Nil | undefined>(this, '_extendedSelector', context)
+      : this._extendedSelector;
+    const selector = (extendedSelector ?? this.selector) as Selector | Nil;
     if (!selector || selector instanceof Nil) {
       return selector;
     }
@@ -181,7 +185,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !(ownSelector instanceof Nil)
       && ownSelector.valueOf() !== selector.valueOf()
     ) {
-      let parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
+      let parentSelector = parentRs?.getEffectiveSelector(collapseNesting, context);
       if (parentSelector && !(parentSelector instanceof Nil)) {
         if (parentRs!.selectorBeforeExtend && Ruleset.isInReferenceScope(parentRs!)) {
           parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
@@ -199,7 +203,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
 
-    const parentSelector = parentRs?.getEffectiveSelector(collapseNesting);
+    const parentSelector = parentRs?.getEffectiveSelector(collapseNesting, context);
     if (
       ownSelector
       && !(ownSelector instanceof Nil)
@@ -219,7 +223,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return this._valueOf;
     }
     const selector = (
-      this.hoistToRoot || this.treeContext?.opts?.collapseNesting === true
+      this._extendedSelector
+      || this.hoistToRoot
+      || this.treeContext?.opts?.collapseNesting === true
     )
       ? this.getEffectiveSelector()
       : this.selector;

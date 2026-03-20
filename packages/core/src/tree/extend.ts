@@ -164,14 +164,14 @@ export class Extend extends Node<ExtendValue> {
         // selector (e.g. .issue-2586-somepage .content not just .content).
         if (currentFrame && isNode(currentFrame, N.Ruleset)) {
           const rs = currentFrame as Ruleset;
-          const fullSel = rs.selector;
+          const fullSel = rs.getEffectiveSelector(false, context);
           let usedParentListComposition = false;
           if (!this.selector) {
             const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
             const parentFrame = context.rulesetFrames.at(-2);
             const parentSel = (
               parentFrame && isNode(parentFrame, N.Ruleset)
-                ? (parentFrame as Ruleset).selector
+                ? (parentFrame as Ruleset).getEffectiveSelector(false, context)
                 : undefined
             );
             if (
@@ -195,7 +195,7 @@ export class Extend extends Node<ExtendValue> {
               // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
               // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
               if (isNode(currentFrame, N.Ruleset)) {
-                const parentSel = (currentFrame as Ruleset).selector;
+                const parentSel = (currentFrame as Ruleset).getEffectiveSelector(false, context);
                 if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
                   resolvedSel = ComplexSelector.create([
                     (parentSel as Selector).copy(true),
@@ -232,14 +232,14 @@ export class Extend extends Node<ExtendValue> {
     // selector (e.g. .issue-2586-somepage .content not just .content).
     if (currentFrame && isNode(currentFrame, N.Ruleset)) {
       const rs = currentFrame as Ruleset;
-      const fullSel = rs.selector;
+      const fullSel = rs.getEffectiveSelector(false, context);
       let usedParentListComposition = false;
       if (!this.selector) {
         const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
         const parentFrame = context.rulesetFrames.at(-2);
         const parentSel = (
           parentFrame && isNode(parentFrame, N.Ruleset)
-            ? (parentFrame as Ruleset).selector
+            ? (parentFrame as Ruleset).getEffectiveSelector(false, context)
             : undefined
         );
         if (
@@ -263,7 +263,7 @@ export class Extend extends Node<ExtendValue> {
           // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
           // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
           if (isNode(currentFrame, N.Ruleset)) {
-            const parentSel = (currentFrame as Ruleset).selector;
+            const parentSel = (currentFrame as Ruleset).getEffectiveSelector(false, context);
             if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
               resolvedSel = ComplexSelector.create([
                 (parentSel as Selector).copy(true),

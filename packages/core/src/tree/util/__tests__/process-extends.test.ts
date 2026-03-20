@@ -32,7 +32,7 @@ describe('processExtends function (eval flow)', () => {
       const context = new Context();
       const evald = await root.eval(context);
       const firstRuleset = evald.value[0] as any;
-      expect(firstRuleset?.selector?.valueOf()).toBe('.foo,.bar');
+      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo,.bar');
     });
 
     it('should handle multiple extends on same target', async () => {
@@ -50,7 +50,7 @@ describe('processExtends function (eval flow)', () => {
       const context = new Context();
       const evald = await root.eval(context);
       const firstRuleset = evald.value[0] as any;
-      expect(firstRuleset?.selector?.valueOf()).toBe('.foo,.bar,.baz');
+      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo,.bar,.baz');
     });
 
     it('should skip self-referencing extends', async () => {
@@ -63,7 +63,7 @@ describe('processExtends function (eval flow)', () => {
       const context = new Context();
       const evald = await root.eval(context);
       const firstRuleset = evald.value[0] as any;
-      expect(firstRuleset?.selector?.valueOf()).toBe('.foo');
+      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo');
     });
   });
 
@@ -83,7 +83,7 @@ describe('processExtends function (eval flow)', () => {
       const context = new Context();
       const evald = await root.eval(context);
       const firstRuleset = evald.value[0] as any;
-      expect(firstRuleset?.selector?.valueOf()).toBe('.foo,.bar,.baz');
+      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo,.bar,.baz');
     });
   });
 
@@ -110,7 +110,7 @@ describe('processExtends function (eval flow)', () => {
         extendSelector.copy(true),
         true
       );
-      expect(firstRuleset?.selector?.valueOf()).toBe(expected.value.valueOf());
+      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe(expected.value.valueOf());
     });
 
     it('should apply partial extends to the outer ruleset selector when partial is true (Less `all`)', async () => {
@@ -145,7 +145,7 @@ describe('processExtends function (eval flow)', () => {
         extendSelector.copy(true),
         true
       );
-      expect(outerRuleset?.selector?.valueOf()).toBe(expected.value.valueOf());
+      expect(outerRuleset?.getEffectiveSelector?.().valueOf()).toBe(expected.value.valueOf());
       // Nested selectors stay defined and keep their existing structure.
       const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
       expect(nestedSel).toContain('.replace');
@@ -177,7 +177,7 @@ describe('processExtends function (eval flow)', () => {
       const context = new Context();
       const evald = await root.eval(context);
       const firstRuleset = evald.value[0] as any;
-      const output = firstRuleset?.selector?.valueOf() ?? '';
+      const output = firstRuleset?.getEffectiveSelector?.().valueOf() ?? '';
       expect(output).toContain('.ext1 .ext2');
       expect(output).toContain('.ext3,.ext4');
       expect(output).toContain('.bar');
@@ -197,7 +197,7 @@ describe('processExtends function (eval flow)', () => {
       const context = new Context();
       const evald = await root.eval(context);
       const firstRuleset = evald.value[0] as any;
-      expect(firstRuleset?.selector?.valueOf()).toBe('.foo');
+      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo');
     });
   });
 
@@ -218,8 +218,8 @@ describe('processExtends function (eval flow)', () => {
       const evald = await root.eval(context);
       const fooRuleset = evald.value[0] as any;
       const barRuleset = evald.value[1] as any;
-      expect(fooRuleset?.selector?.valueOf()).toContain('.bar');
-      expect(barRuleset?.selector?.valueOf()).toContain('.baz');
+      expect(fooRuleset?.getEffectiveSelector?.().valueOf()).toContain('.bar');
+      expect(barRuleset?.getEffectiveSelector?.().valueOf()).toContain('.baz');
     });
   });
 });

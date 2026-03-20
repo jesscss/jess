@@ -659,14 +659,15 @@ unblocks eliminating ~50 remaining `copy(true)` calls in extend-core and selecto
 See [dependency-graph.md](./dependency-graph.md#stage-17-immutable-selectors) for full checklist.
 
 - [ ] `extend-roots.ts` `applyInstructionToRuleset`: stop `setData('selector', ...)` — write `_extendedSelector` only
-- [ ] `extend-roots.ts`: remove `selectorBeforeExtend` save/restore (`copy(true)` at line ~515)
-- [ ] Verify all callers use `getEffectiveSelector()` / `_extendedSelector ?? selector` not raw `.selector`
+- [x] `extend-roots.ts` `applyInstructionToRuleset`: stop `setData('selector', ...)` — write `_extendedSelector` only
+- [x] `extend-roots.ts`: remove `selectorBeforeExtend` save/restore (`copy(true)` at line ~515)
+- [x] Verify all callers use `getEffectiveSelector()` / `_extendedSelector ?? selector` not raw `.selector`
 - [ ] Structural sharing builder helpers (`selector-builders.ts`): `appendSelectorAlternative`, `rewriteCompound`, `rewriteSelectorPath`
 - [ ] `extend-core.ts`: replace mutation-safety `copy(true)` calls with path-copy builders
 - [ ] `selector-utils.ts`: same — replace mutation-safety `copy(true)` calls
 - [ ] `ruleset.ts:544`: `selector.clone(true)` for sourceNode — reference canonical instead
 - [ ] `ampersand.ts:228`: evaluate necessity of `selector.clone(true)`
-- [ ] Tests green: target 5 failed / 63 passed baseline maintained or better
+- [x] Tests green: target 5 failed / 63 passed baseline maintained or better
 - [ ] `copy(true)` count in extend paths: target ≤ 5 remaining
 
 ---

@@ -58,9 +58,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
   const inReferenceMode = previousReferenceMode;
   const enteringReferenceMode = false;
-  const nodeExtendsReference = node.type === 'Ruleset' && (
-    node.hasFlag(F_EXTENDED) || hasExtendedSelector((node as Ruleset).selector)
-  );
+  const nodeExtendsReference = node.type === 'Ruleset' && (() => {
+    const ruleset = node as Ruleset;
+    return ruleset.hasFlag(F_EXTENDED) || hasExtendedSelector(ruleset.getRenderableSelector(options.collapseNesting, options.context));
+  })();
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
   options.referenceMode = inReferenceMode;
@@ -198,8 +199,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     if (isNode(n, N.Ruleset | N.AtRule)) {
       if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
-        const parentSelector = String((node as Ruleset).selector?.valueOf?.() ?? '');
-        const childSelector = String((n as Ruleset).selector?.valueOf?.() ?? '');
+        const parentSelector = String((node as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
+        const childSelector = String((n as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
         const isExpandedDescendant = parentSelector !== '' && (
           childSelector.startsWith(`${parentSelector} `)
           || childSelector.startsWith(`${parentSelector}.`)
@@ -231,7 +232,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
             if (current?.type !== 'Ruleset') {
               return false;
             }
-            const currentSelector = String(current.selector?.valueOf?.() ?? '');
+            const currentSelector = String((current as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
             return currentSelector !== '' && currentSelector === childSelector;
           });
           return !ownedByCurrentChild;
@@ -239,7 +240,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
           return otherIdx !== idx
             && isNode(other, N.Ruleset)
-            && String((other as Ruleset).selector?.valueOf?.() ?? '') === childSelector;
+            && String((other as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '') === childSelector;
         });
         if (isExpandedDescendant
           && !isSelfWrappedDescendant

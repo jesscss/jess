@@ -70,8 +70,26 @@ export type AmpersandValue = {
    * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector ("pointer").
    * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
-  selectorContainer?: { selector?: Selector | Nil | undefined };
+  selectorContainer?: {
+    selector?: Selector | Nil | undefined;
+    getEffectiveSelector?: (collapseNesting?: boolean, context?: Context) => Selector | Nil | undefined;
+  };
 };
+
+type SelectorContainer = NonNullable<AmpersandValue['selectorContainer']>;
+
+function getSelectorFromContainer(
+  selectorContainer: SelectorContainer | undefined,
+  context?: Context
+): Selector | Nil | undefined {
+  if (!selectorContainer) {
+    return undefined;
+  }
+  if (typeof selectorContainer.getEffectiveSelector === 'function') {
+    return selectorContainer.getEffectiveSelector(false, context);
+  }
+  return selectorContainer.selector;
+}
 
 /**
  * The '&' selector element
@@ -86,7 +104,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   appendValue: string | undefined;
 
   private _storedSelector: Selector | Nil | undefined;
-  private _selectorContainer: { selector?: Selector | Nil | undefined } | undefined;
+  private _selectorContainer: SelectorContainer | undefined;
 
   constructor(
     value?: AmpersandValue | string,
@@ -104,7 +122,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
-        this._storedSelector = selectorContainer?.selector;
+        this._storedSelector = getSelectorFromContainer(selectorContainer);
       }
     }
     this.appendValue = finalAppendValue;
@@ -116,7 +134,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   override computeKeySets(): void {
     let library = this.keySetLibrary!;
     const stored = this._storedSelector;
-    const current = this._selectorContainer?.selector;
+    const current = getSelectorFromContainer(this._selectorContainer);
     let keySet = this._keySet;
     /** Ampersands don't participate to the visible key set */
     if (!this._visibleKeySet) {
@@ -141,7 +159,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
   getResolvedSelector(): Selector | Nil | undefined {
-    const selector = this._selectorContainer?.selector;
+    const selector = getSelectorFromContainer(this._selectorContainer);
     if (selector && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return wrapParentSelectorForNestedContext(selector as Selector);
     }
@@ -149,7 +167,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   }
 
   override valueOf() {
-    const selector = this._selectorContainer?.selector;
+    const selector = getSelectorFromContainer(this._selectorContainer);
     if (selector) {
       return selector.valueOf();
     }
@@ -214,12 +232,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.keySetLibrary = context.selectorBits;
     const { appendValue } = this;
     const selectorContainer = this._selectorContainer;
-    const storedSelector = selectorContainer?.selector;
+    const storedSelector = getSelectorFromContainer(selectorContainer, context);
     // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
     if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
-      let selector = storedSelector ?? frame?.selector;
+      let selector = storedSelector ?? frame?.getEffectiveSelector?.(false, context) ?? frame?.selector;
       if (!selector) {
         return new Nil();
       }
