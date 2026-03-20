@@ -12,6 +12,7 @@ import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
+import { sessionMergeDependencies, sessionSetDependency } from './util/session-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -163,6 +164,22 @@ export class Call extends Node<CallValue, CallOptions> {
   override async evalNode(context: Context): Promise<Node> {
     let { name, args } = this;
     let { markImportant } = this.options;
+    const applyDependencyToResult = <T extends Node>(
+      result: T,
+      nodes?: readonly (Node | undefined)[]
+    ): T => {
+      const dependency = sessionMergeDependencies(
+        nodes ? [result, ...nodes] : [result],
+        context
+      );
+      if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+        sessionSetDependency(result, {
+          dependsOn: new Set(dependency.dependsOn),
+          sourceExpr: this
+        }, context);
+      }
+      return result;
+    };
     const adoptCallWhitespace = <T extends Node>(node: T): T => {
       node.pre = this.pre;
       node.post = this.post;
@@ -212,7 +229,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = await (n as any).evalCall(context, argNodes);
       context.callStack.pop();
       context.parenFrames.pop();
-      return result;
+      return applyDependencyToResult(result, argNodes.value);
     } else if (isNode(n, N.Collection)) {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
@@ -336,7 +353,7 @@ export class Call extends Node<CallValue, CallOptions> {
             });
           }
         });
-        return adoptCallWhitespace(newCall);
+        return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.value);
       } finally {
         context.caller = originalCaller;
         context.parenFrames.pop();
@@ -361,14 +378,14 @@ export class Call extends Node<CallValue, CallOptions> {
         n === 'calc' && evaluatedArgs
       ) {
         if (isNode(evaluatedArgs.value[0], N.Dimension)) {
-          return evaluatedArgs.value[0]!;
+          return applyDependencyToResult(evaluatedArgs.value[0]!, evaluatedArgs.value);
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.value[0]!);
+          return applyDependencyToResult(new Paren(evaluatedArgs.value[0]!), evaluatedArgs.value);
         }
       }
       node.setData('name', n);
       node.setData('args', evaluatedArgs);
-      return adoptCallWhitespace(node);
+      return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.value);
     };
   }
 }

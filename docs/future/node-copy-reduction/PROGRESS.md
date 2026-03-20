@@ -680,14 +680,25 @@ by both consumers.
 
 See [dependency-graph.md](./dependency-graph.md#stage-18-dependency-graph-infrastructure) for full checklist.
 
-- [ ] Add `EvalDependency` interface to `eval-session.ts` (`dependsOn: Set<VarDeclaration>`, `sourceExpr: Node`)
-- [ ] Add `dependencyMap: WeakMap<Node, EvalDependency>` to `EvalSession`
-- [ ] Session helpers: `sessionGetDependency`, `sessionSetDependency`, `sessionIsStatic`, `sessionMergeDependencies`
-- [ ] `Reference.evalNode()`: seed `dependsOn` when target is root-scope `VarDeclaration`
-- [ ] `Operation.evalNode()`, `Call.evalNode()`, `Expression.evalNode()`: propagate (union) child dependencies
-- [ ] `Declaration.evalNode()`: propagate from value node
-- [ ] Helper: `isTopLevelVarDeclaration(node, ctx)` — checks declaring `Rules` is root scope
-- [ ] Unit tests: static literal → null; direct var → {varDecl}; mixin boundary absorption; no-session parity
+- [x] Add `EvalDependency` interface to `eval-session.ts` (`dependsOn: Set<VarDeclaration>`, `sourceExpr: Node`)
+- [x] Add `dependencyMap: WeakMap<Node, EvalDependency>` to `EvalSession`
+- [x] Session helpers: `sessionGetDependency`, `sessionSetDependency`, `sessionIsStatic`, `sessionMergeDependencies`
+- [x] `Reference.evalNode()`: seed `dependsOn` when target is root-scope `VarDeclaration`
+- [x] `Operation.evalNode()`, `Call.evalNode()`, `Expression.evalNode()`: propagate (union) child dependencies
+- [x] `Declaration.evalNode()`: propagate from value node
+- [x] Helper: `isTopLevelVarDeclaration(node, ctx)` — checks declaring `Rules` is root scope
+- [x] Unit tests: static literal → null; direct var → {varDecl}; mixin boundary absorption; no-session parity
+
+### Stage 18 Notes
+
+- Added focused dependency propagation tests in `eval-session.test.ts` and new `tree/__tests__/dependency-graph.test.ts`.
+- `Reference.evalNode()` seeds dependencies for root-scope vars and preserves them across frozen copies used by lookup and param binding.
+- `Rules.getFunctionFromMixins()` now carries dependency metadata onto bound param/rest values so mixin pass-through keeps top-level var provenance.
+- Verification:
+  - `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/dependency-graph.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/rules.test.ts src/__tests__/eval-session-integration.test.ts`
+  - `cd packages/core && pnpm test extend`
+- Wider characterization:
+  - `src/tree/__tests__/mixin.test.ts > keeps param vars preferred over outer same-name vars in lazy nested mixin lookups` still fails, but it reproduces on pushed Stage 17 commit `0a62dd97`, so it is pre-existing and not a Stage 18 regression.
 
 ---
 

@@ -1,4 +1,5 @@
 import type { Node } from './tree/node-base.js';
+import type { VarDeclaration } from './tree/declaration-var.js';
 
 /**
  * Per-node field overrides stored in a session.
@@ -34,6 +35,11 @@ export interface ScopeSnapshot {
   variables: Map<string, Node>;
   /** Mixin overrides (name → mixin node) */
   mixins: Map<string, Node>;
+}
+
+export interface EvalDependency {
+  dependsOn: Set<VarDeclaration> | null;
+  sourceExpr?: Node;
 }
 
 let nextSessionId = 1;
@@ -84,6 +90,9 @@ export class EvalSession {
 
   /** Nodes that have been materialized (copied) in this session */
   private materialized = new WeakSet<Node>();
+
+  /** Per-node dependency annotations */
+  private dependencies = new WeakMap<Node, EvalDependency>();
 
   constructor(options?: { resetEvalState?: boolean }) {
     this.id = nextSessionId++;
@@ -171,5 +180,19 @@ export class EvalSession {
   /** Check whether a node has been materialized in this session. */
   isMaterialized(node: Node): boolean {
     return this.materialized.has(node);
+  }
+
+  // -- Dependency API --
+
+  setDependency(node: Node, dependency: EvalDependency): void {
+    this.dependencies.set(node, dependency);
+  }
+
+  getDependency(node: Node): EvalDependency | undefined {
+    return this.dependencies.get(node);
+  }
+
+  hasDependency(node: Node): boolean {
+    return this.dependencies.has(node);
   }
 }

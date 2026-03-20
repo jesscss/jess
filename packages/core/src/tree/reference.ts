@@ -19,6 +19,11 @@ import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
+import {
+  isTopLevelVarDeclaration,
+  sessionGetDependency,
+  sessionSetDependency
+} from './util/session-helpers.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -662,6 +667,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               out.pre = this.pre;
               out.post = this.post;
               out.sourceParent = this;
+              const dependency = isTopLevelVarDeclaration(returnVal as Node, context)
+                ? {
+                    dependsOn: new Set([returnVal]),
+                    sourceExpr: this as Node
+                  }
+                : sessionGetDependency(evald, context);
+              if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+                sessionSetDependency(out, {
+                  dependsOn: new Set(dependency.dependsOn),
+                  sourceExpr: dependency.sourceExpr ?? this
+                }, context);
+              }
               return out;
             }
           );

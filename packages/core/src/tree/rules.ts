@@ -30,7 +30,12 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
-import { sessionSetIndex } from './util/session-helpers.js';
+import {
+  sessionGetDependency,
+  sessionMergeDependencies,
+  sessionSetDependency,
+  sessionSetIndex
+} from './util/session-helpers.js';
 import { EvalSession } from '../eval-session.js';
 const { isArray } = Array;
 
@@ -1913,6 +1918,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
     };
+    const copyDependency = (source: Node, target: Node): void => {
+      const dependency = sessionGetDependency(source, thisContext);
+      if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+        sessionSetDependency(target, {
+          dependsOn: new Set(dependency.dependsOn),
+          sourceExpr: dependency.sourceExpr
+        }, thisContext);
+      }
+    };
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, N.Rules);
@@ -1985,12 +1999,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
             normalizeBoundLeadingItemWhitespace(boundValue);
+            copyDependency(argValue, boundValue);
             param.setData('value', boundValue);
           } else if (isNode(param, N.Any) && param.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
             normalizeBoundLeadingItemWhitespace(boundValue);
+            copyDependency(argValue, boundValue);
             const varDecl = new VarDeclaration({
               name: param as Any<'property'>,
               value: boundValue
@@ -2001,12 +2017,21 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const rest = nodeArgs.slice(argPos).map((restArg) => {
               const cloned = restArg.copy(true, freezeChildren);
               cloned.frozen = true;
+              copyDependency(restArg, cloned);
               return cloned;
             });
+            const restValue = new Sequence(rest);
+            const dependency = sessionMergeDependencies(rest, thisContext);
+            if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+              sessionSetDependency(restValue, {
+                dependsOn: new Set(dependency.dependsOn),
+                sourceExpr: dependency.sourceExpr
+              }, thisContext);
+            }
             /** Create a new variable with the rest name */
             const restVarDecl = new VarDeclaration({
               name: new Any((param as any).value ? `${(param as any).value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
-              value: new Sequence(rest)
+              value: restValue
             });
             params.setData(i, restVarDecl);
             /** Check a pattern-matching node */

@@ -2,6 +2,7 @@ import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetDependency, sessionSetDependency } from './util/session-helpers.js';
 
 /**
  * An expression is a node that returns a value.
@@ -33,11 +34,21 @@ export class Expression extends Node<Node> {
   override evalNode(context: Context): MaybePromise<Node> {
     const value = this.value;
     const out = value.eval(context);
+    const applyDependency = (result: Node): Node => {
+      const dependency = sessionGetDependency(result, context);
+      if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+        sessionSetDependency(result, {
+          dependsOn: new Set(dependency.dependsOn),
+          sourceExpr: this
+        }, context);
+      }
+      return result;
+    };
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
-      return out as Promise<Node>;
+      return (out as Promise<Node>).then(applyDependency);
     }
-    return out as Node;
+    return applyDependency(out as Node);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

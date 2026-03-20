@@ -18,6 +18,11 @@ import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import {
+  sessionGetDependency,
+  sessionMergeDependencies,
+  sessionSetDependency
+} from './util/session-helpers.js';
 
 export const enum AssignmentType {
   Default = ':',
@@ -292,6 +297,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
+        const copyDependency = (source: Node, target: Node) => {
+          const dependency = sessionGetDependency(source, context);
+          if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+            sessionSetDependency(target, {
+              dependsOn: new Set(dependency.dependsOn),
+              sourceExpr: dependency.sourceExpr
+            }, context);
+          }
+        };
+        const cloneWithDependency = (source: Node): Node => {
+          const cloned = source.clone(false);
+          copyDependency(source, cloned);
+          return cloned;
+        };
         const normalizeMergedLeadingPlaceholder = () => {
           const normalizedAssign = node.options.normalizedFromAssign;
           const isListMergedAssign =
@@ -319,10 +338,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return;
           }
           if (rest.length === 1) {
-            node.value = rest[0]!.clone(false);
+            node.value = cloneWithDependency(rest[0]!);
             return;
           }
-          node.value = new List(rest.map(item => item.clone(false)));
+          const clonedRest = rest.map(item => cloneWithDependency(item));
+          node.value = new List(clonedRest);
+          const dependency = sessionMergeDependencies(clonedRest, context);
+          if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+            sessionSetDependency(node.value, {
+              dependsOn: new Set(dependency.dependsOn),
+              sourceExpr: dependency.sourceExpr
+            }, context);
+          }
         };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
@@ -349,6 +376,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               }
               node.value = newValue;
               normalizeMergedLeadingPlaceholder();
+              copyDependency(newValue, node.value);
               // Merge !important from referenced declarations
               if (context.hasImportantSource && !node.important) {
                 node.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
@@ -366,6 +394,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           node.value = maybeNewValue as Node;
           normalizeMergedLeadingPlaceholder();
+          copyDependency(maybeNewValue as Node, node.value);
           // Merge !important from referenced declarations
           if (context.hasImportantSource && !node.important) {
             node.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;

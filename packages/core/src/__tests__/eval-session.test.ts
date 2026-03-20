@@ -1,18 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any } from '../index.js';
 import {
+  sessionGetDependency,
   sessionGetField,
-  sessionPatchField,
   sessionGetParent,
-  sessionSetParent,
-  sessionIsEvaluated,
-  sessionSetEvaluated,
-  sessionIsPreEvaluated,
-  sessionSetPreEvaluated,
   sessionGetIndex,
-  sessionSetIndex,
   sessionGetSourceParent,
+  sessionIsEvaluated,
+  sessionIsPreEvaluated,
+  sessionIsStatic,
+  sessionSetIndex,
+  sessionMergeDependencies,
+  sessionPatchField,
+  sessionSetDependency,
+  sessionSetEvaluated,
+  sessionSetParent,
+  sessionSetPreEvaluated,
   sessionSetSourceParent,
   sessionSetRuntimeState
 } from '../tree/util/session-helpers.js';
@@ -425,6 +429,49 @@ describe('session-aware helpers', () => {
 
       expect(node.index).toBe(2);
       expect(node.evaluated).toBe(true);
+    });
+  });
+
+  describe('dependency helpers', () => {
+    it('returns null / true without a session', () => {
+      const ctx = new Context();
+      const node = new Keyword('red');
+      const depSource = vardecl({ name: 'base', value: any('red') });
+
+      sessionSetDependency(node, {
+        dependsOn: new Set([depSource]),
+        sourceExpr: node
+      }, ctx);
+
+      expect(sessionGetDependency(node, ctx)).toBeNull();
+      expect(sessionIsStatic(node, ctx)).toBe(true);
+      expect(sessionMergeDependencies([node], ctx)).toBeNull();
+    });
+
+    it('stores and merges dependencies in a session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const left = new Keyword('left');
+      const right = new Keyword('right');
+      const depA = vardecl({ name: 'a', value: any('red') });
+      const depB = vardecl({ name: 'b', value: any('blue') });
+
+      sessionSetDependency(left, {
+        dependsOn: new Set([depA]),
+        sourceExpr: left
+      }, ctx);
+      sessionSetDependency(right, {
+        dependsOn: new Set([depB]),
+        sourceExpr: right
+      }, ctx);
+
+      const merged = sessionMergeDependencies([left, right], ctx);
+
+      expect(sessionIsStatic(left, ctx)).toBe(false);
+      expect(merged).not.toBeNull();
+      expect(merged?.dependsOn?.has(depA)).toBe(true);
+      expect(merged?.dependsOn?.has(depB)).toBe(true);
+      expect(merged?.sourceExpr).toBe(left);
     });
   });
 });

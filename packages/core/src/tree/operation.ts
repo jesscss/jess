@@ -7,6 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
+import { sessionMergeDependencies, sessionSetDependency } from './util/session-helpers.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -81,6 +82,16 @@ export class Operation extends Node<OperationValue> {
     let n = this;
     let { left, operator: op, right } = n;
     const maybeLeft = left.eval(context);
+    const applyMergedDependency = (result: Node, l: Node, r: Node): Node => {
+      const dependency = sessionMergeDependencies([l, r], context);
+      if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+        sessionSetDependency(result, {
+          dependsOn: new Set(dependency.dependsOn),
+          sourceExpr: this
+        }, context);
+      }
+      return result;
+    };
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (context.shouldOperate(op, l, r)) {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
@@ -88,7 +99,7 @@ export class Operation extends Node<OperationValue> {
           // operation intentionally remains unevaluated under current math mode.
           n.left = l;
           n.right = r;
-          return n;
+          return applyMergedDependency(n, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
@@ -113,7 +124,7 @@ export class Operation extends Node<OperationValue> {
               const calcCall = new Call({ name: 'calc', args: list([n]) });
               calcCall.pre = left.pre;
               calcCall.post = right.post;
-              return calcCall;
+              return applyMergedDependency(calcCall, l, r);
             }
             // Re-throw non-unit errors
             throw error;
@@ -128,11 +139,11 @@ export class Operation extends Node<OperationValue> {
         }
         out.pre = left.pre;
         out.post = right.post;
-        return out;
+        return applyMergedDependency(out, l, r);
       }
       n.left = l;
       n.right = r;
-      return n;
+      return applyMergedDependency(n, l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {
       const maybeRight = right.eval(context);

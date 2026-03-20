@@ -1,7 +1,10 @@
 import type { Node } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
-import type { RuntimeState } from '../../eval-session.js';
+import type { EvalDependency, RuntimeState } from '../../eval-session.js';
+import type { VarDeclaration } from '../declaration-var.js';
+import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 
 /**
  * Session-aware field read/write helpers.
@@ -51,6 +54,81 @@ export function sessionPatchField(
   } else {
     (node as unknown as Record<string, unknown>)[key] = value;
   }
+}
+
+export function sessionGetDependency(
+  node: Node,
+  ctx: Context
+): EvalDependency | null {
+  const session = ctx.session;
+  if (!session || !session.hasDependency(node)) {
+    return null;
+  }
+  return session.getDependency(node) ?? null;
+}
+
+export function sessionSetDependency(
+  node: Node,
+  dependency: EvalDependency,
+  ctx: Context
+): void {
+  const session = ctx.session;
+  if (!session) {
+    return;
+  }
+  session.setDependency(node, dependency);
+}
+
+export function sessionIsStatic(
+  node: Node,
+  ctx: Context
+): boolean {
+  const dependency = sessionGetDependency(node, ctx);
+  return !dependency?.dependsOn || dependency.dependsOn.size === 0;
+}
+
+export function sessionMergeDependencies(
+  nodes: readonly (Node | undefined)[],
+  ctx: Context
+): EvalDependency | null {
+  if (!ctx.session) {
+    return null;
+  }
+
+  let dependsOn: Set<VarDeclaration> | null = null;
+  let sourceExpr: Node | undefined;
+
+  for (const node of nodes) {
+    if (!node) {
+      continue;
+    }
+    const dependency = sessionGetDependency(node, ctx);
+    if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
+      continue;
+    }
+    dependsOn ??= new Set<VarDeclaration>();
+    for (const varDecl of dependency.dependsOn) {
+      dependsOn.add(varDecl);
+    }
+    sourceExpr ??= dependency.sourceExpr;
+  }
+
+  if (!dependsOn || dependsOn.size === 0) {
+    return null;
+  }
+
+  return { dependsOn, sourceExpr };
+}
+
+export function isTopLevelVarDeclaration(
+  node: Node,
+  ctx: Context
+): node is VarDeclaration {
+  if (!isNode(node, N.VarDeclaration)) {
+    return false;
+  }
+  const parent = sessionGetParent(node, ctx);
+  return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
 }
 
 /**
