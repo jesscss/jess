@@ -136,7 +136,6 @@ export class Func extends Node<FuncValue, FuncOptions> {
   }
 }
 
-
 export const fn = defineType(Func, 'Func', 'fn') as (
   value: FuncValue | { name?: string; params?: List<Node>; body: Node },
   options?: FuncOptions,

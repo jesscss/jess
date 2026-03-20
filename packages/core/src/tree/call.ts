@@ -390,7 +390,6 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 }
 
-
 type Params = ConstructorParameters<typeof Call>;
 
 export const call = defineType(Call, 'Call') as (

@@ -27,5 +27,4 @@ export class Combinator extends Selector<Combinators> {
   }
 }
 
-
 export const co = defineType(Combinator, 'Combinator', 'co');

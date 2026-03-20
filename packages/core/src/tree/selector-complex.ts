@@ -238,7 +238,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   // }
 }
 
-
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>;
 
 export const sel = defineType<ComplexSelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (

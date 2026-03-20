@@ -143,18 +143,28 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false, context?: Context): Selector | Nil {
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-    const parentRs = getParentRuleset(this);
     if (
       !this.hoistToRoot
       && !collapseNesting
-      && parentRs
       && ownSelector
       && !(ownSelector instanceof Nil)
+      && this._hasAncestorRuleset()
     ) {
       return ownSelector as Selector;
     }
 
     return this.getEffectiveSelector(collapseNesting, context);
+  }
+
+  private _hasAncestorRuleset(): boolean {
+    let current = this.parent;
+    while (current) {
+      if (isNode(current, N.Ruleset)) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
   }
 
   /**
@@ -358,15 +368,23 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return materialize(sel as Selector);
   }
 
-  private static isBareAmpersandSelector(sel: Selector | Nil): boolean {
+  static isBareAmpersandSelector(sel: Selector | Nil): boolean {
     if (!sel || sel instanceof Nil) {
       return false;
     }
     if (isNode(sel, N.Ampersand)) {
-      return true;
+      return !(sel as Ampersand).appendValue;
+    }
+    if (isNode(sel, N.CompoundSelector | N.ComplexSelector)) {
+      const items = (sel as unknown as { data: unknown[] }).data;
+      return items.length === 1
+        && isNode(items[0] as Node, N.Ampersand)
+        && !(items[0] as Ampersand).appendValue;
     }
     if (isNode(sel, N.SelectorList)) {
-      return (sel as SelectorList).value.every(item => isNode(item, N.Ampersand));
+      return (sel as SelectorList).value.every(
+        item => isNode(item, N.Ampersand) && !(item as Ampersand).appendValue
+      );
     }
     return false;
   }

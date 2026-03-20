@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
 import type { IParseResult } from './types/index.js';
-import type { ILexingResult } from 'chevrotain';
+import type { ILexingResult } from '@chevrotain/types';
 import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
 
 export type ISafeParseResult = {

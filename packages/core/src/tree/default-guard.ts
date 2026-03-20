@@ -32,5 +32,4 @@ export class DefaultGuard extends Node<string> {
   }
 }
 
-
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

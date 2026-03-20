@@ -71,6 +71,5 @@ export class BasicSelector extends SimpleSelector<string> {
   // }
 }
 
-
 /** Short form of a basic selector is a short 'el' for 'element' */
 export const el = defineType(BasicSelector, 'BasicSelector', 'el');

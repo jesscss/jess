@@ -44,5 +44,4 @@ export class ExtendList extends Node<Extend[]> {
   }
 }
 
-
 export const extendList = defineType(ExtendList, 'ExtendList');

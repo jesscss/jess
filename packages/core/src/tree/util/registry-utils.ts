@@ -331,6 +331,9 @@ function addMixinToIndex(
     ) {
       const resolvedKeys = getIndexableSelectorKeys(keySetToUse);
       const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
+      if (!(ownSelector as any).keySetLibrary && (selectorToIndex as any).keySetLibrary) {
+        (ownSelector as any).keySetLibrary = (selectorToIndex as any).keySetLibrary;
+      }
       const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
       const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
         ? (mixin.parent.parent as Ruleset).selector

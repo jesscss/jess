@@ -52,7 +52,6 @@ export class SelectorCapture extends Node<Selector> {
   }
 }
 
-
 type Params = ConstructorParameters<typeof SelectorCapture>;
 
 export const selcap = defineType(SelectorCapture, 'SelectorCapture', 'selcap') as (

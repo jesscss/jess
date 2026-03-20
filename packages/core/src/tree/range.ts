@@ -86,7 +86,6 @@ export class Range extends Node<RangeValue, RangeOptions> {
   }
 }
 
-
 type RangeParams = ConstructorParameters<typeof Range>;
 
 export const range = defineType(Range, 'Range', 'range') as (

@@ -1,99 +1,94 @@
 # Pre-push Check TODOs
 
-Generated: 2026-03-10T19:09:05.661Z
+Generated: 2026-03-18T00:01:57.109Z
 
 These checks failed during `--mode=upstream` and were treated as non-blocking.
 
 ## TODO Items
-1. [ ] `packages/parser` - `pnpm -w exec tsc -p packages/parser/tsconfig.build.json --noEmit` (exit 2)
-2. [ ] `packages/parser` - `pnpm --filter ./packages/parser build` (exit 2)
-3. [ ] `packages/scss-parser` - `pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json --noEmit` (exit 2)
-4. [ ] `packages/scss-parser` - `pnpm --filter ./packages/scss-parser build` (exit 2)
+1. [ ] `packages/jess-plugin-js` - `pnpm -w exec tsc -p packages/jess-plugin-js/tsconfig.build.json --noEmit` (exit 2)
+2. [ ] `packages/jess-plugin-js` - `pnpm --filter ./packages/jess-plugin-js build` (exit 1)
 
 ## Failure Details
-### 1) packages/parser
+### 1) packages/jess-plugin-js
 
-- Command: `pnpm -w exec tsc -p packages/parser/tsconfig.build.json --noEmit`
+- Command: `pnpm -w exec tsc -p packages/jess-plugin-js/tsconfig.build.json --noEmit`
 - Exit: `2`
 
 ```
-packages/parser/src/jessActionsParser.ts(97,46): error TS2304: Cannot find name 'Node'.
-packages/parser/src/productions.ts(207,35): error TS2322: Type 'false' is not assignable to type 'true | Node<unknown, NodeOptions> | undefined'.
-packages/parser/src/productions.ts(261,35): error TS2322: Type 'false' is not assignable to type 'true | Node<unknown, NodeOptions> | undefined'.
-packages/parser/src/productions.ts(389,26): error TS2322: Type 'false' is not assignable to type 'true | Node<unknown, NodeOptions> | undefined'.
-packages/parser/src/productions.ts(621,11): error TS2322: Type 'Quoted | Url' is not assignable to type 'Quoted'.
-  Type 'Url' is not assignable to type 'Quoted'.
-    The types returned by 'eval(...)' are incompatible between these types.
-      Type 'MaybePromise<Node<unknown, NodeOptions>>' is not assignable to type 'Promise<Any<AnyRole> | Interpolated<AnyRole> | Quoted>'.
-        Type 'Node<unknown, NodeOptions>' is missing the following properties from type 'Promise<Any<AnyRole> | Interpolated<AnyRole> | Quoted>': then, catch, finally, [Symbol.toStringTag]
-packages/parser/src/productions.ts(806,10): error TS2488: Type 'Alt | ({ ALT: () => any; GATE?: undefined; } | { GATE: () => boolean; ALT: () => IToken; })[]' must have a '[Symbol.iterator]()' method that returns an iterator.
+packages/jess-plugin-js/src/index.ts(5,21): error TS2307: Cannot find module 'node:fs' or its corresponding type declarations.
+packages/jess-plugin-js/src/index.ts(6,22): error TS2307: Cannot find module 'node:net' or its corresponding type declarations.
+packages/jess-plugin-js/src/index.ts(7,23): error TS2307: Cannot find module 'node:path' or its corresponding type declarations.
+packages/jess-plugin-js/src/index.ts(8,46): error TS2307: Cannot find module 'node:url' or its corresponding type declarations.
+packages/jess-plugin-js/src/index.ts(9,71): error TS2307: Cannot find module 'node:child_process' or its corresponding type declarations.
+packages/jess-plugin-js/src/index.ts(134,14): error TS2503: Cannot find namespace 'NodeJS'.
+packages/jess-plugin-js/src/index.ts(137,22): error TS2503: Cannot find namespace 'NodeJS'.
+packages/jess-plugin-js/src/index.ts(163,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/jess-plugin-js/src/index.ts(164,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/jess-plugin-js/src/index.ts(169,7): error TS2304: Cannot find name 'clearTimeout'.
+packages/jess-plugin-js/src/index.ts(179,22): error TS2304: Cannot find name 'setTimeout'.
+packages/jess-plugin-js/src/index.ts(222,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/jess-plugin-js/src/index.ts(223,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/jess-plugin-js/src/index.ts(228,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/jess-plugin-js/src/index.ts(287,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/jess-plugin-js/src/index.ts(290,38): error TS7006: Parameter 'socket' implicitly has an 'any' type.
+packages/jess-plugin-js/src/index.ts(293,26): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
+packages/jess-plugin-js/src/index.ts(330,62): error TS2339: Property 'url' does not exist on type 'ImportMeta'.
+packages/jess-plugin-js/src/index.ts(342,14): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/jess-plugin-js/src/index.ts(350,29): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
+packages/jess-plugin-js/src/index.ts(359,21): error TS2304: Cannot find name 'setTimeout'.
+packages/jess-plugin-js/src/index.ts(375,15): error TS2304: Cannot find name 'clearTimeout'.
+packages/jess-plugin-js/src/index.ts(386,28): error TS7006: Parameter 'err' implicitly has an 'any' type.
+packages/jess-plugin-js/src/index.ts(387,9): error TS2304: Cannot find name 'clearTimeout'.
+packages/jess-plugin-js/src/index.ts(429,7): error TS2304: Cannot find name 'clearTimeout'.
+packages/jess-plugin-js/src/index.ts(439,7): error TS2304: Cannot find name 'clearTimeout'.
+packages/jess-plugin-js/src/index.ts(458,23): error TS2304: Cannot find name 'setTimeout'.
+packages/jess-plugin-js/src/index.ts(477,34): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
 ```
 
-### 2) packages/parser
+### 2) packages/jess-plugin-js
 
-- Command: `pnpm --filter ./packages/parser build`
-- Exit: `2`
-
-```
-> @jesscss/parser@2.0.0-alpha.5 build /Users/matthew/git/oss/jess/packages/parser
-> pnpm clean && pnpm compile
-
-
-> @jesscss/parser@2.0.0-alpha.5 clean /Users/matthew/git/oss/jess/packages/parser
-> shx rm -rf ./lib tsconfig.tsbuildinfo
-
-
-> @jesscss/parser@2.0.0-alpha.5 compile /Users/matthew/git/oss/jess/packages/parser
-> tsc -p tsconfig.build.json
-
-src/jessActionsParser.ts(97,46): error TS2304: Cannot find name 'Node'.
-src/productions.ts(207,35): error TS2322: Type 'false' is not assignable to type 'true | Node<unknown, NodeOptions> | undefined'.
-src/productions.ts(261,35): error TS2322: Type 'false' is not assignable to type 'true | Node<unknown, NodeOptions> | undefined'.
-src/productions.ts(389,26): error TS2322: Type 'false' is not assignable to type 'true | Node<unknown, NodeOptions> | undefined'.
-src/productions.ts(621,11): error TS2322: Type 'Quoted | Url' is not assignable to type 'Quoted'.
-  Type 'Url' is not assignable to type 'Quoted'.
-    The types returned by 'eval(...)' are incompatible between these types.
-      Type 'MaybePromise<Node<unknown, NodeOptions>>' is not assignable to type 'Promise<Any<AnyRole> | Interpolated<AnyRole> | Quoted>'.
-        Type 'Node<unknown, NodeOptions>' is missing the following properties from type 'Promise<Any<AnyRole> | Interpolated<AnyRole> | Quoted>': then, catch, finally, [Symbol.toStringTag]
-src/productions.ts(806,10): error TS2488: Type 'Alt | ({ ALT: () => any; GATE?: undefined; } | { GATE: () => boolean; ALT: () => IToken; })[]' must have a '[Symbol.iterator]()' method that returns an iterator.
- ELIFECYCLE  Command failed with exit code 2.
-/Users/matthew/git/oss/jess/packages/parser:
- ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/parser@2.0.0-alpha.5 build: `pnpm clean && pnpm compile`
-Exit status 2
-```
-
-### 3) packages/scss-parser
-
-- Command: `pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json --noEmit`
-- Exit: `2`
+- Command: `pnpm --filter ./packages/jess-plugin-js build`
+- Exit: `1`
 
 ```
-packages/scss-parser/src/productions.ts(206,16): error TS2339: Property 'rulesVisibility' does not exist on type 'DeclarationOptions & { paramVar?: boolean | undefined; } & AllNodeOptions'.
-packages/scss-parser/src/productions.ts(3062,37): error TS2339: Property 'Dot' does not exist on type 'TokenMap'.
-packages/scss-parser/src/productions.ts(3062,65): error TS2339: Property 'Hash' does not exist on type 'TokenMap'.
-packages/scss-parser/src/productions.ts(3063,67): error TS2339: Property 'LBracket' does not exist on type 'TokenMap'.
-```
-
-### 4) packages/scss-parser
-
-- Command: `pnpm --filter ./packages/scss-parser build`
-- Exit: `2`
-
-```
-> @jesscss/scss-parser@2.0.0-alpha.1 build /Users/matthew/git/oss/jess/packages/scss-parser
+> @jesscss/plugin-js@2.0.0-alpha.5 build /Users/matthew/git/oss/jess/packages/jess-plugin-js
 > pnpm compile
 
 
-> @jesscss/scss-parser@2.0.0-alpha.1 compile /Users/matthew/git/oss/jess/packages/scss-parser
-> pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json
+> @jesscss/plugin-js@2.0.0-alpha.5 compile /Users/matthew/git/oss/jess/packages/jess-plugin-js
+> tsc -b tsconfig.build.json
 
-packages/scss-parser/src/productions.ts(206,16): error TS2339: Property 'rulesVisibility' does not exist on type 'DeclarationOptions & { paramVar?: boolean | undefined; } & AllNodeOptions'.
-packages/scss-parser/src/productions.ts(3062,37): error TS2339: Property 'Dot' does not exist on type 'TokenMap'.
-packages/scss-parser/src/productions.ts(3062,65): error TS2339: Property 'Hash' does not exist on type 'TokenMap'.
-packages/scss-parser/src/productions.ts(3063,67): error TS2339: Property 'LBracket' does not exist on type 'TokenMap'.
- ELIFECYCLE  Command failed with exit code 2.
-/Users/matthew/git/oss/jess/packages/scss-parser:
- ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/scss-parser@2.0.0-alpha.1 build: `pnpm compile`
-Exit status 2
+src/index.ts(5,21): error TS2307: Cannot find module 'node:fs' or its corresponding type declarations.
+src/index.ts(6,22): error TS2307: Cannot find module 'node:net' or its corresponding type declarations.
+src/index.ts(7,23): error TS2307: Cannot find module 'node:path' or its corresponding type declarations.
+src/index.ts(8,46): error TS2307: Cannot find module 'node:url' or its corresponding type declarations.
+src/index.ts(9,71): error TS2307: Cannot find module 'node:child_process' or its corresponding type declarations.
+src/index.ts(134,14): error TS2503: Cannot find namespace 'NodeJS'.
+src/index.ts(137,22): error TS2503: Cannot find namespace 'NodeJS'.
+src/index.ts(163,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/index.ts(164,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/index.ts(169,7): error TS2304: Cannot find name 'clearTimeout'.
+src/index.ts(179,22): error TS2304: Cannot find name 'setTimeout'.
+src/index.ts(222,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/index.ts(223,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/index.ts(228,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/index.ts(287,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/index.ts(290,38): error TS7006: Parameter 'socket' implicitly has an 'any' type.
+src/index.ts(293,26): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
+src/index.ts(330,62): error TS2339: Property 'url' does not exist on type 'ImportMeta'.
+src/index.ts(342,14): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/index.ts(350,29): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
+src/index.ts(359,21): error TS2304: Cannot find name 'setTimeout'.
+src/index.ts(375,15): error TS2304: Cannot find name 'clearTimeout'.
+src/index.ts(386,28): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/index.ts(387,9): error TS2304: Cannot find name 'clearTimeout'.
+src/index.ts(429,7): error TS2304: Cannot find name 'clearTimeout'.
+src/index.ts(439,7): error TS2304: Cannot find name 'clearTimeout'.
+src/index.ts(458,23): error TS2304: Cannot find name 'setTimeout'.
+src/index.ts(477,34): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+ ELIFECYCLE  Command failed with exit code 1.
+/Users/matthew/git/oss/jess/packages/jess-plugin-js:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/plugin-js@2.0.0-alpha.5 build: `pnpm compile`
+Exit status 1
 ```
 

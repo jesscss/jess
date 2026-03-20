@@ -43,7 +43,6 @@ export class Block extends Node<Node, BlockOptions> {
   }
 }
 
-
 type BlockParams = ConstructorParameters<typeof Block>;
 
 export const block = defineType(Block, 'Block') as (

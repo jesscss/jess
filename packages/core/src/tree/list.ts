@@ -161,7 +161,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // }
 }
 
-
 type Params = ConstructorParameters<typeof List>;
 
 export const list = defineType(List, 'List') as (

@@ -208,7 +208,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // }
 }
 
-
 export const seq = defineType(Sequence, 'Sequence', 'seq');
 
 export const spaced = (

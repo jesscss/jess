@@ -162,5 +162,4 @@ export class Operation extends Node<OperationValue> {
   }
 }
 
-
 export const op = defineType(Operation, 'Operation', 'op');

@@ -33,5 +33,4 @@ export class Comment extends Node<string, CommentOptions> {
   }
 }
 
-
 export const comment = defineType(Comment, 'Comment');

@@ -285,7 +285,6 @@ export class Extend extends Node<ExtendValue> {
   }
 }
 
-
 function materializeImplicitAmpersands(
   selector: Selector,
   includeNonListImplicit: boolean

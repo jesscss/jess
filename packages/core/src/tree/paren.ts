@@ -99,5 +99,4 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 }
 
-
 export const paren = defineType(Paren, 'Paren');

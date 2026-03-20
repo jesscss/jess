@@ -1458,7 +1458,10 @@ function selectorMatchUncached(
     ) {
       return emptySelectorMatchState();
     }
-    if (isDisjoint(find.requiredKeySet, target.keySet)) {
+    if (
+      !isDisjoint(find.requiredKeySet, find.keySet)
+      && isDisjoint(find.requiredKeySet, target.keySet)
+    ) {
       return emptySelectorMatchState();
     }
   }

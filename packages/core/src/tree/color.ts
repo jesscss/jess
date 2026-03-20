@@ -598,5 +598,4 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 }
 
-
 export const color = defineType(Color, 'Color');

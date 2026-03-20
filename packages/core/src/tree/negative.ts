@@ -40,5 +40,4 @@ export class Negative extends Node<Node> {
   }
 }
 
-
 export const negative = defineType(Negative, 'Negative');

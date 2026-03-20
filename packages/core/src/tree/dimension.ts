@@ -375,7 +375,6 @@ const conversions = {
   } satisfies Record<AngleUnit, number>
 };
 
-
 defineType(Dimension, 'Dimension');
 
 export const dimension = (

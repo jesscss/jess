@@ -1,7 +1,7 @@
 // errors.ts
 import path from 'node:path';
 import chalk from 'chalk';
-import { type IRecognitionException, type ILexingError, type ILexingResult } from 'chevrotain';
+import { type IRecognitionException, type ILexingError, type ILexingResult } from '@chevrotain/types';
 import type { TreeContext } from './context.js';
 import type { LocationInfo } from './tree/node.js';
 import type { Deprecation } from './deprecation.js';

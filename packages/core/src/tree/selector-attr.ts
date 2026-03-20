@@ -115,7 +115,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 }
 
-
 /** Not sure why types couldn't be properly inferred */
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
   value: AttributeSelectorValue,

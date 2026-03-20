@@ -16,7 +16,7 @@ import { Nil } from '../nil.js';
 import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
-import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset } from './selector-utils.js';
+import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
 import { sessionPatchField } from './session-helpers.js';
 
 /**
@@ -514,6 +514,12 @@ function getRulesetExtendTarget(
   }
 
   const ownSelector = (ruleset.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  // Bare `&` rulesets are pure mirrors of their parent selector and are updated
+  // by refreshNestedRulesetSelectors when the parent is extended. Skip direct
+  // extend processing so selectorBeforeExtend is not incorrectly set on them.
+  if (ownSelector && isBareAmpersandOwnSelector(ownSelector as Selector)) {
+    return undefined;
+  }
   const parentRs = getParentRuleset(ruleset);
   const parentSelector = (
     !partial
@@ -602,7 +608,7 @@ function applyInstructionToRuleset(
   }
 
   if (!ruleset.selectorBeforeExtend && ruleset.selector && !isNode(ruleset.selector, N.Nil)) {
-    ruleset.setData('selectorBeforeExtend', ruleset.selector as Selector);
+    ruleset.setData('selectorBeforeExtend', ruleset.selector.copy(true) as Selector);
   }
 
   if (
@@ -614,7 +620,11 @@ function applyInstructionToRuleset(
     return { matched: true, changed: false };
   }
 
-  if (selectorMatch(instruction.extendWith, targetInfo.selector, targetInfo.parent).fullMatch) {
+  const extendWithVal = instruction.extendWith.valueOf();
+  const extendWithAlreadyTopLevel = isNode(targetInfo.selector, N.SelectorList)
+    ? (targetInfo.selector.value as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
+    : targetInfo.selector.valueOf() === extendWithVal;
+  if (extendWithAlreadyTopLevel) {
     activateExtendedRuleset(ruleset, targetInfo.selector);
     return { matched: true, changed: false };
   }
@@ -629,7 +639,7 @@ function applyInstructionToRuleset(
     targetInfo.parent
   );
   if (result.error) {
-    if (instruction.extendWith.valueOf() === instruction.target.valueOf()) {
+    if (instruction.extendWith.valueOf() === targetInfo.selector.valueOf()) {
       activateExtendedRuleset(ruleset, targetInfo.selector);
     }
     return { matched: true, changed: false };
@@ -638,7 +648,7 @@ function applyInstructionToRuleset(
   const normalizedResult = normalizeGeneratedIsOrder(result.value);
   const after = normalizedResult.valueOf();
   activateExtendedRuleset(ruleset, normalizedResult);
-  if (before === after) {
+  if (!result.isChanged || before === after) {
     return { matched: true, changed: false };
   }
 

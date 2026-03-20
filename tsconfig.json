@@ -22,8 +22,8 @@
   
     ],
     "types": [
-      "vitest/globals",
-      "node"
+      "node",
+      "vitest/globals"
     ]
   },
   "include": ["**/*.ts"],

@@ -45,5 +45,4 @@ export class Rest extends Node<Node | string | undefined> {
   }
 }
 
-
 export const rest = defineType(Rest, 'Rest');

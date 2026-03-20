@@ -135,10 +135,85 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
   return serializePlainObject(nodeOptions, depth + 1, opts, visiting);
 }
 
+function getNodeRole(n: Node): string | undefined {
+  return (n as any).role ?? (n as any).options?.role;
+}
+
+function getNodeValue(n: Node): unknown {
+  const childKeys = (n.constructor as typeof Node).childKeys;
+  const NODE_INTERNAL = new Set([
+    'parent', 'index', 'frames', 'pre', 'post', 'state', 'nodeType',
+    'isSelector', 'keySetLibrary', 'role',
+    'fullRender',
+    'rulesetRegistry', 'mixinRegistry', 'declarationRegistry', 'functionRegistry',
+    'rulesIndexed', '_indexing',
+    '_valueOf', '_keySet', '_visibleKeySet', '_requiredKeySet'
+  ]);
+
+  if ((n as any).type === 'Color') {
+    const color = n as any;
+    const value: Record<string, unknown> = {};
+    if (color._nodeValue !== undefined) {
+      value.node = color._nodeValue;
+    }
+    if (color._rgbChannels !== undefined) {
+      value.rgb = color.rgb;
+    }
+    if (color._hslChannels !== undefined) {
+      value.hsl = color.hsl;
+    }
+    if (color._alphaValue !== undefined) {
+      value.alpha = color.alpha;
+    }
+    return Object.keys(value).length > 0 ? value : undefined;
+  }
+
+  if (Array.isArray(childKeys)) {
+    if (childKeys.length === 1) {
+      return (n as any)[childKeys[0]!];
+    }
+
+    const obj: Record<string, unknown> = {};
+    for (const key of childKeys) {
+      const value = (n as any)[key];
+      if (value !== undefined) {
+        obj[key] = value;
+      }
+    }
+    for (const key of Object.keys(n)) {
+      if (key.startsWith('_') || NODE_INTERNAL.has(key) || childKeys.includes(key)) {
+        continue;
+      }
+      const value = (n as any)[key];
+      if (value !== undefined) {
+        obj[key] = value;
+      }
+    }
+    return Object.keys(obj).length > 0 ? obj : undefined;
+  }
+
+  const directValue = (n as any).value as unknown;
+  if (directValue !== undefined) {
+    return directValue;
+  }
+
+  const obj: Record<string, unknown> = {};
+  for (const key of Object.keys(n)) {
+    if (key.startsWith('_') || NODE_INTERNAL.has(key)) {
+      continue;
+    }
+    const value = (n as any)[key];
+    if (value !== undefined && !isJessNode(value) && !Array.isArray(value)) {
+      obj[key] = value;
+    }
+  }
+  return Object.keys(obj).length > 0 ? obj : undefined;
+}
+
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? (n as any).shortType : (n as any).type;
   const pad = indent(depth, opts.indentSize);
-  const role = (n as any)?.role as string | undefined;
+  const role = getNodeRole(n);
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;
 
@@ -148,7 +223,7 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
   visiting.add(n);
 
-  const value = (n as any).value as unknown;
+  const value = getNodeValue(n);
   const optionsStr = serializeNodeOptions(n, depth, opts, visiting);
 
   // If the main value is a primitive, include it inline

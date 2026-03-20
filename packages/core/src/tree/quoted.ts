@@ -99,5 +99,4 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 }
 
-
 export const quoted = defineType(Quoted, 'Quoted');

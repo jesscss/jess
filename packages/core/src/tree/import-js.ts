@@ -106,5 +106,4 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
   }
 }
 
-
 export const js = defineType<JsImportValue>(JsImport, 'JsImport', 'js');

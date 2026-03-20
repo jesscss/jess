@@ -44,7 +44,6 @@
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser": "workspace:*",
     "chevrotain": "^11.0.3",
-    "chevrotain-allstar": "~0.3.0",
     "known-css-properties": "~0.37.0"
   },
   "devDependencies": {

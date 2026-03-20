@@ -84,5 +84,4 @@ export class Log extends Node<LogValue, NodeOptions> {
   }
 }
 
-
 export const log = defineType(Log, 'Log');

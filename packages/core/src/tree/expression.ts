@@ -63,7 +63,6 @@ export class Expression extends Node<Node> {
   }
 }
 
-
 type Params = ConstructorParameters<typeof Expression>;
 
 export const expr = defineType(Expression, 'Expression', 'expr') as (
