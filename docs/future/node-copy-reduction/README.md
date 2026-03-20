@@ -22,8 +22,10 @@ Recommended reading order:
 
 Current branch status on `jess-dev`:
 
-- Stages 0–20 are complete.
+- Stages 0–20 have landed as roadmap slices.
 - Stage 21 has not started.
+- Stage 21 is blocked on the pre-Stage-21 threshold in `PROGRESS.md` / `HANDOFF.md`:
+  cloning removal, sessionized eval-time mutation, baseline validation, and credible merge readiness.
 
 For current implementation state, prefer:
 

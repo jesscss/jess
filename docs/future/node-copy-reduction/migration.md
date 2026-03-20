@@ -14,8 +14,11 @@ Use with:
 
 Current branch status on `jess-dev`:
 
-- Stages 0–20 are complete.
+- Stages 0–20 have landed as roadmap slices.
 - Stage 21 has not started.
+- Stage 21 is blocked until the pre-Stage-21 threshold is met:
+  remaining clone removal, remaining sessionization of eval-time mutation/replacement,
+  baseline validation, and merge readiness.
 
 For exact implementation state, use:
 

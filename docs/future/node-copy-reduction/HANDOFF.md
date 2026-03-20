@@ -24,10 +24,10 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 - Stage 17: complete and committed
 - Stage 18: complete and committed
 - Stage 19: complete and committed
-- Stage 20: complete in the working tree
+- Stage 20: completed as a slice, but not yet sufficient to advance the roadmap
   - done: session-local registry deltas, session-aware register/find plumbing, scope-dirty invalidation, dependency-aware partial re-eval in declaration lookup, detached-ruleset unlock off `clone(true)`, and Stage 20 characterization coverage
   - note: plain `@import` no longer adds a finalization wrapper; compose still keeps a shallow per-import wrapper because separate import sites can require different visibility / reference metadata on the same cached module
-- Stage 21: not started
+- Stage 21: not started and explicitly blocked on the pre-Stage-21 threshold below
 
 ### Working tree expectation
 - Stage boundaries on this branch are committed and pushed.
@@ -79,15 +79,21 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 
 ---
 
-## Next task: Stage 21 Start
+## Pre-Stage-21 Threshold
 
-**Goal**: begin the Live Patch API slice now that Stage 20 is complete.
+Do not begin Stage 21 until all four conditions are true:
+
+1. All cloning that this refactor intends to remove is actually removed.
+2. All eval-time writes, mutations, and node replacements that are in scope for this refactor route through sessions.
+3. Tests pass to the accepted baseline with (1) and (2) true.
+4. A merge back to `dev` is credible without changing existing behavior.
 
 ### Immediate work
 
-1. Build the `PatchSideTable` on `Context` and thread it through the serializer surface.
-2. Use the Stage 18 dependency graph to decide when declaration output should emit `var(--jess-<id>, fallback)`.
-3. Keep Stage 20’s import/registry invariants intact while adding the Stage 21 emission path.
+1. Inventory and classify all remaining `clone()` / `copy()` sites still on the critical eval/import/extend path.
+2. Finish routing remaining eval-time writes / node replacement paths through session helpers.
+3. Re-run the baseline and verify that the no-regression claim still holds under the stricter threshold.
+4. Only after that, reassess readiness for Stage 21.
 
 ### Key files to read first
 - `packages/core/src/tree/import-style.ts`
@@ -106,7 +112,7 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 2. **Run tests after every meaningful change**: `cd packages/core && pnpm test`. Baseline is 5 failed / 63 passed.
 3. **Do not fix pre-existing failures** unless asked. Only your changes should affect the count.
 4. **Commit after each successful stage** (or sub-stage). If tests break, fix before committing.
-5. **One stage at a time**. Stage 20 is the committed prerequisite; do not mix unrelated Stage 21 experiments into the completion commit.
+5. **One stage at a time**. Stage 20 is not the only prerequisite; the pre-Stage-21 threshold above must also be met before any Stage 21 work starts.
 6. **No destructive git ops** without explicit user permission (`git reset --hard`, `git restore`, etc.).
 7. **Never work directly in `~/git/oss/less.js`** — always use worktrees.
 
@@ -222,4 +228,4 @@ pnpm --filter @jesscss/core build
 - Do not run tests from the repo root with `pnpm test` unless you expect Jess package
   failures — the Node v24 CJS issue makes that noisy.
 - Do not create new abstraction layers or helpers that are only used once.
-- Do not reopen Stage 20 unless a Stage 21 change proves one of these invariants was wrong.
+- Do not start Stage 21 merely because the Stage 20 slice is committed. The threshold above is the real gate.

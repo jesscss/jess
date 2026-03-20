@@ -780,6 +780,25 @@ See [dependency-graph.md](./dependency-graph.md#stage-20-session-local-registry-
 
 ---
 
+## Pre-Stage-21 Threshold
+
+Stage 20 completion is not, by itself, the gate to Stage 21. Do not start Live Patch API work until all of these are true:
+
+- [ ] All cloning targeted by this refactor is removed, not just reduced in one slice
+- [ ] All eval-time writes, mutations, and node replacements in scope are routed through sessions
+- [ ] Tests pass to the accepted baseline with the two conditions above true
+- [ ] A merge back to `dev` is credible without behavioral regressions
+
+Current branch status: this threshold is **not yet met**.
+
+Immediate next work before Stage 21:
+
+- [ ] Inventory remaining `clone()` / `copy()` sites on the critical eval/import/extend paths
+- [ ] Finish sessionizing remaining eval-time mutation / replacement paths
+- [ ] Re-run the baseline against that stricter state and confirm behavior is preserved
+
+---
+
 ## Stage 21: Live Patch API
 
 Goal: Emit `var(--jess-id, fallback)` for patchable Declaration values, plus a `patch.js`
