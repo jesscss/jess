@@ -1,6 +1,8 @@
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
+import type { Context } from '../context.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -46,13 +48,26 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  private _getPath(context?: Context): Quoted {
+    return context
+      ? sessionGetField<Quoted>(this, 'path', context)
+      : this.path;
+  }
+
+  private _getImports(context?: Context): JsImportSpecifier[] | undefined {
+    return context
+      ? sessionGetField<JsImportSpecifier[] | undefined>(this, 'imports', context)
+      : this.imports;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this;
+    const context = options.context;
+    const path = this._getPath(context);
     const { namespace } = this.options;
-    const imports = this.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const imports = this._getImports(context) ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
 
     w.add('@-from ');
     path.toString(options);

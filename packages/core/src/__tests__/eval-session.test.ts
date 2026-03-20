@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -506,6 +506,48 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('2 to <4 step 3');
       expect(node.toTrimmedString()).toBe('1 to <3 step 2');
+    });
+
+    it('Reference rendering reads patched target and key from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = ref({ target: ref('ns'), key: 'foo' }, { type: 'declaration' });
+
+      sessionPatchField(node, 'target', ref('theme'), ctx);
+      sessionPatchField(node, 'key', 'bar', ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('$theme.bar');
+      expect(node.toTrimmedString()).toBe('$ns.foo');
+    });
+
+    it('Interpolated rendering reads patched source and replacements from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = interpolated({
+        source: '--%%',
+        replacements: [any('red')]
+      });
+
+      sessionPatchField(node, 'source', 'color-%%', ctx);
+      sessionPatchField(node, 'replacements', [any('blue')], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('color-blue');
+      expect(node.toTrimmedString()).toBe('--red');
+    });
+
+    it('JsImport rendering reads patched path and imports from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = js({
+        path: quoted('a.js'),
+        imports: ['foo']
+      });
+
+      sessionPatchField(node, 'path', quoted('b.js'), ctx);
+      sessionPatchField(node, 'imports', [['bar', 'baz']], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('@-from \"b.js\" import ( bar as baz );');
+      expect(node.toTrimmedString()).toBe('@-from \"a.js\" import ( foo );');
     });
   });
 

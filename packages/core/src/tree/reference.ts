@@ -23,6 +23,7 @@ import type { VarDeclaration } from './declaration-var.js';
 import {
   isTopLevelVarDeclaration,
   sessionGetDependency,
+  sessionGetField,
   sessionSetDependency
 } from './util/session-helpers.js';
 /**
@@ -160,6 +161,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return '';
   }
 
+  private _getTarget(context?: Context): Reference | Call | undefined {
+    return context
+      ? sessionGetField<Reference | Call | undefined>(this, 'target', context)
+      : this.target;
+  }
+
+  private _getKey(context?: Context): ReferenceValue['key'] {
+    return context
+      ? sessionGetField<ReferenceValue['key']>(this, 'key', context)
+      : this.key;
+  }
+
   /**
    * @note - A reference doesn't render `$` (unless it has a target);
    *         that's managed by the parent expression.
@@ -169,7 +182,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const w = options.writer!;
     const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue, role } = this.options;
-    let { target, key } = this;
+    const context = options.context;
+    const target = this._getTarget(context);
+    const key = this._getKey(context);
     const emitKey = (k: any) => {
       if (typeof k === 'string' || typeof k === 'number') {
         w.add(String(k), this);

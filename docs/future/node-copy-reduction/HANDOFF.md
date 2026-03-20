@@ -98,6 +98,10 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 17. The next logical target after this slice is still below `Rules`:
     - either remaining low-order render/eval readers like `Reference` / `Interpolated` / `ImportJs`, or
     - true generic session-local replacement semantics (`sessionReplaceNode()` + `Rules.value[]` overlay), if the next reduction needs structural writes instead of just field reads
+18. That next low-order render-read slice is now also in the working tree:
+    - `Reference`, `Interpolated`, and `JsImport` now read session-patched fields during serialization
+    - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/reference.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/call.test.ts`, and `src/tree/__tests__/at-rule.test.ts` (`173 passed, 1 skipped`)
+    - this still does not solve structural session replacement; it only widens the lower-order immutable/read-side coverage
 
 ---
 

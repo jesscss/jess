@@ -10,6 +10,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -104,17 +105,31 @@ export class Interpolated<
     return this.source;
   }
 
-  replace(replacements: Node[], options?: PrintOptions): string {
-    let { source } = this;
+  private _getSource(context?: Context): string {
+    return context
+      ? sessionGetField<string>(this, 'source', context)
+      : this.source;
+  }
+
+  private _getReplacements(context?: Context): Node[] {
+    return context
+      ? sessionGetField<Node[]>(this, 'replacements', context)
+      : this.replacements;
+  }
+
+  replace(replacements?: Node[], options?: PrintOptions): string {
+    const printOpts = getPrintOptions(options);
+    const context = printOpts.context;
+    const source = this._getSource(context);
+    const activeReplacements = replacements ?? this._getReplacements(context);
     let output = source;
     let i = 0;
-    let printOpts = getPrintOptions(options);
     let w = printOpts!.writer;
     INTERPOLATION_PLACEHOLDER_REGEXP.lastIndex = 0;
     output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
       let replacement: Node | undefined;
       try {
-        replacement = replacements[i++];
+        replacement = activeReplacements[i++];
       } catch (error: unknown) {
         throw error;
       }
@@ -144,7 +159,7 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const result = this.replace(this.replacements, options);
+    const result = this.replace(undefined, options);
     w.add(result, this);
     return w.getSince(mark);
   }
