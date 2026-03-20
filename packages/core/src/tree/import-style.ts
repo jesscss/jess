@@ -241,14 +241,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
-    // De-duped imports mutate node options during markReferenceMode; use deep clone so
-    // repeated imports do not retroactively mutate previously emitted import trees.
-    // Keep explicit reference imports on shallow clone to preserve existing extend wiring.
-    const useDeepClone = Boolean(
-      type === 'import'
-      && (importOptions!.multiple === true || importOptions!._dedupe === true)
-    );
-    let out = (useDeepClone ? evaluatedRules.clone(true) : evaluatedRules.clone()) as Rules;
+    // Shallow clone + per-Ruleset COW: the Rules container gets a new array,
+    // and each Ruleset child is shallow-cloned so extend mutations (selector
+    // additions) don't contaminate the canonical/cached tree.
+    let out = evaluatedRules.clone(false) as Rules;
+    if (type === 'import' && (importOptions!.multiple === true || importOptions!._dedupe === true)) {
+      for (let i = 0; i < out.value.length; i++) {
+        const child = out.value[i]!;
+        if (isNode(child, N.Ruleset)) {
+          const rulesetClone = (child as Ruleset).clone(false) as Ruleset;
+          rulesetClone.inherit(child as Ruleset);
+          // Deep-clone the selector so extend mutations (appendAlternative mutates in-place)
+          // on the canonical preEvalRulesetClone don't contaminate this COW clone's selector.
+          const sel = rulesetClone.selector;
+          if (sel && !isNode(sel, N.Nil)) {
+            rulesetClone.setData('selector', sel.clone(true));
+          }
+          out.value[i] = rulesetClone;
+          out.adopt(rulesetClone);
+        }
+      }
+    }
     // Import type: variables are visible and re-exported (not local)
     // Compose type: variables are visible to parent but not transitive by default (`local: true`)
     // Forward: not visible locally but *is* transitive (`local: false`)
