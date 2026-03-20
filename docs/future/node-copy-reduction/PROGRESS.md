@@ -797,6 +797,14 @@ Immediate next work before Stage 21:
 - [ ] Finish sessionizing remaining eval-time mutation / replacement paths
 - [ ] Re-run the baseline against that stricter state and confirm behavior is preserved
 
+Current blocker notes from live reduction attempts:
+
+- `Rules.value` identity is still load-bearing for session-local registry deltas. A naive attempt to detach the child array on indexed `Rules.setData()` writes broke configured import injection and mixin expansion lookup.
+- This means child-array isolation and registry/session identity are still coupled. The next safe reduction likely needs either session-local child storage for `Rules` or an explicit migration path for registry-delta identity when `value[]` changes.
+- Remaining high-signal clone/copy clusters are still concentrated in `rules.ts` (mixin arg binding / output shaping), `extend.ts`, `ruleset.ts`, and `ampersand.ts`.
+- `sessionReplaceNode()` is still only a stub for true session-local replacement semantics; generic eval-time node replacement is not fully sessionized yet.
+- A smaller cleanup slice is now in place: direct eval-lifecycle writes in `declaration.ts`, `ruleset.ts`, and preserve-mode fallback in `operation.ts` were moved off raw canonical `.evaluated` writes. `src/__tests__/eval-session.test.ts` now proves preserve-mode operation fallback does not mark canonical nodes evaluated when a session is active.
+
 ---
 
 ## Stage 21: Live Patch API

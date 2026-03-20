@@ -7,7 +7,11 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
-import { sessionMergeDependencies, sessionSetDependency } from './util/session-helpers.js';
+import {
+  sessionMergeDependencies,
+  sessionSetDependency,
+  sessionSetEvaluated
+} from './util/session-helpers.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -97,9 +101,12 @@ export class Operation extends Node<OperationValue> {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          n.left = l;
-          n.right = r;
-          return applyMergedDependency(n, l, r);
+          const outOperation = context.session
+            ? n.clone(false, undefined, context) as Operation
+            : n;
+          outOperation.setData('left', l);
+          outOperation.setData('right', r);
+          return applyMergedDependency(outOperation, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
@@ -114,14 +121,16 @@ export class Operation extends Node<OperationValue> {
           } catch (error) {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
-              // Update the existing operation with evaluated nodes and mark as evaluated
-              n.left = l;
-              n.right = r;
-              n.evaluated = true;
-              // Mark child nodes as evaluated too
-              l.evaluated = true;
-              r.evaluated = true;
-              const calcCall = new Call({ name: 'calc', args: list([n]) });
+              // Preserve canonical operation state by materializing an isolated wrapper when needed.
+              const calcOperation = context.session
+                ? n.clone(false, undefined, context) as Operation
+                : n;
+              calcOperation.setData('left', l);
+              calcOperation.setData('right', r);
+              sessionSetEvaluated(calcOperation, true, context);
+              sessionSetEvaluated(l, true, context);
+              sessionSetEvaluated(r, true, context);
+              const calcCall = new Call({ name: 'calc', args: list([calcOperation]) });
               calcCall.pre = left.pre;
               calcCall.post = right.post;
               return applyMergedDependency(calcCall, l, r);

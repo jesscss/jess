@@ -660,12 +660,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override evalNode(context: Context): MaybePromise<Ruleset | Rules | Nil> {
-    if (this.evaluated) {
+    if (this._isEvaluated(context)) {
       return this;
     }
     let pushedFrames = false;
     /** Should have been maybe cloned in preEval */
-    this.evaluated = true;
+    this._setEvaluated(true, context);
     const collapseNesting = context.opts.collapseNesting;
 
     // Store frames snapshot for collapseNesting serialization

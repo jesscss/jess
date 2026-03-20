@@ -95,6 +95,27 @@ Do not begin Stage 21 until all four conditions are true:
 3. Re-run the baseline and verify that the no-regression claim still holds under the stricter threshold.
 4. Only after that, reassess readiness for Stage 21.
 
+### Known blockers from recent reduction attempts
+
+1. `Rules.value` identity is still load-bearing for session-local registry deltas.
+   A naive attempt to detach the child array during indexed `Rules.setData()` writes broke configured `with`/`set` imports and mixin expansion lookup.
+
+2. Child-array isolation and registry/session identity are still coupled.
+   The next safe slice likely needs either session-local child storage for `Rules` or an explicit way to migrate registry-delta identity when `value[]` changes.
+
+3. Remaining high-signal clone/copy pressure is still concentrated in:
+   - `packages/core/src/tree/rules.ts` — mixin arg binding and output shaping
+   - `packages/core/src/tree/extend.ts`
+   - `packages/core/src/tree/ruleset.ts`
+   - `packages/core/src/tree/ampersand.ts`
+
+4. `sessionReplaceNode()` is still a stub for true session-local replacement semantics.
+   Generic eval-time node replacement is not fully sessionized yet.
+
+5. A small sessionization cleanup landed after that blocker was identified:
+   - `declaration.ts`, `ruleset.ts`, and preserve-mode fallback in `operation.ts` no longer rely on direct canonical `.evaluated` writes in their active eval paths
+   - `src/__tests__/eval-session.test.ts` now proves preserve-mode operation fallback does not mark the canonical operation tree evaluated when a session is active
+
 ### Key files to read first
 - `packages/core/src/tree/import-style.ts`
 - `packages/core/src/tree/rules.ts`

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -472,6 +472,23 @@ describe('session-aware helpers', () => {
       expect(merged?.dependsOn?.has(depA)).toBe(true);
       expect(merged?.dependsOn?.has(depB)).toBe(true);
       expect(merged?.sourceExpr).toBe(left);
+    });
+  });
+
+  describe('eval isolation regressions', () => {
+    it('does not mark canonical operation nodes evaluated in preserve-mode session fallback', async () => {
+      const ctx = new Context({ unitMode: 'preserve' });
+      ctx.createSession();
+      const left = new Dimension({ number: 10, unit: 'px' });
+      const right = new Dimension({ number: 2, unit: 'rem' });
+      const operation = new Operation([left, '+', right]);
+
+      const result = await operation.eval(ctx);
+
+      expect(String(result)).toContain('calc');
+      expect(operation.evaluated).toBe(false);
+      expect(left.evaluated).toBe(false);
+      expect(right.evaluated).toBe(false);
     });
   });
 });

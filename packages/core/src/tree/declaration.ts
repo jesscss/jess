@@ -291,7 +291,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
     if (this.hasFlag(F_STATIC)) {
-      this.evaluated = true;
+      this._setEvaluated(true, context);
       return this;
     }
     return pipe(

@@ -928,6 +928,7 @@ describe('Rules', () => {
       expect(root.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBeUndefined();
       expect(cloneRegisterSpy).toHaveBeenCalledTimes(2);
     });
+
   });
 
   describe('session registry delta', () => {
