@@ -225,7 +225,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `InterpolatedSelector` | `complete` | Render and eval now read the wrapped interpolated value through the session-aware view, `selector-interpolated.test.ts` covers behavior parity, and `eval-session.test.ts` proves overlay reads without canonical mutation. |
 | `Ampersand`            | `pending` | Still called out as a remaining high-signal clone/copy site.         |
 | `PseudoSelector`       | `complete` | Render and eval now read `name` / `arg` through the session-aware view, eval-time `arg` updates are session-backed, `selector-pseudo.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `arg` stays unchanged under an active session. |
-| `CompoundSelector`     | `partial` | Render/read path for `value[]` is session-aware.                     |
+| `CompoundSelector`     | `complete` | Render and eval now read `value[]` through the session-aware view, eval-time component-array updates are session-backed, compound serialization no longer mutates child spacing state, `selector-compound.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical components stay unchanged under an active session. |
 | `ComplexSelector`      | `partial` | Render/read path for `value[]` is session-aware.                     |
 | `SelectorList`         | `partial` | Render/read path for `value[]` is session-aware.                     |
 | `SelectorCapture`      | `partial` | Render/read path for `value` is session-aware.                       |

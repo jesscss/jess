@@ -528,6 +528,23 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('button.a');
     });
 
+    it('CompoundSelector eval does not overwrite canonical components in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = el('button') as any;
+      const second = pseudo({
+        name: ':not',
+        arg: expr(any('blue'))
+      }) as any;
+      const node = compound([first, second]);
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('button:not(blue)');
+      expect(node.value[0]).toBe(first);
+      expect(node.value[1]).toBe(second);
+    });
+
     it('Expression rendering reads a patched child from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

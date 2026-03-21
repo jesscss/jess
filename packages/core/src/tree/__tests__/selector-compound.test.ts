@@ -1,4 +1,4 @@
-import { compound, sel, el, pseudo, type SimpleSelector } from '../index.js';
+import { any, compound, el, expr, pseudo } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -53,6 +53,22 @@ describe('Compound Selector', () => {
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
       expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
       expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+    });
+  });
+
+  describe('evaluation', () => {
+    it('preserves compound serialization while evaluating nested selector children', async () => {
+      const node = compound([
+        el('button'),
+        pseudo({
+          name: ':not',
+          arg: expr(any('blue'))
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(evald.toTrimmedString()).toBe('button:not(blue)');
     });
   });
 });

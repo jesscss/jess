@@ -92,6 +92,7 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 - `Func` has a new partial fundamentals slice: `evalCall()` now reads `params`, `body`, and parent context through the session-aware view, but it still relies on the higher-order temporary mixin-wrapper path.
 - `Ruleset` has a new partial fundamentals slice: active render/eval reads for `hoistToRoot` are session-aware, active `hoistToRoot` writes are session-backed, and `evalNode()` now removes `F_VISIBLE` through the session runtime layer without overwriting canonical node state.
 - `PseudoSelector` is now complete for this fundamentals pass: render and eval read `name` / `arg` through the session-aware view, eval-time `arg` updates are session-backed, and the node has both node-local behavior coverage and eval-session immutability proof.
+- `CompoundSelector` is now complete for this fundamentals pass: render and eval read `value[]` through the session-aware view, eval-time component-array updates are session-backed, compound serialization no longer mutates child spacing state, and the node has both node-local behavior coverage and eval-session immutability proof.
 - The next immediate node target is still `Ruleset`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
