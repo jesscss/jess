@@ -16,6 +16,7 @@ Current branch reality:
 - `EvalSession` now also has a session-local child-array overlay for `Rules`, and `Rules` render-side reads plus explicit context-bearing read APIs (`at(index, context?)`, `toObject(..., context?)`) consume it.
 - The first structural write consumers are now in `Rules` pre-eval: child replacement during `preEval()` / `_multiPassPreEval()` / `_resolveDynamicNodes()` / `_preEvalRemainingChildren()` uses session-backed helpers instead of canonical `setData()` writes when a non-reset eval session is active.
 - `Rules` queue/eval/post-eval structural reads are now also migrated on the non-reset session path: `_buildEvalQueue()`, `_evaluateQueue()`, `_assignDocumentOrderDepthFirst()`, `_normalizeCallDeclarationRulesOrder()`, and `_coalesceMergedDeclarations()` consult the same child overlay there.
+- On that same non-reset path, `_coalesceMergedDeclarations()` no longer directly mutates declaration fields or visibility flags; it now uses the existing session field/flag overlay instead.
 - Reset-eval clone sessions still rely on the cloned working tree for queue/application writes so returned evaluated import trees are structurally materialized without an active session.
 - Returned import trees now materialize clone-only parent links after session teardown; ephemeral mixin guard wrapper scopes materialize their local param bindings directly.
 - The branch is still in a fundamentals-completion gate before Stage 21.

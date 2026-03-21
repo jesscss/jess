@@ -33,7 +33,9 @@ import { freezeChildren } from './util/cloning.js';
 import {
   sessionGetChildren,
   sessionGetDependency,
+  sessionGetField,
   sessionMergeDependencies,
+  sessionPatchField,
   sessionSetChildren,
   sessionSetChildAt,
   sessionSetDependency,
@@ -1466,6 +1468,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This handles both in-scope merges and merges that span call-produced Rules blocks.
    */
   private _coalesceMergedDeclarations(rules: Rules, context?: Context): void {
+    const useSessionFields = Boolean(context?.session && !context.session.resetEvalState);
+    const getDeclValue = (node: Node): Node => (
+      useSessionFields && context
+        ? sessionGetField<Node>(node, 'value', context)
+        : (node as any).value
+    );
+    const getDeclImportant = (node: Node): Node | undefined => (
+      useSessionFields && context
+        ? sessionGetField<Node | undefined>(node, 'important', context)
+        : (node as any).important
+    );
+    const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
+      if (useSessionFields && context) {
+        sessionPatchField(node, key, value, context);
+        return;
+      }
+      node.setData(key, value);
+    };
+    const removeVisibleFlag = (node: Node): void => {
+      if (useSessionFields && context) {
+        node._removeFlag(F_VISIBLE, context);
+        return;
+      }
+      node.removeFlag(F_VISIBLE);
+    };
     const isMergedAssign = (assign: unknown): boolean => (
       assign === '+:' || assign === '&,:' || assign === '&_:'
     );
@@ -1478,20 +1505,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return;
       }
-      const priorValue = (prior as any).value.copy(true, freezeChildren);
-      const nextValue = (decl as any).value.copy(true, freezeChildren);
-      decl.setData('value', assign === '&_:'
+      const priorValue = getDeclValue(prior).copy(true, freezeChildren);
+      const nextValue = getDeclValue(decl).copy(true, freezeChildren);
+      setDeclField(decl, 'value', assign === '&_:'
         ? spaced([priorValue, nextValue])
         : new List([priorValue, nextValue]));
-      if (!(decl as any).important && (prior as any).important) {
-        decl.setData('important', (prior as any).important);
+      if (!getDeclImportant(decl) && getDeclImportant(prior)) {
+        setDeclField(decl, 'important', getDeclImportant(prior));
       }
     };
     const normalizeMergedDeclarationValue = (node: Node): void => {
       if (!isNode(node, N.Declaration)) {
         return;
       }
-      const current = (node as any).value;
+      const current = getDeclValue(node);
       if (!isNode(current, N.List) || current.value.length === 0) {
         return;
       }
@@ -1514,14 +1541,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       if (rest.length === 0) {
-        node.setData('value', new Nil());
+        setDeclField(node, 'value', new Nil());
         return;
       }
       if (rest.length === 1) {
-        node.setData('value', rest[0]!.copy(true, freezeChildren));
+        setDeclField(node, 'value', rest[0]!.copy(true, freezeChildren));
         return;
       }
-      node.setData('value', new List(rest.map(item => item.copy(true, freezeChildren))));
+      setDeclField(node, 'value', new List(rest.map(item => item.copy(true, freezeChildren))));
     };
 
     const lastVisibleByName = new Map<string, Node>();
@@ -1566,11 +1593,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const existingAnchor = mergedAnchorByName.get(name);
       if (existingAnchor && existingAnchor !== node && isNode(existingAnchor, N.Declaration)) {
-        existingAnchor.setData('value', (node as any).value.copy(true));
-        if (!(existingAnchor as any).important && (node as any).important) {
-          existingAnchor.setData('important', (node as any).important);
+        setDeclField(existingAnchor, 'value', getDeclValue(node).copy(true));
+        if (!getDeclImportant(existingAnchor) && getDeclImportant(node)) {
+          setDeclField(existingAnchor, 'important', getDeclImportant(node));
         }
-        node.removeFlag(F_VISIBLE);
+        removeVisibleFlag(node);
         if (existingAnchor.visible) {
           lastVisibleByName.set(name, existingAnchor);
         }

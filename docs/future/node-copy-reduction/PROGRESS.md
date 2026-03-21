@@ -989,6 +989,9 @@ gate mixin application, structural conditionals that change the AST shape.
   same session-local child layer when a non-reset eval session is active.
 - Focused regression coverage now also proves `Rules.eval()` can consume a session-local child
   replacement from its queue without mutating the canonical child array.
+- `_coalesceMergedDeclarations()` is also now session-safe on the non-reset path for the
+  declaration-field mutations it performs: declaration `value` / `important` updates use
+  `sessionPatchField()`, and visibility suppression uses `Node._removeFlag(...)`.
 - Focused verification is green:
   `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
   Result: `178 passed, 9 skipped`

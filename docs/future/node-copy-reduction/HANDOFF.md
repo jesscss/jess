@@ -131,6 +131,11 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `src/tree/__tests__/rules.test.ts` now proves `Rules.eval()` can consume a session-local child replacement from its queue and still leave canonical children untouched
     - focused verification is green: `src/tree/__tests__/rules.test.ts`, `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`178 passed, 9 skipped`)
     - important nuance: reset-eval clone sessions still use the cloned working-tree path for queue/application writes so returned import trees remain structurally materialized without depending on an active session
+24. Follow-up on that same `Rules` semantic slice is now in the working tree:
+    - `_coalesceMergedDeclarations()` no longer directly mutates declaration `value` / `important` fields or `F_VISIBLE` on the non-reset session path
+    - declaration field updates there now route through `sessionPatchField()`, and visibility suppression routes through `Node._removeFlag(...)`
+    - reset-eval clone sessions still intentionally keep direct writes on the cloned working tree, so evaluated import trees are materially usable after session teardown
+    - focused verification remains green on the same suite: `178 passed, 9 skipped`
 
 ---
 
