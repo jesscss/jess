@@ -1,7 +1,7 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
-  num, dimension, amp,
+  num, dimension, amp, expr,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '../index.js';
 import { Context } from '../../context.js';
@@ -1951,6 +1951,25 @@ describe('AtRule', () => {
           }
         }
       `);
+    });
+  });
+
+  describe('evaluation', () => {
+    it('evaluates interpolated names and preludes before serialization', async () => {
+      const node = atrule({
+        name: interpolated({
+          source: '@%%',
+          replacements: [expr(any('media'))]
+        }, { role: 'atkeyword' }),
+        prelude: seq([expr(any('screen'))]),
+        rules: rules([
+          decl({ name: 'color', value: expr(any('blue')) })
+        ])
+      });
+
+      const evald = await node.eval(context);
+
+      expect(evald.toTrimmedString()).toBe('@media screen {\n  color: blue;\n}\n');
     });
   });
 });

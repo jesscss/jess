@@ -308,6 +308,31 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('@media screen {\n  color: red;\n}\n');
     });
 
+    it('AtRule eval does not overwrite canonical name, prelude, or rules in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const name = interpolated({
+        source: '@%%',
+        replacements: [expr(any('media'))]
+      }, { role: 'atkeyword' });
+      const prelude = seq([expr(any('screen'))]);
+      const body = rules([
+        decl({ name: 'color', value: expr(any('blue')) })
+      ]);
+      const node = atrule({
+        name,
+        prelude,
+        rules: body
+      });
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString()).toBe('@media screen {\n  color: blue;\n}\n');
+      expect(node.name).toBe(name);
+      expect(node.prelude).toBe(prelude);
+      expect(node.rules).toBe(body);
+    });
+
     it('Mixin rendering reads patched name, params, guard, and rules from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

@@ -910,7 +910,7 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Immediate next node slice: `AtRule`
+- [ ] Immediate next node slice: `Mixin`
 - [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
 - [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 
@@ -921,7 +921,7 @@ Source of truth for ordering:
 
 Current blocker notes from live reduction attempts:
 
-- Recent completed node slices: `RawRules`, `Block`, `Negative`, `Rest`, `AttributeSelector`, `InterpolatedSelector`.
+- Recent completed node slices: `RawRules`, `Block`, `Negative`, `Rest`, `AttributeSelector`, `InterpolatedSelector`, `AtRule`.
   - Per-node status and proof details live in [node-session-status.md](./node-session-status.md).
 - The internal mixin invocation path remains architecturally indirect:
   - `Reference.evalNode()` can turn mixin candidate arrays into a JS-callable adapter via `getFunctionFromMixins()`

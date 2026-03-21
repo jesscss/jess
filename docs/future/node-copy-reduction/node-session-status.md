@@ -124,13 +124,13 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `AtRule`
-  - goal: finish its remaining direct eval-time writes after the simpler wrapper/selector queue is complete
+- `Mixin`
+  - goal: finish its remaining direct binding/eval writes after `AtRule` completion
   - primary proof:
     - node/public-path behavior in the node's own test file
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
   - note:
-    - the prior immediate slice landed: `InterpolatedSelector` now reads the wrapped interpolated value through the session-aware view for render/eval, has explicit behavior coverage in `selector-interpolated.test.ts`, and has an eval-session immutability proof in `eval-session.test.ts`
+    - the prior immediate slice landed: `AtRule` now routes `name` / `prelude` / `rules` reads through the session-aware view on render/eval paths, its eval-time field updates are session-backed, `at-rule.test.ts` covers the public behavior, and `eval-session.test.ts` proves the canonical field references are preserved under an active session
 
 ### Current Batch A: Simple Pending Wrappers
 
@@ -147,7 +147,6 @@ Rule for this batch:
 
 ### Current Batch C: Medium Nodes With Remaining Direct Writes
 
-- `AtRule`
 - `Mixin`
 - `Call`
 - `Func`
@@ -192,7 +191,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `Ruleset`                    | `partial`   | `selector` / `rules` / `guard` / extend-managed selector fields are session-aware on active eval/render paths. Broader composition paths still need pressure reduction.                |
 | `Rules`                      | `partial`   | Non-reset sessions now have child-array overlays and session-backed reads/writes through major preEval/eval/coalescing loops. Reset-session path still relies on cloned working trees. |
 | `RawRules`                   | `complete`  | Its serializer override now reads the `Rules` session child overlay instead of canonical `this.value`, and it has both a dedicated public behavior test and an eval-session immutability proof. |
-| `AtRule`                     | `partial`   | Render reads for `name` / `prelude` / `rules` are session-aware. Eval-time writes are not fully sessionized yet.                                                                       |
+| `AtRule`                     | `complete`  | Render and eval now read `name` / `prelude` / `rules` through the session-aware view, active field updates are session-backed, `at-rule.test.ts` covers behavior parity, and `eval-session.test.ts` proves the canonical field references stay unchanged under an active session. |
 | `Mixin`                      | `partial`   | Render reads for `name` / `params` / `guard` / `rules` are session-aware. Binding/eval write paths are still being migrated.                                                           |
 | `Call`                       | `partial`   | Render reads for `name` / `args` / `contentNode` are session-aware. Full eval/write coverage is not complete.                                                                          |
 | `Func`                       | `partial`   | Render reads for `name` / `params` / `body` are session-aware. Broader eval/write behavior still needs completion.                                                                     |
