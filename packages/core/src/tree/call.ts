@@ -12,7 +12,7 @@ import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { sessionGetField, sessionMergeDependencies, sessionSetDependency } from './util/session-helpers.js';
+import { sessionGetField, sessionMergeDependencies, sessionPatchField, sessionSetDependency } from './util/session-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -122,6 +122,28 @@ export class Call extends Node<CallValue, CallOptions> {
       : this.contentNode;
   }
 
+  private _setName(name: string | Node, context: Context): void {
+    if (name instanceof Node) {
+      this.adopt(name);
+    }
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'name', name, context);
+    } else {
+      this.name = name;
+    }
+  }
+
+  private _setArgs(args: List<Node> | undefined, context: Context): void {
+    if (args instanceof Node) {
+      this.adopt(args);
+    }
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'args', args, context);
+    } else {
+      this.args = args;
+    }
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     const { silentFail } = this.options;
     options = getPrintOptions(options);
@@ -183,7 +205,8 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    let { name, args } = this;
+    let name = this._getName(context);
+    let args = this._getArgs(context);
     let { markImportant } = this.options;
     const applyDependencyToResult = <T extends Node>(
       result: T,
@@ -393,7 +416,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       context.parenFrames.pop();
       context.callStack.pop();
-      const node = this.clone();
+      const node = context.session ? this.maybeClone(context) : this.clone();
       node.options.silentFail = false;
       if (
         n === 'calc' && evaluatedArgs
@@ -404,8 +427,8 @@ export class Call extends Node<CallValue, CallOptions> {
           return applyDependencyToResult(new Paren(evaluatedArgs.value[0]!), evaluatedArgs.value);
         }
       }
-      node.setData('name', n);
-      node.setData('args', evaluatedArgs);
+      node._setName(n, context);
+      node._setArgs(evaluatedArgs, context);
       return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.value);
     };
   }

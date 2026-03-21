@@ -423,6 +423,26 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('rgb(red, blue): fallback');
     });
 
+    it('Call eval does not overwrite the canonical name or args in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const name = interpolated({
+        source: '%%',
+        replacements: [expr(any('blur'))]
+      }, { role: 'ident' });
+      const args = list([expr(any('4px'))]);
+      const node = call({
+        name,
+        args
+      });
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('blur(4px)');
+      expect(node.name).toBe(name);
+      expect(node.args).toBe(args);
+    });
+
     it('PseudoSelector rendering reads patched name and arg from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

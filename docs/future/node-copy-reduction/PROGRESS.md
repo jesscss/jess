@@ -910,7 +910,7 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Immediate next node slice: `Call`
+- [ ] Immediate next node slice: `Func`
 - [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
 - [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 
@@ -924,6 +924,7 @@ Current blocker notes from live reduction attempts:
 - Recent completed node slices: `RawRules`, `Block`, `Negative`, `Rest`, `AttributeSelector`, `InterpolatedSelector`, `AtRule`.
   - Per-node status and proof details live in [node-session-status.md](./node-session-status.md).
 - Latest partial node slice: `Mixin` interpolated-name preEval now routes through the session field layer and has both node-local and eval-session proof coverage. The remaining `rules.options.rulesVisibility` write is still open and is now treated as an options/policy-layer follow-up, not something this small field-write slice pretends to solve.
+- Latest partial node slice: `Call` now routes its non-function eval materialization of `name` / `args` through the session field layer and has both node-local and eval-session proof coverage. The remaining fallback-call branch and the broader direct-mixin-invocation cleanup are still open.
 - The internal mixin invocation path remains architecturally indirect:
   - `Reference.evalNode()` can turn mixin candidate arrays into a JS-callable adapter via `getFunctionFromMixins()`
   - `Call.evalNode()` then re-enters that adapter through the generic function path (`cast(...)`, `JsFunction`, `callWithContext(...)`)

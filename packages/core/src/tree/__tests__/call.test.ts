@@ -1,4 +1,4 @@
-import { call, list, num, ref } from '../index.js';
+import { any, call, expr, interpolated, list, num, ref } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -30,6 +30,20 @@ describe('Call', () => {
       args: list([num(100), num(100), num(100)])
     });
     expect(`${rule}`).toBe('|my-mixin(100, 100, 100)');
+  });
+
+  it('evaluates an interpolated CSS function name before serialization', async () => {
+    const node = call({
+      name: interpolated({
+        source: '%%',
+        replacements: [expr(any('blur'))]
+      }, { role: 'ident' }),
+      args: list([expr(any('4px'))])
+    });
+
+    const evald = await node.eval(context);
+
+    expect(evald.toTrimmedString()).toBe('blur(4px)');
   });
 
   // it('should serialize to a module', () => {
