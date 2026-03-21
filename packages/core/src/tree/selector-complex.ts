@@ -79,10 +79,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    *
    */
   override valueOf() {
-    if (!Array.isArray(this.value)) {
-      this.setData([this.value as unknown as ComplexSelectorComponent]);
-    }
-    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
+    const value = Array.isArray(this.value)
+      ? this.value
+      : [this.value as unknown as ComplexSelectorComponent];
+    return (this._valueOf ??= value.map(n => n.valueOf()).join(''));
   }
 
   override toTrimmedString(options?: PrintOptions): string {

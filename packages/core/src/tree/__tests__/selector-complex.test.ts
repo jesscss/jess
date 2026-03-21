@@ -110,5 +110,34 @@ describe('Complex selector', () => {
       expect(evald.hoistToRoot).toBeUndefined();
       expect(node.hoistToRoot).toBeUndefined();
     });
+
+    it('keeps valueOf canonical while render reads a session-patched value array', () => {
+      context.session = new EvalSession();
+      const node = sel([
+        el('.one'),
+        co('>'),
+        el('.two')
+      ]);
+      const canonicalValue = node.valueOf();
+
+      sessionPatchField(node, 'value', [
+        el('.patched'),
+        co('>'),
+        el('.live')
+      ] as any, context);
+
+      expect(node.toTrimmedString({ context })).toBe('.patched > .live');
+      expect(node.valueOf()).toBe(canonicalValue);
+      expect(node.value.map(component => component.valueOf())).toEqual(['.one', '>', '.two']);
+    });
+
+    it('does not materialize a non-array value back onto the node when valueOf is called', () => {
+      const node = sel([el('.one')]) as any;
+      node.value = el('.solo');
+
+      expect(node.valueOf()).toBe('.solo');
+      expect(Array.isArray(node.value)).toBe(false);
+      expect(node.value.valueOf()).toBe('.solo');
+    });
   });
 });

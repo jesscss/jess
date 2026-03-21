@@ -23,6 +23,24 @@ describe('Url', () => {
     expect(node.toTrimmedString()).toBe('url("a.png")');
   });
 
+  it('keeps valueOf canonical after a session-only eval replacement', async () => {
+    const ctx = new Context();
+    ctx.session = new EvalSession();
+
+    const original = quoted('a.png');
+    const replacement = quoted('b.png');
+    vi.spyOn(original, 'eval').mockReturnValue(replacement);
+
+    const node = url(original);
+    const evald = await node.eval(ctx);
+
+    expect(evald).toBe(node);
+    expect(sessionGetField(node, 'value', ctx)).toBe(replacement);
+    expect(node.valueOf()).toBe('a.png');
+    expect(evald.valueOf()).toBe('a.png');
+    expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
+  });
+
   it('eval still replaces the child directly when no session is active', async () => {
     const ctx = new Context();
 

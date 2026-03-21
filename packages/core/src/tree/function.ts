@@ -10,7 +10,7 @@ import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { freezeChildren } from './util/cloning.js';
-import { sessionGetField, sessionGetParent } from './util/session-helpers.js';
+import { sessionGetField, sessionGetParent, sessionSetParent } from './util/session-helpers.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -146,7 +146,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     // Ensure it participates in the same parent chain as this function definition.
     const parent = sessionGetParent(this, context);
     if (parent) {
-      Reflect.set(mixinLike, 'parent', parent);
+      sessionSetParent(mixinLike, parent, context);
     }
 
     const fn = getFunctionFromMixins(mixinLike);

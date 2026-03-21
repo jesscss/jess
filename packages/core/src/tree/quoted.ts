@@ -84,6 +84,10 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override valueOf(): string {
+    // NOTE: `valueOf()` intentionally remains canonical for now.
+    // It has no Context parameter, so making it session-aware here would make
+    // a single Quoted instance report different observer values across
+    // concurrent sessions with different patched `value`s.
     const value = this.value;
     return value instanceof Node ? value.valueOf() : value as string;
   }

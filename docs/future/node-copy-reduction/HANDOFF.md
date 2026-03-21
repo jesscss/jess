@@ -122,9 +122,15 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `Declaration`: strengthened characterization proves `requiredSemi` is still a contextless canonical observer and needs broader caller/API work.
   - `List`: strengthened characterization proves cached `valueOf()` stays intentionally canonical across competing session overlays.
   - `Sequence`: strengthened characterization proves `length` stays intentionally canonical across competing session overlays.
-- Wrapper/selector follow-up batch is now in progress in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. They remain partial because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
+- Latest wrapper/selector follow-up batch is now in the working tree:
+  - `Paren`: `options.escaped` is now session-aware on both render and eval paths, which closes the remaining node-local `Paren` gap.
+  - `ComplexSelector`: `valueOf()` no longer mutates the node when `value` is non-array, and the remaining canonical `valueOf()` boundary is now explicit rather than an accidental bypass.
+  - `Quoted`: `valueOf()` is now explicitly characterized as intentionally canonical across competing session overlays.
+  - `Url`: `valueOf()` is now explicitly characterized as intentionally canonical because import-path consumers still call it without a `Context`.
+  - `Func` / `rules.ts`: the temporary mixin wrapper now uses `sessionSetParent(...)`, and the main mixin-eval branches it depends on now resolve parent through `sessionGetParent(...)` instead of direct `candidate.parent!`.
+  - `Ruleset.copy()`: investigated and left unchanged; the remaining selector `sourceNode` dependency is blocked on the broader context-free provenance/materialization model, not a safe `Ruleset`-local patch.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
-- The next immediate node target is still the remaining `Ruleset.copy()` selector `sourceNode` path.
+- The next immediate target is now the remaining canonical parent walk in `rules.ts` guard-ancestor handling.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

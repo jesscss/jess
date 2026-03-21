@@ -34,6 +34,7 @@ import {
   sessionGetChildren,
   sessionGetDependency,
   sessionGetField,
+  sessionGetParent,
   sessionMergeDependencies,
   sessionPatchField,
   sessionSetChildren,
@@ -1947,6 +1948,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let sourceParent = (caller as any)?.name instanceof Node
       ? (caller as any).name.sourceParent
       : caller?.sourceParent;
+    const getCandidateParent = (node: Node): Node => {
+      const parent = sessionGetParent(node, thisContext);
+      if (!parent) {
+        throw new ReferenceError(`${node.type} candidate must have a parent during mixin evaluation`);
+      }
+      return parent;
+    };
     let nodeArgs: Node[] = [];
     const savedRulesContext = thisContext.rulesContext;
     const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? savedRulesContext;
@@ -2176,7 +2184,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           /** Make a shallow copy to attach our resolved params (w/ args) */
           let originalMixin = mixin;
           mixin = mixin.copy();
-          originalMixin.parent!.adopt(mixin);
+          getCandidateParent(originalMixin as unknown as Node).adopt(mixin);
           (mixin as Mixin).setData('params', params);
           mixinCandidates.push(mixin);
         }
@@ -2333,7 +2341,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       try {
         let newRules: Rules;
         if (!outerRules) {
-          candidate.parent!.adopt(rules);
+          getCandidateParent(candidate as unknown as Node).adopt(rules);
           newRules = await rules.eval(thisContext);
         } else {
           // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
@@ -2346,7 +2354,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           newRules = await outerRules.eval(thisContext);
         }
-        candidate.parent!.adopt(newRules);
+        getCandidateParent(candidate as unknown as Node).adopt(newRules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
 
@@ -2427,7 +2435,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
         let unlocked = sourceRules.clone(false, undefined, thisContext);
-        candidate.parent!.adopt(unlocked);
+        getCandidateParent(candidate as unknown as Node).adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Detached ruleset calls in Less unlock their contents into the current scope.
         // They must remain visible to untargeted lookups like `.mixin();`.
@@ -2443,7 +2451,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
       rules.options.rulesVisibility.VarDeclaration = 'public';
-      candidate.parent!.adopt(rules);
+      getCandidateParent(candidate as unknown as Node).adopt(rules);
       rules.sourceParent = sourceParent;
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
@@ -2466,7 +2474,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             Mixin: 'public'
           }
         });
-        (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
+        (thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node)).adopt(outerRules);
         outerRules.index = candidate.index;
 
         for (let i = 0; i < params.value.length; i++) {
@@ -2572,7 +2580,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           thisContext.session = new EvalSession({ resetEvalState: true });
           outerRules ??= Rules.create([]);
           outerRules.adopt(canonicalGuard, thisContext);
-          candidate.parent!.adopt(outerRules);
+          getCandidateParent(candidate as unknown as Node).adopt(outerRules);
           /** Allow lookup on the inherited rules */
           passes = false;
           let guardPasses = false;

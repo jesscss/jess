@@ -46,6 +46,16 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       : this.value;
   }
 
+  private _getOptions(context?: Context): ParenOptions | undefined {
+    return context
+      ? sessionGetField<ParenOptions | undefined>(this, 'options', context)
+      : this.options;
+  }
+
+  private _isEscaped(context?: Context): boolean {
+    return Boolean(this._getOptions(context)?.escaped);
+  }
+
   private _unwrapValue(value: Node, context?: Context): Node {
     let current = value;
     while (current instanceof Paren) {
@@ -62,7 +72,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const escapeChar = this.options?.escaped ? '~' : '';
+    const escapeChar = this._isEscaped(options.context) ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
@@ -93,7 +103,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (isOp) {
           context.parenFrames.pop();
         }
-        if (this.options?.escaped && value instanceof Node) {
+        if (this._isEscaped(context) && value instanceof Node) {
           return value;
         }
         value = this._unwrapValue(value, context);
