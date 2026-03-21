@@ -412,6 +412,26 @@ describe('session-aware helpers', () => {
       expect(mixinDef.name?.type).toBe('Interpolated');
     });
 
+    it('Mixin preEval keeps rulesVisibility writes off the canonical rules child in a session', async () => {
+      const ctx = new Context({ leakyRules: false });
+      ctx.depth = 2;
+      ctx.createSession();
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const canonicalVisibility = { ...mixinDef.rules.options.rulesVisibility };
+
+      const preEvald = await mixinDef.preEval(ctx);
+
+      expect(preEvald.rules).not.toBe(mixinDef.rules);
+      expect(preEvald.rules.options.rulesVisibility.Mixin).toBe('private');
+      expect(preEvald.rules.options.rulesVisibility.VarDeclaration).toBe('private');
+      expect(mixinDef.rules.options.rulesVisibility).toEqual(canonicalVisibility);
+    });
+
     it('mixin param binding in a non-reset session does not overwrite canonical defaults', async () => {
       const ctx = new Context({ leakyRules: true });
       ctx.depth = 2;

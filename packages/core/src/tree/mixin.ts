@@ -138,6 +138,15 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       : this.rules;
   }
 
+  private _setRulesContainer(rules: Rules, context: Context): void {
+    this.adopt(rules, context);
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'rules', rules, context);
+    } else {
+      this.rules = rules;
+    }
+  }
+
   private _getParams(context?: Context): List<Node> | undefined {
     return context
       ? sessionGetField<List<Node> | undefined>(this, 'params', context)
@@ -204,7 +213,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     node.sourceNode ??= this;
 
     const name = node._getName(context);
-    const rules = node._getRulesContainer(context);
+    let rules = node._getRulesContainer(context);
+    if (context.session) {
+      const isolatedRules = rules.clone(false, undefined, context);
+      isolatedRules.options = {
+        ...isolatedRules.options,
+        rulesVisibility: { ...(isolatedRules.options.rulesVisibility ?? {}) }
+      };
+      node._setRulesContainer(isolatedRules, context);
+      rules = isolatedRules;
+    }
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope

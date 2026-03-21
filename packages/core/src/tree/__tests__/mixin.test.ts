@@ -327,6 +327,30 @@ describe('Mixin', () => {
       await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
     });
 
+    it('preEval isolates rulesVisibility writes from canonical mixin rules in a session', async () => {
+      const localContext = new Context({ leakyRules: false });
+      localContext.depth = 2;
+      localContext.createSession();
+
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+
+      const canonicalVisibility = { ...mixinDef.rules.options.rulesVisibility };
+      const preEvald = await mixinDef.preEval(localContext);
+
+      expect(preEvald).not.toBe(mixinDef);
+      expect(preEvald.rules).not.toBe(mixinDef.rules);
+      expect(preEvald.rules.options.rulesVisibility.Mixin).toBe('private');
+      expect(preEvald.rules.options.rulesVisibility.VarDeclaration).toBe('private');
+      expect(mixinDef.rules.options.rulesVisibility).toEqual(canonicalVisibility);
+      expect(mixinDef.rules.options.rulesVisibility.Mixin).toBe('public');
+      expect(mixinDef.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    });
+
     it('should call a mixin with a guard condition', async () => {
       // Create a mixin with a guard: .my-mixin(@color) when (@color = red) { color: @color; }
       const mixinDef = mixin({
