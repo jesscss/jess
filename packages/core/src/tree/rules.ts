@@ -401,7 +401,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _setChildren(value: readonly Node[], context?: Context, markDirty: boolean = true): void {
-    if (context) {
+    if (context?.session && !context.session.resetEvalState) {
       sessionSetChildren(this, value, context, { markDirty });
       return;
     }
@@ -409,7 +409,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _setChildAt(index: number, node: Node, context?: Context, markDirty: boolean = true): void {
-    if (context) {
+    if (context?.session && !context.session.resetEvalState) {
       sessionSetChildAt(this, index, node, context, { markDirty });
       return;
     }
@@ -1250,8 +1250,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /** Assign depth-first document order to every Ruleset under the given Rules (single walk, source order). */
-  private _assignDocumentOrderDepthFirst(rules: Rules, map: WeakMap<Ruleset, number>, counter: { value: number }): void {
-    const value = rules.value;
+  private _assignDocumentOrderDepthFirst(
+    rules: Rules,
+    map: WeakMap<Ruleset, number>,
+    counter: { value: number },
+    context?: Context
+  ): void {
+    const value = rules._getChildren(context);
     if (!isArray(value)) {
       return;
     }
@@ -1262,15 +1267,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const innerRules = (node as any).rules;
       if (innerRules && isNode(innerRules, N.Rules)) {
-        this._assignDocumentOrderDepthFirst(innerRules as Rules, map, counter);
+        this._assignDocumentOrderDepthFirst(innerRules as Rules, map, counter, context);
       }
     }
   }
 
   /** Build the evaluation queue partitioned by priority */
-  private _buildEvalQueue(rules: Rules): EvalQueueMap {
+  private _buildEvalQueue(rules: Rules, context: Context): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
-    for (let item of rules) {
+    for (const item of rules._getChildren(context).entries()) {
       let [, rule] = item;
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
       // Less variable-calls `@foo();` are parsed as Expression(Call(variable-ref)).
@@ -1286,12 +1291,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             const raw = ref.key;
             const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
             // Only if variable exists and its value is a detached ruleset Mixin with nested Mixin definitions.
-            const decl = rules.find('declaration', keyStr, 'VarDeclaration') as any;
+            const decl = rules.find('declaration', keyStr, 'VarDeclaration', { context }) as any;
             const val = decl?.value;
             const hasNestedMixinDefinitions =
               isNode(val, N.Mixin)
-              && Array.isArray((val as any).rules?.value)
-              && (val as any).rules.value.some((n: any) => n?.type === 'Mixin');
+              && isNode((val as any).rules, N.Rules)
+              && (val as any).rules._getChildren(context).some((n: any) => n?.type === 'Mixin');
             if (hasNestedMixinDefinitions) {
               priority = Priority.High;
             }
@@ -1397,7 +1402,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             scheduledPriority.delete(rule);
             // Apply the result
             if (result !== rule) {
-              rules.setData(idx, result);
+              rules._setChildAt(idx, result, context, false);
               queue[q] = [idx, result];
               // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
               // so variables from the import can be found by the parent
@@ -1405,8 +1410,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               if (isNode(result, N.Rules)) {
                 // Set the index of the imported Rules to the StyleImport's index
                 // so we can compare Rules indices when determining which variable was declared later
-                result.index = idx;
-                rules.adopt(result);
+                sessionSetIndex(result, idx, context);
+                rules.adopt(result, context);
                 rules.registerNode(result, {
                   rulesVisibility: result.options.rulesVisibility,
                   readonly: result.options.readonly
@@ -1417,7 +1422,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 }
               } else {
                 // For non-Rules results, adopt them to set up parent chain
-                rules.adopt(result);
+                rules.adopt(result, context);
               }
             }
             if (result.hoistToRoot) {
@@ -1460,14 +1465,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Coalesce assignment-normalized declaration chains in one stage after evaluation.
    * This handles both in-scope merges and merges that span call-produced Rules blocks.
    */
-  private _coalesceMergedDeclarations(rules: Rules): void {
+  private _coalesceMergedDeclarations(rules: Rules, context?: Context): void {
     const isMergedAssign = (assign: unknown): boolean => (
       assign === '+:' || assign === '&,:' || assign === '&_:'
     );
     const isDeclarationOnlyRules = (node: Node): node is Rules => (
       isNode(node, N.Rules)
-      && node.value.length > 0
-      && node.value.every(child => isNode(child, N.Declaration | N.Comment))
+      && node._getChildren(context).length > 0
+      && node._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
     );
     const composeMergedValue = (decl: Node, prior: Node, assign: string): void => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
@@ -1523,13 +1528,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mergedAnchorByName = new Map<string, Node>();
     const stream: Node[] = [];
 
-    for (const node of rules.value) {
+    for (const node of rules._getChildren(context)) {
       if (isNode(node, N.Declaration)) {
         stream.push(node);
         continue;
       }
       if (isDeclarationOnlyRules(node)) {
-        for (const child of node.value) {
+        for (const child of node._getChildren(context)) {
           if (isNode(child, N.Declaration)) {
             stream.push(child);
           }
@@ -1586,19 +1591,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    *
    * This runs after queue evaluation to avoid mutating rule indices mid-eval.
    */
-  private _normalizeCallDeclarationRulesOrder(rules: Rules): void {
-    const firstNestedIdx = rules.value.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
+  private _normalizeCallDeclarationRulesOrder(rules: Rules, context?: Context): void {
+    const children = rules._getChildren(context);
+    const firstNestedIdx = children.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
     if (firstNestedIdx < 0) {
       return;
     }
-    const beforeNested = rules.value.slice(0, firstNestedIdx);
-    const afterNested = rules.value.slice(firstNestedIdx);
+    const beforeNested = children.slice(0, firstNestedIdx);
+    const afterNested = children.slice(firstNestedIdx);
     const shouldMove = (n: Node) => {
       if (
         !isNode(n, N.Rules)
         || !isNode(n.sourceParent, N.Call)
-        || n.value.length === 0
-        || !n.value.every(child => isNode(child, N.Declaration | N.Comment))
+        || n._getChildren(context).length === 0
+        || !n._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
       ) {
         return false;
       }
@@ -1619,7 +1625,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     const remainder = afterNested.filter(n => !shouldMove(n));
-    rules.setData([...beforeNested, ...moved, ...remainder]);
+    rules._setChildren([...beforeNested, ...moved, ...remainder], context, false);
   }
 
   /**
@@ -1641,22 +1647,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rules === context.root) {
       const map = new WeakMap<Ruleset, number>();
       context.documentOrderByRuleset = map;
-      this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
+      this._assignDocumentOrderDepthFirst(rules, map, { value: 0 }, context);
     }
-    const evalQueue = this._buildEvalQueue(rules);
+    const evalQueue = this._buildEvalQueue(rules, context);
     const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
     if (isThenable(maybeHoist)) {
       return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
-        this._normalizeCallDeclarationRulesOrder(rules);
-        this._coalesceMergedDeclarations(rules);
+        this._normalizeCallDeclarationRulesOrder(rules, context);
+        this._coalesceMergedDeclarations(rules, context);
         return {
           rules,
           rulesToHoist
         };
       });
     }
-    this._normalizeCallDeclarationRulesOrder(rules);
-    this._coalesceMergedDeclarations(rules);
+    this._normalizeCallDeclarationRulesOrder(rules, context);
+    this._coalesceMergedDeclarations(rules, context);
     return { rules, rulesToHoist: maybeHoist as boolean };
   }
 

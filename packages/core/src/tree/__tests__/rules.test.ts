@@ -1046,5 +1046,31 @@ describe('Rules', () => {
       expect(root.value[0]).toBe(original);
     });
 
+    it('eval queue reads session-local child replacements without mutating canonical children', async () => {
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const original = decl({ name: 'background', value: any('blue') });
+      const replacement = call({
+        name: ref({ key: '.my-mixin' }, { type: 'mixin' })
+      });
+      const targetRules = rules([original]);
+      const root = rules([mixinDef, targetRules]);
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      ctx.root = root;
+
+      sessionReplaceNode(original, replacement, ctx);
+      const evald = await targetRules.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('color: red;');
+      expect(evald.toTrimmedString()).toBe('background: blue;');
+      expect(targetRules.at(0, ctx)).not.toBe(original);
+      expect(targetRules.at(0)).toBe(original);
+    });
+
   });
 });

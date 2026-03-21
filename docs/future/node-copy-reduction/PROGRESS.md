@@ -983,14 +983,22 @@ gate mixin application, structural conditionals that change the AST shape.
   `preEval()`, `_multiPassPreEval()`, `_resolveDynamicNodes()`, and `_preEvalRemainingChildren()`.
 - Focused regression coverage now proves `preEval()` can see a session-local child replacement
   in a non-reset eval session, assign runtime index there, and leave canonical children unchanged.
+- The next semantic `Rules` phase is now partially sessionized on the non-reset path:
+  `_buildEvalQueue()`, `_evaluateQueue()`, `_assignDocumentOrderDepthFirst()`,
+  `_normalizeCallDeclarationRulesOrder()`, and `_coalesceMergedDeclarations()` now read the
+  same session-local child layer when a non-reset eval session is active.
+- Focused regression coverage now also proves `Rules.eval()` can consume a session-local child
+  replacement from its queue without mutating the canonical child array.
 - Focused verification is green:
   `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
-  Result: `177 passed, 9 skipped`
+  Result: `178 passed, 9 skipped`
 - `Rules[Symbol.iterator]()` is still canonical on purpose because it has no explicit
   `Context` channel. Do not make it session-aware by introducing hidden ambient state.
-- Next integration step is still the real semantic one: route `Rules` queue/eval/post-eval
-  structural paths through the same session child overlay instead of mixing overlay reads with
-  canonical `setData()` writes.
+- Reset-eval clone sessions still intentionally use the cloned working-tree path for queue/application
+  writes so returned import trees are structurally materialized without depending on an active session.
+- Next integration step is still the harder one: close the remaining split between reset-eval clone
+  sessions and non-reset session overlays, or keep reducing clone pressure elsewhere once that tradeoff
+  is better characterized.
 
 ### Working procedure
 1. Convert ONE node class at a time

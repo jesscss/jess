@@ -125,6 +125,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `src/tree/__tests__/rules.test.ts` now proves `preEval()` can read a session-local child replacement, assign runtime index in-session, and leave canonical children untouched when using a non-reset eval session
     - focused verification is green: `src/tree/__tests__/rules.test.ts`, `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`177 passed, 9 skipped`)
     - this still stops short of queue/eval/post-eval normalization; `_buildEvalQueue()`, `_evaluateQueue()`, and the post-eval declaration-ordering passes still need to consume the same structural session layer
+23. The next `Rules` semantic slice is now in the working tree:
+    - `_buildEvalQueue()` now reads `Rules` children from the session overlay when a non-reset eval session is active, instead of iterating the canonical array via `Rules[Symbol.iterator]()`
+    - `_evaluateQueue()`, `_assignDocumentOrderDepthFirst()`, `_normalizeCallDeclarationRulesOrder()`, and `_coalesceMergedDeclarations()` now read the same structural session layer on the non-reset path
+    - `src/tree/__tests__/rules.test.ts` now proves `Rules.eval()` can consume a session-local child replacement from its queue and still leave canonical children untouched
+    - focused verification is green: `src/tree/__tests__/rules.test.ts`, `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`178 passed, 9 skipped`)
+    - important nuance: reset-eval clone sessions still use the cloned working-tree path for queue/application writes so returned import trees remain structurally materialized without depending on an active session
 
 ---
 
