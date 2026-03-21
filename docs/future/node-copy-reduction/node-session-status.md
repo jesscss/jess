@@ -113,14 +113,13 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `Declaration` caller-side param/default binding writes in [rules.ts](../../packages/core/src/tree/rules.ts)
-  - goal: finish moving mixin param/default binding off canonical field mutation
+- `RawRules`
+  - goal: make serialization read the `Rules` session child overlay instead of canonical `this.value`
   - primary proof:
-    - node/public-path behavior in [mixin.test.ts](../../packages/core/src/tree/__tests__/mixin.test.ts)
+    - node/public-path behavior in a dedicated raw-rules-focused test or the smallest existing rules serialization test that exercises `RawRules`
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
-  - promotion target:
-    - `Declaration` may move to `complete`
-    - `VarDeclaration` may move from `inherited` to effectively complete if no subclass bypass remains
+  - note:
+    - the prior immediate slice landed: caller-side mixin param/default binding in `rules.ts` now writes and reads through the session on the non-reset path, with focused proof in `mixin.test.ts` and `eval-session.test.ts`
 
 ### Current Batch A: Simple Pending Wrappers
 
@@ -184,7 +183,7 @@ Use this to record why a node is not next, even if it looks urgent.
 
 | Node                         | Status      | Notes                                                                                                                                                                                  |
 | ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Declaration`                | `partial`   | Active eval/serialization reads and field writes for `name` / `value` / `important` now use session helpers. Caller-side mutation paths still need to be finished.                     |
+| `Declaration`                | `partial`   | Active eval/serialization reads and field writes for `name` / `value` / `important` now use session helpers. The mixin param/default binding caller path in `rules.ts` is now also session-backed on the non-reset path, but broader caller-side mutation paths still need completion. |
 | `VarDeclaration`             | `inherited` | Inherits `Declaration` field behavior. Remaining mixin-param binding work is in callers, not in the node class itself.                                                                 |
 | `CustomDeclaration`          | `inherited` | Inherits `Declaration`; custom eval wrapper only toggles `context.inCustom`.                                                                                                           |
 | `Ruleset`                    | `partial`   | `selector` / `rules` / `guard` / extend-managed selector fields are session-aware on active eval/render paths. Broader composition paths still need pressure reduction.                |

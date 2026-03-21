@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -325,6 +325,39 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('.patched(size) when true {\n  background: blue;\n}');
       expect(node.toTrimmedString()).toBe('.base(color) {\n  color: red;\n}');
+    });
+
+    it('mixin param binding in a non-reset session does not overwrite canonical defaults', async () => {
+      const ctx = new Context({ leakyRules: true });
+      ctx.depth = 2;
+      ctx.session = new EvalSession();
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          vardecl({ name: 'color', value: any('red') }, { paramVar: true })
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+      const root = rules([mixinDef, testRuleset]);
+      ctx.root = root;
+      ctx.rulesContext = testRuleset.rules;
+
+      const mixinCall = testRuleset.rules!.value[0]!;
+      const output = await mixinCall.eval(ctx);
+
+      expect(output.toTrimmedString({ context: ctx })).toContain('color: blue;');
+      expect(String((mixinDef.params!.value[0] as any).value)).toBe('red');
     });
 
     it('Call rendering reads patched name, args, and content from the active session', () => {
@@ -679,6 +712,24 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toContain('color: red;');
       expect(node.toTrimmedString()).not.toContain('border: black;');
       expect(node.toTrimmedString()).not.toContain('margin: 1px;');
+    });
+
+    it('RawRules rendering reads the session-local child overlay without mutating canonical output', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = decl({ name: 'color', value: any('red') });
+      const replacement = decl({ name: 'background', value: any('blue') });
+      const appended = decl({ name: 'border', value: any('black') });
+      const node = rawrules([first]);
+
+      sessionReplaceNode(first, replacement, ctx);
+      sessionAppendChildren(node, [appended], ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('background: blue;border: black;');
+      expect(node.toTrimmedString()).toBe('color: red;');
+      expect(node.toBraced({ context: ctx })).toBe('{background: blue;border: black;}');
+      expect(node.toBraced()).toBe('{color: red;}');
+      expect(node.value).toEqual([first]);
     });
 
     it('Rules.at reads the session-local child overlay when context is provided', () => {

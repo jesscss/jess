@@ -125,6 +125,10 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 21. The next explicit `Rules` read adapters are now in the working tree:
     - root-level `Rules.toString()` leading-comment hoist now reads the session-local child overlay
     - `Rules.at(index, context?)` and `Rules.toObject(convertToPrimitives, context?)` now read the session-local child overlay when a `Context` is provided, while the no-context path remains canonical
+22. The latest immediate fundamentals slice is now in the working tree:
+    - caller-side mixin param/default binding in `rules.ts` now writes and reads through the session on the non-reset path instead of overwriting canonical parameter defaults
+    - focused proof is green in `src/tree/__tests__/mixin.test.ts`, `src/__tests__/eval-session.test.ts`, and `src/tree/__tests__/call.test.ts`
+    - this narrows the remaining `Declaration`/`VarDeclaration` caller-side gap, but does not yet promote `Declaration` to `complete`
     - `src/__tests__/eval-session.test.ts` now proves those explicit read APIs see overlay replacements without mutating canonical reads
     - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`176 passed, 9 skipped`)
     - `Rules[Symbol.iterator]()` intentionally remains canonical for now because it has no explicit `Context` channel; do not smuggle session state through a hidden global just to make iteration session-aware

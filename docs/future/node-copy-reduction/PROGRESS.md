@@ -899,7 +899,6 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Finish the current caller-side mixin param/default binding slice in `rules.ts` with focused immutability coverage, or revert it cleanly if the proof does not hold
 - [ ] `RawRules`: make its serialization read the `Rules` session child overlay instead of canonical `this.value`
 - [ ] `Block`
 - [ ] `Negative`
@@ -917,6 +916,7 @@ Source of truth for ordering:
 
 Current blocker notes from live reduction attempts:
 
+- The prior immediate slice is now landed in the working tree: caller-side mixin param/default binding in `rules.ts` writes and reads through the session on the non-reset path, and focused proof now exists in `src/tree/__tests__/mixin.test.ts` plus `src/__tests__/eval-session.test.ts`. This narrows the remaining `Declaration` gap, but does not yet make `Declaration` fully `complete`.
 - The `Rules.value` / session-registry identity blocker is now resolved. Session registry deltas are keyed by the `Rules` container, and characterization now proves they survive a shallow clone swapping to a new `value[]`.
 - `Rules.value` is now typed readonly for consumers. Plugin / visitor code should treat direct array mutation as invalid and go through `setData()` or container helpers instead.
 - Child-array isolation and generic session-local replacement are still coupled. The next safe reduction likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.

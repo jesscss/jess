@@ -2454,7 +2454,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let outerRules: Rules | undefined;
 
       /** Now we need to add our parameters, if any */
-      let params = (candidate as any).params as List<Node> | undefined;
+      let params = thisContext.session
+        ? sessionGetField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
+        : (candidate as any).params as List<Node> | undefined;
       if (params) {
         outerRules = Rules.create([], {
           rulesVisibility: {
