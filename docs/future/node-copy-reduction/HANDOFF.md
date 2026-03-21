@@ -12,6 +12,7 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 3. `dependency-graph.md` — **new** — Stages 17–21 (dependency graph, session-local
    registries, Live Patch API). This is the active roadmap.
 4. `PROGRESS.md` — implementation checklist, test baselines, what's done
+5. `node-session-status.md` — concrete per-node inventory for the immutable/session contract
 
 ---
 
@@ -27,6 +28,17 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 - Stage 20: completed as a slice, but not yet sufficient to advance the roadmap
   - done: session-local registry deltas, session-aware register/find plumbing, scope-dirty invalidation, dependency-aware partial re-eval in declaration lookup, detached-ruleset unlock off `clone(true)`, and Stage 20 characterization coverage
   - note: plain `@import` no longer adds a finalization wrapper; compose still keeps a shallow per-import wrapper because separate import sites can require different visibility / reference metadata on the same cached module
+- Current actual stage: fundamentals-completion gate
+  - focus: make immutable canonical nodes + session-backed eval writes/replacements true end-to-end
+  - order: lower-order node fields first (`Declaration`, `Ruleset`), then more compositional containers
+  - checklist: keep `node-session-status.md` accurate as nodes move from `pending` -> `partial` -> done
+  - proof rule: every node slice needs a narrow behavior proof plus an explicit immutability/session-overlay proof before moving upward
+  - anti-pattern: do not use `Rules`, imports, or extend as the primary validation layer for a lower-order node migration when the node itself can be proven directly
+  - test contract:
+    - node public behavior parity lives in the node's own file under `packages/core/src/tree/__tests__/`
+    - session-overlay / immutability proof lives in `packages/core/src/__tests__/eval-session.test.ts`
+    - broader `rules` / `import-style` / extend tests are secondary confirmation only
+  - completion gate: a node is not `complete` until reads and writes are both sessionized for the in-scope path, clone/copy dependence is gone for that responsibility, required tests exist, and the slice is committed/pushed
 - Stage 21: not started and explicitly blocked on the pre-Stage-21 threshold below
 
 ### Working tree expectation
