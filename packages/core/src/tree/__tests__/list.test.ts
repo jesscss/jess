@@ -1,4 +1,4 @@
-import { TreeContext, list, spaced, num, any } from '../index.js';
+import { TreeContext, list, spaced, num, any, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
@@ -78,6 +78,26 @@ describe('List', () => {
     expect(left.toTrimmedString({ context })).toBe('red, blue, black');
     expect(left.toTrimmedString()).toBe('red');
     expect(left.value.map(child => child.toTrimmedString())).toEqual(['red']);
+  });
+
+  it('eval() does not overwrite the canonical list array on the non-reset session path', async () => {
+    context.session = new EvalSession();
+    const node = list([ref({ key: 'foo' }, { type: 'variable' })]);
+    const scope = rules([
+      vardecl({
+        name: any('foo'),
+        value: any('red')
+      })
+    ]);
+    context.root = scope;
+    context.rulesContext = scope;
+
+    const result = await node.eval(context);
+
+    expect(result).toBe(node);
+    expect(node.toTrimmedString({ context })).toBe('red');
+    expect(node.toTrimmedString()).toBe('$foo');
+    expect(node.value[0]?.type).toBe('Reference');
   });
 
   it('length and iteration remain canonical without a Context channel', () => {

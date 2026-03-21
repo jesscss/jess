@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Context } from '../../context.js';
-import { rules, decl, any, list, vardecl, call, fn, nil } from '../index.js';
+import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
 import { sessionPatchField } from '../util/session-helpers.js';
 import * as rulesModule from '../rules.js';
 
@@ -131,5 +131,27 @@ describe('Func', () => {
 
     expect(result.toTrimmedString()).toBe('ok');
     expect(mixinWrapperAdopts).toHaveLength(0);
+  });
+
+  it('session-patched function names do not affect Reference(type=function) lookup yet', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.createSession();
+
+    const tree = rules([
+      fn({
+        name: any('add'),
+        body: rules([
+          decl({ name: 'return', value: any('ok') })
+        ])
+      }),
+      call({ name: ref('renamed', { type: 'function' }), args: list([]) })
+    ]);
+    const functionNode = tree.at(0) as ReturnType<typeof fn>;
+
+    sessionPatchField(functionNode, 'name', any('renamed'), ctx);
+
+    await expect(tree.eval(ctx)).rejects.toThrow("'renamed' is not defined");
+    expect(functionNode.toTrimmedString({ context: ctx })).toContain('$function renamed()');
+    expect(functionNode.toTrimmedString()).toContain('$function add()');
   });
 });

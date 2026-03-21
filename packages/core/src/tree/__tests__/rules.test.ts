@@ -997,6 +997,40 @@ describe('Rules', () => {
       expect(sessionGetParent(shared, ctx)).toBe(target);
     });
 
+    it('keeps canonical children intact when unshifting in a non-reset session', () => {
+      const original = vardecl({ name: 'foo', value: any('bar') });
+      const inserted = vardecl({ name: 'bar', value: any('baz') });
+      const target = rules([original]);
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      target.unshift(ctx, inserted);
+
+      expect(target.value).toHaveLength(1);
+      expect(target.at(0)).toBe(original);
+      expect(target.at(0, ctx)).toBe(inserted);
+      expect(target.at(1, ctx)).toBe(original);
+      expect(inserted.parent).toBeUndefined();
+      expect(sessionGetParent(inserted, ctx)).toBe(target);
+    });
+
+    it('keeps canonical children intact when splicing in a non-reset session', () => {
+      const original = vardecl({ name: 'foo', value: any('bar') });
+      const replacement = vardecl({ name: 'bar', value: any('baz') });
+      const target = rules([original]);
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      const removed = target.splice(ctx, 0, 1, replacement);
+
+      expect(removed).toEqual([original]);
+      expect(target.value).toHaveLength(1);
+      expect(target.at(0)).toBe(original);
+      expect(target.at(0, ctx)).toBe(replacement);
+      expect(replacement.parent).toBeUndefined();
+      expect(sessionGetParent(replacement, ctx)).toBe(target);
+    });
+
     it('falls through to canonical declarations when a session overlay does not depend on changed vars', () => {
       const changed = vardecl({ name: 'theme', value: any('red') });
       const derived = vardecl({ name: 'derived', value: any('pink') });

@@ -81,6 +81,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       : this.value;
   }
 
+  protected _getOptions(context?: Context): SequenceOptions | undefined {
+    return context
+      ? sessionGetField<SequenceOptions | undefined>(this, 'options', context)
+      : this.options;
+  }
+
   // NOTE: `length` intentionally remains canonical for now. A session-aware
   // getter would need an explicit Context channel; otherwise the same node
   // instance would have ambiguous answers when different sessions patch
@@ -244,7 +250,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       (node) => {
         const value = node._getValue(context).filter(n => n && !(n instanceof Nil));
         node._setValue(value, context);
-        if (value.length === 1 && !node.options.preserveWhitespace) {
+        if (value.length === 1 && !node._getOptions(context)?.preserveWhitespace) {
           return value[0]!;
         }
         return node;

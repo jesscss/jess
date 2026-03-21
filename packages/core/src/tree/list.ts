@@ -1,9 +1,10 @@
 import { type Context } from '../context.js';
-import { defineType, Node } from './node.js';
+import { defineType, F_MAY_ASYNC, Node } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
+import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
 
 export type ListOptions = {
@@ -145,6 +146,112 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     let newList = this.maybeClone(context);
     newList._setValue([...ownItems, ...nextItems], context);
     return newList;
+  }
+
+  override preEval(context: Context): MaybePromise<Node> {
+    if (this._isPreEvaluated(context)) {
+      return this;
+    }
+
+    const node = this.maybeClone(context);
+    node._setPreEvaluated(true, context);
+    const value = node._getValue(context);
+    const nextValue = value.slice();
+
+    if (!node.hasFlag(F_MAY_ASYNC)) {
+      let changed = false;
+      for (let i = 0; i < nextValue.length; i++) {
+        const child = nextValue[i]!;
+        const result = child.preEval(context) as T;
+        if (result !== child) {
+          nextValue[i] = result;
+          changed = true;
+        }
+      }
+      if (changed) {
+        node._setValue(nextValue, context);
+      }
+      return node;
+    }
+
+    let changed = false;
+    const out = serialForEach(nextValue, (child, i) => {
+      const result = child.preEval(context);
+      if (isThenable(result)) {
+        return (result as Promise<T>).then((resolved) => {
+          if (resolved !== child) {
+            nextValue[i] = resolved;
+            changed = true;
+          }
+        });
+      }
+      if (result !== child) {
+        nextValue[i] = result as T;
+        changed = true;
+      }
+    });
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => {
+        if (changed) {
+          node._setValue(nextValue, context);
+        }
+        return node;
+      });
+    }
+    if (changed) {
+      node._setValue(nextValue, context);
+    }
+    return node;
+  }
+
+  protected override evalNode(context: Context): MaybePromise<Node> {
+    const value = this._getValue(context);
+    const nextValue = value.slice();
+
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      let changed = false;
+      for (let i = 0; i < nextValue.length; i++) {
+        const child = nextValue[i]!;
+        const result = child.eval(context) as T;
+        if (result !== child) {
+          nextValue[i] = result;
+          changed = true;
+        }
+      }
+      if (changed) {
+        this._setValue(nextValue, context);
+      }
+      return this;
+    }
+
+    let changed = false;
+    const out = serialForEach(nextValue, (child, i) => {
+      const result = child.eval(context);
+      if (isThenable(result)) {
+        return (result as Promise<T>).then((resolved) => {
+          if (resolved !== child) {
+            nextValue[i] = resolved;
+            changed = true;
+          }
+        });
+      }
+      if (result !== child) {
+        nextValue[i] = result as T;
+        changed = true;
+      }
+    });
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => {
+        if (changed) {
+          this._setValue(nextValue, context);
+        }
+        return this;
+      });
+    }
+    if (changed) {
+      this._setValue(nextValue, context);
+    }
+    return this;
   }
 
   /** @todo? Lists should collapse nested lists? */

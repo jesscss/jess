@@ -168,6 +168,25 @@ describe('Rule', () => {
     expect(preEvald.selector.valueOf()).toBe('.parent .child');
     expect(preEvald.selector.sourceNode.valueOf()).toBe('.poison');
   });
+
+  it('preEval still mutates canonical child rules visibility on the non-reset session path', async () => {
+    const node = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    context.session = new EvalSession();
+
+    expect(node.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+
+    await node.preEval(context);
+
+    expect(node.rules.options.rulesVisibility.Mixin).toBe('private');
+    expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('private');
+  });
   // it('should serialize to a module', () => {
   //   let node = rule({
   //     selector: list([sel([el('foo')])]),

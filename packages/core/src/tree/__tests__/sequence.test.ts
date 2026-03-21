@@ -1,4 +1,4 @@
-import { nil, num, seq } from '../index.js';
+import { any, nil, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
@@ -60,6 +60,30 @@ describe('Sequence', () => {
     expect(rule.value).toHaveLength(3);
     expect(rule.value[1]?.type).toBe('Nil');
     expect(rule.value.map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
+  });
+
+  it('eval respects a session-patched preserveWhitespace option without mutating canonical collapse behavior', async () => {
+    const context = new Context();
+    context.session = new EvalSession();
+    const node = seq([ref({ key: 'value' }, { type: 'variable' })]);
+    const root = rules([
+      vardecl({ name: 'value', value: any('10') })
+    ]);
+    context.root = root;
+    context.rulesContext = root;
+
+    sessionPatchField(node, 'options', { preserveWhitespace: true }, context);
+
+    const evald = await node.eval(context);
+
+    expect(evald).toBe(node);
+    expect(evald.toTrimmedString({ context })).toBe('10');
+    expect(node.options?.preserveWhitespace).toBeUndefined();
+    const canonicalContext = new Context();
+    canonicalContext.root = root;
+    canonicalContext.rulesContext = root;
+    const canonicalEvald = await node.eval(canonicalContext);
+    expect(canonicalEvald.type).toBe('Any');
   });
 
   it('compares against session-patched values when called with context', () => {

@@ -735,10 +735,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args.length > 0 && args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const nodes = (hasCtx ? args.slice(1) : args) as Node[];
-    this._setValueArray([...this.value]);
+    if (!(ctx?.session && !ctx.session.resetEvalState)) {
+      this._setValueArray([...this.value]);
+      for (const node of nodes) {
+        this.adopt(node, ctx);
+        (this.value as Node[]).push(node);
+        this.registerNode(node, undefined, ctx);
+      }
+      return;
+    }
+    const nextValue = [...this._getChildren(ctx)];
     for (const node of nodes) {
       this.adopt(node, ctx);
-      (this.value as Node[]).push(node);
+      nextValue.push(node);
+    }
+    this._setChildren(nextValue, ctx);
+    for (const node of nodes) {
       this.registerNode(node, undefined, ctx);
     }
   }
@@ -749,12 +761,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const [start, deleteCount, ...items] = (hasCtx ? args.slice(1) : args) as [number, number, ...Node[]];
-    const nextValue = [...this.value];
+    if (!(ctx?.session && !ctx.session.resetEvalState)) {
+      const nextValue = [...this.value];
+      const removed = nextValue.splice(start, deleteCount, ...items);
+      this._setValueArray(nextValue);
+      for (const item of items) {
+        if (item instanceof Node) {
+          this.adopt(item, ctx);
+          this.registerNode(item, undefined, ctx);
+        }
+      }
+      (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
+      return removed as Node[];
+    }
+    const nextValue = [...this._getChildren(ctx)];
     const removed = nextValue.splice(start, deleteCount, ...items);
-    this._setValueArray(nextValue);
     for (const item of items) {
       if (item instanceof Node) {
         this.adopt(item, ctx);
+      }
+    }
+    this._setChildren(nextValue, ctx);
+    for (const item of items) {
+      if (item instanceof Node) {
         this.registerNode(item, undefined, ctx);
       }
     }
@@ -768,11 +797,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args.length > 0 && args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const items = (hasCtx ? args.slice(1) : args) as Node[];
-    this._setValueArray([...this.value]);
-    (this.value as Node[]).unshift(...items);
+    if (!(ctx?.session && !ctx.session.resetEvalState)) {
+      this._setValueArray([...this.value]);
+      (this.value as Node[]).unshift(...items);
+      for (const item of items) {
+        if (item instanceof Node) {
+          this.adopt(item, ctx);
+          this.registerNode(item, undefined, ctx);
+        }
+      }
+      (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
+      return;
+    }
     for (const item of items) {
       if (item instanceof Node) {
         this.adopt(item, ctx);
+      }
+    }
+    this._setChildren([...items, ...this._getChildren(ctx)], ctx);
+    for (const item of items) {
+      if (item instanceof Node) {
         this.registerNode(item, undefined, ctx);
       }
     }

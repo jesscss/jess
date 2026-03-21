@@ -384,7 +384,10 @@ export class Call extends Node<CallValue, CallOptions> {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       const Rules = await getRules();
-      let rules = Rules.create([...n.value], n.options);
+      let rules = Rules.create(
+        n.value.map(child => child.clone(true, undefined, context)),
+        n.options ? { ...n.options } : undefined
+      );
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
@@ -397,7 +400,7 @@ export class Call extends Node<CallValue, CallOptions> {
       context.parenFrames.pop();
       // Apply markImportant if needed
       if (markImportant) {
-        this.makeImportant(n as unknown as Rules);
+        this.makeImportant(rules);
       }
       return rules;
     }

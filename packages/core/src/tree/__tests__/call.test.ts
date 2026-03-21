@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { any, call, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
+import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
@@ -238,6 +238,23 @@ describe('Call', () => {
     expect(returnValue.pre).toBe(0);
     expect(returnValue.post).toBeUndefined();
     expect(returnValue.sourceParent).toBeUndefined();
+  });
+
+  it('materializes collection results without mutating canonical collection children', async () => {
+    context.session = new EvalSession();
+    const childDecl = decl({ name: 'color', value: any('red') });
+    const collectionNode = coll([childDecl]);
+    const node = call({
+      name: collectionNode,
+      args: list([])
+    }, { markImportant: true });
+
+    const result = await node.eval(context);
+
+    expect(result.toTrimmedString({ context })).toContain('color: red !important;');
+    expect(result.value[0]).not.toBe(childDecl);
+    expect(childDecl.parent).toBe(collectionNode);
+    expect(childDecl.toTrimmedString({ context })).toBe('color: red');
   });
 
   // it('should serialize to a module', () => {

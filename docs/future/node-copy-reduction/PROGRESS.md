@@ -999,6 +999,16 @@ Current blocker notes from live reduction attempts:
   - `SelectorCapture`: `preEval()` replacement writes are now session-backed instead of directly overwriting `value`.
   - `Declaration`: serializer de-dupe/custom-property decisions and merged-declaration coalescing now read the property name through session-aware helpers.
   - `Url`: audited complete for node-local scope after the import-path callsite fixes; no further active bug was found in the owned path.
+- Latest completion-audit wave now landed in the working tree:
+  - `Call`: the remaining downstream `Collection` branch now materializes cloned collection children before wrapping them in `Rules`, so outer call provenance and `markImportant` no longer touch canonical collection children.
+  - `List`: `preEval()` and `evalNode()` now commit child replacements through `_setValue(...)`, so non-reset sessions no longer overwrite canonical `value[]`.
+  - `Sequence`: the one-item collapse branch now reads `preserveWhitespace` through session-aware options rather than canonical `node.options`.
+  - `Rules`: non-reset-session `push()` / `splice()` / `unshift()` now stay on the child overlay path instead of mutating canonical `value[]`.
+  - `Ruleset`: characterization now proves the remaining real gap is `preEval()` mutating canonical child `rules.options.rulesVisibility`, which points at missing `Rules.options` session semantics rather than another `Ruleset` field setter.
+  - `Func`: characterization now proves the remaining gap is lookup-side, not `evalCall()`: `Reference(type='function')` does not yet honor a session-patched function name.
+- Focused verification for that wave is green:
+  - `pnpm --dir packages/core test src/tree/__tests__/call.test.ts src/tree/__tests__/list.test.ts src/tree/__tests__/sequence.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/ruleset.test.ts src/tree/__tests__/func.test.ts`
+  - Result: `85 passed, 8 skipped`
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:
