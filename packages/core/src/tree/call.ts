@@ -144,6 +144,40 @@ export class Call extends Node<CallValue, CallOptions> {
     }
   }
 
+  private _normalizeFallbackArgSpacing(node: Node): void {
+    if (isNode(node, N.Sequence)) {
+      node.value.forEach((child, childIndex) => {
+        child.pre = childIndex === 0 ? 0 : 1;
+      });
+      return;
+    }
+    if (isNode(node, N.List)) {
+      node.value.forEach((child) => {
+        if (isNode(child, N.Sequence)) {
+          child.value.forEach((nested, nestedIndex) => {
+            nested.pre = nestedIndex === 0 ? 0 : 1;
+          });
+        }
+      });
+    }
+  }
+
+  private _materializeFallbackArgs(args: List<Node> | undefined): List<Node> | undefined {
+    if (!args) {
+      return undefined;
+    }
+    const clonedArgs = list(
+      args.value.map(arg => arg.clone(true)),
+      args.options ? { ...args.options } : undefined
+    );
+    clonedArgs.value.forEach((arg, argIndex) => {
+      // Normalize fallback-call arg spacing to Less-style call serialization.
+      arg.pre = argIndex === 0 ? 0 : 1;
+      this._normalizeFallbackArgSpacing(arg);
+    });
+    return clonedArgs;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     const { silentFail } = this.options;
     options = getPrintOptions(options);
@@ -376,27 +410,10 @@ export class Call extends Node<CallValue, CallOptions> {
         let newCall = this.clone().inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
-        newCall.setData('name', isNode(name, N.Reference) && name.options.fallbackValue === true
+        newCall._setName(isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.key)
-          : String(n.valueOf()));
-        newCall.setData('args', await evalArgNodes(args));
-        newCall.args?.value.forEach((arg, argIndex) => {
-          // Normalize fallback-call arg spacing to Less-style call serialization.
-          arg.pre = argIndex === 0 ? 0 : 1;
-          if (isNode(arg, N.Sequence)) {
-            arg.value.forEach((child, childIndex) => {
-              child.pre = childIndex === 0 ? 0 : 1;
-            });
-          } else if (isNode(arg, N.List)) {
-            arg.value.forEach((child) => {
-              if (isNode(child, N.Sequence)) {
-                child.value.forEach((nested, nestedIndex) => {
-                  nested.pre = nestedIndex === 0 ? 0 : 1;
-                });
-              }
-            });
-          }
-        });
+          : String(n.valueOf()), context);
+        newCall._setArgs(this._materializeFallbackArgs(await evalArgNodes(args)), context);
         return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.value);
       } finally {
         context.caller = originalCaller;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, num, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, block, Negative, rest, attr, nil } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, num, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, jsfunc, block, Negative, rest, attr, nil } from '../index.js';
 import { AssignmentType } from '../tree/declaration.js';
 import {
   sessionGetDependency,
@@ -500,6 +500,32 @@ describe('session-aware helpers', () => {
       expect(evald.toTrimmedString({ context: ctx })).toBe('blur(4px)');
       expect(node.name).toBe(name);
       expect(node.args).toBe(args);
+    });
+
+    it('Call fallback materialization keeps canonical arg spacing unchanged in a session', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const second = num(2);
+      second.pre = 0;
+      const arg = seq([num(1), second]);
+      const node = call({
+        name: ref('fn', { type: 'variable', fallbackValue: true }),
+        args: list([arg])
+      }, { silentFail: true });
+      const root = rules([
+        vardecl({
+          name: any('fn'),
+          value: jsfunc({ name: 'fn', fn: () => { throw new Error('boom'); } })
+        }),
+        node
+      ]);
+      ctx.root = root;
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('fn(1 2)');
+      expect(arg.toTrimmedString()).toBe('12');
+      expect(second.pre).toBe(0);
     });
 
     it('PseudoSelector rendering reads patched name and arg from the active session', () => {

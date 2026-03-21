@@ -1,5 +1,7 @@
-import { any, call, expr, interpolated, list, num, ref } from '../index.js';
+import { any, call, expr, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Call', () => {
@@ -44,6 +46,67 @@ describe('Call', () => {
     const evald = await node.eval(context);
 
     expect(evald.toTrimmedString()).toBe('blur(4px)');
+  });
+
+  it('materializes fallback-call args without mutating canonical nested sequence spacing in a session', async () => {
+    context.session = new EvalSession();
+    const second = num(2);
+    second.pre = 0;
+    const arg = seq([num(1), second]);
+    const failingFn = () => {
+      throw new Error('boom');
+    };
+    const node = call({
+      name: ref('fn', { type: 'variable', fallbackValue: true }),
+      args: list([arg])
+    }, { silentFail: true });
+    const root = rules([
+      vardecl({
+        name: any('fn'),
+        value: jsfunc({ name: 'fn', fn: failingFn })
+      }),
+      node
+    ]);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('fn(1 2)');
+    expect(second.pre).toBe(0);
+    expect(arg.toTrimmedString()).toBe('12');
+  });
+
+  it('uses session-patched args when materializing a fallback call without mutating the patched source args', async () => {
+    context.session = new EvalSession();
+    const originalSecond = num(2);
+    originalSecond.pre = 0;
+    const originalArg = seq([num(1), originalSecond]);
+    const patchedSecond = num(4);
+    patchedSecond.pre = 0;
+    const patchedArg = seq([num(3), patchedSecond]);
+    const failingFn = () => {
+      throw new Error('boom');
+    };
+    const node = call({
+      name: ref('fn', { type: 'variable', fallbackValue: true }),
+      args: list([originalArg])
+    }, { silentFail: true });
+    const root = rules([
+      vardecl({
+        name: any('fn'),
+        value: jsfunc({ name: 'fn', fn: failingFn })
+      }),
+      node
+    ]);
+
+    sessionPatchField(node, 'args', list([patchedArg]), context);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('fn(3 4)');
+    expect(originalSecond.pre).toBe(0);
+    expect(patchedSecond.pre).toBe(0);
+    expect(originalArg.toTrimmedString()).toBe('12');
+    expect(patchedArg.toTrimmedString()).toBe('34');
   });
 
   // it('should serialize to a module', () => {
