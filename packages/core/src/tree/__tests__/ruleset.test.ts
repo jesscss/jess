@@ -1,5 +1,6 @@
 import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '..';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 
 let context: Context;
 
@@ -52,6 +53,22 @@ describe('Rule', () => {
         color: #eee;
       }
     `);
+  });
+
+  it('valueOf(context) reads a session-patched selector without mutating the canonical cached value', () => {
+    const node = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    context.session = new EvalSession();
+    context.session.patchField(node, 'selector', el('.beta'));
+
+    expect(node.valueOf(context)).toBe('.beta');
+    expect(node.valueOf()).toBe('.alpha');
+    expect(node.selector.valueOf()).toBe('.alpha');
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

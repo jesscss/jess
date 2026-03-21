@@ -445,7 +445,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   /** Used for equality comparison with other rulesets */
-  override valueOf() {
+  override valueOf(context?: Context) {
+    if (context) {
+      const collapseNesting = context.opts.collapseNesting ?? this.treeContext?.opts?.collapseNesting ?? false;
+      const selector = (
+        this._getExtendedSelector(context)
+        || this._getHoistToRoot(context)
+        || collapseNesting === true
+      )
+        ? this.getEffectiveSelector(collapseNesting, context)
+        : this._getSelector(context);
+      return selector instanceof Nil ? '' : (selector as Selector).valueOf();
+    }
     if (this._valueOf !== undefined) {
       return this._valueOf;
     }
