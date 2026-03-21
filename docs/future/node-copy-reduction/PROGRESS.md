@@ -899,7 +899,6 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] `RawRules`: make its serialization read the `Rules` session child overlay instead of canonical `this.value`
 - [ ] `Block`
 - [ ] `Negative`
 - [ ] `Rest`
@@ -916,6 +915,7 @@ Source of truth for ordering:
 
 Current blocker notes from live reduction attempts:
 
+- `RawRules` is now complete for this fundamentals pass: its serializer override reads the session child overlay, its own public behavior test exists in `src/tree/__tests__/rules-raw.test.ts`, and the overlay/immutability proof is green in `src/__tests__/eval-session.test.ts`.
 - The prior immediate slice is now landed in the working tree: caller-side mixin param/default binding in `rules.ts` writes and reads through the session on the non-reset path, and focused proof now exists in `src/tree/__tests__/mixin.test.ts` plus `src/__tests__/eval-session.test.ts`. This narrows the remaining `Declaration` gap, but does not yet make `Declaration` fully `complete`.
 - The `Rules.value` / session-registry identity blocker is now resolved. Session registry deltas are keyed by the `Rules` container, and characterization now proves they survive a shallow clone swapping to a new `value[]`.
 - `Rules.value` is now typed readonly for consumers. Plugin / visitor code should treat direct array mutation as invalid and go through `setData()` or container helpers instead.

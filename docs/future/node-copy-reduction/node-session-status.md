@@ -113,17 +113,16 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `RawRules`
-  - goal: make serialization read the `Rules` session child overlay instead of canonical `this.value`
+- `Block`
+  - goal: make wrapper serialization/eval read `value` through the session-aware view instead of canonical field access
   - primary proof:
-    - node/public-path behavior in a dedicated raw-rules-focused test or the smallest existing rules serialization test that exercises `RawRules`
+    - node/public-path behavior in the node's own test file
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
   - note:
-    - the prior immediate slice landed: caller-side mixin param/default binding in `rules.ts` now writes and reads through the session on the non-reset path, with focused proof in `mixin.test.ts` and `eval-session.test.ts`
+    - the prior immediate slice landed: `RawRules` serialization now reads the `Rules` session child overlay instead of canonical `this.value`, with focused proof in `rules-raw.test.ts` and `eval-session.test.ts`
 
 ### Current Batch A: Simple Pending Wrappers
 
-- `RawRules`
 - `Block`
 - `Negative`
 - `Rest`
@@ -188,7 +187,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `CustomDeclaration`          | `inherited` | Inherits `Declaration`; custom eval wrapper only toggles `context.inCustom`.                                                                                                           |
 | `Ruleset`                    | `partial`   | `selector` / `rules` / `guard` / extend-managed selector fields are session-aware on active eval/render paths. Broader composition paths still need pressure reduction.                |
 | `Rules`                      | `partial`   | Non-reset sessions now have child-array overlays and session-backed reads/writes through major preEval/eval/coalescing loops. Reset-session path still relies on cloned working trees. |
-| `RawRules`                   | `pending`   | Extends `Rules` but overrides serialization by iterating canonical `this.value`, so it currently bypasses the child overlay.                                                           |
+| `RawRules`                   | `complete`  | Its serializer override now reads the `Rules` session child overlay instead of canonical `this.value`, and it has both a dedicated public behavior test and an eval-session immutability proof. |
 | `AtRule`                     | `partial`   | Render reads for `name` / `prelude` / `rules` are session-aware. Eval-time writes are not fully sessionized yet.                                                                       |
 | `Mixin`                      | `partial`   | Render reads for `name` / `params` / `guard` / `rules` are session-aware. Binding/eval write paths are still being migrated.                                                           |
 | `Call`                       | `partial`   | Render reads for `name` / `args` / `contentNode` are session-aware. Full eval/write coverage is not complete.                                                                          |
