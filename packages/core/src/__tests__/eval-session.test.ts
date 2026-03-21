@@ -480,6 +480,21 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe(':not(red)');
     });
 
+    it('PseudoSelector eval does not overwrite the canonical arg in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const arg = expr(any('blue'));
+      const node = pseudo({
+        name: ':not',
+        arg
+      });
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe(':not(blue)');
+      expect(node.arg).toBe(arg);
+    });
+
     it('SelectorList rendering reads patched items from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

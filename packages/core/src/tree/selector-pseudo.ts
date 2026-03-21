@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 export type PseudoSelectorValue = {
   /**
@@ -58,6 +58,17 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return context
       ? sessionGetField<Node | undefined>(this, 'arg', context)
       : this.arg;
+  }
+
+  private _setArg(arg: Node | undefined, context: Context): void {
+    if (arg instanceof Node) {
+      this.adopt(arg, context);
+    }
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'arg', arg, context);
+    } else {
+      this.arg = arg;
+    }
   }
 
   override computeKeySets(): void {
@@ -152,7 +163,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
-    const currentArg = this.arg;
+    const currentArg = this._getArg(context);
     const node = super.evalNode(context) as PseudoSelector;
     if (!currentArg) {
       return node;
@@ -164,7 +175,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        node.setData('arg', evaluatedArg);
+        node._setArg(evaluatedArg, context);
         return node;
       }
     );
