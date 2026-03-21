@@ -899,7 +899,6 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] `Block`
 - [ ] `Negative`
 - [ ] `Rest`
 - [ ] `AttributeSelector`
@@ -915,7 +914,13 @@ Source of truth for ordering:
 
 Current blocker notes from live reduction attempts:
 
+- `Block` is now complete for this fundamentals pass: render/eval read `value` through the session-aware view, eval writes patch the session instead of overwriting the canonical child, its own behavior test exists in `src/tree/__tests__/block.test.ts`, and the overlay/immutability proof is green in `src/__tests__/eval-session.test.ts`.
 - `RawRules` is now complete for this fundamentals pass: its serializer override reads the session child overlay, its own public behavior test exists in `src/tree/__tests__/rules-raw.test.ts`, and the overlay/immutability proof is green in `src/__tests__/eval-session.test.ts`.
+- The internal mixin invocation path remains architecturally indirect:
+  - `Reference.evalNode()` can turn mixin candidate arrays into a JS-callable adapter via `getFunctionFromMixins()`
+  - `Call.evalNode()` then re-enters that adapter through the generic function path (`cast(...)`, `JsFunction`, `callWithContext(...)`)
+  - `getFunctionFromMixins()` currently conflates candidate resolution, argument normalization, named/default/rest binding, guard/default() evaluation, recursion handling, session selection, and output materialization
+  - this is now tracked as its own planned pre-Stage-21 stage in `dependency-graph.md`, not as part of lower-order node completion
 - The `Rules.value` / session-registry identity blocker is now resolved. Session registry deltas are keyed by the `Rules` container, and characterization now proves they survive a shallow clone swapping to a new `value[]`.
 - `Rules.value` is now typed readonly for consumers. Plugin / visitor code should treat direct array mutation as invalid and go through `setData()` or container helpers instead.
 - Child-array isolation and generic session-local replacement are still coupled. The next safe reduction likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.

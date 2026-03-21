@@ -1,6 +1,8 @@
 import type { Context } from '../context.js';
 import { Node, defineType, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
@@ -29,15 +31,41 @@ export class Block extends Node<Node, BlockOptions> {
     }
   }
 
+  private _getValue(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'value', context)
+      : this.value;
+  }
+
+  override evalNode(context: Context): MaybePromise<Block> {
+    const value = this._getValue(context);
+    const finish = (nextValue: Node): Block => {
+      if (nextValue !== value) {
+        if (context.session) {
+          sessionPatchField(this, 'value', nextValue, context);
+        } else {
+          this.setData('value', nextValue);
+        }
+      }
+      return this;
+    };
+    const maybeEvald = value.eval(context);
+    if (isThenable(maybeEvald)) {
+      return (maybeEvald as Promise<Node>).then(finish);
+    }
+    return finish(maybeEvald as Node);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const value = this._getValue(options.context);
     let { type } = this.options ?? {};
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
     w.add(start);
-    super.toTrimmedString(options);
+    value.toString(options);
     w.add(end);
     return w.getSince(mark);
   }

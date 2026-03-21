@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -445,6 +445,17 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('(blue)');
       expect(node.toTrimmedString()).toBe('(red)');
+    });
+
+    it('Block rendering reads a patched child from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = block(any('red'));
+
+      sessionPatchField(node, 'value', any('blue'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('{blue}');
+      expect(node.toTrimmedString()).toBe('{red}');
     });
 
     it('Quoted rendering reads a patched child from the active session', () => {
@@ -996,6 +1007,19 @@ describe('session-aware helpers', () => {
       expect(operation.evaluated).toBe(false);
       expect(left.evaluated).toBe(false);
       expect(right.evaluated).toBe(false);
+    });
+
+    it('Block eval in a non-reset session does not overwrite the canonical child', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const original = expr(any('red'));
+      const node = block(original);
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('{red}');
+      expect(node.value).toBe(original);
+      expect(sessionGetField(node, 'value', ctx)).not.toBe(original);
     });
   });
 });

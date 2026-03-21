@@ -129,7 +129,16 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - its serializer override reads the `Rules` session child overlay instead of canonical `this.value`
     - focused proof is green in `src/tree/__tests__/rules-raw.test.ts` and `src/__tests__/eval-session.test.ts`
     - the next immediate wrapper target is now `Block`
-23. The first `Rules` child-replacement write helper is now in the working tree:
+23. `Block` is now complete for this fundamentals pass:
+    - render and eval read `value` through the session-aware view instead of canonical field access
+    - eval-time child replacement writes into the session on the non-reset path instead of overwriting the canonical child
+    - focused proof is green in `src/tree/__tests__/block.test.ts` and `src/__tests__/eval-session.test.ts`
+    - the next immediate wrapper target is now `Negative`
+   New planned stage before Stage 21:
+    - replace the current indirect internal mixin call path
+    - today that path is `Reference.evalNode()` -> `getFunctionFromMixins()` -> `cast(...)` / `JsFunction` -> `Call.evalNode()` generic function branch -> `callWithContext(...)`
+    - the direct-stage goal is to move internal mixin invocation onto a dedicated `Call`/mixin path, and leave `getFunctionFromMixins()` only as an optional adapter for exported/callable mixins
+24. The first `Rules` child-replacement write helper is now in the working tree:
     - `sessionSetChildAt()` / `sessionSetChildren()` now provide explicit session-backed structural writes for `Rules` children
     - `Rules.preEval()` / `_multiPassPreEval()` / `_resolveDynamicNodes()` / `_preEvalRemainingChildren()` now route child replacement through those helpers instead of mixing overlay reads with canonical `setData()` writes
     - `src/tree/__tests__/rules.test.ts` now proves `preEval()` can read a session-local child replacement, assign runtime index in-session, and leave canonical children untouched when using a non-reset eval session

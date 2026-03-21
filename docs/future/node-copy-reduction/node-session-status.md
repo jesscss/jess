@@ -113,17 +113,16 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `Block`
-  - goal: make wrapper serialization/eval read `value` through the session-aware view instead of canonical field access
+- `Negative`
+  - goal: make unary wrapper serialization/eval read `value` through the session-aware view instead of canonical field access
   - primary proof:
     - node/public-path behavior in the node's own test file
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
   - note:
-    - the prior immediate slice landed: `RawRules` serialization now reads the `Rules` session child overlay instead of canonical `this.value`, with focused proof in `rules-raw.test.ts` and `eval-session.test.ts`
+    - the prior immediate slice landed: `Block` render/eval now read `value` through the session-aware view, with session-backed child replacement on eval and focused proof in `block.test.ts` plus `eval-session.test.ts`
 
 ### Current Batch A: Simple Pending Wrappers
 
-- `Block`
 - `Negative`
 - `Rest`
 
@@ -174,6 +173,7 @@ Use this to record why a node is not next, even if it looks urgent.
 
 - `Rules` is not the current target unless a lower-order migration proves it is the smallest remaining place where a write must be redirected.
 - `ImportStyle` and extend-path work remain high-value but are not allowed to pull the order upward ahead of lower-order node completion.
+- The internal mixin adapter path (`Reference -> getFunctionFromMixins() -> Call -> callWithContext()`) is tracked as its own planned stage. Do not fold that higher-order refactor into a lower-order wrapper-node slice.
 - If a node in Batch A or B cannot be completed without touching a higher-order node, record the exact dependency here before changing the queue.
 
 
@@ -204,7 +204,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `ImportJs`                   | `partial`   | Render/read path for `path` / `imports` is session-aware.                                                                                                                              |
 | `ImportStyle`                | `pending`   | Still one of the main clone/materialization pressure sites. Import finalization and returned-tree behavior are only partially reduced.                                                 |
 | `If` / `For` / control nodes | `pending`   | Control-flow bodies and binding/eval paths still use direct structural access in important paths.                                                                                      |
-| `Block`                      | `pending`   | Wrapper node still reads canonical `value` directly.                                                                                                                                   |
+| `Block`                      | `complete`  | Render and eval now read `value` through the session-aware view, eval writes patch the active session instead of overwriting the canonical child, and both node-local behavior plus eval-session immutability proofs are in place. |
 | `Negative`                   | `pending`   | Unary wrapper still reads canonical `value` directly on eval paths.                                                                                                                    |
 | `Rest`                       | `pending`   | Wrapper node still reads canonical `value` directly.                                                                                                                                   |
 | `Extend`                     | `pending`   | Extend pipeline is still a major remaining clone/copy cluster.                                                                                                                         |
