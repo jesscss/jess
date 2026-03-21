@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Context } from '../../context.js';
 import { rules, decl, any, list, vardecl, call, fn, nil } from '../index.js';
+import { sessionPatchField } from '../util/session-helpers.js';
+import * as rulesModule from '../rules.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('Func', () => {
   it('evalCall returns the looked-up return declaration value', async () => {
@@ -78,5 +84,27 @@ describe('Func', () => {
     expect(result.toTrimmedString()).toBe('ok');
     expect(params.parent).toBe(node);
     expect(body.parent).toBe(node);
+  });
+
+  it('evalCall reads a session-patched return declaration value', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.createSession();
+
+    const node = fn({
+      name: any('add'),
+      body: rules([
+        decl({ name: 'return', value: any('ok') })
+      ])
+    });
+    const returnDecl = decl({ name: 'return', value: any('ok') });
+    const evaluatedRules = rules([returnDecl]);
+
+    vi.spyOn(rulesModule, 'getFunctionFromMixins').mockReturnValue(async () => evaluatedRules as any);
+    sessionPatchField(returnDecl, 'value', any('patched'), ctx);
+
+    const result = await node.evalCall(ctx, list([]));
+
+    expect(result.toTrimmedString()).toBe('patched');
+    expect(returnDecl.value.toTrimmedString()).toBe('ok');
   });
 });

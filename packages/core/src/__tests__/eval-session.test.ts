@@ -528,6 +528,31 @@ describe('session-aware helpers', () => {
       expect(second.pre).toBe(0);
     });
 
+    it('Call fallback materialization keeps a patched content node session-local', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const node = call({
+        name: ref('fn', { type: 'variable', fallbackValue: true }),
+        args: list([num(1)])
+      }, { silentFail: true });
+      const root = rules([
+        vardecl({
+          name: any('fn'),
+          value: jsfunc({ name: 'fn', fn: () => { throw new Error('boom'); } })
+        }),
+        node
+      ]);
+      ctx.root = root;
+
+      sessionPatchField(node, 'contentNode', any('patched'), ctx);
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('fn(1): patched');
+      expect(node.contentNode).toBeUndefined();
+      expect(node.toTrimmedString()).toBe('$fn??(1)');
+    });
+
     it('PseudoSelector rendering reads patched name and arg from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

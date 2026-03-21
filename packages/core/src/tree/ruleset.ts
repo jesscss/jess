@@ -706,16 +706,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       options = { ...options, suppressComments: true };
     }
     let renderSelector: Selector | Nil = selector;
-    const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+    const ownSelector = this.getOwnSelector(options.context);
+    const currentSelector = this._getSelector(options.context);
     if (
       this._getHoistToRoot(options.context)
       && Ruleset.isBareAmpersandSelector(renderSelector)
       && ownSelector
       && !(ownSelector instanceof Nil)
       && Ruleset.isBareAmpersandSelector(ownSelector)
-      && !Ruleset.isBareAmpersandSelector(this.selector)
+      && !Ruleset.isBareAmpersandSelector(currentSelector)
     ) {
-      renderSelector = this.selector;
+      renderSelector = currentSelector;
     }
     if (this._getHoistToRoot(options.context) && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;

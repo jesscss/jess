@@ -109,6 +109,32 @@ describe('Call', () => {
     expect(patchedArg.toTrimmedString()).toBe('34');
   });
 
+  it('preserves a session-patched content node across fallback-call materialization without mutating the canonical call', async () => {
+    context.session = new EvalSession();
+    const failingFn = () => {
+      throw new Error('boom');
+    };
+    const node = call({
+      name: ref('fn', { type: 'variable', fallbackValue: true }),
+      args: list([num(1)])
+    }, { silentFail: true });
+    const root = rules([
+      vardecl({
+        name: any('fn'),
+        value: jsfunc({ name: 'fn', fn: failingFn })
+      }),
+      node
+    ]);
+
+    sessionPatchField(node, 'contentNode', any('patched'), context);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('fn(1): patched');
+    expect(node.contentNode).toBeUndefined();
+    expect(node.toTrimmedString()).toBe('$fn??(1)');
+  });
+
   // it('should serialize to a module', () => {
   //   let rule = call({
   //     name: 'rgb',

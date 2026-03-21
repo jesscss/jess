@@ -64,6 +64,29 @@ describe('List', () => {
     expect(result.toTrimmedString({ context })).toBe('red, cyan, magenta');
     expect(right.toTrimmedString()).toBe('blue');
   });
+
+  it('length and iteration remain canonical without a Context channel', () => {
+    context.createSession();
+    const node = list([any('red'), any('blue')]);
+
+    sessionPatchField(node, 'value', [any('cyan'), any('magenta'), any('black')], context);
+
+    expect(node.toTrimmedString({ context })).toBe('cyan, magenta, black');
+    expect(node.length).toBe(2);
+    expect([...node].map(([, child]) => child.toTrimmedString())).toEqual(['red', 'blue']);
+  });
+
+  it('valueOf() and compare() remain canonical without a Context channel', () => {
+    context.createSession();
+    const left = list([any('red'), any('blue')]);
+    const right = list([any('red'), any('blue')]);
+
+    sessionPatchField(left, 'value', [any('cyan'), any('magenta')], context);
+
+    expect(left.toTrimmedString({ context })).toBe('cyan, magenta');
+    expect(left.valueOf()).toBe('red;blue');
+    expect(left.compare(right)).toBe(0);
+  });
   // it('should serialize to a module', () => {
   //   let rule = list([spaced([any('1'), any('2'), any('3')]), any('four')])
   //   rule.toModule(context, out)

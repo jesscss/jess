@@ -61,4 +61,27 @@ describe('Sequence', () => {
     expect(rule.value[1]?.type).toBe('Nil');
     expect(rule.value.map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
   });
+
+  it('compares against session-patched values when called with context', () => {
+    const context = new Context();
+    context.session = new EvalSession();
+    const left = seq([num(10), num(20)]);
+    const right = seq([num(30), num(40)]);
+
+    sessionPatchField(left, 'value', [num(30), num(40)], context);
+
+    expect(left.compare(right, context)).toBe(0);
+  });
+
+  it('keeps contextless compare canonical when session patches exist', () => {
+    const context = new Context();
+    context.session = new EvalSession();
+    const left = seq([num(10), num(20)]);
+    const right = seq([num(30), num(40)]);
+
+    sessionPatchField(left, 'value', [num(30), num(40)], context);
+
+    expect(left.compare(right)).toBe(-1);
+    expect(left.compare(right, context)).toBe(0);
+  });
 });

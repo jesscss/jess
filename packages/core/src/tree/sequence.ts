@@ -104,15 +104,19 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     this._setValue(next, context);
   }
 
-  override compare(other: Node) {
+  override compare(other: Node, context?: Context) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray([...this.value], [...other.value], equalityMode);
+      const result = compareNodeArray(
+        [...this._getValue(context)],
+        [...other._getValue(context)],
+        equalityMode
+      );
       return result;
     }
     if (other.type === 'Any') {
       const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
-      const left = normalize(this.toString());
+      const left = normalize(this.toTrimmedString(context ? { context } : undefined));
       const right = normalize(other.toString());
       return left === right ? 0 : undefined;
     }

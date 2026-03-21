@@ -44,10 +44,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
   }
 
+  // NOTE: `length` intentionally remains canonical for now.
+  // Unlike render/eval surfaces, it has no Context channel, so making it
+  // session-aware would require a broader API change rather than a node-local patch.
   get length() {
     return this.value.length;
   }
 
+  // NOTE: iteration intentionally remains canonical for now for the same reason as
+  // `length`: there is no explicit Context channel on the iterator protocol.
   * [Symbol.iterator]() {
     yield* this.value.entries();
   }
@@ -60,6 +65,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       : this.value;
   }
 
+  // NOTE: `valueOf()` intentionally remains canonical for now.
+  // A session-aware version would need an explicit Context channel; otherwise
+  // cached string state would become ambiguous across sessions.
   override valueOf() {
     return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
@@ -93,6 +101,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override compare(other: Node) {
+    // NOTE: `compare()` intentionally remains canonical for now.
+    // It has no Context parameter, so a session-aware comparison would require
+    // a broader API design change rather than a local node-only migration.
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
       const result = compareNodeArray([...this.value], [...other.value], equalityMode);

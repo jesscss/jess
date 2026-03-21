@@ -1,6 +1,7 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '..';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '..';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
+import { getPrintOptions } from '../util/print.js';
 
 let context: Context;
 
@@ -69,6 +70,29 @@ describe('Rule', () => {
     expect(node.valueOf(context)).toBe('.beta');
     expect(node.valueOf()).toBe('.alpha');
     expect(node.selector.valueOf()).toBe('.alpha');
+  });
+
+  it('getHeaderString hoist fallback respects session-patched selector state', () => {
+    const node = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    context.session = new EvalSession();
+    context.session.patchField(node, 'selector', amp());
+    context.session.patchField(node, 'hoistToRoot', true);
+    context.session.patchField(node, 'options', {
+      ...node.options,
+      ownSelector: amp()
+    });
+
+    const header = node.getHeaderString(getPrintOptions({ context }));
+
+    expect(header).toBe('& {\n');
+    expect(node.selector.valueOf()).toBe('.alpha');
+    expect(node.options.ownSelector).toBeUndefined();
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

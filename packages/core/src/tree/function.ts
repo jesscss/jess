@@ -161,7 +161,8 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.value.eval(context);
+    const returnValue = sessionGetField<Node>(decl, 'value', context);
+    return await returnValue.eval(context);
   }
 }
 

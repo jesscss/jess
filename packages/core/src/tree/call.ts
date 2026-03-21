@@ -85,6 +85,51 @@ export class Call extends Node<CallValue, CallOptions> {
   args: List<Node> | undefined;
   contentNode: Node | undefined;
 
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const name = this._getName(ctx);
+    const args = this._getArgs(ctx);
+    const contentNode = this._getContentNode(ctx);
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
+    const cloneData: CallValue = {
+      name: deep && name instanceof Node ? cloneChild(name) : name,
+      args: deep && args instanceof Node ? cloneChild(args) as List<Node> : args,
+      contentNode: deep && contentNode instanceof Node ? cloneChild(contentNode) : contentNode
+    };
+
+    let priorChildParents: Array<[Node, Node | undefined]> | undefined;
+    if (!deep && ctx?.session) {
+      priorChildParents = [];
+      if (cloneData.name instanceof Node) {
+        priorChildParents.push([cloneData.name, cloneData.name.parent]);
+      }
+      if (cloneData.args instanceof Node) {
+        priorChildParents.push([cloneData.args, cloneData.args.parent]);
+      }
+      if (cloneData.contentNode instanceof Node) {
+        priorChildParents.push([cloneData.contentNode, cloneData.contentNode.parent]);
+      }
+    }
+
+    const options = (this as any)._meta?.options;
+    const newNode = new (this.constructor as any)(
+      cloneData,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+
+    if (priorChildParents) {
+      const session = ctx!.session!;
+      for (const [child, priorParent] of priorChildParents) {
+        session.getRuntime(child).parent = newNode;
+        (child as unknown as { parent?: Node }).parent = priorParent;
+      }
+    }
+
+    newNode.inherit(this);
+    return newNode;
+  }
+
   constructor(value: CallValue, options?: CallOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
@@ -407,7 +452,9 @@ export class Call extends Node<CallValue, CallOptions> {
         if (!this.options?.silentFail || shouldRethrowForMode) {
           throw e;
         }
-        let newCall = this.clone().inherit(this);
+        let newCall = (context.session
+          ? this.clone(false, undefined, context)
+          : this.clone()).inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
         newCall._setName(isNode(name, N.Reference) && name.options.fallbackValue === true
