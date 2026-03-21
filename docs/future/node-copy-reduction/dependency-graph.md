@@ -622,6 +622,79 @@ Planned checklist:
   - [ ] mixin aliases / call-time reference resolution
   - [ ] performance characterization against the old adapter path
 
+### Stage 20.75: Session Delta Reuse For Mixin / Import Re-eval
+
+Status on branch `jess-dev`:
+- planned, exploratory, not landed
+- should not start until the fundamentals-completion gate is actually satisfied
+- likely depends on Stage 20.5 making mixin execution a direct semantic path instead of the current adapter chain
+
+Core idea:
+
+- First eval of a canonical mixin body or imported module already produces a session-local result graph.
+- That eval can also record:
+  - which top-level variables were read
+  - which downstream evaluated nodes / registry overlays / structural replacements were affected by those reads
+  - the resulting session delta rooted at that canonical mixin/import boundary
+- On the next eval of that same canonical mixin/import:
+  - start from the prior eval's session delta as a reusable baseline
+  - create a fresh child session / rebased session overlay
+  - only replay the nodes whose recorded dependency sets intersect the newly changed variables
+  - let unchanged nodes fall through to the previously recorded delta or canonical state
+
+This generalizes the current dependency-aware declaration lookup idea from Stage 20:
+- today: use `changedVars` to avoid re-evaluating irrelevant declaration overlays in registry lookup
+- future: use the same dependency graph to avoid replaying irrelevant mixin/import subgraphs at all
+
+Intended model:
+
+```txt
+first eval:
+  canonical mixin/import
+    -> session delta A
+    -> dependency trace: VarDeclaration -> affected nodes / outputs
+
+next eval with changed vars:
+  canonical mixin/import
+    -> seed from delta A
+    -> create new session delta B
+    -> replay only affected nodes
+    -> unchanged overlays fall through from A
+```
+
+Constraints / prerequisites:
+
+- canonical AST nodes must already behave immutably
+- value updates, replacements, parent/sourceParent/runtime flags, and registry mutations must all be session-backed
+- dependency annotations must be trustworthy across mixin/import boundaries
+- mixin execution should ideally already use the direct Stage 20.5 path so the replay boundary is semantic and explicit
+- returned import trees and mixin outputs must be representable as rebased session overlays, not ad hoc clone-only materializations
+
+Open design questions:
+
+- What is the right cache key for a reusable mixin/import eval baseline?
+  - canonical node identity alone?
+  - canonical node identity + stable arg/import-config signature?
+- Should reused deltas be treated as immutable snapshots that each new eval rebases from, or should they support incremental compaction/merging?
+- How do we invalidate structural traces when a changed variable affects control flow, selector shape, import configuration, or emitted child count?
+- Which session buckets are safe to reuse directly (`dependencyMap`, field patches, child overlays, registry deltas), and which must always be reconstructed?
+- Can this eventually subsume part of import finalization/materialization work, or should it stay strictly an eval-side optimization?
+
+Exploratory checklist:
+
+- [ ] Prototype reusable session-delta snapshots for one bounded boundary:
+  - [ ] single mixin invocation
+  - [ ] single cached import/module eval
+- [ ] Record `VarDeclaration -> affected node ids` trace during first eval
+- [ ] Re-run with `changedVars` and prove only affected nodes are replayed
+- [ ] Prove canonical nodes remain untouched and baseline behavior is unchanged
+- [ ] Characterize invalidation cases:
+  - [ ] changed control flow
+  - [ ] changed selector structure
+  - [ ] changed import config / compose visibility
+  - [ ] changed emitted child count
+- [ ] Decide whether reusable deltas belong in `EvalSession` proper or in a separate cache layer keyed by canonical boundary nodes
+
 ### Stage 21: Live Patch API
 
 Precondition: do not start this stage until the branch clears the pre-Stage-21 threshold:
@@ -689,6 +762,11 @@ Stage 20.5 (direct mixin invocation)
   └─ replaces the internal Reference -> getFunctionFromMixins -> cast -> callWithContext indirection
   └─ should land before the fundamentals gate is considered complete
 
+Stage 20.75 (session delta reuse for mixin/import re-eval)
+  └─ exploratory optimization built on immutable canonical nodes + trustworthy dependency traces
+  └─ should stay deferred until the fundamentals gate is complete
+  └─ likely depends on Stage 20.5 for a clean mixin replay boundary
+
 Stage 21 (Live Patch API)
   └─ all prior stages required
   └─ blocked until the pre-Stage-21 threshold is satisfied
@@ -697,7 +775,8 @@ Stage 21 (Live Patch API)
 Stages 17 and 18 can proceed in parallel. Stage 19 depends on 17 (immutable selectors
 simplify registry content; though technically 19 could start without 17, they are cleanest
 together). Stage 20 requires 18 and 19. Stage 20.5 depends on the lower-order fundamentals
-slices around `Call` / `Reference` / `Rules`. Stage 21 requires all.
+slices around `Call` / `Reference` / `Rules`. Stage 20.75 depends on the same fundamentals
+gate actually being complete, and probably on 20.5. Stage 21 requires all.
 
 ---
 

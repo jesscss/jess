@@ -46,6 +46,9 @@ Do not use this as the full node-status matrix or roadmap document:
   - note: plain `@import` no longer adds a finalization wrapper; compose still keeps a shallow per-import wrapper because separate import sites can require different visibility / reference metadata on the same cached module
 - Stage 20.5: planned, not landed
   - purpose: replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain with a direct mixin invocation path
+- Stage 20.75: planned, exploratory, not landed
+  - purpose: record first-eval mixin/import session deltas plus dependency traces, then re-evaluate from that baseline by replaying only nodes affected by changed variables in a fresh rebased session
+  - guardrail: keep this deferred until the fundamentals-completion gate is actually satisfied; do not fold it into the current node-by-node sessionization queue
 - Current actual stage: fundamentals-completion gate
   - focus: make immutable canonical nodes + session-backed eval writes/replacements true end-to-end
   - order: lower-order node fields first (`Declaration`, `Ruleset`), then more compositional containers
