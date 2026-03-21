@@ -24,6 +24,7 @@ import {
   isTopLevelVarDeclaration,
   sessionGetDependency,
   sessionGetField,
+  sessionSetSourceParent,
   sessionSetDependency
 } from './util/session-helpers.js';
 /**
@@ -283,7 +284,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
-    let { target, key } = this;
+    let target = this._getTarget(context);
+    let key = this._getKey(context);
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
@@ -345,7 +347,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             let targetKey = isNode(resolvedTarget as Node, N.Color) ? String((resolvedTarget as Color)._nodeValue) : (resolvedTarget as Node).valueOf();
             if (typeof targetKey === 'string') {
               let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
-              this.adopt(ref);
+              this.adopt(ref, context);
               return Promise.all([
                 ref.eval(context),
                 valueKey
@@ -682,7 +684,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               out.frozen = true;
               out.pre = this.pre;
               out.post = this.post;
-              out.sourceParent = this;
+              sessionSetSourceParent(out, this, context);
               const dependency = isTopLevelVarDeclaration(returnVal as Node, context)
                 ? {
                     dependsOn: new Set<VarDeclaration>([returnVal as VarDeclaration]),
@@ -705,7 +707,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
-              (first as Node).sourceParent = this;
+              sessionSetSourceParent(first as Node, this, context);
               context.popReference();
               return cast(first);
             }
@@ -715,7 +717,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           for (let item of returnVal) {
-            item.sourceParent = this;
+            sessionSetSourceParent(item, this, context);
             if (!isNode(item, N.Mixin | N.Ruleset)) {
               context.popReference();
               return cast(undefined);
@@ -728,7 +730,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();
-        result.sourceParent = this;
+        sessionSetSourceParent(result, this, context);
         return result;
       }
     );

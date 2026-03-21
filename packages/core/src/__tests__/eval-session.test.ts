@@ -880,6 +880,35 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('$ns.foo');
     });
 
+    it('Reference eval reads patched key without mutating the canonical node', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const lookup = ref({ key: 'foo' }, { type: 'variable' });
+      const scope = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        vardecl({
+          name: any('bar'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('color'),
+          value: lookup
+        })
+      ]);
+      sessionPatchField(lookup, 'key', 'bar', ctx);
+      const preEvald = await scope.preEval(ctx);
+      ctx.root = preEvald;
+      ctx.rulesContext = preEvald;
+
+      const evald = await lookup.eval(ctx);
+
+      expect(`${evald}`).toBe('blue');
+      expect(lookup.key).toBe('foo');
+    });
+
     it('Interpolated rendering reads patched source and replacements from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

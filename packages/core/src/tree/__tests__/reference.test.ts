@@ -1,7 +1,9 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { sessionGetSourceParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -165,6 +167,71 @@ describe('reference', () => {
       `);
     });
 
+    it('evaluates with a session-patched variable key', async () => {
+      const lookup = ref({ key: 'foo' }, { type: 'variable' });
+      const scope = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        vardecl({
+          name: any('bar'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('color'),
+          value: lookup
+        })
+      ]);
+
+      context.session = new EvalSession();
+      context.session.patchField(lookup, 'key', 'bar');
+      const preEvald = await scope.preEval(context);
+      context.root = preEvald;
+      context.rulesContext = preEvald;
+
+      const evald = await lookup.eval(context);
+      expect(`${evald}`).toBe('blue');
+      expect(lookup.key).toBe('foo');
+    });
+
+    it('evaluates with a session-patched target reference', async () => {
+      const target = ref({ key: '.theme-a' }, { type: 'mixin-ruleset' });
+      const lookup = ref({ target, key: 'primary' }, { type: 'property' });
+      const scope = rules([
+        ruleset({
+          selector: el('.theme-a'),
+          rules: rules([
+            decl({ name: any('primary'), value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.theme-b'),
+          rules: rules([
+            decl({ name: any('primary'), value: any('blue') })
+          ])
+        }),
+        decl({
+          name: any('color'),
+          value: lookup
+        })
+      ]);
+
+      context.session = new EvalSession();
+      context.session.patchField(
+        lookup,
+        'target',
+        ref({ key: '.theme-b' }, { type: 'mixin-ruleset' })
+      );
+      const preEvald = await scope.preEval(context);
+      context.root = preEvald;
+      context.rulesContext = preEvald;
+
+      const evald = await lookup.eval(context);
+      expect(`${evald}`).toBe('blue');
+      expect(lookup.target).toBe(target);
+    });
+
     it('should resolve a variable reference with a keyword key inside an attribute selector', async () => {
       let node = rules([
         vardecl({
@@ -200,6 +267,36 @@ describe('reference', () => {
   });
 
   describe('nested references for mixin-ruleset lookups', () => {
+    it('keeps resolved ruleset sourceParent session-local', async () => {
+      const colors = mixin({
+        name: any('.colors'),
+        rules: rules([
+          decl({ name: 'primary', value: any('cyan') })
+        ])
+      });
+      const theme = ruleset({
+        selector: el('.theme'),
+        rules: rules([colors])
+      });
+      const node = rules([theme]);
+      const themeLookup = ref({ key: '.theme' }, { type: 'mixin-ruleset' });
+      const lookup = ref({
+        target: themeLookup,
+        key: '.colors'
+      }, { type: 'mixin-ruleset' });
+
+      context.session = new EvalSession();
+      const preEvald = await node.preEval(context);
+      context.root = preEvald;
+      context.rulesContext = preEvald;
+
+      const resolved = await lookup.eval(context);
+
+      expect(resolved.type).toBe('JsFunction');
+      expect(sessionGetSourceParent(theme, context)).toBe(themeLookup);
+      expect(theme.sourceParent).toBeUndefined();
+    });
+
     it('should register and resolve escaped class selector via string key', async () => {
       const node = rules([
         ruleset({
