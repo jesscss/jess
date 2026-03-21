@@ -281,7 +281,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return isNode(node, N.Comment) || isNode(node, N.Any);
       };
       if (ctx?.topImports?.length) {
-        for (const node of this.value) {
+        for (const node of this._getChildren(ctx)) {
           if (!isCommentLike(node)) {
             break;
           }
@@ -559,13 +559,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Return an object representation of a ruleset
    */
-  toObject(convertToPrimitives: true): Record<string, string | number | boolean>;
-  toObject(convertToPrimitives: false): Record<string, Node>;
-  toObject(convertToPrimitives?: boolean): Record<string, string | number  | boolean | Node>;
-  toObject(convertToPrimitives: boolean = true): Record<string, string | number | boolean | Node> {
+  toObject(convertToPrimitives: true, context?: Context): Record<string, string | number | boolean>;
+  toObject(convertToPrimitives: false, context?: Context): Record<string, Node>;
+  toObject(convertToPrimitives?: boolean, context?: Context): Record<string, string | number  | boolean | Node>;
+  toObject(convertToPrimitives: boolean = true, context?: Context): Record<string, string | number | boolean | Node> {
     let output = new Map<string, boolean | string | number | Node>();
     const iterateRules = (rules: Rules) => {
-      for (let n of rules.value) {
+      for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Declaration)) {
           let { name, value, important } = n as any;
           if (convertToPrimitives) {
@@ -754,8 +754,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
   }
 
-  at(index: number) {
-    return atIndex(this.value, index);
+  at(index: number, context?: Context) {
+    return atIndex(this._getChildren(context), index);
   }
 
   /**

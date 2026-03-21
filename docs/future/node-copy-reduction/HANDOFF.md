@@ -113,6 +113,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `src/__tests__/eval-session.test.ts` now proves `Rules.toTrimmedString({ context })` sees overlay replacements/appends while canonical output stays unchanged
     - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`174 passed, 9 skipped`)
     - eval/preEval/indexing/registry loops still read `rules.value` directly, so structural session replacement is only partially integrated so far
+21. The next explicit `Rules` read adapters are now in the working tree:
+    - root-level `Rules.toString()` leading-comment hoist now reads the session-local child overlay
+    - `Rules.at(index, context?)` and `Rules.toObject(convertToPrimitives, context?)` now read the session-local child overlay when a `Context` is provided, while the no-context path remains canonical
+    - `src/__tests__/eval-session.test.ts` now proves those explicit read APIs see overlay replacements without mutating canonical reads
+    - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`176 passed, 9 skipped`)
+    - `Rules[Symbol.iterator]()` intentionally remains canonical for now because it has no explicit `Context` channel; do not smuggle session state through a hidden global just to make iteration session-aware
 
 ---
 

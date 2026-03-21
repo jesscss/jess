@@ -680,6 +680,40 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).not.toContain('border: black;');
       expect(node.toTrimmedString()).not.toContain('margin: 1px;');
     });
+
+    it('Rules.at reads the session-local child overlay when context is provided', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'background', value: any('blue') });
+      const replacement = decl({ name: 'border', value: any('black') });
+      const node = rules([first, second]);
+
+      sessionReplaceNode(first, replacement, ctx);
+
+      expect(node.at(0, ctx)).toBe(replacement);
+      expect(node.at(0)).toBe(first);
+    });
+
+    it('Rules.toObject reads the session-local child overlay when context is provided', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'background', value: any('blue') });
+      const replacement = decl({ name: 'border', value: any('black') });
+      const node = rules([first, second]);
+
+      sessionReplaceNode(first, replacement, ctx);
+
+      expect(node.toObject(true, ctx)).toEqual({
+        border: 'black',
+        background: 'blue'
+      });
+      expect(node.toObject()).toEqual({
+        color: 'red',
+        background: 'blue'
+      });
+    });
   });
 
   describe('sessionIsEvaluated / sessionSetEvaluated', () => {

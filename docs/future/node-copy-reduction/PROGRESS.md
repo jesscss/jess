@@ -972,6 +972,20 @@ gate mixin application, structural conditionals that change the AST shape.
 
 ## Notes
 
+### Current fundamentals boundary
+
+- `EvalSession` now has a session-local child-array overlay for `Rules`.
+- `Rules` render-side reads plus explicit context-bearing read APIs now consume it:
+  `_emitRulesBody()`, `flatRules()`, `visibleRules()`, root `toString()` leading-comment hoist,
+  `at(index, context?)`, and `toObject(convertToPrimitives, context?)`.
+- Focused verification is green:
+  `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
+  Result: `176 passed, 9 skipped`
+- `Rules[Symbol.iterator]()` is still canonical on purpose because it has no explicit
+  `Context` channel. Do not make it session-aware by introducing hidden ambient state.
+- Next integration step is still the real semantic one: route `Rules` eval/preEval/indexing/registry
+  loops through the session child overlay instead of reading `rules.value` directly.
+
 ### Working procedure
 1. Convert ONE node class at a time
 2. Run `cd packages/core && pnpm test` after each conversion

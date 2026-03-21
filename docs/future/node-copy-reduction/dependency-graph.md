@@ -13,7 +13,7 @@ Current branch reality:
 - Import-path clone reduction has gone a long way.
 - Session-aware field reads now exist on lower-order nodes, and selector ancestry reads on active `Ruleset` / extend paths are session-aware.
 - That lower-order coverage now includes wrapper/value/container render reads for `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`, `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`, `Range`, `Reference`, `Interpolated`, and `JsImport`, in addition to the selector-side container pass.
-- `EvalSession` now also has a session-local child-array overlay for `Rules`, and `Rules` render-side reads consume it, but the broader eval/preEval/indexing/registry paths have not been migrated to it yet.
+- `EvalSession` now also has a session-local child-array overlay for `Rules`, and `Rules` render-side reads plus explicit context-bearing read APIs (`at(index, context?)`, `toObject(..., context?)`) consume it, but the broader eval/preEval/indexing/registry paths have not been migrated to it yet.
 - Returned import trees now materialize clone-only parent links after session teardown; ephemeral mixin guard wrapper scopes materialize their local param bindings directly.
 - The branch is still in a fundamentals-completion gate before Stage 21.
 
