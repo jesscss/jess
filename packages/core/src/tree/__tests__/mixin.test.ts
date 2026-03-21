@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -172,6 +172,37 @@ describe('Mixin', () => {
         .test {
           $color: blue;
           color: blue;
+        }
+      `);
+    });
+
+    it('should call a mixin with an interpolated name', async () => {
+      const mixinDef = mixin({
+        name: interpolated({
+          source: '%%',
+          replacements: [expr(any('.my-mixin'))]
+        }, { role: 'name' }),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .test {
+          color: red;
         }
       `);
     });

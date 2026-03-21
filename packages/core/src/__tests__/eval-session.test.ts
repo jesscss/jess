@@ -352,6 +352,27 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('.base(color) {\n  color: red;\n}');
     });
 
+    it('Mixin preEval does not overwrite the canonical interpolated name in a session', async () => {
+      const ctx = new Context({ leakyRules: true });
+      ctx.depth = 2;
+      ctx.createSession();
+      const name = interpolated({
+        source: '%%',
+        replacements: [expr(any('.button'))]
+      }, { role: 'name' });
+      const mixinDef = mixin({
+        name,
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const preEvald = await mixinDef.preEval(ctx);
+
+      expect(preEvald.toTrimmedString({ context: ctx })).toContain('.button()');
+      expect(mixinDef.name).toBe(name);
+      expect(mixinDef.name?.type).toBe('Interpolated');
+    });
+
     it('mixin param binding in a non-reset session does not overwrite canonical defaults', async () => {
       const ctx = new Context({ leakyRules: true });
       ctx.depth = 2;

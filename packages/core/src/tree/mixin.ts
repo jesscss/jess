@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -122,9 +122,13 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   private _setName(name: Any<AnyRole> | Interpolated<AnyRole> | undefined, context: Context): void {
     if (name instanceof Node) {
-      this.adopt(name, context);
+      this.adopt(name);
     }
-    this.name = name;
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'name', name, context);
+    } else {
+      this.name = name;
+    }
     this._keySet = undefined;
   }
 
@@ -199,8 +203,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     node._setPreEvaluated(true, context);
     node.sourceNode ??= this;
 
-    let name = node.name;
-    const rules = node.rules;
+    const name = node._getName(context);
+    const rules = node._getRulesContainer(context);
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope

@@ -87,7 +87,8 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 
 - Stages 17–20 are materially landed.
 - `RawRules`, `Block`, `Negative`, `Rest`, `AttributeSelector`, `InterpolatedSelector`, and `AtRule` are now complete for the fundamentals pass.
-- The next immediate node target is `Mixin`.
+- `Mixin` has a new partial fundamentals slice: interpolated-name preEval now writes through the session field layer, but its `rules.options.rulesVisibility` policy mutation is still unresolved.
+- The next immediate node target is `Call`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
@@ -110,7 +111,7 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Immediate work
 
-1. Follow the immediate node queue in `node-session-status.md` (`Mixin` is next).
+1. Follow the immediate node queue in `node-session-status.md` (`Call` is next).
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.
