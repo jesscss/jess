@@ -96,6 +96,7 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 - `ComplexSelector` has a new partial fundamentals slice: render and eval read `value[]` through the session-aware view, eval-time component-array updates are session-backed, and the node now has both node-local behavior coverage and eval-session immutability proof for that path.
 - `SelectorList` is now complete for this fundamentals pass: render and eval read `value[]` through the session-aware view, eval-time selector-array updates plus top-level `:is()` flattening are session-backed, and the node has both node-local behavior coverage and eval-session immutability proof.
 - `Interpolated` is now complete for this fundamentals pass: render and eval read `source` / `replacements` through the session-aware view, eval-time replacement updates plus evaluated-state marking are session-backed, and the node has both node-local behavior coverage and eval-session immutability proof.
+- `Range` is now complete for this fundamentals pass: render and eval read `start` / `end` / `step` through the session-aware view, the node has no remaining node-local eval-time field writes, and it now has explicit node-local behavior coverage in addition to the existing session-overlay proof.
 - The next immediate node target is still `Ruleset`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
