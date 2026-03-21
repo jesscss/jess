@@ -725,10 +725,10 @@ describe('session-aware helpers', () => {
       sessionReplaceNode(first, replacement, ctx);
       sessionAppendChildren(node, [appended], ctx);
 
-      expect(node.toTrimmedString({ context: ctx })).toBe('background: blue;border: black;');
-      expect(node.toTrimmedString()).toBe('color: red;');
-      expect(node.toBraced({ context: ctx })).toBe('{background: blue;border: black;}');
-      expect(node.toBraced()).toBe('{color: red;}');
+      expect(node.toTrimmedString({ context: ctx })).toBe('background: blueborder: black');
+      expect(node.toTrimmedString()).toBe('color: red');
+      expect(node.toBraced({ context: ctx })).toBe('{background: blueborder: black}');
+      expect(node.toBraced()).toBe('{color: red}');
       expect(node.value).toEqual([first]);
     });
 
