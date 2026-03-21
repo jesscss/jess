@@ -7,7 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
 
 export type SequenceOptions = {
   /**
@@ -44,6 +44,33 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
   }
 
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const value = this._getValue(ctx);
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
+    const clonedValue = deep
+      ? value.map(child => cloneChild(child))
+      : [...value];
+    const options = (this as any)._meta?.options;
+    const newNode = new (this.constructor as any)(
+      [],
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.value = clonedValue;
+    if (ctx?.session) {
+      for (const child of clonedValue) {
+        sessionSetParent(child, newNode, ctx);
+      }
+    } else {
+      for (const child of clonedValue) {
+        newNode.adopt(child);
+      }
+    }
+    newNode.inherit(this);
+    return newNode;
+  }
+
   get length() {
     return this.value.length;
   }
@@ -52,6 +79,29 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return context
       ? sessionGetField<Node[]>(this, 'value', context)
       : this.value;
+  }
+
+  protected _setValue(value: Node[], context: Context): void {
+    if (context.session) {
+      for (const child of value) {
+        sessionSetParent(child, this, context);
+      }
+      if (this === this.sourceNode) {
+        sessionPatchField(this, 'value', value, context);
+        return;
+      }
+    } else {
+      for (const child of value) {
+        this.adopt(child);
+      }
+    }
+    this.value = value;
+  }
+
+  protected _setValueAt(index: number, value: Node, context: Context): void {
+    const next = [...this._getValue(context)];
+    next[index] = value;
+    this._setValue(next, context);
   }
 
   override compare(other: Node) {
@@ -135,15 +185,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return new List([newSequence, ...b.value]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.value.map(v => v.maybeClone(context));
+      const values = b._getValue(context).map(v => v.maybeClone(context));
       if (values.length) {
         values[0]!.pre = 1;
       }
-      newSequence.push(...values);
+      newSequence._setValue([...newSequence._getValue(context), ...values], context);
     } else {
       b = b.maybeClone(context);
       b.pre = 1;
-      newSequence.push(b);
+      newSequence._setValue([...newSequence._getValue(context), b], context);
     }
     return newSequence;
   }
@@ -168,14 +218,14 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return pipe(
       () => {
         const node = this;
-        const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
+        const maybe = serialForEach(node._getValue(context).map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
-              node.setData(i, res);
+              node._setValueAt(i, res, context);
             });
           }
-          node.setData(i, out as Node);
+          node._setValueAt(i, out as Node, context);
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => node);
@@ -183,9 +233,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         return node;
       },
       (node) => {
-        node.setData(node.value.filter(n => n && !(n instanceof Nil)) as any);
-        if (node.value.length === 1 && !node.options.preserveWhitespace) {
-          return node.value[0]!;
+        const value = node._getValue(context).filter(n => n && !(n instanceof Nil));
+        node._setValue(value, context);
+        if (value.length === 1 && !node.options.preserveWhitespace) {
+          return value[0]!;
         }
         return node;
       }

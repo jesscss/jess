@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, block, Negative, rest, attr } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, num, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, block, Negative, rest, attr, nil } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -774,6 +774,17 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('cyan magenta');
       expect(node.toTrimmedString()).toBe('red blue');
+    });
+
+    it('Sequence eval keeps session-only value writes off the canonical node', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const node = seq([num(10), nil(), num(20)]);
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('10 20');
+      expect(node.value.map((item) => item.type)).toEqual(['Num', 'Nil', 'Num']);
     });
 
     it('QueryCondition rendering reads patched items from the active session', () => {
