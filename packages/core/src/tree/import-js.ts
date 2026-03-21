@@ -2,7 +2,8 @@ import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -58,6 +59,29 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     return context
       ? sessionGetField<JsImportSpecifier[] | undefined>(this, 'imports', context)
       : this.imports;
+  }
+
+  override evalNode(context: Context): MaybePromise<JsImport> {
+    const path = this._getPath(context);
+    const evalPath = context.session && !context.session.resetEvalState
+      ? path.clone(true, undefined, context)
+      : path;
+    const finish = (nextPath: Quoted): JsImport => {
+      const out = this.maybeClone(context) as JsImport;
+      if (nextPath !== path) {
+        if (context.session && out === this) {
+          sessionPatchField(this, 'path', nextPath, context);
+        } else {
+          out.setData('path', nextPath);
+        }
+      }
+      return out;
+    };
+    const maybeEvald = evalPath.eval(context);
+    if (isThenable(maybeEvald)) {
+      return (maybeEvald as Promise<Quoted>).then(finish);
+    }
+    return finish(maybeEvald as Quoted);
   }
 
   override toTrimmedString(options?: PrintOptions) {

@@ -911,6 +911,22 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString({ context: ctx })).toBe('@-from \"b.js\" import ( bar as baz );');
       expect(node.toTrimmedString()).toBe('@-from \"a.js\" import ( foo );');
     });
+
+    it('JsImport eval does not overwrite the canonical path in a session', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const originalPath = quoted(expr(any('module.js')));
+      const node = js({
+        path: originalPath,
+        imports: ['foo']
+      });
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('@-from "module.js" import ( foo );');
+      expect(node.toTrimmedString()).toBe('@-from "$(module.js)" import ( foo );');
+      expect(node.path).toBe(originalPath);
+    });
   });
 
   describe('sessionGetParent / sessionSetParent', () => {
