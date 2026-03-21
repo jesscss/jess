@@ -9,6 +9,7 @@ import { Mixin } from './mixin.js';
 import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { freezeChildren } from './util/cloning.js';
 import { sessionGetField, sessionGetParent } from './util/session-helpers.js';
 
 /**
@@ -128,13 +129,16 @@ export class Func extends Node<FuncValue, FuncOptions> {
 
     // Normalize body to a Rules node so it can be evaluated/scoped consistently.
     const bodyNode = this._getBody(context);
+    const detachedParams = params && !params.frozen
+      ? freezeChildren(params) as List<Node>
+      : params;
     const bodyRules = bodyNode instanceof Rules
-      ? bodyNode
-      : Rules.create([bodyNode]);
+      ? ((bodyNode.frozen ? bodyNode : freezeChildren(bodyNode)) as Rules)
+      : Rules.create([bodyNode.frozen ? bodyNode : freezeChildren(bodyNode)]);
 
     // Build a temporary anonymous mixin wrapper to observe the same param binding rules.
     const mixinLike = new Mixin(
-      { rules: bodyRules, params },
+      { rules: bodyRules, params: detachedParams },
       undefined,
       Array.isArray(this.location) && this.location.length === 6 ? (this.location as LocationInfo) : undefined,
       this.treeContext

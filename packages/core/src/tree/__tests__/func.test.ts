@@ -50,4 +50,33 @@ describe('Func', () => {
       add(x, y);
     `);
   });
+
+  it('does not re-parent canonical body or params when evalCall builds a temporary mixin wrapper', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.createSession();
+
+    const params = list([
+      vardecl({ name: 'a', value: nil() }),
+      vardecl({ name: 'b', value: nil() })
+    ]);
+    const body = rules([
+      decl({ name: 'return', value: any('ok') })
+    ]);
+    const node = fn({
+      name: any('add'),
+      params,
+      body
+    });
+    const root = rules([node]);
+    ctx.root = root;
+
+    expect(params.parent).toBe(node);
+    expect(body.parent).toBe(node);
+
+    const result = await node.evalCall(ctx, list([any('x'), any('y')]));
+
+    expect(result.toTrimmedString()).toBe('ok');
+    expect(params.parent).toBe(node);
+    expect(body.parent).toBe(node);
+  });
 });
