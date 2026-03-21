@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block, Negative, rest, attr } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, block, Negative, rest, attr } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -514,6 +514,43 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('[data=red]');
       expect(node.name).toBe('data');
       expect(node.value?.toTrimmedString()).toBe('red');
+    });
+
+    it('InterpolatedSelector rendering and eval read a patched value from the active session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = interpolatedSelector(interpolated({
+        source: '.%%',
+        replacements: [any('alpha')]
+      }));
+      const renderPatched = interpolated({
+        source: '.%%',
+        replacements: [any('beta')]
+      });
+
+      sessionPatchField(node, 'value', renderPatched, ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('.beta');
+      expect(node.toTrimmedString()).toBe('.alpha');
+
+      const preEvald = await node.preEval(ctx);
+      if (!('type' in preEvald) || preEvald.type !== 'InterpolatedSelector') {
+        throw new TypeError('Expected InterpolatedSelector.preEval() to return an InterpolatedSelector');
+      }
+      const evalPatched = interpolated({
+        source: '.%%',
+        replacements: [any('gamma')]
+      });
+      sessionPatchField(preEvald, 'value', evalPatched, ctx);
+
+      const sessionEvald = await preEvald.eval(ctx);
+      const canonicalEvald = await node.eval(new Context());
+
+      expect(sessionEvald.toTrimmedString()).toBe('.gamma');
+      expect(canonicalEvald.toTrimmedString()).toBe('.alpha');
+      expect(node.value.toTrimmedString()).toBe('.alpha');
+      expect(node.value).not.toBe(renderPatched);
+      expect(preEvald.value).not.toBe(evalPatched);
     });
 
     it('Quoted rendering reads a patched child from the active session', () => {

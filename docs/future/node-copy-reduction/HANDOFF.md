@@ -86,8 +86,8 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 ## Recent committed milestones
 
 - Stages 17–20 are materially landed.
-- `RawRules`, `Block`, `Negative`, `Rest`, and `AttributeSelector` are now complete for the fundamentals pass.
-- The next immediate wrapper target is `InterpolatedSelector`.
+- `RawRules`, `Block`, `Negative`, `Rest`, `AttributeSelector`, and `InterpolatedSelector` are now complete for the fundamentals pass.
+- The next immediate node target is `AtRule`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
@@ -110,7 +110,7 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Immediate work
 
-1. Follow the immediate node queue in `node-session-status.md` (`InterpolatedSelector` is next).
+1. Follow the immediate node queue in `node-session-status.md` (`AtRule` is next).
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.

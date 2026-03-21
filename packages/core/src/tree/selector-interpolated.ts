@@ -4,7 +4,9 @@ import { SimpleSelector } from './selector-simple.js';
 import { Selector } from './selector.js';
 import type { BitSetLibrary } from './util/bitset.js';
 import { Interpolated } from './interpolated.js';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { sessionGetField } from './util/session-helpers.js';
 
 const { isArray } = Array;
 
@@ -49,6 +51,12 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     }
   }
 
+  private _getValue(context?: Context): Interpolated {
+    return context
+      ? sessionGetField<Interpolated>(this, 'value', context)
+      : this.value;
+  }
+
   get isClass() {
     return /^\./.test(this.valueOf());
   }
@@ -62,7 +70,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const result = this.value.evalToSelector(context);
+    const result = this._getValue(context).evalToSelector(context);
     const library = context.selectorBits;
     if (isThenable(result)) {
       return (result as Promise<Selector>).then((sel) => {
@@ -72,6 +80,14 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     }
     propagateKeySetLibrary(result as Selector, library);
     return result;
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this._getValue(options.context).toString(options);
+    return w.getSince(mark);
   }
 
   override valueOf(): string {

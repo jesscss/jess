@@ -124,13 +124,13 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `InterpolatedSelector`
-  - goal: make selector wrapper render/eval read its wrapped interpolated value through the session-aware view instead of canonical field access
+- `AtRule`
+  - goal: finish its remaining direct eval-time writes after the simpler wrapper/selector queue is complete
   - primary proof:
     - node/public-path behavior in the node's own test file
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
   - note:
-    - the prior immediate slice landed: `AttributeSelector` now reads and patches `name` / `value` through the session-aware view on render/eval paths, has explicit behavior coverage in `selector-attr.test.ts`, and has an eval-session immutability proof in `eval-session.test.ts`
+    - the prior immediate slice landed: `InterpolatedSelector` now reads the wrapped interpolated value through the session-aware view for render/eval, has explicit behavior coverage in `selector-interpolated.test.ts`, and has an eval-session immutability proof in `eval-session.test.ts`
 
 ### Current Batch A: Simple Pending Wrappers
 
@@ -138,7 +138,7 @@ the next atomic slice changes.
 
 ### Current Batch B: Simple Selector Wrappers
 
-- `InterpolatedSelector`
+- Batch B complete.
 
 Rule for this batch:
 
@@ -222,7 +222,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | ---------------------- | --------- | -------------------------------------------------------------------- |
 | `BasicSelector`        | `leaf`    | Scalar selector token.                                               |
 | `AttributeSelector`    | `complete` | Render and eval now read `name` / `value` through the session-aware view, eval-time field updates are session-backed, `selector-attr.test.ts` covers behavior parity, and `eval-session.test.ts` proves overlay reads without canonical mutation. |
-| `InterpolatedSelector` | `pending` | Wrapper around `Interpolated` still reads/evals canonically.         |
+| `InterpolatedSelector` | `complete` | Render and eval now read the wrapped interpolated value through the session-aware view, `selector-interpolated.test.ts` covers behavior parity, and `eval-session.test.ts` proves overlay reads without canonical mutation. |
 | `Ampersand`            | `pending` | Still called out as a remaining high-signal clone/copy site.         |
 | `PseudoSelector`       | `partial` | Render/read path for `name` / `arg` is session-aware.                |
 | `CompoundSelector`     | `partial` | Render/read path for `value[]` is session-aware.                     |
