@@ -125,12 +125,12 @@ the next atomic slice changes.
 ### Immediate Next Slice
 
 - `Ruleset`
-  - goal: continue reducing its remaining composition-path writes now that `Operation` structural field writes are session-backed
+  - goal: continue reducing its remaining composition-path writes now that `hoistToRoot` and active visibility writes are session-backed
   - primary proof:
     - node/public-path behavior in the node's own test file
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
   - note:
-    - the prior immediate slice landed: `Operation` now reads `left` / `right` through the session-aware view and routes preserved-expression field updates through the session layer, `operation.test.ts` covers the public behavior, and `eval-session.test.ts` proves canonical `left` / `right` stay unchanged under an active session
+    - the prior immediate slice landed: `Ruleset` now reads `hoistToRoot` through the session-aware view on active render/eval paths, routes active `hoistToRoot` writes and `F_VISIBLE` removal through the session layer, `ruleset.test.ts` covers collapse-nesting behavior parity, and `eval-session.test.ts` proves canonical `hoistToRoot` stays unchanged under an active session
 
 ### Current Batch A: Simple Pending Wrappers
 
@@ -189,7 +189,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `Declaration`                | `partial`   | Active eval/serialization reads and field writes for `name` / `value` / `important` now use session helpers. Broader caller-side mutation paths still need completion. |
 | `VarDeclaration`             | `inherited` | Inherits `Declaration` field behavior. Remaining mixin-param binding work is in callers, not in the node class itself.                                                                 |
 | `CustomDeclaration`          | `inherited` | Inherits `Declaration`; custom eval wrapper only toggles `context.inCustom`.                                                                                                           |
-| `Ruleset`                    | `partial`   | `selector` / `rules` / `guard` / extend-managed selector fields are session-aware on active eval/render paths. Broader composition paths still need pressure reduction.                |
+| `Ruleset`                    | `partial`   | `selector` / `rules` / `guard` / extend-managed selector fields are session-aware on active eval/render paths. `hoistToRoot` reads plus active `hoistToRoot` / `F_VISIBLE` writes are now session-backed. Broader composition paths still need pressure reduction.                |
 | `Rules`                      | `partial`   | Non-reset sessions now have child-array overlays and session-backed reads/writes through major preEval/eval/coalescing loops. Reset-session path still relies on cloned working trees. |
 | `RawRules`                   | `complete`  | Its serializer override now reads the `Rules` session child overlay instead of canonical `this.value`, and it has both a dedicated public behavior test and an eval-session immutability proof. |
 | `AtRule`                     | `complete`  | Render and eval now read `name` / `prelude` / `rules` through the session-aware view, active field updates are session-backed, `at-rule.test.ts` covers behavior parity, and `eval-session.test.ts` proves the canonical field references stay unchanged under an active session. |

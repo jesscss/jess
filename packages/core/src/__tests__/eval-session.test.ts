@@ -290,6 +290,28 @@ describe('session-aware helpers', () => {
       expect(canonicalOut).toContain('color: red;');
     });
 
+    it('Ruleset eval does not overwrite canonical hoistToRoot in a session', async () => {
+      const ctx = new Context({ collapseNesting: true });
+      ctx.createSession();
+      const child = ruleset({
+        selector: el('.child'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const root = rules([
+        ruleset({
+          selector: el('.parent'),
+          rules: rules([child])
+        })
+      ]);
+
+      const evald = await root.eval(ctx);
+
+      expect(evald.toString({ collapseNesting: true, context: ctx })).toContain('.parent .child');
+      expect(child.hoistToRoot).toBeUndefined();
+    });
+
     it('AtRule rendering reads patched name, prelude, and rules from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

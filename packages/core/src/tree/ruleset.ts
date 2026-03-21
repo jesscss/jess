@@ -163,7 +163,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   isHoisted(options: PrintOptions) {
-    return this.hoistToRoot ?? options.collapseNesting ?? false;
+    return this._getHoistToRoot(options.context) ?? options.collapseNesting ?? false;
   }
 
   protected _valueOf: string | undefined;
@@ -198,6 +198,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return context
       ? sessionGetField<Selector | Nil>(this, 'selector', context)
       : this.selector;
+  }
+
+  private _getHoistToRoot(context?: Context): boolean | undefined {
+    return context
+      ? sessionGetField<boolean | undefined>(this, 'hoistToRoot', context)
+      : this.hoistToRoot;
+  }
+
+  private _setHoistToRoot(value: boolean | undefined, context: Context): void {
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'hoistToRoot', value, context);
+    } else {
+      this.hoistToRoot = value;
+    }
+    this.invalidateSelectorValueCache();
   }
 
   getCurrentSelector(context?: Context): Selector | Nil {
@@ -318,7 +333,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false, context?: Context): Selector | Nil {
     const ownSelector = this.getOwnSelector(context);
     if (
-      !this.hoistToRoot
+      !this._getHoistToRoot(context)
       && !collapseNesting
       && ownSelector
       && !(ownSelector instanceof Nil)
@@ -361,7 +376,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const parentRs = getParentRuleset(this, context);
     if (
       collapseNesting
-      && this.hoistToRoot
+      && this._getHoistToRoot(context)
       && ownSelector
       && !(ownSelector instanceof Nil)
       && Ruleset.isBareAmpersandSelector(ownSelector)
@@ -391,7 +406,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     };
     if (
       collapseNesting
-      && this.hoistToRoot
+      && this._getHoistToRoot(context)
       && !this._getSelectorBeforeExtend(context)
       && ownSelector
       && !(ownSelector instanceof Nil)
@@ -411,7 +426,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
     }
 
-    if (this.hoistToRoot) {
+    if (this._getHoistToRoot(context)) {
       return selector;
     }
 
@@ -466,7 +481,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (
       opts.referenceMode === true
       && opts.referenceRenderEnabled !== false
-      && this.hoistToRoot
+      && this._getHoistToRoot(opts.context)
     ) {
       const ownSelector = this.getOwnSelector(opts.context);
       if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
@@ -682,7 +697,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     let renderSelector: Selector | Nil = selector;
     const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
     if (
-      this.hoistToRoot
+      this._getHoistToRoot(options.context)
       && Ruleset.isBareAmpersandSelector(renderSelector)
       && ownSelector
       && !(ownSelector instanceof Nil)
@@ -691,7 +706,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     ) {
       renderSelector = this.selector;
     }
-    if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
+    if (this._getHoistToRoot(options.context) && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
     if (
@@ -821,7 +836,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // Store the evaluated selector - this is what will be in the frame
           node._setSelector(sel as Selector | Nil, context);
           if (sel.hoistToRoot) {
-            node.hoistToRoot = true;
+            node._setHoistToRoot(true, context);
           }
           // Register to extend root's registry for extend lookups
           const extendRoot = context.extendRoots.getCurrentExtendRoot();
@@ -939,8 +954,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         let selector = this._getSelector(context);
         const frame = atIndex(context.rulesetFrames, -1);
-        if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
-          this.hoistToRoot = true;
+        if (frame && (this._getHoistToRoot(context) ?? context.opts.collapseNesting)) {
+          this._setHoistToRoot(true, context);
         }
 
         if (selector instanceof Nil) {
@@ -969,7 +984,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           this._getSelector(context).sourceNode = preservedSourceNode;
         }
         if (context.opts.collapseNesting) {
-          this.hoistToRoot = true;
+          this._setHoistToRoot(true, context);
         }
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
@@ -1002,7 +1017,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         this._setRulesContainer(evaluatedRules as Rules, context);
         const rules = this._getRulesContainer(context);
         if (rules.visibleRules().length === 0) {
-          this.removeFlag(F_VISIBLE);
+          this._removeFlag(F_VISIBLE, context);
         }
         return this;
       }

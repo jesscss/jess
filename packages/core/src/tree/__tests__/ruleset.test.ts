@@ -7,6 +7,32 @@ describe('Rule', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  it('collapses nested rulesets by hoisting the child selector at render time', async () => {
+    context = new Context({ collapseNesting: true });
+    const node = rules([
+      ruleset({
+        selector: el('.parent'),
+        rules: rules([
+          ruleset({
+            selector: el('.child'),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      .parent .child {
+        color: red;
+      }
+    `);
+  });
+
   it('should serialize to CSS', () => {
     let node = ruleset({
       selector: sellist([sel([el('foo')])]),

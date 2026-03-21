@@ -910,7 +910,7 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Immediate next node slice: `Ruleset`
+- [ ] Immediate next node slice: `Ruleset` follow-up
 - [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
 - [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 
@@ -941,6 +941,7 @@ Current blocker notes from live reduction attempts:
 - The next safe order is bottom-up: finish `Declaration` and `Ruleset` session-backed field writes/read paths before attempting broader `Rules` or import-facing structural reduction again.
 - New bottom-up slice now landed in the working tree: `Declaration` reads/writes use session-aware accessors in eval and serialization, `Ruleset` has matching selector/rules/guard accessors on its active eval/render paths, and `serialize-helper.ts` now reads a session-patched `rules` body when a `Context` is present.
 - Follow-up on that slice is also now landed in the working tree: nested selector ancestry is session-aware on `Ruleset` / extend paths, returned import trees materialize clone-only parent links after session teardown, and mixin guard wrapper scopes no longer lose bound params when guard evaluation swaps to a fresh session.
+- Latest focused `Ruleset` slice is now landed and pushed: active render/eval reads for `hoistToRoot` are session-aware, active `hoistToRoot` writes route through the session field layer, `Ruleset.evalNode()` now removes `F_VISIBLE` through the session runtime layer, `ruleset.test.ts` covers collapse-nesting behavior parity, and `eval-session.test.ts` proves canonical `hoistToRoot` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:
   - selector-side containers: `PseudoSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`
   - wrapper/value nodes: `AtRule`, `Mixin`, `Call`, `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`
