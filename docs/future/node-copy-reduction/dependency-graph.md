@@ -543,6 +543,74 @@ AND `selector` on `Ruleset`. Stopping the `selector` mutation makes selector nod
 - [ ] Tests: two sequential `_dedupe` imports share canonical registry (no index rebuild)
 - [ ] Tests: mixin expansion nodes appear in session delta, not canonical index
 
+### Stage 20.5: Direct Mixin Invocation Path
+
+Status on branch `jess-dev`:
+- planned, not landed
+- required as part of the pre-Stage-21 fundamentals cleanup
+- intended to replace the current indirect internal mixin call adapter path, not the optional idea of exported/callable mixins
+
+Current indirect path:
+
+```txt
+Reference.evalNode()
+  -> getFunctionFromMixins(...)
+  -> cast(...)
+  -> JsFunction
+  -> Call.evalNode() generic function branch
+  -> callWithContext(...)
+```
+
+Why this is a problem:
+
+- `Reference` is doing semantic resolution and then converting mixin candidates into a generic JS-callable function shape.
+- `Call` then has to treat internal mixin execution like a generic function invocation instead of a first-class mixin call.
+- `getFunctionFromMixins()` currently conflates:
+  - candidate-set handling
+  - argument evaluation/normalization
+  - named/default/rest parameter binding
+  - guard/default() matching
+  - recursion protection
+  - session selection/reset behavior
+  - mixin body evaluation and output materialization
+- That indirection makes the path harder to reason about, harder to prove in narrow tests, and adds extra adapter/cast/call overhead on a hot path.
+
+Target design:
+
+- Add a direct internal mixin invocation helper for `Call`, e.g. `invokeMixinCall(context, callNode, candidates)` or equivalent.
+- Keep mixin candidate resolution semantic:
+  - `Reference` should return `Mixin` / `Ruleset` / candidate arrays for internal mixin use
+  - it should not eagerly wrap those candidates into a JS function just to call them immediately
+- Move the internal mixin pipeline behind dedicated stages:
+  1. resolve candidates
+  2. evaluate and normalize args once
+  3. bind params / defaults / named args / rest args
+  4. evaluate guards/default() matching
+  5. materialize/evaluate selected candidate output
+- Demote `getFunctionFromMixins()` to a thin adapter only for the optional “export mixins as callable functions” surface, if that surface is still desired.
+
+Planned checklist:
+
+- [ ] Add a direct internal mixin invocation helper and route `Call` mixin/ruleset execution through it
+- [ ] Stop using `cast(getFunctionFromMixins(...))` as the primary internal mixin execution path
+- [ ] Make `Reference.evalNode()` preserve semantic mixin candidates for call sites instead of generic JS-callable wrappers
+- [ ] Split `getFunctionFromMixins()` responsibilities:
+  - [ ] candidate resolution / matching
+  - [ ] binding
+  - [ ] guard evaluation
+  - [ ] output evaluation/materialization
+  - [ ] optional external adapter
+- [ ] Ensure arg evaluation/copy/freeze only happens once on the direct mixin path
+- [ ] Tests:
+  - [ ] plain mixin calls
+  - [ ] namespace mixin calls
+  - [ ] named/default/rest args
+  - [ ] detached ruleset unlock behavior
+  - [ ] guard/default() disambiguation
+  - [ ] recursion protection
+  - [ ] mixin aliases / call-time reference resolution
+  - [ ] performance characterization against the old adapter path
+
 ### Stage 21: Live Patch API
 
 Precondition: do not start this stage until the branch clears the pre-Stage-21 threshold:
@@ -606,6 +674,10 @@ Stage 20 (session deltas + no import clone)
   └─ completes: elimination of all clone(true) and clone(false) at import/mixin sites
   └─ enables: Stage 21 (patch.js needs session context during serialization)
 
+Stage 20.5 (direct mixin invocation)
+  └─ replaces the internal Reference -> getFunctionFromMixins -> cast -> callWithContext indirection
+  └─ should land before the fundamentals gate is considered complete
+
 Stage 21 (Live Patch API)
   └─ all prior stages required
   └─ blocked until the pre-Stage-21 threshold is satisfied
@@ -613,7 +685,8 @@ Stage 21 (Live Patch API)
 
 Stages 17 and 18 can proceed in parallel. Stage 19 depends on 17 (immutable selectors
 simplify registry content; though technically 19 could start without 17, they are cleanest
-together). Stage 20 requires 18 and 19. Stage 21 requires all.
+together). Stage 20 requires 18 and 19. Stage 20.5 depends on the lower-order fundamentals
+slices around `Call` / `Reference` / `Rules`. Stage 21 requires all.
 
 ---
 
