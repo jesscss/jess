@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block, Negative } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block, Negative, rest } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -484,6 +484,18 @@ describe('session-aware helpers', () => {
       expect(node.value.toTrimmedString()).toBe('2px');
       expect(node.value).not.toBe(renderPatched);
       expect(preEvald.value).not.toBe(evalPatched);
+    });
+
+    it('Rest rendering reads a patched value from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = rest('args');
+
+      sessionPatchField(node, 'value', 'tail', ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('...$$tail');
+      expect(node.toTrimmedString()).toBe('...$$args');
+      expect(node.value).toBe('args');
     });
 
     it('Quoted rendering reads a patched child from the active session', () => {

@@ -1,6 +1,8 @@
+import type { Context } from '../context.js';
 import { defineType, Node, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * A rest expression (e.g. ...$var). By itself it doesn't do much.
@@ -24,8 +26,14 @@ export class Rest extends Node<Node | string | undefined> {
     }
   }
 
-  get name(): string {
-    let value = this.value;
+  private _getValue(context?: Context): Node | string | undefined {
+    return context
+      ? sessionGetField<Node | string | undefined>(this, 'value', context)
+      : this.value;
+  }
+
+  private _getName(context?: Context): string {
+    const value = this._getValue(context);
     if (value) {
       if (isNode(value)) {
         return value.toString();
@@ -35,12 +43,16 @@ export class Rest extends Node<Node | string | undefined> {
     return '';
   }
 
+  get name(): string {
+    return this._getName();
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     w.add('...$');
-    w.add(this.name);
+    w.add(this._getName(options.context));
     return w.getSince(mark);
   }
 }

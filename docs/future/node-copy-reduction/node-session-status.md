@@ -124,22 +124,17 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `Rest`
-  - goal: make wrapper serialization/eval read `value` through the session-aware view instead of canonical field access
+- `AttributeSelector`
+  - goal: make selector wrapper render/eval read `name` / `value` through the session-aware view instead of canonical field access
   - primary proof:
     - node/public-path behavior in the node's own test file
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
   - note:
-    - the prior immediate slice landed: `Negative` now reads `value` through the session-aware view for render/eval, has explicit unary serialization coverage in `negative.test.ts`, and has an eval-session immutability proof in `eval-session.test.ts`
+    - the prior immediate slice landed: `Rest` now reads `value` through the session-aware view for serialization, has dedicated node-local coverage in `rest.test.ts`, and has an eval-session immutability proof in `eval-session.test.ts`
 
 ### Current Batch A: Simple Pending Wrappers
 
-- `Rest`
-
-Rule for this batch:
-
-- do not touch `Rules` internals unless one of these wrappers genuinely requires it
-- each node should be migrated and committed independently if the slice stays small
+- Batch A complete.
 
 ### Current Batch B: Simple Selector Wrappers
 
@@ -216,7 +211,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `If` / `For` / control nodes | `pending`   | Control-flow bodies and binding/eval paths still use direct structural access in important paths.                                                                                      |
 | `Block`                      | `complete`  | Render and eval now read `value` through the session-aware view, eval writes patch the active session instead of overwriting the canonical child, and both node-local behavior plus eval-session immutability proofs are in place. |
 | `Negative`                   | `complete`  | Render and eval now read `value` through the session-aware view, unary serialization has dedicated node-local coverage, and `eval-session.test.ts` proves session overlay reads without mutating the canonical child. |
-| `Rest`                       | `pending`   | Wrapper node still reads canonical `value` directly.                                                                                                                                   |
+| `Rest`                       | `complete`  | Serialization now reads `value` through the session-aware view, `rest.test.ts` covers both string-backed and node-backed forms, and `eval-session.test.ts` proves session overlay reads without mutating the canonical value. |
 | `Extend`                     | `pending`   | Extend pipeline is still a major remaining clone/copy cluster.                                                                                                                         |
 | `ExtendList`                 | `pending`   | Extend helper container not yet migrated to the session model.                                                                                                                         |
 
