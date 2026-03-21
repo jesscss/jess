@@ -227,7 +227,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `PseudoSelector`       | `complete` | Render and eval now read `name` / `arg` through the session-aware view, eval-time `arg` updates are session-backed, `selector-pseudo.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `arg` stays unchanged under an active session. |
 | `CompoundSelector`     | `complete` | Render and eval now read `value[]` through the session-aware view, eval-time component-array updates are session-backed, compound serialization no longer mutates child spacing state, `selector-compound.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical components stay unchanged under an active session. |
 | `ComplexSelector`      | `partial` | Render and eval now read `value[]` through the session-aware view, and eval-time component-array updates are session-backed with node-local behavior proof plus eval-session immutability coverage. Single-item hoist propagation is still not promoted as complete behavior for this node. |
-| `SelectorList`         | `partial` | Render/read path for `value[]` is session-aware.                     |
+| `SelectorList`         | `complete` | Render and eval now read `value[]` through the session-aware view, eval-time selector-array updates and top-level `:is()` flattening are session-backed, `selector-list.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical items stay unchanged under an active session. |
 | `SelectorCapture`      | `partial` | Render/read path for `value` is session-aware.                       |
 
 

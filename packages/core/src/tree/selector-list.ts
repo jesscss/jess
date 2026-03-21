@@ -10,7 +10,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorMatch } from './util/selector-match-core.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 export interface SelectorList {
   type: 'SelectorList';
@@ -41,6 +41,20 @@ export class SelectorList extends Selector<Selector[]> {
     return context
       ? sessionGetField<Selector[]>(this, 'value', context)
       : this.value;
+  }
+
+  private _setValue(value: Selector[], context: Context): void {
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child, context);
+      }
+    }
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'value', value, context);
+    } else {
+      this.value = value;
+    }
+    this.invalidateCache();
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -138,26 +152,30 @@ export class SelectorList extends Selector<Selector[]> {
     return pipe(
       () => {
         const list = super.evalNode(context) as SelectorList;
-        const { value } = list;
+        const value = [...list._getValue(context)];
         const indices = value.map((_, i) => i);
         const maybe = serialForEach(indices, (i) => {
           const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector>).then((res) => {
-              list.setData(i, res as Selector);
+              value[i] = res as Selector;
               return undefined;
             });
           }
-          list.setData(i, out as Selector);
+          value[i] = out as Selector;
           return undefined;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => list);
+          return (maybe as Promise<void>).then(() => {
+            list._setValue(value, context);
+            return list;
+          });
         }
+        list._setValue(value, context);
         return list;
       },
       (list) => {
-        const { value } = list;
+        const value = list._getValue(context);
         // Flatten top-level `:is(a, b)` items into the selector list.
         // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
@@ -192,10 +210,10 @@ export class SelectorList extends Selector<Selector[]> {
           flattened.push(item);
         }
         if (flattened.length !== value.length) {
-          list.setData(flattened);
+          list._setValue(flattened, context);
         }
-        if (value.length === 1) {
-          return value[0]!;
+        if (flattened.length === 1) {
+          return flattened[0]!;
         }
         return list;
       }

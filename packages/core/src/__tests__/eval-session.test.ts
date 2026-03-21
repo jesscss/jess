@@ -506,6 +506,21 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('.a,\n.b');
     });
 
+    it('SelectorList eval does not overwrite canonical items in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const item = pseudo({
+        name: ':is',
+        arg: sellist([el('.a'), el('.b')])
+      });
+      const node = sellist([item]);
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('.a,\n.b');
+      expect(node.value[0]).toBe(item);
+    });
+
     it('ComplexSelector rendering reads patched components from the active session', () => {
       const ctx = new Context();
       ctx.createSession();
