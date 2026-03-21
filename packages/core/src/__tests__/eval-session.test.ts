@@ -551,6 +551,21 @@ describe('session-aware helpers', () => {
       expect(node.value[2]).toBe(last);
     });
 
+    it('ComplexSelector preserves session-only hoist propagation when collapsing to one child', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const child = el('.target');
+      const node = sel([child]);
+
+      sessionPatchField(node, 'hoistToRoot', true, ctx);
+
+      const evald = await node.eval(ctx);
+
+      expect(sessionGetField<boolean | undefined>(evald, 'hoistToRoot', ctx)).toBe(true);
+      expect(evald.hoistToRoot).toBeUndefined();
+      expect(node.hoistToRoot).toBeUndefined();
+    });
+
     it('CompoundSelector rendering reads patched components from the active session', () => {
       const ctx = new Context();
       ctx.createSession();
@@ -599,6 +614,24 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('(blue)');
       expect(node.toTrimmedString()).toBe('(red)');
+    });
+
+    it('Paren eval keeps wrapper child replacement session-local', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const original = ref({ key: 'color' }, { type: 'variable' });
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+      const node = paren(original);
+      ctx.root = root;
+      ctx.rulesContext = root;
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('(red)');
+      expect(node.value).toBe(original);
+      expect(node.toTrimmedString()).toBe('($color)');
     });
 
     it('Block rendering reads a patched child from the active session', () => {
@@ -718,6 +751,22 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('\"red\"');
     });
 
+    it('Quoted eval keeps evaluated child replacement session-local', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = quoted(interpolated({
+        source: '%%',
+        replacements: [expr(any('blue'))]
+      }));
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('"blue"');
+      expect(node.toTrimmedString()).toBe('"$(blue)"');
+      expect(node.value).toBeTypeOf('object');
+      expect(node.value).not.toBe('blue');
+    });
+
     it('Url rendering reads a patched child from the active session', () => {
       const ctx = new Context();
       ctx.createSession();
@@ -729,6 +778,22 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('url(\"a.png\")');
     });
 
+    it('Url eval keeps evaluated child replacement session-local', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const original = quoted(interpolated({
+        source: '%%.png',
+        replacements: [expr(any('blue'))]
+      }));
+      const node = url(original);
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe('url("blue.png")');
+      expect(node.value).toBe(original);
+      expect(node.toTrimmedString()).toBe('url("$(blue).png")');
+    });
+
     it('SelectorCapture rendering reads a patched child from the active session', () => {
       const ctx = new Context();
       ctx.createSession();
@@ -738,6 +803,20 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('*[.x,\n.y]');
       expect(node.toTrimmedString()).toBe('*[.a]');
+    });
+
+    it('SelectorCapture eval keeps a patched selector value session-local', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = selcap(el('.a'));
+
+      sessionPatchField(node, 'value', sellist([el('.x'), el('.y')]), ctx);
+
+      const result = await node.eval(ctx);
+
+      expect(result.toTrimmedString({ context: ctx })).toBe('.x,\n.y');
+      expect(node.toTrimmedString()).toBe('*[.a]');
+      expect(node.value.toTrimmedString()).toBe('.a');
     });
 
     it('List rendering reads patched items from the active session', () => {

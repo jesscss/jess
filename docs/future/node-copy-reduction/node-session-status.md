@@ -226,9 +226,9 @@ Use this to record why a node is not next, even if it looks urgent.
 | `Ampersand`            | `pending` | Still called out as a remaining high-signal clone/copy site.         |
 | `PseudoSelector`       | `complete` | Render and eval now read `name` / `arg` through the session-aware view, eval-time `arg` updates are session-backed, `selector-pseudo.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `arg` stays unchanged under an active session. |
 | `CompoundSelector`     | `complete` | Render and eval now read `value[]` through the session-aware view, eval-time component-array updates are session-backed, compound serialization no longer mutates child spacing state, `selector-compound.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical components stay unchanged under an active session. |
-| `ComplexSelector`      | `partial` | Render and eval now read `value[]` through the session-aware view, and eval-time component-array updates are session-backed with node-local behavior proof plus eval-session immutability coverage. Single-item hoist propagation is still not promoted as complete behavior for this node. |
+| `ComplexSelector`      | `partial` | Render and eval now read `value[]` through the session-aware view, eval-time component-array updates are session-backed, and single-item collapse now preserves a session-only `hoistToRoot` patch without mutating canonical state. It remains partial because `valueOf()` still bypasses the session layer and can canonically normalize `value`. |
 | `SelectorList`         | `complete` | Render and eval now read `value[]` through the session-aware view, eval-time selector-array updates and top-level `:is()` flattening are session-backed, `selector-list.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical items stay unchanged under an active session. |
-| `SelectorCapture`      | `partial` | Render/read path for `value` is session-aware.                       |
+| `SelectorCapture`      | `partial` | Render and eval now read the active `value` through the session-aware path, including `preEval()` on the patched-selector path, and the node has both node-local behavior coverage and eval-session immutability proof for that surface. It remains partial because broader contextless `valueOf()` semantics are still canonical by design. |
 
 
 ## Leaf / Opaque Value Nodes
@@ -250,9 +250,9 @@ Use this to record why a node is not next, even if it looks urgent.
 | `Log`          | `leaf`    | Scalar/log token node.                                                                               |
 | `Nil`          | `leaf`    | Sentinel value node.                                                                                 |
 | `Num`          | `leaf`    | Numeric scalar node.                                                                                 |
-| `Paren`        | `partial` | Wrapper render/read path for `value` is session-aware.                                               |
-| `Quoted`       | `partial` | Render/read path for `value` is session-aware.                                                       |
-| `Url`          | `partial` | Render/read path for `value` is session-aware.                                                       |
+| `Paren`        | `partial` | Render and eval now read `value` through the session-aware view, and wrapper-preserving eval no longer overwrites the canonical child under an active session. It remains partial because this slice only covered the active wrapper-preserving path and not broader contextless observers. |
+| `Quoted`       | `partial` | Render and eval now read `value` through the session-aware view, and active eval-time value replacement no longer overwrites the canonical node under an active session. It remains partial because `valueOf()` and `compare()` still read canonical `value`. |
+| `Url`          | `partial` | Render and eval now read `value` through the session-aware view, and active eval-time child replacement is session-backed. It remains partial because `valueOf()` still reads canonical `value` and is used by import-path resolution. |
 
 
 ## Base / Infra Types

@@ -5,7 +5,8 @@ import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Context } from '../context.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**
  * e.g. url('foo.png')
@@ -34,6 +35,17 @@ export class Url extends Node<Quoted | Any> {
       : this.value;
   }
 
+  private _setValue(value: Quoted | Any, context: Context): void {
+    if (value instanceof Node) {
+      this.adopt(value, context);
+    }
+    if (context.session) {
+      sessionPatchField(this, 'value', value, context);
+    } else {
+      this.setData('value', value);
+    }
+  }
+
   /**
    * @todo - enable URL rewriting
    */
@@ -47,6 +59,21 @@ export class Url extends Node<Quoted | Any> {
       return value as string;
     }
     return (value as any).value;
+  }
+
+  override evalNode(context: Context): MaybePromise<Url> {
+    const value = this._getValue(context);
+    const finish = (nextValue: Quoted | Any): Url => {
+      if (nextValue !== value) {
+        this._setValue(nextValue, context);
+      }
+      return this;
+    };
+    const maybeEvald = value.eval(context) as MaybePromise<Quoted | Any>;
+    if (isThenable(maybeEvald)) {
+      return (maybeEvald as Promise<Quoted | Any>).then(finish);
+    }
+    return finish(maybeEvald as Quoted | Any);
   }
 
   override toTrimmedString(options?: PrintOptions) {

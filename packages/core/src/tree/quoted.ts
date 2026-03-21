@@ -4,7 +4,7 @@ import { Node, F_STATIC, F_NON_STATIC, defineType, type LocationInfo, type TreeC
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -47,6 +47,20 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return context
       ? sessionGetField<string | Any | Interpolated>(this, 'value', context)
       : this.value;
+  }
+
+  private _setValue(
+    value: string | Any | Interpolated | Node,
+    context?: Context
+  ): void {
+    if (value instanceof Node) {
+      this.adopt(value, context);
+    }
+    if (context?.session && this.sourceNode === this) {
+      sessionPatchField(this, 'value', value as string | Any | Interpolated, context);
+      return;
+    }
+    this.value = value as string | Any | Interpolated;
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -97,7 +111,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
         return new Any(value as string);
       }
       let quoted = this.maybeClone(context);
-      quoted.value = value as any;
+      quoted._setValue(value, context);
       return quoted;
     };
     if (value instanceof Node) {

@@ -1,5 +1,7 @@
 import { any, expr, sel, compound, el, co, pseudo, sellist } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
+import { sessionGetField, sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -93,6 +95,20 @@ describe('Complex selector', () => {
       const evald = await node.eval(context);
 
       expect(evald.toTrimmedString()).toBe(':not(blue) > .target');
+    });
+
+    it('propagates a session-only hoist flag when a complex selector collapses to one child', async () => {
+      context.session = new EvalSession();
+      const child = el('.target');
+      const node = sel([child]);
+
+      sessionPatchField(node, 'hoistToRoot', true, context);
+
+      const evald = await node.eval(context);
+
+      expect(sessionGetField(evald, 'hoistToRoot', context)).toBe(true);
+      expect(evald.hoistToRoot).toBeUndefined();
+      expect(node.hoistToRoot).toBeUndefined();
     });
   });
 });

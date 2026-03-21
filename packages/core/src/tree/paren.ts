@@ -6,7 +6,7 @@ import { Node, defineType, F_NON_STATIC, type LocationInfo, type TreeContext } f
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
 
 export type ParenOptions = {
   escaped: boolean;
@@ -44,6 +44,18 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return context
       ? sessionGetField<Node | undefined>(this, 'value', context)
       : this.value;
+  }
+
+  private _unwrapValue(value: Node, context?: Context): Node {
+    let current = value;
+    while (current instanceof Paren) {
+      const next = current._getValue(context);
+      if (!next) {
+        break;
+      }
+      current = next;
+    }
+    return current;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -84,9 +96,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (this.options?.escaped && value instanceof Node) {
           return value;
         }
-        while (value instanceof Paren && value.value) {
-          value = value.value;
-        }
+        value = this._unwrapValue(value, context);
         if (value instanceof Bool || value instanceof Dimension) {
           return value;
         }
@@ -94,7 +104,16 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           return value;
         }
         let node = this.maybeClone(context);
-        node.value = value;
+        if (node === this && context.session && !context.session.resetEvalState) {
+          const prevValue = this._getValue(context);
+          sessionPatchField(node, 'value', value, context);
+          if (prevValue instanceof Node && prevValue !== value) {
+            sessionSetParent(prevValue, undefined, context);
+          }
+          sessionSetParent(value, node, context);
+        } else {
+          node.setData('value', value);
+        }
         return node;
       };
       if (isThenable(maybeEvald)) {

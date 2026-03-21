@@ -35,7 +35,7 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   override valueOf(): string {
-    return String(this.value.valueOf());
+    return String(this._getValue().valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -47,6 +47,27 @@ export class SelectorCapture extends Node<Selector> {
     value.toString(options);
     w.add(']', this);
     return w.getSince(mark);
+  }
+
+  override preEval(context: Context): MaybePromise<this> {
+    if (this._isPreEvaluated(context)) {
+      return this;
+    }
+    const node = this.maybeClone(context) as this;
+    node._setPreEvaluated(true, context);
+    const value = this._getValue(context);
+    const applyValue = (preEvald: Selector): this => {
+      if (node.value !== preEvald) {
+        node.value = preEvald;
+        node.adopt(preEvald, context);
+      }
+      return node;
+    };
+    const out = value.preEval(context);
+    if (isThenable(out)) {
+      return (out as Promise<Selector>).then(applyValue);
+    }
+    return applyValue(out as Selector);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
