@@ -16,6 +16,22 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 
 ---
 
+## Document Role
+
+This file is the short operational handoff.
+
+Use it for:
+
+- current branch reality
+- latest safe boundary / next immediate task
+- non-negotiable working rules
+
+Do not use this as the full node-status matrix or roadmap document:
+
+- node-level truth lives in `node-session-status.md`
+- stage/gate summary lives in `PROGRESS.md`
+- roadmap/design lives in `dependency-graph.md`
+
 ## Current state
 
 ### Branch: `jess-dev`
@@ -66,48 +82,19 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 
 ---
 
-## What was just done (this session)
+## Recent committed milestones
 
-1. Stage 17 made selectors effectively immutable in extend paths by routing extend output through `_extendedSelector`.
-2. Stage 18 added the session-local dependency graph (`dependsOn`, `sourceExpr`) and propagation through reference/expression/operation/call/declaration paths.
-3. Stage 19 moved canonical ruleset, mixin, and declaration registries into a `WeakMap<Node[], RegistryData>` keyed by `Rules.value`.
-4. Stage 20 landed the session-local registry delta layer, dependency-aware declaration lookup, detached-ruleset unlock via shallow session-safe clone, and the major import finalization reductions.
-5. Follow-up threshold work decoupled session registry deltas from `Rules.value` identity by keying them to the `Rules` container itself, and `Rules.value` is now typed readonly for consumers so plugin code must go through `setData()` / container helpers rather than mutating arrays directly.
-6. Session-aware `Rules.unshift(ctx, ...)` / `Rules.splice(ctx, ...)` coverage now proves shared canonical nodes can be inserted into session-scoped wrappers without overwriting canonical `.parent` pointers.
-7. `src/tree/__tests__/import-style.test.ts` had two failures at committed boundary `3b4d089e`:
-   - `forwarded members are not visible locally, but are visible downstream`
-   - `two sequential "with" imports do not corrupt canonical node parent pointers`
-   Both are now green on the working tree.
-8. `src/tree/__tests__/registry-characterization.test.ts` now proves four Stage 20 properties in isolation:
-   - cached compose imports reuse the same canonical WeakMap-backed registry slot
-   - session-only declaration registrations stay in `EvalSession.registryDeltas` instead of polluting the canonical cache
-   - repeated `_dedupe` imports reuse the same canonical registry slot
-   - mixin expansion parameter vars stay in session delta only
-9. `packages/core/src/tree/import-style.ts` no longer clones child `Ruleset`s for plain `multiple:true` imports.
-   The child-clone path is now kept only for implicit reference / `_dedupe` imports, because
-   removing it there regressed `extend-import-style` (`implicit reference mode (_dedupe) remains externally extendable`).
-10. `packages/core/src/tree/import-style.ts` also no longer adds a second shallow `Rules` wrapper for plain `@import` finalization.
-   `src/tree/__tests__/registry-characterization.test.ts` now proves that plain imports reuse the evaluated root and that `_dedupe` detaches the shared child array before cloning per-import `Ruleset`s.
-11. Configured `with` compose finalization now restores canonical top-level parent pointers after session teardown, so shared source nodes are no longer left pointing at transient configured-import `Rules` clones.
-12. `DeclarationRegistry.find()` now falls through to canonical declarations when a session overlay does not depend on the active `changedVars` set.
-13. `src/tree/__tests__/import-style.test.ts` includes coverage showing why a shallow compose wrapper remains intentional: repeated compose imports can require different visibility behavior at different import sites.
-14. The current fundamentals slice in the working tree is deliberately bottom-up:
-    - `Declaration` now routes active eval/serialization field reads through session-aware accessors and only patches canonical nodes when the current object is the canonical source
-    - `Ruleset` now does the same for `selector`, `rules`, and `guard` on its active eval/render paths
-    - `serialize-helper.ts` now respects a session-patched `rules` body for `Ruleset` serialization when `PrintOptions.context` is present
-    - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, and `src/tree/__tests__/import-style.test.ts`
-15. Follow-up on that bottom-up slice is now in the working tree:
-    - nested selector ancestry on active `Ruleset` / extend render paths reads through `sessionGetParent()`, so clone-session descendants no longer recompute against stale canonical parents
-    - `StyleImport.getFinalRules()` materializes raw `.parent` links only for cloned descendants in the returned import tree, so import output survives session teardown without mutating canonical shared nodes
-    - mixin guard wrapper scopes (`outerRules`) now materialize their local param/`@arguments` bindings directly, so fresh guard-probe sessions still resolve bound params
-    - focused verification is green: `src/tree/__tests__/extend-import-style.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, `src/tree/__tests__/control.test.ts`, `src/tree/__tests__/declaration.test.ts`, and `src/tree/__tests__/call.test.ts`
-16. The current working slice continued the same bottom-up approach instead of jumping to `Rules` replacement:
-    - session-aware render reads now cover lower-order selector/value wrappers and containers: `PseudoSelector`, `SelectorList`, `ComplexSelector`, `CompoundSelector`, `Expression`, `Paren`, `Quoted`, `Url`, `SelectorCapture`, `List`, `Sequence`, `QueryCondition`, `Condition`, `Func`, and `Range`
-    - this specifically avoided the bad leaf-selector experiment where overriding `BasicSelector` / `Combinator` `toTrimmedString()` broke the writer contract; those changes were reverted
-    - broad focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/extend-import-style.test.ts`, `src/tree/__tests__/import-style.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/dependency-graph.test.ts`, `src/tree/__tests__/mixin.test.ts`, `src/tree/__tests__/control.test.ts`, `src/tree/__tests__/declaration.test.ts`, `src/tree/__tests__/call.test.ts`, `src/tree/__tests__/condition.test.ts`, `src/tree/__tests__/list.test.ts`, `src/tree/__tests__/sequence.test.ts`, `src/tree/__tests__/func.test.ts`, and `src/tree/__tests__/at-rule.test.ts` (`230 passed, 9 skipped`)
-17. The next logical target after this slice is still below `Rules`:
-    - either remaining low-order render/eval readers like `Reference` / `Interpolated` / `ImportJs`, or
-    - true generic session-local replacement semantics (`sessionReplaceNode()` + `Rules.value[]` overlay), if the next reduction needs structural writes instead of just field reads
+- Stages 17–20 are materially landed.
+- `RawRules` and `Block` are now complete for the fundamentals pass.
+- The next immediate wrapper target is `Negative`.
+- A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
+  - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
+  - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
+
+For node-level details and ordering, read:
+
+- `node-session-status.md`
+- `PROGRESS.md`
 
 ---
 
@@ -122,36 +109,25 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Why this is the right next step
 
-1. Inventory and classify all remaining `clone()` / `copy()` sites still on the critical eval/import/extend path.
-2. Finish routing remaining eval-time writes / node replacement paths through session helpers.
-3. Re-run the baseline and verify that the no-regression claim still holds under the stricter threshold.
-4. Only after that, reassess readiness for Stage 21.
+1. Follow the immediate node queue in `node-session-status.md` (`Negative` is next).
+2. Keep node-level status and proof updates in `node-session-status.md`.
+3. Keep stage/gate summaries in `PROGRESS.md`.
+4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.
+
+### Known blockers from recent reduction attempts
+
+1. `Rules` structural sessionization is still only partial. The child overlay exists and some production consumers use it, but `Rules` remains a higher-order incomplete node.
+2. Remaining high-signal clone/copy pressure is still concentrated in `rules.ts`, `extend.ts`, `ruleset.ts`, and `ampersand.ts`.
+3. The internal mixin adapter path is still indirect and now tracked as its own planned stage (`Stage 20.5`), not as a wrapper-node slice.
+4. `sessionReplaceNode()` is useful but still not synonymous with “all node replacement paths are sessionized.”
 
 ### Key files to read first
-- `packages/core/src/tree/util/extend-roots.ts` — `applyInstructionToRuleset` (~line 495)
-  - Look for: `ruleset.setData('selector', ...)` and `selectorBeforeExtend` copy
-- `packages/core/src/tree/ruleset.ts` — `getEffectiveSelector()`, `_extendedSelector` field
-- `packages/core/src/tree/util/extend-core.ts` — the ~14 `copy(true)` calls here are
-  mutation-safety copies for selector assembly; become eliminable once selector is immutable
-- `packages/core/src/tree/util/selector-utils.ts` — same, ~14 `copy(true)` calls
-
-### Stage 17 checklist (from PROGRESS.md)
-- [ ] `extend-roots.ts` `applyInstructionToRuleset`: stop `setData('selector', ...)` — write `_extendedSelector` only
-- [ ] `extend-roots.ts`: remove `selectorBeforeExtend` save/restore (`copy(true)` at line ~515)
-- [ ] Verify all callers use `getEffectiveSelector()` / `_extendedSelector ?? selector`, not raw `.selector`
-- [ ] New file `selector-builders.ts` with structural-sharing helpers:
-  - `appendSelectorAlternative(target, added)` — new SelectorList container, reuse existing items
-  - `rewriteCompound(compound, mapper)` — new CompoundSelector if any item changes
-  - `rewriteSelectorPath(root, path, replacement)` — path-copy from root to changed item
-- [ ] `extend-core.ts`: replace mutation-safety `copy(true)` calls with path-copy builders
-- [ ] `selector-utils.ts`: same
-- [ ] `ruleset.ts:544`: `selector.clone(true)` for sourceNode storage — reference canonical instead
-- [ ] `ampersand.ts:228`: evaluate necessity of `selector.clone(true)`
-- [ ] Tests green after each change: `cd packages/core && pnpm test extend` (fast); full suite before commit
-- [ ] Target: `copy(true)` count in extend paths ≤ 5
-
-### After Stage 17: proceed to Stage 18 (Dependency Graph Infrastructure)
-See `dependency-graph.md` Stage 18 section for the full checklist.
+- `docs/future/node-copy-reduction/node-session-status.md`
+- `docs/future/node-copy-reduction/PROGRESS.md`
+- `docs/future/node-copy-reduction/dependency-graph.md`
+- `packages/core/src/tree/rules.ts`
+- `packages/core/src/eval-session.ts`
+- `packages/core/src/tree/util/session-helpers.ts`
 
 ---
 

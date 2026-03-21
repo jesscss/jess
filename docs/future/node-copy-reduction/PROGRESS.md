@@ -1,5 +1,16 @@
 # Node Copy Reduction — Implementation Progress
 
+## Document Role
+
+This file is the source of truth for:
+
+- stage/gate status
+- major completed slices
+- major blockers and merge-safety notes
+
+This file is not the source of truth for the per-node queue or per-node status matrix.
+Those live in [node-session-status.md](./node-session-status.md).
+
 ## Test Baselines
 
 Recorded 2026-03-16 after merging dev into jess-dev and completing Stage 6.
@@ -841,16 +852,9 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Finish the current caller-side mixin param/default binding slice in `rules.ts` with focused immutability coverage, or revert it cleanly if the proof does not hold
-- [ ] `RawRules`: make its serialization read the `Rules` session child overlay instead of canonical `this.value`
-- [ ] `Block`
-- [ ] `Negative`
-- [ ] `Rest`
-- [ ] `AttributeSelector`
-- [ ] `InterpolatedSelector`
-- [ ] remaining medium nodes with direct caller-side writes: `AtRule`, `Mixin`, `Call`, `Func`, `Operation`
-- [ ] only after the above, resume `Rules` structural completion
-- [ ] only after `Rules` is genuinely complete, return to import/extend-heavy composition paths
+- [ ] Immediate next node slice: `Negative`
+- [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
+- [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 
 Source of truth for ordering:
 
@@ -859,6 +863,13 @@ Source of truth for ordering:
 
 Current blocker notes from live reduction attempts:
 
+- Recent completed node slices: `RawRules`, `Block`.
+  - Per-node status and proof details live in [node-session-status.md](./node-session-status.md).
+- The internal mixin invocation path remains architecturally indirect:
+  - `Reference.evalNode()` can turn mixin candidate arrays into a JS-callable adapter via `getFunctionFromMixins()`
+  - `Call.evalNode()` then re-enters that adapter through the generic function path (`cast(...)`, `JsFunction`, `callWithContext(...)`)
+  - `getFunctionFromMixins()` currently conflates candidate resolution, argument normalization, named/default/rest binding, guard/default() evaluation, recursion handling, session selection, and output materialization
+  - this is now tracked as its own planned pre-Stage-21 stage in `dependency-graph.md`, not as part of lower-order node completion
 - The `Rules.value` / session-registry identity blocker is now resolved. Session registry deltas are keyed by the `Rules` container, and characterization now proves they survive a shallow clone swapping to a new `value[]`.
 - `Rules.value` is now typed readonly for consumers. Plugin / visitor code should treat direct array mutation as invalid and go through `setData()` or container helpers instead.
 - Child-array isolation and generic session-local replacement are still coupled. The next safe reduction likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.
