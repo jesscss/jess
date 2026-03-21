@@ -1204,6 +1204,21 @@ describe('session-aware helpers', () => {
       expect(right.evaluated).toBe(false);
     });
 
+    it('Operation eval does not overwrite canonical left and right nodes in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const left = expr(any('foo'));
+      const right = expr(any('bar'));
+      const operation = new Operation([left, '/', right]);
+
+      const result = await operation.eval(ctx);
+
+      expect(result.toTrimmedString({ context: ctx })).toBe('foo / bar');
+      expect(operation.left).toBe(left);
+      expect(operation.right).toBe(right);
+      expect(operation.toTrimmedString()).toBe('$(foo) / $(bar)');
+    });
+
     it('Block eval in a non-reset session does not overwrite the canonical child', async () => {
       const ctx = new Context();
       ctx.session = new EvalSession();

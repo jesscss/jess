@@ -8,7 +8,9 @@ import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 import {
+  sessionGetField,
   sessionMergeDependencies,
+  sessionPatchField,
   sessionSetDependency,
   sessionSetEvaluated
 } from './util/session-helpers.js';
@@ -69,11 +71,44 @@ export class Operation extends Node<OperationValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  private _getLeft(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'left', context)
+      : this.left;
+  }
+
+  private _setLeft(left: Node, context: Context): void {
+    this.adopt(left);
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'left', left, context);
+    } else {
+      this.left = left;
+    }
+  }
+
+  private _getRight(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'right', context)
+      : this.right;
+  }
+
+  private _setRight(right: Node, context: Context): void {
+    this.adopt(right);
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'right', right, context);
+    } else {
+      this.right = right;
+    }
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { left, operator: op, right } = this;
+    const context = options.context;
+    const left = this._getLeft(context);
+    const op = this.operator;
+    const right = this._getRight(context);
     let leftStr = w.capture(() => left.toString(options));
     let rightStr = w.capture(() => right.toString(options));
     w.add(leftStr.trimEnd(), left);
@@ -84,7 +119,9 @@ export class Operation extends Node<OperationValue> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     let n = this;
-    let { left, operator: op, right } = n;
+    const left = n._getLeft(context);
+    const op = n.operator;
+    const right = n._getRight(context);
     const maybeLeft = left.eval(context);
     const applyMergedDependency = (result: Node, l: Node, r: Node): Node => {
       const dependency = sessionMergeDependencies([l, r], context);
@@ -104,8 +141,8 @@ export class Operation extends Node<OperationValue> {
           const outOperation = context.session
             ? n.clone(false) as Operation
             : n;
-          outOperation.setData('left', l);
-          outOperation.setData('right', r);
+          outOperation._setLeft(l, context);
+          outOperation._setRight(r, context);
           return applyMergedDependency(outOperation, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -125,8 +162,8 @@ export class Operation extends Node<OperationValue> {
               const calcOperation = context.session
                 ? n.clone(false) as Operation
                 : n;
-              calcOperation.setData('left', l);
-              calcOperation.setData('right', r);
+              calcOperation._setLeft(l, context);
+              calcOperation._setRight(r, context);
               sessionSetEvaluated(calcOperation, true, context);
               sessionSetEvaluated(l, true, context);
               sessionSetEvaluated(r, true, context);
@@ -150,8 +187,8 @@ export class Operation extends Node<OperationValue> {
         out.post = right.post;
         return applyMergedDependency(out, l, r);
       }
-      n.left = l;
-      n.right = r;
+      n._setLeft(l, context);
+      n._setRight(r, context);
       return applyMergedDependency(n, l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {
