@@ -107,4 +107,29 @@ describe('Func', () => {
     expect(result.toTrimmedString()).toBe('patched');
     expect(returnDecl.value.toTrimmedString()).toBe('ok');
   });
+
+  it('evalCall no longer calls parent.adopt() for the temporary mixin wrapper in a session', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.createSession();
+
+    const node = fn({
+      name: any('add'),
+      body: rules([
+        decl({ name: 'return', value: any('ok') })
+      ])
+    });
+    const root = rules([node]);
+    ctx.root = root;
+
+    const adoptSpy = vi.spyOn(root, 'adopt');
+
+    const result = await node.evalCall(ctx, list([]));
+
+    const mixinWrapperAdopts = adoptSpy.mock.calls.filter(([child]) =>
+      !!child && typeof child === 'object' && 'type' in child && (child as { type?: string }).type === 'Mixin'
+    );
+
+    expect(result.toTrimmedString()).toBe('ok');
+    expect(mixinWrapperAdopts).toHaveLength(0);
+  });
 });

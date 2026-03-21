@@ -4,7 +4,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
 
 export type ListOptions = {
   /**
@@ -65,9 +65,27 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       : this.value;
   }
 
+  private _setValue(value: T[], context: Context): void {
+    if (context.session) {
+      for (const child of value) {
+        sessionSetParent(child, this, context);
+      }
+      if (this === this.sourceNode) {
+        sessionPatchField(this, 'value', value, context);
+        return;
+      }
+    } else {
+      for (const child of value) {
+        this.adopt(child);
+      }
+    }
+    this.value = value;
+  }
+
   // NOTE: `valueOf()` intentionally remains canonical for now.
-  // A session-aware version would need an explicit Context channel; otherwise
-  // cached string state would become ambiguous across sessions.
+  // It is a cached observer on the canonical list instance, and it has no
+  // Context parameter. Making it session-aware here would make the cache
+  // ambiguous across concurrent sessions that see different patched `value`s.
   override valueOf() {
     return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
@@ -125,22 +143,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const ownItems = this._getValue(context);
     const nextItems = b instanceof List ? b._getValue(context) : [b as T];
     let newList = this.maybeClone(context);
-    if (newList !== this) {
-      newList.value = [];
-      if (ownItems.length > 0) {
-        newList.push(context, ...ownItems);
-      }
-      if (nextItems.length > 0) {
-        newList.push(context, ...nextItems);
-      }
-      return newList;
-    }
-    if (b instanceof List) {
-      newList.push(...nextItems);
-    } else {
-      /** @todo - do we need to verify the list type? */
-      newList.push(b as T);
-    }
+    newList._setValue([...ownItems, ...nextItems], context);
     return newList;
   }
 

@@ -231,6 +231,30 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     this.invalidateSelectorValueCache();
   }
 
+  private _getSelectorSourceNode(selector: Selector | Nil | undefined, context?: Context): Node | undefined {
+    if (!(selector instanceof Node)) {
+      return undefined;
+    }
+    if (context?.session && context.session.hasRuntime(selector)) {
+      const runtime = context.session.getRuntime(selector);
+      if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
+        return runtime.sourceNode;
+      }
+    }
+    return selector.sourceNode;
+  }
+
+  private _setSelectorSourceNode(selector: Selector | Nil | undefined, sourceNode: Node, context: Context): void {
+    if (!(selector instanceof Node)) {
+      return;
+    }
+    if (context.session) {
+      context.session.getRuntime(selector).sourceNode = sourceNode;
+    } else {
+      selector.sourceNode = sourceNode;
+    }
+  }
+
   private _getRulesContainer(context?: Context): Rules {
     return context
       ? sessionGetField<Rules>(this, 'rules', context)
@@ -762,15 +786,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
+      const rulesetOptions = node._getRulesetOptions(context);
       let rules = node._getRulesContainer(context);
       let guard = node._getGuard(context);
       // On re-eval (e.g. mixin clone), use the pre-composition ownSelector so we
       // compose from the authored selector, not the already-composed one.
-      let selector: Selector | Nil = (node.options as RulesetOptions)?.ownSelector ?? node._getSelector(context);
+      let selector: Selector | Nil = rulesetOptions.ownSelector ?? node._getSelector(context);
       // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
       // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
       // (like Less `@base`) become inaccessible.
-      if (!node.options.generated) {
+      if (!rulesetOptions.generated) {
         if (context.leakyRules) {
           rules.options.rulesVisibility.Mixin = 'public';
           rules.options.rulesVisibility.VarDeclaration = 'optional';
@@ -807,7 +832,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         && parentRuleset
       ) {
         selector = getImplicitSelectorUtil(selector as Selector, parentRuleset as Ruleset, false);
-        selector.sourceNode = node === this ? selector.clone(true) : selector;
+        this._setSelectorSourceNode(selector, node === this ? selector.clone(true) : selector, context);
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
@@ -989,11 +1014,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
-        const preservedSourceNode = this._getSelector(context)?.sourceNode;
+        const preservedSourceNode = this._getSelectorSourceNode(this._getSelector(context), context);
         this._setSelector(selector as Selector | Nil, context);
         // Restore the sourceNode on the new selector so it's available when copying
         if (preservedSourceNode && this._getSelector(context)) {
-          this._getSelector(context).sourceNode = preservedSourceNode;
+          this._setSelectorSourceNode(this._getSelector(context), preservedSourceNode, context);
         }
         if (context.opts.collapseNesting) {
           this._setHoistToRoot(true, context);

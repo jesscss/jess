@@ -9,7 +9,6 @@ import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
-import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
 import { sessionGetField, sessionMergeDependencies, sessionPatchField, sessionSetDependency } from './util/session-helpers.js';
@@ -223,6 +222,17 @@ export class Call extends Node<CallValue, CallOptions> {
     return clonedArgs;
   }
 
+  private _materializeFunctionArgs(args: List<Node>, context: Context): List<Node> {
+    return list(
+      args.value.map(arg => {
+        const cloned = arg.clone(true, undefined, context);
+        cloned.frozen = true;
+        return cloned;
+      }),
+      args.options ? { ...args.options } : undefined
+    );
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     const { silentFail } = this.options;
     options = getPrintOptions(options);
@@ -389,7 +399,7 @@ export class Call extends Node<CallValue, CallOptions> {
       try {
         /** Freeze args */
         if (args) {
-          const copiedArgs = args.copy(true, freezeChildren);
+          const copiedArgs = this._materializeFunctionArgs(args, context);
           for (const copied of copiedArgs.value) {
             // Anchor copied references to this Call so nested property refs
             // (e.g. $list-1) can walk back to call-site Rules.
@@ -480,7 +490,12 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       context.parenFrames.pop();
       context.callStack.pop();
-      const node = context.session ? this.maybeClone(context) : this.clone();
+      const needsMaterializedClone = Boolean(context.session && this.options.silentFail);
+      const node = needsMaterializedClone
+        ? this.clone(false, undefined, context)
+        : context.session
+          ? this.maybeClone(context)
+          : this.clone();
       node.options.silentFail = false;
       if (
         n === 'calc' && evaluatedArgs

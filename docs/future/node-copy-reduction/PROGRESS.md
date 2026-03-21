@@ -965,6 +965,13 @@ Current blocker notes from live reduction attempts:
   - `Ruleset`: `getHeaderString()` now respects session-patched selector state in its hoist fallback branch.
   - `Sequence`: `compare(other, context?)` now honors session-patched arrays when a `Context` is supplied.
   - `List`: the remaining canonical-only observer surfaces (`length`, iterator, `valueOf()`, `compare()`) are now explicitly characterized as requiring a broader API change, not a safe node-local patch.
+- Exact node follow-up batch now landed and is committed:
+  - `Call`: the plain non-function branch now materializes a real clone before clearing `silentFail`, so patch-only session eval no longer mutates the canonical call.
+  - `Func`: `evalCall()` no longer calls `parent.adopt(...)` for the temporary mixin wrapper; the remaining dependency is the broader direct `candidate.parent!` usage in `rules.ts`.
+  - `Ruleset`: active `preEval()` / `evalNode()` selector `sourceNode` reads and writes now use session runtime instead of canonical selector mutation/restoration.
+  - `Declaration`: the remaining node-local `requiredSemi` gap is now explicitly characterized as a contextless observer that needs caller/API work, not another local field patch.
+  - `List`: `valueOf()` is now explicitly documented and tested as intentionally canonical because it is cached and has no `Context` channel.
+  - `Sequence`: `length` is now explicitly documented and tested as intentionally canonical because a plain getter cannot safely represent competing session overlays.
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

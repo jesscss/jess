@@ -135,6 +135,47 @@ describe('Call', () => {
     expect(node.toTrimmedString()).toBe('$fn??(1)');
   });
 
+  it('passes session-patched nested args into JS function calls without mutating the canonical arg nodes', async () => {
+    context.session = new EvalSession();
+    const second = num(2);
+    second.pre = 0;
+    const arg = seq([num(1), second]);
+    const node = call({
+      name: ref('fn', { type: 'variable' }),
+      args: list([arg])
+    });
+    const root = rules([
+      vardecl({
+        name: any('fn'),
+        value: jsfunc({ name: 'fn', fn: (value: unknown) => value })
+      }),
+      node
+    ]);
+
+    sessionPatchField(arg, 'value', [num(3), num(4)], context);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('3 4');
+    expect(arg.toTrimmedString({ context })).toBe('3 4');
+    expect(arg.toTrimmedString()).toBe('12');
+    expect(second.pre).toBe(0);
+  });
+
+  it('does not clear canonical silentFail in the non-function branch during patch-only session eval', async () => {
+    context.session = new EvalSession();
+    const node = call({
+      name: 'rgb',
+      args: list([num(1)])
+    }, { silentFail: true });
+
+    const evald = await node.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toBe('rgb(1)');
+    expect(node.toTrimmedString()).toBe('rgb?(1)');
+    expect(node.options.silentFail).toBe(true);
+  });
+
   // it('should serialize to a module', () => {
   //   let rule = call({
   //     name: 'rgb',

@@ -146,7 +146,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     // Ensure it participates in the same parent chain as this function definition.
     const parent = sessionGetParent(this, context);
     if (parent) {
-      parent.adopt(mixinLike);
+      Reflect.set(mixinLike, 'parent', parent);
     }
 
     const fn = getFunctionFromMixins(mixinLike);

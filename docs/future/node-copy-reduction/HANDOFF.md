@@ -115,9 +115,16 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `Ruleset`: `getHeaderString()` now respects session-patched selector state in its hoist fallback branch.
   - `Sequence`: `compare(other, context?)` now honors session-patched arrays when a `Context` is supplied.
   - `List`: the remaining canonical-only observer surfaces (`length`, iterator, `valueOf()`, `compare()`) are now explicitly characterized as requiring a broader API change, not a safe node-local patch.
+- Exact follow-up batch is now committed:
+  - `Call`: the plain non-function branch now materializes a real clone before clearing `silentFail`, so patch-only session eval no longer mutates the canonical call. Remaining `Call` work is now downstream in callee/result-node branches, not another isolated local write.
+  - `Func`: `evalCall()` no longer calls `parent.adopt(...)` for the temporary mixin wrapper. Remaining work is the broader direct `candidate.parent!` dependency in `rules.ts`.
+  - `Ruleset`: active `preEval()` / `evalNode()` selector `sourceNode` reads and writes now use session runtime. Remaining node-local gap is the context-free `copy()` / materialization path.
+  - `Declaration`: strengthened characterization proves `requiredSemi` is still a contextless canonical observer and needs broader caller/API work.
+  - `List`: strengthened characterization proves cached `valueOf()` stays intentionally canonical across competing session overlays.
+  - `Sequence`: strengthened characterization proves `length` stays intentionally canonical across competing session overlays.
 - Wrapper/selector follow-up batch is now in progress in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. They remain partial because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
-- The next immediate node target is still `Ruleset`.
+- The next immediate node target is still the remaining `Ruleset.copy()` selector `sourceNode` path.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

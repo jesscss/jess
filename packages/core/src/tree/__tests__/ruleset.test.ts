@@ -94,6 +94,54 @@ describe('Rule', () => {
     expect(node.selector.valueOf()).toBe('.alpha');
     expect(node.options.ownSelector).toBeUndefined();
   });
+
+  it('preEval uses a session-patched ownSelector instead of the canonical selector', async () => {
+    const node = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    context.session = new EvalSession();
+    context.session.patchField(node, 'options', {
+      ...node.options,
+      ownSelector: el('.beta')
+    });
+
+    const preEvald = await node.preEval(context);
+
+    expect(preEvald.getOwnSelector(context)?.valueOf()).toBe('.beta');
+    expect(preEvald.getCurrentSelector(context).valueOf()).toBe('.beta');
+    expect(node.getOwnSelector()).toBeUndefined();
+    expect(node.selector.valueOf()).toBe('.alpha');
+  });
+
+  it('preEval stores composed selector sourceNode in session runtime without mutating canonical selector state', async () => {
+    const child = ruleset({
+      selector: el('.child'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const parent = ruleset({
+      selector: el('.parent'),
+      rules: rules([child])
+    });
+
+    context.session = new EvalSession();
+    context.rulesetFrames.push(parent);
+    context.frames.push(parent);
+
+    const preEvald = await child.preEval(context);
+    const currentSelector = preEvald.getCurrentSelector(context);
+    const runtimeSourceNode = context.session.getRuntime(currentSelector).sourceNode;
+
+    expect(currentSelector.valueOf()).toBe('.parent .child');
+    expect(runtimeSourceNode?.valueOf?.()).toBe('.parent .child');
+    expect(child.selector.valueOf()).toBe('.child');
+    expect(child.selector.sourceNode).toBe(child.selector);
+  });
   // it('should serialize to a module', () => {
   //   let node = rule({
   //     selector: list([sel([el('foo')])]),

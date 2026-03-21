@@ -1,5 +1,6 @@
 import { TreeContext, list, spaced, num, any } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
 
 describe('List compare', () => {
@@ -62,7 +63,21 @@ describe('List', () => {
     const result = left.operate(right, '+', context);
 
     expect(result.toTrimmedString({ context })).toBe('red, cyan, magenta');
+    expect(left.toTrimmedString()).toBe('red');
     expect(right.toTrimmedString()).toBe('blue');
+  });
+
+  it('operate() does not overwrite the canonical left-hand list on the non-reset session path', () => {
+    context.session = new EvalSession();
+    const left = list([any('red')]);
+    const right = list([any('blue'), any('black')]);
+
+    const result = left.operate(right, '+', context);
+
+    expect(result).toBe(left);
+    expect(left.toTrimmedString({ context })).toBe('red, blue, black');
+    expect(left.toTrimmedString()).toBe('red');
+    expect(left.value.map(child => child.toTrimmedString())).toEqual(['red']);
   });
 
   it('length and iteration remain canonical without a Context channel', () => {
@@ -76,7 +91,25 @@ describe('List', () => {
     expect([...node].map(([, child]) => child.toTrimmedString())).toEqual(['red', 'blue']);
   });
 
-  it('valueOf() and compare() remain canonical without a Context channel', () => {
+  it('valueOf() remains canonical and cache-stable across different session overlays', () => {
+    const node = list([any('red'), any('blue')]);
+    const firstSession = new Context();
+    const secondSession = new Context();
+
+    firstSession.createSession();
+    secondSession.createSession();
+
+    expect(node.valueOf()).toBe('red;blue');
+
+    sessionPatchField(node, 'value', [any('cyan'), any('magenta')], firstSession);
+    sessionPatchField(node, 'value', [any('black'), any('white')], secondSession);
+
+    expect(node.toTrimmedString({ context: firstSession })).toBe('cyan, magenta');
+    expect(node.toTrimmedString({ context: secondSession })).toBe('black, white');
+    expect(node.valueOf()).toBe('red;blue');
+  });
+
+  it('compare() remains canonical without a Context channel', () => {
     context.createSession();
     const left = list([any('red'), any('blue')]);
     const right = list([any('red'), any('blue')]);
@@ -84,7 +117,6 @@ describe('List', () => {
     sessionPatchField(left, 'value', [any('cyan'), any('magenta')], context);
 
     expect(left.toTrimmedString({ context })).toBe('cyan, magenta');
-    expect(left.valueOf()).toBe('red;blue');
     expect(left.compare(right)).toBe(0);
   });
   // it('should serialize to a module', () => {

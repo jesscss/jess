@@ -84,4 +84,41 @@ describe('Sequence', () => {
     expect(left.compare(right)).toBe(-1);
     expect(left.compare(right, context)).toBe(0);
   });
+
+  it('keeps length canonical when session patches exist', () => {
+    const context = new Context();
+    context.session = new EvalSession();
+    const node = seq([num(10), num(20)]);
+
+    sessionPatchField(node, 'value', [num(30)], context);
+
+    expect(node.length).toBe(2);
+    expect(node.toTrimmedString({ context })).toBe('30');
+  });
+
+  it('keeps length canonical across competing session overlays on the same node', () => {
+    const node = seq([num(10), num(20)]);
+    const leftContext = new Context();
+    const rightContext = new Context();
+    leftContext.session = new EvalSession();
+    rightContext.session = new EvalSession();
+
+    sessionPatchField(node, 'value', [num(30)], leftContext);
+    sessionPatchField(node, 'value', [num(40), num(50), num(60)], rightContext);
+
+    expect(node.length).toBe(2);
+    expect(node.toTrimmedString({ context: leftContext })).toBe('30');
+    expect(node.toTrimmedString({ context: rightContext })).toBe('40 50 60');
+  });
+
+  it('keeps inherited contextless valueOf canonical when session patches exist', () => {
+    const context = new Context();
+    context.session = new EvalSession();
+    const node = seq([num(10), num(20)]);
+
+    sessionPatchField(node, 'value', [num(30)], context);
+
+    expect(node.valueOf()).toBe('1020');
+    expect(node.toTrimmedString({ context })).toBe('30');
+  });
 });

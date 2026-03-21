@@ -81,6 +81,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       : this.value;
   }
 
+  // NOTE: `length` intentionally remains canonical for now. A session-aware
+  // getter would need an explicit Context channel; otherwise the same node
+  // instance would have ambiguous answers when different sessions patch
+  // `value` to different lengths at the same time.
+
   protected _setValue(value: Node[], context: Context): void {
     if (context.session) {
       for (const child of value) {
