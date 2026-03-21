@@ -22,9 +22,10 @@ import {
 } from '../index.js';
 import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetParent, sessionMarkScopeDirty, sessionSetDependency } from '../util/session-helpers.js';
+import { sessionGetIndex, sessionGetParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -1026,6 +1027,23 @@ describe('Rules', () => {
         context: ctx,
         searchParents: false
       })).toBe(plain);
+    });
+
+    it('preEval reads declaration replacements from the session child overlay without mutating canonical children', async () => {
+      const original = vardecl({ name: 'foo', value: any('bar') });
+      const replacement = vardecl({ name: 'bar', value: any('baz') });
+      const root = rules([original]);
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      sessionReplaceNode(original, replacement, ctx);
+      const preEvald = await root.preEval(ctx);
+
+      expect(preEvald.at(0, ctx)).toBe(replacement);
+      expect(preEvald.at(0)).toBe(original);
+      expect(sessionGetIndex(replacement, ctx)).toBe(0);
+      expect(replacement.index).toBeUndefined();
+      expect(root.value[0]).toBe(original);
     });
 
   });

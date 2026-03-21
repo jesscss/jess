@@ -978,13 +978,19 @@ gate mixin application, structural conditionals that change the AST shape.
 - `Rules` render-side reads plus explicit context-bearing read APIs now consume it:
   `_emitRulesBody()`, `flatRules()`, `visibleRules()`, root `toString()` leading-comment hoist,
   `at(index, context?)`, and `toObject(convertToPrimitives, context?)`.
+- `Rules` now also has explicit structural child-replacement helpers on the session layer:
+  `sessionSetChildAt()` / `sessionSetChildren()`, with the first production consumers in
+  `preEval()`, `_multiPassPreEval()`, `_resolveDynamicNodes()`, and `_preEvalRemainingChildren()`.
+- Focused regression coverage now proves `preEval()` can see a session-local child replacement
+  in a non-reset eval session, assign runtime index there, and leave canonical children unchanged.
 - Focused verification is green:
-  `cd packages/core && pnpm test src/__tests__/eval-session.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
-  Result: `176 passed, 9 skipped`
+  `cd packages/core && pnpm test src/tree/__tests__/rules.test.ts src/__tests__/eval-session.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/mixin.test.ts`
+  Result: `177 passed, 9 skipped`
 - `Rules[Symbol.iterator]()` is still canonical on purpose because it has no explicit
   `Context` channel. Do not make it session-aware by introducing hidden ambient state.
-- Next integration step is still the real semantic one: route `Rules` eval/preEval/indexing/registry
-  loops through the session child overlay instead of reading `rules.value` directly.
+- Next integration step is still the real semantic one: route `Rules` queue/eval/post-eval
+  structural paths through the same session child overlay instead of mixing overlay reads with
+  canonical `setData()` writes.
 
 ### Working procedure
 1. Convert ONE node class at a time

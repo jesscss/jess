@@ -371,6 +371,67 @@ export function sessionGetChildren(
   return rules.value;
 }
 
+type SessionChildrenWriteOptions = {
+  markDirty?: boolean;
+};
+
+export function sessionSetChildren(
+  rules: Rules,
+  nodes: readonly Node[],
+  ctx: Context,
+  options: SessionChildrenWriteOptions = {}
+): void {
+  const session = ctx.session;
+  if (session) {
+    const prevChildren = sessionGetChildren(rules, ctx);
+    const nextChildren = [...nodes];
+    const nextSet = new Set(nextChildren);
+    session.setChildren(rules, nextChildren);
+    for (const child of prevChildren) {
+      if (!nextSet.has(child)) {
+        sessionSetParent(child, undefined, ctx);
+      }
+    }
+    for (const child of nextChildren) {
+      sessionSetParent(child, rules, ctx);
+    }
+    if (options.markDirty !== false) {
+      sessionMarkScopeDirty(rules, ctx);
+    }
+    return;
+  }
+  rules.setData([...nodes]);
+}
+
+export function sessionSetChildAt(
+  rules: Rules,
+  index: number,
+  node: Node,
+  ctx: Context,
+  options: SessionChildrenWriteOptions = {}
+): void {
+  const session = ctx.session;
+  if (session) {
+    const currentChildren = sessionGetChildren(rules, ctx);
+    const prev = currentChildren[index];
+    if (prev === node) {
+      return;
+    }
+    const nextChildren = [...currentChildren];
+    nextChildren[index] = node;
+    session.setChildren(rules, nextChildren);
+    sessionSetParent(node, rules, ctx);
+    if (prev) {
+      sessionSetParent(prev, undefined, ctx);
+    }
+    if (options.markDirty !== false) {
+      sessionMarkScopeDirty(rules, ctx);
+    }
+    return;
+  }
+  rules.setData(index, node);
+}
+
 /**
  * Append child nodes to a Rules node.
  * Stage 9 will route into session-local children when a session is active.

@@ -34,6 +34,8 @@ import {
   sessionGetChildren,
   sessionGetDependency,
   sessionMergeDependencies,
+  sessionSetChildren,
+  sessionSetChildAt,
   sessionSetDependency,
   sessionSetIndex
 } from './util/session-helpers.js';
@@ -396,6 +398,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return context
       ? sessionGetChildren(this, context)
       : this.value;
+  }
+
+  private _setChildren(value: readonly Node[], context?: Context, markDirty: boolean = true): void {
+    if (context) {
+      sessionSetChildren(this, value, context, { markDirty });
+      return;
+    }
+    this.setData([...value]);
+  }
+
+  private _setChildAt(index: number, node: Node, context?: Context, markDirty: boolean = true): void {
+    if (context) {
+      sessionSetChildAt(this, index, node, context, { markDirty });
+      return;
+    }
+    this.setData(index, node);
   }
 
   /**
@@ -772,10 +790,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const isNestableAtRuleBody =
         parentAtRule
         && nestableAtRuleNames.has(String((parentAtRule as any).name?.valueOf?.() ?? ''));
-      const first = rules.value?.[0];
+      const children = rules._getChildren(context);
+      const first = children[0];
       const isWrapper =
         isNestableAtRuleBody
-        && rules.value?.length === 1
+        && children.length === 1
         && isNode(first, N.Ruleset)
         && isNode((first as Ruleset).selector, N.Ampersand);
       if (isWrapper) {
@@ -795,8 +814,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       /**
        * I think maybe we can just set the index to the actual order?
        */
-      for (let i = 0; i < rules.value.length; i++) {
-        let n = rules.value[i]!;
+      for (let i = 0; i < children.length; i++) {
+        let n = children[i]!;
         sessionSetIndex(n, i, context);
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
@@ -855,12 +874,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const dynamicNodes: Node[] = [];
 
     // Process each node with static name, handling both sync and async preEval
-    const processResult = serialForEach(rules.value, (node, index) => {
+    const processResult = serialForEach(rules._getChildren(context), (node, index) => {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && (node as any).role === 'charset') {
         /** Special case where we register the charset node immediately */
         const charsetNode = (node as Any).preEval(context);
-        rules.setData(index, charsetNode);
+        rules._setChildAt(index, charsetNode, context, false);
         rules.adopt(charsetNode);
         return;
       }
@@ -876,7 +895,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const preEvald = node.preEval(context);
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
-            rules.setData(index, preEvaldNode);
+            rules._setChildAt(index, preEvaldNode, context, false);
             rules.adopt(preEvaldNode, context);
             sessionSetIndex(preEvaldNode as Node, index, context);
             // After async preEval, check if it still has a static name
@@ -888,7 +907,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           });
         }
-        rules.setData(index, preEvald as Node);
+        rules._setChildAt(index, preEvald as Node, context, false);
         rules.adopt(preEvald as Node, context);
         sessionSetIndex(preEvald as Node, index, context);
         const nodeToRegister = preEvald as Node;
@@ -1025,11 +1044,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const applyResolvedNodes = () => {
-      for (let i = 0; i < rules.value.length; i++) {
-        const node = rules.value[i]!;
+      const children = rules._getChildren(context);
+      for (let i = 0; i < children.length; i++) {
+        const node = children[i]!;
         const resolvedNode = resolvedNodes.find(n => n.index === node.index);
         if (resolvedNode && resolvedNode !== node) {
-          rules.setData(i, resolvedNode.inherit(node));
+          rules._setChildAt(i, resolvedNode.inherit(node), context, false);
           rules.adopt(resolvedNode, context);
         }
       }
@@ -1150,8 +1170,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Helper method to continue preEval'ing remaining children after an async preEval.
    */
   private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number, saved?: any): MaybePromise<this> {
-    for (let i = startIndex; i < rules.value.length; i++) {
-      const node = rules.value[i]!;
+    const children = rules._getChildren(context);
+    for (let i = startIndex; i < children.length; i++) {
+      const node = children[i]!;
 
       // Always call preEval to ensure deep traversal and name resolution
       const result = node.preEval(context);
@@ -1160,7 +1181,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return result.then((resolvedNode) => {
           // Update the node if preEval returned a different instance
           if (resolvedNode !== node) {
-            rules.setData(i, resolvedNode);
+            rules._setChildAt(i, resolvedNode, context, false);
             rules.adopt(resolvedNode, context);
           }
 
@@ -1176,7 +1197,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       // Update the node if preEval returned a different instance
       if (result !== node) {
-        rules.setData(i, result);
+        rules._setChildAt(i, result, context, false);
         rules.adopt(result, context);
       }
 

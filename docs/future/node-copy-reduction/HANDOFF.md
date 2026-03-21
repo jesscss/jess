@@ -119,6 +119,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `src/__tests__/eval-session.test.ts` now proves those explicit read APIs see overlay replacements without mutating canonical reads
     - focused verification is green: `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/rules.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`176 passed, 9 skipped`)
     - `Rules[Symbol.iterator]()` intentionally remains canonical for now because it has no explicit `Context` channel; do not smuggle session state through a hidden global just to make iteration session-aware
+22. The first `Rules` child-replacement write helper is now in the working tree:
+    - `sessionSetChildAt()` / `sessionSetChildren()` now provide explicit session-backed structural writes for `Rules` children
+    - `Rules.preEval()` / `_multiPassPreEval()` / `_resolveDynamicNodes()` / `_preEvalRemainingChildren()` now route child replacement through those helpers instead of mixing overlay reads with canonical `setData()` writes
+    - `src/tree/__tests__/rules.test.ts` now proves `preEval()` can read a session-local child replacement, assign runtime index in-session, and leave canonical children untouched when using a non-reset eval session
+    - focused verification is green: `src/tree/__tests__/rules.test.ts`, `src/__tests__/eval-session.test.ts`, `src/tree/__tests__/import-style.test.ts`, and `src/tree/__tests__/mixin.test.ts` (`177 passed, 9 skipped`)
+    - this still stops short of queue/eval/post-eval normalization; `_buildEvalQueue()`, `_evaluateQueue()`, and the post-eval declaration-ordering passes still need to consume the same structural session layer
 
 ---
 
