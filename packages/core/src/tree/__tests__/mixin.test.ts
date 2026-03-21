@@ -140,6 +140,26 @@ describe('Mixin', () => {
       `);
     });
 
+    it('calls a ruleset candidate when its parent exists only in the session parent chain', async () => {
+      context.createSession();
+
+      const mixinRuleset = ruleset({
+        selector: el('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const sessionParent = rules([]);
+      sessionSetParent(mixinRuleset, sessionParent, context);
+
+      const fn = getFunctionFromMixins(mixinRuleset);
+      const result = await fn.call(context);
+
+      expect(String(result)).toBeString(`
+        color: red;
+      `);
+    });
+
     it('should call a mixin with parameters', async () => {
       // Create a mixin with a parameter: .my-mixin(@color) { color: @color; }
       const mixinDef = mixin({

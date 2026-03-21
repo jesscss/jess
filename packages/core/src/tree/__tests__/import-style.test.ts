@@ -25,6 +25,7 @@ import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -1070,6 +1071,31 @@ describe('Style import', () => {
 
       expect(resolvedFromUrl).toBeDefined();
       expect(`${resolvedFromUrl}`).toBe('$resolvedFromUrl: ok');
+    });
+
+    it('import path resolution uses a session-patched Quoted path value on the same node', async () => {
+      context.session = new EvalSession();
+      const resolvedImportPath = resolve(process.cwd(), 'import/quoted-session-path.jess');
+      context.sourceTrees.set(resolvedImportPath, rules([
+        vardecl({ name: 'resolvedFromQuoted', value: any('ok') })
+      ]));
+
+      const originalPath = quoted(any('wrong-path.jess'));
+      const replacementValue = any('import/quoted-session-path.jess');
+      vi.spyOn(originalPath, 'eval').mockImplementation((ctx) => {
+        sessionPatchField(originalPath, 'value', replacementValue, ctx as Context);
+        return originalPath;
+      });
+
+      const node = rules([
+        style({ path: originalPath }, { type: 'import' })
+      ]);
+
+      const evald = await node.eval(context);
+      const resolvedFromQuoted = getVarWithContext(context, evald, 'resolvedFromQuoted');
+
+      expect(resolvedFromQuoted).toBeDefined();
+      expect(`${resolvedFromQuoted}`).toBe('$resolvedFromQuoted: ok');
     });
 
     it('import-module: context can resolve bare module-like specifiers', async () => {

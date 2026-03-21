@@ -986,6 +986,12 @@ Current blocker notes from live reduction attempts:
   - `Url` / `ImportStyle`: `Url.pathValue(context?)` now exposes context-aware import-path materialization, and `ImportStyle` uses it at the active path-resolution callsite.
   - `SelectorCapture`: `valueOf()` is now explicitly pinned as an intentionally canonical contextless observer; the active render/eval surface is complete.
   - `Quoted`: `compare()` is now explicitly characterized as intentionally canonical without a `Context` channel.
+- Latest exact-gap batch now landed in the working tree:
+  - `Rules`: root declaration serialization now uses `Declaration.requiresSemi(context)` on the active context-bearing path instead of canonical `requiredSemi`.
+  - `rules.ts`: the remaining Ruleset-only `candidate.parent!` dereferences are gone; active mixin/ruleset parent lookup now flows through the session-aware helper everywhere in `getFunctionFromMixins()`.
+  - `ImportStyle`: the active import-path callsite now resolves session-patched `Quoted` paths context-aware, not just `Url` paths.
+  - `ComplexSelector`: the collapse-to-one-child eval branch no longer reparents the canonical child in a patch-only session.
+  - `Quoted`: non-reset session eval is now explicitly proven to keep canonical `value` unchanged; completion is now justified at the node-local level.
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

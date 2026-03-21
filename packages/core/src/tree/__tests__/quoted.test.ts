@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { any, expr, interpolated, quoted } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
 
 describe('Quoted', () => {
@@ -21,6 +22,23 @@ describe('Quoted', () => {
     const evald = await node.eval(context);
 
     expect(evald.toTrimmedString()).toBe('"blue"');
+    expect(node.toTrimmedString()).toBe('"$(blue)"');
+    expect(node.value).toBeTypeOf('object');
+    expect(node.value).not.toBe('blue');
+  });
+
+  it('evaluates through a non-reset session without overwriting the canonical value', async () => {
+    const context = new Context();
+    context.session = new EvalSession();
+    const node = quoted(interpolated({
+      source: '%%',
+      replacements: [expr(any('blue'))]
+    }));
+
+    const evald = await node.eval(context);
+
+    expect(evald).toBe(node);
+    expect(node.toTrimmedString({ context })).toBe('"blue"');
     expect(node.toTrimmedString()).toBe('"$(blue)"');
     expect(node.value).toBeTypeOf('object');
     expect(node.value).not.toBe('blue');

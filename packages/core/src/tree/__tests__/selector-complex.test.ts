@@ -111,6 +111,20 @@ describe('Complex selector', () => {
       expect(node.hoistToRoot).toBeUndefined();
     });
 
+    it('does not re-parent the canonical child when a complex selector collapses to one child in a patch-only session', async () => {
+      context.session = new EvalSession();
+      const child = el('.target');
+      const node = sel([child]);
+
+      expect(child.parent).toBe(node);
+
+      const evald = await node.eval(context);
+
+      expect(evald).not.toBe(child);
+      expect(evald.toTrimmedString()).toBe('.target');
+      expect(child.parent).toBe(node);
+    });
+
     it('keeps valueOf canonical while render reads a session-patched value array', () => {
       context.session = new EvalSession();
       const node = sel([

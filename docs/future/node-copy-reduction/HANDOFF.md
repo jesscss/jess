@@ -136,8 +136,14 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `Url` / `ImportStyle`: `Url.pathValue(context?)` now exposes context-aware import-path materialization, and `ImportStyle` uses it at the active path-resolution callsite.
   - `SelectorCapture`: `valueOf()` is now explicitly pinned as an intentionally canonical contextless observer; the active render/eval surface is complete.
   - `Quoted`: `compare()` is now explicitly characterized as intentionally canonical without a `Context` channel.
+- Latest exact-gap batch is now in the working tree:
+  - `Rules`: root declaration serialization now uses `Declaration.requiresSemi(context)` on the active context-bearing path instead of canonical `requiredSemi`.
+  - `rules.ts`: the remaining Ruleset-only `candidate.parent!` dereferences are gone; active mixin/ruleset parent lookup now flows through the session-aware helper everywhere in `getFunctionFromMixins()`.
+  - `ImportStyle`: the active import-path callsite now resolves session-patched `Quoted` paths context-aware, not just `Url` paths.
+  - `ComplexSelector`: the collapse-to-one-child eval branch no longer reparents the canonical child in a patch-only session.
+  - `Quoted`: non-reset session eval is now explicitly proven to keep canonical `value` unchanged; completion is now justified at the node-local level.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
-- The next immediate target is now the remaining `Rules` root serialization semicolon path.
+- The next immediate target is now the smallest remaining downstream `Call.evalNode()` branch.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

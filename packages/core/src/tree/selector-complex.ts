@@ -151,7 +151,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       (selector) => {
         const value = selector._getValue(context);
         if (value.length === 1) {
-          const only = value[0]!.inherit(selector);
+          const originalOnly = value[0]!;
+          const only = context.session
+            ? originalOnly.clone(false, undefined, context)
+            : originalOnly;
+          only.inherit(selector);
           if (sessionGetField<boolean | undefined>(selector, 'hoistToRoot', context)) {
             sessionPatchField(only, 'hoistToRoot', true, context);
           }

@@ -9,6 +9,7 @@ import { EvalSession } from '../eval-session.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { sessionGetField } from './util/session-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
@@ -720,7 +721,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (resolvedPath instanceof Url) {
         return resolvedPath.pathValue(context);
       }
-      return resolvedPath.valueOf() as string;
+      const quotedValue = sessionGetField<string | Node>(resolvedPath, 'value', context);
+      if (isNode(quotedValue)) {
+        return String((quotedValue as Node).valueOf());
+      }
+      return quotedValue as string;
     };
 
     if (isThenable(maybePath)) {

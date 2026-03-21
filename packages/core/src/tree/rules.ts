@@ -26,6 +26,7 @@ import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
+import type { Declaration } from './declaration.js';
 import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
@@ -532,7 +533,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       w.add(rule, n); // Pass node as origin to preserve location info
-      if (n.requiredSemi && n.options.semi !== false) {
+      const needsSemi = isNode(n, N.Declaration | N.VarDeclaration)
+        ? (n as Declaration).requiresSemi(childOptions.context)
+        : n.requiredSemi;
+      if (needsSemi && n.options.semi !== false) {
         w.add(';', n);
       }
       emittedCount++;
@@ -2414,13 +2418,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true, undefined, thisContext);
         /** Adopt for lookup, then adopt for sorting */
-        candidate.parent!.adopt(rules);
+        getCandidateParent(candidate as unknown as Node).adopt(rules);
         rules.sourceParent = sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
         thisContext.rulesContext = originalContext;
-        candidate.parent!.adopt(rules);
+        getCandidateParent(candidate as unknown as Node).adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)

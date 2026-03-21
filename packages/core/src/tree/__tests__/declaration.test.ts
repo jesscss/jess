@@ -41,7 +41,7 @@ describe('Declaration', () => {
     expect(rules([rule]).toString()).not.toContain('};');
   });
 
-  it('keeps requiredSemi canonical-only when a session patches the value to a collection', () => {
+  it('root rules serialization omits the trailing semicolon when a session patches the value to a collection', () => {
     const rule = decl({ name: 'color', value: any('red') });
     const patchedValue = coll([
       decl({ name: 'nested', value: any('blue') })
@@ -52,10 +52,10 @@ describe('Declaration', () => {
 
     expect(rule.toTrimmedString({ context })).toContain('{');
     expect(rule.requiredSemi).toBe(true);
-    expect(rules([rule]).toString({ context })).toContain('};');
+    expect(rules([rule]).toString({ context })).not.toContain('};');
   });
 
-  it('keeps requiredSemi canonical-only when a session patches a collection value back to a scalar', () => {
+  it('root rules serialization adds the trailing semicolon when a session patches a collection value back to a scalar', () => {
     const rule = decl({
       name: 'color',
       value: coll([
@@ -68,7 +68,7 @@ describe('Declaration', () => {
 
     expect(rule.toTrimmedString({ context })).toBe('color: blue');
     expect(rule.requiredSemi).toBe(false);
-    expect(rules([rule]).toString({ context })).not.toContain('blue;');
+    expect(rules([rule]).toString({ context })).toContain('blue;');
   });
 
   it('serialize-helper omits the trailing semicolon for a session-patched collection value inside a ruleset', () => {
