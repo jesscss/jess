@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
 import { Keyword, Dimension, Context, vardecl, any, num, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, block, Negative, rest, attr, nil } from '../index.js';
+import { AssignmentType } from '../tree/declaration.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -267,6 +268,22 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('background: blue');
       expect(node.toTrimmedString()).toBe('color: red');
+    });
+
+    it('Declaration preEval keeps assignment-option normalization session-local', async () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+      const node = decl(
+        { name: 'color', value: any('red') },
+        { assign: AssignmentType.Add }
+      );
+
+      const preEvald = await node.preEval(ctx);
+
+      expect(preEvald.toTrimmedString({ context: ctx })).toContain('color:');
+      expect(preEvald.toTrimmedString({ context: ctx })).not.toContain('+:');
+      expect(node.toTrimmedString()).toContain('+:');
+      expect(node.options?.normalizedFromAssign).toBeUndefined();
     });
 
     it('Ruleset rendering reads patched selector and rules from the active session', () => {

@@ -130,6 +130,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : this.name;
   }
 
+  private _getOptions(context?: Context): Opts | undefined {
+    return context
+      ? sessionGetField<Opts | undefined>(this, 'options', context)
+      : this.options;
+  }
+
+  private _setOptions(options: Opts | undefined, context: Context): void {
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'options', options, context);
+      return;
+    }
+    this.options = options;
+  }
+
   private _setName(name: NameValue, context: Context): void {
     if (name instanceof Node) {
       this.adopt(name, context);
@@ -180,7 +194,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const name = this._getName(context);
     const value = this._getValueNode(context);
     const important = this._getImportant(context);
-    const { assign = ':', setDefined } = this.options;
+    const declarationOptions = this._getOptions(context);
+    const { assign = ':', setDefined } = declarationOptions ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
     const effAssign = (setDefined && assign === ':') ? ':=' : assign;
@@ -246,7 +261,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
-      let assign = node.options?.assign;
+      const nextOptions = {
+        ...(node._getOptions(context) ?? {})
+      } as Opts;
+      let assign = nextOptions.assign;
       const rawAssign = assign as string | undefined;
       if (rawAssign === '+,:') {
         assign = AssignmentType.MergeList;
@@ -315,8 +333,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             break;
           }
         }
-        node.options.normalizedFromAssign = normalizedAssign;
-        node.options.assign = AssignmentType.Default;
+        nextOptions.normalizedFromAssign = normalizedAssign;
+        nextOptions.assign = AssignmentType.Default;
+        node._setOptions(nextOptions, context);
       }
       const out = node._getValueNode(context).preEval(context);
       if (isThenable(out)) {
@@ -367,7 +386,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           return cloned;
         };
         const normalizeMergedLeadingPlaceholder = () => {
-          const normalizedAssign = node.options.normalizedFromAssign;
+          const normalizedAssign = node._getOptions(context)?.normalizedFromAssign;
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
