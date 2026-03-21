@@ -14,7 +14,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -57,6 +57,20 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return context
       ? sessionGetField<ComplexSelectorValue>(this, 'value', context)
       : this.value;
+  }
+
+  private _setValue(value: ComplexSelectorValue, context: Context): void {
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child, context);
+      }
+    }
+    if (context.session && this === this.sourceNode) {
+      sessionPatchField(this, 'value', value, context);
+    } else {
+      this.value = value;
+    }
+    this.invalidateCache();
   }
 
   /**
@@ -112,32 +126,34 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return pipe(
       () => {
         const selector = super.evalNode(context) as ComplexSelector;
-        const { value } = selector;
+        const value = [...selector._getValue(context)];
         const indices = value.map((_: any, i: number) => i);
         const maybe = serialForEach(indices, (i: number) => {
           const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
-              selector.setData(i, res as ComplexSelectorComponent);
+              value[i] = res as ComplexSelectorComponent;
               return undefined;
             });
           }
-          selector.setData(i, out as ComplexSelectorComponent);
+          value[i] = out as ComplexSelectorComponent;
           return undefined;
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
+            selector._setValue(value, context);
             return selector;
           });
         }
+        selector._setValue(value, context);
         return selector;
       },
       (selector) => {
-        const { value } = selector;
+        const value = selector._getValue(context);
         if (value.length === 1) {
           const only = value[0]!.inherit(selector);
           if (selector.hoistToRoot) {
-            (only as any).hoistToRoot = true;
+            sessionPatchField(only, 'hoistToRoot', true, context);
           }
           return only;
         }

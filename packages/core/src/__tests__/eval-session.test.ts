@@ -517,6 +517,25 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('.a > .b');
     });
 
+    it('ComplexSelector eval does not overwrite canonical components in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const first = pseudo({
+        name: ':not',
+        arg: expr(any('blue'))
+      }) as any;
+      const join = co('>');
+      const last = el('.target') as any;
+      const node = sel([first, join, last]);
+
+      const evald = await node.eval(ctx);
+
+      expect(evald.toTrimmedString({ context: ctx })).toBe(':not(blue) > .target');
+      expect(node.value[0]).toBe(first);
+      expect(node.value[1]).toBe(join);
+      expect(node.value[2]).toBe(last);
+    });
+
     it('CompoundSelector rendering reads patched components from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

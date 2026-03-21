@@ -1,4 +1,4 @@
-import { sel, compound, el, co, pseudo, sellist } from '../index.js';
+import { any, expr, sel, compound, el, co, pseudo, sellist } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -76,6 +76,23 @@ describe('Complex selector', () => {
       await sel2.eval(context);
       expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '>', '.two', '.one']))).toBe(true);
       expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '>', '.two', '.one']))).toBe(true);
+    });
+  });
+
+  describe('evaluation', () => {
+    it('preserves complex selector serialization while evaluating nested selector children', async () => {
+      const node = sel([
+        pseudo({
+          name: ':not',
+          arg: expr(any('blue'))
+        }),
+        co('>'),
+        el('.target')
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(evald.toTrimmedString()).toBe(':not(blue) > .target');
     });
   });
 });
