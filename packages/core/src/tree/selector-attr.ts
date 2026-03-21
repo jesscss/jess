@@ -3,7 +3,8 @@ import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
-import { pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -64,22 +65,56 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     }
   }
 
+  private _getName(context?: Context): string | Node {
+    return context
+      ? sessionGetField<string | Node>(this, 'name', context)
+      : this.name;
+  }
+
+  private _getValue(context?: Context): Node | undefined {
+    return context
+      ? sessionGetField<Node | undefined>(this, 'value', context)
+      : this.value;
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
-    return pipe(
-      () => {
-        return super.evalNode(context) as any;
-      },
-      () => {
-        return this;
+    const currentName = this._getName(context);
+    const currentValue = this._getValue(context);
+    const maybeName = typeof currentName === 'string'
+      ? currentName
+      : currentName.eval(context);
+    const maybeValue = currentValue?.eval(context);
+    const finish = (name: string | Node, value: Node | undefined): this => {
+      const node = this.maybeClone(context);
+
+      if (name !== currentName) {
+        sessionPatchField(node, 'name', name, context);
       }
-    );
+      if (value !== currentValue) {
+        sessionPatchField(node, 'value', value, context);
+      }
+
+      return node;
+    };
+
+    if (isThenable(maybeName) || isThenable(maybeValue)) {
+      return Promise.all([
+        Promise.resolve(maybeName),
+        Promise.resolve(maybeValue)
+      ]).then(([name, value]) => finish(name, value));
+    }
+
+    return finish(maybeName as string | Node, maybeValue as Node | undefined);
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, op, value, mod } = this;
+    const context = options.context;
+    const name = this._getName(context);
+    const value = this._getValue(context);
+    const { op, mod } = this;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);

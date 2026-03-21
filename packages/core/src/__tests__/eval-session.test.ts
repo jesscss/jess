@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block, Negative, rest } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block, Negative, rest, attr } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -496,6 +496,24 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString({ context: ctx })).toBe('...$$tail');
       expect(node.toTrimmedString()).toBe('...$$args');
       expect(node.value).toBe('args');
+    });
+
+    it('AttributeSelector rendering reads patched name and value from the active session', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = attr({
+        name: 'data',
+        op: '=',
+        value: any('red')
+      });
+
+      sessionPatchField(node, 'name', any('data-theme'), ctx);
+      sessionPatchField(node, 'value', quoted('blue'), ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('[data-theme="blue"]');
+      expect(node.toTrimmedString()).toBe('[data=red]');
+      expect(node.name).toBe('data');
+      expect(node.value?.toTrimmedString()).toBe('red');
     });
 
     it('Quoted rendering reads a patched child from the active session', () => {
