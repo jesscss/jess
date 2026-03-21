@@ -63,9 +63,6 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
 
   override evalNode(context: Context): MaybePromise<JsImport> {
     const path = this._getPath(context);
-    const evalPath = context.session && !context.session.resetEvalState
-      ? path.clone(true, undefined, context)
-      : path;
     const finish = (nextPath: Quoted): JsImport => {
       const out = this.maybeClone(context) as JsImport;
       if (nextPath !== path) {
@@ -77,7 +74,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
       }
       return out;
     };
-    const maybeEvald = evalPath.eval(context);
+    const maybeEvald = path.eval(context);
     if (isThenable(maybeEvald)) {
       return (maybeEvald as Promise<Quoted>).then(finish);
     }
