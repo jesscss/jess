@@ -1,5 +1,6 @@
 import { bool, condition, dimension, num } from '..';
 import { Context } from '../../context.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -114,6 +115,65 @@ describe('Condition', () => {
       ]);
       let evald = await node.eval(context);
       expect(`${evald}`).toBe('true');
+    });
+  });
+
+  describe('session', () => {
+    it('renders patched operands and negate from the active session without mutating the canonical node', () => {
+      context.createSession();
+      const node = condition([
+        bool(true),
+        '=',
+        bool(false)
+      ]);
+
+      sessionPatchField(node, 'left', bool(false), context);
+      sessionPatchField(node, 'operator', 'or', context);
+      sessionPatchField(node, 'right', bool(true), context);
+      sessionPatchField(node, 'negate', true, context);
+
+      expect(node.toTrimmedString({ context })).toBe('not (false or true)');
+      expect(node.toTrimmedString()).toBe('(true = false)');
+      expect(node.left.toTrimmedString()).toBe('true');
+      expect(node.operator).toBe('=');
+      expect(node.right?.toTrimmedString()).toBe('false');
+      expect(node.negate).toBe(false);
+    });
+
+    it('evaluates patched operands and operator from the active session without mutating the canonical node', async () => {
+      context.createSession();
+      const node = condition([
+        bool(true),
+        'and',
+        bool(false)
+      ]);
+
+      sessionPatchField(node, 'left', bool(false), context);
+      sessionPatchField(node, 'operator', 'or', context);
+      sessionPatchField(node, 'right', bool(true), context);
+
+      const evald = await node.eval(context);
+
+      expect(`${evald}`).toBe('true');
+      expect(`${await node.eval(new Context())}`).toBe('false');
+      expect(node.left.toTrimmedString()).toBe('true');
+      expect(node.operator).toBe('and');
+      expect(node.right?.toTrimmedString()).toBe('false');
+    });
+
+    it('evaluates patched negate from the active session without mutating the canonical node', async () => {
+      context.createSession();
+      const node = condition([
+        bool(true)
+      ]);
+
+      sessionPatchField(node, 'negate', true, context);
+
+      const evald = await node.eval(context);
+
+      expect(`${evald}`).toBe('false');
+      expect(`${await node.eval(new Context())}`).toBe('true');
+      expect(node.negate).toBe(false);
     });
   });
 });

@@ -34,14 +34,25 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   right: Node | undefined;
   negate: boolean;
 
-  override clone(deep?: boolean): this {
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const left = this._getLeft(ctx);
+    const operator = this._getOperator(ctx);
+    const right = this._getRight(ctx);
+    const negate = this._getNegate(ctx);
     const options = (this as any)._meta?.options;
-    const value: ConditionValue = this.operator !== undefined && this.right !== undefined
-      ? [deep ? this.left.clone(deep) : this.left, this.operator, deep ? this.right.clone(deep) : this.right]
-      : [deep ? this.left.clone(deep) : this.left];
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
+    const value: ConditionValue = operator !== undefined && right !== undefined
+      ? [deep ? cloneChild(left) : left, operator, deep ? cloneChild(right) : right]
+      : [deep ? cloneChild(left) : left];
+    let clonedOptions = options ? { ...options } : undefined;
+    if (negate) {
+      (clonedOptions ??= {}).negate = true;
+    } else if (clonedOptions) {
+      delete clonedOptions.negate;
+    }
     const newNode = new (this.constructor as any)(
       value,
-      options ? { ...options } : undefined,
+      clonedOptions,
       this.location,
       this.treeContext
     );
@@ -83,6 +94,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       : this.right;
   }
 
+  private _getNegate(context?: Context): boolean {
+    return context
+      ? sessionGetField<boolean>(this, 'negate', context)
+      : this.negate;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -91,8 +108,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     let left = this._getLeft(context);
     let op = this._getOperator(context);
     let right = this._getRight(context);
-    const needsParens = Boolean(right || this.negate);
-    if (this.negate) {
+    const negated = this._getNegate(context);
+    const needsParens = Boolean(right || negated);
+    if (negated) {
       w.add('not ');
     }
     if (needsParens) {
@@ -139,8 +157,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    let { left, operator: op, right } = this;
-    let negated = this.negate;
+    let left = this._getLeft(context);
+    let op = this._getOperator(context);
+    let right = this._getRight(context);
+    let negated = this._getNegate(context);
 
     return pipe(
       () => left.eval(context),
@@ -170,7 +190,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
           if (node.type !== 'Call') {
             return node;
           }
-          const callName = String((node as unknown as { name?: Node }).name?.valueOf?.() ?? '');
+          const rawCallName = sessionGetField<string | Node | undefined>(node, 'name', context);
+          const callName = String(typeof rawCallName === 'string'
+            ? rawCallName
+            : rawCallName?.valueOf?.() ?? '');
           if (callName === 'default' || callName === '??') {
             return new Bool(Boolean(context.isDefault));
           }
