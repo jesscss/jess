@@ -18,6 +18,9 @@ Current branch status on `jess-dev`:
 - Stage 20 landed as a roadmap slice, but it did not finish the core immutable-node /
   session-layer migration.
 - The current active phase is a **fundamentals-completion gate** between Stage 20 and Stage 21.
+- A planned pre-Stage-21 stage will replace the current internal mixin function adapter path
+  (`Reference` -> `getFunctionFromMixins()` -> `JsFunction` -> `Call` generic function branch)
+  with a direct mixin invocation path.
 - Stage 21 has not started and is blocked until the pre-Stage-21 threshold is met:
   remaining clone removal, remaining sessionization of eval-time mutation/replacement,
   baseline validation, and merge readiness.

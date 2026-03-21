@@ -29,6 +29,8 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 - Stage 20: major groundwork landed, but not sufficient to advance the roadmap
   - done: session-local registry deltas, session-aware register/find plumbing, scope-dirty invalidation, dependency-aware partial re-eval in declaration lookup, detached-ruleset unlock off `clone(true)`, and Stage 20 characterization coverage
   - note: plain `@import` no longer adds a finalization wrapper; compose still keeps a shallow per-import wrapper because separate import sites can require different visibility / reference metadata on the same cached module
+- Stage 20.5: planned, not landed
+  - purpose: replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain with a direct mixin invocation path
 - Current actual stage: fundamentals-completion gate
   - focus: make immutable canonical nodes + session-backed eval writes/replacements true end-to-end
   - order: lower-order node fields first (`Declaration`, `Ruleset`), then more compositional containers

@@ -756,7 +756,8 @@ Summary order (maximum return for minimum risk):
 10. **WeakMap-keyed registries** — detach index from `Rules` instance; share across clones. (Stage 19)
 11. **Session-local registry deltas + import clone reduction** — session carries only delta keyed by the logical `Rules` container; import finalization now avoids much of the old structural cloning, but this did not finish the immutability/session migration. (Stage 20)
 12. **Fundamentals completion gate** — finish the real contract: canonical nodes immutable, eval-time field writes/replacements sessionized, and baseline parity proven before advancing. (Current work)
-13. **Live Patch API** — emit `var(--id, fallback)` + `patch.js` from the same dependency graph only after the fundamentals gate is cleared. (Stage 21)
+13. **Direct mixin invocation path** — replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter path with a first-class mixin-call execution path; keep `getFunctionFromMixins()` only as an optional external adapter if still needed. (Planned pre-Stage-21 stage)
+14. **Live Patch API** — emit `var(--id, fallback)` + `patch.js` from the same dependency graph only after the fundamentals gate is cleared. (Stage 21)
 
 ## Possible: Collapsing preEval / eval into One Pass
 
