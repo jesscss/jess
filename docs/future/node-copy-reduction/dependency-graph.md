@@ -1,5 +1,16 @@
 # Dependency Graph, Session-Local Registries, and Live Patch API
 
+## Document Role
+
+This file is the source of truth for:
+
+- roadmap/design stages from 17 onward
+- architectural dependencies between those stages
+- planned future slices such as Stage 20.5 and Stage 21
+
+This file is not the live node queue. For immediate implementation order and per-node
+status, use [node-session-status.md](./node-session-status.md).
+
 ## Reality Check
 
 Stages 17–20 in this document describe the intended architecture and the major slices

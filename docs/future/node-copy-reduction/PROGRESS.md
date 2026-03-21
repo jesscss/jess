@@ -1,5 +1,16 @@
 # Node Copy Reduction — Implementation Progress
 
+## Document Role
+
+This file is the source of truth for:
+
+- stage/gate status
+- major completed slices
+- major blockers and merge-safety notes
+
+This file is not the source of truth for the per-node queue or per-node status matrix.
+Those live in [node-session-status.md](./node-session-status.md).
+
 ## Test Baselines
 
 Recorded 2026-03-16 after merging dev into jess-dev and completing Stage 6.
@@ -899,13 +910,9 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] `Negative`
-- [ ] `Rest`
-- [ ] `AttributeSelector`
-- [ ] `InterpolatedSelector`
-- [ ] remaining medium nodes with direct caller-side writes: `AtRule`, `Mixin`, `Call`, `Func`, `Operation`
-- [ ] only after the above, resume `Rules` structural completion
-- [ ] only after `Rules` is genuinely complete, return to import/extend-heavy composition paths
+- [ ] Immediate next node slice: `Negative`
+- [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
+- [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 
 Source of truth for ordering:
 
@@ -914,8 +921,8 @@ Source of truth for ordering:
 
 Current blocker notes from live reduction attempts:
 
-- `Block` is now complete for this fundamentals pass: render/eval read `value` through the session-aware view, eval writes patch the session instead of overwriting the canonical child, its own behavior test exists in `src/tree/__tests__/block.test.ts`, and the overlay/immutability proof is green in `src/__tests__/eval-session.test.ts`.
-- `RawRules` is now complete for this fundamentals pass: its serializer override reads the session child overlay, its own public behavior test exists in `src/tree/__tests__/rules-raw.test.ts`, and the overlay/immutability proof is green in `src/__tests__/eval-session.test.ts`.
+- Recent completed node slices: `RawRules`, `Block`.
+  - Per-node status and proof details live in [node-session-status.md](./node-session-status.md).
 - The internal mixin invocation path remains architecturally indirect:
   - `Reference.evalNode()` can turn mixin candidate arrays into a JS-callable adapter via `getFunctionFromMixins()`
   - `Call.evalNode()` then re-enters that adapter through the generic function path (`cast(...)`, `JsFunction`, `callWithContext(...)`)

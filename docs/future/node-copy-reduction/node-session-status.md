@@ -10,6 +10,17 @@ Purpose:
 
 This status is about the immutability/session model only, not general feature completeness.
 
+## Document Role
+
+This file is the source of truth for:
+
+- per-node status (`pending` / `partial` / `complete`)
+- the immediate execution queue and current batches
+- per-node completion criteria and proof requirements
+
+Do not duplicate the full node matrix in `PROGRESS.md` or `HANDOFF.md`.
+Those docs should summarize and link back here.
+
 ## Migration Strategy
 
 Use this inventory as an execution order, not just a report.
