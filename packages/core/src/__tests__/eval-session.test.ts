@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession } from '../eval-session.js';
-import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block } from '../index.js';
+import { Keyword, Dimension, Context, vardecl, any, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, js, block, Negative } from '../index.js';
 import {
   sessionGetDependency,
   sessionGetField,
@@ -456,6 +456,34 @@ describe('session-aware helpers', () => {
 
       expect(node.toTrimmedString({ context: ctx })).toBe('{blue}');
       expect(node.toTrimmedString()).toBe('{red}');
+    });
+
+    it('Negative rendering and eval read a patched child from the active session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = new Negative(new Dimension({ number: 2, unit: 'px' }));
+      const renderPatched = new Dimension({ number: 3, unit: 'px' });
+
+      sessionPatchField(node, 'value', renderPatched, ctx);
+
+      expect(node.toTrimmedString({ context: ctx })).toBe('-3px');
+      expect(node.toTrimmedString()).toBe('-2px');
+
+      const preEvald = await node.preEval(ctx);
+      if (!(preEvald instanceof Negative)) {
+        throw new TypeError('Expected Negative.preEval() to return a Negative');
+      }
+      const evalPatched = new Dimension({ number: 4, unit: 'px' });
+      sessionPatchField(preEvald, 'value', evalPatched, ctx);
+
+      const sessionEvald = await preEvald.eval(ctx);
+      const canonicalEvald = await node.eval(new Context());
+
+      expect(sessionEvald.toTrimmedString()).toBe('-4px');
+      expect(canonicalEvald.toTrimmedString()).toBe('-2px');
+      expect(node.value.toTrimmedString()).toBe('2px');
+      expect(node.value).not.toBe(renderPatched);
+      expect(preEvald.value).not.toBe(evalPatched);
     });
 
     it('Quoted rendering reads a patched child from the active session', () => {

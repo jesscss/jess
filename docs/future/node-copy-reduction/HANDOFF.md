@@ -86,8 +86,8 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 ## Recent committed milestones
 
 - Stages 17–20 are materially landed.
-- `RawRules` and `Block` are now complete for the fundamentals pass.
-- The next immediate wrapper target is `Negative`.
+- `RawRules`, `Block`, and `Negative` are now complete for the fundamentals pass.
+- The next immediate wrapper target is `Rest`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
@@ -110,7 +110,7 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Immediate work
 
-1. Follow the immediate node queue in `node-session-status.md` (`Negative` is next).
+1. Follow the immediate node queue in `node-session-status.md` (`Rest` is next).
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.

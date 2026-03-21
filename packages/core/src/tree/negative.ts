@@ -2,6 +2,8 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeOptions, type Locat
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * The negative sign before a node
@@ -27,9 +29,27 @@ export class Negative extends Node<Node> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  private _getValue(context?: Context): Node {
+    return context
+      ? sessionGetField<Node>(this, 'value', context)
+      : this.value;
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const value = this._getValue(options.context);
+
+    w.add('-', this);
+    value.toString(options);
+
+    return w.getSince(mark);
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
     return pipe(
-      () => this.value.eval(context),
+      () => this._getValue(context).eval(context),
       tryStep((value: Node) => {
         if (!value.operate) {
           throw new TypeError(`Cannot operate on ${value.type}`);
