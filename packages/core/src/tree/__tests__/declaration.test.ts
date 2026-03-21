@@ -1,4 +1,4 @@
-import { coll, decl, rules, color, any } from '..';
+import { coll, decl, rules, ruleset, el, color, any } from '..';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { AssignmentType } from '../declaration.js';
@@ -69,6 +69,54 @@ describe('Declaration', () => {
     expect(rule.toTrimmedString({ context })).toBe('color: blue');
     expect(rule.requiredSemi).toBe(false);
     expect(rules([rule]).toString({ context })).not.toContain('blue;');
+  });
+
+  it('serialize-helper omits the trailing semicolon for a session-patched collection value inside a ruleset', () => {
+    const rule = decl({ name: 'color', value: any('red') });
+    const node = rules([
+      ruleset({
+        selector: el('.x'),
+        rules: rules([rule])
+      })
+    ]);
+    const patchedValue = coll([
+      decl({ name: 'nested', value: any('blue') })
+    ]);
+
+    context.session = new EvalSession();
+    context.session.patchField(rule, 'value', patchedValue);
+
+    expect(node.toString({ context })).toBeString(`
+      .x {
+        color: {
+            nested: blue;
+          }
+      }
+    `);
+  });
+
+  it('serialize-helper adds the trailing semicolon for a session-patched scalar value inside a ruleset', () => {
+    const rule = decl({
+      name: 'color',
+      value: coll([
+        decl({ name: 'nested', value: any('red') })
+      ])
+    });
+    const node = rules([
+      ruleset({
+        selector: el('.x'),
+        rules: rules([rule])
+      })
+    ]);
+
+    context.session = new EvalSession();
+    context.session.patchField(rule, 'value', any('blue'));
+
+    expect(node.toString({ context })).toBeString(`
+      .x {
+        color: blue;
+      }
+    `);
   });
   // it('should serialize to a module', () => {
   //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })

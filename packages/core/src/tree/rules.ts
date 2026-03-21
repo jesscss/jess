@@ -2237,7 +2237,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       return false;
     };
     const hasFailedGuardAncestor = (node: Node): boolean => {
-      let current: any = node.parent;
+      let current: Node | undefined = sessionGetParent(node, thisContext);
       while (current) {
         if (isNode(current, N.Ruleset)) {
           const guardNode = (current as Ruleset).guard;
@@ -2245,7 +2245,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             return true;
           }
         }
-        current = current.parent;
+        current = sessionGetParent(current, thisContext);
       }
       return false;
     };

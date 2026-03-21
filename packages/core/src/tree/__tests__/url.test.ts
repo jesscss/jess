@@ -38,6 +38,8 @@ describe('Url', () => {
     expect(sessionGetField(node, 'value', ctx)).toBe(replacement);
     expect(node.valueOf()).toBe('a.png');
     expect(evald.valueOf()).toBe('a.png');
+    expect(node.pathValue(ctx)).toBe('b.png');
+    expect(evald.pathValue(ctx)).toBe('b.png');
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
   });
 

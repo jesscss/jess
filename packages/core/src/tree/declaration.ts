@@ -121,7 +121,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return !isNode(this.value, N.Collection) && !isNode(this.value, N.Mixin);
+    return this.requiresSemi();
+  }
+
+  requiresSemi(context?: Context): boolean {
+    const value = this._getValueNode(context);
+    return !isNode(value, N.Collection) && !isNode(value, N.Mixin);
   }
 
   private _getName(context?: Context): NameValue {

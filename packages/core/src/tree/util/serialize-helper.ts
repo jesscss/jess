@@ -134,7 +134,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
-    const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
+    const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
     const declProp = (node as Declaration).name.valueOf();
     let seenValues = seenDeclarationsByProp.get(declProp);
     if (!seenValues) {
@@ -352,7 +352,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // if (n.requiredSemi && next) {
     //   w.add(';');
     // }
-    if (nn.requiredSemi) {
+    if (isNode(nn, N.Declaration) ? (nn as Declaration).requiresSemi(options.context) : nn.requiredSemi) {
       w.add(';');
     }
 

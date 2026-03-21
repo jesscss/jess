@@ -716,14 +716,21 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         importOptions!.reference = previousExplicitReference;
       }
     };
+    const getFinalPath = (resolvedPath: Quoted | Url): string => {
+      if (resolvedPath instanceof Url) {
+        return resolvedPath.pathValue(context);
+      }
+      return resolvedPath.valueOf() as string;
+    };
+
     if (isThenable(maybePath)) {
       return (maybePath as Promise<Quoted | Url>).then(async (p) => {
-        const finalPath = p.valueOf();
+        const finalPath = getFinalPath(p);
         context.depth = originalDepth;
         return finalize(finalPath);
       });
     }
-    const finalPath = maybePath.valueOf();
+    const finalPath = getFinalPath(maybePath as Quoted | Url);
     context.depth = originalDepth;
     return finalize(finalPath as string);
   }

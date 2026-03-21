@@ -15,6 +15,18 @@ describe('SelectorCapture', () => {
     expect(node.toTrimmedString()).toBe('*[.a]');
   });
 
+  it('keeps valueOf canonical while render reads a session-patched selector value', () => {
+    const context = new Context();
+    context.createSession();
+    const node = selcap(el('.a'));
+
+    sessionPatchField(node, 'value', sellist([el('.x'), el('.y')]), context);
+
+    expect(node.valueOf()).toBe('.a');
+    expect(node.toTrimmedString({ context })).toBe('*[.x,\n.y]');
+    expect(node.toTrimmedString()).toBe('*[.a]');
+  });
+
   it('evals the session-patched selector value', async () => {
     const context = new Context();
     context.createSession();

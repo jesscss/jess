@@ -142,6 +142,32 @@ describe('Rule', () => {
     expect(child.selector.valueOf()).toBe('.child');
     expect(child.selector.sourceNode).toBe(child.selector);
   });
+
+  it('copy materializes from ownSelector instead of the current selector sourceNode view', async () => {
+    const child = ruleset({
+      selector: el('.child'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const parent = ruleset({
+      selector: el('.parent'),
+      rules: rules([child])
+    });
+
+    context.rulesetFrames.push(parent);
+    context.frames.push(parent);
+
+    const preEvald = await child.preEval(context);
+    preEvald.selector.sourceNode = el('.poison');
+
+    const copied = preEvald.copy();
+
+    expect(copied.selector.valueOf()).toBe('.child');
+    expect(copied.selector.sourceNode).toBe(preEvald.getOwnSelector());
+    expect(preEvald.selector.valueOf()).toBe('.parent .child');
+    expect(preEvald.selector.sourceNode.valueOf()).toBe('.poison');
+  });
   // it('should serialize to a module', () => {
   //   let node = rule({
   //     selector: list([sel([el('foo')])]),

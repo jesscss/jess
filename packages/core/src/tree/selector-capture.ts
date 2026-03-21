@@ -35,7 +35,7 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   override valueOf(): string {
-    return String(this._getValue().valueOf());
+    return String(this.value.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {

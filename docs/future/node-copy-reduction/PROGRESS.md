@@ -979,6 +979,13 @@ Current blocker notes from live reduction attempts:
   - `Quoted`: `valueOf()` is now explicitly characterized as intentionally canonical across competing session overlays.
   - `Url`: `valueOf()` is now explicitly characterized as intentionally canonical because import-path consumers still call it without a `Context`.
   - `Ruleset.copy()`: investigated and left unchanged; the remaining selector `sourceNode` gap is blocked on the broader context-free provenance/materialization model, not a safe `Ruleset`-local patch.
+- New focused fundamentals batch now landed in the working tree:
+  - `rules.ts`: `hasFailedGuardAncestor()` now walks parentage through `sessionGetParent(...)`, so active mixin guard ancestry no longer depends on canonical `node.parent`.
+  - `Ruleset.copy()`: closed via a shared `Node.materializeCopy()` helper; `Ruleset.copy()` now materializes from authored selector provenance instead of reading `currentSelector.sourceNode` directly.
+  - `Declaration`: serialization now has a context-aware semicolon decision via `requiresSemi(context?)`, and `serialize-helper` uses it on active ruleset/at-rule paths.
+  - `Url` / `ImportStyle`: `Url.pathValue(context?)` now exposes context-aware import-path materialization, and `ImportStyle` uses it at the active path-resolution callsite.
+  - `SelectorCapture`: `valueOf()` is now explicitly pinned as an intentionally canonical contextless observer; the active render/eval surface is complete.
+  - `Quoted`: `compare()` is now explicitly characterized as intentionally canonical without a `Context` channel.
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

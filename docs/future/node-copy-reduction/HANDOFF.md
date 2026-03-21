@@ -129,8 +129,15 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `Url`: `valueOf()` is now explicitly characterized as intentionally canonical because import-path consumers still call it without a `Context`.
   - `Func` / `rules.ts`: the temporary mixin wrapper now uses `sessionSetParent(...)`, and the main mixin-eval branches it depends on now resolve parent through `sessionGetParent(...)` instead of direct `candidate.parent!`.
   - `Ruleset.copy()`: investigated and left unchanged; the remaining selector `sourceNode` dependency is blocked on the broader context-free provenance/materialization model, not a safe `Ruleset`-local patch.
+- New focused fundamentals batch is now in the working tree:
+  - `rules.ts`: `hasFailedGuardAncestor()` now walks parentage through `sessionGetParent(...)`, so active mixin guard ancestry no longer depends on canonical `node.parent`.
+  - `Ruleset.copy()`: closed via a shared `Node.materializeCopy()` helper; `Ruleset.copy()` now materializes from authored selector provenance instead of reading `currentSelector.sourceNode` directly.
+  - `Declaration`: serialization now has a context-aware semicolon decision via `requiresSemi(context?)`, and `serialize-helper` uses it on active ruleset/at-rule paths.
+  - `Url` / `ImportStyle`: `Url.pathValue(context?)` now exposes context-aware import-path materialization, and `ImportStyle` uses it at the active path-resolution callsite.
+  - `SelectorCapture`: `valueOf()` is now explicitly pinned as an intentionally canonical contextless observer; the active render/eval surface is complete.
+  - `Quoted`: `compare()` is now explicitly characterized as intentionally canonical without a `Context` channel.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
-- The next immediate target is now the remaining canonical parent walk in `rules.ts` guard-ancestor handling.
+- The next immediate target is now the remaining `Rules` root serialization semicolon path.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

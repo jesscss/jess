@@ -324,6 +324,15 @@ export abstract class Node<
   }
 
   /**
+   * Materialize a copy from this node's provenance root rather than from the
+   * current wrapper node itself. This keeps context-free copy paths aligned with
+   * the authored source shape when a node is acting as a derived view.
+   */
+  materializeCopy(deep?: boolean): this {
+    return this.sourceNode.copy(deep) as this;
+  }
+
+  /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also

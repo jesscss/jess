@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import {
   style,
   rules,
@@ -14,6 +14,7 @@ import {
   call,
   list,
   quoted,
+  url,
   Interpolated,
   INTERPOLATION_PLACEHOLDER,
   type Rules,
@@ -22,6 +23,7 @@ import {
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
@@ -1046,6 +1048,28 @@ describe('Style import', () => {
       const resolvedFromInterpolatedImport = getVarWithContext(context, evald, 'interpolationResolved');
       expect(resolvedFromInterpolatedImport).toBeDefined();
       expect(`${resolvedFromInterpolatedImport}`).toBe('$interpolationResolved: ok');
+    });
+
+    it('import path resolution uses a session-evaluated Url path value', async () => {
+      context.session = new EvalSession();
+      const resolvedImportPath = resolve(process.cwd(), 'import/url-session-path.jess');
+      context.sourceTrees.set(resolvedImportPath, rules([
+        vardecl({ name: 'resolvedFromUrl', value: any('ok') })
+      ]));
+
+      const originalPath = quoted('wrong-path.jess');
+      const replacementPath = quoted('import/url-session-path.jess');
+      vi.spyOn(originalPath, 'eval').mockReturnValue(replacementPath);
+
+      const node = rules([
+        style({ path: url(originalPath) }, { type: 'import' })
+      ]);
+
+      const evald = await node.eval(context);
+      const resolvedFromUrl = getVarWithContext(context, evald, 'resolvedFromUrl');
+
+      expect(resolvedFromUrl).toBeDefined();
+      expect(`${resolvedFromUrl}`).toBe('$resolvedFromUrl: ok');
     });
 
     it('import-module: context can resolve bare module-like specifiers', async () => {

@@ -93,6 +93,11 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
+    // NOTE: `compare()` intentionally remains canonical for now.
+    // It has no Context parameter, so a session-aware comparison here would
+    // require hidden ambient session state or a broader API change. Keep it
+    // anchored to the canonical node values until compare gains an explicit
+    // context-aware surface.
     if (other.type === 'Quoted' && !this.escaped && !(other as Quoted).escaped) {
       const left = String(this.valueOf());
       const right = String(other.valueOf?.() ?? '');

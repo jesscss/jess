@@ -54,7 +54,14 @@ export class Url extends Node<Quoted | Any> {
   // answer would require either plumbing Context into that observer or changing
   // the eval contract to return a materialized Url value for those callers.
   override valueOf(): string {
+    return this.pathValue();
+  }
+
+  pathValue(context?: Context): string {
     let value: Node | string = this.value;
+    if (context) {
+      value = this._getValue(context);
+    }
     if (isNode(value, N.Quoted)) {
       value = (value as any).value as Node | string;
       if (isNode(value)) {

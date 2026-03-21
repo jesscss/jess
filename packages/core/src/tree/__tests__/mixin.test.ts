@@ -1,5 +1,7 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
 import { Context } from '../../context.js';
+import { getFunctionFromMixins } from '../rules.js';
+import { sessionSetParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -402,6 +404,27 @@ describe('Mixin', () => {
           color: red;
         }
       `);
+    });
+
+    it('blocks a mixin candidate when its failed guard ancestor exists only in the session parent chain', async () => {
+      context.createSession();
+
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const failedAncestor = ruleset({
+        selector: el('.blocked'),
+        guard: nil(),
+        rules: rules([])
+      });
+      sessionSetParent(mixinDef, failedAncestor, context);
+
+      const fn = getFunctionFromMixins(mixinDef);
+
+      await expectRejects(fn.call(context), ReferenceError, /No matching mixins found/);
     });
 
     it('should call a mixin that calls another mixin', async () => {

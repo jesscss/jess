@@ -41,4 +41,21 @@ describe('Quoted', () => {
     expect(node.toTrimmedString({ context: secondSession })).toBe('"magenta"');
     expect(node.valueOf()).toBe('red');
   });
+
+  it('keeps compare() canonical across different session overlays', () => {
+    const left = quoted('red');
+    const right = quoted('red');
+    const firstSession = new Context();
+    const secondSession = new Context();
+
+    firstSession.createSession();
+    secondSession.createSession();
+
+    sessionPatchField(left, 'value', 'cyan', firstSession);
+    sessionPatchField(left, 'value', 'magenta', secondSession);
+
+    expect(left.toTrimmedString({ context: firstSession })).toBe('"cyan"');
+    expect(left.toTrimmedString({ context: secondSession })).toBe('"magenta"');
+    expect(left.compare(right)).toBe(0);
+  });
 });
