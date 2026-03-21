@@ -9,7 +9,7 @@ import { Mixin } from './mixin.js';
 import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionGetParent } from './util/session-helpers.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -123,35 +123,38 @@ export class Func extends Node<FuncValue, FuncOptions> {
    */
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this.options?.returnName ?? 'return';
+    const name = this._getName(context);
+    const params = this._getParams(context);
 
     // Normalize body to a Rules node so it can be evaluated/scoped consistently.
-    const bodyNode = this.body;
+    const bodyNode = this._getBody(context);
     const bodyRules = bodyNode instanceof Rules
       ? bodyNode
       : Rules.create([bodyNode]);
 
     // Build a temporary anonymous mixin wrapper to observe the same param binding rules.
     const mixinLike = new Mixin(
-      { rules: bodyRules, params: this.params },
+      { rules: bodyRules, params },
       undefined,
       Array.isArray(this.location) && this.location.length === 6 ? (this.location as LocationInfo) : undefined,
       this.treeContext
     );
     // Ensure it participates in the same parent chain as this function definition.
-    if (this.parent) {
-      this.parent.adopt(mixinLike);
+    const parent = sessionGetParent(this, context);
+    if (parent) {
+      parent.adopt(mixinLike);
     }
 
     const fn = getFunctionFromMixins(mixinLike);
     const evaluated = await fn.call(context, ...args.value.map(a => cast(a)));
 
     if (!(evaluated instanceof Rules)) {
-      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
+      throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must evaluate to rules`);
     }
 
     const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined;
     if (!decl) {
-      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
+      throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
     return await decl.value.eval(context);

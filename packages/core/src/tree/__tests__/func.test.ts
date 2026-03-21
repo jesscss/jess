@@ -3,6 +3,28 @@ import { Context } from '../../context.js';
 import { rules, decl, any, list, vardecl, call, fn, nil } from '../index.js';
 
 describe('Func', () => {
+  it('evalCall returns the looked-up return declaration value', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.depth = 2;
+
+    const node = fn({
+      name: any('add'),
+      params: list([
+        vardecl({ name: 'a', value: nil() }),
+        vardecl({ name: 'b', value: nil() })
+      ]),
+      body: rules([
+        decl({ name: 'return', value: any('ok') })
+      ])
+    });
+    const root = rules([node]);
+    ctx.root = root;
+
+    const result = await node.evalCall(ctx, list([any('x'), any('y')]));
+
+    expect(result.toTrimmedString()).toBe('ok');
+  });
+
   it('evaluates a stylesheet function and returns return: value', async () => {
     const ctx = new Context({ leakyRules: true });
     ctx.depth = 2;

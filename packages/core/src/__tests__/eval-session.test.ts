@@ -716,6 +716,40 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('$function base(color) {\n  return: red;\n}');
     });
 
+    it('Func evalCall reads patched params and body without overwriting canonical fields', async () => {
+      const ctx = new Context({ leakyRules: true });
+      ctx.depth = 2;
+      ctx.createSession();
+      const params = list([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+      const body = rules([
+        decl({ name: 'return', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ]);
+      const node = fn({
+        name: any('base'),
+        params,
+        body
+      });
+      const patchedParams = list([
+        vardecl({ name: 'tone', value: any('red') })
+      ]);
+      const patchedBody = rules([
+        decl({ name: 'return', value: ref({ key: 'tone' }, { type: 'variable' }) })
+      ]);
+      const root = rules([node]);
+      ctx.root = root;
+
+      sessionPatchField(node, 'params', patchedParams, ctx);
+      sessionPatchField(node, 'body', patchedBody, ctx);
+
+      const result = await node.evalCall(ctx, list([any('blue')]));
+
+      expect(result.toTrimmedString({ context: ctx })).toBe('blue');
+      expect(node.params).toBe(params);
+      expect(node.body).toBe(body);
+    });
+
     it('Range rendering reads patched bounds from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

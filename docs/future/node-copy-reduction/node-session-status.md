@@ -124,13 +124,13 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `Func`
-  - goal: finish its remaining direct eval/write path now that `Call` non-function materialization writes are session-backed
+- `Operation`
+  - goal: finish its remaining direct structural writes now that `Func.evalCall()` reads through the session-aware view
   - primary proof:
     - node/public-path behavior in the node's own test file
     - overlay/immutability proof in [eval-session.test.ts](../../packages/core/src/__tests__/eval-session.test.ts)
   - note:
-    - the prior immediate slice landed: `Call` now routes its non-function eval materialization of `name` / `args` through the session-aware field layer, `call.test.ts` covers the public behavior with an interpolated CSS function name, and `eval-session.test.ts` proves the canonical `name` / `args` fields stay unchanged under an active session
+    - the prior immediate slice landed: `Func.evalCall()` now reads `params`, `body`, and parent context through the session-aware view, `func.test.ts` has a direct `evalCall()` behavior proof, and `eval-session.test.ts` proves canonical `params` / `body` stay unchanged under an active session
 
 ### Current Batch A: Simple Pending Wrappers
 
@@ -195,7 +195,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `AtRule`                     | `complete`  | Render and eval now read `name` / `prelude` / `rules` through the session-aware view, active field updates are session-backed, `at-rule.test.ts` covers behavior parity, and `eval-session.test.ts` proves the canonical field references stay unchanged under an active session. |
 | `Mixin`                      | `partial`   | Render reads for `name` / `params` / `guard` / `rules` are session-aware, and interpolated-name preEval now writes through the session field layer. Remaining work is the `rules.options.rulesVisibility` policy mutation plus caller-side binding/eval paths. |
 | `Call`                       | `partial`   | Render reads for `name` / `args` / `contentNode` are session-aware, and the non-function eval materialization path now writes `name` / `args` through the session field layer. Remaining work is the fallback-call branch and the larger direct-mixin-invocation cleanup tracked separately. |
-| `Func`                       | `partial`   | Render reads for `name` / `params` / `body` are session-aware. Broader eval/write behavior still needs completion.                                                                     |
+| `Func`                       | `partial`   | Render reads for `name` / `params` / `body` are session-aware, and `evalCall()` now reads `params`, `body`, and parent context through the session-aware view. Remaining work is the higher-order temporary mixin-wrapper path itself, which is part of the broader direct-mixin-invocation cleanup. |
 | `Expression`                 | `partial`   | Render/read path for `value` is session-aware.                                                                                                                                         |
 | `Operation`                  | `partial`   | Dependency/eval-state helpers are wired in, but some structural writes still hit the node directly (`left` / `right`).                                                                 |
 | `Condition`                  | `partial`   | Render/read path for `left` / `operator` / `right` is session-aware.                                                                                                                   |
