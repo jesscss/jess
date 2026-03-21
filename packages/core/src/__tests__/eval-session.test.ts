@@ -881,6 +881,22 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('--red');
     });
 
+    it('Interpolated eval does not overwrite canonical replacements in a session', async () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const original = expr(any('button'));
+      const node = interpolated({
+        source: '.%%',
+        replacements: [original]
+      });
+
+      const result = await node.eval(ctx);
+
+      expect(result.toTrimmedString({ context: ctx })).toBe('.button');
+      expect(node.replacements[0]).toBe(original);
+      expect(original.evaluated).toBe(false);
+    });
+
     it('JsImport rendering reads patched path and imports from the active session', () => {
       const ctx = new Context();
       ctx.createSession();

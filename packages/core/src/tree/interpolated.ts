@@ -10,7 +10,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionIsEvaluated, sessionPatchField, sessionSetEvaluated } from './util/session-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -168,8 +168,9 @@ export class Interpolated<
    * Can turn simple #id, .class, element or SelectorCapture into a selector.
    * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
-  createSelector() {
-    let { source, replacements } = this;
+  createSelector(context?: Context) {
+    const source = this._getSource(context);
+    const replacements = this._getReplacements(context);
     const segments = source.split(INTERPOLATION_PLACEHOLDER);
     const isWholeSelectorInterpolation = (
       replacements.length === 1
@@ -181,7 +182,7 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (!replacement.evaluated) {
+      if (!(context ? sessionIsEvaluated(replacement, context) : replacement.evaluated)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
@@ -191,7 +192,7 @@ export class Interpolated<
     }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
-      if (!replacement.evaluated) {
+      if (!(context ? sessionIsEvaluated(replacement, context) : replacement.evaluated)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       let part = replacement.toTrimmedString();
@@ -218,8 +219,8 @@ export class Interpolated<
     return new BasicSelector(output).inherit(this);
   }
 
-  createGeneric() {
-    const trimmedString = this.toTrimmedString();
+  createGeneric(context?: Context) {
+    const trimmedString = this.toTrimmedString(context ? { context } : undefined);
     let any = new Any<Role>(trimmedString).inherit(this);
     any.role = this.options.role;
     return any;
@@ -229,19 +230,19 @@ export class Interpolated<
   evalToSelector(context: Context): MaybePromise<Selector> {
     const out = this._evalToInterpolated(context);
     if (isThenable(out)) {
-      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector());
+      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector(context));
     }
-    return (out as Interpolated<Role>).createSelector();
+    return (out as Interpolated<Role>).createSelector(context);
   }
 
   override evalNode(context: Context): MaybePromise<Any> {
     const out = this._evalToInterpolated(context);
     if (isThenable(out)) {
       return (out as Promise<Interpolated<Role>>).then((node) => {
-        return node.createGeneric();
+        return node.createGeneric(context);
       });
     }
-    const result = (out as Interpolated<Role>).createGeneric();
+    const result = (out as Interpolated<Role>).createGeneric(context);
     return result;
   }
 
@@ -252,9 +253,9 @@ export class Interpolated<
    */
   _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
-    let { replacements } = node;
+    let replacements = [...node._getReplacements(context)];
     const markEvaluated = (result: Node): Node => {
-      result.evaluated = true;
+      sessionSetEvaluated(result, true, context);
       return result;
     };
 
@@ -269,7 +270,19 @@ export class Interpolated<
       return undefined;
     });
     if (isThenable(maybe)) {
-      return maybe.then(() => node);
+      return maybe.then(() => {
+        if (context.session) {
+          sessionPatchField(node, 'replacements', replacements, context);
+        } else {
+          node.setData('replacements', replacements);
+        }
+        return node;
+      });
+    }
+    if (context.session) {
+      sessionPatchField(node, 'replacements', replacements, context);
+    } else {
+      node.setData('replacements', replacements);
     }
     return node;
   }
