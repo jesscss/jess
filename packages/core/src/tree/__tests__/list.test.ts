@@ -1,5 +1,6 @@
 import { TreeContext, list, spaced, num, any } from '../index.js';
 import { Context } from '../../context.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 
 describe('List compare', () => {
   it('treats separator differences as equal in strict mode', () => {
@@ -23,9 +24,45 @@ describe('List', () => {
   beforeEach(() => {
     context = new Context();
   });
+
   it('should serialize to a list', () => {
     let rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
     expect(`${rule}`).toBe('1 2 3, four');
+  });
+
+  it('renders session-patched items without mutating the canonical list', () => {
+    context.createSession();
+    const node = list([any('red'), any('blue')]);
+
+    sessionPatchField(node, 'value', [any('cyan'), any('magenta')], context);
+
+    expect(node.toTrimmedString({ context })).toBe('cyan, magenta');
+    expect(node.toTrimmedString()).toBe('red, blue');
+  });
+
+  it('operate() uses session-patched left-hand items when cloning in a session', () => {
+    context.createSession();
+    const left = list([any('red')]);
+
+    sessionPatchField(left, 'value', [any('cyan'), any('magenta')], context);
+
+    const result = left.operate(any('black'), '+', context);
+
+    expect(result.toTrimmedString({ context })).toBe('cyan, magenta, black');
+    expect(left.toTrimmedString()).toBe('red');
+  });
+
+  it('operate() uses session-patched right-hand list items when appending in a session', () => {
+    context.createSession();
+    const left = list([any('red')]);
+    const right = list([any('blue')]);
+
+    sessionPatchField(right, 'value', [any('cyan'), any('magenta')], context);
+
+    const result = left.operate(right, '+', context);
+
+    expect(result.toTrimmedString({ context })).toBe('red, cyan, magenta');
+    expect(right.toTrimmedString()).toBe('blue');
   });
   // it('should serialize to a module', () => {
   //   let rule = list([spaced([any('1'), any('2'), any('3')]), any('four')])

@@ -111,9 +111,21 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
+    const ownItems = this._getValue(context);
+    const nextItems = b instanceof List ? b._getValue(context) : [b as T];
     let newList = this.maybeClone(context);
+    if (newList !== this) {
+      newList.value = [];
+      if (ownItems.length > 0) {
+        newList.push(context, ...ownItems);
+      }
+      if (nextItems.length > 0) {
+        newList.push(context, ...nextItems);
+      }
+      return newList;
+    }
     if (b instanceof List) {
-      newList.push(...b.value);
+      newList.push(...nextItems);
     } else {
       /** @todo - do we need to verify the list type? */
       newList.push(b as T);

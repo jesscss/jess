@@ -751,6 +751,20 @@ describe('session-aware helpers', () => {
       expect(node.toTrimmedString()).toBe('red, blue');
     });
 
+    it('List operate uses patched items without mutating the canonical list', () => {
+      const ctx = new Context();
+      ctx.createSession();
+      const node = list([any('red')]);
+
+      sessionPatchField(node, 'value', [any('cyan'), any('magenta')], ctx);
+
+      const result = node.operate(any('black'), '+', ctx);
+
+      expect(result.toTrimmedString({ context: ctx })).toBe('cyan, magenta, black');
+      expect(node.toTrimmedString()).toBe('red');
+      expect(node.value.map((item) => item.toTrimmedString())).toEqual(['red']);
+    });
+
     it('Sequence rendering reads patched items from the active session', () => {
       const ctx = new Context();
       ctx.createSession();
