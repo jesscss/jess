@@ -319,6 +319,14 @@ export class Call extends Node<CallValue, CallOptions> {
       node.sourceParent = this;
       return node;
     };
+    const materializeDownstreamResult = <T extends Node>(node: T): T => {
+      if (context.session && node === node.sourceNode) {
+        const clone = node.clone(false, undefined, context) as T;
+        clone.inherit(node);
+        return clone;
+      }
+      return node;
+    };
     const evalArgNodes = async (nodes?: List<Node>) => {
       if (!nodes) {
         return undefined;
@@ -345,7 +353,7 @@ export class Call extends Node<CallValue, CallOptions> {
     // This handles cases like @alias: .something(foo); @alias();
     if (isNode(n, N.Call)) {
       // Execute the inner Call node (it will handle its own callStack push/pop)
-      const result = await n.eval(context);
+      const result = materializeDownstreamResult(await n.eval(context));
       // Apply markImportant if needed
       if (markImportant && isNode(result, N.Rules)) {
         this.makeImportant(result);
@@ -353,7 +361,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // Always pop the outer call's stack entries
       context.callStack.pop();
       context.parenFrames.pop();
-      return result;
+      return adoptCallWhitespace(result);
     } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
       n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
     } else if (isNode(n, N.Func)) {
@@ -362,7 +370,10 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = await (n as any).evalCall(context, argNodes);
       context.callStack.pop();
       context.parenFrames.pop();
-      return applyDependencyToResult(result, argNodes.value);
+      return applyDependencyToResult(
+        adoptCallWhitespace(materializeDownstreamResult(result)),
+        argNodes.value
+      );
     } else if (isNode(n, N.Collection)) {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty

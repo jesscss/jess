@@ -2,6 +2,7 @@ import { coll, decl, rules, ruleset, el, color, any } from '..';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { AssignmentType } from '../declaration.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Declaration', () => {
@@ -117,6 +118,49 @@ describe('Declaration', () => {
         color: blue;
       }
     `);
+  });
+
+  it('serialize-helper de-dupes declarations by a session-patched property name', () => {
+    const first = decl({ name: 'color', value: any('red') });
+    const second = decl({ name: 'background', value: any('red') });
+    const node = rules([
+      ruleset({
+        selector: el('.x'),
+        rules: rules([first, second])
+      })
+    ]);
+
+    context.session = new EvalSession();
+    sessionPatchField(first, 'name', any('background', { role: 'property' }), context);
+
+    expect(node.toString({ context })).toBeString(`
+      .x {
+        background: red;
+      }
+    `);
+  });
+
+  it('rules coalescing uses a session-patched property name for merged declarations', async () => {
+    const base = decl({ name: 'color', value: any('red') });
+    const merged = decl(
+      { name: 'background', value: any('blue') },
+      { assign: AssignmentType.Add }
+    );
+    const node = rules([
+      ruleset({
+        selector: el('.x'),
+        rules: rules([base, merged])
+      })
+    ]);
+
+    context.session = new EvalSession();
+    sessionPatchField(merged, 'name', any('color', { role: 'property' }), context);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ context });
+
+    expect(css).toContain('color: red, blue;');
+    expect(css).not.toContain('background:');
   });
   // it('should serialize to a module', () => {
   //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })

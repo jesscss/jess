@@ -3,7 +3,7 @@ import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetSourceParent } from '../util/session-helpers.js';
+import { sessionGetSourceParent, sessionSetParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -251,6 +251,46 @@ describe('reference', () => {
           color: red;
         }
       `);
+    });
+
+    it('uses the session parent chain to anchor linear variable resolution', async () => {
+      const scope = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('mid'),
+          value: any('keep')
+        }),
+        decl({
+          name: any('host'),
+          value: any('placeholder')
+        }),
+        vardecl({
+          name: any('foo'),
+          value: any('blue')
+        })
+      ]);
+
+      context.session = new EvalSession();
+      scope.value.forEach((child, index) => {
+        child.index = index;
+      });
+      context.root = scope;
+      context.rulesContext = scope;
+
+      const hostDecl = scope.at(2);
+      if (!hostDecl || !isNode(hostDecl)) {
+        throw new Error('Expected host declaration at index 2');
+      }
+
+      const lookup = ref({ key: 'foo' }, { type: 'variable', resolution: 'linear' });
+      sessionSetParent(lookup, hostDecl, context);
+
+      const evald = await lookup.eval(context);
+
+      expect(`${evald}`).toBe('red');
     });
   });
 

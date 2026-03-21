@@ -135,7 +135,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
     const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
-    const declProp = (node as Declaration).name.valueOf();
+    const declProp = (node as Declaration).getPropertyName(options.context);
     let seenValues = seenDeclarationsByProp.get(declProp);
     if (!seenValues) {
       seenValues = new Set<string>();
@@ -331,7 +331,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
         ? `${idt}${out}`
         : normalizeIndent(declIn, idt, true);
-      if ((nn as Declaration).name.valueOf().startsWith('--')) {
+      if ((nn as Declaration).isCustomProperty(options.context)) {
         w.add(idt);
         w.add(out, nn);
       } else {

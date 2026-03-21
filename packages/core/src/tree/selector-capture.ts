@@ -3,7 +3,7 @@ import { Node, defineType, type LocationInfo, type NodeOptions, type TreeContext
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 export interface SelectorCapture extends Node<Selector> {
   type: 'SelectorCapture';
@@ -34,6 +34,16 @@ export class SelectorCapture extends Node<Selector> {
       : this.value;
   }
 
+  private _setValue(value: Selector, context?: Context): void {
+    if (context?.session && this.sourceNode === this) {
+      this.adopt(value, context);
+      sessionPatchField(this, 'value', value, context);
+      return;
+    }
+    this.value = value;
+    this.adopt(value, context);
+  }
+
   override valueOf(): string {
     return String(this.value.valueOf());
   }
@@ -57,9 +67,8 @@ export class SelectorCapture extends Node<Selector> {
     node._setPreEvaluated(true, context);
     const value = this._getValue(context);
     const applyValue = (preEvald: Selector): this => {
-      if (node.value !== preEvald) {
-        node.value = preEvald;
-        node.adopt(preEvald, context);
+      if (node._getValue(context) !== preEvald) {
+        node._setValue(preEvald, context);
       }
       return node;
     };

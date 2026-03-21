@@ -1484,6 +1484,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? sessionGetField<Node | undefined>(node, 'important', context)
         : (node as any).important
     );
+    const getDeclName = (node: Node): string => {
+      const name = useSessionFields && context
+        ? sessionGetField<Node>(node, 'name', context)
+        : (node as any).name;
+      return String((name as any)?.valueOf?.() ?? name);
+    };
     const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
       if (useSessionFields && context) {
         sessionPatchField(node, key, value, context);
@@ -1578,7 +1584,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(node, N.Declaration)) {
         continue;
       }
-      const name = String((node as any).name);
+      const name = getDeclName(node);
       const assign = String(node.options.normalizedFromAssign ?? '');
       const merged = isMergedAssign(assign);
 

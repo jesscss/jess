@@ -135,6 +135,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : this.name;
   }
 
+  getPropertyName(context?: Context): string {
+    return this._getName(context).valueOf();
+  }
+
+  isCustomProperty(context?: Context): boolean {
+    return this.getPropertyName(context).startsWith('--');
+  }
+
   private _getOptions(context?: Context): Opts | undefined {
     return context
       ? sessionGetField<Opts | undefined>(this, 'options', context)
@@ -210,7 +218,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const normalizedName = w.capture(() => name.toString(options)).replace(/\s+$/, '');
     w.add(`${normalizedName}${a}`, name);
     // Custom properties must preserve value text exactly as provided.
-    const isCustomProperty = name.valueOf().startsWith('--');
+    const isCustomProperty = this.isCustomProperty(context);
     if (isCustomProperty) {
       options.inCustom = true;
       // Preserve custom value text, but normalize boundary artifacts:
@@ -438,7 +446,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         const name = node._getName(context);
         const value = node._getValueNode(context);
         if (value instanceof Node) {
-          const isCustomProperty = name.valueOf().startsWith('--');
+          const isCustomProperty = node.isCustomProperty(context);
           if (isCustomProperty) {
             const hasInterpolation =
               value.type === 'Interpolated'

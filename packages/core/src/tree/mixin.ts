@@ -88,6 +88,56 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   params: List<Node> | undefined;
   guard: Condition | undefined;
 
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const name = this._getName(ctx);
+    const rules = this._getRulesContainer(ctx);
+    const params = this._getParams(ctx);
+    const guard = this._getGuard(ctx);
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
+    const cloneData: MixinValue = {
+      name: deep && name instanceof Node ? cloneChild(name) as Any<AnyRole> | Interpolated<AnyRole> : name,
+      rules: deep ? cloneChild(rules) as Rules : rules,
+      params: deep && params instanceof Node ? cloneChild(params) as List<Node> : params,
+      guard: deep && guard instanceof Node ? cloneChild(guard) as Condition : guard
+    };
+
+    let priorChildParents: Array<[Node, Node | undefined]> | undefined;
+    if (!deep && ctx?.session) {
+      priorChildParents = [];
+      if (cloneData.name instanceof Node) {
+        priorChildParents.push([cloneData.name, cloneData.name.parent]);
+      }
+      if (cloneData.rules instanceof Node) {
+        priorChildParents.push([cloneData.rules, cloneData.rules.parent]);
+      }
+      if (cloneData.params instanceof Node) {
+        priorChildParents.push([cloneData.params, cloneData.params.parent]);
+      }
+      if (cloneData.guard instanceof Node) {
+        priorChildParents.push([cloneData.guard, cloneData.guard.parent]);
+      }
+    }
+
+    const options = (this as any)._meta?.options;
+    const newNode = new (this.constructor as any)(
+      cloneData,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+
+    if (priorChildParents) {
+      const session = ctx!.session!;
+      for (const [child, priorParent] of priorChildParents) {
+        session.getRuntime(child).parent = newNode;
+        (child as unknown as { parent?: Node }).parent = priorParent;
+      }
+    }
+
+    newNode.inherit(this);
+    return newNode;
+  }
+
   constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
     super(value, options, location, context);
     this.name = value.name;

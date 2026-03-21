@@ -142,8 +142,15 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `ImportStyle`: the active import-path callsite now resolves session-patched `Quoted` paths context-aware, not just `Url` paths.
   - `ComplexSelector`: the collapse-to-one-child eval branch no longer reparents the canonical child in a patch-only session.
   - `Quoted`: non-reset session eval is now explicitly proven to keep canonical `value` unchanged; completion is now justified at the node-local level.
+- New completion-audit wave is now in the working tree:
+  - `Call`: the nested-`Call` downstream branch now materializes the inner result before applying outer call provenance; the remaining `Call`-local downstream branch is `Collection`.
+  - `Mixin`: `clone(...)` now preserves session-patched `name` / `rules` / `params` / `guard` across the `preEval()` clone boundary without mutating canonical children.
+  - `Reference`: active ancestor/linear-lookup parent walks now use `sessionGetParent(...)` instead of canonical `parent`.
+  - `SelectorCapture`: `preEval()` replacement writes are now session-backed instead of directly overwriting `value`.
+  - `Declaration`: serializer de-dupe/custom-property decisions and merged-declaration coalescing now read the property name through session-aware helpers.
+  - `Url`: audited complete for node-local scope after the import-path callsite fixes; no further active bug was found in the owned path.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
-- The next immediate target is now the smallest remaining downstream `Call.evalNode()` branch.
+- The next immediate target is now the remaining `Call.evalNode()` `Collection` branch.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

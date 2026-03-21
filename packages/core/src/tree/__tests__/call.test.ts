@@ -1,4 +1,5 @@
-import { any, call, expr, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
+import { vi } from 'vitest';
+import { any, call, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
@@ -174,6 +175,69 @@ describe('Call', () => {
     expect(evald.toTrimmedString({ context })).toBe('rgb(1)');
     expect(node.toTrimmedString()).toBe('rgb?(1)');
     expect(node.options.silentFail).toBe(true);
+  });
+
+  it('materializes stylesheet-function return nodes in a session before applying call result provenance', async () => {
+    context.session = new EvalSession();
+    const returnValue = any('ok');
+    returnValue.pre = 0;
+    const functionNode = fn({
+      name: any('make'),
+      body: rules([
+        decl({ name: 'return', value: returnValue })
+      ])
+    });
+    const node = call({
+      name: functionNode,
+      args: list([])
+    });
+    node.pre = 2;
+    node.post = 1;
+
+    const result = await node.eval(context);
+
+    expect(result.toTrimmedString({ context })).toBe('ok');
+    expect(result).not.toBe(returnValue);
+    expect(result.pre).toBe(2);
+    expect(result.post).toBe(1);
+    expect(result.sourceParent).toBe(node);
+    expect(returnValue.pre).toBe(0);
+    expect(returnValue.post).toBeUndefined();
+    expect(returnValue.sourceParent).toBeUndefined();
+  });
+
+  it('materializes nested-call results in a session before applying outer call provenance', async () => {
+    context.session = new EvalSession();
+    const returnValue = any('ok');
+    returnValue.pre = 0;
+    const functionNode = fn({
+      name: any('make'),
+      body: rules([
+        decl({ name: 'return', value: returnValue })
+      ])
+    });
+    const aliasCall = call({
+      name: functionNode,
+      args: list([])
+    });
+    const aliasRef = ref('alias', { type: 'variable' });
+    vi.spyOn(aliasRef, 'eval').mockResolvedValue(aliasCall);
+    const node = call({
+      name: aliasRef,
+      args: list([])
+    });
+    node.pre = 2;
+    node.post = 1;
+    const result = await node.eval(context);
+
+    expect(result.toTrimmedString({ context })).toBe('ok');
+    expect(result).not.toBe(returnValue);
+    expect(result.pre).toBe(2);
+    expect(result.post).toBe(1);
+    expect(result.sourceParent).toBe(node);
+    expect(returnValue.pre).toBe(0);
+    expect(returnValue.post).toBeUndefined();
+    expect(returnValue.sourceParent).toBeUndefined();
   });
 
   // it('should serialize to a module', () => {

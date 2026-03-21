@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { sessionSetParent } from '../util/session-helpers.js';
+import { sessionPatchField, sessionSetParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -371,6 +371,50 @@ describe('Mixin', () => {
       expect(mixinDef.rules.options.rulesVisibility).toEqual(canonicalVisibility);
       expect(mixinDef.rules.options.rulesVisibility.Mixin).toBe('public');
       expect(mixinDef.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    });
+
+    it('preEval preserves session-patched mixin fields across the clone boundary without mutating canonical children', async () => {
+      const localContext = new Context({ leakyRules: false });
+      localContext.depth = 2;
+      localContext.createSession();
+
+      const canonicalRules = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      const patchedRules = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      const canonicalParams = list([any('a', { role: 'property' })]);
+      const patchedParams = list([any('b', { role: 'property' })]);
+      const canonicalGuard = condition([any('true')]);
+      const patchedGuard = condition([any('false')]);
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: canonicalParams,
+        guard: canonicalGuard,
+        rules: canonicalRules
+      });
+
+      sessionPatchField(mixinDef, 'name', any('.patched-mixin'), localContext);
+      sessionPatchField(mixinDef, 'params', patchedParams, localContext);
+      sessionPatchField(mixinDef, 'guard', patchedGuard, localContext);
+      sessionPatchField(mixinDef, 'rules', patchedRules, localContext);
+
+      const preEvald = await mixinDef.preEval(localContext);
+
+      expect(preEvald).not.toBe(mixinDef);
+      expect(preEvald.name?.valueOf()).toBe('.patched-mixin');
+      expect(preEvald.params).toBe(patchedParams);
+      expect(preEvald.guard).toBe(patchedGuard);
+      expect(preEvald.rules).not.toBe(canonicalRules);
+      expect(preEvald.rules.options.rulesVisibility.Mixin).toBe('private');
+      expect(preEvald.rules.value[0]?.toTrimmedString()).toBe('color: blue');
+      expect(mixinDef.name?.valueOf()).toBe('.my-mixin');
+      expect(mixinDef.params).toBe(canonicalParams);
+      expect(mixinDef.guard).toBe(canonicalGuard);
+      expect(mixinDef.rules).toBe(canonicalRules);
+      expect(patchedRules.parent).toBeUndefined();
+      expect(canonicalRules.parent).toBe(mixinDef);
     });
 
     it('should call a mixin with a guard condition', async () => {

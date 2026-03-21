@@ -24,6 +24,7 @@ import {
   isTopLevelVarDeclaration,
   sessionGetDependency,
   sessionGetField,
+  sessionGetParent,
   sessionSetSourceParent,
   sessionSetDependency
 } from './util/session-helpers.js';
@@ -116,13 +117,13 @@ function getSelectorReferenceKeys(selector: Selector): string[] {
   return val ? [val] : [];
 }
 
-function isInsideSelectorCapture(node: Node | undefined): boolean {
+function isInsideSelectorCapture(node: Node | undefined, context?: Context): boolean {
   let cursor: Node | undefined = node;
   while (cursor) {
     if (cursor.type === 'SelectorCapture') {
       return true;
     }
-    cursor = cursor.parent;
+    cursor = context ? sessionGetParent(cursor, context) : cursor.parent;
   }
   return false;
 }
@@ -402,14 +403,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         originalFilter ??= () => true;
         const isInterpolatedVariable =
           this.options.type === 'variable'
-          && this.parent?.type === 'Interpolated';
+          && sessionGetParent(this, context)?.type === 'Interpolated';
         const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
           let cursor: Node | undefined = activeRules;
           while (cursor) {
             if (cursor === paramParent) {
               return true;
             }
-            cursor = cursor.parent;
+            cursor = sessionGetParent(cursor, context);
           }
           return false;
         };
@@ -417,7 +418,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           const passesOriginal = originalFilter!(n);
           const blockedParamVar = isNode(n, N.VarDeclaration)
             && Boolean(n.options?.paramVar)
-            && !isWithinParamVarScope(n.parent, context.rulesContext);
+            && !isWithinParamVarScope(sessionGetParent(n, context), context.rulesContext);
           const blockedBySearchScope = context.searchScope.has(n);
           return passesOriginal && !blockedBySearchScope && !blockedParamVar;
         };
@@ -441,7 +442,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             // If this node doesn't have an index, climb up until we find one
             if (startIndex === undefined) {
               while (currentNode && startIndex === undefined) {
-                currentNode = currentNode.parent;
+                currentNode = sessionGetParent(currentNode, context);
                 if (currentNode) {
                   startIndex = currentNode.index;
                 }
@@ -449,8 +450,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
 
             // Now climb up until we find a node that has a Rules parent
-            while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
-              currentNode = currentNode.parent;
+            while (currentNode) {
+              const currentParent = sessionGetParent(currentNode, context);
+              if (!currentParent || isNode(currentParent, N.Rules)) {
+                break;
+              }
+              currentNode = currentParent;
               if (currentNode && currentNode.index !== undefined) {
                 startIndex = currentNode.index;
               }
@@ -472,15 +477,19 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
               if (startIndex === undefined) {
                 while (currentNode && startIndex === undefined) {
-                  currentNode = currentNode.parent;
+                  currentNode = sessionGetParent(currentNode, context);
                   if (currentNode) {
                     startIndex = currentNode.index;
                   }
                 }
               }
 
-              while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
-                currentNode = currentNode.parent;
+              while (currentNode) {
+                const currentParent = sessionGetParent(currentNode, context);
+                if (!currentParent || isNode(currentParent, N.Rules)) {
+                  break;
+                }
+                currentNode = currentParent;
                 if (currentNode && currentNode.index !== undefined) {
                   startIndex = currentNode.index;
                 }
@@ -630,7 +639,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (!fallbackValue) {
             if (
               (type === 'mixin' || type === 'mixin-ruleset')
-              && isInsideSelectorCapture(this)
+              && isInsideSelectorCapture(this, context)
             ) {
               return new Any(valueKeyStr2, { role: 'ident' });
             }
