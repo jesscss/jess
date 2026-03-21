@@ -13,6 +13,7 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
    registries, Live Patch API). This is the forward roadmap, but the branch is still
    in a fundamentals-completion gate before Stage 21.
 4. `PROGRESS.md` — implementation checklist, test baselines, what's done
+5. `node-session-status.md` — concrete per-node inventory for the immutable/session contract
 
 ---
 
@@ -31,6 +32,14 @@ The work is fully documented in `docs/future/node-copy-reduction/`. Read order:
 - Current actual stage: fundamentals-completion gate
   - focus: make immutable canonical nodes + session-backed eval writes/replacements true end-to-end
   - order: lower-order node fields first (`Declaration`, `Ruleset`), then more compositional containers
+  - checklist: keep `node-session-status.md` accurate as nodes move from `pending` -> `partial` -> done
+  - proof rule: every node slice needs a narrow behavior proof plus an explicit immutability/session-overlay proof before moving upward
+  - anti-pattern: do not use `Rules`, imports, or extend as the primary validation layer for a lower-order node migration when the node itself can be proven directly
+  - test contract:
+    - node public behavior parity lives in the node's own file under `packages/core/src/tree/__tests__/`
+    - session-overlay / immutability proof lives in `packages/core/src/__tests__/eval-session.test.ts`
+    - broader `rules` / `import-style` / extend tests are secondary confirmation only
+  - completion gate: a node is not `complete` until reads and writes are both sessionized for the in-scope path, clone/copy dependence is gone for that responsibility, required tests exist, and the slice is committed/pushed
 - Stage 21: not started and explicitly blocked on the pre-Stage-21 threshold below
 
 ### Working tree expectation

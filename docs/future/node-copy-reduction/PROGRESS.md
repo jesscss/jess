@@ -810,12 +810,110 @@ Definition:
 - Session layers replace clone-based divergence for the targeted eval/import/mixin paths.
 - Baseline behavior is re-proven in that stricter state.
 
+Strategy rules for this gate:
+
+- Move strictly from simpler nodes upward into more compositional nodes.
+- Do not use `Rules`, imports, or extend as the proving ground for a lower-order node migration if a smaller focused test can prove the same thing.
+- Do not treat “reduced clone pressure” as equivalent to “fundamentals complete”.
+- Do not advance to a more complex node while a lower-order node in its dependency chain is still only partially migrated unless that dependency is explicitly documented and unavoidable.
+
+Per-slice done condition:
+
+- Add or preserve a focused behavior test for the node’s real public path.
+- Add a focused immutability/session-overlay test:
+  - session-scoped read sees the patched/replaced value
+  - non-session read still sees canonical value
+  - canonical node field/child identity stays unchanged
+- Route the node’s active reads/writes for that slice through session helpers.
+- Re-run the narrow safety set for that node before widening scope.
+- Commit at the slice boundary before moving upward.
+
+What does not count as done:
+
+- Only making serialization session-aware while eval-time writes still mutate canonically
+- Only adding session helpers without production callers using them
+- Only proving behavior through `Rules` / import composition when the node itself lacks a narrow proof
+- Only reducing cloning in one path while other in-scope mutation paths still bypass sessions
+
+Per-node test contract:
+
+- Public behavior parity test:
+  - location: the node's own vitest file in `packages/core/src/tree/__tests__/`
+  - examples: `declaration.test.ts`, `ruleset.test.ts`, `call.test.ts`, `mixin.test.ts`
+  - purpose: prove the node's normal public eval/render behavior is unchanged by the migration
+- Session overlay / immutability test:
+  - location: `packages/core/src/__tests__/eval-session.test.ts`
+  - purpose: prove the effective session view is `session overlay + canonical fallback`
+  - required assertions:
+    - session-scoped read sees the patched/replaced value
+    - non-session read still sees canonical value
+    - canonical field or child identity remains unchanged
+- Eval-write proof:
+  - location: prefer the node's own test file; use `eval-session.test.ts` only when the helper semantics themselves are what is under test
+  - purpose: for nodes that actively mutate during eval, prove the migrated eval path writes into the session instead of canonically mutating the node
+
+Allowed test shapes:
+
+- Field-backed node:
+  - patch one field in-session
+  - assert `{ context }` render/eval sees the patched value
+  - assert no-context render/eval still sees canonical value
+  - assert the canonical field still points at the original object/value
+- Structural node:
+  - replace/append/remove a child in-session
+  - assert session-scoped render/eval sees the changed child sequence
+  - assert canonical `value[]` remains unchanged
+  - assert canonical parent/child identity remains unchanged
+- Eval-time mutation node:
+  - exercise the smallest real public path that causes the write
+  - assert output/behavior matches pre-migration behavior
+  - assert the canonical field/child was not overwritten
+
+Not sufficient as primary proof:
+
+- Only proving a low-order node through `rules.test.ts`
+- Only proving a low-order node through `import-style.test.ts`
+- Only proving a low-order node through extend integration tests
+
+Those broader tests are still useful, but only as secondary confirmation after the node-level proof exists.
+
+When a node may be marked `complete` in [node-session-status.md](./node-session-status.md):
+
+- all active in-scope reads are session-aware
+- all active in-scope eval-time writes/replacements are session-backed
+- no remaining clone/copy behavior is still required for that node's targeted responsibility in this fundamentals pass
+- the node has public behavior parity coverage in its own `src/tree/__tests__/` file
+- the node has explicit overlay/immutability coverage in `src/__tests__/eval-session.test.ts`
+- any broader dependent integration tests needed for confidence are green
+- the slice has been committed and pushed as a stable boundary
+
+If any of those are missing, the node remains `partial`.
+
 Immediate next work before Stage 21:
 
 - [ ] Inventory remaining `clone()` / `copy()` sites on the critical eval/import/extend paths
 - [ ] Finish sessionizing remaining eval-time mutation / replacement paths, starting with lower-order nodes before `Rules` / import composition
 - [ ] Re-run the baseline against that stricter state and confirm behavior is preserved
 - [ ] Rewrite any misleading roadmap text whenever implementation reality changes
+- [ ] Maintain the concrete node inventory in [node-session-status.md](./node-session-status.md) so every tree node has an explicit session/immutability status
+
+Current atomic queue:
+
+- [ ] Finish the current caller-side mixin param/default binding slice in `rules.ts` with focused immutability coverage, or revert it cleanly if the proof does not hold
+- [ ] `RawRules`: make its serialization read the `Rules` session child overlay instead of canonical `this.value`
+- [ ] `Block`
+- [ ] `Negative`
+- [ ] `Rest`
+- [ ] `AttributeSelector`
+- [ ] `InterpolatedSelector`
+- [ ] remaining medium nodes with direct caller-side writes: `AtRule`, `Mixin`, `Call`, `Func`, `Operation`
+- [ ] only after the above, resume `Rules` structural completion
+- [ ] only after `Rules` is genuinely complete, return to import/extend-heavy composition paths
+
+Source of truth for ordering:
+
+- Keep the live next-up queue and priority batches in [node-session-status.md](./node-session-status.md).
+- `PROGRESS.md` should summarize the current slice, but the per-node guide owns the ordered execution queue.
 
 Current blocker notes from live reduction attempts:
 
