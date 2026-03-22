@@ -234,6 +234,14 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 - `ImportStyle` is also now characterized as not safely fixable inside `import-style.ts` alone on the current head:
   - the remaining three failures bottom out in descendant `Reference.evalNode()` lookup against returned imported trees
   - the next likely owner is broader returned-tree parent/read semantics rather than another same-node `StyleImport` accessor patch
+- Next clean landed batch after that:
+  - `Reference`: default/leaky fallback lookup anchors now resolve through session-aware `rulesParent` / `sourceRulesParent` when `context.rulesContext` is unset, so detached/session-parented references no longer fall back to canonical anchors.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/reference.test.ts`
+    - result: `30 passed`
+- This narrowed the import blocker further:
+  - the same 3 `import-style` failures still reproduce even after the `Reference` fix
+  - so the remaining owner is not `Reference` either; it is broader returned-tree parent/registry semantics in the import/compose path
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

@@ -798,6 +798,10 @@ describe('Rules extend', () => {
       expect(context.warnings).toHaveLength(1);
       expect(context.warnings[0]?.code).toBe('extend/not-found');
       expect(sessionGetParent(patchedBaseRules, context)).toBe(base);
+      expect(sessionGetParent(nestedLeaf, context)).toBe(patchedBaseRules);
+      expect(nestedLeaf.parent).toBe(patchedBaseRules);
+      expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toBe(':is(.base,.mid) .leaf');
+      expect(nestedLeaf.valueOf(context)).toBe(':is(.base,.mid) .leaf');
       expect(patchedBaseRules.parent).toBeUndefined();
       expect(base.rules?.value).toHaveLength(0);
     });

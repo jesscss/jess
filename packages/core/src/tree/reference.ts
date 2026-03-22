@@ -25,6 +25,7 @@ import {
   sessionGetDependency,
   sessionGetField,
   sessionGetParent,
+  sessionGetSourceParent,
   sessionSetSourceParent,
   sessionSetDependency
 } from './util/session-helpers.js';
@@ -126,6 +127,24 @@ function isInsideSelectorCapture(node: Node | undefined, context?: Context): boo
     cursor = context ? sessionGetParent(cursor, context) : cursor.parent;
   }
   return false;
+}
+
+function getSessionRulesParent(node: Node, context: Context): Rules | undefined {
+  let possibleRules: Node | undefined = sessionGetParent(node, context);
+  while (possibleRules && possibleRules.type !== 'Rules') {
+    possibleRules = sessionGetParent(possibleRules, context);
+  }
+  return possibleRules as Rules | undefined;
+}
+
+function getSessionSourceRulesParent(node: Node, context: Context): Rules | undefined {
+  let current: Node | undefined = node;
+  let sourceParent = sessionGetSourceParent(node, context);
+  while (current && !sourceParent) {
+    current = sessionGetParent(current, context);
+    sourceParent = current ? sessionGetSourceParent(current, context) : undefined;
+  }
+  return sourceParent ? getSessionRulesParent(sourceParent, context) : undefined;
 }
 
 /**
@@ -293,7 +312,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     // Prefer the *current* evaluation rules context (mixin call-time scope) over the lexical rulesParent.
     // This is critical for mixin parameters (e.g. `@fallback`) which are registered onto the call-time
     // wrapper `Rules` and should be visible inside nested at-rule preludes.
-    let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? this.rulesParent;
+    const activeRulesParent = getSessionRulesParent(this, context);
+    const activeSourceRulesParent = getSessionSourceRulesParent(this, context);
+    let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? activeRulesParent;
     const result = pipe(
       () => {
         if (isThenable(resolvedTarget)) {
@@ -628,9 +649,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
-            returnVal = performLookup(this.rulesParent);
+            returnVal = performLookup(activeRulesParent);
             if (returnVal === undefined) {
-              returnVal = performLookup(this.sourceRulesParent);
+              returnVal = performLookup(activeSourceRulesParent);
             }
           }
         }

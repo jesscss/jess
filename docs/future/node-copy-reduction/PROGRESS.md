@@ -1083,6 +1083,14 @@ Current blocker notes from live reduction attempts:
   - there is no safe `import-style.ts`-local patch on the current head
   - the remaining three failures bottom out in descendant `Reference.evalNode()` lookup against returned imported trees
   - the next likely owner is broader returned-tree parent/read semantics rather than another same-node `StyleImport` field read
+- Next clean landed batch after that:
+  - `Reference`: default/leaky fallback lookup anchors now resolve through session-aware `rulesParent` / `sourceRulesParent` when `context.rulesContext` is unset, so detached/session-parented references no longer fall back to canonical anchors.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/reference.test.ts`
+    - Result: `30 passed`
+- That narrowed the import blocker again:
+  - the same 3 `import-style` failures still reproduce even after the `Reference` fix
+  - so the remaining owner is not `Reference` either; it is broader returned-tree parent/registry semantics in the import/compose path
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

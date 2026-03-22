@@ -292,6 +292,34 @@ describe('reference', () => {
 
       expect(`${evald}`).toBe('red');
     });
+
+    it('uses the session parent chain to anchor default variable resolution without rulesContext', async () => {
+      const scope = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('host'),
+          value: any('placeholder')
+        })
+      ]);
+
+      context.session = new EvalSession();
+      context.root = scope;
+
+      const hostDecl = scope.at(1);
+      if (!hostDecl || !isNode(hostDecl)) {
+        throw new Error('Expected host declaration at index 1');
+      }
+
+      const lookup = ref({ key: 'foo' }, { type: 'variable' });
+      sessionSetParent(lookup, hostDecl, context);
+
+      const evald = await lookup.eval(context);
+
+      expect(`${evald}`).toBe('red');
+    });
   });
 
   describe('errors', () => {
