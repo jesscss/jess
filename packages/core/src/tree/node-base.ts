@@ -333,6 +333,18 @@ export abstract class Node<
   }
 
   /**
+   * Materialize the current evaluated/view node shape as a persistent tree.
+   *
+   * Unlike `materializeCopy()`, this preserves the node's current evaluated
+   * subtree state rather than rebuilding from `sourceNode`. The returned tree
+   * gets its own parent chain while preserving source provenance metadata via
+   * normal clone/inherit behavior.
+   */
+  materializeEvaluatedCopy(): this {
+    return this.clone(true);
+  }
+
+  /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also

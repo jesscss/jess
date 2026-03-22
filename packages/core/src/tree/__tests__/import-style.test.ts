@@ -1554,10 +1554,12 @@ describe('Style import', () => {
       evaluatedRuleset.sourceNode = sourceRuleset;
       evaluatedDecl.sourceNode = sourceDecl;
 
-      const materialized = evaluatedRuleset.clone(true);
+      const sourceMaterialized = evaluatedRuleset.materializeCopy(true);
+      const materialized = evaluatedRuleset.materializeEvaluatedCopy();
       const materializedDecl = materialized.rules.at(0) as Node;
 
       expect(`${materialized}`).toContain('color: red');
+      expect(`${sourceMaterialized}`).toContain('$libColor');
       expect(materialized.sourceNode).toBe(sourceRuleset);
       expect(materializedDecl.sourceNode).toBe(sourceDecl);
       expect(materialized.selector.parent).toBe(materialized);

@@ -318,7 +318,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         const child = out.value[i]!;
         const originalParent = originalParents!.get(child);
         if (originalParent !== undefined) {
-          const materialized = child.clone(true);
+          const materialized = child.materializeEvaluatedCopy();
           out.setData(i, materialized);
           (child as unknown as { parent?: Node }).parent = originalParent;
         }
@@ -337,7 +337,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       out.setData([...out.value]);
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
-        const materialized = child.clone(true) as Node;
+        const materialized = child.materializeEvaluatedCopy() as Node;
         out.setData(i, materialized);
       }
     }
