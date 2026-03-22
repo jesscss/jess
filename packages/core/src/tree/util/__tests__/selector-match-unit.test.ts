@@ -41,7 +41,7 @@ describe('basic selectors', () => {
     expect(selectorMatch(sel1, sel2).fullMatch).toBe(false);
   });
 
-  it('stays canonical when getKeySet(context) diverges by session because selectorMatch has no context parameter', () => {
+  it('keeps canonical matching when no eval context is provided', () => {
     const contextA = new Context();
     contextA.session = new EvalSession();
     const contextB = new Context();
@@ -69,6 +69,35 @@ describe('basic selectors', () => {
     expect(selectorMatch(el('.alpha'), target).fullMatch).toBe(true);
     expect(selectorMatch(beta, target).fullMatch).toBe(false);
     expect(selectorMatch(gamma, target).fullMatch).toBe(false);
+  });
+
+  it('matches against session-aware key sets when an eval context is provided', () => {
+    const contextA = new Context();
+    contextA.session = new EvalSession();
+    const contextB = new Context();
+    contextB.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.selector.keySetLibrary = contextA.selectorBits;
+
+    const beta = el('.beta');
+    beta.keySetLibrary = contextA.selectorBits;
+    const gamma = el('.gamma');
+    gamma.keySetLibrary = contextA.selectorBits;
+
+    const target = amp({ selectorContainer: parent as any });
+    target.keySetLibrary = contextA.selectorBits;
+
+    sessionPatchField(parent, 'selector', beta, contextA);
+    sessionPatchField(parent, 'selector', gamma, contextB);
+
+    expect(selectorMatch(beta, target, undefined, contextA).fullMatch).toBe(true);
+    expect(selectorMatch(gamma, target, undefined, contextA).fullMatch).toBe(false);
+    expect(selectorMatch(gamma, target, undefined, contextB).fullMatch).toBe(true);
+    expect(selectorMatch(beta, target, undefined, contextB).fullMatch).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 import { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { F_AMPERSAND, type Node } from '../node.js';
+import type { Context as EvalContext } from '../../context.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { isDisjoint } from './bitset.js';
@@ -123,12 +124,17 @@ type GroupMatchCache = WeakMap<Node, WeakMap<MatchGroup, MatchWindowResult>>;
 type SelectorMatchPairCache = WeakMap<Selector, WeakMap<Selector, SelectorMatchState>>;
 type SelectorMatchContext = {
   pairCache: SelectorMatchPairCache;
+  evalContext?: EvalContext;
 };
 
 const selectorMatchPlanCache = new WeakMap<Selector, {
   value: string;
   plan: MatchPlan;
 }>();
+
+function selectorValueOf(node: Node | Selector, context?: EvalContext): string {
+  return String((node as unknown as { valueOf(context?: EvalContext): string }).valueOf(context));
+}
 
 /**
  * Returns true for pseudos whose selector arguments can be searched recursively
@@ -197,14 +203,16 @@ function mergeRequirements(
 
 function markComplexBranchRequirements(
   requirements: MatchGroupRequirement[],
-  branch: Selector & { value?: readonly Node[] }
+  branch: Selector & { value?: readonly Node[] },
+  parent?: Selector,
+  context?: EvalContext
 ): MatchGroupRequirement[] {
   const earlierValues = new Set<string>();
 
   if (isNode(branch, N.ComplexSelector)) {
     for (let i = 0; i < branch.value.length - 1; i++) {
       const component = branch.value[i]!;
-      const nested = buildGroupRequirements(component);
+      const nested = buildGroupRequirements(component, parent, context);
       for (let j = 0; j < nested.length; j++) {
         for (const value of nested[j]!.basicSelectorIndex.keys()) {
           earlierValues.add(value);
@@ -227,17 +235,17 @@ function markComplexBranchRequirements(
   return requirements;
 }
 
-function buildGroupRequirements(node: Node, parent?: Selector): MatchGroupRequirement[] {
+function buildGroupRequirements(node: Node, parent?: Selector, context?: EvalContext): MatchGroupRequirement[] {
   if (isNode(node, N.BasicSelector)) {
     const requirement = createRequirement();
-    addRequirementValue(requirement, node.valueOf());
+    addRequirementValue(requirement, selectorValueOf(node, context));
     return [requirement];
   }
 
   if (isNode(node, N.Ampersand)) {
-    const resolved = node.getResolvedSelector() ?? parent;
+    const resolved = node.getResolvedSelector(context) ?? parent;
     if (resolved && !isNode(resolved, N.Nil)) {
-      return buildGroupRequirements(resolved, parent);
+      return buildGroupRequirements(resolved, parent, context);
     }
 
     return [createRequirement()];
@@ -247,7 +255,12 @@ function buildGroupRequirements(node: Node, parent?: Selector): MatchGroupRequir
     for (let i = node.value.length - 1; i >= 0; i--) {
       const component = node.value[i]!;
       if (!isNode(component, N.Combinator)) {
-        return markComplexBranchRequirements(buildGroupRequirements(component, parent), node);
+        return markComplexBranchRequirements(
+          buildGroupRequirements(component, parent, context),
+          node,
+          parent,
+          context
+        );
       }
     }
 
@@ -256,7 +269,7 @@ function buildGroupRequirements(node: Node, parent?: Selector): MatchGroupRequir
 
   if (isNode(node, N.PseudoSelector) && node.name !== ':is') {
     const requirement = createRequirement();
-    addRequirementValue(requirement, node.valueOf());
+    addRequirementValue(requirement, selectorValueOf(node, context));
     return [requirement];
   }
 
@@ -267,7 +280,7 @@ function buildGroupRequirements(node: Node, parent?: Selector): MatchGroupRequir
   if (isNode(node, N.SelectorList)) {
     const alternatives: MatchGroupRequirement[] = [];
     for (let i = 0; i < node.value.length; i++) {
-      const nested = buildGroupRequirements(node.value[i]!, parent);
+      const nested = buildGroupRequirements(node.value[i]!, parent, context);
       for (let j = 0; j < nested.length; j++) {
         alternatives.push(nested[j]!);
       }
@@ -280,7 +293,7 @@ function buildGroupRequirements(node: Node, parent?: Selector): MatchGroupRequir
   let child = children.next();
 
   while (!child.done) {
-    const childRequirements = buildGroupRequirements(child.value, parent);
+    const childRequirements = buildGroupRequirements(child.value, parent, context);
     const nextRequirements: MatchGroupRequirement[] = [];
     for (let i = 0; i < requirements.length; i++) {
       for (let j = 0; j < childRequirements.length; j++) {
@@ -296,13 +309,13 @@ function buildGroupRequirements(node: Node, parent?: Selector): MatchGroupRequir
   return requirements;
 }
 
-function buildMatchGroup(node: Node, parent?: Selector): MatchGroup {
+function buildMatchGroup(node: Node, parent?: Selector, context?: EvalContext): MatchGroup {
   return {
-    alternatives: buildGroupRequirements(node, parent)
+    alternatives: buildGroupRequirements(node, parent, context)
   };
 }
 
-function buildRouteMatchPlan(selector: Selector, parent?: Selector): RouteMatchPlan {
+function buildRouteMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): RouteMatchPlan {
   if (isNode(selector, N.ComplexSelector)) {
     const units: MatchPlanUnit[] = [];
     let hasAmbiguousBranchTail = false;
@@ -314,14 +327,15 @@ function buildRouteMatchPlan(selector: Selector, parent?: Selector): RouteMatchP
           kind: 'combinator',
           index: i,
           node: component,
-          value: component.valueOf()
+          value: selectorValueOf(component, context)
         });
         continue;
       }
 
       const group = buildMatchGroup(
         component,
-        isNode(component, N.Ampersand) && i === 0 ? undefined : parent
+        isNode(component, N.Ampersand) && i === 0 ? undefined : parent,
+        context
       );
       const hasAlternatives = group.alternatives.some(alternate => alternate.basicSelectorTotal > 0);
       if (hasAlternatives) {
@@ -348,16 +362,16 @@ function buildRouteMatchPlan(selector: Selector, parent?: Selector): RouteMatchP
       kind: 'route',
       selector,
       hasAmbiguousBranchTail: false,
-      units: [{
-        kind: 'combinator',
-        index: 0,
-        node: selector,
-        value: selector.valueOf()
-      }]
-    };
+        units: [{
+          kind: 'combinator',
+          index: 0,
+          node: selector,
+          value: selectorValueOf(selector, context)
+        }]
+      };
   }
 
-  const group = buildMatchGroup(selector, parent);
+  const group = buildMatchGroup(selector, parent, context);
   return {
     kind: 'route',
     selector,
@@ -373,24 +387,24 @@ function buildRouteMatchPlan(selector: Selector, parent?: Selector): RouteMatchP
   };
 }
 
-function buildMatchPlan(selector: Selector, parent?: Selector): MatchPlan {
+function buildMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): MatchPlan {
   if (isNode(selector, N.SelectorList)) {
     return {
       kind: 'list',
       selector,
-      alternates: selector.value.map(item => getSelectorMatchPlan(item, parent))
+      alternates: selector.value.map(item => getSelectorMatchPlan(item, parent, context))
     };
   }
 
-  return buildRouteMatchPlan(selector, parent);
+  return buildRouteMatchPlan(selector, parent, context);
 }
 
-function getSelectorMatchPlan(selector: Selector, parent?: Selector): MatchPlan {
-  if (parent) {
-    return buildMatchPlan(selector, parent);
+function getSelectorMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): MatchPlan {
+  if (parent || context) {
+    return buildMatchPlan(selector, parent, context);
   }
 
-  const value = selector.valueOf();
+  const value = selectorValueOf(selector);
   const cached = selectorMatchPlanCache.get(selector);
   if (cached && cached.value === value) {
     return cached.plan;
@@ -430,14 +444,15 @@ function consumeGroupBasics(
   group: MatchGroupRequirement,
   states: MatchGroupState[],
   insideAmpersand = false,
-  parent?: Selector
+  parent?: Selector,
+  context?: EvalContext
 ): MatchGroupState[] {
   if (states.length === 0) {
     return states;
   }
 
   if (isNode(node, N.BasicSelector) || (isNode(node, N.PseudoSelector) && node.name !== ':is')) {
-    const idx = group.basicSelectorIndex.get(node.valueOf());
+    const idx = group.basicSelectorIndex.get(selectorValueOf(node, context));
 
     for (let i = 0; i < states.length; i++) {
       const state = states[i]!;
@@ -462,9 +477,9 @@ function consumeGroupBasics(
   }
 
   if (isNode(node, N.Ampersand)) {
-    const resolved = node.getResolvedSelector() ?? parent;
+    const resolved = node.getResolvedSelector(context) ?? parent;
     if (resolved && !isNode(resolved, N.Nil)) {
-      return consumeGroupBasics(resolved, group, states, true, parent);
+      return consumeGroupBasics(resolved, group, states, true, parent, context);
     }
 
     return states;
@@ -495,7 +510,8 @@ function consumeGroupBasics(
           group,
           cloneGroupStates(states),
           insideAmpersand,
-          parent
+          parent,
+          context
         )
       );
     }
@@ -508,7 +524,7 @@ function consumeGroupBasics(
   let child = children.next();
 
   while (!child.done && nextStates.length > 0 && !allStatesAreTerminalPartial(nextStates)) {
-    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand, parent);
+    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand, parent, context);
     child = children.next();
   }
 
@@ -546,7 +562,8 @@ function matchTargetGroup(
   targetGroup: Node,
   findGroup: MatchGroup,
   parent?: Selector,
-  allowAmpersandOnlyMatch = false
+  allowAmpersandOnlyMatch = false,
+  context?: EvalContext
 ): MatchWindowResult {
   let matched = false;
   let exact = false;
@@ -558,7 +575,7 @@ function matchTargetGroup(
       remainingTotal: requirement.basicSelectorTotal,
       exact: true,
       matchedOutsideAmpersand: false
-    }], false, parent);
+    }], false, parent, context);
     const summary = summarizeStates(states);
     if (!summary.matched && allowAmpersandOnlyMatch) {
       for (let j = 0; j < states.length; j++) {
@@ -591,7 +608,8 @@ function matchCompoundWindow(
   start: number,
   end: number,
   requirement: MatchGroupRequirement,
-  parent?: Selector
+  parent?: Selector,
+  context?: EvalContext
 ): MatchWindowResult {
   let states = [{
     remainingCounts: [...requirement.basicSelectorCounts],
@@ -601,7 +619,7 @@ function matchCompoundWindow(
   }];
 
   for (let i = start; i <= end && states.length > 0 && !allStatesAreTerminalPartial(states); i++) {
-    states = consumeGroupBasics(targetCompound.value[i]!, requirement, states, false, parent);
+    states = consumeGroupBasics(targetCompound.value[i]!, requirement, states, false, parent, context);
   }
 
   const summary = summarizeStates(states);
@@ -638,7 +656,8 @@ function collectMatchedIndicesForWindow(
   targetCompound: Selector & { value: readonly Node[] },
   start: number,
   end: number,
-  requirement: MatchGroupRequirement
+  requirement: MatchGroupRequirement,
+  context?: EvalContext
 ): number[] | undefined {
   const remainingCounts = [...requirement.basicSelectorCounts];
   const matchedIndices: number[] = [];
@@ -649,7 +668,7 @@ function collectMatchedIndicesForWindow(
       continue;
     }
 
-    const idx = requirement.basicSelectorIndex.get(node.valueOf());
+    const idx = requirement.basicSelectorIndex.get(selectorValueOf(node, context));
     if (idx === undefined || remainingCounts[idx] === 0) {
       continue;
     }
@@ -689,14 +708,16 @@ function collectMatchedIndicesForWindow(
 function collectGroupMatchLocations(
   targetGroup: Node,
   findGroup: MatchGroup,
-  parent?: Selector
+  parent?: Selector,
+  context?: EvalContext
 ): SelectorMatchLocation[] {
   if (!isNode(targetGroup, N.CompoundSelector)) {
     const groupMatch = matchTargetGroup(
       targetGroup,
       findGroup,
       parent,
-      !!parent && isNode(targetGroup, N.Ampersand)
+      !!parent && isNode(targetGroup, N.Ampersand),
+      context
     );
     return groupMatch.matched
       ? [{
@@ -723,7 +744,8 @@ function collectGroupMatchLocations(
           start,
           end,
           requirement,
-          parent
+          parent,
+          context
         );
 
         if (!windowMatch.matched) {
@@ -731,13 +753,13 @@ function collectGroupMatchLocations(
         }
 
         const withoutStartMatches = start < end
-          && matchCompoundWindow(targetCompound, start + 1, end, requirement, parent).matched;
+          && matchCompoundWindow(targetCompound, start + 1, end, requirement, parent, context).matched;
         if (withoutStartMatches) {
           continue;
         }
 
         const withoutEndMatches = start < end
-          && matchCompoundWindow(targetCompound, start, end - 1, requirement, parent).matched;
+          && matchCompoundWindow(targetCompound, start, end - 1, requirement, parent, context).matched;
         if (withoutEndMatches) {
           continue;
         }
@@ -752,7 +774,7 @@ function collectGroupMatchLocations(
         matches.push({
           startIndex: start,
           endIndex: end,
-          matchedIndices: collectMatchedIndicesForWindow(targetCompound, start, end, requirement),
+          matchedIndices: collectMatchedIndicesForWindow(targetCompound, start, end, requirement, context),
           containingNode: targetGroup,
           exact: windowMatch.exact && start === 0 && end === targetLength - 1,
           consumedTarget: windowMatch.exact && start === 0 && end === targetLength - 1
@@ -850,7 +872,8 @@ function getCachedGroupMatch(
   cache: GroupMatchCache,
   targetGroup: Node,
   findGroup: MatchGroup,
-  parent?: Selector
+  parent?: Selector,
+  evalContext?: EvalContext
 ): MatchWindowResult {
   let nodeCache = cache.get(targetGroup);
   if (!nodeCache) {
@@ -874,7 +897,8 @@ function getCachedGroupMatch(
         0,
         (targetGroup as CompoundSelector).value.length - 1,
         findGroup.alternatives[i]!,
-        parent
+        parent,
+        evalContext
       );
       matched ||= windowMatch.matched;
       exact ||= windowMatch.exact;
@@ -890,7 +914,8 @@ function getCachedGroupMatch(
       targetGroup,
       findGroup,
       parent,
-      !!parent && isNode(targetGroup, N.Ampersand)
+      !!parent && isNode(targetGroup, N.Ampersand),
+      evalContext
     );
   }
   nodeCache.set(findGroup, result);
@@ -963,7 +988,7 @@ function matchGroupNodes(
     return { matched, exact };
   }
 
-  return getCachedGroupMatch(groupMatchCache, targetNode, findGroup, parent);
+  return getCachedGroupMatch(groupMatchCache, targetNode, findGroup, parent, context.evalContext);
 }
 
 function pushNestedBranchMatches(
@@ -1113,7 +1138,8 @@ function locationCrossesAmpersand(location: SelectorMatchLocation): boolean {
 }
 
 function getLocationAmpersandCrossings(
-  location: SelectorMatchLocation
+  location: SelectorMatchLocation,
+  context?: EvalContext
 ): SelectorMatchAmpersandCrossing[] | undefined {
   if (location.ampersandCrossings && location.ampersandCrossings.length > 0) {
     return location.ampersandCrossings;
@@ -1147,7 +1173,7 @@ function getLocationAmpersandCrossings(
 
     let parentSegment: SelectorMatchSegment | undefined;
     if (isNode(ampersandNode, N.Ampersand)) {
-      const resolved = ampersandNode.getResolvedSelector();
+      const resolved = ampersandNode.getResolvedSelector(context);
       if (resolved && !isNode(resolved, N.Nil)) {
         parentSegment = {
           containingNode: resolved
@@ -1194,11 +1220,12 @@ function getLocationAmpersandCrossings(
       for (let i = 0; i < node.value.length; i++) {
         const child = node.value[i];
         if (child && isNode(child, N.Ampersand)) {
+          const resolved = child.getResolvedSelector(context);
           crossings.push({
             ampersandNode: child,
             targetSegment,
-            parentSegment: child.getResolvedSelector() && !isNode(child.getResolvedSelector(), N.Nil)
-              ? { containingNode: child.getResolvedSelector() as Selector }
+            parentSegment: resolved && !isNode(resolved, N.Nil)
+              ? { containingNode: resolved as Selector }
               : undefined
           });
         }
@@ -1215,14 +1242,14 @@ function getLocationAmpersandCrossings(
  * This intentionally uses a single scan to avoid repeated array passes on a
  * hot path.
  */
-function finalizeMatchState(result: SelectorMatchState): SelectorMatchState {
+function finalizeMatchState(result: SelectorMatchState, context?: EvalContext): SelectorMatchState {
   let fullMatch = false;
   let crossesAmpersand = false;
 
   for (let i = 0; i < result.matches.length; i++) {
     const match = result.matches[i]!;
     if (!match.ampersandCrossings) {
-      match.ampersandCrossings = getLocationAmpersandCrossings(match);
+      match.ampersandCrossings = getLocationAmpersandCrossings(match, context);
     }
     fullMatch ||= !!match.exact;
     crossesAmpersand ||= locationCrossesAmpersand(match);
@@ -1326,6 +1353,8 @@ function selectorMatchUncached(
   parent: Selector | undefined,
   context: SelectorMatchContext
 ): SelectorMatchState {
+  const evalContext = context.evalContext;
+
   if (isNode(find, N.SelectorList)) {
     const result = emptySelectorMatchState();
 
@@ -1337,7 +1366,7 @@ function selectorMatchUncached(
       pushMatches(result.matches, nested.matches);
     }
 
-    return finalizeMatchState(result);
+    return finalizeMatchState(result, context.evalContext);
   }
 
   if (
@@ -1379,11 +1408,11 @@ function selectorMatchUncached(
     };
   }
 
-  let findValue = find.valueOf();
+  const findValue = selectorValueOf(find, evalContext);
   if (isNode(target, N.SelectorList)) {
     for (let i = 0; i < target.value.length; i++) {
       const sel = target.value[i]!;
-      if (findValue === sel.valueOf()) {
+      if (findValue === selectorValueOf(sel, evalContext)) {
         return {
           fullMatch: true,
           partialMatch: true,
@@ -1402,7 +1431,7 @@ function selectorMatchUncached(
               containingNode: target,
               exact: true,
               consumedTarget: target.value.length === 1
-            })
+            }, evalContext)
           }]
         };
       }
@@ -1427,7 +1456,7 @@ function selectorMatchUncached(
     }
     return emptySelectorMatchState();
   } else {
-    if (findValue === target.valueOf()) {
+    if (findValue === selectorValueOf(target, evalContext)) {
       return {
         fullMatch: true,
         partialMatch: true,
@@ -1440,7 +1469,7 @@ function selectorMatchUncached(
             containingNode: target,
             exact: true,
             consumedTarget: true
-          })
+          }, evalContext)
         }]
       };
     }
@@ -1451,22 +1480,28 @@ function selectorMatchUncached(
     && find.keySetLibrary
     && target.keySetLibrary
   ) {
-    if (
-      !find.hasFlag(F_AMPERSAND)
-      && target.hasFlag(F_AMPERSAND)
-      && isDisjoint(find.visibleKeySet, target.visibleKeySet)
-    ) {
-      return emptySelectorMatchState();
-    }
-    if (
-      !isDisjoint(find.requiredKeySet, find.keySet)
-      && isDisjoint(find.requiredKeySet, target.keySet)
-    ) {
-      return emptySelectorMatchState();
+    if (evalContext) {
+      if (isDisjoint(find.getKeySet(evalContext), target.getKeySet(evalContext))) {
+        return emptySelectorMatchState();
+      }
+    } else {
+      if (
+        !find.hasFlag(F_AMPERSAND)
+        && target.hasFlag(F_AMPERSAND)
+        && isDisjoint(find.visibleKeySet, target.visibleKeySet)
+      ) {
+        return emptySelectorMatchState();
+      }
+      if (
+        !isDisjoint(find.requiredKeySet, find.keySet)
+        && isDisjoint(find.requiredKeySet, target.keySet)
+      ) {
+        return emptySelectorMatchState();
+      }
     }
   }
 
-  const findPlan = getSelectorMatchPlan(find);
+  const findPlan = getSelectorMatchPlan(find, undefined, evalContext);
   if (findPlan.kind !== 'route' || findPlan.units.length === 0) {
     return emptySelectorMatchState();
   }
@@ -1601,7 +1636,7 @@ function selectorMatchUncached(
     };
 
     matchParentPlan(parentPlan);
-    return finalizeMatchState(result);
+    return finalizeMatchState(result, context.evalContext);
   };
 
   const pushMidRouteAmpersandMatches = (
@@ -1688,12 +1723,12 @@ function selectorMatchUncached(
         continue;
       }
 
-      const resolved = ampUnit.node.getResolvedSelector() ?? parent;
+      const resolved = ampUnit.node.getResolvedSelector(evalContext) ?? parent;
       if (!resolved || isNode(resolved, N.Nil)) {
         continue;
       }
 
-      const resolvedPlan = getSelectorMatchPlan(resolved as Selector);
+      const resolvedPlan = getSelectorMatchPlan(resolved as Selector, undefined, evalContext);
       const maxTailLength = Math.min(
         routeUnits.length - (ampStart + 1),
         findUnits.length - 1
@@ -1771,7 +1806,12 @@ function selectorMatchUncached(
         if (singleFindGroup) {
           const targetUnit = routeUnits[start]!;
           if (targetUnit.kind === 'group') {
-            const groupLocations = collectGroupMatchLocations(targetUnit.node, singleFindGroup.group, parent);
+            const groupLocations = collectGroupMatchLocations(
+              targetUnit.node,
+              singleFindGroup.group,
+              parent,
+              evalContext
+            );
             for (let i = 0; i < groupLocations.length; i++) {
               const location = groupLocations[i]!;
               result.matches.push({
@@ -1806,7 +1846,7 @@ function selectorMatchUncached(
       pushMatches(result.matches, matchParentRoute(routePlan, parentPlan).matches);
     }
 
-    return finalizeMatchState(result);
+    return finalizeMatchState(result, context.evalContext);
   };
 
   const matchTargetPlan = (
@@ -1823,16 +1863,16 @@ function selectorMatchUncached(
       pushMatches(result.matches, match.matches);
     }
 
-    return finalizeMatchState(result);
+    return finalizeMatchState(result, context.evalContext);
   };
 
-  const parentPlan = parent ? getSelectorMatchPlan(parent) : undefined;
-  const result = matchTargetPlan(getSelectorMatchPlan(target, parent), parentPlan);
+  const parentPlan = parent ? getSelectorMatchPlan(parent, undefined, evalContext) : undefined;
+  const result = matchTargetPlan(getSelectorMatchPlan(target, parent, evalContext), parentPlan);
   pushNestedPseudoMatches(find, target, result.matches, context);
   if (!result.partialMatch && result.matches.length === 0) {
     pushNestedBranchMatches(find, target, result.matches, context, parent);
   }
-  return finalizeMatchState(result);
+  return finalizeMatchState(result, context.evalContext);
 }
 
 function selectorMatchInternal(
@@ -1886,9 +1926,11 @@ function selectorMatchInternal(
 export function selectorMatch(
   find: Selector,
   target: Selector,
-  parent?: Selector
+  parent?: Selector,
+  evalContext?: EvalContext
 ): SelectorMatchState {
   return selectorMatchInternal(find, target, parent, {
-    pairCache: new WeakMap()
+    pairCache: new WeakMap(),
+    evalContext
   });
 }
