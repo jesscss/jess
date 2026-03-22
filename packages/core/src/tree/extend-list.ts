@@ -2,6 +2,7 @@ import { Node, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 /**
  * An extend statement list with no rules
@@ -20,6 +21,12 @@ export class ExtendList extends Node<Extend[]> {
 
   value!: Extend[];
 
+  private _getValue(context?: Context): Extend[] {
+    return context
+      ? sessionGetField<Extend[]>(this, 'value', context)
+      : this.value;
+  }
+
   constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.value = value;
@@ -37,7 +44,9 @@ export class ExtendList extends Node<Extend[]> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    void super.toTrimmedString(options);
+    for (const child of this._getValue(options.context)) {
+      child.toTrimmedString(options);
+    }
     // toTrimmedString side effect is already emitted to writer; getSince captures it. Add ';'
     w.add(';');
     return w.getSince(mark);

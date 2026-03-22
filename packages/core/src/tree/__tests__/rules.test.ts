@@ -18,6 +18,7 @@ import {
   style,
   quoted,
   atrule,
+  amp,
   type Declaration,
   type Selector
 } from '../index.js';
@@ -26,7 +27,7 @@ import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetIndex, sessionGetParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency } from '../util/session-helpers.js';
+import { sessionGetIndex, sessionGetParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency, sessionSetParent } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -1079,6 +1080,45 @@ describe('Rules', () => {
       expect(sessionGetIndex(replacement, ctx)).toBe(0);
       expect(replacement.index).toBeUndefined();
       expect(root.value[0]).toBe(original);
+    });
+
+    it('preEval keeps cloned Rules parents in the session layer on reset sessions', async () => {
+      const child = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      const root = rules([child]);
+      const ctx = new Context();
+      ctx.session = new EvalSession({ resetEvalState: true });
+
+      const preEvald = await child.preEval(ctx);
+
+      expect(preEvald).not.toBe(child);
+      expect(sessionGetParent(preEvald as Rules, ctx)).toBe(root);
+      expect((preEvald as Rules).parent).toBeUndefined();
+    });
+
+    it('preEval detects nestable at-rule wrappers through the session parent chain', async () => {
+      const wrapper = rules([
+        ruleset({
+          selector: amp(),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ]);
+      const media = atrule({
+        name: any('@media', { role: 'atkeyword' }),
+        prelude: any('screen')
+      });
+      const ctx = new Context();
+      ctx.session = new EvalSession({ resetEvalState: true });
+
+      sessionSetParent(wrapper, media, ctx);
+      const preEvald = await wrapper.preEval(ctx);
+
+      expect(preEvald).toBe(wrapper);
+      expect(sessionGetParent(wrapper, ctx)).toBe(media);
+      expect(wrapper.parent).toBeUndefined();
     });
 
     it('eval queue reads session-local child replacements without mutating canonical children', async () => {

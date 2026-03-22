@@ -14,6 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalSession } from '../eval-session.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -71,6 +72,24 @@ function shouldReuseInPriorScope(node: Node): boolean {
     && normalizedFromAssign !== AssignmentType.MergeSequence
     && String(node.name) !== 'padding'
   );
+}
+
+function getControlField<T>(node: Node, key: string, context: Context | undefined, fallback: T): T {
+  if (!context) {
+    return fallback;
+  }
+  const session = context.session;
+  if (!session) {
+    return sessionGetField<T>(node, key, context);
+  }
+  if (session.hasField(node, key)) {
+    return session.getField(node, key) as T;
+  }
+  const sourceNode = node.sourceNode;
+  if (sourceNode !== node && session.hasField(sourceNode, key)) {
+    return session.getField(sourceNode, key) as T;
+  }
+  return sessionGetField<T>(node, key, context);
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
@@ -172,12 +191,27 @@ export class If extends Node<IfValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
+  private _getConditions(context?: Context): Node[] {
+    return getControlField(this, 'conditions', context, this.conditions);
+  }
+
+  private _getBodies(context?: Context): Rules[] {
+    return getControlField(this, 'bodies', context, this.bodies);
+  }
+
+  private _getElseBranch(context?: Context): Rules | undefined {
+    return getControlField(this, 'elseBranch', context, this.elseBranch);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
 
-    const { conditions, bodies, elseBranch } = this;
+    const conditions = this._getConditions(context);
+    const bodies = this._getBodies(context);
+    const elseBranch = this._getElseBranch(context);
     w.add('$if', this);
     w.add(' (');
     conditions[0]?.toString(options);
@@ -249,8 +283,22 @@ export class For extends Node<ForValue> {
     return this;
   }
 
+  private _getVars(context?: Context): VarDeclaration | VarDeclaration[] {
+    return getControlField(this, 'vars', context, this.vars);
+  }
+
+  private _getIterable(context?: Context): Node {
+    return getControlField(this, 'iterable', context, this.iterable);
+  }
+
+  private _getRules(context?: Context): Rules {
+    return getControlField(this, 'rules', context, this.rules);
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
-    const { vars, iterable } = this;
+    const vars = this._getVars(context);
+    const iterable = this._getIterable(context);
+    const loopTemplate = this._getRules(context);
     const bindingNames = getBindingNames(vars);
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
@@ -265,10 +313,10 @@ export class For extends Node<ForValue> {
       try {
         const evaluatedIterable = await iterable.eval(context);
         for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-          const loopRules = this.rules.clone(false, undefined, context);
+          const loopRules = loopTemplate.clone(false, undefined, context);
           // Preserve definition-scope parent chain so nested calls/lookups
           // inside loop bodies resolve the same way as the original rules.
-          loopRules.inherit(this.rules);
+          loopRules.inherit(loopTemplate);
           if (accumulatedNodes.length > 0) {
             // Make prior iteration output visible to current iteration lookups
             // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
@@ -277,7 +325,7 @@ export class For extends Node<ForValue> {
                 .filter(shouldReuseInPriorScope)
                 .map(n => n.clone(false))
             );
-            priorScope.inherit(this.rules);
+            priorScope.inherit(loopTemplate);
             priorScope.adopt(loopRules);
           }
           const resolvedValue = await value.eval(context);
@@ -402,14 +450,15 @@ export class For extends Node<ForValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
     w.add('$for ', this);
     w.add('(');
-    varsToNode(this.vars).toString(options);
+    varsToNode(this._getVars(context)).toString(options);
     w.add(' of ');
-    this.iterable.toString(options);
+    this._getIterable(context).toString(options);
     w.add(')');
     w.add(' ');
-    this.rules.toBraced(options);
+    this._getRules(context).toBraced(options);
     return w.getSince(mark);
   }
 }

@@ -17,6 +17,7 @@ import {
   sel
 } from '../index.js';
 import { Context } from '../../context.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
@@ -184,5 +185,46 @@ describe('Control Nodes', () => {
     expect(forNode.rules.options.rulesVisibility.Ruleset).toBe('public');
     expect(forNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
     expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
+  });
+
+  it('evaluates and renders $for with a session-patched iterable without mutating the canonical node', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]));
+    const root = rules([loop]);
+    const patchedIterable = list([new Any('patched')]);
+
+    sessionPatchField(loop, 'iterable', patchedIterable, context);
+
+    const evald = await root.eval(context);
+
+    expect(`${evald}`).toContain('item: patched');
+    expect(loop.toTrimmedString({ context })).toContain('patched');
+    expect(loop.toTrimmedString()).toContain('a');
+    expect(loop.iterable.toTrimmedString()).toBe('a');
+  });
+
+  it('renders $if with session-patched conditions and bodies without mutating the canonical node', () => {
+    const context = new Context();
+    context.createSession();
+
+    const ifNode = new If({
+      conditions: [new Any('true', { role: 'any' })],
+      bodies: [rules([decl({ name: 'color', value: new Any('red') })])]
+    });
+    const patchedBody = rules([decl({ name: 'color', value: new Any('blue') })]);
+
+    sessionPatchField(ifNode, 'conditions', [new Any('false', { role: 'any' })], context);
+    sessionPatchField(ifNode, 'bodies', [patchedBody], context);
+
+    expect(ifNode.toTrimmedString({ context })).toContain('$if (false)');
+    expect(ifNode.toTrimmedString({ context })).toContain('color: blue;');
+    expect(ifNode.toTrimmedString()).toContain('$if (true)');
+    expect(ifNode.toTrimmedString()).toContain('color: red;');
+    expect(ifNode.conditions[0]!.toTrimmedString()).toBe('true');
+    expect(ifNode.bodies[0]!.toTrimmedString()).toContain('color: red;');
   });
 });

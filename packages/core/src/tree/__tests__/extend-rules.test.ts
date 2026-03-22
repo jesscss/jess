@@ -15,6 +15,8 @@ import {
   ExtendFlag
 } from '..';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -54,6 +56,46 @@ describe('Rules extend', () => {
           background: blue;
         }
       `);
+    });
+
+    it('does not re-parent canonical selector or target during a shallow clone in a session', () => {
+      context.createSession();
+
+      const target = el('.base');
+      const selector = el('.child');
+      const node = extend({
+        selector,
+        target
+      });
+
+      expect(selector.parent).toBe(node);
+      expect(target.parent).toBe(node);
+
+      const cloned = node.clone(false, undefined, context);
+
+      expect(cloned).not.toBe(node);
+      expect(selector.parent).toBe(node);
+      expect(target.parent).toBe(node);
+      expect(context.session?.getRuntime(selector).parent).toBe(cloned);
+      expect(context.session?.getRuntime(target).parent).toBe(cloned);
+    });
+
+    it('registers a session-patched extend target without mutating the canonical extend node', async () => {
+      const extension = extend({
+        target: el('.base')
+      });
+      const rootRules = rules([]);
+
+      context.session = new EvalSession();
+      context.extendRoots.registerRoot(rootRules);
+      context.extendRoots.pushExtendRoot(rootRules);
+      sessionPatchField(extension, 'target', el('.other'), context);
+
+      await extension.evalNode(context);
+
+      expect(context.extends).toHaveLength(1);
+      expect(context.extends[0]![0].valueOf()).toBe('.other');
+      expect(extension.target.valueOf()).toBe('.base');
     });
   });
 

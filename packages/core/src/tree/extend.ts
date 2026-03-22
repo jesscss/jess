@@ -11,6 +11,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
+import { sessionGetField } from './util/session-helpers.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -55,12 +56,25 @@ export class Extend extends Node<ExtendValue> {
   namespace: string | undefined;
   flag: ExtendFlag | undefined;
 
-  override clone(deep?: boolean): this {
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const selector = this.selector;
+    const target = this.target;
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const options = (this as any)._meta?.options;
+    let priorChildParents: Array<[Node, Node | undefined]> | undefined;
+    if (!deep && ctx?.session) {
+      priorChildParents = [];
+      if (selector instanceof Node) {
+        priorChildParents.push([selector, selector.parent]);
+      }
+      if (target instanceof Node) {
+        priorChildParents.push([target, target.parent]);
+      }
+    }
     const newNode = new (this.constructor as any)(
       {
-        selector: deep && this.selector instanceof Node ? this.selector.clone(deep) : this.selector,
-        target: deep ? this.target.clone(deep) : this.target,
+        selector: deep && selector instanceof Node ? cloneChild(selector) : selector,
+        target: deep ? cloneChild(target) : target,
         namespace: this.namespace,
         flag: this.flag
       },
@@ -68,6 +82,13 @@ export class Extend extends Node<ExtendValue> {
       this.location,
       this.treeContext
     );
+    if (priorChildParents) {
+      const session = ctx.session;
+      for (const [child, priorParent] of priorChildParents) {
+        session.getRuntime(child).parent = newNode;
+        (child as unknown as { parent?: Node }).parent = priorParent;
+      }
+    }
     newNode.inherit(this);
     return newNode;
   }
@@ -88,6 +109,30 @@ export class Extend extends Node<ExtendValue> {
     this.addFlag(F_NON_STATIC);
   }
 
+  private _getSelector(context?: Context): Selector | undefined {
+    return context
+      ? sessionGetField<Selector | undefined>(this, 'selector', context)
+      : this.selector;
+  }
+
+  private _getTarget(context?: Context): Selector {
+    return context
+      ? sessionGetField<Selector>(this, 'target', context)
+      : this.target;
+  }
+
+  private _getNamespace(context?: Context): string | undefined {
+    return context
+      ? sessionGetField<string | undefined>(this, 'namespace', context)
+      : this.namespace;
+  }
+
+  private _getFlag(context?: Context): ExtendFlag | undefined {
+    return context
+      ? sessionGetField<ExtendFlag | undefined>(this, 'flag', context)
+      : this.flag;
+  }
+
   override valueOf() {
     return `$extend ${this.target.valueOf()}`;
   }
@@ -95,7 +140,11 @@ export class Extend extends Node<ExtendValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector, flag, namespace } = this;
+    const context = options.context;
+    let target = this._getTarget(context);
+    let selector = this._getSelector(context);
+    let flag = this._getFlag(context);
+    let namespace = this._getNamespace(context);
     const mark = w.mark();
     w.add('$extend');
     if (selector) {
@@ -121,7 +170,9 @@ export class Extend extends Node<ExtendValue> {
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    let { selector, target, flag } = this;
+    let selector = this._getSelector(context);
+    let target = this._getTarget(context);
+    let flag = this._getFlag(context);
 
     const currentFrame = context.rulesetFrames.at(-1);
 

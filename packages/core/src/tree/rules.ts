@@ -41,7 +41,8 @@ import {
   sessionSetChildren,
   sessionSetChildAt,
   sessionSetDependency,
-  sessionSetIndex
+  sessionSetIndex,
+  sessionSetParent
 } from './util/session-helpers.js';
 import { EvalSession } from '../eval-session.js';
 import type { Func } from './function.js';
@@ -205,6 +206,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     if (!deep) {
       newRules.inherit(this);
+    }
+
+    if (ctx?.session?.resetEvalState) {
+      const parent = sessionGetParent(this, ctx);
+      if (parent) {
+        sessionSetParent(newRules, parent, ctx);
+        (newRules as unknown as { parent?: Node }).parent = undefined;
+      }
     }
 
     // Only preserve *function* registry across clones.
@@ -895,7 +904,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
-      const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
+      const activeParent = sessionGetParent(this, context);
+      const parentAtRule = activeParent?.type === 'AtRule' ? activeParent : null;
       const isNestableAtRuleBody =
         parentAtRule
         && nestableAtRuleNames.has(String((parentAtRule as any).name?.valueOf?.() ?? ''));
@@ -928,8 +938,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         sessionSetIndex(n, i, context);
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
-      if (this.parent && !rules.parent) {
-        this.parent.adopt(rules);
+      const parent = sessionGetParent(this, context);
+      if (parent && !sessionGetParent(rules, context)) {
+        parent.adopt(rules, context);
       }
 
       // Set context.root if not already set (needed for preEval visitors)

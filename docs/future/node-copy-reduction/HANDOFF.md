@@ -174,6 +174,14 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 - Focused verification for this subset is green:
   - `pnpm --dir packages/core test src/tree/__tests__/func.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/expression.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/import-style.test.ts`
   - Result: `95 passed, 1 skipped`
+- New high-complexity fundamentals batch is now in the working tree:
+  - `ExtendList`: `toTrimmedString()` now reads the active `value` array through the session layer and renders child extends directly, so session-patched extend arrays serialize without mutating the canonical list.
+  - `Extend`: `clone(false, ..., context)` now keeps shallow-clone parent reassignment for `selector` / `target` in the session layer instead of re-parenting canonical children, and `evalNode()` now honors a session-patched `target` when registering extends without mutating the canonical node.
+  - `Rules`: reset-session `preEval()` clones now preserve their active parent through the session runtime layer, and nestable at-rule wrapper detection now reads parentage through `sessionGetParent(...)`.
+  - `control.ts`: `If.toTrimmedString()` now reads session-patched `conditions` / `bodies` / `elseBranch`, while `For` retains the existing session-patched iterable proof.
+- Focused verification for this subset is green:
+  - `pnpm --dir packages/core test src/tree/__tests__/extend-list.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+  - Result: `66 passed, 8 skipped`
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
 - The next immediate target is now the remaining `ImportStyle` finalization / returned-tree clone-pressure audit.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:

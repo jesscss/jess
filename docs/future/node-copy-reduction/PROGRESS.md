@@ -1024,6 +1024,14 @@ Current blocker notes from live reduction attempts:
   - Focused verification for this subset is green:
     - `pnpm --dir packages/core test src/tree/__tests__/func.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/expression.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/import-style.test.ts`
     - Result: `95 passed, 1 skipped`
+- New high-complexity fundamentals batch now landed in the working tree:
+  - `ExtendList`: `toTrimmedString()` now reads the active `value` array through the session layer and renders child extends directly, so session-patched extend arrays serialize without mutating the canonical list.
+  - `Extend`: `clone(false, ..., context)` now keeps shallow-clone parent reassignment for `selector` / `target` in the session layer instead of re-parenting canonical children, and `evalNode()` now honors a session-patched `target` when registering extends without mutating the canonical node.
+  - `Rules`: reset-session `preEval()` clones now preserve their active parent through the session runtime layer, and nestable at-rule wrapper detection now reads parentage through `sessionGetParent(...)`.
+  - `control.ts`: `If.toTrimmedString()` now reads session-patched `conditions` / `bodies` / `elseBranch`, while `For` retains the existing session-patched iterable proof.
+  - Focused verification for this subset is green:
+    - `pnpm --dir packages/core test src/tree/__tests__/extend-list.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+    - Result: `66 passed, 8 skipped`
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:
