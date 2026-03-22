@@ -133,7 +133,7 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
     if (!insideGeneratedIs) {
       return CompoundSelector.create(normalizedMembers).inherit(selector) as Selector;
     }
-    const generatedIs = normalizedMembers.filter((member) =>
+    const generatedIs = normalizedMembers.filter(member =>
       isNode(member, N.PseudoSelector)
       && (member as PseudoSelector).generated
       && (member as PseudoSelector).name === ':is'
@@ -142,7 +142,7 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
       return CompoundSelector.create(normalizedMembers).inherit(selector) as Selector;
     }
     const leadingGeneratedIs = generatedIs[0]!;
-    const others = normalizedMembers.filter((member) => member !== leadingGeneratedIs);
+    const others = normalizedMembers.filter(member => member !== leadingGeneratedIs);
     return CompoundSelector.create([
       leadingGeneratedIs,
       ...others
@@ -519,12 +519,13 @@ function getRulesetExtendTarget(
   }
   const parentRs = getParentRuleset(ruleset, context);
   const parentSelectorBeforeExtend = parentRs?.getSelectorBeforeExtend(context);
+  const activeParentSelector = parentRs?.getEffectiveSelector(false, context);
   const parentSelector = (
     !partial
     && parentSelectorBeforeExtend
     && !isNode(parentSelectorBeforeExtend, N.Nil)
       ? parentSelectorBeforeExtend
-      : parentRs?.getEffectiveSelector(false, context)
+      : activeParentSelector
   );
   if (
     ownSelector
@@ -544,6 +545,22 @@ function getRulesetExtendTarget(
         parent: parentSelector,
         usingOwnSelector: true
       };
+    }
+
+    if (
+      !partial
+      && activeParentSelector
+      && !isNode(activeParentSelector, N.Nil)
+      && activeParentSelector.valueOf() !== parentSelector.valueOf()
+    ) {
+      const activeOwnMatch = selectorMatch(find, ownSelector, activeParentSelector);
+      if (activeOwnMatch.fullMatch && activeOwnMatch.crossesAmpersand) {
+        return {
+          selector: ownSelector,
+          parent: activeParentSelector,
+          usingOwnSelector: true
+        };
+      }
     }
 
     // Target doesn't match ownSelector (with parent context). Don't fall
@@ -764,9 +781,7 @@ export function processExtends(context: Context): void {
 
     let targetInfoCache: TargetInfoCache = new WeakMap();
     let changed = true;
-    let pass = 0;
     while (changed) {
-      pass++;
       changed = false;
 
       for (const rootRules of context.extendRoots.getAllRoots()) {

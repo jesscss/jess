@@ -1253,7 +1253,9 @@ export class MixinRegistry extends Registry<
         break;
       }
       do {
-        rules = rules?.parent as Rules;
+        rules = rules && this.context
+          ? sessionGetParent(rules, this.context) as Rules | undefined
+          : rules?.parent as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
@@ -1329,8 +1331,16 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
       }
 
       do {
-        rules = rules?.parent as Rules;
-        if (findRoot && rules.type === 'Rules' && rules?.parent === undefined) {
+        rules = rules && this.context
+          ? sessionGetParent(rules, this.context) as Rules | undefined
+          : rules?.parent as Rules;
+        if (
+          findRoot
+          && rules?.type === 'Rules'
+          && (this.context
+            ? sessionGetParent(rules, this.context) === undefined
+            : rules?.parent === undefined)
+        ) {
           /** We're at the root */
           break;
         }

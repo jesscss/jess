@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { sessionPatchField, sessionSetParent } from '../util/session-helpers.js';
+import { sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -489,6 +489,42 @@ describe('Mixin', () => {
       const fn = getFunctionFromMixins(mixinDef);
 
       await expectRejects(fn.call(context), ReferenceError, /No matching mixins found/);
+    });
+
+    it('evaluates mixin args against a caller source scope that exists only in the session chain', async () => {
+      context.createSession();
+
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+      const mixinRoot = rules([mixinDef]);
+      context.root = mixinRoot;
+
+      const sourceAnchor = decl({ name: 'background', value: any('white') });
+      const sourceRules = rules([
+        vardecl({ name: 'theme', value: any('blue') }),
+        sourceAnchor
+      ]);
+      const caller = call({
+        name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+        args: list([ref({ key: 'theme' }, { type: 'variable' })])
+      });
+
+      sessionSetSourceParent((caller as any).name, sourceAnchor, context);
+      context.caller = caller;
+
+      const fn = getFunctionFromMixins(mixinDef);
+      const result = await fn.call(context, ref({ key: 'theme' }, { type: 'variable' }));
+
+      expect(String(result)).toBeString(`
+        color: blue;
+      `);
     });
 
     it('should call a mixin that calls another mixin', async () => {

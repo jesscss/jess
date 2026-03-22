@@ -14,7 +14,7 @@ import {
   pseudo,
   Node,
   ExtendFlag
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionGetField, sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
@@ -750,7 +750,7 @@ describe('Rules extend', () => {
       `);
     });
 
-    it('characterizes session-patched nested rules as a remaining non-local extend gap', async () => {
+    it('extends through session-patched nested rules with the active parent context', async () => {
       context.session = new EvalSession();
 
       const nestedLeaf = ruleset({
@@ -791,17 +791,15 @@ describe('Rules extend', () => {
       const evald = await node.eval(context);
       const css = evald.toString({ context });
 
-      expect(css).toContain('.base,');
-      expect(css).toContain('.mid {');
-      expect(css).toContain('.leaf {');
+      expect(css).toContain(':is(.base, .mid) .leaf,');
+      expect(css).toContain('.end {');
       expect(css).toContain('color: red;');
-      expect(context.warnings).toHaveLength(1);
-      expect(context.warnings[0]?.code).toBe('extend/not-found');
+      expect(context.warnings).toHaveLength(0);
       expect(sessionGetParent(patchedBaseRules, context)).toBe(base);
       expect(sessionGetParent(nestedLeaf, context)).toBe(patchedBaseRules);
       expect(nestedLeaf.parent).toBe(patchedBaseRules);
-      expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toBe(':is(.base,.mid) .leaf');
-      expect(nestedLeaf.valueOf(context)).toBe(':is(.base,.mid) .leaf');
+      expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toBe(':is(.base,.mid) :is(.leaf),.end');
+      expect(nestedLeaf.valueOf(context)).toBe(':is(.base,.mid) :is(.leaf),.end');
       expect(patchedBaseRules.parent).toBeUndefined();
       expect(base.rules?.value).toHaveLength(0);
     });

@@ -36,6 +36,7 @@ import {
   sessionGetDependency,
   sessionGetField,
   sessionGetParent,
+  sessionGetSourceParent,
   sessionMergeDependencies,
   sessionPatchField,
   sessionSetChildren,
@@ -166,8 +167,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   } {
     return context
       ? sessionGetField<RulesOptions & NodeOptions & {
-          rulesVisibility: Record<string, RulesVisibility>;
-        }>(this, 'options', context)
+        rulesVisibility: Record<string, RulesVisibility>;
+      }>(this, 'options', context)
       : this.options;
   }
 
@@ -213,11 +214,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const newRules = deep
       ? super.clone(deep, cloneFn, ctx)
       : new (this.constructor as typeof Rules)(
-          this.value,
-          options ? { ...options } : undefined,
-          location,
-          this.treeContext
-        ) as this;
+        this.value,
+        options ? { ...options } : undefined,
+        location,
+        this.treeContext
+      ) as this;
 
     if (deep && options) {
       newRules.options = options;
@@ -704,9 +705,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
-  registerNode(node: Node, options?: Record<string, any>, _context?: Context) {
+  registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     if (isNode(node, N.Rules)) {
-      const nodeOptions = (node as Rules).getCurrentOptions(_context);
+      const nodeOptions = (node as Rules).getCurrentOptions(context);
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
       let optionsVisibility = options?.rulesVisibility;
@@ -2097,9 +2098,28 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       thisContext = new Context();
     }
     let caller = thisContext.caller;
-    let sourceParent = (caller as any)?.name instanceof Node
-      ? (caller as any).name.sourceParent
-      : caller?.sourceParent;
+    const getSessionRulesParent = (node: Node | undefined): Rules | undefined => {
+      let possibleRules = node ? sessionGetParent(node, thisContext) : undefined;
+      while (possibleRules && possibleRules.type !== 'Rules') {
+        possibleRules = sessionGetParent(possibleRules, thisContext);
+      }
+      return possibleRules as Rules | undefined;
+    };
+    const getSessionSourceRulesParent = (node: Node | undefined): Rules | undefined => {
+      let current = node;
+      let sourceParent = current ? sessionGetSourceParent(current, thisContext) : undefined;
+      while (current && !sourceParent) {
+        current = sessionGetParent(current, thisContext);
+        sourceParent = current ? sessionGetSourceParent(current, thisContext) : undefined;
+      }
+      return sourceParent ? getSessionRulesParent(sourceParent) : undefined;
+    };
+    const callerSourceNode = (caller as any)?.name instanceof Node
+      ? (caller as any).name
+      : caller;
+    let sourceParent = callerSourceNode
+      ? sessionGetSourceParent(callerSourceNode, thisContext)
+      : undefined;
     const getCandidateParent = (node: Node): Node => {
       const parent = sessionGetParent(node, thisContext);
       if (!parent) {
@@ -2109,7 +2129,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     };
     let nodeArgs: Node[] = [];
     const savedRulesContext = thisContext.rulesContext;
-    const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? savedRulesContext;
+    const argEvalRulesContext = getSessionRulesParent(caller) ?? getSessionSourceRulesParent(callerSourceNode) ?? savedRulesContext;
     thisContext.rulesContext = argEvalRulesContext;
     try {
       for (let arg of args) {

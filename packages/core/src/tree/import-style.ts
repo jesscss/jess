@@ -308,7 +308,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
     const restoreSharedImportChildren = shouldCloneImportWrapper;
     const originalParents = (materializeConfiguredComposeChildren || restoreSharedImportChildren)
-      ? new Map<Node, Node | undefined>(evaluatedRules.value.map((child) => [child, child.parent]))
+      ? new Map<Node, Node | undefined>(evaluatedRules.value.map(child => [child, child.parent]))
       : undefined;
     let out = type === 'import' && !shouldCloneImportWrapper
       ? evaluatedRules
@@ -331,15 +331,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       }
     }
     if (type === 'import' && importOptions!._dedupe === true) {
-      // Detach the child array before swapping in per-import Ruleset clones so
-      // repeated `_dedupe` imports keep the cached import root's registry slot.
+      // Detach the child array before swapping in per-import top-level clones so
+      // repeated `_dedupe` imports keep the cached import root's registry slot
+      // while the returned tree gets real top-level parent links for every child.
       out.setData([...out.value]);
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
-        if (isNode(child, N.Ruleset)) {
-          const rulesetClone = (child as Ruleset).clone(true) as Ruleset;
-          out.setData(i, rulesetClone);
-        }
+        const materialized = child.clone(true) as Node;
+        out.setData(i, materialized);
       }
     }
     // Import type: variables are visible and re-exported (not local)
@@ -514,7 +513,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const withRules = withRulesNode as Rules;
           if (withValues.type === 'with') {
             configuredWithCanonicalParents = new Map(
-              rules.value.map((child) => [child, child.parent] as const)
+              rules.value.map(child => [child, child.parent] as const)
             );
           }
 

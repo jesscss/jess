@@ -320,6 +320,29 @@ describe('reference', () => {
 
       expect(`${evald}`).toBe('red');
     });
+
+    it('uses the session parent chain for mixin lookup without an explicit target', async () => {
+      const outer = rules([
+        mixin({
+          name: any('feature'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]);
+      const inner = rules([
+        call({ name: ref({ key: 'feature' }, { type: 'mixin' }) })
+      ]);
+
+      context.session = new EvalSession();
+      context.root = outer;
+      context.rulesContext = inner;
+      sessionSetParent(inner, outer, context);
+
+      const evald = await inner.at(0)!.eval(context);
+
+      expect(`${evald}`).toContainString('color: red');
+    });
   });
 
   describe('errors', () => {

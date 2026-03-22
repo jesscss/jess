@@ -1455,6 +1455,32 @@ describe('Style import', () => {
       expect(importedRuleset.selector.parent).toBe(importedRuleset);
     });
 
+    it('deduped imports materialize top-level declaration parents in returned trees without corrupting canonical source parents', async () => {
+      const libraryPath = resolve(process.cwd(), 'dedupe-vars.jess');
+      const importedVar = vardecl({ name: 'dedupeVar', value: any('red') });
+      const sourceRules = rules([importedVar]);
+      context.sourceTrees.set(libraryPath, sourceRules);
+      const cachedEvaldRules = rules([
+        vardecl({ name: 'dedupeVar', value: any('red') })
+      ]);
+      context.evaldTrees.set(libraryPath, cachedEvaldRules);
+
+      expect(importedVar.parent).toBe(sourceRules);
+
+      const node = rules([
+        style({ path: quoted(any('dedupe-vars.jess')) }, { type: 'import' })
+      ]);
+
+      const evald = await node.eval(context);
+      const dedupedImport = evald.at(0) as Rules;
+      const dedupedVar = dedupedImport.at(0) as VarDeclaration;
+
+      expect(dedupedVar.parent).toBe(dedupedImport);
+      expect(dedupedVar).not.toBe(importedVar);
+      expect(`${dedupedVar}`).toBe('$dedupeVar: red');
+      expect(importedVar.parent).toBe(sourceRules);
+    });
+
     it('compose multiple:true renders repeated modules', async () => {
       context.sourceTrees.set('compose-repeat.jess', rules([
         ruleset({

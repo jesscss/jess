@@ -910,7 +910,7 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Immediate next node slice: `Rules` / mixin-call source-scope follow-up
+- [ ] Immediate next node slice: `ImportStyle` returned-tree / finalization clone-pressure follow-up
 - [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
 - [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 - [ ] Keep Stage 20.6 (`Scope / provenance semantics cleanup`) deferred until the lower-order node queue is sufficiently stable
@@ -1090,13 +1090,10 @@ Current blocker notes from live reduction attempts:
   - verification:
     - `pnpm --dir packages/core test src/tree/__tests__/reference.test.ts`
     - Result: `30 passed`
-- That narrowed the import blocker again:
-  - the same 3 `import-style` failures still reproduce even after the `Reference` fix
-  - so the remaining owner is not `Reference` either; it is broader returned-tree parent/registry semantics in the import/compose path
 - Latest clean mixed slice on top of that:
   - `Rules` readonly compose-shadow checks now enumerate direct declarations through a session-aware helper instead of reading canonical registry `.index` directly, so session-only declaration replacements are visible to the readonly guard.
   - `import-style.test.ts` now proves returned import/compose trees already preserve descendant parent chains to their returned `Rules`, which narrows the remaining 3 failures away from simple parent-link loss.
-  - `control.test.ts` now characterizes the next `$for` blocker: a session-patched loop-body `Rules.options.rulesVisibility` still does not survive the clone boundary in a way that changes downstream nested lookup.
+  - `control.test.ts` now characterizes that a session-patched loop-body `Rules.options.rulesVisibility` survives the clone boundary; this is not an active bug because control-block rules are intended to be public by default.
   - verification:
     - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts`
     - `pnpm --dir packages/core test src/tree/__tests__/control.test.ts`
@@ -1112,6 +1109,21 @@ Current blocker notes from live reduction attempts:
     - `pnpm --dir packages/core test src/tree/__tests__/ampersand.test.ts`
   - result:
     - only the same 2 known noisy selector-list collapse failures remain
+- Next clean ancestry/extend batch now landed in the working tree:
+  - `Rules`: `getFunctionFromMixins()` now derives caller/source scope from the session parent/source-parent chain instead of canonical `caller?.rulesParent` / `caller?.sourceRulesParent`.
+  - `registry-utils.ts`: `MixinRegistry.find()` and `FunctionRegistry.find()` now climb through `sessionGetParent(...)`, not canonical `rules.parent`, so mixin/function lookup no longer falls back to canonical scope chains on the active path.
+  - `extend-roots.ts`: nested extend target selection now retries against the parent's active effective selector when `selectorBeforeExtend` misses, which makes the old nested-session characterization a real passing behavior.
+  - `extend-rules.test.ts`: the old `extend/not-found` characterization is now a passing nested rewrite behavior.
+  - `func.test.ts`, `mixin.test.ts`, and `reference.test.ts` add focused ancestry proofs for function and mixin lookup through session-only parent/source chains.
+  - `import-style.ts`: deduped imports now materialize top-level declaration children in returned trees without corrupting canonical source parents.
+  - `import-style.test.ts` remains green on the focused set, including the new top-level declaration-parent materialization proof for deduped imports.
+  - verification:
+    - `pnpm --dir packages/core exec vitest run src/tree/__tests__/mixin.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/func.test.ts -t "..."`
+    - `pnpm --dir packages/core exec vitest run src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/extend-import-style.test.ts -t "..."`
+    - `pnpm --dir packages/core test src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/func.test.ts src/tree/__tests__/reference.test.ts`
+  - result:
+    - all green on the focused set
+- That means the old `Rules` / mixin-call source-scope follow-up is no longer the queue head. The live immediate next slice is now `ImportStyle` returned-tree / finalization clone-pressure cleanup.
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

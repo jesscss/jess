@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Context } from '../../context.js';
 import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { sessionPatchField, sessionSetParent } from '../util/session-helpers.js';
 import * as rulesModule from '../rules.js';
 
 afterEach(() => {
@@ -156,5 +156,30 @@ describe('Func', () => {
     expect(result.toTrimmedString()).toBe('ok');
     expect(functionNode.toTrimmedString({ context: ctx })).toContain('$function renamed()');
     expect(functionNode.toTrimmedString()).toContain('$function add()');
+  });
+
+  it('Reference(type=function) uses the session parent chain when the caller Rules is only session-parented', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.createSession();
+
+    const outer = rules([
+      fn({
+        name: any('add'),
+        body: rules([
+          decl({ name: 'return', value: any('ok') })
+        ])
+      })
+    ]);
+    const inner = rules([
+      call({ name: ref('add', { type: 'function' }), args: list([]) })
+    ]);
+
+    ctx.root = outer;
+    ctx.rulesContext = inner;
+    sessionSetParent(inner, outer, ctx);
+
+    const result = await inner.at(0)!.eval(ctx);
+
+    expect(result.toTrimmedString()).toBe('ok');
   });
 });
