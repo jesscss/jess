@@ -279,6 +279,11 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `ruleset.test.ts`: `Ruleset.preEval()` already composes and registers a session-patched nested child ruleset under the active extend root.
   - `import-style.test.ts`: `_dedupe` also cannot use shallow top-level child clones, because that reparents nested canonical children.
   - So the next live owner is the shared evaluated-view materialization contract in `node-base.ts`, not another local `ImportStyle` or `Ruleset` patch.
+- Latest mixed follow-up now landed in the working tree:
+  - `Rules`: mixin output `Rules` now keep both `parent` and `sourceParent` in the session layer instead of materializing those links canonically on the lower `getFunctionFromMixins()` path.
+  - `Ruleset`: `evalNode()` now checks `rules.visibleRules(context)` instead of the canonical no-context path when deciding whether the ruleset itself should remain visible.
+  - `extend-roots.ts`: downstream namespace-aware matching is now wired through, and namespace-excluded misses are classified as `extend/not-found` instead of `extend/not-accessible`.
+  - `selector.ts` / `ampersand.ts`: `Selector.getKeySet(context?)` is now in place, and `selector-complex.test.ts` proves consumer-side code can derive a session-specific complex key set through an `Ampersand` child without changing canonical `keySet`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

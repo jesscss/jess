@@ -1,4 +1,4 @@
-import { any, expr, sel, compound, el, co, pseudo, sellist } from '../index.js';
+import { any, expr, sel, compound, el, co, pseudo, sellist, amp, rules, ruleset } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionGetField, sessionPatchField } from '../util/session-helpers.js';
@@ -152,6 +152,35 @@ describe('Complex selector', () => {
       expect(node.valueOf()).toBe('.solo');
       expect(Array.isArray(node.value)).toBe(false);
       expect(node.value.valueOf()).toBe('.solo');
+    });
+
+    it('derives a session-specific complex keySet through an ampersand child without changing canonical keySet', () => {
+      context.session = new EvalSession();
+
+      const parent = ruleset({
+        selector: el('.alpha'),
+        rules: rules([])
+      });
+      parent.selector.keySetLibrary = context.selectorBits;
+
+      const node = sel([
+        amp({ selectorContainer: parent as any }),
+        co('>'),
+        el('.tail')
+      ]);
+      node.keySetLibrary = context.selectorBits;
+      for (const child of node.value as any[]) {
+        if ('keySetLibrary' in child) {
+          child.keySetLibrary = context.selectorBits;
+        }
+      }
+
+      const patched = el('.beta');
+      patched.keySetLibrary = context.selectorBits;
+      sessionPatchField(parent, 'selector', patched, context);
+
+      expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha', '>', '.tail']))).toBe(true);
+      expect(node.getKeySet(context).equals(context.selectorBits.getBitset(['.beta', '>', '.tail']))).toBe(true);
     });
   });
 });

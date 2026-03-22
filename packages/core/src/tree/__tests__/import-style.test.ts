@@ -1535,6 +1535,39 @@ describe('Style import', () => {
       expect(`${shallowClone}`).toContain('color: red');
     });
 
+    it('shared evaluated-view materialization must preserve evaluated state, source provenance, and canonical immutability together', () => {
+      const sourceRuleset = ruleset({
+        selector: sellist([sel([el('.dedupe-contract')])]),
+        rules: rules([
+          decl({ name: any('color'), value: ref('libColor', { type: 'variable' }) })
+        ])
+      });
+      const sourceDecl = sourceRuleset.rules.at(0) as Node;
+
+      const evaluatedRuleset = ruleset({
+        selector: sellist([sel([el('.dedupe-contract')])]),
+        rules: rules([
+          decl({ name: any('color'), value: any('red') })
+        ])
+      });
+      const evaluatedDecl = evaluatedRuleset.rules.at(0) as Node;
+      evaluatedRuleset.sourceNode = sourceRuleset;
+      evaluatedDecl.sourceNode = sourceDecl;
+
+      const materialized = evaluatedRuleset.clone(true);
+      const materializedDecl = materialized.rules.at(0) as Node;
+
+      expect(`${materialized}`).toContain('color: red');
+      expect(materialized.sourceNode).toBe(sourceRuleset);
+      expect(materializedDecl.sourceNode).toBe(sourceDecl);
+      expect(materialized.selector.parent).toBe(materialized);
+      expect(materialized.rules.parent).toBe(materialized);
+      expect(materializedDecl.parent).toBe(materialized.rules);
+      expect(evaluatedRuleset.selector.parent).toBe(evaluatedRuleset);
+      expect(evaluatedRuleset.rules.parent).toBe(evaluatedRuleset);
+      expect(evaluatedDecl.parent).toBe(evaluatedRuleset.rules);
+    });
+
     it('compose multiple:true renders repeated modules', async () => {
       context.sourceTrees.set('compose-repeat.jess', rules([
         ruleset({
