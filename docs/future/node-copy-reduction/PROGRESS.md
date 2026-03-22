@@ -1093,6 +1093,18 @@ Current blocker notes from live reduction attempts:
 - That narrowed the import blocker again:
   - the same 3 `import-style` failures still reproduce even after the `Reference` fix
   - so the remaining owner is not `Reference` either; it is broader returned-tree parent/registry semantics in the import/compose path
+- Latest clean mixed slice on top of that:
+  - `Rules` readonly compose-shadow checks now enumerate direct declarations through a session-aware helper instead of reading canonical registry `.index` directly, so session-only declaration replacements are visible to the readonly guard.
+  - `import-style.test.ts` now proves returned import/compose trees already preserve descendant parent chains to their returned `Rules`, which narrows the remaining 3 failures away from simple parent-link loss.
+  - `control.test.ts` now characterizes the next `$for` blocker: a session-patched loop-body `Rules.options.rulesVisibility` still does not survive the clone boundary in a way that changes downstream nested lookup.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts`
+    - `pnpm --dir packages/core test src/tree/__tests__/control.test.ts`
+    - `pnpm --dir packages/core test src/tree/__tests__/import-style.test.ts src/tree/__tests__/reference.test.ts`
+  - result:
+    - `rules.test.ts`: green
+    - `control.test.ts`: green
+    - `import-style.test.ts`: still only the same 3 known failures (`parentVar`, `with`, `set`)
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

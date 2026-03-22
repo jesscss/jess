@@ -25,7 +25,7 @@ import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { sessionPatchField, sessionReplaceNode } from '../util/session-helpers.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -94,6 +94,36 @@ describe('Style import', () => {
       // The declaration should already be evaluated as part of the ruleset evaluation
       const importedDecl = (importedRuleset as any).rules.at(0);
       expect(`${importedDecl}`).toBe('color: red');
+    });
+
+    it('import returned trees already preserve descendant parent chains to the returned Rules', async () => {
+      const importedPath = resolve(process.cwd(), 'imported-parent-chain.jess');
+      context.sourceTrees.set(importedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.imported')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('imported-parent-chain.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const importedRules = evald.at(0) as Rules;
+      const importedRuleset = importedRules.at(0);
+      const importedDecl = (importedRuleset as any).rules.at(0);
+
+      expect(importedRules.parent).toBe(evald);
+      expect(importedRuleset.parent).toBe(importedRules);
+      expect((importedRuleset as any).rules.parent).toBe(importedRuleset);
+      expect(importedDecl.parent).toBe((importedRuleset as any).rules);
     });
 
     it('compose type cannot see parent rules variables', async () => {
@@ -395,6 +425,33 @@ describe('Style import', () => {
       }).rejects.toThrowError('"composedVar" is readonly');
     });
 
+    it('compose readonly checks see session-only declaration replacements', async () => {
+      context.session = new EvalSession();
+      const composedPath = resolve(process.cwd(), 'composed.jess');
+      context.sourceTrees.set(composedPath, rules([
+        vardecl({ name: 'composedVar', value: any('initial') })
+      ]));
+
+      const placeholder = vardecl({ name: 'otherVar', value: any('placeholder') });
+      const replacement = vardecl({ name: 'composedVar', value: any('modified') });
+      const node = rules([
+        style({
+          path: quoted(any('composed.jess'))
+        }, {
+          type: 'compose',
+          namespace: '*'
+        }),
+        placeholder
+      ]);
+
+      sessionReplaceNode(placeholder, replacement, context);
+
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrowError('"composedVar" is readonly');
+      expect(node.at(1)).toBe(placeholder);
+    });
+
     it('import type is NOT readonly by default', async () => {
       context.sourceTrees.set('imported.jess', rules([
         vardecl({ name: 'importedVar', value: any('initial') })
@@ -552,6 +609,42 @@ describe('Style import', () => {
       expect(foundDecl).toBeDefined();
       const resolved = await foundDecl.eval(context);
       expect(`${resolved}`).toBe('color: purple');
+    });
+
+    it('configured compose returned trees already preserve descendant parent chains to the returned Rules', async () => {
+      const libraryPath = resolve(process.cwd(), 'library-parent-chain.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.box')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('purple') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library-parent-chain.jess')),
+          withNode: rules([
+            vardecl({ name: 'primaryColor', value: any('purple') })
+          ]) as any,
+          withType: 'with'
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+      const foundRuleset = Array.from(composedRules.value).find(
+        node => isNode(node, N.Ruleset)
+      );
+      const foundDecl = (foundRuleset as any).rules.at(0);
+
+      expect(foundRuleset!.parent).toBe(composedRules);
+      expect((foundRuleset as any).rules.parent).toBe(foundRuleset);
+      expect(foundDecl.parent).toBe((foundRuleset as any).rules);
     });
 
     it('can inject variables with "set" type', async () => {

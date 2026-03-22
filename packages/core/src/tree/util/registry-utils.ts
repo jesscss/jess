@@ -15,7 +15,7 @@ import type { SessionRegistryDelta } from '../../eval-session.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { sessionGetDependency } from './session-helpers.js';
+import { sessionGetChildren, sessionGetDependency } from './session-helpers.js';
 
 const { isArray } = Array;
 
@@ -1712,6 +1712,24 @@ export class DeclarationRegistry extends Registry<Declaration> {
     }
     return declCandidate.values().next().value;
   }
+}
+
+export function getDirectDeclarationsByKey(
+  rules: Rules,
+  key: string | undefined,
+  context?: Context
+): Declaration[] {
+  const children = context ? sessionGetChildren(rules, context) : rules.value;
+  const matches: Declaration[] = [];
+  for (const child of children) {
+    if (!isNode(child, N.Declaration | N.VarDeclaration)) {
+      continue;
+    }
+    if (key === undefined || child.name.toString() === key) {
+      matches.push(child);
+    }
+  }
+  return matches;
 }
 
 function arraysEqual(a: string[], b: string[]) {

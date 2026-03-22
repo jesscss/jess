@@ -17,7 +17,8 @@ import {
   ref,
   rules,
   ruleset,
-  sel
+  sel,
+  vardecl
 } from '../index.js';
 import { Context } from '../../context.js';
 import { sessionPatchField } from '../util/session-helpers.js';
@@ -316,6 +317,36 @@ describe('Control Nodes', () => {
     expect(css).toContain('padding: a, b;');
     expect(css).not.toContain('padding: a;\n');
     expect(String(templateDecl.options.normalizedFromAssign ?? '')).toBe('');
+  });
+
+  it('preserves a session-patched loop-body rulesVisibility across the $for clone boundary for nested lookups', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const loopRules = rules([
+      ruleset({
+        selector: sel([el('.item')]) as any,
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      })
+    ]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('inner')]), loopRules);
+    const root = rules([
+      vardecl({ name: 'value', value: new Any('outer') }),
+      loop
+    ]);
+
+    sessionPatchField(loop.rules, 'options', {
+      ...loop.rules.options,
+      rulesVisibility: {
+        ...loop.rules.options.rulesVisibility,
+        VarDeclaration: 'private'
+      }
+    }, context);
+
+    await expect(root.eval(context)).rejects.toThrowError(/'value' is not defined/);
+    expect(loop.rules.options.rulesVisibility.VarDeclaration).toBe('public');
   });
 
   it('reads rules-iterable declaration names and values through the session layer', async () => {

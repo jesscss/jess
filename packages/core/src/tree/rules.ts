@@ -184,6 +184,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.options = options;
   }
 
+  private _cloneOptionsForContext(context?: Context): (RulesOptions & NodeOptions) | undefined {
+    const options = context
+      ? this.getCurrentOptions(context)
+      : (this as any)._meta?.options as (RulesOptions & NodeOptions) | undefined;
+    if (!options) {
+      return undefined;
+    }
+    return {
+      ...options,
+      rulesVisibility: options.rulesVisibility
+        ? { ...options.rulesVisibility }
+        : options.rulesVisibility
+    };
+  }
+
   /**
    * Rules are often cloned during `preEval()` when a session is active.
    * If callers register functions/mixins/declarations on the parsed tree
@@ -191,7 +206,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * lookups during evaluation work as expected.
    */
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const options = (this as any)._meta?.options as (RulesOptions & NodeOptions) | undefined;
+    const options = this._cloneOptionsForContext(ctx);
     const location = Array.isArray(this.location) && this.location.length === 6
       ? this.location as LocationInfo
       : undefined;
@@ -203,6 +218,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           location,
           this.treeContext
         ) as this;
+
+    if (deep && options) {
+      newRules.options = options;
+    }
 
     if (!deep) {
       newRules.inherit(this);
@@ -1893,27 +1912,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // shadow readonly variables from imported Rules (compose type) at the same level
           // Only check direct children of the Rules node, not nested variables (e.g., inside rulesets)
           if (rules.rulesSet.length > 0) {
-            let currentRegistry = rules.getRegistry('declaration');
-            currentRegistry.indexPendingItems();
             for (const entry of rules.rulesSet) {
               if (entry.readonly) {
-                let importedRegistry = entry.node.getRegistry('declaration');
-                importedRegistry.indexPendingItems();
-                for (const [key, declarations] of importedRegistry.index) {
-                  for (const decl of declarations) {
-                    if (isNode(decl, N.VarDeclaration)) {
-                    // Check if a variable with this name exists in the current Rules' registry
-                      let currentDeclarations = currentRegistry.index.get(key);
-                      if (currentDeclarations) {
-                        for (const currentDecl of currentDeclarations) {
-                          if (isNode(currentDecl, N.VarDeclaration) && !currentDecl.options?.setDefined) {
-                          // Only throw if the variable is a direct child of the Rules node (same level)
-                          // Nested variables (e.g., inside rulesets) are allowed to shadow
-                            if (currentDecl.parent === rules) {
-                              throw new ReferenceError(`"${key}" is readonly`);
-                            }
-                          }
-                        }
+                const importedVars = Registries
+                  .getDirectDeclarationsByKey(entry.node, undefined, context)
+                  .filter((decl): decl is VarDeclaration => isNode(decl, N.VarDeclaration));
+                for (const decl of importedVars) {
+                  const key = decl.name.toString();
+                  const currentDeclarations = Registries.getDirectDeclarationsByKey(rules, key, context);
+                  for (const currentDecl of currentDeclarations) {
+                    if (isNode(currentDecl, N.VarDeclaration) && !currentDecl.options?.setDefined) {
+                      // Only throw if the variable is a direct child of the Rules node (same level)
+                      // Nested variables (e.g., inside rulesets) are allowed to shadow
+                      if (sessionGetParent(currentDecl, context) === rules) {
+                        throw new ReferenceError(`"${key}" is readonly`);
                       }
                     }
                   }

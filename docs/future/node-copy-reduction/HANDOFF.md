@@ -244,6 +244,18 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 - This narrowed the import blocker further:
   - the same 3 `import-style` failures still reproduce even after the `Reference` fix
   - so the remaining owner is not `Reference` either; it is broader returned-tree parent/registry semantics in the import/compose path
+- Next clean mixed slice after that:
+  - `Rules`: readonly compose-shadow checks now enumerate direct declarations through a session-aware helper instead of canonical registry `.index`, so session-only declaration replacements are visible to the readonly guard.
+  - `import-style.test.ts`: returned import/compose trees already preserve descendant parent chains to their returned `Rules`, so the remaining 3 import failures are not caused by simple descendant parent loss.
+  - `control.test.ts`: the next `$for` blocker is now characterized at the clone/options boundary; a session-patched loop-body `Rules.options.rulesVisibility` still does not survive into downstream nested lookup behavior.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts`
+    - `pnpm --dir packages/core test src/tree/__tests__/control.test.ts`
+    - `pnpm --dir packages/core test src/tree/__tests__/import-style.test.ts src/tree/__tests__/reference.test.ts`
+  - result:
+    - `rules.test.ts`: green
+    - `control.test.ts`: green
+    - `import-style.test.ts`: still only the same 3 known failures
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
