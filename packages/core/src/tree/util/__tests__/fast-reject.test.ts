@@ -1,6 +1,8 @@
-import { compound, el, sel, pseudo, co, sellist } from '../../index.js';
+import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../../index.js';
 import { Context } from '../../../context.js';
+import { EvalSession } from '../../../eval-session.js';
 import { selectorMatch } from '../selector-match-core.js';
+import { sessionPatchField } from '../session-helpers.js';
 
 describe('BitSets and selectors', () => {
   let context: Context;
@@ -115,6 +117,49 @@ describe('Fast-reject in selectorMatch', () => {
   let context: Context;
   beforeEach(() => {
     context = new Context();
+  });
+
+  test('evalContext-aware matcher can see a session-patched ampersand parent while compare consumers stay canonical', () => {
+    context.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.selector.keySetLibrary = context.selectorBits;
+
+    const patched = el('.beta');
+    patched.keySetLibrary = context.selectorBits;
+
+    const find = sel([
+      amp({ selectorContainer: parent as any }),
+      co('>'),
+      el('.tail')
+    ]);
+    find.keySetLibrary = context.selectorBits;
+    for (const child of find.value as any[]) {
+      if ('keySetLibrary' in child) {
+        child.keySetLibrary = context.selectorBits;
+      }
+    }
+
+    const target = sel([el('.beta'), co('>'), el('.tail')]);
+    target.keySetLibrary = context.selectorBits;
+    for (const child of target.value as any[]) {
+      if ('keySetLibrary' in child) {
+        child.keySetLibrary = context.selectorBits;
+      }
+    }
+
+    const findList = sellist([find]);
+    findList.keySetLibrary = context.selectorBits;
+
+    sessionPatchField(parent, 'selector', patched, context);
+
+    expect(selectorMatch(find, target).fullMatch).toBe(false);
+    expect(selectorMatch(find, target, undefined, context).fullMatch).toBe(true);
+    expect(find.compare(target)).not.toBe(0);
+    expect(findList.compare(target)).not.toBe(0);
   });
 
   test('rejects completely disjoint simple selectors', async () => {

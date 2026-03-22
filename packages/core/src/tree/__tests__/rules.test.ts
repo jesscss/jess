@@ -241,6 +241,27 @@ describe('Rules', () => {
         })).toBe(feature);
       });
 
+      it('characterizes shallow Rules clones as sharing nested ruleset bodies', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+
+        const cloned = node.clone(false, undefined, ctx);
+        const clonedRuleset = cloned.at(0) as typeof nested;
+
+        expect(clonedRuleset).toBe(nested);
+        expect(clonedRuleset.rules).toBe(nestedBody);
+        expect(clonedRuleset.rules.at(0)).toBe(nestedBody.at(0));
+      });
+
       it('peeks into optional child scope', async () => {
         let node = rules([
           rules([

@@ -644,6 +644,44 @@ describe('Mixin', () => {
       }
     });
 
+    it('wrapper child output under a session still leaves nested ruleset selector/body tied to a non-returned node', async () => {
+      context.createSession();
+
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        rules: rules([
+          ruleset({
+            selector: el('.inner'),
+            rules: rules([
+              decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+      const mixinRoot = rules([mixinDef]);
+      context.root = mixinRoot;
+
+      const fn = getFunctionFromMixins(mixinDef);
+      const result = await fn.call(context, any('blue'));
+      const outputRules = result as Rules;
+      const outputRuleset = outputRules.value.find((node: any) => node?.selector && node?.rules) as any;
+      const outputDecl = outputRuleset.rules.at(0);
+
+      expect(outputRuleset).toBeDefined();
+      expect(outputRuleset.parent).toBe(outputRules);
+      expect(outputRuleset.selector.parent).not.toBe(outputRuleset);
+      expect(outputRuleset.rules.parent).not.toBe(outputRuleset);
+      expect(outputDecl.parent).toBe(outputRuleset.rules);
+      expect(String(result)).toBeString(`
+        .inner {
+          color: blue;
+        }
+      `);
+    });
+
     it('should call a mixin that calls another mixin', async () => {
       // Create a base mixin: .base-mixin(@color) { color: @color; }
       const baseMixin = mixin({

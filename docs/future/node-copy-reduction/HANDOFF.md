@@ -296,6 +296,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `import-style.test.ts`: focused characterization now proves the remaining local import-wrapper blocker is `Rules.clone(false)` reparenting shared top-level children immediately before finalization can decide whether to keep or materialize them.
   - `control.test.ts`: focused characterization now proves nested prior-iteration output is already materialized before `$for` `priorScope` consumes it, so the remaining owner stays in `Rules.eval()` / returned-child materialization.
   - `selector-complex.test.ts`: consumer-side proof remains green that a complex selector can derive a session-specific key set through an ampersand child.
+- Latest ruleset/owner-sharpening follow-up now landed in the working tree:
+  - `ruleset.ts`: reference-mode nested selector composition now runs through one shared filtered-parent path, so the remaining `collapseNesting` reference-import extend failures are green.
+  - `extend-rules.test.ts`: now proves a nested ampersand selector extends correctly through a session-patched parent selector.
+  - `mixin.test.ts`: focused characterization now proves the remaining lower mixin-output gap is no longer `Rules` provenance; it is a returned `Ruleset` whose `selector` and `rules` containers are still tied to a non-returned owner.
+  - `rules.test.ts`: focused characterization now proves the remaining control-family parent-integrity issue is lower than `Rules.eval()` itself on the current slice, because shallow `Rules.clone(false, ..., ctx)` already shares nested `Ruleset.rules` bodies by reference.
+  - `fast-reject.test.ts`: focused characterization now proves raw `selectorMatch(..., context)` can see a session-patched ampersand parent while compare-side consumers still stay canonical.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
@@ -318,7 +324,7 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Immediate work
 
-1. Follow the immediate node queue in `node-session-status.md` (lower `Rules` mixin/output-shaping materialization is still next).
+1. Follow the immediate node queue in `node-session-status.md` (`Ruleset` selector/body materialization for returned mixin wrapper output is next).
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.
