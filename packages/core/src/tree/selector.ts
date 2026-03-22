@@ -16,6 +16,7 @@ const { isArray } = Array;
 
 export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   valueOf(): string;
+  getKeySet(context?: Context): BitSet<string>;
   eval(context: Context): MaybePromise<Selector<T>> | MaybePromise<Nil>;
 }
 
@@ -51,6 +52,29 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       this.computeKeySets();
     }
     return this._keySet!;
+  }
+
+  getKeySet(context?: Context): BitSet<string> {
+    if (!context) {
+      return this.keySet;
+    }
+    let library = this.keySetLibrary;
+    if (!library) {
+      throw new Error('Selector keySet library not found');
+    }
+
+    let children = (this as any).value;
+    if (isArray(children)) {
+      let keySet: BitSet<string> | undefined;
+      for (const child of children as Selector[]) {
+        let childKeySet = child.getKeySet(context);
+        keySet = keySet ? keySet.or(childKeySet) : childKeySet.clone();
+      }
+      return keySet ?? library.getBitset();
+    }
+
+    let value = String((this as unknown as { valueOf(context?: Context): string }).valueOf(context));
+    return library.getBitset([value]);
   }
 
   get visibleKeySet() {

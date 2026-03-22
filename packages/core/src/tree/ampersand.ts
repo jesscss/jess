@@ -154,6 +154,23 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     }
   }
 
+  override getKeySet(context?: Context) {
+    if (!context) {
+      return this.keySet;
+    }
+
+    const current = getSelectorFromContainer(this._selectorContainer, context);
+    if (!current || isNode(current, N.Nil)) {
+      const library = this.keySetLibrary;
+      if (!library) {
+        throw new Error('Selector keySet library not found');
+      }
+      return library.getBitset();
+    }
+
+    return current.getKeySet(context);
+  }
+
   /**
    * Returns the current selector from the selector container (live when container is ruleset value).
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
