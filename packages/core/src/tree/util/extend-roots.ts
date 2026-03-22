@@ -443,6 +443,19 @@ function isInstructionVisibleForRoot(
   return visibleRoots.has(rootRules);
 }
 
+function isRootWithinInstructionNamespace(
+  context: Context,
+  rootRules: Rules,
+  instruction: {
+    namespace?: string;
+  }
+): boolean {
+  if (!instruction.namespace || instruction.namespace === '*') {
+    return true;
+  }
+  return context.extendRoots.isRootInNamespace(rootRules, instruction.namespace);
+}
+
 type RecordedExtendInstruction = {
   target: Selector;
   extendWith: Selector;
@@ -891,6 +904,9 @@ export function processExtends(context: Context): void {
       const targetFilePath = targetFile?.fullPath;
 
       const blockedProtectedRootExists = Array.from(context.extendRoots.getAllRoots()).some((root) => {
+        if (!isRootWithinInstructionNamespace(context, root, instruction)) {
+          return false;
+        }
         if (isInstructionVisibleForRoot(context, root, instruction, getCachedVisibleRoots)) {
           return false;
         }
