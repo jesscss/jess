@@ -1513,6 +1513,28 @@ describe('Style import', () => {
       expect(dedupedVar).not.toBe(sourceMaterialized);
     });
 
+    it('deduped imports cannot use shallow top-level child clones because nested canonical children are reparented', () => {
+      const canonicalRuleset = ruleset({
+        selector: sellist([sel([el('.dedupe-shallow')])]),
+        rules: rules([decl({ name: any('color'), value: any('red') })])
+      });
+
+      const canonicalSelector = canonicalRuleset.selector;
+      const canonicalBody = canonicalRuleset.rules;
+
+      expect(canonicalSelector.parent).toBe(canonicalRuleset);
+      expect(canonicalBody.parent).toBe(canonicalRuleset);
+
+      const shallowClone = canonicalRuleset.clone(false);
+
+      expect(shallowClone).not.toBe(canonicalRuleset);
+      expect(shallowClone.selector).toBe(canonicalSelector);
+      expect(shallowClone.rules).toBe(canonicalBody);
+      expect(canonicalSelector.parent).toBe(shallowClone);
+      expect(canonicalBody.parent).toBe(shallowClone);
+      expect(`${shallowClone}`).toContain('color: red');
+    });
+
     it('compose multiple:true renders repeated modules', async () => {
       context.sourceTrees.set('compose-repeat.jess', rules([
         ruleset({

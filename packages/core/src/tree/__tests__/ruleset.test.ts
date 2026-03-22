@@ -1,7 +1,8 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '..';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { getPrintOptions } from '../util/print.js';
+import { sessionGetParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -190,6 +191,41 @@ describe('Rule', () => {
     expect(currentOptions.rulesVisibility.VarDeclaration).toBe('private');
     expect(node.rules.options.rulesVisibility.Mixin).toBe('public');
     expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+  });
+
+  it('preEval composes and registers a session-patched nested ruleset under the active extend root', async () => {
+    const nested = ruleset({
+      selector: el('.leaf'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const patchedRules = rules([nested]);
+    const base = ruleset({
+      selector: el('.base'),
+      rules: rules([])
+    });
+    const root = rules([base]);
+
+    context.session = new EvalSession();
+    context.session.patchField(base, 'rules', patchedRules);
+    context.extendRoots.registerRoot(root);
+    context.extendRoots.pushExtendRoot(root);
+
+    const preEvaldBase = await base.preEval(context);
+    const currentRules = preEvaldBase.getCurrentRules(context);
+    const preEvaldNested = currentRules.at(0, context) as typeof nested;
+    const registeredRulesets = context.extendRoots.getRulesets(root);
+
+    expect(currentRules).toBe(patchedRules);
+    expect(sessionGetParent(currentRules, context)).toBe(preEvaldBase);
+    expect(sessionGetParent(preEvaldNested, context)).toBe(currentRules);
+    expect(preEvaldNested.getEffectiveSelector(false, context).valueOf()).toBe('.base .leaf');
+    expect(preEvaldNested.valueOf(context)).toBe('.base .leaf');
+    expect(
+      [...(registeredRulesets ?? [])].some(rulesetNode => rulesetNode.valueOf(context) === '.base .leaf')
+    ).toBe(true);
+    expect(base.rules.value).toHaveLength(0);
   });
 
   it('setOwnSelector preserves other session-patched option fields', () => {

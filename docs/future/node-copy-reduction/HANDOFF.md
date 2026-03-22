@@ -275,6 +275,10 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `control.ts`: `$for` result accumulation now reads evaluated `Rules` children through `sessionGetChildren(...)`, so loop-body child replacements that exist only in the active session are visible in emitted output without mutating the canonical loop template.
   - `extend-roots.ts`: `clearExtendedRuleset()` now clears stale session-local `hoistToRoot` through the existing session-aware setter path, so a later helper-only extend pass that no longer matches does not leave a stale hoist bit behind.
   - `import-style.test.ts`: focused characterization now proves `_dedupe` finalization must materialize from the evaluated top-level children, not `sourceNode` copies, so the next import owner is the shared node materialization layer centered on `node-base.ts`.
+- Latest characterization follow-up now landed in the working tree:
+  - `ruleset.test.ts`: `Ruleset.preEval()` already composes and registers a session-patched nested child ruleset under the active extend root.
+  - `import-style.test.ts`: `_dedupe` also cannot use shallow top-level child clones, because that reparents nested canonical children.
+  - So the next live owner is the shared evaluated-view materialization contract in `node-base.ts`, not another local `ImportStyle` or `Ruleset` patch.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
@@ -297,7 +301,7 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Immediate work
 
-1. Follow the immediate node queue in `node-session-status.md` (`ImportStyle` returned-tree / finalization clone-pressure follow-up is next).
+1. Follow the immediate node queue in `node-session-status.md` (shared returned-tree materialization contract is next).
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.

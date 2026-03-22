@@ -910,7 +910,7 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Immediate next node slice: `ImportStyle` returned-tree / finalization clone-pressure follow-up
+- [ ] Immediate next node slice: shared node materialization contract for returned trees
 - [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
 - [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 - [ ] Keep Stage 20.6 (`Scope / provenance semantics cleanup`) deferred until the lower-order node queue is sufficiently stable
@@ -1141,6 +1141,13 @@ Current blocker notes from live reduction attempts:
   - `extend-roots.ts`: `clearExtendedRuleset()` now clears stale session-local `hoistToRoot` through the existing session-aware setter path, so a later helper-only extend pass that no longer matches does not leave a stale hoist bit behind.
   - `extend-rules.test.ts` now proves a real two-pass scenario: one extend pass establishes session-local hoist, a later helper-only non-match clears it again.
   - `import-style.test.ts` now proves `_dedupe` finalization must materialize from the evaluated top-level children, not `sourceNode` copies. That sharpens the remaining owner: the next import reduction sits in the shared node materialization layer centered on `node-base.ts`, not another safe local `import-style.ts` tweak.
+- Latest mixed follow-up now landed in the working tree:
+  - `ruleset.test.ts` now proves `Ruleset.preEval()` already composes and registers a session-patched nested child ruleset under the active extend root.
+  - That sharpens the remaining nested-rules recomposition blocker: it is no longer `Ruleset`-local. The next owner is downstream orchestration/timing after `Ruleset.preEval()`, most likely `Rules`/extend processing rather than selector composition or parent adoption inside `ruleset.ts`.
+  - `import-style.test.ts` now also proves `_dedupe` cannot be reduced to shallow top-level child clones, because that re-parents nested canonical children. Together with the `sourceNode` characterization, that defines the missing shared contract precisely:
+    - materialize from the current evaluated node, not `sourceNode`
+    - produce a stable returned-tree parent chain
+    - preserve canonical cached/source tree immutability by not re-parenting shared descendants
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:
