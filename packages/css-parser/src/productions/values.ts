@@ -109,6 +109,15 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
   // Avoid knownFunctions here to remove ambiguity with custom blocks.
   alt ??= (ctx: RuleContext = {}) => [
     {
+      GATE: () => $.LA(1).tokenType.name === 'ColorIntStart' || $.LA(1).tokenType.name === 'ColorIdentStart',
+      ALT: () => {
+        const token = $.CONSUME($.LA(1).tokenType as any);
+        if (!$.RECORDING_PHASE) {
+          return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+        }
+      }
+    },
+    {
       ALT: () => {
         return $.SUBRULE($.customBlock, { ARGS: [ctx] });
       }
@@ -121,6 +130,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
     {
       ALT: () => {
         const token = $.OR3([
+          { ALT: () => $.CONSUME(T.Color) },
           { ALT: () => $.CONSUME(T.Value) },
           { ALT: () => $.CONSUME(T.CustomProperty) },
           { ALT: () => $.CONSUME(T.Colon) },

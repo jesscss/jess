@@ -5,6 +5,7 @@ import {
   Call,
   Expression,
   List,
+  Operation,
   Reference,
   type Node
 } from '@jesscss/core';
@@ -28,7 +29,66 @@ export function jessParenExpression(this: P, T: TokenMap) {
     $.CONSUME($.T.RParen);
 
     const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
     return new Expression(inner, undefined, loc, $.context);
+  };
+}
+
+export function mathProduct(this: P, T: TokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let left = $.SUBRULE($.mathValue, { ARGS: [ctx] }) as unknown as Node;
+
+    $.MANY({
+      GATE: () => $.LA(1).tokenType === $.T.Star || $.LA(1).tokenType === $.T.Divide,
+      DEF: () => {
+        const op = $.CONSUME($.LA(1).tokenType as any) as unknown as IToken;
+        const right = $.SUBRULE2($.mathValue, { ARGS: [ctx] }) as unknown as Node;
+
+        if (!$.RECORDING_PHASE) {
+          left = new Operation([left, op.image as any, right], { inCalc: true }, undefined, $.context);
+        }
+      }
+    });
+
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    left._location = $.endRule();
+    return left;
+  };
+}
+
+export function mathSum(this: P, T: TokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let left = $.SUBRULE($.mathProduct, { ARGS: [ctx] }) as unknown as Node;
+
+    $.MANY({
+      GATE: () => $.LA(1).tokenType === $.T.Plus || $.LA(1).tokenType === $.T.Minus,
+      DEF: () => {
+        const op = $.CONSUME($.LA(1).tokenType as any) as unknown as IToken;
+        const right = $.SUBRULE2($.mathProduct, { ARGS: [ctx] }) as unknown as Node;
+
+        if (!$.RECORDING_PHASE) {
+          left = new Operation([left, op.image as any, right], { inCalc: true }, undefined, $.context);
+        }
+      }
+    });
+
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    left._location = $.endRule();
+    return left;
   };
 }
 

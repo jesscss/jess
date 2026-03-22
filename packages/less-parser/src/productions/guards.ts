@@ -733,7 +733,7 @@ export function mixinArgList(this: P, T: TokenMap) {
         if (hasDeclarations) {
           const indexOfSemi = $.input.indexOf(semi);
           const previousToken = $.input[indexOfSemi - 1]!;
-          $._errors.push(
+          $.SAVE_ERROR(
             new NoViableAltException(
               'Cannot mix ; and , as delimiter types',
               semi,
@@ -754,7 +754,7 @@ export function mixinArgList(this: P, T: TokenMap) {
         if (commaNodes) {
           commaNodes.push($.wrap(node, true));
         } else {
-          $._errors.push(
+          $.SAVE_ERROR(
             new NoViableAltException(
               'Cannot mix ; and , as delimiter types',
               comma,
