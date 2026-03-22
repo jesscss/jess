@@ -2652,7 +2652,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             Mixin: 'public'
           }
         });
-        (thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node)).adopt(outerRules);
+        sessionSetParent(
+          outerRules,
+          thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node),
+          thisContext
+        );
         outerRules.index = candidate.index;
 
         for (let i = 0; i < params.value.length; i++) {

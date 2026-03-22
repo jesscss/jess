@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
 import { sessionGetParent, sessionGetSourceParent, sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
@@ -557,6 +557,45 @@ describe('Mixin', () => {
       expect(String(result)).toBeString(`
         color: red;
       `);
+    });
+
+    it('keeps the parameter wrapper Rules parent only in the session layer', async () => {
+      context.createSession();
+
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+      const mixinRoot = rules([mixinDef]);
+      context.root = mixinRoot;
+
+      const captured: Rules[] = [];
+      const originalCreate = Rules.create.bind(Rules);
+      const createSpy = vi.spyOn(Rules, 'create').mockImplementation((...args: Parameters<typeof Rules.create>) => {
+        const created = originalCreate(...args);
+        captured.push(created);
+        return created;
+      });
+
+      try {
+        const fn = getFunctionFromMixins(mixinDef);
+        const result = await fn.call(context, any('blue'));
+        const outerRules = captured.at(-1);
+
+        expect(outerRules).toBeDefined();
+        expect(sessionGetParent(outerRules as Node, context)).toBe(mixinRoot);
+        expect((outerRules as Rules).parent).toBeUndefined();
+        expect(String(result)).toBeString(`
+          color: blue;
+        `);
+      } finally {
+        createSpy.mockRestore();
+      }
     });
 
     it('should call a mixin that calls another mixin', async () => {
