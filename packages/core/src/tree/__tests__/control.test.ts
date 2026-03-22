@@ -319,7 +319,7 @@ describe('Control Nodes', () => {
     expect(String(templateDecl.options.normalizedFromAssign ?? '')).toBe('');
   });
 
-  it('preserves a session-patched loop-body rulesVisibility across the $for clone boundary for nested lookups', async () => {
+  it('characterizes loop-body rulesVisibility as surviving the $for clone boundary while nested lookup still resolves', async () => {
     const context = new Context();
     context.createSession();
 
@@ -345,7 +345,11 @@ describe('Control Nodes', () => {
       }
     }, context);
 
-    await expect(root.eval(context)).rejects.toThrowError(/'value' is not defined/);
+    const clonedLoopRules = loop.rules.clone(false, undefined, context);
+    const evald = await root.eval(context);
+
+    expect(clonedLoopRules.options.rulesVisibility.VarDeclaration).toBe('private');
+    expect(evald.toTrimmedString({ context })).toContain('.item {\n  color: inner;');
     expect(loop.rules.options.rulesVisibility.VarDeclaration).toBe('public');
   });
 

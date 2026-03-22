@@ -124,16 +124,16 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- `ImportStyle` returned-tree / finalization follow-up
-  - goal: keep reducing import finalization/materialization clone pressure now that the active path-resolution and `_dedupe` top-level ruleset-parent corruption gaps are closed
+- `Rules` / mixin-call source-scope follow-up
+  - goal: replace remaining canonical `caller?.rulesParent` / `caller?.sourceRulesParent` ancestry in `getFunctionFromMixins()` with context-aware source-scope lookup
   - primary proof:
-    - node/public-path characterization in `import-style.test.ts`
-    - the smallest `eval-session.test.ts` or import-local proof that canonical imported child parentage stays unchanged under repeated imports
+    - focused `mixin.test.ts` / `call.test.ts` proof around caller-scope fallback
+    - the smallest node/session proof that active source-scope questions no longer depend on canonical getters
   - note:
-    - `Ruleset`, `Func`, and `Expression` are now complete for their current node-local scope, so the next smallest real remaining pressure point is `ImportStyle`
-    - a `StyleImport.clone()` session-aware shallow-clone attempt regressed existing parent-var and `with`/`set` injection behavior, so the next slice must stay off that path until the lookup/finalization interaction is characterized cleanly
-    - the active blocker is no longer a same-node `StyleImport` field read; the remaining failures bottom out in returned-tree parent/lookup visibility for descendant `Reference` resolution
-    - returned import trees already preserve descendant parent chains to the returned `Rules`, and `Reference` now honors session parent/source-parent fallback anchors even without `rulesContext`, but the same three failures still reproduce, so the next owner is likely returned-tree registry/scope semantics beyond direct parent ancestry
+    - the focused `ImportStyle` visibility blocker is now green on the current head
+    - returned import/compose trees already preserve descendant parent chains to their returned `Rules`
+    - `Reference` fallback anchors are already session-aware
+    - the next ancestry/scope blocker identified by review sits in `rules.ts`, not `import-style.ts`
 
 ### Current Batch A: Simple Pending Wrappers
 
@@ -177,7 +177,7 @@ Use this to record why a node is not next, even if it looks urgent.
 - `ImportStyle` and extend-path work remain high-value but are not allowed to pull the order upward ahead of lower-order node completion.
 - The internal mixin adapter path (`Reference -> getFunctionFromMixins() -> Call -> callWithContext()`) is tracked as its own planned stage. Do not fold that higher-order refactor into a lower-order wrapper-node slice.
 - `Rules` remains partial because reset-session structural work still relies on cloned working trees; that is broader than a node-local `Ruleset` or `Call` patch.
-- `ImportStyle` is now the smallest high-pressure node still carrying active finalization/materialization clone pressure.
+- `ImportStyle` is no longer the live failing blocker on the focused set; its remaining work is clone-pressure / returned-tree cleanup rather than the old parent-var / `with` / `set` visibility failures.
 - `Extend` is now partially session-safe on local clone/registration paths, but its broader selector-rewrite pipeline is still a larger clone/copy cluster.
 - If a node in Batch A or B cannot be completed without touching a higher-order node, record the exact dependency here before changing the queue.
 
@@ -207,7 +207,7 @@ Use this to record why a node is not next, even if it looks urgent.
 | `Reference`                  | `complete`  | Render and eval now read `target` / `key` through the session-aware view, dependency tracking plus resolved `sourceParent` links are session-backed, active ancestor/linear-lookup parent walks now use `sessionGetParent(...)`, and the default/leaky fallback anchors now also use session-aware `rulesParent` / `sourceRulesParent` resolution when `context.rulesContext` is unset, so detached/session-parented references do not fall back to canonical anchors. The remaining direct parent checks are limited to the separate direct-mixin/direct-call invocation stage. |
 | `Interpolated`               | `complete`  | Render and eval now read `source` / `replacements` through the session-aware view, eval-time replacement updates and evaluated-state marking are session-backed, `interpolated.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical replacements stay unchanged under an active session. |
 | `ImportJs`                   | `complete`  | Render and eval now read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session. |
-| `ImportStyle`                | `partial`   | Active import-path resolution now uses context-aware `Url`, patched-`Quoted`, and same-node patched `path` extraction, same-node patched `withNode` / `withType` are now honored on the active `StyleImport` path, the `_dedupe` finalization path now isolates top-level imported `Ruleset` children so repeated imports do not corrupt canonical selector/rules parentage, and evaluated postlude wrapping now materializes cloned preludes before building wrapper `AtRule`s so canonical postlude parent pointers stay unchanged. A session-aware shallow-clone attempt regressed existing parent-var and `with`/`set` injection behavior and was not landed. Returned-tree and finalization/materialization clone pressure still remain. |
+| `ImportStyle`                | `partial`   | Active import-path resolution now uses context-aware `Url`, patched-`Quoted`, and same-node patched `path` extraction, same-node patched `withNode` / `withType` are now honored on the active `StyleImport` path, the `_dedupe` finalization path now isolates top-level imported `Ruleset` children so repeated imports do not corrupt canonical selector/rules parentage, evaluated postlude wrapping now materializes cloned preludes before building wrapper `AtRule`s so canonical postlude parent pointers stay unchanged, returned import/compose trees already preserve descendant parent chains to their returned `Rules`, and declaration lookup now climbs the session parent chain so the focused import visibility / `with` / `set` failures are green on the current head. A session-aware shallow-clone attempt regressed behavior and was not landed. Returned-tree and finalization/materialization clone pressure still remain. |
 | `If` / `For` / control nodes | `pending`   | `If.toTrimmedString()` now reads `conditions` / `bodies` / `elseBranch` through the session-aware view, `While.toTrimmedString()` now reads `condition` / `rules` through the same control-field helper, `Each.toTrimmedString()` now reads `header` / `rules` through that helper as well, `For` already has a node-local proof for session-patched iterable rendering without canonical mutation, the `For` merged-declaration coalescing write path now keeps merged declaration values session-local on non-reset sessions, `resolveEntries()` now reads iterable declaration `name` / `value` through the session layer when iterating `Rules` / `Ruleset` / `Mixin` sources, and loop-result declaration coalescing now also respects session-patched `options.normalizedFromAssign` and `name` metadata. The next blocker is no longer obviously local to `control.ts`: a session-patched loop-body `Rules.options.rulesVisibility` does not survive the `$for` clone boundary in a way that changes downstream lookup, which points at `Rules.clone` / option consumers as the next owner. |
 | `Block`                      | `complete`  | Render and eval now read `value` through the session-aware view, eval writes patch the active session instead of overwriting the canonical child, and both node-local behavior plus eval-session immutability proofs are in place. |
 | `Negative`                   | `complete`  | Render and eval now read `value` through the session-aware view, unary serialization has dedicated node-local coverage, and `eval-session.test.ts` proves session overlay reads without mutating the canonical child. |

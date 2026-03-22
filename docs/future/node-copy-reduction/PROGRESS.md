@@ -910,7 +910,7 @@ Immediate next work before Stage 21:
 
 Current atomic queue:
 
-- [ ] Immediate next node slice: `Ruleset` follow-up
+- [ ] Immediate next node slice: `Rules` / mixin-call source-scope follow-up
 - [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
 - [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
 - [ ] Keep Stage 20.6 (`Scope / provenance semantics cleanup`) deferred until the lower-order node queue is sufficiently stable
@@ -1104,7 +1104,8 @@ Current blocker notes from live reduction attempts:
   - result:
     - `rules.test.ts`: green
     - `control.test.ts`: green
-    - `import-style.test.ts`: still only the same 3 known failures (`parentVar`, `with`, `set`)
+    - `import-style.test.ts`: green after `DeclarationRegistry.find()` switched its parent climb to `sessionGetParent(...)`
+- That closes the focused import visibility blocker on the current head. The remaining `ImportStyle` work is clone-pressure / returned-tree cleanup, not the old parent-var / `with` / `set` lookup failures.
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

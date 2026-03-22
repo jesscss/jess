@@ -15,7 +15,7 @@ import type { SessionRegistryDelta } from '../../eval-session.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { sessionGetChildren, sessionGetDependency } from './session-helpers.js';
+import { sessionGetChildren, sessionGetDependency, sessionGetParent } from './session-helpers.js';
 
 const { isArray } = Array;
 
@@ -1682,7 +1682,9 @@ export class DeclarationRegistry extends Registry<Declaration> {
       }
 
       do {
-        rules = rules?.parent as Rules;
+        rules = rules && this.context
+          ? sessionGetParent(rules, this.context) as Rules | undefined
+          : rules?.parent as Rules;
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
