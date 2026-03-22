@@ -43,7 +43,8 @@ import {
   sessionSetChildAt,
   sessionSetDependency,
   sessionSetIndex,
-  sessionSetParent
+  sessionSetParent,
+  sessionSetSourceParent
 } from './util/session-helpers.js';
 import { EvalSession } from '../eval-session.js';
 import type { Func } from './function.js';
@@ -2529,6 +2530,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           newRules = await outerRules.eval(thisContext);
         }
+        sessionSetSourceParent(newRules, sourceParent, thisContext);
         getCandidateParent(candidate as unknown as Node).adopt(newRules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
@@ -2590,11 +2592,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let rules = sourceRules.clone(true, undefined, thisContext);
         /** Adopt for lookup, then adopt for sorting */
         getCandidateParent(candidate as unknown as Node).adopt(rules);
-        rules.sourceParent = sourceParent;
+        sessionSetSourceParent(rules, sourceParent, thisContext);
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
         thisContext.rulesContext = originalContext;
+        sessionSetSourceParent(rules, sourceParent, thisContext);
         getCandidateParent(candidate as unknown as Node).adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
@@ -2611,7 +2614,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
         let unlocked = sourceRules.clone(false, undefined, thisContext);
         getCandidateParent(candidate as unknown as Node).adopt(unlocked);
-        unlocked.sourceParent = sourceParent ?? caller;
+        sessionSetSourceParent(unlocked, sourceParent ?? caller, thisContext);
         // Detached ruleset calls in Less unlock their contents into the current scope.
         // They must remain visible to untargeted lookups like `.mixin();`.
         unlocked.options.isMixinOutput = false;
@@ -2627,7 +2630,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       rules.options.rulesVisibility ??= {};
       rules.options.rulesVisibility.VarDeclaration = 'public';
       getCandidateParent(candidate as unknown as Node).adopt(rules);
-      rules.sourceParent = sourceParent;
+      sessionSetSourceParent(rules, sourceParent, thisContext);
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,

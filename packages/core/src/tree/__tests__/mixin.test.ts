@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
+import { sessionGetSourceParent, sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -524,6 +524,36 @@ describe('Mixin', () => {
 
       expect(String(result)).toBeString(`
         color: blue;
+      `);
+    });
+
+    it('keeps mixin output Rules sourceParent only in the session layer', async () => {
+      context.createSession();
+
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const mixinRoot = rules([mixinDef]);
+      context.root = mixinRoot;
+      const sourceAnchor = decl({ name: 'background', value: any('white') });
+      const caller = call({
+        name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+        args: list([])
+      });
+
+      sessionSetSourceParent((caller as any).name, sourceAnchor, context);
+      context.caller = caller;
+
+      const fn = getFunctionFromMixins(mixinDef);
+      const result = await fn.call(context);
+
+      expect(sessionGetSourceParent(result as Node, context)).toBe(sourceAnchor);
+      expect((result as Node).sourceParent).toBeUndefined();
+      expect(String(result)).toBeString(`
+        color: red;
       `);
     });
 
