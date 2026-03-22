@@ -293,4 +293,28 @@ describe('Control Nodes', () => {
     expect(evald.toTrimmedString({ context })).toContain('padding: a, b;');
     expect(templateDecl.toTrimmedString()).toContain('padding: $value');
   });
+
+  it('reads rules-iterable declaration names and values through the session layer', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const iterableRules = rules([
+      decl({ name: 'one', value: new Any('red') })
+    ]);
+    const iterDecl = iterableRules.at(0) as ReturnType<typeof decl>;
+    const loopRules = rules([
+      decl({ name: 'name', value: ref({ key: 'key' }, { type: 'variable' }) }),
+      decl({ name: 'value', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([makeLoop(makePattern(['value', 'key'], 'block'), iterableRules, loopRules)]);
+
+    sessionPatchField(iterDecl, 'name', new Any('uno', { role: 'property' }), context);
+    sessionPatchField(iterDecl, 'value', new Any('green'), context);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('name: uno;');
+    expect(evald.toTrimmedString({ context })).toContain('value: green;');
+    expect(iterDecl.toTrimmedString()).toContain('one: red');
+  });
 });

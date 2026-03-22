@@ -4,6 +4,7 @@ import {
   ruleset,
   sel,
   el,
+  amp,
   sellist,
   decl,
   extend,
@@ -16,8 +17,8 @@ import {
 } from '..';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionPatchField } from '../util/session-helpers.js';
-import { F_EXTENDED } from '../node.js';
+import { sessionGetField, sessionPatchField } from '../util/session-helpers.js';
+import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 
 let context: Context;
 
@@ -85,6 +86,42 @@ describe('Rules extend', () => {
       expect(css).toContain('.child {');
       expect(base.hasFlag(F_EXTENDED)).toBe(false);
       expect(base._hasFlag(F_EXTENDED, context)).toBe(true);
+    });
+
+    it('keeps hoistToRoot session-local when extend hoists across an implicit ampersand boundary', async () => {
+      context.session = new EvalSession();
+
+      const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
+      (implicitAmp as unknown as { generated?: boolean }).generated = true;
+      implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);
+      implicitAmp.removeFlag(F_VISIBLE);
+      const implicitSpace = co(' ');
+      implicitSpace.generated = true;
+      implicitSpace.removeFlag(F_VISIBLE);
+
+      const headerNav = ruleset({
+        selector: sel([implicitAmp, implicitSpace, el('.header-nav')]) as any,
+        rules: rules([])
+      });
+      const header = ruleset({
+        selector: sellist([sel([el('.header')])]),
+        rules: rules([headerNav])
+      });
+      const footerNav = ruleset({
+        selector: sellist([sel([el('.footer'), co(' '), el('.footer-nav')])]),
+        rules: rules([
+          extend({
+            target: sel([el('.header'), co(' '), el('.header-nav')]),
+            flag: ExtendFlag.All
+          })
+        ])
+      });
+      const root = rules([header, footerNav]);
+
+      await root.eval(context);
+
+      expect(sessionGetField(headerNav, 'hoistToRoot', context)).toBe(true);
+      expect(headerNav.hoistToRoot).toBeUndefined();
     });
 
     it('does not re-parent canonical selector or target during a shallow clone in a session', () => {

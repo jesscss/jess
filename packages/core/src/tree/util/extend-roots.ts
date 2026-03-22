@@ -17,6 +17,7 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
+import { sessionGetField, sessionPatchField } from './session-helpers.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -607,6 +608,20 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   syncRulesetDerivedSelector(ruleset, context);
 }
 
+function getRulesetHoistToRoot(ruleset: Ruleset, context?: Context): boolean | undefined {
+  return context
+    ? sessionGetField<boolean | undefined>(ruleset, 'hoistToRoot', context)
+    : ruleset.hoistToRoot;
+}
+
+function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, context?: Context): void {
+  if (context?.session) {
+    sessionPatchField(ruleset, 'hoistToRoot', value, context);
+    return;
+  }
+  ruleset.hoistToRoot = value;
+}
+
 function applyInstructionToRuleset(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
@@ -696,9 +711,9 @@ function applyInstructionToRuleset(
   }
   ruleset.setExtendedSelector(nextSelector, context);
   if (shouldHoist) {
-    ruleset.hoistToRoot = true;
+    setRulesetHoistToRoot(ruleset, true, context);
     refreshNestedRulesetSelectors(ruleset, context);
-  } else if (ruleset.hoistToRoot || ruleset.treeContext?.opts?.collapseNesting === true) {
+  } else if (getRulesetHoistToRoot(ruleset, context) || ruleset.treeContext?.opts?.collapseNesting === true) {
     refreshNestedRulesetSelectors(ruleset, context);
   }
   invalidateRulesetSelectorCaches(ruleset, context);

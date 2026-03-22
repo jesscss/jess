@@ -214,6 +214,17 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - Result: `2 passed, 44 skipped`
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
 - The next immediate target is now the remaining `ImportStyle` finalization / returned-tree clone-pressure audit.
+- Next clean landed batch after that:
+  - `extend-roots`: `applyInstructionToRuleset()` now reads/writes `hoistToRoot` through the session layer, so hoist-producing extend application does not mutate canonical nested `Ruleset` state.
+  - `control.ts`: `resolveEntries()` now reads iterable declaration `name` / `value` through the session layer for `Rules` / `Ruleset` / `Mixin` iterables, so loop key/value binding sees session-patched declarations instead of canonical values.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+    - result: `36 passed`
+- `ImportStyle` follow-up is still next, but a session-aware `StyleImport.clone()` attempt was explicitly rejected on this head because it regressed:
+  - `import type can see parent rules variables`
+  - `can inject variables with "with" type`
+  - `can inject variables with "set" type`
+  So the next import slice must avoid the shallow-clone path until that lookup/finalization interaction is characterized.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

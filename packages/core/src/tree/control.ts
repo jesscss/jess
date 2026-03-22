@@ -128,10 +128,10 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
   }
   if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
     const rules = isNode(input, N.Rules)
-      ? input.value
+      ? getControlField(input, 'value', context, input.value)
       : isNode(input, N.Ruleset)
-        ? (input.rules?.value ?? [])
-        : ((input as Mixin).rules?.value ?? []);
+        ? (input.rules ? getControlField(input.rules, 'value', context, input.rules.value) : [])
+        : ((input as Mixin).rules ? getControlField((input as Mixin).rules, 'value', context, (input as Mixin).rules.value) : []);
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -139,7 +139,10 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.value, rule.name];
+      yield [
+        getControlField(rule, 'value', context, rule.value),
+        getControlField(rule, 'name', context, rule.name)
+      ];
     }
     return;
   }
