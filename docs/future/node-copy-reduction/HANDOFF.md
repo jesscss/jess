@@ -284,6 +284,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `Ruleset`: `evalNode()` now checks `rules.visibleRules(context)` instead of the canonical no-context path when deciding whether the ruleset itself should remain visible.
   - `extend-roots.ts`: downstream namespace-aware matching is now wired through, and namespace-excluded misses are classified as `extend/not-found` instead of `extend/not-accessible`.
   - `selector.ts` / `ampersand.ts`: `Selector.getKeySet(context?)` is now in place, and `selector-complex.test.ts` proves consumer-side code can derive a session-specific complex key set through an `Ampersand` child without changing canonical `keySet`.
+- Latest returned-tree / lower-mixin follow-up now landed in the working tree:
+  - `node-base.ts`: `Node.materializeEvaluatedCopy()` now provides a shared evaluated-view materialization path alongside provenance-root `materializeCopy()`.
+  - `import-style.ts`: configured-compose and `_dedupe` returned-tree materialization now use `materializeEvaluatedCopy()`, so the active import finalization path materializes from evaluated children rather than `sourceNode` copies.
+  - `Rules`: the lower `getFunctionFromMixins()` parameter wrapper now keeps `outerRules.parent` in the session layer instead of canonically adopting it.
+  - `selector-match-unit.test.ts`: focused characterization now proves `selectorMatch()` cannot safely consume `getKeySet(context)` yet because it has no context parameter and its pair cache is not context-aware.
+  - `control.test.ts`: focused characterization now proves call-produced `Rules` from a `$for` body already materialize correctly at the control boundary, so the remaining owner is downstream in `Rules.eval()` / returned-child materialization rather than `control.ts`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
@@ -306,7 +312,7 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Immediate work
 
-1. Follow the immediate node queue in `node-session-status.md` (shared returned-tree materialization contract is next).
+1. Follow the immediate node queue in `node-session-status.md` (lower `Rules` mixin/output-shaping materialization is next).
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.

@@ -399,4 +399,39 @@ describe('Control Nodes', () => {
     expect(loopRules.at(0)).toBe(originalLoopChild);
     expect(loopRules.toTrimmedString()).toBe('();');
   });
+
+  it('materializes call-produced Rules from a $for body without mutating canonical loop children', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const root = rules([
+      makeLoop(makePattern(['value'], 'single'), list([new Any('x')]), rules([
+        new Call({ name: ref({ key: 'makeRules' }, { type: 'function' }), args: list([]) })
+      ]))
+    ]);
+    root.register('function', new JsFunction({
+      name: 'makeRules',
+      fn: () => rules([
+        decl({ name: 'margin', value: new Any('0') }),
+        ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: rules([
+            decl({ name: 'color', value: new Any('red') })
+          ])
+        })
+      ])
+    }));
+
+    const loopRules = (root.at(0) as For).rules;
+    const originalLoopChild = loopRules.at(0);
+
+    const evald = await root.eval(context);
+    const css = evald.toTrimmedString({ context });
+
+    expect(css).toContain('margin: 0;');
+    expect(css).toContain('.item {\n  color: red;');
+    expect(css.indexOf('margin: 0;')).toBeLessThan(css.indexOf('.item {'));
+    expect(loopRules.at(0)).toBe(originalLoopChild);
+    expect(loopRules.toTrimmedString()).toBe('();');
+  });
 });

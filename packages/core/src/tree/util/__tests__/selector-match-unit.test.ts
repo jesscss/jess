@@ -7,9 +7,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  el, sel, sellist, compound, is, co, pseudo, amp
+  el, sel, sellist, compound, is, co, pseudo, amp, rules, ruleset
 } from '../../../index.js';
 import { Context } from '../../../context.js';
+import { EvalSession } from '../../../eval-session.js';
+import { sessionPatchField } from '../session-helpers.js';
 import {
   selectorMatch
 } from '../selector-match-core.js';
@@ -37,6 +39,36 @@ describe('basic selectors', () => {
     sel1.eval(context);
     sel2.eval(context);
     expect(selectorMatch(sel1, sel2).fullMatch).toBe(false);
+  });
+
+  it('stays canonical when getKeySet(context) diverges by session because selectorMatch has no context parameter', () => {
+    const contextA = new Context();
+    contextA.session = new EvalSession();
+    const contextB = new Context();
+    contextB.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.selector.keySetLibrary = contextA.selectorBits;
+
+    const beta = el('.beta');
+    beta.keySetLibrary = contextA.selectorBits;
+    const gamma = el('.gamma');
+    gamma.keySetLibrary = contextA.selectorBits;
+
+    const target = amp({ selectorContainer: parent as any });
+    target.keySetLibrary = contextA.selectorBits;
+
+    sessionPatchField(parent, 'selector', beta, contextA);
+    sessionPatchField(parent, 'selector', gamma, contextB);
+
+    expect(target.getKeySet(contextA).equals(contextA.selectorBits.getBitset(['.beta']))).toBe(true);
+    expect(target.getKeySet(contextB).equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(true);
+    expect(selectorMatch(el('.alpha'), target).fullMatch).toBe(true);
+    expect(selectorMatch(beta, target).fullMatch).toBe(false);
+    expect(selectorMatch(gamma, target).fullMatch).toBe(false);
   });
 });
 
