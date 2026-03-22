@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { getPrintOptions } from '../util/print.js';
 import { sessionGetParent } from '../util/session-helpers.js';
+import { F_VISIBLE } from '../node.js';
 
 let context: Context;
 
@@ -226,6 +227,26 @@ describe('Rule', () => {
       [...(registeredRulesets ?? [])].some(rulesetNode => rulesetNode.valueOf(context) === '.base .leaf')
     ).toBe(true);
     expect(base.rules.value).toHaveLength(0);
+  });
+
+  it('evalNode removes ruleset visibility when the rules container is emptied only in the session', async () => {
+    const node = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const emptyRules = rules([]);
+
+    context.session = new EvalSession();
+    context.session.patchField(node, 'rules', emptyRules);
+
+    const evald = await node.eval(context);
+
+    expect(evald._hasFlag(F_VISIBLE, context)).toBe(false);
+    expect(evald.hasFlag(F_VISIBLE)).toBe(true);
+    expect(evald.getCurrentRules(context)).toBe(emptyRules);
+    expect(node.rules.value).toHaveLength(1);
   });
 
   it('setOwnSelector preserves other session-patched option fields', () => {

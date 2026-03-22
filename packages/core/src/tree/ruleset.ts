@@ -1063,7 +1063,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
         this._setRulesContainer(evaluatedRules as Rules, context);
         const rules = this._getRulesContainer(context);
-        if (rules.visibleRules().length === 0) {
+        if (rules.visibleRules(context).length === 0) {
           this._removeFlag(F_VISIBLE, context);
         }
         return this;
