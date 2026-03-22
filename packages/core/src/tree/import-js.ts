@@ -31,7 +31,7 @@ export interface JsImport {
   shortType: 'js';
 }
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
-  static override childKeys = ['path'] as const;
+  static override childKeys = ['path', 'imports'] as const;
 
   path!: Quoted;
   imports: JsImportSpecifier[] | undefined;

@@ -17,6 +17,62 @@ import { Any } from './any.js';
 import { TreeContext } from '../context.js';
 import { type Operator } from './util/calculate.js';
 
+const LEGACY_DATA_INTERNAL = new Set([
+  'parent', 'index', 'frames', 'pre', 'post', 'state', 'nodeType',
+  'isSelector', 'keySetLibrary', 'role',
+  'fullRender',
+  'rulesetRegistry', 'mixinRegistry', 'declarationRegistry', 'functionRegistry',
+  'rulesIndexed', '_indexing',
+  'pendingExtends',
+  '_valueOf', '_keySet', '_visibleKeySet', '_requiredKeySet'
+]);
+
+function getLegacyData(this: Node) {
+  const childKeys = (this.constructor as typeof Node).childKeys;
+
+  if (Array.isArray(childKeys)) {
+    const extraKeys = Object.keys(this).filter((key) => {
+      return !key.startsWith('_') && !LEGACY_DATA_INTERNAL.has(key) && !childKeys.includes(key);
+    });
+
+    if (childKeys.length === 1 && extraKeys.length === 0) {
+      return (this as any)[childKeys[0]!];
+    }
+
+    const out: Record<string, unknown> = {};
+    for (const key of childKeys) {
+      const value = (this as any)[key];
+      if (value !== undefined) {
+        out[key] = value;
+      }
+    }
+    for (const key of extraKeys) {
+      const value = (this as any)[key];
+      if (value !== undefined) {
+        out[key] = value;
+      }
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+
+  const directValue = (this as any).value;
+  if (directValue !== undefined) {
+    return directValue;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(this)) {
+    if (key.startsWith('_') || LEGACY_DATA_INTERNAL.has(key)) {
+      continue;
+    }
+    const value = (this as any)[key];
+    if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /**
  * Patch Node.prototype.nil to return a Nil instance
  */
@@ -51,5 +107,12 @@ Object.defineProperty(Node.prototype, 'treeContext', {
       }
     }
     return context;
+  }
+});
+
+Object.defineProperty(Node.prototype, 'data', {
+  get: getLegacyData,
+  set(value) {
+    this.setData(value);
   }
 });

@@ -284,10 +284,16 @@ export function scssForwardAtRule(this: P, T: TokenMap) {
   $.OPTION({
     GATE: isWithConfigStart,
     DEF: () => {
-      $.OR([
-        { ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.PlainIdent) }
-      ]);
+      if ($.RECORDING_PHASE) {
+        $.OR([
+          { ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.PlainIdent) }
+        ]);
+      } else if ($.isType($.T.Ident)) {
+        $.CONSUME($.T.Ident);
+      } else {
+        $.CONSUME($.T.PlainIdent);
+      }
       withRules = $.SUBRULE($.scssWithConfig, { ARGS: [ctx] }) as unknown as Collection;
     }
   });
@@ -420,18 +426,24 @@ export function scssWithConfig(this: P, T: TokenMap) {
         // Mirror SCSS variable declaration behavior so these semantics survive into core.
         let sawDefault = false;
         let sawGlobal = false;
-        $.MANY(() => {
-          $.OR([
-            { ALT: () => {
+        if ($.RECORDING_PHASE) {
+          $.MANY(() => {
+            $.OR([
+              { ALT: () => $.CONSUME($.T.SassDefault) },
+              { ALT: () => $.CONSUME($.T.SassGlobal) }
+            ]);
+          });
+        } else {
+          while ($.isType($.T.SassDefault) || $.isType($.T.SassGlobal)) {
+            if ($.isType($.T.SassDefault)) {
               $.CONSUME($.T.SassDefault);
               sawDefault = true;
-            } },
-            { ALT: () => {
+            } else {
               $.CONSUME($.T.SassGlobal);
               sawGlobal = true;
-            } }
-          ]);
-        });
+            }
+          }
+        }
         const name = new Any(dv.image.slice(1), { role: 'property' });
         decls.push(
           new VarDeclaration(
@@ -794,33 +806,49 @@ export function scssIfAtRule(this: P, T: TokenMap) {
     GATE: () => $.LA(1).image === '@else',
     DEF: () => {
       $.CONSUME($.T.AtKeyword); // @else
+      if ($.RECORDING_PHASE) {
+        $.OR([
+          {
+            ALT: () => {
+              $.OR2([
+                { ALT: () => $.CONSUME($.T.Ident) },
+                { ALT: () => $.CONSUME($.T.PlainIdent) }
+              ]);
+              $.SUBRULE2($.scssCondition, { ARGS: [ctx] });
+              $.CONSUME($.T.LCurly);
+              $.SUBRULE2($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+              $.CONSUME($.T.RCurly);
+            }
+          },
+          {
+            ALT: () => {
+              $.CONSUME2($.T.LCurly);
+              $.SUBRULE3($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+              $.CONSUME2($.T.RCurly);
+            }
+          }
+        ]);
+        return;
+      }
 
-      $.OR([
-        {
-          GATE: () =>
-            ($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent)
-            && $.LA(1).image === 'if',
-          ALT: () => {
-            $.OR2([
-              { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
-              { ALT: () => $.CONSUME($.T.PlainIdent) }
-            ]);
-            const elseCond = $.SUBRULE2($.scssCondition, { ARGS: [ctx] }) as unknown as Node;
-            $.CONSUME($.T.LCurly);
-            const elseRules = $.SUBRULE2($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
-            $.CONSUME($.T.RCurly);
-            conditions.push(elseCond);
-            bodies.push(elseRules);
-          }
-        },
-        {
-          ALT: () => {
-            $.CONSUME2($.T.LCurly);
-            elseBranch = $.SUBRULE3($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
-            $.CONSUME2($.T.RCurly);
-          }
+      if ($.LA(1).image === 'if' && ($.isType($.T.Ident) || $.isType($.T.PlainIdent))) {
+        if ($.isType($.T.Ident)) {
+          $.CONSUME($.T.Ident);
+        } else {
+          $.CONSUME($.T.PlainIdent);
         }
-      ]);
+        const elseCond = $.SUBRULE2($.scssCondition, { ARGS: [ctx] }) as unknown as Node;
+        $.CONSUME($.T.LCurly);
+        const elseRules = $.SUBRULE2($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+        $.CONSUME($.T.RCurly);
+        conditions.push(elseCond);
+        bodies.push(elseRules);
+        return;
+      }
+
+      $.CONSUME2($.T.LCurly);
+      elseBranch = $.SUBRULE3($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+      $.CONSUME2($.T.RCurly);
     }
   });
 

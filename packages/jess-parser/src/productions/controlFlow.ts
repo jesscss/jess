@@ -16,7 +16,7 @@ type P = any;
 
 /**
  * Comparison: `value op value` → Condition.
- * Handles: `=`, `>`, `<`, `>=`, `<=`
+ * Handles: `=`, `==`, `!=`, `>`, `<`, `>=`, `<=`
  */
 export function jessComparison(this: P, T: TokenMap) {
   const $ = this;
@@ -24,21 +24,41 @@ export function jessComparison(this: P, T: TokenMap) {
     $.startRule();
 
     const left = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
-    const opTok = $.OR([
-      { GATE: () => $.LA(1).tokenType === $.T.GtEq, ALT: () => $.CONSUME($.T.GtEq) },
-      { GATE: () => $.LA(1).tokenType === $.T.LtEq, ALT: () => $.CONSUME($.T.LtEq) },
-      { GATE: () => $.LA(1).tokenType === $.T.Gt,   ALT: () => $.CONSUME($.T.Gt)   },
-      { GATE: () => $.LA(1).tokenType === $.T.Lt,   ALT: () => $.CONSUME($.T.Lt)   },
-      { GATE: () => $.LA(1).tokenType === $.T.Eq,   ALT: () => $.CONSUME($.T.Eq)   }
-    ]) as unknown as IToken;
+    let opTok: IToken;
+    if ($.RECORDING_PHASE) {
+      opTok = $.OR([
+        { ALT: () => $.CONSUME($.T.NotEq) },
+        { ALT: () => $.CONSUME($.T.EqEq) },
+        { ALT: () => $.CONSUME($.T.GtEq) },
+        { ALT: () => $.CONSUME($.T.LtEq) },
+        { ALT: () => $.CONSUME($.T.Gt) },
+        { ALT: () => $.CONSUME($.T.Lt) },
+        { ALT: () => $.CONSUME($.T.Eq) }
+      ]) as unknown as IToken;
+    } else if ($.isType($.T.NotEq)) {
+      opTok = $.CONSUME($.T.NotEq) as unknown as IToken;
+    } else if ($.isType($.T.EqEq)) {
+      opTok = $.CONSUME($.T.EqEq) as unknown as IToken;
+    } else if ($.isType($.T.GtEq)) {
+      opTok = $.CONSUME($.T.GtEq) as unknown as IToken;
+    } else if ($.isType($.T.LtEq)) {
+      opTok = $.CONSUME($.T.LtEq) as unknown as IToken;
+    } else if ($.isType($.T.Gt)) {
+      opTok = $.CONSUME($.T.Gt) as unknown as IToken;
+    } else if ($.isType($.T.Lt)) {
+      opTok = $.CONSUME($.T.Lt) as unknown as IToken;
+    } else {
+      opTok = $.CONSUME($.T.Eq) as unknown as IToken;
+    }
     const right = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
 
     const loc = $.endRule();
     if ($.RECORDING_PHASE) {
       return;
     }
-    const op = (opTok.image === '==' ? '=' : opTok.image) as '=' | '>' | '<' | '>=' | '<=';
-    return new Condition([$.wrap(left, true), op, $.wrap(right)], undefined, loc, $.context);
+    const negate = opTok.tokenType.name === 'NotEq';
+    const op = (opTok.image === '==' || opTok.image === '!=') ? '=' : opTok.image;
+    return new Condition([$.wrap(left, true), op as '=' | '>' | '<' | '>=' | '<=', $.wrap(right)], negate ? { negate: true } : undefined, loc, $.context);
   };
 }
 
@@ -53,7 +73,9 @@ function looksLikeComparison($: P) {
       return false;
     }
     if (
-      tok.tokenType === $.T.Eq
+      tok.tokenType === $.T.NotEq
+      || tok.tokenType === $.T.EqEq
+      || tok.tokenType === $.T.Eq
       ||   tok.tokenType === $.T.Gt
       ||   tok.tokenType === $.T.Lt
       ||   tok.tokenType === $.T.GtEq

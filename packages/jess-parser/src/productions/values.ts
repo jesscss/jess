@@ -51,6 +51,69 @@ export function jessCallArgs(this: P, T: TokenMap) {
   };
 }
 
+export function functionCallArgs(this: P, T: TokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let node = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+    let commaNodes: Node[] | undefined;
+    let semiNodes: Node[] | undefined;
+    let isSemiList = false;
+
+    if (!$.RECORDING_PHASE) {
+      commaNodes = [$.wrap(node, true)];
+      semiNodes = [];
+    }
+
+    $.MANY(() => {
+      if ($.RECORDING_PHASE) {
+        $.OR([
+          {
+            ALT: () => {
+              $.CONSUME($.T.Comma);
+              $.SUBRULE2($.valueSequence, { ARGS: [ctx] });
+            }
+          },
+          {
+            ALT: () => {
+              $.CONSUME($.T.Semi);
+              $.SUBRULE($.valueList, { ARGS: [ctx] });
+            }
+          }
+        ]);
+        return;
+      }
+
+      if (!isSemiList && $.isType($.T.Comma)) {
+        $.CONSUME($.T.Comma);
+        node = $.SUBRULE2($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        commaNodes!.push($.wrap(node, true));
+        return;
+      }
+
+      isSemiList = true;
+      $.CONSUME($.T.Semi);
+      if (commaNodes!.length > 1) {
+        semiNodes!.push(new List(commaNodes!, undefined, $.getLocationFromNodes(commaNodes!)!, $.context));
+      } else {
+        semiNodes!.push(commaNodes![0]!);
+      }
+      node = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+      semiNodes!.push($.wrap(node, true));
+    });
+
+    const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const nodes = isSemiList ? semiNodes! : commaNodes!;
+    return new List(nodes, isSemiList ? { sep: ';' } : undefined, loc, $.context);
+  };
+}
+
 /**
  * `$var` with optional accessor chain `.prop`, `[idx]`, `.method(args)`.
  * Returns a Reference for plain `$var` or a nested Reference/Call for chains.
@@ -128,21 +191,85 @@ export function value(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
-    return $.OR2([
-      {
-        GATE: () => $.LA(1).tokenType === $.T.DollarParen,
-        ALT: () => $.SUBRULE($.jessParenExpression, { ARGS: [ctx] })
-      },
-      {
-        GATE: () =>
-          $.LA(1).tokenType === $.T.DollarVariable
-          && $.noSep(1)
-          && ($.LA(2).tokenType === $.T.DotName || $.LA(2).tokenType === $.T.LSquare),
-        ALT: () => $.SUBRULE($.jessVarWithAccessors, { ARGS: [ctx] })
-      },
-      {
-        ALT: () => scssValue.call($, T)(ctx)
-      }
-    ]);
+    if ($.RECORDING_PHASE) {
+      $.OR2([
+        {
+          GATE: () => $.LA(1).tokenType === $.T.DollarParen,
+          ALT: () => $.SUBRULE($.jessParenExpression, { ARGS: [ctx] })
+        },
+        {
+          GATE: () =>
+            $.LA(1).tokenType === $.T.DollarVariable
+            && $.noSep(1)
+            && ($.LA(2).tokenType === $.T.DotName || $.LA(2).tokenType === $.T.LSquare),
+          ALT: () => $.SUBRULE($.jessVarWithAccessors, { ARGS: [ctx] })
+        },
+        {
+          ALT: () => scssValue.call($, T)(ctx)
+        }
+      ]);
+      return;
+    }
+
+    if ($.LA(1).tokenType === $.T.DollarParen) {
+      return $.SUBRULE($.jessParenExpression, { ARGS: [ctx] });
+    }
+
+    if (
+      $.LA(1).tokenType === $.T.DollarVariable
+      && $.noSep(1)
+      && ($.LA(2).tokenType === $.T.DotName || $.LA(2).tokenType === $.T.LSquare)
+    ) {
+      return $.SUBRULE($.jessVarWithAccessors, { ARGS: [ctx] });
+    }
+
+    if ($.LA(1).tokenType === $.T.DollarVariable) {
+      const token = $.CONSUME($.T.DollarVariable) as unknown as IToken;
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if ($.isType($.T.FunctionStart)) {
+      return $.SUBRULE($.functionCall, { ARGS: [ctx] });
+    }
+
+    if ($.isType($.T.PlainIdent)) {
+      const token = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if ($.isType($.T.Ident)) {
+      const token = $.CONSUME($.T.Ident) as unknown as IToken;
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if ($.isType($.T.Dimension)) {
+      const token = $.CONSUME($.T.Dimension) as unknown as IToken;
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if ($.isType($.T.Number)) {
+      const token = $.CONSUME($.T.Number) as unknown as IToken;
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if ($.isType($.T.Color)) {
+      const token = $.CONSUME($.T.Color) as unknown as IToken;
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if ($.LA(1).tokenType === $.T.UnicodeRange) {
+      const token = $.CONSUME($.T.UnicodeRange) as unknown as IToken;
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if ($.LA(1).tokenType === $.T.SingleQuoteStart || $.LA(1).tokenType === $.T.DoubleQuoteStart) {
+      return $.SUBRULE($.string, { ARGS: [ctx] });
+    }
+
+    if ($.LA(1).tokenType === $.T.LSquare) {
+      return $.SUBRULE($.squareValue, { ARGS: [ctx] });
+    }
+
+    return scssValue.call($, T)(ctx);
   };
 }

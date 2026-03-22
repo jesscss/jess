@@ -150,7 +150,57 @@ export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
     { ALT: () => $.CONSUME($.T.Semi) }
   ];
 
-  return main.call(this, T, alt);
+  return (ctx: RuleContext = {}) => {
+    const rules: Node[] = [];
+    let requiredSemi = false;
+    let lastRule: Node | undefined;
+
+    $.MANY({
+      GATE: () => !requiredSemi || (requiredSemi && (
+        $.LA(1).tokenType === $.T.Semi
+        || $.LA(0).tokenType === $.T.Semi
+      )),
+      DEF: () => {
+        let value: unknown;
+
+        if ($.RECORDING_PHASE) {
+          value = $.OR(alt!(ctx));
+        } else if ($.LA(1).tokenType === $.T.Semi) {
+          value = $.CONSUME($.T.Semi);
+        } else if ($.isTypeAt(1, $.T.AtName)) {
+          value = $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] });
+        } else if (isDeclarationStart()) {
+          value = $.SUBRULE($.declaration, { ARGS: [ctx] });
+        } else {
+          value = $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
+        }
+
+        if (!(value instanceof Node)) {
+          if (lastRule) {
+            lastRule.options.semi = true;
+          } else if (!$.RECORDING_PHASE) {
+            rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), $.context));
+          }
+          return;
+        }
+
+        const pending = $.consumePendingNodes();
+        if (pending.length) {
+          rules.push(...pending);
+        }
+        requiredSemi = !!value.requiredSemi;
+        rules.push(value);
+        lastRule = value;
+      }
+    });
+
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
+    return $.wrap(withComments, true);
+  };
 }
 
 /**
@@ -268,27 +318,37 @@ export function layerName(this: P, T: TokenMap) {
     replacements.push(expr);
   };
 
-  // First segment
-  $.OR([
-    {
-      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-      ALT: () => {
-        $.CONSUME($.T.InterpolationStart);
-        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-        $.CONSUME($.T.RCurly);
-        takeInterpolation(expr);
-      }
-    },
-    {
-      ALT: () => {
-        const tok = $.OR([
-          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
-          { ALT: () => $.CONSUME($.T.PlainIdent) }
-        ]) as unknown as IToken;
-        takeIdent(tok);
-      }
+  const consumeSegment = () => {
+    if ($.RECORDING_PHASE) {
+      $.OR([
+        {
+          ALT: () => {
+            $.CONSUME($.T.InterpolationStart);
+            $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+            $.CONSUME($.T.RCurly);
+          }
+        },
+        { ALT: () => $.CONSUME($.T.Ident) },
+        { ALT: () => $.CONSUME($.T.PlainIdent) }
+      ]);
+      return;
     }
-  ]);
+
+    if ($.LA(1).tokenType === $.T.InterpolationStart) {
+      $.CONSUME($.T.InterpolationStart);
+      const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+      $.CONSUME($.T.RCurly);
+      takeInterpolation(expr);
+      return;
+    }
+
+    const tok = $.isType($.T.Ident)
+      ? ($.CONSUME($.T.Ident) as unknown as IToken)
+      : ($.CONSUME($.T.PlainIdent) as unknown as IToken);
+    takeIdent(tok);
+  };
+
+  consumeSegment();
 
   // Additional segments with no whitespace (e.g. `foo-#{$bar}`)
   $.MANY({
@@ -299,26 +359,7 @@ export function layerName(this: P, T: TokenMap) {
       && $.LA(1).tokenType !== $.T.Semi
       && $.LA(1).tokenType.name !== 'EOF',
     DEF: () => {
-      $.OR([
-        {
-          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-          ALT: () => {
-            $.CONSUME($.T.InterpolationStart);
-          const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-            $.CONSUME($.T.RCurly);
-            takeInterpolation(expr);
-          }
-        },
-        {
-          ALT: () => {
-            const tok = $.OR([
-              { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
-              { ALT: () => $.CONSUME($.T.PlainIdent) }
-            ]) as unknown as IToken;
-            takeIdent(tok);
-          }
-        }
-      ]);
+      consumeSegment();
     }
   });
 

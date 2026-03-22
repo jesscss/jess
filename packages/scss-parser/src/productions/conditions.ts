@@ -167,22 +167,37 @@ export function scssConditionInner(this: P, T: TokenMap) {
 export function scssComparison(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    const opAlt = [
-      { ALT: () => $.CONSUME($.T.NotEq) },   // !=  (normalized to = with negate)
-      { ALT: () => $.CONSUME($.T.EqEq) },    // ==  (normalized to =)
-      { ALT: () => $.CONSUME($.T.Eq) },      // =
-      { ALT: () => $.CONSUME($.T.Gt) },      // >
-      { ALT: () => $.CONSUME($.T.GtEq) },    // >=
-      { ALT: () => $.CONSUME($.T.Lt) },      // <
-      { ALT: () => $.CONSUME($.T.LtEq) }     // <=
-    ];
-
     let left = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
     let op: IToken;
     let right: Node;
     let wasNotEqual = false;
 
-    op = $.OR(opAlt);
+    if ($.RECORDING_PHASE) {
+      op = $.OR([
+        { ALT: () => $.CONSUME($.T.NotEq) },
+        { ALT: () => $.CONSUME($.T.EqEq) },
+        { ALT: () => $.CONSUME($.T.Eq) },
+        { ALT: () => $.CONSUME($.T.GtEq) },
+        { ALT: () => $.CONSUME($.T.Gt) },
+        { ALT: () => $.CONSUME($.T.LtEq) },
+        { ALT: () => $.CONSUME($.T.Lt) }
+      ]) as unknown as IToken;
+    } else if ($.isType($.T.NotEq)) {
+      op = $.CONSUME($.T.NotEq) as unknown as IToken;
+    } else if ($.isType($.T.EqEq)) {
+      op = $.CONSUME($.T.EqEq) as unknown as IToken;
+    } else if ($.isType($.T.Eq)) {
+      op = $.CONSUME($.T.Eq) as unknown as IToken;
+    } else if ($.isType($.T.GtEq)) {
+      op = $.CONSUME($.T.GtEq) as unknown as IToken;
+    } else if ($.isType($.T.Gt)) {
+      op = $.CONSUME($.T.Gt) as unknown as IToken;
+    } else if ($.isType($.T.LtEq)) {
+      op = $.CONSUME($.T.LtEq) as unknown as IToken;
+    } else {
+      op = $.CONSUME($.T.Lt) as unknown as IToken;
+    }
+
     right = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
 
     if ($.RECORDING_PHASE) {

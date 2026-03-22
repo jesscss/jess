@@ -45,6 +45,33 @@ type AltContext = (ctx?: RuleContext) => Alt;
 const cssFunctionCall = cssProductions.functionCall;
 const cssDeclaration = cssProductions.declaration;
 
+function consumeScssVarFlags($: P) {
+  let sawDefault = false;
+  let sawGlobal = false;
+
+  if ($.RECORDING_PHASE) {
+    $.MANY(() => {
+      $.OR2([
+        { ALT: () => $.CONSUME($.T.SassDefault) },
+        { ALT: () => $.CONSUME($.T.SassGlobal) }
+      ]);
+    });
+    return { sawDefault, sawGlobal };
+  }
+
+  while ($.isType($.T.SassDefault) || $.isType($.T.SassGlobal)) {
+    if ($.isType($.T.SassDefault)) {
+      $.CONSUME($.T.SassDefault);
+      sawDefault = true;
+    } else {
+      $.CONSUME($.T.SassGlobal);
+      sawGlobal = true;
+    }
+  }
+
+  return { sawDefault, sawGlobal };
+}
+
 export function scssIdentValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
@@ -134,6 +161,69 @@ export function scssIdentValue(this: P, T: TokenMap) {
     }
 
     return ident;
+  };
+}
+
+export function functionCallArgs(this: P, T: TokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let node = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+    let commaNodes: Node[] | undefined;
+    let semiNodes: Node[] | undefined;
+    let isSemiList = false;
+
+    if (!$.RECORDING_PHASE) {
+      commaNodes = [$.wrap(node, true)];
+      semiNodes = [];
+    }
+
+    $.MANY(() => {
+      if ($.RECORDING_PHASE) {
+        $.OR([
+          {
+            ALT: () => {
+              $.CONSUME($.T.Comma);
+              $.SUBRULE2($.valueSequence, { ARGS: [ctx] });
+            }
+          },
+          {
+            ALT: () => {
+              $.CONSUME($.T.Semi);
+              $.SUBRULE($.valueList, { ARGS: [ctx] });
+            }
+          }
+        ]);
+        return;
+      }
+
+      if (!isSemiList && $.isType($.T.Comma)) {
+        $.CONSUME($.T.Comma);
+        node = $.SUBRULE2($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        commaNodes!.push($.wrap(node, true));
+        return;
+      }
+
+      isSemiList = true;
+      $.CONSUME($.T.Semi);
+      if (commaNodes!.length > 1) {
+        semiNodes!.push(new List(commaNodes!, undefined, $.getLocationFromNodes(commaNodes!)!, $.context));
+      } else {
+        semiNodes!.push(commaNodes![0]!);
+      }
+      node = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+      semiNodes!.push($.wrap(node, true));
+    });
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const nodes = isSemiList ? semiNodes! : commaNodes!;
+    return new List(nodes, isSemiList ? { sep: ';' } : undefined, location, $.context);
   };
 }
 
@@ -289,40 +379,60 @@ export function functionCall(this: P, T: TokenMap) {
 export function string(this: P, T: TokenMap, stringAlt?: AltContext) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    stringAlt ??= (ctx: RuleContext = {}) => [
-    {
-      ALT: () => {
-        $.startRule();
-        const quote = $.CONSUME($.T.SingleQuoteStart);
+    const parseSingleQuoted = () => {
+      $.startRule();
+      const quote = $.CONSUME($.T.SingleQuoteStart);
 
-        let contents: IToken | undefined;
+      let contents: IToken | undefined;
+      if ($.RECORDING_PHASE) {
         $.OPTION(() => (contents = $.CONSUME($.T.SingleQuoteStringContents)));
-
-        $.CONSUME($.T.SingleQuoteEnd);
-        const location = $.endRule();
-        const raw = contents?.image ?? '';
-        const inner = processScssStringInterpolation(raw, location, $.context);
-        return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+      } else if ($.isType($.T.SingleQuoteStringContents)) {
+        contents = $.CONSUME($.T.SingleQuoteStringContents) as unknown as IToken;
       }
-    },
-    {
-      ALT: () => {
-        $.startRule();
-        const quote = $.CONSUME($.T.DoubleQuoteStart);
 
-        let contents: IToken | undefined;
+      $.CONSUME($.T.SingleQuoteEnd);
+      const location = $.endRule();
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      const raw = contents?.image ?? '';
+      const inner = processScssStringInterpolation(raw, location, $.context);
+      return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+    };
+
+    const parseDoubleQuoted = () => {
+      $.startRule();
+      const quote = $.CONSUME($.T.DoubleQuoteStart);
+
+      let contents: IToken | undefined;
+      if ($.RECORDING_PHASE) {
         $.OPTION(() => (contents = $.CONSUME($.T.DoubleQuoteStringContents)));
-
-        $.CONSUME($.T.DoubleQuoteEnd);
-        const location = $.endRule();
-        const raw = contents?.image ?? '';
-        const inner = processScssStringInterpolation(raw, location, $.context);
-        return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+      } else if ($.isType($.T.DoubleQuoteStringContents)) {
+        contents = $.CONSUME($.T.DoubleQuoteStringContents) as unknown as IToken;
       }
-    }
-  ];
 
-    return $.OR(stringAlt!(ctx));
+      $.CONSUME($.T.DoubleQuoteEnd);
+      const location = $.endRule();
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      const raw = contents?.image ?? '';
+      const inner = processScssStringInterpolation(raw, location, $.context);
+      return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+    };
+
+    if ($.RECORDING_PHASE) {
+      $.OR([
+        { ALT: () => parseSingleQuoted() },
+        { ALT: () => parseDoubleQuoted() }
+      ]);
+      return;
+    }
+
+    if ($.LA(1).tokenType === $.T.SingleQuoteStart) {
+      return parseSingleQuoted();
+    }
+    return parseDoubleQuoted();
   };
 }
 
@@ -379,210 +489,238 @@ export function scssMapLiteral(this: P, T: TokenMap) {
  */
 export function declaration(this: P, T: TokenMap, alt?: AltContext) {
   const $ = this;
-  return (ctx: RuleContext = {}) => {
-    const looksLikeInterpolatedDeclName = () => {
-      for (let i = 1; i < 64; i++) {
-        const tok = $.LA(i);
-        if (tok.tokenType === $.T.Assign || tok.tokenType.name === 'EOF') {
-          return false;
-        }
-        if (tok.tokenType === $.T.InterpolationStart) {
-          return true;
-        }
+  const looksLikeInterpolatedDeclName = () => {
+    for (let i = 1; i < 64; i++) {
+      const tok = $.LA(i);
+      if (tok.tokenType === $.T.Assign || tok.tokenType.name === 'EOF') {
+        return false;
       }
-      return false;
-    };
-
-    const ruleAlt = (ctx: RuleContext = {}): Alt => [
-      {
-        GATE: () => $.LA(1).tokenType === $.T.DollarVariable,
-        ALT: () => {
-          const dv = $.CONSUME($.T.DollarVariable);
-          const assign = $.CONSUME($.T.Assign);
-          const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
-
-          let sawDefault = false;
-          let sawGlobal = false;
-          $.MANY(() => {
-            $.OR2([
-              {
-                ALT: () => {
-                  $.CONSUME($.T.SassDefault);
-                  sawDefault = true;
-                }
-              },
-              {
-                ALT: () => {
-                  $.CONSUME($.T.SassGlobal);
-                  sawGlobal = true;
-                }
-              }
-            ]);
-          });
-
-          if (!$.RECORDING_PHASE) {
-            const nameNode = $.wrap(
-              new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context),
-              true
-            );
-            return {
-              kind: 'var' as const,
-              assign,
-              location: $.getLocationFromNodes([nameNode, value]),
-              nameNode,
-              value,
-              sawDefault,
-              sawGlobal
-            };
-          }
-        }
-      },
-      {
-        GATE: () => (
-          (
-            $.LA(1).tokenType === $.T.Ident
-            || $.LA(1).tokenType === $.T.PlainIdent
-            || $.LA(1).tokenType === $.T.CustomProperty
-            || ($.legacyMode && $.LA(1).tokenType === $.T.LegacyPropIdent)
-            || $.LA(1).tokenType === $.T.InterpolationStart
-          ) && looksLikeInterpolatedDeclName()
-        ),
-        ALT: () => {
-          let source = '';
-          const replacements: Node[] = [];
-
-          $.AT_LEAST_ONE({
-            DEF: () => {
-              $.OR3([
-                {
-                  GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-                  ALT: () => {
-                    $.CONSUME($.T.InterpolationStart);
-                    const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-                    $.CONSUME($.T.RCurly);
-                    source += INTERPOLATION_PLACEHOLDER;
-                    replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
-                  }
-                },
-                {
-                  ALT: () => {
-                    const tok = $.OR4([
-                      { ALT: () => $.CONSUME($.T.Ident) },
-                      { ALT: () => $.CONSUME($.T.CustomProperty) },
-                      {
-                        GATE: () => $.legacyMode,
-                        ALT: () => $.CONSUME($.T.LegacyPropIdent)
-                      }
-                    ]) as unknown as IToken;
-                    source += tok.image;
-                  }
-                }
-              ]);
-            }
-          });
-
-          const assign = $.CONSUME($.T.Assign);
-          const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
-          let important: IToken | undefined;
-          $.OPTION(() => {
-            important = $.CONSUME($.T.Important);
-          });
-
-          const nameNode = $.wrap(
-            new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context),
-            true
-          );
-
-          return [nameNode, assign, value, important] as const;
-        }
-      },
-      {
-        ALT: () => {
-          let name!: IToken;
-          $.OR5([
-            { ALT: () => (name = $.CONSUME($.T.Ident) as unknown as IToken) },
-            {
-              GATE: () => $.legacyMode,
-              ALT: () => (name = $.CONSUME($.T.LegacyPropIdent) as unknown as IToken)
-            }
-          ]);
-
-          const assign = $.CONSUME($.T.Assign);
-          const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
-          let important: IToken | undefined;
-          $.OPTION(() => {
-            important = $.CONSUME($.T.Important);
-          });
-
-          if (!$.RECORDING_PHASE) {
-            const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
-            return [nameNode, assign, value, important] as const;
-          }
-        }
-      },
-      {
-        ALT: () => {
-          const name = $.CONSUME($.T.CustomProperty);
-          const assign = $.CONSUME2($.T.Assign);
-          let nodes: Node[] = [];
-          $.startRule();
-          $.MANY(() => {
-            const val = $.SUBRULE2($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] }) as unknown as Node;
-            if (!$.RECORDING_PHASE) {
-              nodes.push(val);
-            }
-          });
-
-          if (!$.RECORDING_PHASE) {
-            const location = $.endRule();
-            const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
-            const value = new Sequence(nodes, undefined, location, $.context);
-            return [nameNode, assign, value] as const;
-          }
-        }
+      if (tok.tokenType === $.T.InterpolationStart) {
+        return true;
       }
-    ];
+    }
+    return false;
+  };
 
+  const parseVarDeclaration = (ctx: RuleContext = {}) => {
     $.startRule();
-    const val = $.OR(ruleAlt(ctx));
+
+    const dv = $.CONSUME($.T.DollarVariable);
+    const assign = $.CONSUME($.T.Assign);
+    const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+
+    const { sawDefault, sawGlobal } = consumeScssVarFlags($);
+
     const location = $.endRule();
     if ($.RECORDING_PHASE) {
       return;
     }
 
-    if (val && typeof val === 'object' && (val as { kind?: string }).kind === 'var') {
-      const {
-        assign,
-        nameNode,
-        value,
-        sawDefault,
-        sawGlobal
-      } = val as {
-        assign: IToken;
-        nameNode: Any<'property'>;
-        value: Node;
-        sawDefault: boolean;
-        sawGlobal: boolean;
-      };
+    const nameNode = $.wrap(
+      new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context),
+      true
+    );
 
-      return new VarDeclaration(
-        { name: nameNode, value: $.wrap(value, 'both') },
-        { assign: (sawDefault ? '?:' : assign.image) as any, setDefined: sawGlobal },
-        location,
-        $.context
-      );
+    return new VarDeclaration(
+      { name: nameNode, value: $.wrap(value, 'both') },
+      { assign: (sawDefault ? '?:' : assign.image) as any, setDefined: sawGlobal },
+      location,
+      $.context
+    );
+  };
+
+  const parseInterpolatedDeclaration = (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let source = '';
+    const replacements: Node[] = [];
+
+    $.AT_LEAST_ONE({
+      DEF: () => {
+        if ($.RECORDING_PHASE) {
+          $.OR([
+            {
+              ALT: () => {
+                $.CONSUME($.T.InterpolationStart);
+                $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+                $.CONSUME($.T.RCurly);
+              }
+            },
+            { ALT: () => $.CONSUME($.T.PlainIdent) },
+            { ALT: () => $.CONSUME($.T.Ident) },
+            { ALT: () => $.CONSUME($.T.CustomProperty) },
+            { ALT: () => $.CONSUME($.T.LegacyPropIdent) }
+          ]);
+          return;
+        }
+
+        if ($.LA(1).tokenType === $.T.InterpolationStart) {
+          $.CONSUME($.T.InterpolationStart);
+          const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+          $.CONSUME($.T.RCurly);
+          if (!$.RECORDING_PHASE) {
+            source += INTERPOLATION_PLACEHOLDER;
+            replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+          }
+          return;
+        }
+
+        let tok: IToken;
+        if ($.isType($.T.PlainIdent)) {
+          tok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+        } else if ($.isType($.T.Ident)) {
+          tok = $.CONSUME($.T.Ident) as unknown as IToken;
+        } else if ($.isType($.T.CustomProperty)) {
+          tok = $.CONSUME($.T.CustomProperty) as unknown as IToken;
+        } else {
+          tok = $.CONSUME($.T.LegacyPropIdent) as unknown as IToken;
+        }
+        if (!$.RECORDING_PHASE) {
+          source += tok.image;
+        }
+      }
+    });
+
+    const assign = $.CONSUME($.T.Assign);
+    const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+    let important: IToken | undefined;
+    $.OPTION(() => {
+      important = $.CONSUME($.T.Important);
+    });
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
     }
 
-    const [name, assign, value, important] = val as [Any<'property'>, IToken, Node, IToken | undefined];
-    const isCustom = name.valueOf().startsWith('--');
+    const nameNode = $.wrap(
+      new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context),
+      true
+    );
+    const isCustom = nameNode.valueOf().startsWith('--');
     const wrapCtx = isCustom ? { ...ctx, inCustomPropertyValue: true } : ctx;
     const DeclClass = isCustom ? CustomDeclaration : Declaration;
     return new DeclClass({
-      name,
+      name: nameNode,
       value: $.wrap(value, 'both', wrapCtx),
       important: important
         ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both')
         : undefined
     }, { assign: assign.image as any }, location, $.context);
+  };
+
+  const parseRegularDeclaration = (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let name!: IToken;
+    if ($.isType($.T.PlainIdent)) {
+      name = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+    } else if ($.isType($.T.Ident)) {
+      name = $.CONSUME($.T.Ident) as unknown as IToken;
+    } else {
+      name = $.CONSUME($.T.LegacyPropIdent) as unknown as IToken;
+    }
+
+    const assign = $.CONSUME($.T.Assign);
+    const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+    let important: IToken | undefined;
+    $.OPTION(() => {
+      important = $.CONSUME($.T.Important);
+    });
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+    return new Declaration({
+      name: nameNode,
+      value: $.wrap(value, 'both', ctx),
+      important: important
+        ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both')
+        : undefined
+    }, { assign: assign.image as any }, location, $.context);
+  };
+
+  const parseCustomPropertyDeclaration = (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    const name = $.CONSUME($.T.CustomProperty);
+    const assign = $.CONSUME2($.T.Assign);
+    let nodes: Node[] | undefined;
+    if (!$.RECORDING_PHASE) {
+      nodes = [];
+    }
+    $.startRule();
+    $.MANY(() => {
+      const val = $.SUBRULE2($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] }) as unknown as Node;
+      if (!$.RECORDING_PHASE) {
+        nodes!.push(val);
+      }
+    });
+
+    const valueLocation = $.endRule();
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+    const value = new Sequence(nodes!, undefined, valueLocation, $.context);
+    return new CustomDeclaration({
+      name: nameNode,
+      value: $.wrap(value, 'both', { ...ctx, inCustomPropertyValue: true })
+    }, { assign: assign.image as any }, location, $.context);
+  };
+
+  return (ctx: RuleContext = {}) => {
+    if ($.RECORDING_PHASE) {
+      $.OR([
+        {
+          GATE: () => $.LA(1).tokenType === $.T.DollarVariable,
+          ALT: () => parseVarDeclaration(ctx)
+        },
+        {
+          GATE: () => (
+            (
+              $.LA(1).tokenType === $.T.Ident
+              || $.LA(1).tokenType === $.T.PlainIdent
+              || $.LA(1).tokenType === $.T.CustomProperty
+              || ($.legacyMode && $.LA(1).tokenType === $.T.LegacyPropIdent)
+              || $.LA(1).tokenType === $.T.InterpolationStart
+            ) && looksLikeInterpolatedDeclName()
+          ),
+          ALT: () => parseInterpolatedDeclaration(ctx)
+        },
+        {
+          GATE: () => $.LA(1).tokenType === $.T.CustomProperty,
+          ALT: () => parseCustomPropertyDeclaration(ctx)
+        },
+        {
+          ALT: () => parseRegularDeclaration(ctx)
+        }
+      ]);
+      return;
+    }
+
+    if ($.LA(1).tokenType === $.T.DollarVariable) {
+      return parseVarDeclaration(ctx);
+    }
+    if (
+      (
+        $.LA(1).tokenType === $.T.Ident
+        || $.LA(1).tokenType === $.T.PlainIdent
+        || $.LA(1).tokenType === $.T.CustomProperty
+        || ($.legacyMode && $.LA(1).tokenType === $.T.LegacyPropIdent)
+        || $.LA(1).tokenType === $.T.InterpolationStart
+      ) && looksLikeInterpolatedDeclName()
+    ) {
+      return parseInterpolatedDeclaration(ctx);
+    }
+    if ($.LA(1).tokenType === $.T.CustomProperty) {
+      return parseCustomPropertyDeclaration(ctx);
+    }
+    return parseRegularDeclaration(ctx);
   };
 }
