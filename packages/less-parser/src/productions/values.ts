@@ -10,6 +10,7 @@ import {
   type Operator,
   Node,
   Any,
+  Block,
   List,
   Sequence,
   Call,
@@ -50,6 +51,29 @@ function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext
   return { ...(ctx ?? {}), calcFrames };
 }
 
+function startsCustomValueToken($: P, T: TokenMap): boolean {
+  return $.isType(T.LParen)
+    || $.isType(T.FunctionStart)
+    || $.isType(T.FunctionalPseudoClass)
+    || $.isType(T.LSquare)
+    || $.isType(T.LCurly)
+    || $.isType(T.SingleQuoteStart)
+    || $.isType(T.DoubleQuoteStart)
+    || $.isType(T.Value)
+    || $.isType(T.PlainIdent)
+    || $.isType(T.AtKeyword)
+    || $.isType(T.PropertyReference)
+    || $.isType(T.CustomProperty)
+    || $.isType(T.Dimension)
+    || $.isType(T.Number)
+    || $.isType(T.Color)
+    || $.isType(T.UnicodeRange)
+    || $.isType(T.Colon)
+    || $.isType(T.Comma)
+    || $.isType(T.Important)
+    || $.isType(T.Unknown);
+}
+
 const createInterpolatedReference = (
   prefix: string,
   value: string,
@@ -77,74 +101,47 @@ export function expressionSum(this: P, T: TokenMap) {
 
     let left = $.SUBRULE($.expressionProduct, { ARGS: [ctx] });
 
-    $.MANY({
-      /**
-       * What this GATE does. We need to dis-ambiguate
-       * 1 -1 (a value sequence) from 1-1 (a Less expression),
-       * so Less is white-space sensitive here.
-       */
-      GATE: () => {
-        const next = $.LA(1);
-        return (
-          $.isType(T.Plus)
-          || $.isType(T.Minus)
-          || ($.noSep() && tokenMatcher(next, T.Signed))
-        );
-      },
-      DEF: () => {
-        let op: string | undefined;
-        let right: Node;
+    while (true) {
+      let op: string | undefined;
+      let right: Node | undefined;
 
-        $.OR2([
-          {
-            ALT: () => {
-              let opToken = $.OR3([
-                { ALT: () => $.CONSUME(T.Plus) },
-                { ALT: () => $.CONSUME(T.Minus) }
-              ]);
-              op = opToken.image;
-              right = $.SUBRULE2($.expressionProduct, { ARGS: [ctx] });
-            }
-          },
-          /** This will be interpreted by Less as a complete expression */
-          {
-            ALT: () => {
-              // Consume a signed literal and convert it without rewinding
-              const tok = $.CONSUME(T.Signed);
-              let startValue: Node | undefined;
-              const str = tok.image;
-              op = str[0];
-              // Build a literal node from the signed token directly
-              // Prefer dimension if payload exists, else number, else ident fallback
-              if (tok.payload && tok.payload[1]) {
-                const dim = { number: parseFloat(tok.payload[0]), unit: tok.payload[1] };
-                startValue = new Dimension(dim, undefined, $.getLocationInfo(tok), $.context);
-              } else {
-                const num = parseFloat(str);
-                if (!Number.isNaN(num)) {
-                  startValue = new Num(num, undefined, $.getLocationInfo(tok), $.context);
-                } else {
-                  startValue = $.processValueToken(tok);
-                }
-              }
-              // Delegate to expressionProduct for any trailing * / %
-              // e.g. 6px-1px*2 -> 6px - (1px * 2)
-              right = $.SUBRULE3($.expressionProduct, { ARGS: [{ ...ctx, startValue }] });
-            }
+      if ($.isType(T.Plus)) {
+        const opToken = $.CONSUME(T.Plus);
+        op = opToken.image;
+        right = $.SUBRULE2($.expressionProduct, { ARGS: [ctx] });
+      } else if ($.isType(T.Minus)) {
+        const opToken = $.CONSUME(T.Minus);
+        op = opToken.image;
+        right = $.SUBRULE4($.expressionProduct, { ARGS: [ctx] });
+      } else if ($.noSep() && tokenMatcher($.LA(1), T.Signed)) {
+        const tok = $.CONSUME(T.Signed);
+        let startValue: Node | undefined;
+        const str = tok.image;
+        op = str[0];
+        if (tok.payload && tok.payload[1]) {
+          const dim = { number: parseFloat(tok.payload[0]), unit: tok.payload[1] };
+          startValue = new Dimension(dim, undefined, $.getLocationInfo(tok), $.context);
+        } else {
+          const num = parseFloat(str);
+          if (!Number.isNaN(num)) {
+            startValue = new Num(num, undefined, $.getLocationInfo(tok), $.context);
+          } else {
+            startValue = $.processValueToken(tok);
           }
-        ]);
-
-        const operation = new Operation(
-          [$.wrap(left, true), op as Operator, $.wrap(right!)],
-          undefined,
-          $.getLocationFromNodes([left, right!]),
-          $.context
-        );
-        left = operation;
-
-        return left;
+        }
+        right = $.SUBRULE3($.expressionProduct, { ARGS: [{ ...ctx, startValue }] });
+      } else {
+        break;
       }
-    });
+
+      const operation = new Operation(
+        [$.wrap(left, true), op as Operator, $.wrap(right!)],
+        undefined,
+        $.getLocationFromNodes([left, right!]),
+        $.context
+      );
+      left = operation;
+    }
 
     $.endRule();
 
@@ -155,43 +152,186 @@ export function expressionSum(this: P, T: TokenMap) {
 export function expressionProduct(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    let opAlt = [
-      { ALT: () => $.CONSUME(T.Star) },
-      { ALT: () => $.CONSUME(T.Slash) },
-      { ALT: () => $.CONSUME(T.Percent) }
-    ];
-
     $.startRule();
 
     let left = ctx.startValue ?? $.SUBRULE($.expressionValue, { ARGS: [ctx] });
 
-    $.MANY({
-      GATE: () => $.isType(T.Star) || $.isType(T.Slash) || $.isType(T.Percent),
-      DEF: () => {
-        let op = $.OR(opAlt);
-        // Check for deprecated ./ operator
-        if (op.image === './') {
-          $.warnDeprecation(
-            './ operator is deprecated',
-            op,
-            'dot-slash-operator'
-          );
-        }
-        let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] });
+    while (true) {
+      let op: IToken;
 
-        const operation = new Operation(
-          [$.wrap(left, true), op.image as Operator, $.wrap(right)],
-          undefined,
-          $.getLocationFromNodes([left, right]),
-          $.context
-        );
-        left = operation;
+      if ($.isType(T.Star)) {
+        op = $.CONSUME(T.Star);
+      } else if ($.isType(T.Slash)) {
+        op = $.CONSUME(T.Slash);
+      } else if ($.isType(T.Percent)) {
+        op = $.CONSUME(T.Percent);
+      } else {
+        break;
       }
-    });
+      // Check for deprecated ./ operator
+      if (op!.image === './') {
+        $.warnDeprecation(
+          './ operator is deprecated',
+          op!,
+          'dot-slash-operator'
+        );
+      }
+      let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] });
+
+      const operation = new Operation(
+        [$.wrap(left, true), op!.image as Operator, $.wrap(right)],
+        undefined,
+        $.getLocationFromNodes([left, right]),
+        $.context
+      );
+      left = operation;
+    }
 
     $.endRule();
 
     return left;
+  };
+}
+
+export function customValue(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    if (
+      $.isType(T.LParen)
+      || $.isType(T.FunctionStart)
+      || $.isType(T.FunctionalPseudoClass)
+      || $.isType(T.LSquare)
+      || $.isType(T.LCurly)
+    ) {
+      return $.SUBRULE($.customBlock, { ARGS: [ctx] });
+    }
+    if ($.isType(T.SingleQuoteStart) || $.isType(T.DoubleQuoteStart)) {
+      return $.SUBRULE($.string, { ARGS: [ctx] });
+    }
+
+    let token: IToken;
+    if ($.isType(T.Value)) {
+      token = $.CONSUME(T.Value);
+    } else if ($.isType(T.PlainIdent)) {
+      token = $.CONSUME(T.PlainIdent);
+    } else if ($.isType(T.AtKeyword)) {
+      token = $.CONSUME(T.AtKeyword);
+    } else if ($.isType(T.PropertyReference)) {
+      token = $.CONSUME(T.PropertyReference);
+    } else if ($.isType(T.CustomProperty)) {
+      token = $.CONSUME(T.CustomProperty);
+    } else if ($.isType(T.Dimension)) {
+      token = $.CONSUME(T.Dimension);
+    } else if ($.isType(T.Number)) {
+      token = $.CONSUME(T.Number);
+    } else if ($.isType(T.Color)) {
+      token = $.CONSUME(T.Color);
+    } else if ($.isType(T.UnicodeRange)) {
+      token = $.CONSUME(T.UnicodeRange);
+    } else if ($.isType(T.Colon)) {
+      token = $.CONSUME(T.Colon);
+    } else if ($.isType(T.Comma)) {
+      token = $.CONSUME(T.Comma);
+    } else if ($.isType(T.Important)) {
+      token = $.CONSUME(T.Important);
+    } else {
+      token = $.CONSUME(T.Unknown);
+    }
+
+    if (!$.RECORDING_PHASE) {
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+  };
+}
+
+export function innerCustomValue(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    if ($.isType(T.Semi)) {
+      const semi = $.CONSUME(T.Semi);
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), $.context));
+    }
+    return $.SUBRULE($.customValue, { ARGS: [ctx] });
+  };
+}
+
+export function customBlock(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let start: IToken | undefined;
+    let end: IToken | undefined;
+    let nodes: Node[] | undefined;
+    if (!RECORDING_PHASE) {
+      nodes = [];
+    }
+
+    if ($.isType(T.LParen)) {
+      start = $.CONSUME(T.LParen);
+      while (!$.isType(T.RParen) && (startsCustomValueToken($, T) || $.isType(T.Semi))) {
+        const val = $.SUBRULE($.innerCustomValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          nodes!.push(val);
+        }
+      }
+      end = $.CONSUME(T.RParen);
+    } else if ($.isType(T.FunctionStart) || $.isType(T.FunctionalPseudoClass)) {
+      start = $.isType(T.FunctionStart)
+        ? $.CONSUME(T.FunctionStart)
+        : $.CONSUME(T.FunctionalPseudoClass);
+      while (!$.isType(T.RParen) && (startsCustomValueToken($, T) || $.isType(T.Semi))) {
+        const val = $.SUBRULE2($.innerCustomValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          nodes!.push(val);
+        }
+      }
+      end = $.CONSUME2(T.RParen);
+    } else if ($.isType(T.LSquare)) {
+      start = $.CONSUME(T.LSquare);
+      while (!$.isType(T.RSquare) && (startsCustomValueToken($, T) || $.isType(T.Semi))) {
+        const val = $.SUBRULE3($.innerCustomValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          nodes!.push(val);
+        }
+      }
+      end = $.CONSUME(T.RSquare);
+    } else {
+      start = $.CONSUME(T.LCurly);
+      while (!$.isType(T.RCurly) && (startsCustomValueToken($, T) || $.isType(T.Semi))) {
+        const val = $.SUBRULE4($.innerCustomValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          nodes!.push(val);
+        }
+      }
+      end = $.CONSUME(T.RCurly);
+    }
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    const location = $.endRule();
+    let type: 'square' | 'curly' | undefined;
+    switch (start!.image) {
+      case '[':
+        type = 'square';
+        break;
+      case '{':
+        type = 'curly';
+        break;
+    }
+    if (type) {
+      const seqLoc = nodes!.length ? $.getLocationFromNodes(nodes!) : undefined;
+      const seq = new Sequence(nodes!, undefined, seqLoc, $.context);
+      return $.wrap(new Block($.wrap(seq, true, ctx), { type }, location, $.context), undefined, ctx);
+    }
+    const startNode = $.wrap(new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context), undefined, ctx);
+    const endNode = $.wrap(new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context), undefined, ctx);
+    return new Sequence([startNode, ...nodes!, endNode], undefined, location, $.context);
   };
 }
 
@@ -992,5 +1132,57 @@ export function mathValue(this: P, T: TokenMap) {
     ];
 
     return cssMathValue.call($, T, valueAlt)(ctx);
+  };
+}
+
+export function mathProduct(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let left: Node = $.SUBRULE($.mathValue, { ARGS: [ctx] });
+
+    while ($.isType(T.Star) || $.isType(T.Divide)) {
+      const op = $.isType(T.Star)
+        ? $.CONSUME(T.Star)
+        : $.CONSUME(T.Divide);
+      const right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
+
+      if (!RECORDING_PHASE) {
+        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+      }
+    }
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    left._location = $.endRule();
+    return left;
+  };
+}
+
+export function mathSum(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let left: Node = $.SUBRULE($.mathProduct, { ARGS: [ctx] });
+
+    $.MANY(() => {
+      const op = $.CONSUME(T.AdditionOperator);
+      const right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
+
+      if (!RECORDING_PHASE) {
+        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+      }
+    });
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    left._location = $.endRule();
+    return left;
   };
 }

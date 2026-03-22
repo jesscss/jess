@@ -87,13 +87,24 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
 const cssUnknownAtRule = cssProductions.unknownAtRule;
 
 function isGuardComparisonToken(tt: unknown, T: TokenMap) {
-  return tt === T.Eq
+  return tt === T.CompareOperator
+    || tt === T.Eq
     || tt === T.Gt
     || tt === T.GtEq
     || tt === T.GtEqAlias
     || tt === T.Lt
     || tt === T.LtEq
     || tt === T.LtEqAlias;
+}
+
+function normalizeComparisonOperator(op: string): ConditionOperator {
+  if (op === '=>') {
+    return '>=';
+  }
+  if (op === '=<') {
+    return '<=';
+  }
+  return op as ConditionOperator;
 }
 
 export function guard(this: P, T: TokenMap) {
@@ -199,33 +210,19 @@ export function guardAnd(this: P, T: TokenMap) {
                   && tokenType !== T.DefaultGuardFunc
                   && tokenType !== T.DefaultGuardIdent;
               },
-              ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
+              ALT: () => $.SUBRULE($.expressionSum, { ARGS: [ctx] })
             }
           ]);
           $.OPTION2({
             GATE: () => isGuardComparisonToken($.LA(1).tokenType, T),
             DEF: () => {
-              const op = $.OR2([
-                { ALT: () => $.CONSUME(T.Eq) },
-                { ALT: () => $.CONSUME(T.Gt) },
-                { ALT: () => $.CONSUME(T.GtEq) },
-                { ALT: () => $.CONSUME(T.GtEqAlias) },
-                { ALT: () => $.CONSUME(T.Lt) },
-                { ALT: () => $.CONSUME(T.LtEq) },
-                { ALT: () => $.CONSUME(T.LtEqAlias) }
-              ]);
-              const compareRight = $.SUBRULE2($.value, { ARGS: [ctx] });
+              const op = $.CONSUME(T.CompareOperator);
+              const compareRight = $.SUBRULE2($.expressionSum, { ARGS: [ctx] });
               if (!$.RECORDING_PHASE) {
-                let opStr = op.image;
-                if (opStr === '=>') {
-                  opStr = '>=';
-                } else if (opStr === '=<') {
-                  opStr = '<=';
-                }
                 right = new Condition(
                   [
                     $.wrap(right, true),
-                    opStr as ConditionOperator,
+                    normalizeComparisonOperator(op.image),
                     $.wrap(compareRight)
                   ],
                   undefined,
@@ -346,17 +343,9 @@ export function guardWithCondition(this: P, T: TokenMap) {
 export function comparison(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    let left = $.SUBRULE($.value, { ARGS: [ctx] });
-    let op = $.OR([
-      { ALT: () => $.CONSUME(T.Eq) },
-      { ALT: () => $.CONSUME(T.Gt) },
-      { ALT: () => $.CONSUME(T.GtEq) },
-      { ALT: () => $.CONSUME(T.GtEqAlias) },
-      { ALT: () => $.CONSUME(T.Lt) },
-      { ALT: () => $.CONSUME(T.LtEq) },
-      { ALT: () => $.CONSUME(T.LtEqAlias) }
-    ]);
-    let right = $.SUBRULE2($.value, { ARGS: [ctx] });
+    let left = $.SUBRULE($.expressionSum, { ARGS: [ctx] });
+    const op = $.CONSUME(T.CompareOperator);
+    let right = $.SUBRULE2($.expressionSum, { ARGS: [ctx] });
     if (isDefaultGuardCall(right)) {
       ctx.hasDefault = true;
       const location = Array.isArray(right.location) && right.location.length === 6
@@ -364,14 +353,8 @@ export function comparison(this: P, T: TokenMap) {
         : undefined;
       right = new DefaultGuard('default()', undefined, location, $.context);
     }
-    let opStr = op.image;
-    if (opStr === '=>') {
-      opStr = '>=';
-    } else if (opStr === '=<') {
-      opStr = '<=';
-    }
     left = new Condition(
-      [$.wrap(left, true), opStr as ConditionOperator, $.wrap(right)],
+      [$.wrap(left, true), normalizeComparisonOperator(op.image), $.wrap(right)],
       undefined,
       $.getLocationFromNodes([left, right]),
       $.context
@@ -469,9 +452,9 @@ export function keyframesName(this: P, T: TokenMap) {
       {
         GATE: () => $.isType(T.Ident) && !$.isType(T.InterpolatedIdent),
         ALT: () => {
-        const tok = $.CONSUME(T.Ident);
-        node = $.wrap($.processValueToken(tok));
-      } },
+          const tok = $.CONSUME(T.Ident);
+          node = $.wrap($.processValueToken(tok));
+        } },
       { ALT: () => node = $.SUBRULE($.string, { ARGS: [] }) }
     ]);
     return node!;
@@ -725,102 +708,81 @@ export function mixinArgList(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
-    let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
+    const first = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
-    let commaNodes: Node[] = [$.wrap(node, true)];
-    let semiNodes: Node[] = [];
+    let commaNodes: Node[] | undefined = [$.wrap(first, true)];
+    const semiNodes: Node[] = [];
     let isSemiList = false;
-    let moreArgs = true;
 
-    $.MANY({
-      GATE: () => moreArgs,
-      DEF: () => {
-        $.OR([
-          {
-            GATE: () => !isSemiList && !!commaNodes,
-            ALT: () => {
-              const comma = $.CONSUME(T.Comma);
-              let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
-              if (commaNodes) {
-                commaNodes.push($.wrap(node, true));
-                return;
-              }
-              $._errors.push(
-                new NoViableAltException(
-                  'Cannot mix ; and , as delimiter types',
-                  comma,
-                  $.LA(0)
-                )
-              );
-              semiNodes.push($.wrap(node, true));
-            }
-          },
-          {
-            ALT: () => {
-              let semi = $.CONSUME(T.Semi);
-              isSemiList = true;
-
-              /**
-               * Aggregate the previous set of comma-nodes
-               */
-              if (commaNodes) {
-                if (commaNodes.length > 1) {
-                  let [first, ...rest] = commaNodes;
-                  let hasDeclarations = false;
-                  if (first instanceof VarDeclaration) {
-                    const nodes = [first.value, ...rest];
-                    /**
-                     * If we still have declarations, we need to push an error.
-                     */
-                    hasDeclarations = rest.some(n => n instanceof VarDeclaration);
-                    first.setData('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
-                    semiNodes.push(first);
-                  } else {
-                    hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);
-                    let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context);
-                    semiNodes.push(commaList);
-                  }
-                  if (hasDeclarations) {
-                    let indexOfSemi = $.input.indexOf(semi);
-                    let previousToken = $.input[indexOfSemi - 1]!;
-                    $._errors.push(
-                      new NoViableAltException(
-                        'Cannot mix ; and , as delimiter types',
-                        semi,
-                        previousToken
-                      )
-                    );
-                  }
-                } else {
-                  semiNodes.push(commaNodes[0]!);
-                }
-                commaNodes = undefined!;
-              }
-              $.OR2([
-                {
-                  GATE: () => !$.isType(T.RParen),
-                  ALT: () => {
-                    const prevAllow = ctx.allowComma;
-                    ctx.allowComma = true;
-                    node = $.SUBRULE3($.mixinArg, { ARGS: [ctx] });
-                    ctx.allowComma = prevAllow;
-                    semiNodes.push($.wrap(node, true));
-                  }
-                },
-                {
-                  ALT: () => {
-                    moreArgs = false;
-                  }
-                }
-              ]);
-            }
-          }
-        ]);
+    const collapseCommaNodesIntoSemiNodes = (semi: IToken) => {
+      if (!commaNodes) {
+        return;
       }
-    });
+      if (commaNodes.length > 1) {
+        const [head, ...rest] = commaNodes;
+        let hasDeclarations = false;
+        if (head instanceof VarDeclaration) {
+          const nodes = [head.value, ...rest];
+          hasDeclarations = rest.some(n => n instanceof VarDeclaration);
+          head.setData('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
+          semiNodes.push(head);
+        } else {
+          hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);
+          semiNodes.push(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context));
+        }
+        if (hasDeclarations) {
+          const indexOfSemi = $.input.indexOf(semi);
+          const previousToken = $.input[indexOfSemi - 1]!;
+          $._errors.push(
+            new NoViableAltException(
+              'Cannot mix ; and , as delimiter types',
+              semi,
+              previousToken
+            )
+          );
+        }
+      } else {
+        semiNodes.push(commaNodes[0]!);
+      }
+      commaNodes = undefined;
+    };
+
+    while ($.isType(T.Comma) || $.isType(T.Semi)) {
+      if ($.isType(T.Comma)) {
+        const comma = $.CONSUME(T.Comma);
+        const node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
+        if (commaNodes) {
+          commaNodes.push($.wrap(node, true));
+        } else {
+          $._errors.push(
+            new NoViableAltException(
+              'Cannot mix ; and , as delimiter types',
+              comma,
+              $.LA(0)
+            )
+          );
+          semiNodes.push($.wrap(node, true));
+        }
+        continue;
+      }
+
+      const semi = $.CONSUME(T.Semi);
+      isSemiList = true;
+      collapseCommaNodesIntoSemiNodes(semi);
+
+      if ($.isType(T.RParen)) {
+        break;
+      }
+
+      const prevAllow = ctx.allowComma;
+      ctx.allowComma = true;
+      const node = $.SUBRULE3($.mixinArg, { ARGS: [ctx] });
+      ctx.allowComma = prevAllow;
+      semiNodes.push($.wrap(node, true));
+    }
 
     let location = $.endRule();
-    let nodes = isSemiList ? semiNodes! : commaNodes!;
+    let nodes = isSemiList ? semiNodes : commaNodes!;
     let sep: ';' | ',' = isSemiList ? ';' : ',';
     return $.wrap(new List(nodes, { sep }, location, $.context), 'both') as List;
   };
@@ -846,102 +808,60 @@ export function varName(this: P, T: TokenMap) {
 export function mixinArg(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    let firstToken = $.LA(1);
+    const firstToken = $.LA(1);
+    const atStart = tokenMatcher(firstToken, T.AtName);
+    const tt2 = $.LA(2).tokenType;
+    const tt3 = $.LA(3).tokenType;
+    const hasWsAfterName = tt2 === T.WS;
+    const nextTokenType = hasWsAfterName ? tt3 : tt2;
 
-    let atStart = tokenMatcher(firstToken, T.AtName);
-
-    let isDeclaration = atStart && $.isTypeAt(2, T.Colon);
-
-    return $.OR([
-      {
-        GATE: () => !isDeclaration && atStart && $.isTypeAt(2, T.Ellipsis),
-        ALT: () => {
-          $.startRule();
-          let name = $.CONSUME(T.AtName);
-          let ellipsis;
-          /**
-           * Mixin definitions can have a spread parameter, which
-           * means it will match a variable number of elements
-           * at the end.
-           *
-           * However, mixin calls can have a spread argument,
-           * which means it will expand a variable representing
-           * a list, which, to my knowledge, is an undocumented
-           * feature of Less (and only exists in mixin calls?)
-           *
-           * @todo - Intuitively, shouldn't this be available
-           * elsewhere in the language? Or would there be no
-           * reason?
-          */
-          $.OPTION(() => ellipsis = $.CONSUME(T.Ellipsis));
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          let varNameStr = name.image.slice(1);
-          if (ellipsis) {
-            // For rest parameters, use string which can be converted to Reference later if needed
-            return new Rest(varNameStr, undefined, $.endRule(), $.context);
-          } else {
-            return new Any(varNameStr, { role: 'name' }, $.endRule(), $.context);
-          }
-        }
-      },
-      {
-        GATE: () => !isDeclaration
-          && !atStart
-          && firstToken.tokenType !== T.RParen
-          && firstToken.tokenType !== T.Comma
-          && firstToken.tokenType !== T.Semi
-          && firstToken.tokenType !== T.Ellipsis,
-        ALT: () => {
-          return $.SUBRULE($.callArgument, { ARGS: [ctx] });
-        }
-      },
-      {
-        GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== T.RParen && $.LA(2).tokenType !== T.Comma && $.LA(2).tokenType !== T.Semi,
-        ALT: () => {
-          return $.SUBRULE2($.callArgument, { ARGS: [ctx] });
-        }
-      },
-      {
-        GATE: () => !isDeclaration && atStart && !$.isTypeAt(2, T.Ellipsis) && ($.LA(2).tokenType === T.RParen || $.LA(2).tokenType === T.Comma || $.LA(2).tokenType === T.Semi),
-        ALT: () => {
-          $.startRule();
-          let name = $.CONSUME2(T.AtName);
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          let varNameStr = name.image.slice(1);
-          return new Any(varNameStr, { role: 'name' }, $.endRule(), $.context);
-        }
-      },
-      {
-        GATE: () => isDeclaration,
-        ALT: () => {
-          $.startRule();
-          let name = $.CONSUME3(T.AtName);
-          $.CONSUME(T.Colon);
-          /** Default value */
-          let value = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: !!ctx.allowComma, detachedRulesetUsage: 'default-param' }] });
-
-          let location = $.endRule();
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          return new VarDeclaration({
-            name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
-            value
-          }, { paramVar: true }, location, $.context);
-        }
-      },
-
-      {
-        ALT: () => {
-          let ellipsis = $.CONSUME2(T.Ellipsis);
-          return new Rest(undefined, undefined, $.getLocationInfo(ellipsis), $.context);
-        }
+    if (atStart && nextTokenType === T.Ellipsis) {
+      $.startRule();
+      const name = $.CONSUME(T.AtName);
+      if (hasWsAfterName) {
+        $.CONSUME(T.WS);
       }
-    ]);
+      $.CONSUME(T.Ellipsis);
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      return new Rest(name.image.slice(1), undefined, $.endRule(), $.context);
+    }
+
+    if (atStart && nextTokenType === T.Colon) {
+      $.startRule();
+      const name = $.CONSUME2(T.AtName);
+      if (hasWsAfterName) {
+        $.CONSUME2(T.WS);
+      }
+      $.CONSUME(T.Colon);
+      const value = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: !!ctx.allowComma, detachedRulesetUsage: 'default-param' }] });
+
+      const location = $.endRule();
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      return new VarDeclaration({
+        name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+        value
+      }, { paramVar: true }, location, $.context);
+    }
+
+    if (atStart && (nextTokenType === T.RParen || nextTokenType === T.Comma || nextTokenType === T.Semi)) {
+      $.startRule();
+      const name = $.CONSUME3(T.AtName);
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      return new Any(name.image.slice(1), { role: 'name' }, $.endRule(), $.context);
+    }
+
+    if ($.isType(T.Ellipsis)) {
+      const ellipsis = $.CONSUME2(T.Ellipsis);
+      return new Rest(undefined, undefined, $.getLocationInfo(ellipsis), $.context);
+    }
+
+    return $.SUBRULE($.callArgument, { ARGS: [ctx] });
   };
 }
 

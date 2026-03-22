@@ -1,6 +1,8 @@
 export {
   stylesheet, main, declarationList, declaration, mediaQuery, mediaCondition,
-  mediaConditionWithoutOr, mediaInParens,
+  mediaConditionWithoutOr, lessMediaQueryFromString, lessMediaQueryFromReference,
+  lessMediaQueryTail, supportsAtRule, lessSupportsCondition, lessSupportsInParens,
+  mediaInParens, supportsInParens,
   mediaFeature, containerInParens, mfValue, mfNonIdentifierValue, wrappedDeclarationList,
   qualifiedRuleBody, qualifiedRule, mixinOrQualifiedRule
 } from './root.js';
@@ -13,6 +15,7 @@ export {
 
 export {
   expressionSum, expressionProduct, expressionValue, nthValue, knownFunctions,
+  customValue, innerCustomValue, customBlock, mathProduct, mathSum,
   calcFunction, ifFunction, booleanFunction, varReference, valueReference,
   functionCall, functionCallArgs, value, string, mathValue
 } from './values.js';
