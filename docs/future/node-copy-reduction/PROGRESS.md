@@ -855,6 +855,7 @@ Current atomic queue:
 - [ ] Immediate next node slice: `Negative`
 - [ ] After that, continue the ordered queue in [node-session-status.md](./node-session-status.md)
 - [ ] Keep Stage 20.5 (`Direct mixin invocation path`) deferred until the lower-order node queue is sufficiently stable
+- [ ] Keep Stage 20.6 (`Scope / provenance semantics cleanup`) deferred until the lower-order node queue is sufficiently stable
 - [ ] Keep Stage 20.75 (`Session delta reuse for mixin/import re-eval`) deferred until the fundamentals gate is actually complete
 
 Source of truth for ordering:
@@ -872,6 +873,7 @@ Current blocker notes from live reduction attempts:
   - `getFunctionFromMixins()` currently conflates candidate resolution, argument normalization, named/default/rest binding, guard/default() evaluation, recursion handling, session selection, and output materialization
   - this is now tracked as its own planned pre-Stage-21 stage in `dependency-graph.md`, not as part of lower-order node completion
 - New recorded exploration: after the fundamentals gate, mixin/import re-eval may be able to reuse the first eval's recorded session delta plus dependency trace as a baseline, then replay only nodes affected by changed variables in a fresh rebased session. This is now tracked as exploratory `Stage 20.75` in `dependency-graph.md`, not as part of the current lower-order node queue.
+- New recorded architecture cleanup: after the fundamentals gate is much further along, the API should be semantically cleaned up so canonical identity, active session structure, and source/call-site provenance are explicit separate concepts. This is now tracked as deferred `Stage 20.6` in `dependency-graph.md`, not as part of the current lower-order node queue.
 - The `Rules.value` / session-registry identity blocker is now resolved. Session registry deltas are keyed by the `Rules` container, and characterization now proves they survive a shallow clone swapping to a new `value[]`.
 - `Rules.value` is now typed readonly for consumers. Plugin / visitor code should treat direct array mutation as invalid and go through `setData()` or container helpers instead.
 - Child-array isolation and generic session-local replacement are still coupled. The next safe reduction likely needs session-local child storage for `Rules` or equivalent helper-backed replacement semantics.

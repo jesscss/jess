@@ -46,6 +46,8 @@ Do not use this as the full node-status matrix or roadmap document:
   - note: plain `@import` no longer adds a finalization wrapper; compose still keeps a shallow per-import wrapper because separate import sites can require different visibility / reference metadata on the same cached module
 - Stage 20.5: planned, not landed
   - purpose: replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain with a direct mixin invocation path
+- Stage 20.6: planned, not landed
+  - purpose: clean up semantics so canonical identity, active session structure, and source/call-site provenance stop sharing the same implied API meaning
 - Stage 20.75: planned, exploratory, not landed
   - purpose: record first-eval mixin/import session deltas plus dependency traces, then re-evaluate from that baseline by replaying only nodes affected by changed variables in a fresh rebased session
   - guardrail: keep this deferred until the fundamentals-completion gate is actually satisfied; do not fold it into the current node-by-node sessionization queue
@@ -116,6 +118,7 @@ Do not begin Stage 21 until all four conditions are true:
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.
+5. Keep the new scope/provenance semantic cleanup deferred; do not turn it into active refactor work until the node-session fundamentals queue is much more complete.
 
 ### Known blockers from recent reduction attempts
 
@@ -123,6 +126,7 @@ Do not begin Stage 21 until all four conditions are true:
 2. Remaining high-signal clone/copy pressure is still concentrated in `rules.ts`, `extend.ts`, `ruleset.ts`, and `ampersand.ts`.
 3. The internal mixin adapter path is still indirect and now tracked as its own planned stage (`Stage 20.5`), not as a wrapper-node slice.
 4. `sessionReplaceNode()` is useful but still not synonymous with “all node replacement paths are sessionized.”
+5. `sourceParent` / `sourceRulesParent` semantics are now explicitly tracked as deferred architecture cleanup (`Stage 20.6`), not as active node-slice work.
 
 ### Key files to read first
 - `docs/future/node-copy-reduction/node-session-status.md`
