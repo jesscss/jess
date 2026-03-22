@@ -256,9 +256,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private _getRulesContainer(context?: Context): Rules {
-    return context
+    const rules = context
       ? sessionGetField<Rules>(this, 'rules', context)
       : this.rules;
+    if (context?.session && sessionGetParent(rules, context) !== this) {
+      this.adopt(rules, context);
+    }
+    return rules;
   }
 
   getCurrentRules(context?: Context): Rules {

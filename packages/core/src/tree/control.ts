@@ -96,6 +96,20 @@ function getControlDeclarationValue(node: Node, context: Context): Node {
   return sessionGetField<Node>(node, 'value', context);
 }
 
+function getControlDeclarationName(node: Node, context: Context): string {
+  return String(sessionGetField<Node>(node, 'name', context));
+}
+
+function getControlDeclarationAssignType(node: Node, context: Context): AssignmentType | undefined {
+  const options = getControlField<{ normalizedFromAssign?: AssignmentType } | undefined>(
+    node,
+    'options',
+    context,
+    (node as any).options
+  );
+  return options?.normalizedFromAssign;
+}
+
 function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
   node.adopt(value, context);
   if (context.session && !context.session.resetEvalState) {
@@ -368,8 +382,8 @@ export class For extends Node<ForValue> {
           if (isNode(result, N.Rules)) {
             for (const outNode of result.value) {
               if (isNode(outNode, N.Declaration)) {
-                const normalizedFromAssign = outNode.options.normalizedFromAssign;
-                const outName = String(outNode.name);
+                const normalizedFromAssign = getControlDeclarationAssignType(outNode, context);
+                const outName = getControlDeclarationName(outNode, context);
                 const isMergedAssignment =
                   normalizedFromAssign === AssignmentType.Add
                   || normalizedFromAssign === AssignmentType.MergeList
@@ -381,7 +395,7 @@ export class For extends Node<ForValue> {
                   let firstMatch = -1;
                   for (let i = 0; i < accumulatedNodes.length; i++) {
                     const prev = accumulatedNodes[i]!;
-                    if (isNode(prev, N.Declaration) && String(prev.name) === outName) {
+                    if (isNode(prev, N.Declaration) && getControlDeclarationName(prev, context) === outName) {
                       firstMatch = i;
                       break;
                     }
@@ -435,7 +449,7 @@ export class For extends Node<ForValue> {
                     accumulatedNodes[firstMatch] = outNode;
                     for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
                       const prev = accumulatedNodes[i]!;
-                      if (isNode(prev, N.Declaration) && String(prev.name) === outName) {
+                      if (isNode(prev, N.Declaration) && getControlDeclarationName(prev, context) === outName) {
                         accumulatedNodes.splice(i, 1);
                       }
                     }

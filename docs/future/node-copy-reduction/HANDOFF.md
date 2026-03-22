@@ -220,11 +220,20 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - verification:
     - `pnpm --dir packages/core test src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
     - result: `36 passed`
+- Next clean landed batch after that:
+  - `Ruleset`: `_getRulesContainer(context)` now session-adopts a session-patched `Rules` child back to the owning `Ruleset`, so raw `sessionPatchField(..., 'rules', ...)` no longer leaves the active child container parentless in-session.
+  - `control.ts`: `$for` declaration coalescing now reads session-patched `options.normalizedFromAssign` and declaration `name` through the control helper, so assignment-style merge behavior respects session metadata instead of canonical options.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+    - result: `37 passed`
 - `ImportStyle` follow-up is still next, but a session-aware `StyleImport.clone()` attempt was explicitly rejected on this head because it regressed:
   - `import type can see parent rules variables`
   - `can inject variables with "with" type`
   - `can inject variables with "set" type`
   So the next import slice must avoid the shallow-clone path until that lookup/finalization interaction is characterized.
+- `ImportStyle` is also now characterized as not safely fixable inside `import-style.ts` alone on the current head:
+  - the remaining three failures bottom out in descendant `Reference.evalNode()` lookup against returned imported trees
+  - the next likely owner is broader returned-tree parent/read semantics rather than another same-node `StyleImport` accessor patch
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

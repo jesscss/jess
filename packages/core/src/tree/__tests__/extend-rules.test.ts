@@ -17,7 +17,7 @@ import {
 } from '..';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionGetField, sessionPatchField } from '../util/session-helpers.js';
+import { sessionGetField, sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
 import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 
 let context: Context;
@@ -797,6 +797,8 @@ describe('Rules extend', () => {
       expect(css).toContain('color: red;');
       expect(context.warnings).toHaveLength(1);
       expect(context.warnings[0]?.code).toBe('extend/not-found');
+      expect(sessionGetParent(patchedBaseRules, context)).toBe(base);
+      expect(patchedBaseRules.parent).toBeUndefined();
       expect(base.rules?.value).toHaveLength(0);
     });
   });

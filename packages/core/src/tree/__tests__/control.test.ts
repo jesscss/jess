@@ -294,6 +294,30 @@ describe('Control Nodes', () => {
     expect(templateDecl.toTrimmedString()).toContain('padding: $value');
   });
 
+  it('reads a session-patched normalizedFromAssign during $for coalescing without mutating the canonical declaration', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const loopRules = rules([
+      decl({ name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const templateDecl = loop.rules.at(0) as ReturnType<typeof decl>;
+    const root = rules([loop]);
+
+    sessionPatchField(templateDecl, 'options', {
+      ...templateDecl.options,
+      normalizedFromAssign: AssignmentType.Add
+    }, context);
+
+    const evald = await root.eval(context);
+    const css = evald.toTrimmedString({ context });
+
+    expect(css).toContain('padding: a, b;');
+    expect(css).not.toContain('padding: a;\n');
+    expect(String(templateDecl.options.normalizedFromAssign ?? '')).toBe('');
+  });
+
   it('reads rules-iterable declaration names and values through the session layer', async () => {
     const context = new Context();
     context.createSession();
