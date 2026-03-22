@@ -432,6 +432,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       return parentSelector;
     };
+    const getComposedParentSelector = (): Selector | Nil | undefined => {
+      let parentSelector = normalizeParentSelector(parentRs?.getEffectiveSelector(collapseNesting, context));
+      if (
+        parentSelector
+        && !(parentSelector instanceof Nil)
+        && parentRs?._getSelectorBeforeExtend(context)
+        && Ruleset.isInReferenceScope(parentRs, context)
+      ) {
+        parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
+          parentSelector as Selector,
+          parentRs._getSelectorBeforeExtend(context)
+        );
+      }
+      return parentSelector;
+    };
     if (
       collapseNesting
       && this._getHoistToRoot(context)
@@ -440,17 +455,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !(ownSelector instanceof Nil)
       && ownSelector.valueOf() !== selector.valueOf()
     ) {
-      let parentSelector = normalizeParentSelector(parentRs?.getEffectiveSelector(collapseNesting, context));
+      let parentSelector = getComposedParentSelector();
       if (parentSelector && !(parentSelector instanceof Nil)) {
-        if (parentRs!._getSelectorBeforeExtend(context) && Ruleset.isInReferenceScope(parentRs!, context)) {
-          parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
-            parentSelector as Selector,
-            parentRs!._getSelectorBeforeExtend(context)
-          );
-        }
-        if (parentSelector && !(parentSelector instanceof Nil)) {
-          return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, false);
-        }
+        return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, false);
       }
     }
 
@@ -458,7 +465,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
 
-    const parentSelector = normalizeParentSelector(parentRs?.getEffectiveSelector(collapseNesting, context));
+    const parentSelector = getComposedParentSelector();
     if (
       ownSelector
       && !(ownSelector instanceof Nil)

@@ -877,6 +877,40 @@ describe('Rules extend', () => {
       expect(base.rules?.value).toHaveLength(0);
     });
 
+    it('extends a nested ampersand selector through a session-patched parent selector', async () => {
+      context.session = new EvalSession();
+
+      const nestedLeaf = ruleset({
+        selector: sellist([sel([amp(), co(' '), el('.leaf')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const base = ruleset({
+        selector: sellist([sel([el('.alpha')])]),
+        rules: rules([nestedLeaf])
+      });
+      const end = ruleset({
+        selector: sellist([sel([el('.end')])]),
+        rules: rules([
+          extend({
+            target: sel([el('.beta'), co(' '), el('.leaf')])
+          })
+        ])
+      });
+      const node = rules([base, end]);
+
+      sessionPatchField(base, 'selector', sellist([sel([el('.beta')])]), context);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toContain('color: red;');
+      expect(context.warnings).toHaveLength(0);
+      expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toContain('.end');
+      expect(base.selector.valueOf()).toBe('.alpha');
+    });
+
     it('limits downstream extend matching to roots inside the recorded namespace', () => {
       const localBase = ruleset({
         selector: sellist([sel([el('.base')])]),
