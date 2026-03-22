@@ -637,6 +637,79 @@ Planned checklist:
   - [ ] mixin aliases / call-time reference resolution
   - [ ] performance characterization against the old adapter path
 
+### Stage 20.6: Scope / Provenance Semantics Cleanup
+
+Status on branch `jess-dev`:
+- planned, not landed
+- deferred architecture work, not part of the current node-by-node execution queue
+- should not begin until the node-session fundamentals queue is substantially complete
+
+Problem statement:
+
+The old mutable/reparenting model blurred together three different semantics:
+
+1. **Canonical identity**
+   - "What immutable authored node is this derived from?"
+2. **Active structure**
+   - "Where does this node live in the current evaluation session?"
+3. **Source/call-site provenance**
+   - "What caller/source scope should fallback lookup use?"
+
+Under the session architecture, those should not share the same API surface anymore.
+
+Recommended target semantics:
+
+- canonical identity
+  - explicit and stable
+  - represented by the canonical node object and a clear canonical-origin surface
+- active structure
+  - session-backed
+  - answered through `sessionGetParent(...)`, session child overlays, and session field/runtime helpers
+- source/call-site provenance
+  - a separate semantic channel for fallback lookup behavior
+  - should not stand in for canonical identity
+  - should not stand in for active structure
+
+Interpretation for existing APIs:
+
+- `parent` / `rulesParent`
+  - should mean active structure
+  - in context-bearing paths, these should resolve through the session layer
+- `sourceNode`
+  - should be treated as canonical-origin identity, or replaced by a better-named equivalent
+- `sourceParent`
+  - should mean source/call-site provenance only
+- `sourceRulesParent`
+  - should stop being treated as a first-class architectural property
+  - it should become a derived helper/API for source-scope lookup
+
+Recommended eventual API direction:
+
+- explicit canonical identity helper/API
+  - e.g. `getCanonicalNode(node)` or a clearly documented canonical-origin property
+- explicit active-structure helpers
+  - `sessionGetParent(...)`
+  - `sessionGetChildren(...)`
+  - session-aware field/runtime readers
+- explicit source-scope helper
+  - e.g. `getSourceScope(node, context)` / `getSourceRulesScope(node, context)`
+  - this should answer a language lookup question, not expose implementation leakage
+
+Why this is deferred:
+
+- many current `sourceParent` writes are compensating for the still-indirect mixin/call/import architecture
+- Stage 20.5 should simplify that first
+- renaming or collapsing these concepts before the behavior is stable would create misleading APIs
+
+Deferred checklist:
+
+- [ ] Write down the formal semantic contract for canonical identity vs active structure vs source provenance
+- [ ] Audit all uses of `sourceParent` / `sourceRulesParent` and classify them by semantic purpose
+- [ ] Replace direct `sourceRulesParent` dependence with a context-aware helper API
+- [ ] Decide whether `sourceNode` remains the canonical-origin surface or should be renamed/documented more explicitly
+- [ ] Revisit `Call` / `Reference` / `rules.ts` provenance writes after Stage 20.5
+- [ ] Only then consider API/property renames so names match final semantics rather than transitional implementation
+
 ### Stage 20.75: Session Delta Reuse For Mixin / Import Re-eval
 
 Status on branch `jess-dev`:
@@ -778,6 +851,11 @@ Stage 20.5 (direct mixin invocation)
   └─ replaces the internal Reference -> getFunctionFromMixins -> cast -> callWithContext indirection
   └─ should land before the fundamentals gate is considered complete
 
+Stage 20.6 (scope / provenance semantics cleanup)
+  └─ separates canonical identity vs active session structure vs source-scope lookup
+  └─ should stay deferred until node-session fundamentals are much more complete
+  └─ should ideally follow enough Stage 20.5 work that mixin/source provenance is no longer hidden inside the adapter path
+
 Stage 20.75 (session delta reuse for mixin/import re-eval)
   └─ exploratory optimization built on immutable canonical nodes + trustworthy dependency traces
   └─ should stay deferred until the fundamentals gate is complete
@@ -791,8 +869,10 @@ Stage 21 (Live Patch API)
 Stages 17 and 18 can proceed in parallel. Stage 19 depends on 17 (immutable selectors
 simplify registry content; though technically 19 could start without 17, they are cleanest
 together). Stage 20 requires 18 and 19. Stage 20.5 depends on the lower-order fundamentals
-slices around `Call` / `Reference` / `Rules`. Stage 20.75 depends on the same fundamentals
-gate actually being complete, and probably on 20.5. Stage 21 requires all.
+slices around `Call` / `Reference` / `Rules`. Stage 20.6 depends on those same fundamentals
+being far more stable, and ideally on enough 20.5 progress that source/call provenance is
+no longer hidden inside the indirect mixin adapter path. Stage 20.75 depends on the same
+fundamentals gate actually being complete, and probably on 20.5. Stage 21 requires all.
 
 ---
 

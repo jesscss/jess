@@ -55,6 +55,38 @@ Those are different problems and should not share one expensive mechanism. "Orig
 tracking" is not a third problem — with session-based eval, canonical nodes are never
 mutated, so the original state is inherently preserved.
 
+## Semantic Direction
+
+As the session model finishes landing, the final node API should separate three different
+semantic questions that were historically blurred together by mutation and re-parenting:
+
+1. **Canonical identity**
+   - the immutable authored node / canonical origin
+2. **Active structure**
+   - the parent/child/field view visible in the current session
+3. **Source provenance**
+   - the call-site/source-scope lineage used for fallback semantics
+
+Recommended end state:
+
+- canonical identity is explicit
+- active structure is session-backed
+- source provenance remains available, but narrow and semantic
+
+That means:
+
+- `parent` in context-bearing code should describe active structure, not canonical history
+- canonical-node visibility should come from canonical identity, not provenance ancestry
+- `sourceParent` / `sourceRulesParent` should not be used as stand-ins for active structure
+  or canonical identity
+
+Important sequencing rule:
+
+- do not make naming/API cleanup changes for this semantic split until the node-level
+  fundamentals queue in `node-session-status.md` is substantially complete
+- first make the behavior true
+- then rename/refactor the API so the names match the behavior
+
 ## Design Philosophy: Persistent Trees, Not Flat Tables
 
 An alternative that was explored early is Struct-of-Arrays (SoA) layout, where each node field
