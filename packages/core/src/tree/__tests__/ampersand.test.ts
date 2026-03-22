@@ -381,4 +381,34 @@ describe('Ampersand', () => {
     expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha']))).toBe(true);
     expect(node.keySet.equals(context.selectorBits.getBitset(['.beta']))).toBe(false);
   });
+
+  it('cannot derive a session-specific keySet when two sessions patch the same parent selector differently', () => {
+    const contextA = new Context();
+    contextA.session = new EvalSession();
+    const contextB = new Context();
+    contextB.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.selector.keySetLibrary = contextA.selectorBits;
+
+    const beta = el('.beta');
+    beta.keySetLibrary = contextA.selectorBits;
+    const gamma = el('.gamma');
+    gamma.keySetLibrary = contextA.selectorBits;
+
+    const node = amp({ selectorContainer: parent as any });
+    node.keySetLibrary = contextA.selectorBits;
+
+    sessionPatchField(parent, 'selector', beta, contextA);
+    sessionPatchField(parent, 'selector', gamma, contextB);
+
+    expect(node.valueOf(contextA)).toBe('.beta');
+    expect(node.valueOf(contextB)).toBe('.gamma');
+    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.alpha']))).toBe(true);
+    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.beta']))).toBe(false);
+    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(false);
+  });
 });

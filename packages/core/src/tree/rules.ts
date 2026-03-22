@@ -1023,7 +1023,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         /** Special case where we register the charset node immediately */
         const charsetNode = (node as Any).preEval(context);
         rules._setChildAt(index, charsetNode, context, false);
-        rules.adopt(charsetNode);
+        rules.adopt(charsetNode, context);
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip

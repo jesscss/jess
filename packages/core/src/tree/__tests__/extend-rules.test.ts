@@ -19,6 +19,7 @@ import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionGetField, sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
 import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { processExtends } from '../util/extend-roots.js';
 
 let context: Context;
 
@@ -124,6 +125,59 @@ describe('Rules extend', () => {
       expect(headerNav.hoistToRoot).toBeUndefined();
     });
 
+    it('clears a stale session-local hoistToRoot when a later extend pass no longer matches', async () => {
+      context.session = new EvalSession();
+
+      const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
+      (implicitAmp as unknown as { generated?: boolean }).generated = true;
+      implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);
+      implicitAmp.removeFlag(F_VISIBLE);
+      const implicitSpace = co(' ');
+      implicitSpace.generated = true;
+      implicitSpace.removeFlag(F_VISIBLE);
+
+      const headerNav = ruleset({
+        selector: sel([implicitAmp, implicitSpace, el('.header-nav')]) as any,
+        rules: rules([])
+      });
+      const header = ruleset({
+        selector: sellist([sel([el('.header')])]),
+        rules: rules([headerNav])
+      });
+      const extension = extend({
+        target: sel([el('.header'), co(' '), el('.header-nav')]),
+        flag: ExtendFlag.All
+      });
+      const footerNav = ruleset({
+        selector: sellist([sel([el('.footer'), co(' '), el('.footer-nav')])]),
+        rules: rules([
+          extension
+        ])
+      });
+      const miss = extend({
+        target: el('.does-not-match')
+      });
+      const root = rules([header, footerNav]);
+
+      await root.eval(context);
+
+      expect(sessionGetField(headerNav, 'hoistToRoot', context)).toBe(true);
+
+      context.extendRoots.registerRuleset(root, header);
+      context.extendRoots.registerRuleset(root, headerNav);
+      context.extendRoots.registerRuleset(root, footerNav);
+      context.extends = [[
+        miss.target,
+        footerNav.getEffectiveSelector(false, context),
+        false,
+        root,
+        miss
+      ] as any];
+      processExtends(context);
+
+      expect(sessionGetField(headerNav, 'hoistToRoot', context)).toBeUndefined();
+    });
+
     it('does not re-parent canonical selector or target during a shallow clone in a session', () => {
       context.createSession();
 
@@ -185,6 +239,25 @@ describe('Rules extend', () => {
       expect(context.extends).toHaveLength(1);
       expect(context.extends[0]![0].valueOf()).toBe('.other');
       expect(extension.target.valueOf()).toBe('.base');
+    });
+
+    it('records a session-patched extend namespace in the instruction tuple without mutating the canonical node', async () => {
+      const extension = extend({
+        target: el('.base'),
+        namespace: 'base'
+      });
+      const rootRules = rules([]);
+
+      context.session = new EvalSession();
+      context.extendRoots.registerRoot(rootRules);
+      context.extendRoots.pushExtendRoot(rootRules);
+      sessionPatchField(extension, 'namespace', 'patched', context);
+
+      await extension.evalNode(context);
+
+      expect(context.extends).toHaveLength(1);
+      expect(context.extends[0]![7]).toBe('patched');
+      expect(extension.namespace).toBe('base');
     });
 
     it('valueOf(context) reflects a session-patched target without mutating the canonical node', () => {

@@ -1102,6 +1102,23 @@ describe('Rules', () => {
       expect(root.value[0]).toBe(original);
     });
 
+    it('preEval keeps charset replacement parented only in the session layer', async () => {
+      const charset = any('@charset "utf-8"', { role: 'charset' });
+      const root = rules([charset]);
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      const preEvald = await root.preEval(ctx);
+      const replaced = preEvald.at(0, ctx);
+
+      expect(isNode(replaced as Node, N.Nil)).toBe(true);
+      expect(sessionGetParent(replaced as Node, ctx)).toBe(root);
+      expect((replaced as Node).parent).toBeUndefined();
+      expect(preEvald.at(0)).toBe(charset);
+      expect(root.value[0]).toBe(charset);
+      expect(ctx.currentCharset).toBe(charset);
+    });
+
     it('setDefined inserts into the session parent scope without needing a canonical parent', async () => {
       const placeholder = vardecl({ name: 'one', value: any('stale') });
       const existing = vardecl({ name: 'one', value: any('one') });

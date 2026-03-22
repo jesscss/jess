@@ -175,6 +175,7 @@ export class Extend extends Node<ExtendValue> {
     let selector = this._getSelector(context);
     let target = this._getTarget(context);
     let flag = this._getFlag(context);
+    let namespace = this._getNamespace(context);
     const hasExplicitSelector = selector !== undefined;
 
     const currentFrame = context.rulesetFrames.at(-1);
@@ -266,7 +267,7 @@ export class Extend extends Node<ExtendValue> {
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
         const fromReferenceScope = context.inReferenceImportScope;
-        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
+        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope, namespace]);
         return new Nil();
       });
     }
@@ -334,7 +335,7 @@ export class Extend extends Node<ExtendValue> {
     const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame as Ruleset : undefined;
     const docOrder = getDocumentOrderForExtend(rs, context);
     const fromReferenceScope = context.inReferenceImportScope;
-    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
+    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope, namespace]);
     return new Nil();
   }
 }

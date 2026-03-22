@@ -267,6 +267,10 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `Rules`: `_normalizeCallDeclarationRulesOrder()` now reads `sourceParent` through the session layer when a context is active, so declaration-only `Rules` blocks produced by calls reorder correctly from session ancestry without mutating canonical children.
   - `Ampersand`: focused characterization now proves `keySet` intentionally stays canonical when only the parent selector is session-patched.
   - This means the next `Ampersand` owner is broader selector/key-set semantics, not another safe `Ampersand`-local patch.
+- Latest mixed follow-up now landed in the working tree:
+  - `Rules`: the `@charset` replacement branch in `_multiPassPreEval()` now adopts its replacement child through the session layer instead of giving that replacement a canonical parent during non-reset preEval.
+  - `Extend`: `evalNode()` now preserves a session-patched `namespace` on the recorded extend instruction tuple, and `Context.extends` is typed to carry that namespace slot.
+  - `Ampersand`: focused characterization now also proves that two concurrent sessions patching the same parent selector differently still share one canonical `keySet`, which is why the next owner is broader selector/session API work rather than `Ampersand` alone.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

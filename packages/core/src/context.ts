@@ -261,11 +261,11 @@ export class Context {
 
   /**
    * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
+   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?, fromReferenceScope?, namespace?]
    *
    * @todo - Probably remove once I fix extends
    */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean, namespace?: string]> = [];
 
   /**
    * When doing any kind of lookup, the current node and resolved
