@@ -182,6 +182,13 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 - Focused verification for this subset is green:
   - `pnpm --dir packages/core test src/tree/__tests__/extend-list.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
   - Result: `66 passed, 8 skipped`
+- New follow-up fundamentals batch is now in the working tree:
+  - `Rules`: `findSessionPatchedFunction()` now climbs scope with `sessionGetParent(...)`, so session-only parent chains do not hide parent functions on the active lookup path.
+  - `Extend`: `evalNode()` now treats a session-patched `selector` as explicit during extend registration instead of incorrectly falling back to implicit `&` composition.
+  - `control.ts`: `While.toTrimmedString()` now reads session-patched `condition` / `rules` through the control field helper, so patched `While` rendering no longer falls back to canonical state.
+- Focused verification for this subset is green:
+  - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+  - Result: `68 passed, 8 skipped`
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
 - The next immediate target is now the remaining `ImportStyle` finalization / returned-tree clone-pressure audit.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:

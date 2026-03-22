@@ -11,6 +11,7 @@ import {
   call,
   ref,
   mixin,
+  fn,
   Node,
   type Rules,
   AssignmentType,
@@ -218,6 +219,26 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
+      });
+
+      it('finds parent functions through the session parent chain', () => {
+        const feature = fn({
+          name: any('feature'),
+          body: rules([
+            decl({ name: 'return', value: any('ok') })
+          ])
+        });
+        const inherited = rules([]);
+        const node = rules([feature]);
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        sessionSetParent(inherited, node, ctx);
+
+        expect(inherited.findSessionPatchedFunction('feature', {
+          context: ctx,
+          searchParents: true
+        })).toBe(feature);
       });
 
       it('peeks into optional child scope', async () => {

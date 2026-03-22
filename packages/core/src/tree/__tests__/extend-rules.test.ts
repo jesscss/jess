@@ -97,6 +97,29 @@ describe('Rules extend', () => {
       expect(context.extends[0]![0].valueOf()).toBe('.other');
       expect(extension.target.valueOf()).toBe('.base');
     });
+
+    it('treats a session-patched selector as explicit during extend registration', async () => {
+      const extension = extend({
+        target: el('.base')
+      });
+      const rootRules = rules([]);
+      const frame = ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([extension])
+      });
+
+      context.session = new EvalSession();
+      context.extendRoots.registerRoot(rootRules);
+      context.extendRoots.pushExtendRoot(rootRules);
+      context.rulesetFrames.push(frame);
+      sessionPatchField(extension, 'selector', el('.patched'), context);
+
+      await extension.evalNode(context);
+
+      expect(context.extends).toHaveLength(1);
+      expect(context.extends[0]![1].valueOf()).toBe('.patched');
+      expect(extension.selector).toBeUndefined();
+    });
   });
 
   describe('multiple extends', () => {
@@ -623,6 +646,56 @@ describe('Rules extend', () => {
           color: red;
         }
       `);
+    });
+
+    it('characterizes session-patched nested rules as a remaining non-local extend gap', async () => {
+      context.session = new EvalSession();
+
+      const nestedLeaf = ruleset({
+        selector: sellist([sel([el('.leaf')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const base = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([])
+      });
+      const patchedBaseRules = rules([nestedLeaf]);
+      const mid = ruleset({
+        selector: sellist([sel([el('.mid')])]),
+        rules: rules([
+          extend({
+            target: el('.base')
+          })
+        ])
+      });
+      const end = ruleset({
+        selector: sellist([sel([el('.end')])]),
+        rules: rules([
+          extend({
+            target: sel([el('.mid'), co(' '), el('.leaf')])
+          })
+        ])
+      });
+      const node = rules([
+        base,
+        mid,
+        end
+      ]);
+
+      sessionPatchField(base, 'rules', patchedBaseRules, context);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toContain('.base,');
+      expect(css).toContain('.mid {');
+      expect(css).toContain('.leaf {');
+      expect(css).toContain('color: red;');
+      expect(context.warnings).toHaveLength(1);
+      expect(context.warnings[0]?.code).toBe('extend/not-found');
+      expect(base.rules?.value).toHaveLength(0);
     });
   });
 });

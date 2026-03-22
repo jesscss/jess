@@ -6,6 +6,7 @@ import {
   JsFunction,
   List,
   Nil,
+  While,
   VarDeclaration,
   decl,
   expr,
@@ -226,5 +227,26 @@ describe('Control Nodes', () => {
     expect(ifNode.toTrimmedString()).toContain('color: red;');
     expect(ifNode.conditions[0]!.toTrimmedString()).toBe('true');
     expect(ifNode.bodies[0]!.toTrimmedString()).toContain('color: red;');
+  });
+
+  it('renders $while with session-patched condition and rules without mutating the canonical node', () => {
+    const context = new Context();
+    context.createSession();
+
+    const whileNode = new While({
+      condition: new Any('true', { role: 'any' }),
+      rules: rules([decl({ name: 'color', value: new Any('red') })])
+    });
+    const patchedRules = rules([decl({ name: 'color', value: new Any('blue') })]);
+
+    sessionPatchField(whileNode, 'condition', new Any('false', { role: 'any' }), context);
+    sessionPatchField(whileNode, 'rules', patchedRules, context);
+
+    expect(whileNode.toTrimmedString({ context })).toContain('$while (false)');
+    expect(whileNode.toTrimmedString({ context })).toContain('color: blue;');
+    expect(whileNode.toTrimmedString()).toContain('$while (true)');
+    expect(whileNode.toTrimmedString()).toContain('color: red;');
+    expect(whileNode.condition.toTrimmedString()).toBe('true');
+    expect(whileNode.rules.toTrimmedString()).toContain('color: red;');
   });
 });

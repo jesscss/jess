@@ -173,6 +173,7 @@ export class Extend extends Node<ExtendValue> {
     let selector = this._getSelector(context);
     let target = this._getTarget(context);
     let flag = this._getFlag(context);
+    const hasExplicitSelector = selector !== undefined;
 
     const currentFrame = context.rulesetFrames.at(-1);
 
@@ -217,7 +218,7 @@ export class Extend extends Node<ExtendValue> {
           const rs = currentFrame as Ruleset;
           const fullSel = rs.getEffectiveSelector(false, context);
           let usedParentListComposition = false;
-          if (!this.selector) {
+          if (!hasExplicitSelector) {
             const ownSel = rs.getOwnSelector(context);
             const parentFrame = context.rulesetFrames.at(-2);
             const parentSel = (
@@ -239,7 +240,7 @@ export class Extend extends Node<ExtendValue> {
               usedParentListComposition = true;
             }
           }
-          if (!this.selector && !usedParentListComposition) {
+          if (!hasExplicitSelector && !usedParentListComposition) {
             if (fullSel && !(fullSel instanceof Nil)) {
               resolvedSel = fullSel as Selector;
             } else {
@@ -285,7 +286,7 @@ export class Extend extends Node<ExtendValue> {
       const rs = currentFrame as Ruleset;
       const fullSel = rs.getEffectiveSelector(false, context);
       let usedParentListComposition = false;
-      if (!this.selector) {
+      if (!hasExplicitSelector) {
         const ownSel = rs.getOwnSelector(context);
         const parentFrame = context.rulesetFrames.at(-2);
         const parentSel = (
@@ -307,7 +308,7 @@ export class Extend extends Node<ExtendValue> {
           usedParentListComposition = true;
         }
       }
-      if (!this.selector && !usedParentListComposition) {
+      if (!hasExplicitSelector && !usedParentListComposition) {
         if (fullSel && !(fullSel instanceof Nil)) {
           resolvedSel = fullSel as Selector;
         } else {

@@ -1032,6 +1032,13 @@ Current blocker notes from live reduction attempts:
   - Focused verification for this subset is green:
     - `pnpm --dir packages/core test src/tree/__tests__/extend-list.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
     - Result: `66 passed, 8 skipped`
+- New follow-up fundamentals batch now landed in the working tree:
+  - `Rules`: `findSessionPatchedFunction()` now climbs scope with `sessionGetParent(...)`, so session-only parent chains do not hide parent functions on the active lookup path.
+  - `Extend`: `evalNode()` now treats a session-patched `selector` as explicit during extend registration instead of incorrectly falling back to implicit `&` composition.
+  - `control.ts`: `While.toTrimmedString()` now reads session-patched `condition` / `rules` through the control field helper, so patched `While` rendering no longer falls back to canonical state.
+  - Focused verification for this subset is green:
+    - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+    - Result: `68 passed, 8 skipped`
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

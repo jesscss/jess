@@ -315,8 +315,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       do {
-        rules = rules?.parent as Rules;
-        if (findRoot && rules.type === 'Rules' && rules?.parent === undefined) {
+        rules = sessionGetParent(rules, context) as Rules | undefined;
+        if (findRoot && rules?.type === 'Rules' && sessionGetParent(rules, context) === undefined) {
           break;
         }
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {

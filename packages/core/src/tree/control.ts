@@ -537,14 +537,23 @@ export class While extends Node<WhileValue> {
     makeDirectiveRulesPublic(this.rules);
   }
 
+  private _getCondition(context?: Context): Node {
+    return getControlField(this, 'condition', context, this.condition);
+  }
+
+  private _getRules(context?: Context): Rules {
+    return getControlField(this, 'rules', context, this.rules);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
     w.add('$while (', this);
-    this.condition.toString(options);
+    this._getCondition(context).toString(options);
     w.add(') ');
-    this.rules.toBraced(options);
+    this._getRules(context).toBraced(options);
     return w.getSince(mark);
   }
 }
