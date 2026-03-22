@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { sessionGetSourceParent, sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
+import { sessionGetParent, sessionGetSourceParent, sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -550,6 +550,8 @@ describe('Mixin', () => {
       const fn = getFunctionFromMixins(mixinDef);
       const result = await fn.call(context);
 
+      expect(sessionGetParent(result as Node, context)).toBe(mixinRoot);
+      expect((result as Node).parent).toBeUndefined();
       expect(sessionGetSourceParent(result as Node, context)).toBe(sourceAnchor);
       expect((result as Node).sourceParent).toBeUndefined();
       expect(String(result)).toBeString(`

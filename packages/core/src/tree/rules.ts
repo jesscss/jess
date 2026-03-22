@@ -2517,7 +2517,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       try {
         let newRules: Rules;
         if (!outerRules) {
-          getCandidateParent(candidate as unknown as Node).adopt(rules);
+          sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
           newRules = await rules.eval(thisContext);
         } else {
           // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
@@ -2531,7 +2531,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           newRules = await outerRules.eval(thisContext);
         }
         sessionSetSourceParent(newRules, sourceParent, thisContext);
-        getCandidateParent(candidate as unknown as Node).adopt(newRules);
+        sessionSetParent(newRules, getCandidateParent(candidate as unknown as Node), thisContext);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
 
@@ -2591,14 +2591,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true, undefined, thisContext);
         /** Adopt for lookup, then adopt for sorting */
-        getCandidateParent(candidate as unknown as Node).adopt(rules);
+        sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
         sessionSetSourceParent(rules, sourceParent, thisContext);
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
         thisContext.rulesContext = originalContext;
         sessionSetSourceParent(rules, sourceParent, thisContext);
-        getCandidateParent(candidate as unknown as Node).adopt(rules);
+        sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
@@ -2613,7 +2613,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
         let unlocked = sourceRules.clone(false, undefined, thisContext);
-        getCandidateParent(candidate as unknown as Node).adopt(unlocked);
+        sessionSetParent(unlocked, getCandidateParent(candidate as unknown as Node), thisContext);
         sessionSetSourceParent(unlocked, sourceParent ?? caller, thisContext);
         // Detached ruleset calls in Less unlock their contents into the current scope.
         // They must remain visible to untargeted lookups like `.mixin();`.
@@ -2629,7 +2629,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
       rules.options.rulesVisibility.VarDeclaration = 'public';
-      getCandidateParent(candidate as unknown as Node).adopt(rules);
+      sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
       sessionSetSourceParent(rules, sourceParent, thisContext);
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
