@@ -133,7 +133,7 @@ describe('Func', () => {
     expect(mixinWrapperAdopts).toHaveLength(0);
   });
 
-  it('session-patched function names do not affect Reference(type=function) lookup yet', async () => {
+  it('Reference(type=function) honors a session-patched function name on the active lookup path', async () => {
     const ctx = new Context({ leakyRules: true });
     ctx.createSession();
 
@@ -147,10 +147,13 @@ describe('Func', () => {
       call({ name: ref('renamed', { type: 'function' }), args: list([]) })
     ]);
     const functionNode = tree.at(0) as ReturnType<typeof fn>;
+    const callNode = tree.at(1) as ReturnType<typeof call>;
 
     sessionPatchField(functionNode, 'name', any('renamed'), ctx);
 
-    await expect(tree.eval(ctx)).rejects.toThrow("'renamed' is not defined");
+    const result = await callNode.eval(ctx);
+
+    expect(result.toTrimmedString()).toBe('ok');
     expect(functionNode.toTrimmedString({ context: ctx })).toContain('$function renamed()');
     expect(functionNode.toTrimmedString()).toContain('$function add()');
   });

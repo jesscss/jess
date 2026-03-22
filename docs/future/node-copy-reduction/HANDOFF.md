@@ -166,8 +166,16 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
 - Focused verification for this subset is green:
   - `pnpm --dir packages/core test src/tree/__tests__/call.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/ruleset.test.ts`
   - Result: `102 passed, 9 skipped`
+- New exact-gap batch is now in the working tree:
+  - `Func` / `Reference` / `Rules`: `Reference(type='function')` now honors a session-patched function name on the active lookup path via a session-aware fallback search in `Rules.findSessionPatchedFunction(...)`.
+  - `Expression`: `clone(...)` is now session-aware for the active reset-session `preEval()` path, preserving a session-patched child value across the clone boundary without mutating the canonical child parent.
+  - `ImportStyle`: the `_dedupe` finalization path now deep-clones top-level imported `Ruleset` nodes so repeated imports do not corrupt the canonical `selector` / `rules` child parent pointers.
+  - `Ruleset`: re-audited complete for the current node-local fundamentals scope now that `Rules.options` session semantics are in place.
+- Focused verification for this subset is green:
+  - `pnpm --dir packages/core test src/tree/__tests__/func.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/expression.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/import-style.test.ts`
+  - Result: `95 passed, 1 skipped`
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
-- The next immediate target is now `Rules.options` session semantics for `Ruleset.preEval()`.
+- The next immediate target is now the remaining `ImportStyle` finalization / returned-tree clone-pressure audit.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed
@@ -190,7 +198,7 @@ Do not begin Stage 21 until all four conditions are true:
 
 ### Immediate work
 
-1. Follow the immediate node queue in `node-session-status.md` (`Ruleset` follow-up is next).
+1. Follow the immediate node queue in `node-session-status.md` (`ImportStyle` follow-up is next).
 2. Keep node-level status and proof updates in `node-session-status.md`.
 3. Keep stage/gate summaries in `PROGRESS.md`.
 4. Only after the fundamentals gate is truly satisfied, reassess readiness for Stage 21.

@@ -1,5 +1,7 @@
 import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
+import { sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -15,6 +17,23 @@ describe('Expression', () => {
   it('should serialize an expression consistently', () => {
     let rule = expr(any('foo'));
     expect(`${rule}`).toBe('$(foo)');
+  });
+
+  it('preEval preserves a session-patched value across the clone boundary without mutating the canonical child parent', async () => {
+    const shared = any('bar');
+    const source = expr(shared);
+    const rule = expr(any('foo'));
+    context.session = new EvalSession({ resetEvalState: true });
+
+    sessionPatchField(rule, 'value', shared, context);
+    const preEvald = await rule.preEval(context);
+
+    expect(preEvald).not.toBe(rule);
+    expect((preEvald as typeof rule).value).toBe(shared);
+    expect(`${preEvald}`).toBe('$(bar)');
+    expect(rule.value).not.toBe(shared);
+    expect(shared.parent).toBe(source);
+    expect(sessionGetParent(shared, context)).toBe(preEvald);
   });
 
   // it('should serialize to a module', () => {

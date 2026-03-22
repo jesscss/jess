@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetDependency, sessionGetField, sessionSetDependency } from './util/session-helpers.js';
+import { sessionGetDependency, sessionGetField, sessionSetDependency, sessionSetParent } from './util/session-helpers.js';
 
 /**
  * An expression is a node that returns a value.
@@ -21,6 +21,26 @@ export class Expression extends Node<Node> {
   static override childKeys = ['value'] as const;
 
   value!: Node;
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const value = this._getValue(ctx);
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
+    const clonedValue = deep ? cloneChild(value) : value;
+    const options = (this as any)._meta?.options;
+    const priorParent = !deep && ctx?.session ? clonedValue.parent : undefined;
+    const newNode = new (this.constructor as any)(
+      clonedValue,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    if (!deep && ctx?.session) {
+      sessionSetParent(clonedValue, newNode, ctx);
+      (clonedValue as unknown as { parent?: Node }).parent = priorParent;
+    }
+    newNode.inherit(this);
+    return newNode;
+  }
 
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);

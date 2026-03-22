@@ -44,6 +44,7 @@ import {
   sessionSetIndex
 } from './util/session-helpers.js';
 import { EvalSession } from '../eval-session.js';
+import type { Func } from './function.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -277,6 +278,45 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     let registry = this.getRegistry(type, options.context);
     return (registry as any).find(keys, filterType, options);
+  }
+
+  findSessionPatchedFunction(
+    name: string,
+    options: Registries.FindOptions = {}
+  ): ReturnType<Registries.FunctionRegistry['find']> | undefined {
+    const { filter, context, searchParents = true } = options;
+    let rules: Rules | undefined = this;
+    let findRoot = false;
+
+    while (rules) {
+      for (const child of rules._getChildren(context)) {
+        if (!isNode(child, N.Func)) {
+          continue;
+        }
+        if (filter && !filter(child)) {
+          continue;
+        }
+        if ((child as Func).getNameKey(context) === name) {
+          return child as Func;
+        }
+      }
+
+      if (!searchParents) {
+        break;
+      }
+
+      do {
+        rules = rules?.parent as Rules;
+        if (findRoot && rules.type === 'Rules' && rules?.parent === undefined) {
+          break;
+        }
+        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
+          findRoot = true;
+        }
+      } while (!findRoot && rules && rules.type !== 'Rules');
+    }
+
+    return undefined;
   }
 
   override toString(options?: PrintOptions): string {

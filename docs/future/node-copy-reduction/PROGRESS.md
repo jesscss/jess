@@ -1016,6 +1016,14 @@ Current blocker notes from live reduction attempts:
   - Focused verification for this subset is green:
     - `pnpm --dir packages/core test src/tree/__tests__/call.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/ruleset.test.ts`
     - Result: `102 passed, 9 skipped`
+- New exact-gap batch now landed in the working tree:
+  - `Func` / `Reference` / `Rules`: `Reference(type='function')` now honors a session-patched function name on the active lookup path via a session-aware fallback search in `Rules.findSessionPatchedFunction(...)`.
+  - `Expression`: `clone(...)` is now session-aware for the active reset-session `preEval()` path, preserving a session-patched child value across the clone boundary without mutating the canonical child parent.
+  - `ImportStyle`: the `_dedupe` finalization path now deep-clones top-level imported `Ruleset` nodes so repeated imports do not corrupt the canonical `selector` / `rules` child parent pointers.
+  - `Ruleset`: re-audited complete for the current node-local fundamentals scope now that `Rules.options` session semantics are in place.
+  - Focused verification for this subset is green:
+    - `pnpm --dir packages/core test src/tree/__tests__/func.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/expression.test.ts src/tree/__tests__/call.test.ts src/tree/__tests__/import-style.test.ts`
+    - Result: `95 passed, 1 skipped`
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

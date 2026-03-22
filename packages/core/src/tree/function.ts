@@ -66,7 +66,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
   }
 
   get nameKey(): string | undefined {
-    const { name } = this;
+    return this.getNameKey();
+  }
+
+  getNameKey(context?: Context): string | undefined {
+    const name = this._getName(context);
     if (!name) {
       return undefined;
     }

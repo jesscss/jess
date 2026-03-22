@@ -545,19 +545,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
                 const inCall = isNode(this.parent, N.Call);
+                const findFunction = () =>
+                  targetRules.find('function', `${keyStr}`, undefined, opts)
+                  ?? targetRules.findSessionPatchedFunction(`${keyStr}`, opts);
                 // When called (e.g. `ns.func(...)`), prefer function lookup first, then fall back to a declaration.
                 // When not called, parsers should generally use `index`/`variable` references for `ns.func` so
                 // declarations win; but if we are here, keep behavior predictable.
                 if (inCall) {
                   return (
-                    targetRules.find('function', `${keyStr}`, undefined, opts)
+                    findFunction()
                     ?? targetRules.find('declaration', `${keyStr}`, undefined, opts)
                   );
                 }
                 // Not in call: prefer declaration first, then function.
                 return (
                   targetRules.find('declaration', `${keyStr}`, undefined, opts)
-                  ?? targetRules.find('function', `${keyStr}`, undefined, opts)
+                  ?? findFunction()
                 );
               }
               break;

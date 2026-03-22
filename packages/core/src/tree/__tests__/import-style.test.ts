@@ -1247,6 +1247,28 @@ describe('Style import', () => {
       expect(countSelector(evald.toString(), '.mix-order-rev')).toBe(0);
     });
 
+    it('deduped imports do not corrupt canonical top-level ruleset child parents', async () => {
+      const importedRuleset = ruleset({
+        selector: sellist([sel([el('.dedupe-parent')])]),
+        rules: rules([decl({ name: any('color'), value: any('red') })])
+      });
+      const sourceRules = rules([importedRuleset]);
+      context.sourceTrees.set('dedupe-parents.jess', sourceRules);
+
+      expect(importedRuleset.rules.parent).toBe(importedRuleset);
+      expect(importedRuleset.selector.parent).toBe(importedRuleset);
+
+      const node = rules([
+        style({ path: quoted(any('dedupe-parents.jess')) }, { type: 'import' }),
+        style({ path: quoted(any('dedupe-parents.jess')) }, { type: 'import' })
+      ]);
+
+      await node.eval(context);
+
+      expect(importedRuleset.rules.parent).toBe(importedRuleset);
+      expect(importedRuleset.selector.parent).toBe(importedRuleset);
+    });
+
     it('compose multiple:true renders repeated modules', async () => {
       context.sourceTrees.set('compose-repeat.jess', rules([
         ruleset({
