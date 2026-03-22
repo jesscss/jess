@@ -184,7 +184,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return;
     }
     const nextOptions: RulesetOptions = {
-      ...this.options,
+      ...this._getRulesetOptions(context),
       ownSelector: selector
     };
     if (context.session && this === this.sourceNode) {
@@ -796,13 +796,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
       // (like Less `@base`) become inaccessible.
       if (!rulesetOptions.generated) {
+        const nextRulesOptions = {
+          ...rules.getCurrentOptions(context),
+          rulesVisibility: {
+            ...rules.getCurrentOptions(context).rulesVisibility
+          }
+        };
         if (context.leakyRules) {
-          rules.options.rulesVisibility.Mixin = 'public';
-          rules.options.rulesVisibility.VarDeclaration = 'optional';
+          nextRulesOptions.rulesVisibility.Mixin = 'public';
+          nextRulesOptions.rulesVisibility.VarDeclaration = 'optional';
         } else {
-          rules.options.rulesVisibility.Mixin = 'private';
-          rules.options.rulesVisibility.VarDeclaration = 'private';
+          nextRulesOptions.rulesVisibility.Mixin = 'private';
+          nextRulesOptions.rulesVisibility.VarDeclaration = 'private';
         }
+        rules.setCurrentOptions(nextRulesOptions, context);
       }
       // Check if there's a root-only at-rule between us and the parent ruleset
       // If so, don't inherit the parent selector (root-only at-rules like @keyframes

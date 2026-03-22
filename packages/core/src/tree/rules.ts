@@ -129,6 +129,9 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
   set options(options: RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   });
+  getCurrentOptions(context?: Context): RulesOptions & NodeOptions & {
+    rulesVisibility: Record<string, RulesVisibility>;
+  };
   eval(context: Context): MaybePromise<this>;
 }
 /**
@@ -155,6 +158,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   readonly value!: readonly Node[];
 
   functionRegistry: Registries.FunctionRegistry | undefined;
+
+  getCurrentOptions(context?: Context): RulesOptions & NodeOptions & {
+    rulesVisibility: Record<string, RulesVisibility>;
+  } {
+    return context
+      ? sessionGetField<RulesOptions & NodeOptions & {
+          rulesVisibility: Record<string, RulesVisibility>;
+        }>(this, 'options', context)
+      : this.options;
+  }
+
+  setCurrentOptions(
+    options: RulesOptions & NodeOptions & {
+      rulesVisibility: Record<string, RulesVisibility>;
+    },
+    context?: Context
+  ): void {
+    if (context?.session && this === this.sourceNode) {
+      sessionPatchField(this, 'options', options, context);
+      return;
+    }
+    this.options = options;
+  }
 
   /**
    * Rules are often cloned during `preEval()` when a session is active.
@@ -304,15 +330,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // @import must come after @charset but before other rules
       if (ctx?.topImports?.length) {
         for (const importRule of ctx.topImports) {
-          if (isNode(importRule, N.AtRule)) {
-            const importPrelude = (importRule as any).prelude;
-            if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
-              const maybePrelude = importPrelude.eval(ctx);
-              if (!isThenable(maybePrelude)) {
-                importRule.setData('prelude', maybePrelude as Node);
-              }
-            }
-          }
           const importStr = w.capture(() => importRule.toString(options));
           w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
@@ -621,10 +638,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, _context?: Context) {
     if (isNode(node, N.Rules)) {
+      const nodeOptions = (node as Rules).getCurrentOptions(_context);
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
       let optionsVisibility = options?.rulesVisibility;
-      let nodeVisibility = node.options.rulesVisibility ?? {};
+      let nodeVisibility = nodeOptions.rulesVisibility ?? {};
       let rulesVisibility = optionsVisibility
         ? { ...nodeVisibility, ...optionsVisibility }
         : nodeVisibility;
@@ -638,7 +656,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rulesVisibility.Mixin ??= 'public';
 
       /** Either one set as readonly will win */
-      let readonly = Boolean(options?.readonly || node.options.readonly);
+      let readonly = Boolean(options?.readonly || nodeOptions.readonly);
       this.rulesSet.push({
         node,
         rulesVisibility,

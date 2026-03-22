@@ -169,7 +169,7 @@ describe('Rule', () => {
     expect(preEvald.selector.sourceNode.valueOf()).toBe('.poison');
   });
 
-  it('preEval still mutates canonical child rules visibility on the non-reset session path', async () => {
+  it('preEval keeps child rules visibility in the session without mutating canonical rules options', async () => {
     const node = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -182,10 +182,35 @@ describe('Rule', () => {
     expect(node.rules.options.rulesVisibility.Mixin).toBe('public');
     expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('public');
 
-    await node.preEval(context);
+    const preEvald = await node.preEval(context);
+    const currentRules = preEvald.getCurrentRules(context);
+    const currentOptions = currentRules.getCurrentOptions(context);
 
-    expect(node.rules.options.rulesVisibility.Mixin).toBe('private');
-    expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('private');
+    expect(currentOptions.rulesVisibility.Mixin).toBe('private');
+    expect(currentOptions.rulesVisibility.VarDeclaration).toBe('private');
+    expect(node.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+  });
+
+  it('setOwnSelector preserves other session-patched option fields', () => {
+    const node = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    context.session = new EvalSession();
+    context.session.patchField(node, 'options', {
+      ...node.options,
+      resolvedHoistWrapper: true
+    });
+
+    node.setOwnSelector(el('.beta'), context);
+
+    expect(node.getOwnSelector(context)?.valueOf()).toBe('.beta');
+    expect(node.options.ownSelector).toBeUndefined();
+    expect(context.session.getField(node, 'options')?.resolvedHoistWrapper).toBe(true);
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

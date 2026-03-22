@@ -177,6 +177,37 @@ describe('Call', () => {
     expect(node.options.silentFail).toBe(true);
   });
 
+  it('reads a session-patched silentFail option during serialization without mutating canonical output', () => {
+    context.session = new EvalSession();
+    const node = call({
+      name: 'rgb',
+      args: list([num(1)])
+    });
+
+    sessionPatchField(node, 'options', { silentFail: true }, context);
+
+    expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
+    expect(node.toTrimmedString()).toBe('rgb(1)');
+    expect(node.options.silentFail).toBeUndefined();
+  });
+
+  it('reads a session-patched silentFail option during non-function eval without mutating canonical options', async () => {
+    context.session = new EvalSession();
+    const node = call({
+      name: 'rgb',
+      args: list([num(1)])
+    });
+
+    sessionPatchField(node, 'options', { silentFail: true }, context);
+
+    const evald = await node.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toBe('rgb(1)');
+    expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
+    expect(node.toTrimmedString()).toBe('rgb(1)');
+    expect(node.options.silentFail).toBeUndefined();
+  });
+
   it('materializes stylesheet-function return nodes in a session before applying call result provenance', async () => {
     context.session = new EvalSession();
     const returnValue = any('ok');
@@ -255,6 +286,23 @@ describe('Call', () => {
     expect(result.value[0]).not.toBe(childDecl);
     expect(childDecl.parent).toBe(collectionNode);
     expect(childDecl.toTrimmedString({ context })).toBe('color: red');
+  });
+
+  it('reads a session-patched markImportant option for collection results without mutating canonical options', async () => {
+    context.session = new EvalSession();
+    const childDecl = decl({ name: 'color', value: any('red') });
+    const collectionNode = coll([childDecl]);
+    const node = call({
+      name: collectionNode,
+      args: list([])
+    });
+
+    sessionPatchField(node, 'options', { markImportant: true }, context);
+
+    const result = await node.eval(context);
+
+    expect(result.toTrimmedString({ context })).toContain('color: red !important;');
+    expect(node.options.markImportant).toBeUndefined();
   });
 
   // it('should serialize to a module', () => {

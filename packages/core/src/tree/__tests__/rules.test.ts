@@ -17,6 +17,7 @@ import {
   VarDeclaration,
   style,
   quoted,
+  atrule,
   type Declaration,
   type Selector
 } from '../index.js';

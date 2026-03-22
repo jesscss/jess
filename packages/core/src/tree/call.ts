@@ -166,6 +166,12 @@ export class Call extends Node<CallValue, CallOptions> {
       : this.contentNode;
   }
 
+  private _getOptions(context?: Context): CallOptions | undefined {
+    return context
+      ? sessionGetField<CallOptions | undefined>(this, 'options', context)
+      : this.options;
+  }
+
   private _setName(name: string | Node, context: Context): void {
     if (name instanceof Node) {
       this.adopt(name);
@@ -234,11 +240,11 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    const { silentFail } = this.options;
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
+    const { silentFail, markImportant } = this._getOptions(context) ?? {};
     const name = this._getName(context);
     const args = this._getArgs(context);
     const contentNode = this._getContentNode(context);
@@ -265,7 +271,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
     }
     w.add(')');
-    if (this.options?.markImportant) {
+    if (markImportant) {
       w.add(' !important');
     }
     if (contentNode) {
@@ -296,7 +302,8 @@ export class Call extends Node<CallValue, CallOptions> {
   override async evalNode(context: Context): Promise<Node> {
     let name = this._getName(context);
     let args = this._getArgs(context);
-    let { markImportant } = this.options;
+    const callOptions = this._getOptions(context) ?? {};
+    let { markImportant } = callOptions;
     const applyDependencyToResult = <T extends Node>(
       result: T,
       nodes?: readonly (Node | undefined)[]
@@ -473,7 +480,7 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           throw e;
         }
-        if (!this.options?.silentFail || shouldRethrowForMode) {
+        if (!callOptions.silentFail || shouldRethrowForMode) {
           throw e;
         }
         let newCall = (context.session
@@ -504,7 +511,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       context.parenFrames.pop();
       context.callStack.pop();
-      const needsMaterializedClone = Boolean(context.session && this.options.silentFail);
+      const needsMaterializedClone = Boolean(context.session && callOptions.silentFail);
       const node = needsMaterializedClone
         ? this.clone(false, undefined, context)
         : context.session
