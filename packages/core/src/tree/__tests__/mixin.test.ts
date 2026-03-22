@@ -644,7 +644,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('wrapper child output under a session still leaves nested ruleset selector/body tied to a non-returned node', async () => {
+    it('wrapper child output under a session reparents nested ruleset selector/body onto the returned ruleset', async () => {
       context.createSession();
 
       const mixinDef = mixin({
@@ -672,8 +672,8 @@ describe('Mixin', () => {
 
       expect(outputRuleset).toBeDefined();
       expect(outputRuleset.parent).toBe(outputRules);
-      expect(outputRuleset.selector.parent).not.toBe(outputRuleset);
-      expect(outputRuleset.rules.parent).not.toBe(outputRuleset);
+      expect(outputRuleset.selector.parent).toBe(outputRuleset);
+      expect(outputRuleset.rules.parent).toBe(outputRuleset);
       expect(outputDecl.parent).toBe(outputRuleset.rules);
       expect(String(result)).toBeString(`
         .inner {

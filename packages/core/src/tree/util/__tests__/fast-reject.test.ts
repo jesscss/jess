@@ -119,7 +119,7 @@ describe('Fast-reject in selectorMatch', () => {
     context = new Context();
   });
 
-  test('evalContext-aware matcher can see a session-patched ampersand parent while compare consumers stay canonical', () => {
+  test('evalContext-aware matcher can drive selector compare consumers when context is provided', () => {
     context.session = new EvalSession();
 
     const parent = ruleset({
@@ -160,6 +160,8 @@ describe('Fast-reject in selectorMatch', () => {
     expect(selectorMatch(find, target, undefined, context).fullMatch).toBe(true);
     expect(find.compare(target)).not.toBe(0);
     expect(findList.compare(target)).not.toBe(0);
+    expect(find.compare(target, context)).toBe(0);
+    expect(findList.compare(target, context)).toBe(0);
   });
 
   test('rejects completely disjoint simple selectors', async () => {

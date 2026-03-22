@@ -137,15 +137,15 @@ export class SelectorList extends Selector<Selector[]> {
     return itemValues.join(',');
   }
 
-  override compare(b: Selector): 0 | 1 | -1 | undefined {
+  override compare(b: Selector, context?: Context): 0 | 1 | -1 | undefined {
     if (!isNode(b, N.Selector)) {
-      return super.compare(b as unknown as Selector);
+      return super.compare(b as unknown as Selector, context);
     }
-    const semantic = selectorMatch(this, b);
+    const semantic = selectorMatch(this, b, undefined, context);
     if (semantic.fullMatch) {
       return 0;
     }
-    return super.compare(b);
+    return super.compare(b, context);
   }
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {

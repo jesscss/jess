@@ -270,7 +270,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private _setRulesContainer(rules: Rules, context: Context): void {
-    this.adopt(rules, context);
+    if (context.session && this !== this.sourceNode) {
+      this.adopt(rules);
+    } else {
+      this.adopt(rules, context);
+    }
     if (context.session && this === this.sourceNode) {
       sessionPatchField(this, 'rules', rules, context);
     } else {
@@ -941,6 +945,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
     return getImplicitSelectorUtil(selector, parentSelector, collapseNesting);
+  }
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const cloned = super.clone(deep, cloneFn, ctx) as this;
+    if (!deep && ctx?.session && this !== this.sourceNode) {
+      const selector = cloned._getSelector(ctx);
+      if (selector instanceof Node) {
+        cloned.setData('selector', selector.materializeEvaluatedCopy() as Selector | Nil);
+      }
+      const rules = cloned._getRulesContainer(ctx);
+      cloned.setData('rules', rules.materializeEvaluatedCopy());
+    }
+    return cloned;
   }
 
   override copy(deep?: boolean): this {

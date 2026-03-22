@@ -171,6 +171,29 @@ describe('Rule', () => {
     expect(preEvald.selector.sourceNode.valueOf()).toBe('.poison');
   });
 
+  it('shallow clone of a derived ruleset materializes selector and rules onto the clone in a session', () => {
+    const canonical = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const derived = canonical.clone(true);
+
+    context.session = new EvalSession();
+
+    const cloned = derived.clone(false, undefined, context);
+    const clonedDecl = cloned.rules.at(0);
+
+    expect(cloned.selector.parent).toBe(cloned);
+    expect(cloned.rules.parent).toBe(cloned);
+    expect(clonedDecl.parent).toBe(cloned.rules);
+    expect(derived.selector.parent).toBe(derived);
+    expect(derived.rules.parent).toBe(derived);
+    expect(canonical.selector.parent).toBe(canonical);
+    expect(canonical.rules.parent).toBe(canonical);
+  });
+
   it('preEval keeps child rules visibility in the session without mutating canonical rules options', async () => {
     const node = ruleset({
       selector: el('.alpha'),
