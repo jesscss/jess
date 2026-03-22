@@ -158,16 +158,16 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * Returns the current selector from the selector container (live when container is ruleset value).
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
-  getResolvedSelector(): Selector | Nil | undefined {
-    const selector = getSelectorFromContainer(this._selectorContainer);
+  getResolvedSelector(context?: Context): Selector | Nil | undefined {
+    const selector = getSelectorFromContainer(this._selectorContainer, context);
     if (selector && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return wrapParentSelectorForNestedContext(selector as Selector);
     }
     return selector;
   }
 
-  override valueOf() {
-    const selector = getSelectorFromContainer(this._selectorContainer);
+  override valueOf(context?: Context) {
+    const selector = getSelectorFromContainer(this._selectorContainer, context);
     if (selector) {
       return selector.valueOf();
     }

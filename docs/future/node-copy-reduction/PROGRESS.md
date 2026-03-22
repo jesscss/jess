@@ -1106,6 +1106,12 @@ Current blocker notes from live reduction attempts:
     - `control.test.ts`: green
     - `import-style.test.ts`: green after `DeclarationRegistry.find()` switched its parent climb to `sessionGetParent(...)`
 - That closes the focused import visibility blocker on the current head. The remaining `ImportStyle` work is clone-pressure / returned-tree cleanup, not the old parent-var / `with` / `set` lookup failures.
+- Small selector-side follow-up now landed cleanly:
+  - `Ampersand`: `valueOf(context?)` and `getResolvedSelector(context?)` now read a session-patched parent selector without mutating the canonical parent selector.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/ampersand.test.ts`
+  - result:
+    - only the same 2 known noisy selector-list collapse failures remain
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

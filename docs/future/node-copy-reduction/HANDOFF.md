@@ -257,6 +257,12 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `control.test.ts`: green
     - `import-style.test.ts`: green after `DeclarationRegistry.find()` switched its parent climb to `sessionGetParent(...)`
 - This closes the focused import visibility blocker on the current head. The remaining import work is clone-pressure / returned-tree cleanup, not the old parent-var / `with` / `set` lookup failures.
+- Small selector-side follow-up after that:
+  - `Ampersand`: `valueOf(context?)` and `getResolvedSelector(context?)` now read a session-patched parent selector without mutating the canonical parent selector.
+  - verification:
+    - `pnpm --dir packages/core test src/tree/__tests__/ampersand.test.ts`
+  - result:
+    - only the same 2 known noisy selector-list collapse failures remain
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

@@ -5,7 +5,8 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { F_AMPERSAND, F_VISIBLE } from '../node.js';
+import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Ampersand', () => {
@@ -336,5 +337,25 @@ describe('Ampersand', () => {
     expect(parent.selector.pre).toBe(1);
     expect(parent.selector.post).toBe(1);
     expect(parent.selector.hoistToRoot).toBeUndefined();
+  });
+
+  it('valueOf(context) and getResolvedSelector(context) read a session-patched parent selector', () => {
+    context = new Context();
+    context.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    const node = amp({ selectorContainer: parent as any });
+    node.addFlag(F_IMPLICIT_AMPERSAND);
+
+    sessionPatchField(parent, 'selector', el('.beta'), context);
+
+    expect(node.valueOf(context)).toBe('.beta');
+    expect(node.valueOf()).toBe('.alpha');
+    expect(node.getResolvedSelector(context)?.valueOf()).toBe('.beta');
+    expect(node.getResolvedSelector()?.valueOf()).toBe('.alpha');
+    expect(parent.selector.valueOf()).toBe('.alpha');
   });
 });
