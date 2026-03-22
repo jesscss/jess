@@ -1,11 +1,19 @@
-export { scssCondition, scssConditionOr, scssConditionAnd, scssConditionInParens, scssConditionInner, scssComparison } from './conditions.js';
-export { value, functionCall, string, scssMapLiteral, declaration } from './values.js';
-export { simpleSelector, compoundSelector, main, layerName } from './selectors.js';
+export { scssComparison, scssConditionInParens, scssConditionInner, scssConditionAnd, scssConditionOr, scssCondition } from './conditions.js';
+export { functionCall, string, scssMapLiteral, scssIdentValue, declaration, value } from './values.js';
+export { simpleSelector, compoundSelector, layerName, main, declarationList } from './selectors.js';
 export {
+  scssWithConfig,
+  scssIncludeUsingParams,
+  scssMixinParams,
+  scssMixinParamsAfterFunctionStart,
+  scssMixinParam,
+  scssMediaPrelude,
+  scssSupportsPrelude,
+  scssContainerPrelude,
+  scssScopePrelude,
   scssUseAtRule,
   scssForwardAtRule,
   scssExtendAtRule,
-  scssWithConfig,
   scssContentAtRule,
   scssIncludeAtRule,
   scssIfAtRule,
@@ -17,16 +25,9 @@ export {
   scssReturnAtRule,
   scssDiagnosticAtRule,
   scssAtRootAtRule,
-  scssMixinParams,
-  scssMixinParamsAfterFunctionStart,
-  scssMixinParam,
-  scssMediaPrelude,
   mediaAtRule,
-  scssSupportsPrelude,
   supportsAtRule,
-  scssContainerPrelude,
   containerAtRule,
-  scssScopePrelude,
   scopeAtRule,
   unknownAtRule
 } from './atRules.js';

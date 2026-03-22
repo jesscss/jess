@@ -72,7 +72,6 @@ type AltContext = (ctx?: RuleContext) => Alt;
 const cssMain = cssProductions.main;
 const cssDeclaration = cssProductions.declaration;
 const cssMediaTypeQuery = cssProductions.mediaTypeQuery;
-const cssMediaInParens = cssProductions.mediaInParens;
 
 // ── Helper functions ──────────────────────────────────────────────────
 
@@ -191,12 +190,20 @@ export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContex
 
 function isEscapedString($: P, T: TokenMap): boolean {
   const next = $.LA(1);
-  return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~');
+  return (
+    next.image.startsWith('~')
+    && (
+      tokenMatcher(next, T.QuoteStart)
+      || tokenMatcher(next, T.DoubleQuoteStart)
+      || tokenMatcher(next, T.SingleQuoteStart)
+    )
+  );
 }
 
 function startsBareMediaQueryValue($: P, T: TokenMap): boolean {
   if (
     $.isType(T.AtName)
+    || $.isType(T.AtKeyword)
     || $.isType(T.PropertyReference)
     || $.isType(T.NestedReference)
     || $.isType(T.DotName)
@@ -504,18 +511,19 @@ export function main(this: P, T: TokenMap) {
       }
     });
 
-    if (!RECORDING_PHASE) {
-      // Process any extendNodes that were set (e.g., by ampersandExtend at root level)
-      if (ctx.extendNodes && ctx.extendNodes!.length > 0) {
-        // Filter out Nil nodes (returned by ampersandExtend to avoid duplication)
-        const filteredRules = rules!.filter(r => !(r instanceof Nil));
-        rules = [...ctx.extendNodes!, ...filteredRules];
-        ctx.extendNodes = undefined;
-      }
-      let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
-      // Attaches remaining whitespace at the end of rules
-      return $.wrap(returnNode!, true);
+    if (RECORDING_PHASE) {
+      return;
     }
+    // Process any extendNodes that were set (e.g., by ampersandExtend at root level)
+    if (ctx.extendNodes && ctx.extendNodes!.length > 0) {
+      // Filter out Nil nodes (returned by ampersandExtend to avoid duplication)
+      const filteredRules = rules!.filter(r => !(r instanceof Nil));
+      rules = [...ctx.extendNodes!, ...filteredRules];
+      ctx.extendNodes = undefined;
+    }
+    let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
+    // Attaches remaining whitespace at the end of rules
+    return $.wrap(returnNode!, true);
   };
 }
 
@@ -709,29 +717,48 @@ export function declaration(this: P, T: TokenMap) {
 export function mediaInParens(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    return $.OR([
-      /**
-       * It's up to the Less author to validate that this will produce
-       * valid media queries.
-       */
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.LParen);
+
+    const node = $.OR([
       {
-        /** Allow escaped strings */
+        GATE: () => $.startsMediaCondition(T),
+        ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] })
+      },
+      {
         GATE: () => isEscapedString($, T),
         ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
       },
-      /**
-       * After Less evaluation, should throw an error
-       * if the value of `@myvar` is a ruleset
-       */
       {
-        ALT: () => {
-          return $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
-        }
+        /**
+         * Less allows media/container conditions to be supplied by variables or
+         * namespaced references, but only when the inner token stream actually
+         * starts like a Less reference, not a plain CSS media feature.
+         */
+        GATE: () => (
+          $.isType(T.PropertyReference)
+          || $.isType(T.NestedReference)
+          || $.isType(T.AtName)
+          || $.isType(T.HashName)
+          || $.isType(T.DotName)
+          || $.isType(T.ColorIdentStart)
+          || $.isType(T.InterpolatedSelector)
+        ),
+        ALT: () => $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
       },
       {
-        ALT: () => cssMediaInParens.call($, T)(ctx)
+        ALT: () => $.SUBRULE($.mediaFeature, { ARGS: [ctx] })
       }
     ]);
+
+    $.CONSUME(T.RParen);
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    const location = $.endRule();
+    return $.wrap(new Paren($.wrap(node, 'both'), undefined, location, $.context));
   };
 }
 
@@ -796,13 +823,14 @@ export function mediaQuery(this: P, T: TokenMap) {
             }
           });
 
-          if (!RECORDING_PHASE) {
-            const location = $.endRule();
-            if (nodes!.length === 1) {
-              return nodes![0]!;
-            }
-            return new QueryCondition(nodes!, undefined, location, $.context);
+          if (RECORDING_PHASE) {
+            return;
           }
+          const location = $.endRule();
+          if (nodes!.length === 1) {
+            return nodes![0]!;
+          }
+          return new QueryCondition(nodes!, undefined, location, $.context);
         }
       },
       {
@@ -810,6 +838,85 @@ export function mediaQuery(this: P, T: TokenMap) {
       }
     ]);
   };
+}
+
+export function mediaCondition(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.OR([
+    { ALT: () => $.SUBRULE($.mediaNot, { ARGS: [ctx] }) },
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        let nodes: Node[] | undefined;
+        if (!RECORDING_PHASE) {
+          nodes = [];
+        }
+        const node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          nodes!.push(node);
+        }
+        $.MANY({
+          GATE: () => $.isType(T.And) || $.isType(T.Or),
+          DEF: () => {
+            const rule = $.OR2([
+              { ALT: () => $.SUBRULE($.mediaAnd, { ARGS: [ctx] }) },
+              { ALT: () => $.SUBRULE($.mediaOr, { ARGS: [ctx] }) }
+            ]);
+            if (!RECORDING_PHASE) {
+              nodes!.push(...rule);
+            }
+          }
+        });
+        if (RECORDING_PHASE) {
+          return;
+        }
+        if (nodes!.length === 1) {
+          $.endRule();
+          return nodes![0]!;
+        }
+        return new QueryCondition(nodes!, undefined, $.endRule(), $.context);
+      }
+    }
+  ]);
+}
+
+export function mediaConditionWithoutOr(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.OR([
+    { ALT: () => $.SUBRULE($.mediaNot, { ARGS: [ctx] }) },
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        let nodes: Node[] | undefined;
+        if (!RECORDING_PHASE) {
+          nodes = [];
+        }
+        const node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          nodes!.push(node);
+        }
+        $.MANY({
+          GATE: () => $.isType(T.And),
+          DEF: () => {
+            const rule = $.SUBRULE($.mediaAnd, { ARGS: [ctx] });
+            if (!RECORDING_PHASE) {
+              nodes!.push(...rule);
+            }
+          }
+        });
+        if (RECORDING_PHASE) {
+          return;
+        }
+        if (nodes!.length === 1) {
+          $.endRule();
+          return nodes![0]!;
+        }
+        return new QueryCondition(nodes!, undefined, $.endRule(), $.context);
+      }
+    }
+  ]);
 }
 
 export function containerInParens(this: P, T: TokenMap) {
@@ -1356,7 +1463,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     }
     return $.OR2([
       {
-        GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
+        GATE: () => (isPossibleMixinDefinition || isPossibleMixinCall) && $.isType(T.LParen),
         ALT: () => {
           args = $.SUBRULE3($.mixinArgs, { ARGS: [ctx] });
           let next = $.LA(1).tokenType;
@@ -1421,6 +1528,23 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         }
       },
       {
+        GATE: () => isPossibleMixinCall && $.isType(T.Semi),
+        ALT: () => {
+          // Call terminated by a semi-colon and not parens, deprecated
+          const semi = $.CONSUME(T.Semi);
+          const location = $.endRule();
+          if (!$.RECORDING_PHASE) {
+            // Mixin call without parentheses - deprecated
+            $.warnDeprecation(
+              'Calling a mixin without parentheses is deprecated',
+              semi,
+              'mixin-call-no-parens'
+            );
+            return createMixinCall(location);
+          }
+        }
+      },
+      {
         /** Parse as qualified rule */
         ALT: () => {
           $.endRule();
@@ -1453,23 +1577,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             ctx.extendNodes = undefined;
           }
           return rule;
-        }
-      },
-      {
-        GATE: () => isPossibleMixinCall,
-        ALT: () => {
-          // Call terminated by a semi-colon and not parens, deprecated
-          const semi = $.CONSUME(T.Semi);
-          const location = $.endRule();
-          if (!$.RECORDING_PHASE) {
-            // Mixin call without parentheses - deprecated
-            $.warnDeprecation(
-              'Calling a mixin without parentheses is deprecated',
-              semi,
-              'mixin-call-no-parens'
-            );
-            return createMixinCall(location);
-          }
         }
       }
     ]);

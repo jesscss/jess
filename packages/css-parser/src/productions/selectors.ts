@@ -212,9 +212,10 @@ export function classSelector(this: C, T: TokenMap) {
 
   return () => {
     let selector = $.CONSUME(T.DotName);
-    if (!$.RECORDING_PHASE) {
-      return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
   };
 }
 
@@ -228,9 +229,10 @@ export function idSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   /** #id, #FF0000 are both valid ids */
   return (ctx: RuleContext = {}) => {
     let selector = $.OR(selectorAlt(ctx));
-    if (!$.RECORDING_PHASE) {
-      return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
   };
 }
 
@@ -420,9 +422,10 @@ export function attributeName(this: C, T: TokenMap) {
 
     let key = $.CONSUME6(T.Ident);
 
-    if (!$.RECORDING_PHASE) {
-      return new Any(`${namespacePrefix}${key.image}`, { role: 'ident' }, $.getLocationInfo(key), this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    return new Any(`${namespacePrefix}${key.image}`, { role: 'ident' }, $.getLocationInfo(key), this.context);
   };
 }
 
@@ -430,14 +433,15 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
 
   valueAlt ??= (ctx: RuleContext = {}) => [
-    {
-      ALT: () => {
-        let token = $.CONSUME5(T.Ident);
-        if (!$.RECORDING_PHASE) {
+      {
+        ALT: () => {
+          let token = $.CONSUME5(T.Ident);
+          if ($.RECORDING_PHASE) {
+            return;
+          }
           return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), this.context);
         }
-      }
-    },
+      },
     { ALT: () => $.SUBRULE($.string) }
   ];
 
@@ -504,12 +508,13 @@ export function compoundSelector(this: C, T: TokenMap) {
         }
       }
     });
-    if (!RECORDING_PHASE) {
-      if (selectors!.length === 1) {
-        return selectors![0]!;
-      }
-      return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), this.context);
+    if (RECORDING_PHASE) {
+      return;
     }
+    if (selectors!.length === 1) {
+      return selectors![0]!;
+    }
+    return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), this.context);
   };
 }
 
@@ -674,13 +679,14 @@ export function forgivingSelectorList(this: C, T: TokenMap) {
       }
     });
 
-    if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      if (sequences!.length === 1) {
-        return sequences![0];
-      }
-      return new SelectorList(sequences!, undefined, location, this.context);
+    if (RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    if (sequences!.length === 1) {
+      return sequences![0];
+    }
+    return new SelectorList(sequences!, undefined, location, this.context);
   };
 }
 
@@ -717,14 +723,14 @@ export function selectorList(this: C, T: TokenMap) {
       }
     });
 
-    if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      if (sequences!.length === 1) {
-        return sequences![0]!;
-      }
-
-      return new SelectorList(sequences!, undefined, location, this.context);
+    if (RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    if (sequences!.length === 1) {
+      return sequences![0]!;
+    }
+    return new SelectorList(sequences!, undefined, location, this.context);
   };
 }
 

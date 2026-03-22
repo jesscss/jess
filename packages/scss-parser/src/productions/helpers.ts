@@ -284,13 +284,16 @@ export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): 
     return call;
   }
   const ref = makeNamespacedReference(parser, parts, 'function');
-  return new Call({ name: ref, args: call.args }, call.options, call.location, parser.context);
+  const location = Array.isArray(call.location) && call.location.length === 6
+    ? call.location
+    : undefined;
+  return new Call({ name: ref, args: call.args }, call.options, location, parser.context);
 }
 
 export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {
   let depth = 0;
   for (let i = 1; i < 50; i++) {
-    const tok = parser.LA(i);
+    const tok = (parser as any).LA(i);
     if (tok.tokenType === T.LParen) {
       depth++;
     }
@@ -315,7 +318,7 @@ export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap
 
 export function looksLikeScssComparison(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {
   for (let i = 1; i < 30; i++) {
-    const tok = parser.LA(i);
+    const tok = (parser as any).LA(i);
     const tt = tok.tokenType;
     if (
       tt === T.LCurly
@@ -369,4 +372,3 @@ export function defaultNamespaceFromPath(path: string): string | undefined {
   const noExt = base.replace(/\.(scss|sass|css|jess|js|ts|json)$/i, '');
   return noExt || undefined;
 }
-

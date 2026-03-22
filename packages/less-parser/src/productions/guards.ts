@@ -447,10 +447,11 @@ export function layerName(this: P, T: TokenMap) {
       }
     });
 
-    if (!RECORDING_PHASE) {
-      const loc = $.endRule();
-      return new Sequence(nodes!, undefined, loc, $.context);
+    if (RECORDING_PHASE) {
+      return;
     }
+    const loc = $.endRule();
+    return new Sequence(nodes!, undefined, loc, $.context);
   };
 }
 

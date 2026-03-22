@@ -25,3 +25,9 @@ globs:
 
 - Treat Chevrotain parser objects as potentially circular; avoid `JSON.stringify` on parser/AST objects.
 
+## LL(1) gating rules
+
+- Prefer OR/ALT designs that disambiguate on the first token so no `GATE` is needed.
+- When a `GATE` is required, keep the gate and the matching ALT shaped so they use the smallest practical lookahead.
+- Never use unbounded or effectively infinite lookahead for a token choice.
+- During Chevrotain `RECORDING_PHASE`, do not return parser nodes or partially built values. Exit recording-only branches without returning semantic values.

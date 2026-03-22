@@ -78,6 +78,8 @@ export interface CssRecursiveParserConfig {
   legacyMode?: boolean;
   /** Enable error recovery (for language services) */
   recoveryEnabled?: boolean;
+  /** Temporary escape hatch for grammars still being migrated to strict self-analysis. */
+  skipValidations?: boolean;
 }
 
 // ── Parser ───────────────────────────────────────────────────────────
@@ -118,10 +120,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   ) {
     super([...Object.values(T), EOF], {
       recoveryEnabled: config.recoveryEnabled ?? false,
-      maxLookahead: 1
-      // TODO: Fix in fork — ambiguity validation should warn, not throw.
-      // The speculative engine handles ambiguities correctly at runtime.
-      // skipValidations: true
+      maxLookahead: 1,
+      // TODO: Remove once all parsers are fully migrated for upstream Chevrotain validation.
+      skipValidations: config.skipValidations ?? false
     });
     this.T = T;
     this.legacyMode = config.legacyMode ?? true;

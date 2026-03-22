@@ -1,11 +1,12 @@
 export {
-  stylesheet, main, declarationList, declaration, mediaQuery, mediaInParens,
+  stylesheet, main, declarationList, declaration, mediaQuery, mediaCondition,
+  mediaConditionWithoutOr, mediaInParens,
   mediaFeature, containerInParens, mfValue, mfNonIdentifierValue, wrappedDeclarationList,
   qualifiedRuleBody, qualifiedRule, mixinOrQualifiedRule
 } from './root.js';
 
 export {
-  relativeSelector, compoundSelector, complexSelector, ampersandExtend,
+  relativeSelector, forgivingSelectorList, selectorList, compoundSelector, complexSelector, ampersandExtend,
   extend, simpleSelector, anonymousMixinDefinition, importAtRule,
   varDeclarationOrCall, selectorCapture, valueSequence, squareValue
 } from './selectors.js';
