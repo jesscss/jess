@@ -241,8 +241,14 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!selector) {
         return new Nil();
       }
-      // Never mutate the frame selector in-place for append forms (&-foo / &()).
-      if (appendValue !== undefined && !isNode(selector, N.Nil)) {
+      // Never mutate a simple parent/frame selector in-place in the collapse/hoist branch.
+      // This path normalizes spacing via `pre`/`post`, and for simple selectors that can
+      // alias the canonical parent selector directly.
+      if (
+        !isNode(selector, N.Nil)
+        && !isNode(selector, N.SelectorList)
+        && !isNode(selector, N.ComplexSelector)
+      ) {
         selector = selector.clone(true) as Selector;
       }
       /** Remove any surrounding whitespace */

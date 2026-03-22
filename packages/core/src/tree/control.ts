@@ -491,14 +491,23 @@ export class Each extends Node<LegacyLoopValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
+  private _getHeader(context?: Context): Sequence {
+    return getControlField(this, 'header', context, this.header);
+  }
+
+  private _getRules(context?: Context): Rules {
+    return getControlField(this, 'rules', context, this.rules);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
     w.add('$each ', this);
-    this.header.toString(options);
+    this._getHeader(context).toString(options);
     w.add(' ');
-    this.rules.toBraced(options);
+    this._getRules(context).toBraced(options);
     return w.getSince(mark);
   }
 }

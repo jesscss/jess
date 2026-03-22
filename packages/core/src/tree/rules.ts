@@ -1603,6 +1603,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         : (node as any).name;
       return String((name as any)?.valueOf?.() ?? name);
     };
+    const getDeclAssign = (node: Node): string => {
+      const options = useSessionFields && context
+        ? sessionGetField<Record<string, unknown> | undefined>(node, 'options', context)
+        : node.options;
+      return String(options?.normalizedFromAssign ?? '');
+    };
     const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
       if (useSessionFields && context) {
         sessionPatchField(node, key, value, context);
@@ -1698,7 +1704,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       const name = getDeclName(node);
-      const assign = String(node.options.normalizedFromAssign ?? '');
+      const assign = getDeclAssign(node);
       const merged = isMergedAssign(assign);
 
       if (!merged) {
@@ -1711,7 +1717,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       normalizeMergedDeclarationValue(node);
 
       const prior = lastVisibleByName.get(name);
-      if (prior && prior !== node && prior.parent !== node.parent) {
+      if (
+        prior
+        && prior !== node
+        && (
+          useSessionFields && context
+            ? sessionGetParent(prior, context) !== sessionGetParent(node, context)
+            : prior.parent !== node.parent
+        )
+      ) {
         composeMergedValue(node, prior, assign);
       }
 

@@ -1023,6 +1023,43 @@ describe('Style import', () => {
       expect(css).toContain('#css { color: yellow; }');
     });
 
+    it('evaluated postlude wrapping does not corrupt canonical postlude parent pointers', async () => {
+      const importPath = resolve(process.cwd(), 'postlude-parent.jess');
+      context.sourceTrees.set(importPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.postlude-parent')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const layerArg = any('theme');
+      const layerArgs = list([layerArg]);
+      const supportsArgs = list([any('(display: grid)'), any('and (hover: hover)')]);
+      const mediaQuery = any('screen and (min-width: 600px)');
+      const postlude = list([
+        call({ name: 'layer', args: layerArgs }),
+        call({ name: 'supports', args: supportsArgs }),
+        mediaQuery
+      ], { sep: ' ' as any });
+
+      expect(layerArg.parent).toBe(layerArgs);
+      expect(supportsArgs.parent).toBe(postlude.value[1]);
+      expect(mediaQuery.parent).toBe(postlude);
+
+      await rules([
+        style({ path: quoted(any('postlude-parent.jess')) }, {
+          type: 'import',
+          importOptions: { postlude }
+        })
+      ]).eval(context);
+
+      expect(layerArg.parent).toBe(layerArgs);
+      expect(supportsArgs.parent).toBe(postlude.value[1]);
+      expect(mediaQuery.parent).toBe(postlude);
+    });
+
     it('import-interpolation: resolves vars from later imports on retry', async () => {
       const interpolationImportPath = resolve(process.cwd(), 'import/import-interpolation.jess');
       const interpolationVarsPath = resolve(process.cwd(), 'import/interpolation-vars.jess');

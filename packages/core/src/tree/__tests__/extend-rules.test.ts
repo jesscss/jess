@@ -80,6 +80,29 @@ describe('Rules extend', () => {
       expect(context.session?.getRuntime(target).parent).toBe(cloned);
     });
 
+    it('preserves session-patched extend fields during clone without mutating the canonical node', () => {
+      context.session = new EvalSession();
+
+      const node = extend({
+        target: el('.base'),
+        namespace: 'base',
+        flag: ExtendFlag.Exact
+      });
+
+      sessionPatchField(node, 'target', el('.other'), context);
+      sessionPatchField(node, 'namespace', 'patched', context);
+      sessionPatchField(node, 'flag', ExtendFlag.All, context);
+
+      const cloned = node.clone(false, undefined, context);
+
+      expect(cloned.target.valueOf()).toBe('.other');
+      expect(cloned.namespace).toBe('patched');
+      expect(cloned.flag).toBe(ExtendFlag.All);
+      expect(node.target.valueOf()).toBe('.base');
+      expect(node.namespace).toBe('base');
+      expect(node.flag).toBe(ExtendFlag.Exact);
+    });
+
     it('registers a session-patched extend target without mutating the canonical extend node', async () => {
       const extension = extend({
         target: el('.base')

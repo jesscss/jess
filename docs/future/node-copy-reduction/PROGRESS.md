@@ -1039,6 +1039,19 @@ Current blocker notes from live reduction attempts:
   - Focused verification for this subset is green:
     - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
     - Result: `68 passed, 8 skipped`
+- New mixed high-complexity batch now landed in the working tree:
+  - `Rules`: merged declaration coalescing now compares parent scope boundaries through `sessionGetParent(...)` when a session is active, so merged `+=` declarations no longer make cross-scope decisions from canonical parent links alone.
+  - `Extend`: `clone()` now sources `selector` / `target` / `namespace` / `flag` through session-aware getters, so patched extend fields survive cloning without mutating the canonical node.
+  - `control.ts`: `Each.toTrimmedString()` now reads session-patched `header` / `rules` through the control field helper, closing the remaining obvious control render/read surface in that file.
+  - `ImportStyle`: evaluated postlude wrapping now materializes cloned preludes before building wrapper `AtRule`s, so canonical postlude parent pointers stay unchanged.
+  - `Ampersand`: added a focused proof for the simple-parent collapse/hoist aliasing case; the node still has the same two noisy selector-list collapse failures and remains pending.
+  - Focused verification for this subset is green:
+    - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+    - Result: `72 passed, 8 skipped`
+    - `pnpm --dir packages/core exec vitest run src/tree/__tests__/import-style.test.ts -t "evaluated postlude wrapping does not corrupt canonical postlude parent pointers"`
+    - Result: `1 passed, 43 skipped`
+    - `pnpm --dir packages/core exec vitest run src/tree/__tests__/ampersand.test.ts -t "does not mutate the canonical simple parent selector in the collapse/hoist path"`
+    - Result: `1 passed, 14 skipped`
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

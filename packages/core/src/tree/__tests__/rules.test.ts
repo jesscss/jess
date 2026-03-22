@@ -1103,6 +1103,31 @@ describe('Rules', () => {
       expect(root.value[0]).toBe(original);
     });
 
+    it('coalesces merged declarations using session-parent scope boundaries', async () => {
+      const base = decl({ name: 'color', value: any('red') });
+      const merged = decl(
+        { name: 'color', value: any('blue') },
+        { assign: AssignmentType.Add }
+      );
+      const root = rules([base, merged]);
+      const foreignScope = rules([]);
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      const preEvald = await root.preEval(ctx);
+      const mergedPreEvald = preEvald.at(1, ctx);
+      if (!mergedPreEvald) {
+        throw new Error('Expected merged declaration at index 1');
+      }
+      sessionSetParent(mergedPreEvald, foreignScope, ctx);
+
+      const evald = await preEvald.eval(ctx);
+      const mergedEvald = evald.at(1, ctx);
+
+      expect(mergedEvald?.toTrimmedString({ context: ctx })).toBe('color: red, blue');
+      expect(merged.toTrimmedString()).toContain('+:');
+    });
+
     it('preEval keeps cloned Rules parents in the session layer on reset sessions', async () => {
       const child = rules([
         decl({ name: 'color', value: any('red') })

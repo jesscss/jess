@@ -57,8 +57,10 @@ export class Extend extends Node<ExtendValue> {
   flag: ExtendFlag | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const selector = this.selector;
-    const target = this.target;
+    const selector = this._getSelector(ctx);
+    const target = this._getTarget(ctx);
+    const namespace = this._getNamespace(ctx);
+    const flag = this._getFlag(ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const options = (this as any)._meta?.options;
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
@@ -75,8 +77,8 @@ export class Extend extends Node<ExtendValue> {
       {
         selector: deep && selector instanceof Node ? cloneChild(selector) : selector,
         target: deep ? cloneChild(target) : target,
-        namespace: this.namespace,
-        flag: this.flag
+        namespace,
+        flag
       },
       options ? { ...options } : undefined,
       this.location,

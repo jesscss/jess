@@ -1,6 +1,7 @@
 import {
   Any,
   Call,
+  Each,
   For,
   If,
   JsFunction,
@@ -248,5 +249,27 @@ describe('Control Nodes', () => {
     expect(whileNode.toTrimmedString()).toContain('color: red;');
     expect(whileNode.condition.toTrimmedString()).toBe('true');
     expect(whileNode.rules.toTrimmedString()).toContain('color: red;');
+  });
+
+  it('renders $each with session-patched header and rules without mutating the canonical node', () => {
+    const context = new Context();
+    context.createSession();
+
+    const eachNode = new Each({
+      header: expr(list([new Any('a')])),
+      rules: rules([decl({ name: 'color', value: new Any('red') })])
+    });
+    const patchedHeader = expr(list([new Any('patched')]));
+    const patchedRules = rules([decl({ name: 'color', value: new Any('blue') })]);
+
+    sessionPatchField(eachNode, 'header', patchedHeader, context);
+    sessionPatchField(eachNode, 'rules', patchedRules, context);
+
+    expect(eachNode.toTrimmedString({ context })).toContain('$each $(patched)');
+    expect(eachNode.toTrimmedString({ context })).toContain('color: blue;');
+    expect(eachNode.toTrimmedString()).toContain('$each $(a)');
+    expect(eachNode.toTrimmedString()).toContain('color: red;');
+    expect(eachNode.header.toTrimmedString()).toBe('$(a)');
+    expect(eachNode.rules.toTrimmedString()).toContain('color: red;');
   });
 });

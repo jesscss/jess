@@ -208,6 +208,30 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
   }
 
+  private materializePostludePrelude(current: Node): {
+    atRuleName: '@media' | '@supports' | '@layer';
+    prelude: Node;
+  } {
+    if (isNode(current, N.Call)) {
+      const callName = String(current.name).toLowerCase();
+      if (callName === 'media' || callName === 'supports' || callName === 'layer') {
+        const args = current.args?.value ?? [];
+        const prelude = args.length <= 1 ? args[0] : current.args;
+        if (prelude) {
+          return {
+            atRuleName: `@${callName}` as '@media' | '@supports' | '@layer',
+            prelude: prelude.clone(true)
+          };
+        }
+      }
+    }
+
+    return {
+      atRuleName: '@media',
+      prelude: current.clone(true)
+    };
+  }
+
   getFinalRules(evaluatedRules: Rules) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
@@ -754,26 +778,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       const body = Rules.create([wrapped]);
-
-      if (isNode(current, N.Call)) {
-        const callName = String(current.name).toLowerCase();
-        if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.args;
-          if (prelude) {
-            wrapped = new AtRule({
-              name: new Any(`@${callName}`, { role: 'atkeyword' }),
-              prelude,
-              rules: body
-            });
-            continue;
-          }
-        }
-      }
-
+      const { atRuleName, prelude } = this.materializePostludePrelude(current);
       wrapped = new AtRule({
-        name: new Any('@media', { role: 'atkeyword' }),
-        prelude: current,
+        name: new Any(atRuleName, { role: 'atkeyword' }),
+        prelude,
         rules: body
       });
     }
@@ -793,29 +801,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
-      if (isNode(current, N.Call)) {
-        const callName = String(current.name).toLowerCase();
-        if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.args;
-          if (prelude) {
-            const wrappedAtRule = new AtRule({
-              name: new Any(`@${callName}`, { role: 'atkeyword' }),
-              prelude,
-              rules: wrappedRules
-            });
-            wrappedRules = Rules.create([wrappedAtRule]);
-            continue;
-          }
-        }
-      }
-
-      const mediaAtRule = new AtRule({
-        name: new Any('@media', { role: 'atkeyword' }),
-        prelude: current,
+      const { atRuleName, prelude } = this.materializePostludePrelude(current);
+      const wrappedAtRule = new AtRule({
+        name: new Any(atRuleName, { role: 'atkeyword' }),
+        prelude,
         rules: wrappedRules
       });
-      wrappedRules = Rules.create([mediaAtRule]);
+      wrappedRules = Rules.create([wrappedAtRule]);
     }
 
     return wrappedRules;

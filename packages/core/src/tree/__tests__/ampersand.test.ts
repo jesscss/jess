@@ -4,6 +4,7 @@ import {
   type SimpleSelector, type Combinator, type Selector
 } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 import { F_AMPERSAND, F_VISIBLE } from '../node.js';
 
 let context: Context;
@@ -313,5 +314,27 @@ describe('Ampersand', () => {
       })
     ]);
     await expect(async () => await node.eval(context)).rejects.toThrow('Cannot append "-1" to this type of selector');
+  });
+
+  it('does not mutate the canonical simple parent selector in the collapse/hoist path', () => {
+    context = new Context({ collapseNesting: true });
+    context.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.selector.pre = 1;
+    parent.selector.post = 1;
+
+    context.rulesetFrames.push(parent);
+
+    const result = amp().eval(context) as Selector;
+
+    expect(result).not.toBe(parent.selector);
+    expect(result.valueOf()).toBe('.alpha');
+    expect(parent.selector.pre).toBe(1);
+    expect(parent.selector.post).toBe(1);
+    expect(parent.selector.hoistToRoot).toBeUndefined();
   });
 });
