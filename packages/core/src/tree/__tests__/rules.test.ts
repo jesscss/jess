@@ -14,6 +14,7 @@ import {
   fn,
   Node,
   type Rules,
+  List,
   AssignmentType,
   VarDeclaration,
   style,
@@ -241,7 +242,7 @@ describe('Rules', () => {
         })).toBe(feature);
       });
 
-      it('characterizes shallow Rules clones as sharing nested ruleset bodies', () => {
+      it('characterizes session shallow Rules clones as still canonically reparenting shared top-level children while nested ruleset bodies stay shared', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();
 
@@ -258,8 +259,48 @@ describe('Rules', () => {
         const clonedRuleset = cloned.at(0) as typeof nested;
 
         expect(clonedRuleset).toBe(nested);
+        expect(sessionGetParent(clonedRuleset, ctx)).toBe(cloned);
+        expect(clonedRuleset.parent).toBe(cloned);
         expect(clonedRuleset.rules).toBe(nestedBody);
+        expect(clonedRuleset.rules.parent).toBe(clonedRuleset);
         expect(clonedRuleset.rules.at(0)).toBe(nestedBody.at(0));
+      });
+
+      it('characterizes returned param-mixin nested bodies as correctly parented but still clone-derived in provenance', async () => {
+        const paramMixin = mixin({
+          name: any('.with-param'),
+          params: new List([
+            vardecl({ name: 'shade', value: any('red') }, { paramVar: true })
+          ]),
+          rules: rules([
+            ruleset({
+              selector: sel([el('.item')]) as any,
+              rules: rules([
+                decl({ name: 'color', value: ref({ key: 'shade' }, { type: 'variable' }) })
+              ])
+            })
+          ])
+        });
+        const node = rules([
+          paramMixin,
+          call({
+            name: ref({ key: '.with-param' }, { type: 'mixin' }),
+            args: new List([any('blue')])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        const outputRules = evald.at(1) as Rules;
+        const outputRuleset = outputRules.at(1) as ReturnType<typeof ruleset>;
+        const outputBody = outputRuleset.rules;
+        const outputDecl = outputBody.at(0) as ReturnType<typeof decl>;
+
+        expect(outputRuleset.type).toBe('Ruleset');
+        expect(outputBody.parent).toBe(outputRuleset);
+        expect(outputDecl.parent).toBe(outputBody);
+        expect(outputBody.sourceNode).toBeDefined();
+        expect(outputBody.sourceNode).not.toBe(outputBody);
+        expect(evald.toTrimmedString({ context })).toContain('.item {\n  color: blue;\n}');
       });
 
       it('peeks into optional child scope', async () => {

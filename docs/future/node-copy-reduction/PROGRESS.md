@@ -1178,6 +1178,16 @@ Current blocker notes from live reduction attempts:
     - `Ruleset` selector/body materialization for returned mixin wrapper output
     - `node-base.ts` shallow clone semantics behind import/control parent-integrity
     - compare API / consumer adoption for the new matcher context path
+- Latest wrapper/materialization follow-up now landed in the working tree:
+  - `ruleset.ts`: shallow clones of derived rulesets now materialize their immediate `selector` and `rules` containers onto the clone under an active session, which fixes the returned mixin-wrapper nested selector/body parent chain.
+  - `mixin.test.ts`: now proves returned nested rulesets keep both `selector.parent` and `rules.parent` on the returned ruleset.
+  - `index.ts` and `selector-list.ts`: compare paths now accept the existing optional eval context and forward it through to `selectorMatch(..., context)`, so compare-side consumers can opt into session-aware selector matching without changing canonical no-context behavior.
+  - `fast-reject.test.ts`: now proves `compare(other, context)` can see a session-patched ampersand parent while contextless compare remains canonical.
+  - `rules.test.ts` / `import-style.test.ts`: focused characterization now narrows the remaining cross-cutting parent-integrity blocker to the shallow-wrapper primitive itself rather than a local `Rules`/`ImportStyle`/`control.ts` bug.
+  - Immediate next owners are now:
+    - detached shallow-wrapper / materialized-wrapper primitive in `node-base.ts`
+    - `ImportStyle` wrapper cleanup on top of that primitive
+    - caller-side adoption of context-aware compare where session-sensitive selector semantics matter
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

@@ -1659,5 +1659,38 @@ describe('Style import', () => {
       expect(first.options.rulesVisibility.Ruleset).toBe('public');
       expect(second.options.rulesVisibility.Ruleset).toBe('private');
     });
+
+    it('compose cache wrappers still share top-level evaluated child identity across per-import visibility wrappers', async () => {
+      context.sourceTrees.set('library-wrapper-contract.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.imported')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style(
+          { path: quoted(any('library-wrapper-contract.jess')) },
+          { type: 'compose', namespace: '*', importOptions: { mutable: true } }
+        ),
+        style(
+          { path: quoted(any('library-wrapper-contract.jess')) },
+          { type: 'compose', namespace: '*', importOptions: { mutable: false, multiple: true } }
+        )
+      ]);
+
+      const evald = await node.eval(context);
+      const first = evald.at(0) as Rules;
+      const second = evald.at(1) as Rules;
+      const firstRuleset = first.at(0) as Ruleset;
+      const secondRuleset = second.at(0) as Ruleset;
+
+      expect(first.options.rulesVisibility.Ruleset).toBe('public');
+      expect(second.options.rulesVisibility.Ruleset).toBe('private');
+      expect(firstRuleset).toBe(secondRuleset);
+      expect(`${firstRuleset}`).toContain('.imported');
+    });
   });
 });
