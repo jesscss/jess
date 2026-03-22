@@ -202,6 +202,16 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - Result: `1 passed, 43 skipped`
   - `pnpm --dir packages/core exec vitest run src/tree/__tests__/ampersand.test.ts -t "does not mutate the canonical simple parent selector in the collapse/hoist path"`
   - Result: `1 passed, 14 skipped`
+- New mixed high-complexity batch is now in the working tree:
+  - `Rules`: `setDefined` parent-scope insertion now threads the active context into lookup and resolves the containing `Rules` through `sessionGetParent(...)`, so a session-only replacement declaration can act as the set-defined anchor without mutating canonical children.
+  - `Extend`: `valueOf(context)` now reflects a session-patched `target`, and `extend-roots` now applies `F_EXTENDED` / `F_VISIBLE` through the session-aware flag APIs so session-only extend processing no longer leaks those flags onto canonical `Ruleset`s.
+  - `control.ts`: the `For` merged-declaration coalescing path now reads/writes declaration values through the session layer, keeping merged loop output session-local on non-reset sessions.
+  - `ImportStyle`: `toTrimmedString()`, `evalNode()`, and configured-compose finalization now read `path`, `withNode`, and `withType` through session-aware accessors on the same `StyleImport` node.
+- Focused verification for this subset is green:
+  - `pnpm --dir packages/core test src/tree/__tests__/rules.test.ts src/tree/__tests__/extend-rules.test.ts src/tree/__tests__/control.test.ts`
+  - Result: `76 passed, 8 skipped`
+  - `pnpm --dir packages/core exec vitest run src/tree/__tests__/import-style.test.ts -t "uses session-patched withNode and withType on the same StyleImport node|import path resolution uses a session-patched path field on the same StyleImport node"`
+  - Result: `2 passed, 44 skipped`
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clone the `Quoted` child subtree before path evaluation, and the node has both node-local behavior coverage and eval-session immutability proof for that path.
 - The next immediate target is now the remaining `ImportStyle` finalization / returned-tree clone-pressure audit.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:

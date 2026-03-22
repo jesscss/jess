@@ -178,11 +178,32 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  private _getPath(context?: Context): Quoted | Url {
+    if (!context) {
+      return this.path;
+    }
+    return sessionGetField<Quoted | Url>(this, 'path', context);
+  }
+
+  private _getWithNode(context?: Context): Reference | Collection | undefined {
+    if (!context) {
+      return this.withNode;
+    }
+    return sessionGetField<Reference | Collection | undefined>(this, 'withNode', context);
+  }
+
+  private _getWithType(context?: Context): 'with' | 'set' | undefined {
+    if (!context) {
+      return this.withType;
+    }
+    return sessionGetField<'with' | 'set' | undefined>(this, 'withType', context);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this;
+    const path = this._getPath(options.context);
     const { type, namespace, importOptions } = this.options;
 
     if (type === 'compose') {
@@ -232,7 +253,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
   }
 
-  getFinalRules(evaluatedRules: Rules) {
+  getFinalRules(evaluatedRules: Rules, context?: Context) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
     const isForward = importOptions!.forward === true;
@@ -284,7 +305,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // keeps its canonical child array / registry slot. `_dedupe` still needs
     // child Ruleset isolation so implicit-reference extends don't contaminate
     // shared selector state.
-    const materializeConfiguredComposeChildren = type === 'compose' && this.withNode != null;
+    const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
     const restoreSharedImportChildren = shouldCloneImportWrapper;
     const originalParents = (materializeConfiguredComposeChildren || restoreSharedImportChildren)
       ? new Map<Node, Node | undefined>(evaluatedRules.value.map((child) => [child, child.parent]))
@@ -363,7 +384,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { path, withNode, withType } = node;
+    const path = node._getPath(context);
+    const withNode = node._getWithNode(context);
+    const withType = node._getWithType(context);
     const withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
     const { options } = node;
     options.importOptions ??= {};
@@ -686,7 +709,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.extendRoots.popExtendRoot();
         }
 
-        let finalRules = node.getFinalRules(rules);
+        let finalRules = node.getFinalRules(rules, context);
         if (importOptions!.postlude && !isInlineImport) {
           finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
         }

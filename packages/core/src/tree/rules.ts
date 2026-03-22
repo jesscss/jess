@@ -731,6 +731,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         /** Don't set within sibling rules */
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
+        opts.context = _context;
         // Don't use start when searching parents - we want to find variables in parent regardless of position
         // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
@@ -742,7 +743,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Find the Rules node that contains the found declaration
-          let foundRules: Rules | undefined = result.parent as Rules;
+          let foundRules: Rules | undefined = _context
+            ? sessionGetParent(result, _context) as Rules | undefined
+            : result.parent as Rules | undefined;
 
           if (!foundRules) {
             throw new Error(`Could not find parent Rules for declaration '${key}'`);

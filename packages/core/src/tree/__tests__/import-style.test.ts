@@ -678,6 +678,40 @@ describe('Style import', () => {
       expect(`${derivedColorValue}`).toBe('green');
     });
 
+    it('uses session-patched withNode and withType on the same StyleImport node', async () => {
+      context.session = new EvalSession();
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'baseColor', value: any('red') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) })
+      ]));
+
+      const importNode = style({
+        path: quoted(any('library.jess'))
+      }, {
+        type: 'compose',
+        namespace: '*'
+      });
+      const replacementRules = rules([
+        vardecl({ name: 'baseColor', value: any('blue') })
+      ]);
+      sessionPatchField(importNode, 'withNode', replacementRules as any, context);
+      sessionPatchField(importNode, 'withType', 'with', context);
+
+      const node = rules([importNode]);
+      const evald = await node.eval(context);
+
+      const baseColor = getVarWithContext(context, evald, 'baseColor');
+      expect(baseColor).toBeDefined();
+      const baseColorValue = await (baseColor as any).value.eval(context);
+      expect(`${baseColorValue}`).toBe('blue');
+
+      const derivedColor = getVarWithContext(context, evald, 'derivedColor');
+      expect(derivedColor).toBeDefined();
+      const derivedColorValue = await (derivedColor as any).value.eval(context);
+      expect(`${derivedColorValue}`).toBe('blue');
+    });
+
     it('updates computed variables with "set" type - scope lookup', async () => {
       // Test that when we inject a variable with "set", dependent variables are updated
       // This tests scope-based lookup ($var)
@@ -1133,6 +1167,28 @@ describe('Style import', () => {
 
       expect(resolvedFromQuoted).toBeDefined();
       expect(`${resolvedFromQuoted}`).toBe('$resolvedFromQuoted: ok');
+    });
+
+    it('import path resolution uses a session-patched path field on the same StyleImport node', async () => {
+      context.session = new EvalSession();
+      const resolvedImportPath = resolve(process.cwd(), 'import/node-session-path.jess');
+      context.sourceTrees.set(resolvedImportPath, rules([
+        vardecl({ name: 'resolvedFromImportNode', value: any('ok') })
+      ]));
+
+      const originalPath = quoted(any('wrong-path.jess'));
+      const replacementPath = quoted(any('import/node-session-path.jess'));
+      const importNode = style({ path: originalPath }, { type: 'import' });
+      sessionPatchField(importNode, 'path', replacementPath, context);
+
+      const node = rules([importNode]);
+      const evald = await node.eval(context);
+      const resolvedFromImportNode = getVarWithContext(context, evald, 'resolvedFromImportNode');
+
+      expect(resolvedFromImportNode).toBeDefined();
+      expect(`${resolvedFromImportNode}`).toBe('$resolvedFromImportNode: ok');
+      expect(importNode.toTrimmedString({ context })).toBe(`@-import "${replacementPath.valueOf()}";`);
+      expect(importNode.toTrimmedString()).toBe(`@-import "${originalPath.valueOf()}";`);
     });
 
     it('import-module: context can resolve bare module-like specifiers', async () => {

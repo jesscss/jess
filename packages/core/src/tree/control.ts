@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalSession } from '../eval-session.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -90,6 +90,19 @@ function getControlField<T>(node: Node, key: string, context: Context | undefine
     return session.getField(sourceNode, key) as T;
   }
   return sessionGetField<T>(node, key, context);
+}
+
+function getControlDeclarationValue(node: Node, context: Context): Node {
+  return sessionGetField<Node>(node, 'value', context);
+}
+
+function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
+  node.adopt(value, context);
+  if (context.session && !context.session.resetEvalState) {
+    sessionPatchField(node, 'value', value, context);
+    return;
+  }
+  node.setData('value', value);
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
@@ -373,8 +386,8 @@ export class For extends Node<ForValue> {
                   if (firstMatch >= 0) {
                     const prev = accumulatedNodes[firstMatch]!;
                     if (isNode(prev, N.Declaration)) {
-                      const prevValue = prev.value;
-                      const nextValue = outNode.value;
+                      const prevValue = getControlDeclarationValue(prev, context);
+                      const nextValue = getControlDeclarationValue(outNode, context);
                       if (
                         normalizedFromAssign === AssignmentType.Add
                         || normalizedFromAssign === AssignmentType.MergeList
@@ -391,7 +404,11 @@ export class For extends Node<ForValue> {
                         const mergedItems = nextAlreadyIncludesPrev
                           ? [...nextItems]
                           : [...prevItems, ...nextItems];
-                        outNode.setData('value', new List(mergedItems).inherit(outNode.value));
+                        setControlDeclarationValue(
+                          outNode,
+                          new List(mergedItems).inherit(nextValue),
+                          context
+                        );
                       } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
                         const prevItems = isNode(prevValue, N.Sequence)
                           ? prevValue.value
@@ -405,7 +422,11 @@ export class For extends Node<ForValue> {
                         const mergedItems = nextAlreadyIncludesPrev
                           ? [...nextItems]
                           : [...prevItems, ...nextItems];
-                        outNode.setData('value', new Sequence(mergedItems).inherit(outNode.value));
+                        setControlDeclarationValue(
+                          outNode,
+                          new Sequence(mergedItems).inherit(nextValue),
+                          context
+                        );
                       }
                     }
                     accumulatedNodes[firstMatch] = outNode;

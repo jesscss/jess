@@ -558,28 +558,51 @@ function getRulesetExtendTarget(
   };
 }
 
-function markExtendedSelector(selector: Selector): void {
-  selector.addFlag(F_EXTENDED);
-  selector.addFlag(F_VISIBLE);
+function markExtendedSelector(selector: Selector, context?: Context): void {
+  if (context) {
+    selector._addFlag(F_EXTENDED, context);
+    selector._addFlag(F_VISIBLE, context);
+  } else {
+    selector.addFlag(F_EXTENDED);
+    selector.addFlag(F_VISIBLE);
+  }
   if (isNode(selector, N.SelectorList)) {
     for (const item of selector.value) {
-      (item as Selector).addFlag(F_EXTENDED);
-      (item as Selector).addFlag(F_VISIBLE);
+      if (context) {
+        (item as Selector)._addFlag(F_EXTENDED, context);
+        (item as Selector)._addFlag(F_VISIBLE, context);
+      } else {
+        (item as Selector).addFlag(F_EXTENDED);
+        (item as Selector).addFlag(F_VISIBLE);
+      }
     }
   }
 }
 
-function activateExtendedRuleset(ruleset: Ruleset, selector: Selector): void {
-  ruleset.addFlag(F_EXTENDED);
-  ruleset.addFlag(F_VISIBLE);
-  markExtendedSelector(selector);
+function activateExtendedRuleset(ruleset: Ruleset, selector: Selector, context?: Context): void {
+  if (context) {
+    ruleset._addFlag(F_EXTENDED, context);
+    ruleset._addFlag(F_VISIBLE, context);
+  } else {
+    ruleset.addFlag(F_EXTENDED);
+    ruleset.addFlag(F_VISIBLE);
+  }
+  markExtendedSelector(selector, context);
 }
 
 function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
-  ruleset.removeFlag(F_EXTENDED);
+  if (context) {
+    ruleset._removeFlag(F_EXTENDED, context);
+  } else {
+    ruleset.removeFlag(F_EXTENDED);
+  }
   const selector = (ruleset.getExtendedSelector(context) ?? ruleset.getCurrentSelector(context));
   if (selector && !isNode(selector, N.Nil)) {
-    selector.removeFlag(F_EXTENDED);
+    if (context) {
+      selector._removeFlag(F_EXTENDED, context);
+    } else {
+      selector.removeFlag(F_EXTENDED);
+    }
   }
   syncRulesetDerivedSelector(ruleset, context);
 }
@@ -614,7 +637,7 @@ function applyInstructionToRuleset(
     && instruction.extendWith.valueOf() === targetInfo.selector.valueOf()
     && targetMatch.fullMatch
   ) {
-    activateExtendedRuleset(ruleset, targetInfo.selector);
+    activateExtendedRuleset(ruleset, targetInfo.selector, context);
     return { matched: true, changed: false };
   }
 
@@ -623,7 +646,7 @@ function applyInstructionToRuleset(
     ? (targetInfo.selector.value as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
     : targetInfo.selector.valueOf() === extendWithVal;
   if (extendWithAlreadyTopLevel) {
-    activateExtendedRuleset(ruleset, targetInfo.selector);
+    activateExtendedRuleset(ruleset, targetInfo.selector, context);
     return { matched: true, changed: false };
   }
 
@@ -638,14 +661,14 @@ function applyInstructionToRuleset(
   );
   if (result.error) {
     if (instruction.extendWith.valueOf() === targetInfo.selector.valueOf()) {
-      activateExtendedRuleset(ruleset, targetInfo.selector);
+      activateExtendedRuleset(ruleset, targetInfo.selector, context);
     }
     return { matched: true, changed: false };
   }
 
   const normalizedResult = normalizeGeneratedIsOrder(result.value);
   const after = normalizedResult.valueOf();
-  activateExtendedRuleset(ruleset, normalizedResult);
+  activateExtendedRuleset(ruleset, normalizedResult, context);
   if (!result.isChanged || before === after) {
     return { matched: true, changed: false };
   }

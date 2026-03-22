@@ -135,8 +135,8 @@ export class Extend extends Node<ExtendValue> {
       : this.flag;
   }
 
-  override valueOf() {
-    return `$extend ${this.target.valueOf()}`;
+  override valueOf(context?: Context) {
+    return `$extend ${this._getTarget(context).valueOf()}`;
   }
 
   override toTrimmedString(options?: PrintOptions): string {

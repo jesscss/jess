@@ -17,6 +17,7 @@ import {
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
+import { F_EXTENDED } from '../node.js';
 
 let context: Context;
 
@@ -56,6 +57,34 @@ describe('Rules extend', () => {
           background: blue;
         }
       `);
+    });
+
+    it('keeps canonical ruleset extended flags unset during session-only extend processing', async () => {
+      context.session = new EvalSession();
+
+      const base = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const child = ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([
+          extend({
+            target: el('.base')
+          })
+        ])
+      });
+      const node = rules([base, child]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toContain('.base,');
+      expect(css).toContain('.child {');
+      expect(base.hasFlag(F_EXTENDED)).toBe(false);
+      expect(base._hasFlag(F_EXTENDED, context)).toBe(true);
     });
 
     it('does not re-parent canonical selector or target during a shallow clone in a session', () => {
@@ -118,6 +147,19 @@ describe('Rules extend', () => {
 
       expect(context.extends).toHaveLength(1);
       expect(context.extends[0]![0].valueOf()).toBe('.other');
+      expect(extension.target.valueOf()).toBe('.base');
+    });
+
+    it('valueOf(context) reflects a session-patched target without mutating the canonical node', () => {
+      const extension = extend({
+        target: el('.base')
+      });
+
+      context.session = new EvalSession();
+      sessionPatchField(extension, 'target', el('.other'), context);
+
+      expect(extension.valueOf(context)).toBe('$extend .other');
+      expect(extension.valueOf()).toBe('$extend .base');
       expect(extension.target.valueOf()).toBe('.base');
     });
 

@@ -28,7 +28,7 @@ import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetIndex, sessionGetParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency, sessionSetParent } from '../util/session-helpers.js';
+import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency, sessionSetParent } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -1101,6 +1101,31 @@ describe('Rules', () => {
       expect(sessionGetIndex(replacement, ctx)).toBe(0);
       expect(replacement.index).toBeUndefined();
       expect(root.value[0]).toBe(original);
+    });
+
+    it('setDefined inserts into the session parent scope without needing a canonical parent', async () => {
+      const placeholder = vardecl({ name: 'one', value: any('stale') });
+      const existing = vardecl({ name: 'one', value: any('one') });
+      const setter = vardecl({ name: 'one', value: any('three') }, { setDefined: true });
+      const root = rules([placeholder, setter]);
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      sessionReplaceNode(placeholder, existing, ctx);
+      await root.eval(ctx);
+
+      const sessionChildren = sessionGetChildren(root, ctx);
+      const inserted = sessionChildren.find((child) => `${child}` === '$one: three');
+      expect(isNode(inserted, N.VarDeclaration)).toBe(true);
+      expect(sessionGetParent(inserted as VarDeclaration, ctx)).toBe(root);
+      expect(sessionChildren.map((child) => `${child}`)).toEqual(expect.arrayContaining([
+        '$one: one',
+        '$one: three',
+        '$one := three'
+      ]));
+      expect(sessionChildren).toContain(existing);
+      expect(root.at(0)).toBe(placeholder);
+      expect(root.value).toHaveLength(2);
     });
 
     it('coalesces merged declarations using session-parent scope boundaries', async () => {

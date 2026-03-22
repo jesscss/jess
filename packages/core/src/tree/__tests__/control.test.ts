@@ -1,4 +1,5 @@
 import {
+  AssignmentType,
   Any,
   Call,
   Each,
@@ -271,5 +272,25 @@ describe('Control Nodes', () => {
     expect(eachNode.toTrimmedString()).toContain('color: red;');
     expect(eachNode.header.toTrimmedString()).toBe('$(a)');
     expect(eachNode.rules.toTrimmedString()).toContain('color: red;');
+  });
+
+  it('keeps merged $for declaration values session-local during coalescing', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const loopRules = rules([
+      decl(
+        { name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) },
+        { normalizedFromAssign: AssignmentType.Add }
+      )
+    ]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const templateDecl = loop.rules.at(0) as ReturnType<typeof decl>;
+    const root = rules([loop]);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('padding: a, b;');
+    expect(templateDecl.toTrimmedString()).toContain('padding: $value');
   });
 });
