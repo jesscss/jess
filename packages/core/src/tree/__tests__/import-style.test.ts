@@ -1481,6 +1481,38 @@ describe('Style import', () => {
       expect(importedVar.parent).toBe(sourceRules);
     });
 
+    it('deduped imports must materialize from evaluated top-level children, not sourceNode copies', async () => {
+      const libraryPath = resolve(process.cwd(), 'dedupe-evaluated-state.jess');
+      const sourceVar = vardecl({
+        name: 'dedupeMaterialized',
+        value: ref('libColor', { type: 'variable' })
+      });
+      const sourceRules = rules([sourceVar]);
+      context.sourceTrees.set(libraryPath, sourceRules);
+
+      const cachedVar = vardecl({
+        name: 'dedupeMaterialized',
+        value: any('red')
+      });
+      cachedVar.sourceNode = sourceVar;
+      const cachedEvaldRules = rules([cachedVar]);
+      cachedEvaldRules.sourceNode = sourceRules;
+      context.evaldTrees.set(libraryPath, cachedEvaldRules);
+
+      const node = rules([
+        style({ path: quoted(any('dedupe-evaluated-state.jess')) }, { type: 'import' })
+      ]);
+
+      const evald = await node.eval(context);
+      const dedupedImport = evald.at(0) as Rules;
+      const dedupedVar = dedupedImport.at(0) as Node;
+      const sourceMaterialized = cachedVar.materializeCopy(true);
+
+      expect(`${dedupedVar}`).toBe('$dedupeMaterialized: red');
+      expect(`${sourceMaterialized}`).toBe('$dedupeMaterialized: $libColor');
+      expect(dedupedVar).not.toBe(sourceMaterialized);
+    });
+
     it('compose multiple:true renders repeated modules', async () => {
       context.sourceTrees.set('compose-repeat.jess', rules([
         ruleset({

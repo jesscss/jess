@@ -271,6 +271,10 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
   - `Rules`: the `@charset` replacement branch in `_multiPassPreEval()` now adopts its replacement child through the session layer instead of giving that replacement a canonical parent during non-reset preEval.
   - `Extend`: `evalNode()` now preserves a session-patched `namespace` on the recorded extend instruction tuple, and `Context.extends` is typed to carry that namespace slot.
   - `Ampersand`: focused characterization now also proves that two concurrent sessions patching the same parent selector differently still share one canonical `keySet`, which is why the next owner is broader selector/session API work rather than `Ampersand` alone.
+- Latest mixed follow-up now landed in the working tree:
+  - `control.ts`: `$for` result accumulation now reads evaluated `Rules` children through `sessionGetChildren(...)`, so loop-body child replacements that exist only in the active session are visible in emitted output without mutating the canonical loop template.
+  - `extend-roots.ts`: `clearExtendedRuleset()` now clears stale session-local `hoistToRoot` through the existing session-aware setter path, so a later helper-only extend pass that no longer matches does not leave a stale hoist bit behind.
+  - `import-style.test.ts`: focused characterization now proves `_dedupe` finalization must materialize from the evaluated top-level children, not `sourceNode` copies, so the next import owner is the shared node materialization layer centered on `node-base.ts`.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

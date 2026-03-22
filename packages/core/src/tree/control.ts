@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalSession } from '../eval-session.js';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { sessionGetChildren, sessionGetField, sessionPatchField } from './util/session-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -380,7 +380,7 @@ export class For extends Node<ForValue> {
           counter++;
           const result = await loopRules.eval(context);
           if (isNode(result, N.Rules)) {
-            for (const outNode of result.value) {
+            for (const outNode of sessionGetChildren(result, context)) {
               if (isNode(outNode, N.Declaration)) {
                 const normalizedFromAssign = getControlDeclarationAssignType(outNode, context);
                 const outName = getControlDeclarationName(outNode, context);

@@ -376,4 +376,27 @@ describe('Control Nodes', () => {
     expect(evald.toTrimmedString({ context })).toContain('value: green;');
     expect(iterDecl.toTrimmedString()).toContain('one: red');
   });
+
+  it('reads session-replaced loop body children after $for evaluation', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const root = rules([
+      makeLoop(makePattern(['value'], 'single'), list([new Any('x')]), rules([
+        new Call({ name: ref({ key: 'makeDecl' }, { type: 'function' }), args: list([]) })
+      ]))
+    ]);
+    root.register('function', new JsFunction({
+      name: 'makeDecl',
+      fn: () => decl({ name: 'item', value: new Any('ok') })
+    }));
+    const loopRules = (root.at(0) as For).rules;
+    const originalLoopChild = loopRules.at(0);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('item: ok;');
+    expect(loopRules.at(0)).toBe(originalLoopChild);
+    expect(loopRules.toTrimmedString()).toBe('();');
+  });
 });

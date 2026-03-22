@@ -614,6 +614,9 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   } else {
     ruleset.removeFlag(F_EXTENDED);
   }
+  if (getRulesetHoistToRoot(ruleset, context) !== undefined) {
+    setRulesetHoistToRoot(ruleset, undefined, context);
+  }
   const selector = (ruleset.getExtendedSelector(context) ?? ruleset.getCurrentSelector(context));
   if (selector && !isNode(selector, N.Nil)) {
     if (context) {
