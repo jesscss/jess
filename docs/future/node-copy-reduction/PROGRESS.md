@@ -1124,6 +1124,11 @@ Current blocker notes from live reduction attempts:
   - result:
     - all green on the focused set
 - That means the old `Rules` / mixin-call source-scope follow-up is no longer the queue head. The live immediate next slice is now `ImportStyle` returned-tree / finalization clone-pressure cleanup.
+- Latest small follow-up now landed in the working tree:
+  - `Rules`: `_normalizeCallDeclarationRulesOrder()` now reads `sourceParent` through the session layer when a context is active, so declaration-only `Rules` blocks produced by calls reorder correctly from session ancestry without mutating canonical children.
+  - `rules.test.ts` now has a focused proof that a declaration-only `Rules` block with only a session `sourceParent` gets reordered in the session view while `root.value` stays unchanged.
+  - `Ampersand`: a focused characterization now proves `keySet` intentionally stays canonical when only the parent selector is session-patched.
+  - This sharpens the `Ampersand` blocker: the next owner is broader selector/key-set semantics (`computeKeySets()` plus the contextless inherited `Selector.keySet` API), not another safe `Ampersand`-local patch.
 - Wrapper/selector follow-up batch now landed in the working tree: `Paren`, `Quoted`, `Url`, and `SelectorCapture` all have node-local behavior coverage plus eval-session immutability proof for their active eval/materialization surfaces, and `ComplexSelector` now preserves a session-only `hoistToRoot` patch on the single-item collapse path without mutating canonical state. These nodes remain `partial` because their contextless observer/value APIs are still canonical, and `ComplexSelector.valueOf()` still bypasses the session layer.
 - `JsImport` is now complete for this fundamentals pass: render and eval read `path` / `imports` through the session-aware view, the active eval-time `path` replacement is session-backed, the non-reset session path no longer deep-clones the `Quoted` child subtree before path evaluation, `import-js.test.ts` covers behavior parity, and `eval-session.test.ts` proves canonical `path` stays unchanged under an active session.
 - The current bottom-up render-read pass is now broader and still green on the focused safety set:

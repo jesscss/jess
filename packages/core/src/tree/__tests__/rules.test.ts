@@ -28,7 +28,7 @@ import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency, sessionSetParent } from '../util/session-helpers.js';
+import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionGetSourceParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -952,7 +952,6 @@ describe('Rules', () => {
       expect(root.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBeUndefined();
       expect(cloneRegisterSpy).toHaveBeenCalledTimes(2);
     });
-
   });
 
   describe('session registry delta', () => {
@@ -1115,10 +1114,10 @@ describe('Rules', () => {
       await root.eval(ctx);
 
       const sessionChildren = sessionGetChildren(root, ctx);
-      const inserted = sessionChildren.find((child) => `${child}` === '$one: three');
+      const inserted = sessionChildren.find(child => `${child}` === '$one: three');
       expect(isNode(inserted, N.VarDeclaration)).toBe(true);
       expect(sessionGetParent(inserted as VarDeclaration, ctx)).toBe(root);
-      expect(sessionChildren.map((child) => `${child}`)).toEqual(expect.arrayContaining([
+      expect(sessionChildren.map(child => `${child}`)).toEqual(expect.arrayContaining([
         '$one: one',
         '$one: three',
         '$one := three'
@@ -1218,5 +1217,29 @@ describe('Rules', () => {
       expect(targetRules.at(0)).toBe(original);
     });
 
+    it('reorders call-produced declaration-only Rules using the session sourceParent without mutating canonical children', () => {
+      const nested = ruleset({
+        selector: sellist([sel([el('.nested')])]),
+        rules: rules([
+          decl({ name: any('color'), value: any('red') })
+        ])
+      });
+      const callProduced = rules([
+        decl({ name: any('margin'), value: any('0') })
+      ]);
+      const root = rules([nested, callProduced]);
+      const caller = call({ name: any('each') });
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      sessionSetSourceParent(callProduced, caller, ctx);
+      (root as any)._normalizeCallDeclarationRulesOrder(root, ctx);
+
+      expect(sessionGetSourceParent(callProduced, ctx)).toBe(caller);
+      expect(callProduced.sourceParent).toBeUndefined();
+      expect(sessionGetChildren(root, ctx)[0]).toBe(callProduced);
+      expect(root.value[0]).toBe(nested);
+      expect(root.value[1]).toBe(callProduced);
+    });
   });
 });

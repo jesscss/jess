@@ -263,6 +263,10 @@ The 5 failed core test files are all **pre-existing** from the dev merge (not re
     - `pnpm --dir packages/core test src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/func.test.ts src/tree/__tests__/reference.test.ts`
   - result:
     - all green on the focused set
+- Latest small follow-up now landed in the working tree:
+  - `Rules`: `_normalizeCallDeclarationRulesOrder()` now reads `sourceParent` through the session layer when a context is active, so declaration-only `Rules` blocks produced by calls reorder correctly from session ancestry without mutating canonical children.
+  - `Ampersand`: focused characterization now proves `keySet` intentionally stays canonical when only the parent selector is session-patched.
+  - This means the next `Ampersand` owner is broader selector/key-set semantics, not another safe `Ampersand`-local patch.
 - A planned Stage 20.5 now tracks the architectural cleanup for direct mixin invocation:
   - replace the internal `Reference -> getFunctionFromMixins() -> JsFunction -> Call -> callWithContext()` adapter chain
   - keep `getFunctionFromMixins()` only as an optional external adapter if that surface is still needed

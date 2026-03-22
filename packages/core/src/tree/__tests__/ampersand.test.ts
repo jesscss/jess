@@ -358,4 +358,27 @@ describe('Ampersand', () => {
     expect(node.getResolvedSelector()?.valueOf()).toBe('.alpha');
     expect(parent.selector.valueOf()).toBe('.alpha');
   });
+
+  it('keeps keySet canonical when only the parent selector is session-patched', () => {
+    context = new Context();
+    context.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.selector.keySetLibrary = context.selectorBits;
+
+    const patched = el('.beta');
+    patched.keySetLibrary = context.selectorBits;
+
+    const node = amp({ selectorContainer: parent as any });
+    node.keySetLibrary = context.selectorBits;
+
+    sessionPatchField(parent, 'selector', patched, context);
+
+    expect(node.valueOf(context)).toBe('.beta');
+    expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha']))).toBe(true);
+    expect(node.keySet.equals(context.selectorBits.getBitset(['.beta']))).toBe(false);
+  });
 });

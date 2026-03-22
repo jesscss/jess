@@ -751,7 +751,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         /** Don't set within sibling rules */
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
-        opts.context = _context;
+        opts.context = context;
         // Don't use start when searching parents - we want to find variables in parent regardless of position
         // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
@@ -763,8 +763,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Find the Rules node that contains the found declaration
-          let foundRules: Rules | undefined = _context
-            ? sessionGetParent(result, _context) as Rules | undefined
+          let foundRules: Rules | undefined = context
+            ? sessionGetParent(result, context) as Rules | undefined
             : result.parent as Rules | undefined;
 
           if (!foundRules) {
@@ -783,15 +783,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // This ensures it shadows the original and is evaluated after it
           const foundIndex = foundRules.value.indexOf(result);
           if (foundIndex !== -1) {
-            if (_context) {
-              foundRules.splice(_context, foundIndex + 1, 0, newDeclaration);
+            if (context) {
+              foundRules.splice(context, foundIndex + 1, 0, newDeclaration);
             } else {
               foundRules.splice(foundIndex + 1, 0, newDeclaration);
             }
           } else {
             // If not found in array, add at the beginning
-            if (_context) {
-              foundRules.unshift(_context, newDeclaration);
+            if (context) {
+              foundRules.unshift(context, newDeclaration);
             } else {
               foundRules.unshift(newDeclaration);
             }
@@ -800,22 +800,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Register it via registerNode to ensure it's properly indexed
           // Note: registerNode will call register('declaration', ...) which adds to registry
           // We skip setDefined processing since we already removed the flag
-          foundRules.registerNode(newDeclaration, undefined, _context);
+          foundRules.registerNode(newDeclaration, undefined, context);
         } else {
           throw new ReferenceError(`"${key}" is not defined`);
         }
       }
 
-      this.register('declaration', node, _context);
+      this.register('declaration', node, context);
     } else if (isNode(node, N.Ruleset)) {
       // Register to 'mixin' for mixin calls
       // Always register - guard filtering happens at call time in getFunctionFromMixins
       // Note: 'ruleset' registration for extends now happens in Ruleset.preEval to the extend root's registry
-      this.register('mixin', node, _context);
+      this.register('mixin', node, context);
     } else if (isNode(node, N.Mixin)) {
-      this.register('mixin', node, _context);
+      this.register('mixin', node, context);
     } else if (isNode(node, N.Func)) {
-      this.register('function', node, _context);
+      this.register('function', node, context);
     }
   }
 
@@ -1788,15 +1788,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const beforeNested = children.slice(0, firstNestedIdx);
     const afterNested = children.slice(firstNestedIdx);
     const shouldMove = (n: Node) => {
+      const sourceParent = context
+        ? sessionGetSourceParent(n, context)
+        : n.sourceParent;
       if (
         !isNode(n, N.Rules)
-        || !isNode(n.sourceParent, N.Call)
+        || !isNode(sourceParent, N.Call)
         || n._getChildren(context).length === 0
         || !n._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
       ) {
         return false;
       }
-      const sourceName = (n.sourceParent as any).name;
+      const sourceName = (sourceParent as any).name;
       // Keep mixin-call declaration blocks in source order relative to nested rulesets.
       if (
         isNode(sourceName, N.Reference)
