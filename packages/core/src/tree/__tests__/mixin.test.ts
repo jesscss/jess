@@ -598,6 +598,52 @@ describe('Mixin', () => {
       }
     });
 
+    it('keeps bound parameter value sourceParent only in the session layer', async () => {
+      context.createSession();
+
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+      const mixinRoot = rules([mixinDef]);
+      context.root = mixinRoot;
+
+      const sourceAnchor = decl({ name: 'background', value: any('white') });
+      const caller = call({
+        name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+        args: list([any('blue')])
+      });
+
+      sessionSetSourceParent((caller as any).name, sourceAnchor, context);
+      context.caller = caller;
+
+      const captured: Rules[] = [];
+      const originalCreate = Rules.create.bind(Rules);
+      const createSpy = vi.spyOn(Rules, 'create').mockImplementation((...args: Parameters<typeof Rules.create>) => {
+        const created = originalCreate(...args);
+        captured.push(created);
+        return created;
+      });
+
+      try {
+        const fn = getFunctionFromMixins(mixinDef);
+        await fn.call(context, any('blue'));
+        const outerRules = captured.at(-1) as Rules;
+        const boundParam = outerRules.at(0) as any;
+        const boundValue = boundParam.value as Node;
+
+        expect(sessionGetSourceParent(boundValue, context)).toBe(caller);
+        expect(boundValue.sourceParent).toBeUndefined();
+      } finally {
+        createSpy.mockRestore();
+      }
+    });
+
     it('should call a mixin that calls another mixin', async () => {
       // Create a base mixin: .base-mixin(@color) { color: @color; }
       const baseMixin = mixin({

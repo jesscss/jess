@@ -2289,7 +2289,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
             if (bindingSourceParent) {
-              boundValue.sourceParent = bindingSourceParent;
+              sessionSetSourceParent(boundValue, bindingSourceParent, thisContext);
             }
             normalizeBoundLeadingItemWhitespace(boundValue);
             copyDependency(argValue, boundValue);
@@ -2299,7 +2299,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
             if (bindingSourceParent) {
-              boundValue.sourceParent = bindingSourceParent;
+              sessionSetSourceParent(boundValue, bindingSourceParent, thisContext);
             }
             normalizeBoundLeadingItemWhitespace(boundValue);
             copyDependency(argValue, boundValue);
