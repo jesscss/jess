@@ -876,5 +876,57 @@ describe('Rules extend', () => {
       expect(patchedBaseRules.parent).toBeUndefined();
       expect(base.rules?.value).toHaveLength(0);
     });
+
+    it('limits downstream extend matching to roots inside the recorded namespace', () => {
+      const localBase = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const localRoot = rules([localBase]);
+
+      const importedBase = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      });
+      const importedRoot = rules([importedBase]);
+
+      const child = ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([])
+      });
+      const extension = extend({
+        target: el('.base'),
+        namespace: 'theme'
+      });
+      const ownerRoot = rules([child]);
+
+      context.extendRoots.registerRoot(localRoot);
+      context.extendRoots.registerRoot(importedRoot, undefined, { namespace: 'theme' });
+      context.extendRoots.registerRoot(ownerRoot);
+      context.extendRoots.registerRuleset(localRoot, localBase);
+      context.extendRoots.registerRuleset(importedRoot, importedBase);
+      context.extendRoots.registerRuleset(ownerRoot, child);
+
+      context.extends = [[
+        extension.target,
+        child.getEffectiveSelector(false, context),
+        false,
+        ownerRoot,
+        extension,
+        undefined,
+        false,
+        'theme'
+      ]];
+
+      processExtends(context);
+
+      expect(importedBase.valueOf(context)).toContain('.child');
+      expect(localBase.valueOf(context)).not.toContain('.child');
+      expect(context.warnings).toHaveLength(0);
+    });
   });
 });

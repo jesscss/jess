@@ -341,6 +341,19 @@ export class ExtendRootRegistry {
     return accessible;
   }
 
+  isRootInNamespace(root: Rules, namespace: string): boolean {
+    const namespaceRoots = this.rootsByNamespace.get(namespace);
+    if (!namespaceRoots?.size) {
+      return false;
+    }
+    for (const namespaceRoot of namespaceRoots) {
+      if (this.getAccessibleRoots(namespaceRoot).has(root)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   isSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
     if (rulesetRoot === extendRoot) {
       return true;
@@ -399,6 +412,7 @@ function isInstructionVisibleForRoot(
   instruction: {
     extendRoot?: Rules;
     fromReferenceScope: boolean;
+    namespace?: string;
   },
   getCachedVisibleRoots?: (root: Rules) => Set<Rules>
 ): boolean {
@@ -410,6 +424,12 @@ function isInstructionVisibleForRoot(
   }
   if (context.extendRoots.isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
     return false;
+  }
+  if (instruction.namespace) {
+    if (instruction.namespace === '*') {
+      return true;
+    }
+    return context.extendRoots.isRootInNamespace(rootRules, instruction.namespace);
   }
   if (instruction.extendRoot === rootRules) {
     return true;
@@ -430,6 +450,7 @@ type RecordedExtendInstruction = {
   extendRoot: Rules;
   extendNode: Node;
   fromReferenceScope: boolean;
+  namespace?: string;
 };
 
 type TargetInfo = ReturnType<typeof getRulesetExtendTarget>;
@@ -756,13 +777,14 @@ function instructionCouldAffectRuleset(
 
 export function processExtends(context: Context): void {
   try {
-    const instructions: RecordedExtendInstruction[] = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => ({
+    const instructions: RecordedExtendInstruction[] = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope, namespace]) => ({
       target,
       extendWith: selectorWithExtend,
       partial,
       extendRoot,
       extendNode,
-      fromReferenceScope: fromReferenceScope === true
+      fromReferenceScope: fromReferenceScope === true,
+      namespace
     }));
 
     if (!instructions.length) {
