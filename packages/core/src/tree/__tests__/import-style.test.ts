@@ -1535,6 +1535,23 @@ describe('Style import', () => {
       expect(`${shallowClone}`).toContain('color: red');
     });
 
+    it('returned-tree wrapper cleanup is blocked by shallow Rules.clone(false) reparenting shared top-level children immediately', () => {
+      const canonicalRuleset = ruleset({
+        selector: sellist([sel([el('.wrapper-blocker')])]),
+        rules: rules([decl({ name: any('color'), value: any('red') })])
+      });
+      const evaluatedRules = rules([canonicalRuleset]);
+
+      expect(canonicalRuleset.parent).toBe(evaluatedRules);
+
+      const shallowWrapper = evaluatedRules.clone(false);
+
+      expect(shallowWrapper).not.toBe(evaluatedRules);
+      expect(shallowWrapper.at(0)).toBe(canonicalRuleset);
+      expect(canonicalRuleset.parent).toBe(shallowWrapper);
+      expect(`${shallowWrapper}`).toContain('.wrapper-blocker');
+    });
+
     it('shared evaluated-view materialization must preserve evaluated state, source provenance, and canonical immutability together', () => {
       const sourceRuleset = ruleset({
         selector: sellist([sel([el('.dedupe-contract')])]),

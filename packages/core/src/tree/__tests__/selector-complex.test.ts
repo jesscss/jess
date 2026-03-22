@@ -154,7 +154,7 @@ describe('Complex selector', () => {
       expect(node.value.valueOf()).toBe('.solo');
     });
 
-    it('derives a session-specific complex keySet through an ampersand child without changing canonical keySet', () => {
+    it('derives a session-specific complex keySet through an ampersand child', () => {
       context.session = new EvalSession();
 
       const parent = ruleset({

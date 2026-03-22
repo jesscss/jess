@@ -434,4 +434,31 @@ describe('Control Nodes', () => {
     expect(loopRules.at(0)).toBe(originalLoopChild);
     expect(loopRules.toTrimmedString()).toBe('();');
   });
+
+  it('characterizes nested prior-iteration output as already materialized before $for priorScope consumes it', async () => {
+    const context = new Context();
+
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), rules([
+      ruleset({
+        selector: sel([el('.item')]) as any,
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      })
+    ]));
+    const root = rules([loop]);
+
+    const evald = await root.eval(context);
+    const firstOutputContainer = evald.at(0) as ReturnType<typeof rules>;
+    const firstOutputRuleset = firstOutputContainer.at(1) as ReturnType<typeof ruleset>;
+
+    expect(firstOutputContainer.type).toBe('Rules');
+    expect(firstOutputRuleset.type).toBe('Ruleset');
+    expect(firstOutputContainer.value.map(node => node.type)).toEqual([
+      'VarDeclaration',
+      'Ruleset',
+      'VarDeclaration',
+      'Ruleset'
+    ]);
+  });
 });
