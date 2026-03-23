@@ -2217,6 +2217,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
     };
     const bindingSourceParent = caller ?? sourceParent;
+    const preparePatternOperand = async (node: Node): Promise<Node> => {
+      const prevSession = thisContext.session;
+      if (!prevSession || prevSession.resetEvalState) {
+        thisContext.session = new EvalSession();
+      }
+      try {
+        return await node.eval(thisContext);
+      } finally {
+        thisContext.session = prevSession;
+      }
+    };
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, N.Rules);
@@ -2332,7 +2343,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             params.setData(i, restVarDecl);
             /** Check a pattern-matching node */
           } else {
-            if (param.compare(argValue) !== 0) {
+            const originalPatternParam = !isNode(arg, N.VarDeclaration)
+              ? (mixin as Mixin).params?.value[i]
+              : undefined;
+            const preparedParam = isNode(originalPatternParam as Node | undefined, N.Selector)
+              ? await preparePatternOperand(originalPatternParam as Node)
+              : isNode(param, N.Selector)
+                ? await preparePatternOperand(param)
+                : param;
+            if (preparedParam.compare(argValue, thisContext) !== 0) {
               /** This mixin is not a match */
               match = false;
               break;

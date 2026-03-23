@@ -932,7 +932,7 @@ describe('Mixin', () => {
       expect(arg.toTrimmedString()).toBe('10 30');
     });
 
-    it('characterizes selector pattern params as still needing fully prepared selector operands before compare(context) can help', async () => {
+    it('matches selector pattern params after preparing the selector operand before compare(context)', async () => {
       const buildRoot = (ctx: Context) => {
         const parent = ruleset({
           selector: el('.alpha'),
@@ -993,22 +993,19 @@ describe('Mixin', () => {
         };
       };
 
-      const probeContext = new Context({ leakyRules: true });
-      probeContext.createSession();
-      const probe = buildRoot(probeContext);
-      sessionPatchField(probe.parent, 'selector', probe.patched, probeContext);
-
-      const preparedPattern = await probe.patternArg.eval(probeContext);
-      const preparedTarget = await probe.target.eval(probeContext);
-      expect(() => (preparedPattern as any).compare(preparedTarget as any, probeContext))
-        .toThrow('Selector keySet library not found');
-
       context.createSession();
       const live = buildRoot(context);
       context.root = live.root;
       sessionPatchField(live.parent, 'selector', live.patched, context);
 
-      await expectRejects(live.root.eval(context), ReferenceError, /No matching mixins/);
+      const evald = await live.root.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .test {
+          color: red;
+        }
+      `);
       expect(live.parent.selector.valueOf()).toBe('.alpha');
     });
 
