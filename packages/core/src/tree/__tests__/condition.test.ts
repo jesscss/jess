@@ -1,5 +1,6 @@
-import { bool, condition, dimension, num } from '..';
+import { amp, bool, co, condition, dimension, el, num, rules, ruleset, sel, sellist } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
@@ -174,6 +175,58 @@ describe('Condition', () => {
       expect(`${evald}`).toBe('false');
       expect(`${await node.eval(new Context())}`).toBe('true');
       expect(node.negate).toBe(false);
+    });
+
+    it('keeps selector guard comparison canonical even when separately evald selector operands can compare under context', async () => {
+      context.session = new EvalSession();
+
+      const parent = ruleset({
+        selector: el('.alpha'),
+        rules: rules([])
+      });
+      parent.selector.keySetLibrary = context.selectorBits;
+
+      const patched = el('.beta');
+      patched.keySetLibrary = context.selectorBits;
+
+      const find = sel([
+        amp({ selectorContainer: parent as any }),
+        co('>'),
+        el('.tail')
+      ]);
+      find.keySetLibrary = context.selectorBits;
+      for (const child of find.value as any[]) {
+        if ('keySetLibrary' in child) {
+          child.keySetLibrary = context.selectorBits;
+        }
+      }
+
+      const left = sellist([find]);
+      left.keySetLibrary = context.selectorBits;
+
+      const right = sel([el('.beta'), co('>'), el('.tail')]);
+      right.keySetLibrary = context.selectorBits;
+      for (const child of right.value as any[]) {
+        if ('keySetLibrary' in child) {
+          child.keySetLibrary = context.selectorBits;
+        }
+      }
+
+      const node = condition([
+        left,
+        '=',
+        right
+      ]);
+
+      sessionPatchField(parent, 'selector', patched, context);
+
+      const evaldLeft = await left.eval(context);
+      const evaldRight = await right.eval(context);
+
+      expect((evaldLeft as any).compare(evaldRight as any, context)).toBe(0);
+      expect(`${await node.eval(context)}`).toBe('false');
+      expect(`${await node.eval(new Context())}`).toBe('false');
+      expect(parent.selector.valueOf()).toBe('.alpha');
     });
   });
 });

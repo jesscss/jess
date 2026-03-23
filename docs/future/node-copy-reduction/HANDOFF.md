@@ -38,6 +38,17 @@ Do not use this as the full node-status matrix or roadmap document:
 ### Branch: `jess-dev`
 ### Latest pushed merge-safe boundary before the current fundamentals slice: `c379624f` — `Merge branch 'dev' into jess-dev`
 
+### Immediate work
+1. Follow the immediate queue in `node-session-status.md`.
+2. The next live owner is `ImportStyle` `_dedupe` cleanup on top of detached shallow wrappers.
+3. Do not treat matcher internals or extend matching as the current blocker:
+   - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
+   - extend matching/rewrite now threads eval `Context` through the active helper pipeline
+4. The remaining hard owners are wrapper/output shaping:
+   - `ImportStyle` `_dedupe`
+   - later returned-output shaping downstream of `Rules`
+   - caller-side operand preparation for future `compare(context)` adoption
+
 ### Stage status
 - Stage 17: complete and committed
 - Stage 18: complete and committed
@@ -71,6 +82,7 @@ Do not use this as the full node-status matrix or roadmap document:
   - the current fundamentals-completion slice, or
   - a doc-sync update reflecting that gate
 - Do not discard unrecognized changes without checking them first.
+- Ignore unrelated dirty files under `packages/docs-content/...` unless explicitly asked to work on them.
 
 ### Test baseline (post Stage 15, confirmed clean)
 - **Core** (`packages/core`): 5 failed | 63 passed | 3 skipped; 11 failed | 954 passed | 24 skipped
