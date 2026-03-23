@@ -684,7 +684,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           if (!prevReEvalSession) {
             context.session = new EvalSession({ resetEvalState: true });
           }
-          rules = rules.clone(false, undefined, context) as Rules;
+          rules = rules.cloneLookupSafeShallowWrapper(context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
           try {

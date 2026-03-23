@@ -15,7 +15,7 @@ Those live in [node-session-status.md](./node-session-status.md).
 
 - Immediate next owner is now shallow `Rules.clone(false, ..., context)` semantics on top of the landed shallow-wrapper/materialization helpers in `rules.ts` / `node-base.ts`.
 - `Node.cloneDetachedShallowWrapper(ctx?)` and `Node.cloneLookupSafeShallowWrapper(ctx)` are both landed and proven.
-- `ImportStyle` now uses detached shallow wrappers for compose/finalization, `_dedupe` keeps cached evaluated top-level child slots and parent pointers stable, and the focused node-local import suite is green. It is no longer the active owner.
+- `ImportStyle` now uses detached shallow wrappers for compose/finalization, cached compose re-eval now also uses `cloneLookupSafeShallowWrapper(context)` instead of plain `clone(false)`, `_dedupe` keeps cached evaluated top-level child slots and parent pointers stable, and the focused node-local import suite is green. It is no longer the active owner.
 - `selectorMatch(..., context)` now has the bounded fast-reject fix for mixed selector-bit libraries, so the next matcher work is caller-side operand preparation/adoption, not matcher internals.
 - `Condition` now adopts `compare(context)` on selector-vs-selector guard evaluation.
 - `Condition` also now uses `compare(context)` for non-selector guard comparisons, so it is the first worthwhile consumer of the new generic compare path.
