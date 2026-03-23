@@ -306,35 +306,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // child Ruleset isolation so implicit-reference extends don't contaminate
     // shared selector state.
     const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
-    const restoreSharedImportChildren = shouldCloneImportWrapper;
-    const originalParents = (materializeConfiguredComposeChildren || restoreSharedImportChildren)
-      ? new Map<Node, Node | undefined>(evaluatedRules.value.map(child => [child, child.parent]))
-      : undefined;
     let out = type === 'import' && !shouldCloneImportWrapper
       ? evaluatedRules
-      : evaluatedRules.clone(false) as Rules;
+      : evaluatedRules.cloneDetachedShallowWrapper(context) as Rules;
     if (materializeConfiguredComposeChildren) {
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
-        const originalParent = originalParents!.get(child);
-        if (originalParent !== undefined) {
-          const materialized = child.materializeEvaluatedCopy();
-          out.setData(i, materialized);
-          (child as unknown as { parent?: Node }).parent = originalParent;
-        }
+        const materialized = child.materializeEvaluatedCopy();
+        out.setData(i, materialized);
         out.value[i]!.index = i;
-      }
-    } else if (restoreSharedImportChildren) {
-      for (const child of out.value) {
-        const originalParent = originalParents!.get(child);
-        (child as unknown as { parent?: Node }).parent = originalParent;
       }
     }
     if (type === 'import' && importOptions!._dedupe === true) {
-      // Detach the child array before swapping in per-import top-level clones so
-      // repeated `_dedupe` imports keep the cached import root's registry slot
-      // while the returned tree gets real top-level parent links for every child.
-      out.setData([...out.value]);
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
         const materialized = child.materializeEvaluatedCopy() as Node;
@@ -360,7 +343,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
     this.adopt(out);
-    this.materializeCloneParentLinks(out);
+    for (const child of out.children()) {
+      if (child.parent === out) {
+        this.materializeCloneParentLinks(child);
+      }
+    }
     return out;
   }
 

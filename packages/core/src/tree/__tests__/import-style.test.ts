@@ -1587,6 +1587,42 @@ describe('Style import', () => {
       expect(evaluatedDecl.parent).toBe(evaluatedRuleset.rules);
     });
 
+    it('deduped import wrappers still mutate cached evaluated parent pointers even with detached wrapper finalization', async () => {
+      const libraryPath = resolve(process.cwd(), 'dedupe-ruleset-identity.jess');
+      const sourceRuleset = ruleset({
+        selector: sellist([sel([el('.dedupe-identity')])]),
+        rules: rules([
+          decl({ name: any('color'), value: ref('libColor', { type: 'variable' }) })
+        ])
+      });
+      context.sourceTrees.set(libraryPath, rules([sourceRuleset]));
+
+      const cachedRuleset = ruleset({
+        selector: sellist([sel([el('.dedupe-identity')])]),
+        rules: rules([
+          decl({ name: any('color'), value: any('red') })
+        ])
+      });
+      cachedRuleset.sourceNode = sourceRuleset;
+      const cachedEvaldRules = rules([cachedRuleset]);
+      cachedEvaldRules.sourceNode = context.sourceTrees.get(libraryPath)!;
+      context.evaldTrees.set(libraryPath, cachedEvaldRules);
+      const originalCachedParent = cachedRuleset.parent;
+
+      const node = rules([
+        style({ path: quoted(any('dedupe-ruleset-identity.jess')) }, { type: 'import' })
+      ]);
+
+      const evald = await node.eval(context);
+      const dedupedImport = evald.at(0) as Rules;
+      const dedupedRuleset = dedupedImport.at(0) as Ruleset;
+
+      expect(dedupedRuleset).not.toBe(cachedRuleset);
+      expect(dedupedRuleset.parent).toBe(dedupedImport);
+      expect(cachedRuleset.parent).not.toBe(originalCachedParent);
+      expect(`${dedupedRuleset}`).toContain('color: red');
+    });
+
     it('compose multiple:true renders repeated modules', async () => {
       context.sourceTrees.set('compose-repeat.jess', rules([
         ruleset({
@@ -1690,6 +1726,8 @@ describe('Style import', () => {
       expect(first.options.rulesVisibility.Ruleset).toBe('public');
       expect(second.options.rulesVisibility.Ruleset).toBe('private');
       expect(firstRuleset).toBe(secondRuleset);
+      expect(firstRuleset.parent).not.toBe(first);
+      expect(firstRuleset.parent).not.toBe(second);
       expect(`${firstRuleset}`).toContain('.imported');
     });
   });
