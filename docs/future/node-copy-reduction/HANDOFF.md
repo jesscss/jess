@@ -47,8 +47,8 @@ Do not use this as the full node-status matrix or roadmap document:
    - extend matching/rewrite now threads eval `Context` through the active helper pipeline, and Extend looks effectively complete for the fundamentals pass
 4. The remaining hard owners are wrapper/output shaping:
    - the live mixin guard wrapper / lookup failure (`'color' is not defined`)
-   - consumer adoption of `cloneLookupSafeShallowWrapper(ctx)` in control prior-scope reuse
-   - any deeper returned-output shaping that survives after those two are checked
+   - any deeper returned-output shaping that survives after the guard path is fixed
+   - follow-up use of the new generic compare/context channel where a real consumer benefits
 
 ### Stage status
 - Stage 17: complete and committed
