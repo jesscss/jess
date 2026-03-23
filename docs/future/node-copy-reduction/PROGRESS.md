@@ -13,12 +13,13 @@ Those live in [node-session-status.md](./node-session-status.md).
 
 ## Current Fundamentals Snapshot
 
-- Immediate next owner is now the remaining `ImportStyle` `_dedupe` cleanup on top of detached shallow wrappers.
+- Immediate next owner is now lower returned-output shaping in `Rules.evaluateCandidateOutput(...)`.
 - `Node.cloneDetachedShallowWrapper(ctx?)` is landed and proven; wrapper construction is no longer the live blocker.
-- `ImportStyle` now uses detached shallow wrappers for compose/finalization, but `_dedupe` still mutates cached evaluated parent pointers later in the path.
+- `ImportStyle` now uses detached shallow wrappers for compose/finalization, and `_dedupe` now keeps cached evaluated top-level child slots and parent pointers stable.
 - `selectorMatch(..., context)` now has the bounded fast-reject fix for mixed selector-bit libraries, so the next matcher work is caller-side operand preparation/adoption, not matcher internals.
+- `Condition` now adopts `compare(context)` on selector-vs-selector guard evaluation.
 - `Extend` matching/rewrite now threads eval `Context` through the active helper pipeline; the next extend owner is wrapper/materialization behavior, not another matcher-local tweak.
-- `Rules` gained one more real local slice: multi-candidate mixin output child `Rules` now keep parentage only in the session layer. The next remaining `Rules` work is no longer another small wrapper-adjacent parent write.
+- `Rules` gained two more real local slices: multi-candidate mixin output child `Rules` now keep parentage only in the session layer, and parameter-wrapper population now routes through `outerRules.push(thisContext, ...)`. The next remaining `Rules` work is now clearly downstream output shaping, not wrapper construction.
 
 ## Test Baselines
 
