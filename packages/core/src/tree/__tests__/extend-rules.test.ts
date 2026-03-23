@@ -907,6 +907,7 @@ describe('Rules extend', () => {
 
       expect(css).toContain('color: red;');
       expect(context.warnings).toHaveLength(0);
+      expect(base.getEffectiveSelector(false, context).valueOf()).toBe('.beta');
       expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toContain('.end');
       expect(base.selector.valueOf()).toBe('.alpha');
     });

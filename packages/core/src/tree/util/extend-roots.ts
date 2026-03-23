@@ -568,7 +568,7 @@ function getRulesetExtendTarget(
     && parentSelector
     && !isNode(parentSelector, N.Nil)
   ) {
-    const ownMatch = selectorMatch(find, ownSelector, parentSelector);
+    const ownMatch = selectorMatch(find, ownSelector, parentSelector, context);
     const shouldUseOwnSelector = partial
       ? (ownMatch.fullMatch || ownMatch.partialMatch)
       : (ownMatch.fullMatch && ownMatch.crossesAmpersand);
@@ -587,7 +587,7 @@ function getRulesetExtendTarget(
       && !isNode(activeParentSelector, N.Nil)
       && activeParentSelector.valueOf() !== parentSelector.valueOf()
     ) {
-      const activeOwnMatch = selectorMatch(find, ownSelector, activeParentSelector);
+      const activeOwnMatch = selectorMatch(find, ownSelector, activeParentSelector, context);
       if (activeOwnMatch.fullMatch && activeOwnMatch.crossesAmpersand) {
         return {
           selector: ownSelector,
@@ -690,7 +690,8 @@ function applyInstructionToRuleset(
   const targetMatch = selectorMatch(
     instruction.target,
     targetInfo.selector,
-    targetInfo.parent
+    targetInfo.parent,
+    context
   );
   if (!targetMatch.partialMatch) {
     return { matched: false, changed: false };
@@ -726,7 +727,8 @@ function applyInstructionToRuleset(
     instruction.target,
     instruction.extendWith,
     instruction.partial,
-    targetInfo.parent
+    targetInfo.parent,
+    context
   );
   if (result.error) {
     if (instruction.extendWith.valueOf() === targetInfo.selector.valueOf()) {
@@ -784,7 +786,7 @@ function instructionCouldAffectRuleset(
   if (!targetInfo) {
     return false;
   }
-  const result = selectorMatch(instruction.target, targetInfo.selector, targetInfo.parent);
+  const result = selectorMatch(instruction.target, targetInfo.selector, targetInfo.parent, context);
   return result.fullMatch || result.partialMatch;
 }
 

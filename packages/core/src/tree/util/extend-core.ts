@@ -1,4 +1,5 @@
 import type { Selector } from '../selector.js';
+import type { Context } from '../../context.js';
 import { SelectorList } from '../selector-list.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { ComplexSelector } from '../selector-complex.js';
@@ -801,14 +802,15 @@ function wrapResolvedOrderedSpanWithTailRemainder(
   extendWith: Selector,
   resolvedParent: Selector,
   terminalFind: Selector,
-  location?: ReturnType<typeof selectorMatch>['matches'][number]
+  location?: ReturnType<typeof selectorMatch>['matches'][number],
+  context?: Context
 ): Selector | undefined {
   const tail = targetSelector.value[endIndex] as Selector;
   if (!isNode(tail, N.CompoundSelector)) {
     return undefined;
   }
 
-  const tailMatch = selectorMatch(terminalFind, tail, resolvedParent);
+  const tailMatch = selectorMatch(terminalFind, tail, resolvedParent, context);
   const tailLocation = tailMatch.matches.find(match => match.containingNode === tail);
   if (!tailLocation || tailLocation.startIndex === undefined || tailLocation.endIndex === undefined) {
     return undefined;
@@ -891,13 +893,14 @@ function tryExtendDirectChildSelector(
   find: Selector,
   extendWith: Selector,
   parent?: Selector,
-  crossedAmpersandHint = false
+  crossedAmpersandHint = false,
+  context?: Context
 ): ExtendResult | undefined {
   if (!child) {
     return undefined;
   }
 
-  const nested = tryExtendSelector(child, find, extendWith, true, parent);
+  const nested = tryExtendSelector(child, find, extendWith, true, parent, context);
   if (nested.error) {
     return undefined;
   }
@@ -909,7 +912,7 @@ function tryExtendDirectChildSelector(
   if (nested.value.hoistToRoot || crossedAmpersandHint) {
     target.hoistToRoot = true;
   } else if (parent && child.hasFlag(F_AMPERSAND)) {
-    const childMatch = selectorMatch(find, child, parent);
+    const childMatch = selectorMatch(find, child, parent, context);
     if (childMatch.fullMatch && childMatch.crossesAmpersand) {
       target.hoistToRoot = true;
     }
@@ -1026,13 +1029,14 @@ function tryAppendToDirectSelectorListOnFullMatch(
   target: Selector,
   find: Selector,
   extendWith: Selector,
-  parent?: Selector
+  parent?: Selector,
+  context?: Context
 ): ExtendResult | undefined {
   const list = getDirectSelectorList(target);
   if (!list) {
     return undefined;
   }
-  const innerMatch = selectorMatch(find, list, parent);
+  const innerMatch = selectorMatch(find, list, parent, context);
   if (!innerMatch.fullMatch) {
     return undefined;
   }
@@ -1084,7 +1088,8 @@ function tryAppendIntoNestedIsOnFullMatch(
   target: Selector,
   find: Selector,
   extendWith: Selector,
-  parent?: Selector
+  parent?: Selector,
+  context?: Context
 ): ExtendResult | undefined {
   if (!isNode(target, N.CompoundSelector | N.ComplexSelector)) {
     return undefined;
@@ -1096,7 +1101,7 @@ function tryAppendIntoNestedIsOnFullMatch(
     if (!(isNode(child, N.PseudoSelector) && child.name === ':is' && isNode(child.arg, N.Selector))) {
       continue;
     }
-    const innerMatch = selectorMatch(find, child.arg as Selector, parent);
+    const innerMatch = selectorMatch(find, child.arg as Selector, parent, context);
     if (!innerMatch.fullMatch) {
       continue;
     }
@@ -1123,7 +1128,8 @@ function tryPullCompoundMatchIntoNestedIsBranch(
   target: Selector,
   location: ReturnType<typeof selectorMatch>['matches'][number],
   find: Selector,
-  extendWith: Selector
+  extendWith: Selector,
+  context?: Context
 ): ExtendResult | undefined {
   if (!(isNode(target, N.CompoundSelector) && location.startIndex !== undefined && location.endIndex !== undefined)) {
     return undefined;
@@ -1167,7 +1173,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
 
     const lastSelector = alternative.value[lastIndex] as Selector;
     const merged = mergeCompoundMembersIntoSelector(pulledMembers, lastSelector);
-    const mergedMatch = selectorMatch(find, merged);
+    const mergedMatch = selectorMatch(find, merged, undefined, context);
     if (!mergedMatch.fullMatch) {
       continue;
     }
@@ -1237,15 +1243,16 @@ function tryHandleNoPartialMatch(
   find: Selector,
   extendWith: Selector,
   parent: Selector | undefined,
-  finalize: (result: ExtendResult) => ExtendResult
+  finalize: (result: ExtendResult) => ExtendResult,
+  context?: Context
 ): ExtendResult | undefined {
-  const nestedIsAppend = tryAppendIntoNestedIsOnFullMatch(target, find, extendWith, parent);
+  const nestedIsAppend = tryAppendIntoNestedIsOnFullMatch(target, find, extendWith, parent, context);
   if (nestedIsAppend) {
     return finalize(nestedIsAppend);
   }
 
   const nestedDirectChild = getDirectPseudoArg(target)
-    ? tryExtendDirectChildSelector(target, getDirectPseudoArg(target), find, extendWith, parent)
+    ? tryExtendDirectChildSelector(target, getDirectPseudoArg(target), find, extendWith, parent, false, context)
     : undefined;
   if (nestedDirectChild) {
     if (nestedDirectChild.value.hoistToRoot) {
@@ -1262,7 +1269,8 @@ function tryHandleMultiDirectChildFullMatches(
   find: Selector,
   extendWith: Selector,
   parent: Selector | undefined,
-  finalize: (result: ExtendResult) => ExtendResult
+  finalize: (result: ExtendResult) => ExtendResult,
+  context?: Context
 ): ExtendResult | undefined {
   if (!isNode(target, N.SelectorList | N.CompoundSelector | N.ComplexSelector)) {
     return undefined;
@@ -1279,7 +1287,7 @@ function tryHandleMultiDirectChildFullMatches(
       continue;
     }
 
-    const childMatch = selectorMatch(find, child as Selector, parent);
+    const childMatch = selectorMatch(find, child as Selector, parent, context);
     if (childMatch.crossesAmpersand) {
       continue;
     }
@@ -1300,7 +1308,7 @@ function tryHandleMultiDirectChildFullMatches(
     let replacement: Selector | undefined;
 
     if (isNode(target, N.SelectorList)) {
-      const result = tryExtendSelector(child, find, extendWith, true, parent);
+      const result = tryExtendSelector(child, find, extendWith, true, parent, context);
       if (!result.error) {
         replacement = result.value;
         crossedAmpersand ||= !!result.value.hoistToRoot;
@@ -1318,7 +1326,7 @@ function tryHandleMultiDirectChildFullMatches(
       }
 
       if (isNode(child, N.CompoundSelector | N.ComplexSelector | N.PseudoSelector | N.SelectorList)) {
-        const result = tryExtendSelector(child, find, extendWith, true, parent);
+        const result = tryExtendSelector(child, find, extendWith, true, parent, context);
         if (!result.error) {
           replacement = result.value;
           crossedAmpersand ||= !!result.value.hoistToRoot;
@@ -1328,7 +1336,7 @@ function tryHandleMultiDirectChildFullMatches(
       }
     } else {
       if (isNode(child, N.CompoundSelector | N.ComplexSelector | N.PseudoSelector | N.SelectorList)) {
-        const result = tryExtendSelector(child, find, extendWith, true, parent);
+        const result = tryExtendSelector(child, find, extendWith, true, parent, context);
         if (!result.error) {
           replacement = result.value;
           crossedAmpersand ||= !!result.value.hoistToRoot;
@@ -1397,7 +1405,8 @@ export function tryExtendSelector(
   find: Selector,
   extendWith: Selector,
   partial: boolean,
-  parent?: Selector
+  parent?: Selector,
+  context?: Context
 ): ExtendResult {
   const finalize = (result: ExtendResult): ExtendResult => {
     if (!result.error && parent && result.value.hoistToRoot) {
@@ -1406,7 +1415,7 @@ export function tryExtendSelector(
     return result;
   };
 
-  const match = selectorMatch(find, target, parent);
+  const match = selectorMatch(find, target, parent, context);
   if (!partial) {
     if (!match.fullMatch) {
       return createErrorResult(target, ExtendErrorType.NOT_FOUND, 'Selector not found');
@@ -1416,7 +1425,7 @@ export function tryExtendSelector(
   }
 
   if (!match.partialMatch || match.matches.length === 0) {
-    const noPartialMatchResult = tryHandleNoPartialMatch(target, find, extendWith, parent, finalize);
+    const noPartialMatchResult = tryHandleNoPartialMatch(target, find, extendWith, parent, finalize, context);
     if (noPartialMatchResult) {
       return noPartialMatchResult;
     }
@@ -1424,7 +1433,7 @@ export function tryExtendSelector(
     return createErrorResult(target, ExtendErrorType.NOT_FOUND, 'Selector not found');
   }
 
-  const earlyDirectListAppend = tryAppendToDirectSelectorListOnFullMatch(target, find, extendWith, parent);
+  const earlyDirectListAppend = tryAppendToDirectSelectorListOnFullMatch(target, find, extendWith, parent, context);
   if (earlyDirectListAppend) {
     return finalize(earlyDirectListAppend);
   }
@@ -1434,7 +1443,8 @@ export function tryExtendSelector(
     find,
     extendWith,
     parent,
-    finalize
+    finalize,
+    context
   );
   if (multiDirectChildFullMatch) {
     return multiDirectChildFullMatch;
@@ -1483,7 +1493,7 @@ export function tryExtendSelector(
       return undefined;
     }
 
-    const nested = tryExtendSelector(child, find, extendWith, true, parent);
+    const nested = tryExtendSelector(child, find, extendWith, true, parent, context);
     if (nested.error || !replaceDirectSelectorChild(target, child, nested.value)) {
       return undefined;
     }
@@ -1525,7 +1535,7 @@ export function tryExtendSelector(
     }
 
     const existing = (target as ComplexSelector | CompoundSelector).value[location.startIndex] as Selector;
-    const nestedIsListAppend = tryAppendToDirectSelectorListOnFullMatch(existing, find, extendWith, parent);
+    const nestedIsListAppend = tryAppendToDirectSelectorListOnFullMatch(existing, find, extendWith, parent, context);
     if (nestedIsListAppend) {
       target.setData(location.startIndex, nestedIsListAppend.value);
       markTargetHoist(!!nestedIsListAppend.value.hoistToRoot);
@@ -1536,7 +1546,7 @@ export function tryExtendSelector(
       isNode(existing, N.PseudoSelector | N.SelectorList | N.CompoundSelector | N.ComplexSelector)
       && !isNode(existing, N.CompoundSelector)
     ) {
-      const nested = tryExtendSelector(existing, find, extendWith, true);
+      const nested = tryExtendSelector(existing, find, extendWith, true, undefined, context);
       if (!nested.error) {
         target.setData(location.startIndex, nested.value);
         markTargetHoist(!!nested.value.hoistToRoot);
@@ -1580,7 +1590,7 @@ export function tryExtendSelector(
         return { value: target, error: conflict, isChanged: false };
       }
 
-      const pulledIntoNestedIs = tryPullCompoundMatchIntoNestedIsBranch(target, location, find, extendWith);
+      const pulledIntoNestedIs = tryPullCompoundMatchIntoNestedIsBranch(target, location, find, extendWith, context);
       if (pulledIntoNestedIs) {
         return finalize(pulledIntoNestedIs);
       }
@@ -1612,7 +1622,8 @@ export function tryExtendSelector(
           extendWith,
           crossedAmpersandParent,
           getLastOrderedSelector(find),
-          location
+          location,
+          context
         );
         if (replacement) {
           return finishRootReplacement(replacement, N.ComplexSelector);
@@ -1643,7 +1654,7 @@ export function tryExtendSelector(
           extendWith
         );
       } else {
-        const pulledIntoNestedIs = tryPullCompoundMatchIntoNestedIsBranch(location.containingNode as Selector, location, find, extendWith);
+        const pulledIntoNestedIs = tryPullCompoundMatchIntoNestedIsBranch(location.containingNode as Selector, location, find, extendWith, context);
         if (pulledIntoNestedIs) {
           replacement = pulledIntoNestedIs.value;
         } else {
@@ -1723,7 +1734,7 @@ export function tryExtendSelector(
 
     if (location.containingNode === target) {
       const nestedIsResult = directIsArg
-        ? tryExtendDirectChildSelector(target, directIsArg, find, extendWith, parent, crossedAmpersand)
+        ? tryExtendDirectChildSelector(target, directIsArg, find, extendWith, parent, crossedAmpersand, context)
         : undefined;
       const finishedNestedIs = finishNested(nestedIsResult);
       if (finishedNestedIs) {
@@ -1731,7 +1742,7 @@ export function tryExtendSelector(
       }
 
       const nestedPseudoResult = directPseudoArg && directPseudoArg === location.containingNode
-        ? tryExtendDirectChildSelector(target, location.containingNode as Selector, find, extendWith, parent, crossedAmpersand)
+        ? tryExtendDirectChildSelector(target, location.containingNode as Selector, find, extendWith, parent, crossedAmpersand, context)
         : undefined;
       const finishedNestedPseudo = finishNested(nestedPseudoResult);
       if (finishedNestedPseudo) {
@@ -1739,7 +1750,7 @@ export function tryExtendSelector(
       }
 
       const nestedListResult = isNode(target, N.SelectorList)
-        ? tryExtendDirectChildSelector(target, getSingleMatchedDirectChild(target, location), find, extendWith, parent, crossedAmpersand)
+        ? tryExtendDirectChildSelector(target, getSingleMatchedDirectChild(target, location), find, extendWith, parent, crossedAmpersand, context)
         : undefined;
       const finishedNestedList = finishNested(nestedListResult);
       if (finishedNestedList) {
@@ -1747,7 +1758,7 @@ export function tryExtendSelector(
       }
 
       const nestedOrderedChildResult = (isNode(target, N.ComplexSelector) || isNode(target, N.CompoundSelector))
-        ? tryExtendDirectChildSelector(target, getSingleMatchedDirectChild(target, location), find, extendWith, parent, crossedAmpersand)
+        ? tryExtendDirectChildSelector(target, getSingleMatchedDirectChild(target, location), find, extendWith, parent, crossedAmpersand, context)
         : undefined;
       const finishedNestedOrderedChild = finishNested(nestedOrderedChildResult);
       if (finishedNestedOrderedChild) {
@@ -1789,7 +1800,7 @@ export function tryExtendSelector(
   }
 
   const nestedPseudoResult = directPseudoArg && directPseudoArg === location.containingNode
-    ? tryExtendDirectChildSelector(target, location.containingNode as Selector, find, extendWith, parent, crossedAmpersand)
+    ? tryExtendDirectChildSelector(target, location.containingNode as Selector, find, extendWith, parent, crossedAmpersand, context)
     : undefined;
   const finishedNestedPseudo = finishNested(nestedPseudoResult);
   if (finishedNestedPseudo) {
@@ -1798,7 +1809,7 @@ export function tryExtendSelector(
 
   if (location.containingNode === target) {
     const nestedIsResult = directIsArg
-      ? tryExtendDirectChildSelector(target, directIsArg, find, extendWith, parent, crossedAmpersand)
+      ? tryExtendDirectChildSelector(target, directIsArg, find, extendWith, parent, crossedAmpersand, context)
       : undefined;
     const finishedNestedIs = finishNested(nestedIsResult);
     if (finishedNestedIs) {
@@ -1806,7 +1817,7 @@ export function tryExtendSelector(
     }
 
     const nestedListResult = isNode(target, N.SelectorList)
-      ? tryExtendDirectChildSelector(target, getSingleMatchedDirectChild(target, location), find, extendWith, parent, crossedAmpersand)
+      ? tryExtendDirectChildSelector(target, getSingleMatchedDirectChild(target, location), find, extendWith, parent, crossedAmpersand, context)
       : undefined;
     const finishedNestedList = finishNested(nestedListResult);
     if (finishedNestedList) {
@@ -1831,7 +1842,7 @@ export function tryExtendSelector(
 
   const containingChild = getContainingDirectChildSelector(target, location.containingNode);
   if (containingChild) {
-    const nested = tryExtendDirectChildSelector(target, containingChild, find, extendWith, parent, crossedAmpersand);
+    const nested = tryExtendDirectChildSelector(target, containingChild, find, extendWith, parent, crossedAmpersand, context);
     const finishedNested = finishNested(nested);
     if (finishedNested) {
       return finishedNested;
