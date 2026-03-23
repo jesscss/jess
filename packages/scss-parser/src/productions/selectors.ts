@@ -64,9 +64,10 @@ export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
 export function main(this: P, T: TokenMap, alt?: AltContext) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const isRootVarDeclarationStart = () => $.LA(1).tokenType === $.T.DollarVariable;
     alt ??= (ctx: RuleContext = {}) => [
       // Allow root-level SCSS variable declarations ($x: ...)
-      { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
+      { GATE: isRootVarDeclarationStart, ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.atRule, { ARGS: [ctx] }) },
       // Allow stray semicolons at root.
@@ -87,8 +88,19 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
         || $.LA(0).tokenType === $.T.Semi
       )),
       DEF: () => {
-        const localAlt = typeof alt === 'function' ? alt(ctx) : alt!;
-        const value = $.OR(localAlt);
+        let value: unknown;
+        if ($.RECORDING_PHASE) {
+          const localAlt = typeof alt === 'function' ? alt(ctx) : alt!;
+          value = $.OR(localAlt);
+        } else if ($.LA(1).tokenType === $.T.Semi) {
+          value = $.CONSUME($.T.Semi);
+        } else if ($.isTypeAt(1, $.T.AtName)) {
+          value = $.SUBRULE($.atRule, { ARGS: [ctx] });
+        } else if (isRootVarDeclarationStart()) {
+          value = $.SUBRULE($.declaration, { ARGS: [ctx] });
+        } else {
+          value = $.SUBRULE($.qualifiedRule, { ARGS: [ctx] });
+        }
         if (!(value instanceof Node)) {
           if (lastRule) {
             lastRule.options.semi = true;
@@ -217,71 +229,71 @@ export function compoundSelector(this: P, T: TokenMap) {
     let source = '';
     const replacements: Node[] = [];
 
-  const appendTokenSpan = (startTokenOffset: number, endTokenOffset: number) => {
-    const origTokens = $.originalInput as IToken[];
-    let out = '';
-    for (const tok of origTokens) {
-      if (tok.startOffset < startTokenOffset) {
-        continue;
+    const appendTokenSpan = (startTokenOffset: number, endTokenOffset: number) => {
+      const origTokens = $.originalInput as IToken[];
+      let out = '';
+      for (const tok of origTokens) {
+        if (tok.startOffset < startTokenOffset) {
+          continue;
+        }
+        if (tok.startOffset > endTokenOffset) {
+          break;
+        }
+        out += tok.image;
       }
-      if (tok.startOffset > endTokenOffset) {
-        break;
-      }
-      out += tok.image;
-    }
-    source += out;
-  };
+      source += out;
+    };
 
     // First atom is required.
     $.OR([
-    {
-      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-      ALT: () => {
-        $.CONSUME($.T.InterpolationStart);
-        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-        $.CONSUME($.T.RCurly);
-        source += INTERPOLATION_PLACEHOLDER;
-        replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+      {
+        GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
+        ALT: () => {
+          $.CONSUME($.T.InterpolationStart);
+          const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+          $.CONSUME($.T.RCurly);
+          source += INTERPOLATION_PLACEHOLDER;
+          replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+        }
+      },
+      {
+        ALT: () => {
+          const startTokenOffset = $.LA(1).startOffset;
+          const sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
+          const endTokenOffset = $.LA(0).startOffset;
+          selectors.push(sel);
+          appendTokenSpan(startTokenOffset, endTokenOffset);
+        }
       }
-    },
-    {
-      ALT: () => {
-        const startTokenOffset = $.LA(1).startOffset;
-        const sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
-        const endTokenOffset = $.LA(0).startOffset;
-        selectors.push(sel);
-        appendTokenSpan(startTokenOffset, endTokenOffset);
-      }
-    }
-  ]);
+    ]);
 
     // Additional atoms only when there's no whitespace.
     $.MANY({
-    GATE: () => !$.hasWS(),
-    DEF: () => {
-      $.OR([
-        {
-          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-          ALT: () => {
-            $.CONSUME($.T.InterpolationStart);
-            const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-            $.CONSUME($.T.RCurly);
-            source += INTERPOLATION_PLACEHOLDER;
-            replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+      GATE: () => !$.hasWS(),
+      DEF: () => {
+        $.OR([
+          {
+            GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME($.T.InterpolationStart);
+              const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME($.T.RCurly);
+              source += INTERPOLATION_PLACEHOLDER;
+              replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+            }
+          },
+          {
+            ALT: () => {
+              const startTokenOffset = $.LA(1).startOffset;
+              const sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
+              const endTokenOffset = $.LA(0).startOffset;
+              selectors.push(sel);
+              appendTokenSpan(startTokenOffset, endTokenOffset);
+            }
           }
-        },
-        {
-          ALT: () => {
-            const startTokenOffset = $.LA(1).startOffset;
-            const sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
-            const endTokenOffset = $.LA(0).startOffset;
-            selectors.push(sel);
-            appendTokenSpan(startTokenOffset, endTokenOffset);
-          }
-        }
-      ]);
-    }
-  });
+        ]);
+      }
+    });
 
     const location = $.endRule();
     if (replacements.length > 0) {
@@ -306,62 +318,62 @@ export function layerName(this: P, T: TokenMap) {
     let source: string | undefined;
     let replacements: Node[] | undefined;
 
-  const takeIdent = (tok: IToken) => {
-    source ??= '';
-    source += tok.image;
-  };
+    const takeIdent = (tok: IToken) => {
+      source ??= '';
+      source += tok.image;
+    };
 
-  const takeInterpolation = (expr: Node) => {
-    source ??= '';
-    replacements ??= [];
-    source += INTERPOLATION_PLACEHOLDER;
-    replacements.push(expr);
-  };
+    const takeInterpolation = (expr: Node) => {
+      source ??= '';
+      replacements ??= [];
+      source += INTERPOLATION_PLACEHOLDER;
+      replacements.push(expr);
+    };
 
-  const consumeSegment = () => {
-    if ($.RECORDING_PHASE) {
-      $.OR([
-        {
-          ALT: () => {
-            $.CONSUME($.T.InterpolationStart);
-            $.SUBRULE($.valueSequence, { ARGS: [ctx] });
-            $.CONSUME($.T.RCurly);
-          }
-        },
-        { ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.PlainIdent) }
-      ]);
-      return;
-    }
+    const consumeSegment = () => {
+      if ($.RECORDING_PHASE) {
+        $.OR([
+          {
+            ALT: () => {
+              $.CONSUME($.T.InterpolationStart);
+              $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+              $.CONSUME($.T.RCurly);
+            }
+          },
+          { ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.PlainIdent) }
+        ]);
+        return;
+      }
 
-    if ($.LA(1).tokenType === $.T.InterpolationStart) {
-      $.CONSUME($.T.InterpolationStart);
-      const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-      $.CONSUME($.T.RCurly);
-      takeInterpolation(expr);
-      return;
-    }
+      if ($.LA(1).tokenType === $.T.InterpolationStart) {
+        $.CONSUME($.T.InterpolationStart);
+        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        $.CONSUME($.T.RCurly);
+        takeInterpolation(expr);
+        return;
+      }
 
-    const tok = $.isType($.T.Ident)
-      ? ($.CONSUME($.T.Ident) as unknown as IToken)
-      : ($.CONSUME($.T.PlainIdent) as unknown as IToken);
-    takeIdent(tok);
-  };
+      const tok = $.isType($.T.Ident)
+        ? ($.CONSUME($.T.Ident) as unknown as IToken)
+        : ($.CONSUME($.T.PlainIdent) as unknown as IToken);
+      takeIdent(tok);
+    };
 
-  consumeSegment();
+    consumeSegment();
 
-  // Additional segments with no whitespace (e.g. `foo-#{$bar}`)
-  $.MANY({
-    GATE: () =>
-      !$.hasWS()
-      && $.LA(1).tokenType !== $.T.LCurly
-      && $.LA(1).tokenType !== $.T.Comma
-      && $.LA(1).tokenType !== $.T.Semi
-      && $.LA(1).tokenType.name !== 'EOF',
-    DEF: () => {
-      consumeSegment();
-    }
-  });
+    // Additional segments with no whitespace (e.g. `foo-#{$bar}`)
+    $.MANY({
+      GATE: () =>
+        !$.hasWS()
+        && $.LA(1).tokenType !== $.T.LCurly
+        && $.LA(1).tokenType !== $.T.Comma
+        && $.LA(1).tokenType !== $.T.Semi
+        && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        consumeSegment();
+      }
+    });
 
     const loc = $.endRule();
     if (replacements?.length) {

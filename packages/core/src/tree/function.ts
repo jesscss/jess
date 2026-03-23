@@ -1,10 +1,11 @@
 import { type Context } from '../context.js';
-import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, Node, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
+import type { VarDeclaration } from './declaration-var.js';
 import { Mixin } from './mixin.js';
 import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
@@ -46,7 +47,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
   params: FuncValue['params'];
   body!: Node;
 
-  constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: FuncValue, options?: FuncOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
     this.params = value.params;
@@ -127,7 +128,8 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
     }
 
-    const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined;
+    const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined
+      ?? evaluated.find('declaration', returnName, 'VarDeclaration', { searchParents: false }) as VarDeclaration | undefined;
     if (!decl) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
@@ -139,6 +141,6 @@ export class Func extends Node<FuncValue, FuncOptions> {
 export const fn = defineType(Func, 'Func', 'fn') as (
   value: FuncValue | { name?: string; params?: List<Node>; body: Node },
   options?: FuncOptions,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   treeContext?: TreeContext
 ) => Func;

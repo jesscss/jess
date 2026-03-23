@@ -45,7 +45,18 @@ describe('scss-parser (baseline)', () => {
     expect(result.errors.length).toBe(0);
     expect(result.lexerResult.tokens[0]?.tokenType?.name).toBe('AtKeyword');
     expect(result.lexerResult.tokens[0]?.image).toBe('@content');
-    expect(String(result.tree)).toContain('$content()');
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const call = result.tree.data[0];
+      expect(isNode(call, N.Call)).toBe(true);
+      if (isNode(call, N.Call)) {
+        expect(isNode(call.name, N.Reference)).toBe(true);
+        if (isNode(call.name, N.Reference)) {
+          expect(call.name.options.type).toBe('mixin');
+          expect(String(call.name.key)).toBe('content');
+        }
+      }
+    }
     assertValidTree(result.tree);
   });
 
@@ -140,7 +151,7 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
-  it('parses @function and rewrites @return into return: declaration', () => {
+  it('parses @function and rewrites @return into $result declaration', () => {
     const parser = new Parser();
     const result = parser.parse(`
       @function add($a, $b: 2) {
@@ -154,12 +165,12 @@ describe('scss-parser (baseline)', () => {
     if (isNode(root, N.Rules)) {
       const fn = root.data.find(n => isNode(n, N.Func));
       expect(fn && isNode(fn, N.Func)).toBe(true);
-      // Ensure return: decl exists inside body
+      // Ensure $result var exists inside body
       if (fn && isNode(fn, N.Func)) {
         const body = fn.data.body;
         expect(isNode(body, N.Rules)).toBe(true);
         if (isNode(body, N.Rules)) {
-          const ret = body.find('declaration', 'return', 'Declaration', { searchParents: false });
+          const ret = body.find('declaration', 'result', 'VarDeclaration', { searchParents: false });
           expect(ret).toBeDefined();
         }
       }
@@ -618,16 +629,40 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
-  it('rejects SCSS interpolation inside @include mixin names', () => {
+  it('parses SCSS interpolation inside @include mixin names as an interpolated mixin reference', () => {
     const parser = new Parser();
     const result = parser.parse(`@include foo-#{$bar}();`);
-    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const call = result.tree.data[0];
+      expect(isNode(call, N.Call)).toBe(true);
+      if (isNode(call, N.Call)) {
+        expect(isNode(call.name, N.Reference)).toBe(true);
+        if (isNode(call.name, N.Reference)) {
+          expect(call.name.options.type).toBe('mixin');
+          expect(isNode(call.name.key as any, N.Interpolated)).toBe(true);
+        }
+      }
+    }
+    assertValidTree(result.tree);
   });
 
-  it('rejects SCSS interpolation inside @mixin names', () => {
+  it('parses SCSS interpolation inside @mixin names as an interpolated mixin name', () => {
     const parser = new Parser();
     const result = parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`);
-    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const mixin = result.tree.data[0];
+      expect(isNode(mixin, N.Mixin)).toBe(true);
+      if (isNode(mixin, N.Mixin)) {
+        expect(isNode(mixin.name as any, N.Interpolated)).toBe(true);
+      }
+    }
+    assertValidTree(result.tree);
   });
 
   it('parses SCSS interpolation inside @media prelude', () => {

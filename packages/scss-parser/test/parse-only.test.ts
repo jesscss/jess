@@ -39,9 +39,11 @@ const positiveCases: ParseCase[] = [
   { name: '@if == comparison', src: '@if $a == $b { .x { y: 1; } }' },
   { name: '@if != comparison', src: '@if $a != $b { .x { y: 1; } }' },
   { name: '@mixin definition', src: '@mixin foo($a, $b: 2, ...$rest) { @content; }' },
+  { name: 'interpolation inside @mixin name', src: '@mixin foo-#{$bar} { .a { color: red; } }' },
   { name: '@function definition', src: '@function add($a, $b: 2) { @return $a; }' },
   { name: 'plain function call', src: '.a { color: fn($x); }' },
   { name: '@include mixin call', src: '@include wrap(red);' },
+  { name: 'interpolation inside @include mixin name', src: '@include foo-#{$bar}();' },
   { name: '@include module-qualified mixin call', src: '@include ns.foo($x);' },
   { name: '@include using block', src: '@include wrap(red) using ($c, $n) { .child { color: $c; z-index: $n; } }' },
   { name: '@use import', src: '@use "foo";' },
@@ -91,17 +93,6 @@ const errorCases: ErrorCase[] = [
   }
 ];
 
-const rejectionCases: ErrorCase[] = [
-  {
-    name: 'interpolation inside @include mixin name',
-    src: '@include foo-#{$bar}();'
-  },
-  {
-    name: 'interpolation inside @mixin name',
-    src: '@mixin foo-#{$bar} { .a { color: red; } }'
-  }
-];
-
 describe('scss-parser (parse only)', () => {
   for (const testCase of positiveCases) {
     it(`parses ${testCase.name}`, () => {
@@ -111,12 +102,6 @@ describe('scss-parser (parse only)', () => {
 
   for (const testCase of errorCases) {
     it(`reports parse error for ${testCase.name}`, () => {
-      expectSingleParseError(testCase);
-    });
-  }
-
-  for (const testCase of rejectionCases) {
-    it(`rejects ${testCase.name}`, () => {
       expectSingleParseError(testCase);
     });
   }

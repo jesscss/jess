@@ -70,8 +70,10 @@ describe('scss-parser (ast serialize)', () => {
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
-    // Keep it loose: we just want to ensure it becomes a call-like form.
-    expect(String(tree)).toContain('$content()');
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(Call');
+    expect(serialized).toContain(`type: 'mixin'`);
+    expect(serialized).toContain(`key: 'content'`);
   });
 
   it('serializes @if $a == $b as a Condition using =', () => {
@@ -313,13 +315,13 @@ describe('scss-parser (ast serialize)', () => {
               name:
                 (Any [role=property] 'a')
               value:
-                (Nil '')
+                (Nil)
             )
             (VarDeclaration
               name:
                 (Any [role=property] 'b')
               value:
-                (Nil '')
+                (Nil)
             )
           ]
       `);

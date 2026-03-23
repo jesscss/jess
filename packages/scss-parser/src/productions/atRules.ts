@@ -47,13 +47,188 @@ import {
   makeNamespacedReference,
   isScriptUsePath,
   quotedLike,
-  defaultNamespaceFromPath
+  defaultNamespaceFromPath,
+  toNameInterpolationReplacement
 } from './helpers.js';
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+
+function parseInterpolatedMixinName(
+  $: P,
+  ctx: RuleContext,
+  endTokens: ReadonlySet<any>
+): Interpolated<'name'> | undefined {
+  $.startRule();
+  let source = '';
+  const replacements: Node[] = [];
+
+  $.AT_LEAST_ONE({
+    DEF: () => {
+      $.OR([
+        {
+          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
+          ALT: () => {
+            $.CONSUME($.T.InterpolationStart);
+            const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+            $.CONSUME($.T.RCurly);
+            if (!$.RECORDING_PHASE) {
+              source += INTERPOLATION_PLACEHOLDER;
+              replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+            }
+          }
+        },
+        {
+          GATE: () => !endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.Ident,
+          ALT: () => {
+            const tok = $.CONSUME($.T.Ident) as unknown as IToken;
+            if (!$.RECORDING_PHASE) {
+              source += tok.image;
+            }
+          }
+        },
+        {
+          GATE: () => !endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.PlainIdent,
+          ALT: () => {
+            const tok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+            if (!$.RECORDING_PHASE) {
+              source += tok.image;
+            }
+          }
+        }
+      ]);
+    }
+  });
+
+  const loc = $.endRule();
+  if ($.RECORDING_PHASE) {
+    return;
+  }
+
+  return new Interpolated(
+    { source, replacements },
+    { role: 'name' },
+    loc,
+    $.context
+  );
+}
+
+function parseScssNameNode(
+  $: P,
+  ctx: RuleContext,
+  endTokens: ReadonlySet<any>
+): Any<'name'> | Interpolated<'name'> | undefined {
+  $.startRule();
+  let source = '';
+  const replacements: Node[] = [];
+
+  if ($.RECORDING_PHASE) {
+    $.AT_LEAST_ONE({
+      DEF: () => {
+        $.OR([
+          {
+            GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME($.T.InterpolationStart);
+              const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME($.T.RCurly);
+              if (!$.RECORDING_PHASE) {
+                source += INTERPOLATION_PLACEHOLDER;
+                replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+              }
+            }
+          },
+          {
+            GATE: () => !endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.Ident,
+            ALT: () => {
+              const tok = $.CONSUME($.T.Ident) as unknown as IToken;
+              if (!$.RECORDING_PHASE) {
+                source += tok.image;
+              }
+            }
+          },
+          {
+            GATE: () => !endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.PlainIdent,
+            ALT: () => {
+              const tok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+              if (!$.RECORDING_PHASE) {
+                source += tok.image;
+              }
+            }
+          }
+        ]);
+      }
+    });
+  } else {
+    const consumeNamePart = (): boolean => {
+      if ($.LA(1).tokenType === $.T.InterpolationStart) {
+        $.CONSUME($.T.InterpolationStart);
+        if ($.LA(1).tokenType === $.T.DollarVariable && $.LA(2).tokenType === $.T.RCurly) {
+          const dv = $.CONSUME($.T.DollarVariable) as unknown as IToken;
+          $.CONSUME($.T.RCurly);
+          source += INTERPOLATION_PLACEHOLDER;
+          replacements.push(
+            new Reference(
+              { key: dv.image.slice(1) },
+              { type: 'variable', role: 'ident' },
+              $.getLocationInfo(dv),
+              $.context
+            )
+          );
+          return true;
+        }
+        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        $.CONSUME($.T.RCurly);
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+        return true;
+      }
+
+      if (!endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.Ident) {
+        const tok = $.CONSUME($.T.Ident) as unknown as IToken;
+        source += tok.image;
+        return true;
+      }
+
+      if (!endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.PlainIdent) {
+        const tok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+        source += tok.image;
+        return true;
+      }
+
+      return false;
+    };
+
+    if (!consumeNamePart()) {
+      $.OR([
+        { ALT: () => $.CONSUME($.T.InterpolationStart) },
+        { ALT: () => $.CONSUME($.T.Ident) },
+        { ALT: () => $.CONSUME($.T.PlainIdent) }
+      ]);
+    }
+    while (consumeNamePart()) {
+      // continue
+    }
+  }
+
+  const loc = $.endRule();
+  if ($.RECORDING_PHASE) {
+    return;
+  }
+
+  if (replacements.length === 0) {
+    return new Any(source, { role: 'name' }, loc, $.context);
+  }
+
+  return new Interpolated(
+    { source, replacements },
+    { role: 'name' },
+    loc,
+    $.context
+  );
+}
 
 function createNullParentAmpersand(context: any, selector?: Selector): Ampersand {
   return new Ampersand(
@@ -570,7 +745,7 @@ export function scssWithConfig(this: P, T: TokenMap) {
 }
 
 /**
- * SCSS: `@content` → `$content()` (Expression(Call(Reference('content'))))
+ * SCSS: `@content` → `$content()` (Call(Reference(type='mixin')))
  */
 export function scssContentAtRule(this: P, T: TokenMap) {
   const $ = this;
@@ -601,9 +776,8 @@ export function scssContentAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
-    const ref = new Reference({ key: 'content' }, { type: 'variable' }, loc, $.context);
-    const call = new Call({ name: ref, args }, undefined, loc, $.context);
-    return new Expression(call, undefined, loc, $.context);
+    const ref = new Reference({ key: 'content' }, { type: 'mixin', role: 'name' }, loc, $.context);
+    return new Call({ name: ref, args }, undefined, loc, $.context);
   };
 }
 
@@ -658,16 +832,12 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
 
     let mixinKey: string | undefined;
     let mixinNameRef: Reference | undefined;
+    let interpolatedMixinKey: Interpolated<'name'> | undefined;
     let args: List | undefined;
+    let nameStartsWithOpenParen = false;
     const parseGenericFunctionStartCall = () => {
       const nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
-      $.OPTION({
-        GATE: () => $.LA(1).tokenType !== $.T.RParen,
-        DEF: () => {
-          args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-        }
-      });
-      $.CONSUME($.T.RParen);
+      nameStartsWithOpenParen = true;
       if ($.RECORDING_PHASE) {
         return;
       }
@@ -676,13 +846,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
 
     const parseNamespacedFunctionStartCall = () => {
       const nameTok = $.CONSUME($.T.NamespacedFunctionStart) as unknown as IToken;
-      $.OPTION({
-        GATE: () => $.LA(1).tokenType !== $.T.RParen,
-        DEF: () => {
-          args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-        }
-      });
-      $.CONSUME($.T.RParen);
+      nameStartsWithOpenParen = true;
       if ($.RECORDING_PHASE) {
         return;
       }
@@ -700,19 +864,6 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
         { ALT: () => $.CONSUME($.T.PlainIdent) }
       ]) as unknown as IToken;
       const dot = $.CONSUME($.T.DotName) as unknown as IToken;
-      $.OPTION2({
-        GATE: () => $.LA(1).tokenType === $.T.LParen,
-        DEF: () => {
-          $.CONSUME($.T.LParen);
-          $.OPTION3({
-            GATE: () => $.LA(1).tokenType !== $.T.RParen,
-            DEF: () => {
-              args = $.SUBRULE2($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-            }
-          });
-          $.CONSUME($.T.RParen);
-        }
-      });
       if ($.RECORDING_PHASE) {
         return;
       }
@@ -730,52 +881,14 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
         { GATE: () => $.LA(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
         { ALT: () => $.CONSUME($.T.DotName) }
       ]) as unknown as IToken;
-      $.OPTION4({
-        GATE: () => $.LA(1).tokenType === $.T.LParen,
-        DEF: () => {
-          $.CONSUME($.T.LParen);
-          $.OPTION5({
-            GATE: () => $.LA(1).tokenType !== $.T.RParen,
-            DEF: () => {
-              args = $.SUBRULE3($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-            }
-          });
-          $.CONSUME($.T.RParen);
-        }
-      });
       if ($.RECORDING_PHASE) {
         return;
       }
       mixinNameRef = makeNamespacedReference($, [ns.image, member.image.slice(1)], 'mixin-ruleset');
     };
 
-    const parseInterpolatedMixinName = () => {
-      $.AT_LEAST_ONE({
-        DEF: () => {
-          $.OR2([
-            {
-              GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-              ALT: () => {
-                $.CONSUME($.T.InterpolationStart);
-                $.SUBRULE($.valueSequence, { ARGS: [ctx] });
-                $.CONSUME($.T.RCurly);
-              }
-            },
-            {
-              ALT: () => {
-                $.OR([
-                  { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
-                  { ALT: () => $.CONSUME($.T.PlainIdent) }
-                ]);
-              }
-            }
-          ]);
-        }
-      });
-      if ($.RECORDING_PHASE) {
-        return;
-      }
-      throw new Error('SCSS does not allow interpolation in mixin names for @include.');
+    const parseInterpolatedMixinCall = () => {
+      interpolatedMixinKey = parseInterpolatedMixinName($, ctx, new Set([$.T.LParen, $.T.LCurly, $.T.Semi]));
     };
 
     const parsePlainMixinCall = () => {
@@ -783,22 +896,6 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
         { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
         { ALT: () => $.CONSUME($.T.PlainIdent) }
       ]) as unknown as IToken;
-      if (!$.RECORDING_PHASE && $.LA(1).tokenType === $.T.InterpolationStart) {
-        throw new Error('SCSS does not allow interpolation in mixin names for @include.');
-      }
-      $.OPTION6({
-        GATE: () => $.LA(1).tokenType === $.T.LParen,
-        DEF: () => {
-          $.CONSUME($.T.LParen);
-          $.OPTION7({
-            GATE: () => $.LA(1).tokenType !== $.T.RParen,
-            DEF: () => {
-              args = $.SUBRULE4($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-            }
-          });
-          $.CONSUME($.T.RParen);
-        }
-      });
       if ($.RECORDING_PHASE) {
         return;
       }
@@ -828,7 +925,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
         { ALT: () => parseNamespacedFunctionStartCall() },
         { GATE: () => isNamespacedDotCall, ALT: () => parseNamespacedDotCall() },
         { GATE: () => isEscapedNamespacedRulesetCall, ALT: () => parseEscapedNamespacedRulesetCall() },
-        { GATE: () => isInterpolatedMixinName, ALT: () => parseInterpolatedMixinName() },
+        { GATE: () => isInterpolatedMixinName, ALT: () => parseInterpolatedMixinCall() },
         { ALT: () => parsePlainMixinCall() }
       ]);
     } else if ($.isType($.T.GenericFunctionStart)) {
@@ -840,9 +937,51 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
     } else if (isEscapedNamespacedRulesetCall) {
       parseEscapedNamespacedRulesetCall();
     } else if (isInterpolatedMixinName) {
-      parseInterpolatedMixinName();
+      parseInterpolatedMixinCall();
     } else {
       parsePlainMixinCall();
+    }
+
+    if ($.RECORDING_PHASE) {
+      $.OR7([
+        {
+          GATE: () => nameStartsWithOpenParen,
+          ALT: () => {
+            $.OPTION({
+              GATE: () => $.LA(1).tokenType !== $.T.RParen,
+              DEF: () => {
+                $.SUBRULE($.functionCallArgs, { ARGS: [ctx] });
+              }
+            });
+            $.CONSUME($.T.RParen);
+          }
+        },
+        {
+          GATE: () => $.LA(1).tokenType === $.T.LParen,
+          ALT: () => {
+            $.CONSUME($.T.LParen);
+            $.OPTION2({
+              GATE: () => $.LA(1).tokenType !== $.T.RParen,
+              DEF: () => {
+                $.SUBRULE2($.functionCallArgs, { ARGS: [ctx] });
+              }
+            });
+            $.CONSUME2($.T.RParen);
+          }
+        },
+        { ALT: () => {} }
+      ]);
+    } else if (nameStartsWithOpenParen) {
+      if ($.LA(1).tokenType !== $.T.RParen) {
+        args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
+      }
+      $.CONSUME($.T.RParen);
+    } else if ($.LA(1).tokenType === $.T.LParen) {
+      $.CONSUME($.T.LParen);
+      if ($.LA(1).tokenType !== $.T.RParen) {
+        args = $.SUBRULE2($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
+      }
+      $.CONSUME2($.T.RParen);
     }
 
     // Optional content block
@@ -855,10 +994,16 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
         ($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent)
         && $.LA(1).image === 'using',
       DEF: () => {
-        $.OR2([
-          { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
-          { ALT: () => $.CONSUME($.T.PlainIdent) }
-        ]);
+        if ($.RECORDING_PHASE) {
+          $.OR2([
+            { ALT: () => $.CONSUME($.T.Ident) },
+            { ALT: () => $.CONSUME($.T.PlainIdent) }
+          ]);
+        } else if ($.isType($.T.Ident)) {
+          $.CONSUME($.T.Ident);
+        } else {
+          $.CONSUME($.T.PlainIdent);
+        }
         usingParams = $.SUBRULE($.scssIncludeUsingParams, { ARGS: [ctx] }) as unknown as List;
       }
     });
@@ -882,7 +1027,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
       return;
     }
     const mixinRef = mixinNameRef ?? new Reference(
-      { key: mixinKey! },
+      { key: interpolatedMixinKey ?? mixinKey! },
       { type: 'mixin', role: 'name' },
       loc,
       $.context
@@ -1167,72 +1312,38 @@ export function scssMixinAtRule(this: P, T: TokenMap) {
     $.startRule();
     $.CONSUME($.T.AtKeyword); // assumed '@mixin' (dispatched by unknownAtRule)
     let nameTok: IToken | undefined;
+    let nameNode: Any<'name'> | Interpolated<'name'> | undefined;
     let hasParamsFromStart = false;
 
-    const looksLikeInterpolatedMixinName = () => {
-      for (let i = 1; i < 64; i++) {
-        const tok = $.LA(i);
-        if (tok.tokenType === $.T.LParen || tok.tokenType === $.T.LCurly || tok.tokenType.name === 'EOF') {
-          return false;
-        }
-        if (tok.tokenType === $.T.InterpolationStart) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    $.OR([
-      {
-      // Sass parity: interpolation in mixin names is not valid syntax.
-        GATE: () => looksLikeInterpolatedMixinName(),
-        ALT: () => {
-          $.AT_LEAST_ONE({
-            DEF: () => {
-              $.OR([
-                {
-                  GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-                  ALT: () => {
-                    $.CONSUME($.T.InterpolationStart);
-                    $.SUBRULE($.valueSequence, { ARGS: [ctx] });
-                    $.CONSUME($.T.RCurly);
-                  }
-                },
-                {
-                  ALT: () => {
-                    $.OR([
-                      { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
-                      { ALT: () => $.CONSUME($.T.PlainIdent) }
-                    ]);
-                  }
-                }
-              ]);
-            }
-          });
-          if ($.RECORDING_PHASE) {
-            return;
+    if ($.RECORDING_PHASE) {
+      $.OR([
+        {
+          GATE: () => tokenMatcher($.LA(1), $.T.FunctionStart),
+          ALT: () => {
+            nameTok = $.CONSUME($.T.FunctionStart) as unknown as IToken;
+            hasParamsFromStart = true;
           }
-          throw new Error('SCSS does not allow interpolation in mixin names for @mixin.');
-        }
-      },
-      {
-        GATE: () => tokenMatcher($.LA(1), $.T.FunctionStart),
-        ALT: () => {
-          nameTok = $.CONSUME($.T.FunctionStart) as unknown as IToken;
-          hasParamsFromStart = true;
-        }
-      },
-      {
-        GATE: () => tokenMatcher($.LA(1), $.T.GenericFunctionStart),
-        ALT: () => {
-          nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
-          hasParamsFromStart = true;
-        }
-      },
-      { ALT: () => {
-        nameTok = $.CONSUME($.T.Ident) as unknown as IToken;
-      } }
-    ]);
+        },
+        {
+          GATE: () => tokenMatcher($.LA(1), $.T.GenericFunctionStart),
+          ALT: () => {
+            nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
+            hasParamsFromStart = true;
+          }
+        },
+        { ALT: () => {
+          nameNode = parseScssNameNode($, ctx, new Set([$.T.LParen, $.T.LCurly]));
+        } }
+      ]);
+    } else if (tokenMatcher($.LA(1), $.T.FunctionStart)) {
+      nameTok = $.CONSUME($.T.FunctionStart) as unknown as IToken;
+      hasParamsFromStart = true;
+    } else if (tokenMatcher($.LA(1), $.T.GenericFunctionStart)) {
+      nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
+      hasParamsFromStart = true;
+    } else {
+      nameNode = parseScssNameNode($, ctx, new Set([$.T.LParen, $.T.LCurly]));
+    }
 
     let params: List | undefined;
     $.OR([
@@ -1264,10 +1375,12 @@ export function scssMixinAtRule(this: P, T: TokenMap) {
     rules.options.rulesVisibility ??= {};
     rules.options.rulesVisibility.VarDeclaration ??= 'private';
     rules.options.rulesVisibility.Mixin ??= 'private';
-    const mixinName = (tokenMatcher(nameTok as any, $.T.FunctionStart) || tokenMatcher(nameTok as any, $.T.GenericFunctionStart))
-      ? String(nameTok!.image).slice(0, -1)
-      : String(nameTok!.image);
-    const finalNameNode = new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok!), $.context);
+    const finalNameNode = nameNode ?? (() => {
+      const mixinName = (tokenMatcher(nameTok as any, $.T.FunctionStart) || tokenMatcher(nameTok as any, $.T.GenericFunctionStart))
+        ? String(nameTok!.image).slice(0, -1)
+        : String(nameTok!.image);
+      return new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok!), $.context);
+    })();
 
     return new Mixin(
       { name: finalNameNode, params, rules },
@@ -1659,7 +1772,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
 }
 
 /**
- * SCSS: `@return <value>;` → `return: <value>;`
+ * SCSS: `@return <value>;` → `$result: <value>;`
  */
 export function scssReturnAtRule(this: P, T: TokenMap) {
   const $ = this;
@@ -1674,8 +1787,8 @@ export function scssReturnAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
-    const name = new Any('return', { role: 'property' }, loc, $.context);
-    return new Declaration({ name, value: $.wrap(value) }, undefined, loc, $.context);
+    const name = new Any('result', { role: 'property' }, loc, $.context);
+    return new VarDeclaration({ name, value: $.wrap(value) }, undefined, loc, $.context);
   };
 }
 
@@ -1683,7 +1796,7 @@ export function scssReturnAtRule(this: P, T: TokenMap) {
  * SCSS: `@function name($a, $b: 1) { ... }`
  *
  * Parsed as a `Func` node with a `body` (Rules) and `params` list, and registered in the function registry.
- * Return value is represented by a `return: <value>;` declaration (see `@return`).
+ * Return value is represented by a `$result: <value>;` variable declaration (see `@return`).
  */
 export function scssFunctionAtRule(this: P, T: TokenMap) {
   const $ = this;
@@ -1750,7 +1863,7 @@ export function scssFunctionAtRule(this: P, T: TokenMap) {
     const fnName = new Any(rawName, { role: 'name' }, $.getLocationInfo(tok), $.context);
     return new Func(
       { name: fnName, params, body: bodyRules },
-      undefined,
+      { returnName: 'result' },
       loc,
       $.context
     );
