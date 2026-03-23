@@ -578,170 +578,191 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
     let mixinKey: string | undefined;
     let mixinNameRef: Reference | undefined;
     let args: List | undefined;
-    $.OR([
-      {
-      // Mixin call where lexer tokenizes `name(` as a single token.
-      // e.g. `@include wrap(red);` may arrive as FunctionStart("wrap(") + ...
-        GATE: () => {
-          const tt = $.LA(1).tokenType;
-          return tt === $.T.FunctionStart || tt === $.T.GenericFunctionStart || tt === $.T.NamespacedFunctionStart;
-        },
-        ALT: () => {
-          const nameTok = $.CONSUME($.LA(1).tokenType as any) as unknown as IToken;
-          $.OPTION({
+    const parseGenericFunctionStartCall = () => {
+      const nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
+      $.OPTION({
+        GATE: () => $.LA(1).tokenType !== $.T.RParen,
+        DEF: () => {
+          args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
+        }
+      });
+      $.CONSUME($.T.RParen);
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      mixinKey = nameTok.image.slice(0, -1);
+    };
+
+    const parseNamespacedFunctionStartCall = () => {
+      const nameTok = $.CONSUME($.T.NamespacedFunctionStart) as unknown as IToken;
+      $.OPTION({
+        GATE: () => $.LA(1).tokenType !== $.T.RParen,
+        DEF: () => {
+          args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
+        }
+      });
+      $.CONSUME($.T.RParen);
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      const parts = nameTok.image.slice(0, -1).split('.').filter(Boolean);
+      if (parts.length >= 2) {
+        mixinNameRef = makeNamespacedReference($, parts, 'mixin');
+        return;
+      }
+      mixinKey = nameTok.image.slice(0, -1);
+    };
+
+    const parseNamespacedDotCall = () => {
+      const ns = $.OR3([
+        { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
+        { ALT: () => $.CONSUME($.T.PlainIdent) }
+      ]) as unknown as IToken;
+      const dot = $.CONSUME($.T.DotName) as unknown as IToken;
+      $.OPTION2({
+        GATE: () => $.LA(1).tokenType === $.T.LParen,
+        DEF: () => {
+          $.CONSUME($.T.LParen);
+          $.OPTION3({
             GATE: () => $.LA(1).tokenType !== $.T.RParen,
             DEF: () => {
-              args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
+              args = $.SUBRULE2($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
             }
           });
           $.CONSUME($.T.RParen);
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          const parsedName = nameTok.image.slice(0, -1);
-          if (parsedName.includes('.')) {
-            const parts = parsedName.split('.').filter(Boolean);
-            if (parts.length >= 2) {
-              mixinNameRef = makeNamespacedReference($, parts, 'mixin');
-            } else {
-              mixinKey = parsedName;
-            }
-          } else {
-            mixinKey = parsedName;
-          }
         }
-      },
-      {
-      // SCSS module-qualified mixin call: `@include ns.foo(...)`
-      // Tokenizes as: Ident + DotName(".foo")
-        GATE: () =>
-          ($.isTypeAt(1, $.T.Ident) || $.LA(1).tokenType === $.T.PlainIdent)
-          && $.LA(2).tokenType === $.T.DotName,
-        ALT: () => {
-          const ns = $.OR3([
-            { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
-            { ALT: () => $.CONSUME($.T.PlainIdent) }
-          ]) as unknown as IToken;
-          const dot = $.CONSUME($.T.DotName) as unknown as IToken; // ".foo"
-          $.OPTION2({
-            GATE: () => $.LA(1).tokenType === $.T.LParen,
-            DEF: () => {
-              $.CONSUME($.T.LParen);
-              $.OPTION3({
-                GATE: () => $.LA(1).tokenType !== $.T.RParen,
-                DEF: () => {
-                  args = $.SUBRULE2($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-                }
-              });
-              $.CONSUME($.T.RParen);
-            }
-          });
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          const key = dot.image.slice(1);
-          mixinNameRef = makeNamespacedReference($, [ns.image, key], 'mixin');
-        }
-      },
-      {
-      // Escaped module-qualified mixin "ruleset" reference: `@include ns.\#foo(...)` or `@include ns.\.foo(...)`
-      // Note: there is no standalone dot token; the '.' is tokenized as Unknown when not part of DotName.
-        GATE: () =>
-          ($.isTypeAt(1, $.T.Ident) || $.LA(1).tokenType === $.T.PlainIdent)
-          && $.LA(2).tokenType === $.T.Unknown
-          && $.LA(2).image === '.'
-          && $.LA(3).tokenType === $.T.Unknown
-          && $.LA(3).image === '\\'
-          && ($.LA(4).tokenType === $.T.HashName || $.LA(4).tokenType === $.T.DotName),
-        ALT: () => {
-          const ns = $.OR4([
-            { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
-            { ALT: () => $.CONSUME($.T.PlainIdent) }
-          ]) as unknown as IToken;
-          $.CONSUME($.T.Unknown); // '.'
-          $.CONSUME($.T.Unknown); // '\'
-          const member = $.OR5([
-            { GATE: () => $.LA(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
-            { ALT: () => $.CONSUME($.T.DotName) }
-          ]) as unknown as IToken;
-          $.OPTION4({
-            GATE: () => $.LA(1).tokenType === $.T.LParen,
-            DEF: () => {
-              $.CONSUME($.T.LParen);
-              $.OPTION5({
-                GATE: () => $.LA(1).tokenType !== $.T.RParen,
-                DEF: () => {
-                  args = $.SUBRULE3($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-                }
-              });
-              $.CONSUME($.T.RParen);
-            }
-          });
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          const key = member.image.slice(1);
-          mixinNameRef = makeNamespacedReference($, [ns.image, key], 'mixin-ruleset');
-        }
-      },
-      {
-      // Sass parity: interpolation in mixin names is not valid syntax.
-        GATE: () => $.LA(1).tokenType === $.T.InterpolationStart || $.LA(2).tokenType === $.T.InterpolationStart,
-        ALT: () => {
-          $.AT_LEAST_ONE({
-            DEF: () => {
-              $.OR2([
-                {
-                  GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-                  ALT: () => {
-                    $.CONSUME($.T.InterpolationStart);
-                    $.SUBRULE($.valueSequence, { ARGS: [ctx] });
-                    $.CONSUME($.T.RCurly);
-                  }
-                },
-                {
-                  ALT: () => {
-                    $.OR([
-                      { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
-                      { ALT: () => $.CONSUME($.T.PlainIdent) }
-                    ]);
-                  }
-                }
-              ]);
-            }
-          });
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          throw new Error('SCSS does not allow interpolation in mixin names for @include.');
-        }
-      },
-      {
-        ALT: () => {
-          const ident = $.OR6([
-            { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
-            { ALT: () => $.CONSUME($.T.PlainIdent) }
-          ]) as unknown as IToken;
-          $.OPTION6({
-            GATE: () => $.LA(1).tokenType === $.T.LParen,
-            DEF: () => {
-              $.CONSUME($.T.LParen);
-              $.OPTION7({
-                GATE: () => $.LA(1).tokenType !== $.T.RParen,
-                DEF: () => {
-                  args = $.SUBRULE4($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
-                }
-              });
-              $.CONSUME($.T.RParen);
-            }
-          });
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          mixinKey = ident.image;
-        }
+      });
+      if ($.RECORDING_PHASE) {
+        return;
       }
-    ]);
+      mixinNameRef = makeNamespacedReference($, [ns.image, dot.image.slice(1)], 'mixin');
+    };
+
+    const parseEscapedNamespacedRulesetCall = () => {
+      const ns = $.OR4([
+        { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
+        { ALT: () => $.CONSUME($.T.PlainIdent) }
+      ]) as unknown as IToken;
+      $.CONSUME($.T.Unknown); // '.'
+      $.CONSUME($.T.Unknown); // '\'
+      const member = $.OR5([
+        { GATE: () => $.LA(1).tokenType === $.T.HashName, ALT: () => $.CONSUME($.T.HashName) },
+        { ALT: () => $.CONSUME($.T.DotName) }
+      ]) as unknown as IToken;
+      $.OPTION4({
+        GATE: () => $.LA(1).tokenType === $.T.LParen,
+        DEF: () => {
+          $.CONSUME($.T.LParen);
+          $.OPTION5({
+            GATE: () => $.LA(1).tokenType !== $.T.RParen,
+            DEF: () => {
+              args = $.SUBRULE3($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
+            }
+          });
+          $.CONSUME($.T.RParen);
+        }
+      });
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      mixinNameRef = makeNamespacedReference($, [ns.image, member.image.slice(1)], 'mixin-ruleset');
+    };
+
+    const parseInterpolatedMixinName = () => {
+      $.AT_LEAST_ONE({
+        DEF: () => {
+          $.OR2([
+            {
+              GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
+              ALT: () => {
+                $.CONSUME($.T.InterpolationStart);
+                $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+                $.CONSUME($.T.RCurly);
+              }
+            },
+            {
+              ALT: () => {
+                $.OR([
+                  { GATE: () => $.LA(1).tokenType === $.T.Ident, ALT: () => $.CONSUME($.T.Ident) },
+                  { ALT: () => $.CONSUME($.T.PlainIdent) }
+                ]);
+              }
+            }
+          ]);
+        }
+      });
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      throw new Error('SCSS does not allow interpolation in mixin names for @include.');
+    };
+
+    const parsePlainMixinCall = () => {
+      const ident = $.OR6([
+        { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
+        { ALT: () => $.CONSUME($.T.PlainIdent) }
+      ]) as unknown as IToken;
+      if (!$.RECORDING_PHASE && $.LA(1).tokenType === $.T.InterpolationStart) {
+        throw new Error('SCSS does not allow interpolation in mixin names for @include.');
+      }
+      $.OPTION6({
+        GATE: () => $.LA(1).tokenType === $.T.LParen,
+        DEF: () => {
+          $.CONSUME($.T.LParen);
+          $.OPTION7({
+            GATE: () => $.LA(1).tokenType !== $.T.RParen,
+            DEF: () => {
+              args = $.SUBRULE4($.functionCallArgs, { ARGS: [ctx] }) as unknown as List;
+            }
+          });
+          $.CONSUME($.T.RParen);
+        }
+      });
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      mixinKey = ident.image;
+    };
+
+    const isNamespacedDotCall =
+      ($.isTypeAt(1, $.T.Ident) || $.isTypeAt(1, $.T.PlainIdent))
+      && $.isTypeAt(2, $.T.DotName);
+    const isEscapedNamespacedRulesetCall =
+      ($.isTypeAt(1, $.T.Ident) || $.isTypeAt(1, $.T.PlainIdent))
+      && $.isTypeAt(2, $.T.Unknown)
+      && $.LA(2).image === '.'
+      && $.isTypeAt(3, $.T.Unknown)
+      && $.LA(3).image === '\\'
+      && ($.isTypeAt(4, $.T.HashName) || $.isTypeAt(4, $.T.DotName));
+    const isInterpolatedMixinName =
+      $.isTypeAt(1, $.T.InterpolationStart)
+      || (
+        ($.isTypeAt(1, $.T.Ident) || $.isTypeAt(1, $.T.PlainIdent))
+        && $.isTypeAt(2, $.T.InterpolationStart)
+      );
+
+    if ($.RECORDING_PHASE) {
+      $.OR([
+        { ALT: () => parseGenericFunctionStartCall() },
+        { ALT: () => parseNamespacedFunctionStartCall() },
+        { GATE: () => isNamespacedDotCall, ALT: () => parseNamespacedDotCall() },
+        { GATE: () => isEscapedNamespacedRulesetCall, ALT: () => parseEscapedNamespacedRulesetCall() },
+        { GATE: () => isInterpolatedMixinName, ALT: () => parseInterpolatedMixinName() },
+        { ALT: () => parsePlainMixinCall() }
+      ]);
+    } else if ($.isType($.T.GenericFunctionStart)) {
+      parseGenericFunctionStartCall();
+    } else if ($.isType($.T.NamespacedFunctionStart)) {
+      parseNamespacedFunctionStartCall();
+    } else if (isNamespacedDotCall) {
+      parseNamespacedDotCall();
+    } else if (isEscapedNamespacedRulesetCall) {
+      parseEscapedNamespacedRulesetCall();
+    } else if (isInterpolatedMixinName) {
+      parseInterpolatedMixinName();
+    } else {
+      parsePlainMixinCall();
+    }
 
     // Optional content block
     let contentRules: RulesType | undefined;

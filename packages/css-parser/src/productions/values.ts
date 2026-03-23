@@ -147,6 +147,10 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
   ];
 
   return (ctx: RuleContext = {}) => {
+    if (!$.RECORDING_PHASE && ($.LA(1).tokenType.name === 'ColorIntStart' || $.LA(1).tokenType.name === 'ColorIdentStart')) {
+      const token = $.CONSUME($.LA(1).tokenType as any);
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
     return $.OR(alt(ctx));
   };
 }
@@ -526,21 +530,43 @@ export function mathSum(this: C, T: TokenMap) {
   //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
   //   ;
   return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
+    if ($.RECORDING_PHASE) {
+      $.MANY2(() => $.CONSUME(T.WS));
+      $.SUBRULE($.mathProduct, { ARGS: [ctx] });
+      $.MANY(() => {
+        $.MANY3(() => $.CONSUME2(T.WS));
+        $.OR(opAlt);
+        $.MANY4(() => $.CONSUME3(T.WS));
+        $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
+      });
+      $.MANY5(() => $.CONSUME4(T.WS));
+      return;
+    }
+
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME(T.WS);
+    }
 
     let left: Node = $.SUBRULE($.mathProduct, { ARGS: [ctx] });
 
-    $.MANY(() => {
-      let op = $.OR(opAlt);
-      let right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
-
-      if (!RECORDING_PHASE) {
-        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    while (true) {
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME2(T.WS);
       }
-    });
-    if (RECORDING_PHASE) {
-      return;
+      const tt = $.LA(1).tokenType;
+      if (tt !== T.Plus && tt !== T.Minus) {
+        break;
+      }
+      const op = $.CONSUME(tt as any);
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME3(T.WS);
+      }
+      const right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
+      left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    }
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME4(T.WS);
     }
     left._location = $.endRule();
     return left;
@@ -559,21 +585,43 @@ export function mathProduct(this: C, T: TokenMap) {
   ];
 
   return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
+    if ($.RECORDING_PHASE) {
+      $.MANY2(() => $.CONSUME(T.WS));
+      $.SUBRULE($.mathValue, { ARGS: [ctx] });
+      $.MANY(() => {
+        $.MANY3(() => $.CONSUME2(T.WS));
+        $.OR(opAlt);
+        $.MANY4(() => $.CONSUME3(T.WS));
+        $.SUBRULE2($.mathValue, { ARGS: [ctx] });
+      });
+      $.MANY5(() => $.CONSUME4(T.WS));
+      return;
+    }
+
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME(T.WS);
+    }
 
     let left: Node = $.SUBRULE($.mathValue, { ARGS: [ctx] });
 
-    $.MANY(() => {
-      let op = $.OR(opAlt);
-      let right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
-
-      if (!RECORDING_PHASE) {
-        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    while (true) {
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME2(T.WS);
       }
-    });
-    if (RECORDING_PHASE) {
-      return;
+      const tt = $.LA(1).tokenType;
+      if (tt !== T.Star && tt !== T.Divide) {
+        break;
+      }
+      const op = $.CONSUME(tt as any);
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME3(T.WS);
+      }
+      let right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
+      left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    }
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME4(T.WS);
     }
     left._location = $.endRule();
     return left;
@@ -622,7 +670,9 @@ export function mathParen(this: C, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     $.CONSUME(T.LParen);
+    $.MANY(() => $.CONSUME(T.WS));
     let node = $.SUBRULE($.mathSum, { ARGS: [ctx] });
+    $.MANY2(() => $.CONSUME2(T.WS));
     $.CONSUME(T.RParen);
     if ($.RECORDING_PHASE) {
       return;
@@ -744,7 +794,9 @@ export function calcFunction(this: C, T: TokenMap) {
     $.startRule();
 
     $.CONSUME(T.Calc);
+    $.MANY(() => $.CONSUME(T.WS));
     let args = $.SUBRULE($.mathSum, { ARGS: [ctx] });
+    $.MANY2(() => $.CONSUME2(T.WS));
     $.CONSUME2(T.RParen);
     if ($.RECORDING_PHASE) {
       return;

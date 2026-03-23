@@ -1,11 +1,11 @@
 import type { JessRuleContext as RuleContext, TokenMap } from '../jessRecursiveParser.js';
 import type { IToken } from '@jesscss/parser';
+import { productions as cssProductions } from '@jesscss/css-parser';
 import { scssValueProduction } from '@jesscss/scss-parser';
 import {
   Call,
   Expression,
   List,
-  Operation,
   Reference,
   type Node
 } from '@jesscss/core';
@@ -14,6 +14,8 @@ import {
 type P = any;
 
 const scssValue = scssValueProduction;
+const cssMathProduct = cssProductions.mathProduct;
+const cssMathSum = cssProductions.mathSum;
 
 /**
  * `$(expr)` → Expression node (serializes as `$(...)`)
@@ -37,59 +39,11 @@ export function jessParenExpression(this: P, T: TokenMap) {
 }
 
 export function mathProduct(this: P, T: TokenMap) {
-  const $ = this;
-
-  return (ctx: RuleContext = {}) => {
-    $.startRule();
-
-    let left = $.SUBRULE($.mathValue, { ARGS: [ctx] }) as unknown as Node;
-
-    $.MANY({
-      GATE: () => $.LA(1).tokenType === $.T.Star || $.LA(1).tokenType === $.T.Divide,
-      DEF: () => {
-        const op = $.CONSUME($.LA(1).tokenType as any) as unknown as IToken;
-        const right = $.SUBRULE2($.mathValue, { ARGS: [ctx] }) as unknown as Node;
-
-        if (!$.RECORDING_PHASE) {
-          left = new Operation([left, op.image as any, right], { inCalc: true }, undefined, $.context);
-        }
-      }
-    });
-
-    if ($.RECORDING_PHASE) {
-      return;
-    }
-    left._location = $.endRule();
-    return left;
-  };
+  return cssMathProduct.call(this, T);
 }
 
 export function mathSum(this: P, T: TokenMap) {
-  const $ = this;
-
-  return (ctx: RuleContext = {}) => {
-    $.startRule();
-
-    let left = $.SUBRULE($.mathProduct, { ARGS: [ctx] }) as unknown as Node;
-
-    $.MANY({
-      GATE: () => $.LA(1).tokenType === $.T.Plus || $.LA(1).tokenType === $.T.Minus,
-      DEF: () => {
-        const op = $.CONSUME($.LA(1).tokenType as any) as unknown as IToken;
-        const right = $.SUBRULE2($.mathProduct, { ARGS: [ctx] }) as unknown as Node;
-
-        if (!$.RECORDING_PHASE) {
-          left = new Operation([left, op.image as any, right], { inCalc: true }, undefined, $.context);
-        }
-      }
-    });
-
-    if ($.RECORDING_PHASE) {
-      return;
-    }
-    left._location = $.endRule();
-    return left;
-  };
+  return cssMathSum.call(this, T);
 }
 
 export function jessCallArgs(this: P, T: TokenMap) {
@@ -286,6 +240,14 @@ export function value(this: P, T: TokenMap) {
     if ($.LA(1).tokenType === $.T.DollarVariable) {
       const token = $.CONSUME($.T.DollarVariable) as unknown as IToken;
       return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
+
+    if (
+      $.LA(1).tokenType === $.T.UrlStart
+      || $.LA(1).tokenType === $.T.Var
+      || $.LA(1).tokenType === $.T.Calc
+    ) {
+      return $.SUBRULE($.knownFunctions, { ARGS: [ctx] });
     }
 
     if ($.isType($.T.FunctionStart)) {
