@@ -4,7 +4,7 @@ import { F_AMPERSAND, type Node } from '../node.js';
 import type { Context as EvalContext } from '../../context.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { isDisjoint } from './bitset.js';
+import { isDisjoint, type BitSet } from './bitset.js';
 import { type PseudoSelector } from '../selector-pseudo.js';
 import { type CompoundSelector } from '../selector-compound.js';
 import { type ComplexSelector } from '../selector-complex.js';
@@ -134,6 +134,34 @@ const selectorMatchPlanCache = new WeakMap<Selector, {
 
 function selectorValueOf(node: Node | Selector, context?: EvalContext): string {
   return String((node as unknown as { valueOf(context?: EvalContext): string }).valueOf(context));
+}
+
+function bitSetValues(bitSet: BitSet<string> | undefined): string[] | undefined {
+  return bitSet?._library?.valuesOf(bitSet);
+}
+
+function safeIsDisjoint(
+  left: BitSet<string> | undefined,
+  right: BitSet<string> | undefined
+): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  if (left._library && right._library && left._library === right._library) {
+    return isDisjoint(left, right);
+  }
+  const leftValues = bitSetValues(left);
+  const rightValues = bitSetValues(right);
+  if (!leftValues || !rightValues) {
+    return false;
+  }
+  const rightSet = new Set(rightValues);
+  for (const value of leftValues) {
+    if (rightSet.has(value)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -362,13 +390,13 @@ function buildRouteMatchPlan(selector: Selector, parent?: Selector, context?: Ev
       kind: 'route',
       selector,
       hasAmbiguousBranchTail: false,
-        units: [{
-          kind: 'combinator',
-          index: 0,
-          node: selector,
-          value: selectorValueOf(selector, context)
-        }]
-      };
+      units: [{
+        kind: 'combinator',
+        index: 0,
+        node: selector,
+        value: selectorValueOf(selector, context)
+      }]
+    };
   }
 
   const group = buildMatchGroup(selector, parent, context);
@@ -1481,20 +1509,20 @@ function selectorMatchUncached(
     && target.keySetLibrary
   ) {
     if (evalContext) {
-      if (isDisjoint(find.getKeySet(evalContext), target.getKeySet(evalContext))) {
+      if (safeIsDisjoint(find.getKeySet(evalContext), target.getKeySet(evalContext))) {
         return emptySelectorMatchState();
       }
     } else {
       if (
         !find.hasFlag(F_AMPERSAND)
         && target.hasFlag(F_AMPERSAND)
-        && isDisjoint(find.visibleKeySet, target.visibleKeySet)
+        && safeIsDisjoint(find.visibleKeySet, target.visibleKeySet)
       ) {
         return emptySelectorMatchState();
       }
       if (
-        !isDisjoint(find.requiredKeySet, find.keySet)
-        && isDisjoint(find.requiredKeySet, target.keySet)
+        !safeIsDisjoint(find.requiredKeySet, find.keySet)
+        && safeIsDisjoint(find.requiredKeySet, target.keySet)
       ) {
         return emptySelectorMatchState();
       }

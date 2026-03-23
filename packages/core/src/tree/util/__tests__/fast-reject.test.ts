@@ -164,6 +164,49 @@ describe('Fast-reject in selectorMatch', () => {
     expect(findList.compare(target, context)).toBe(0);
   });
 
+  test('evalContext-aware compare does not throw when find and target use different selector-bit libraries', () => {
+    const contextA = new Context();
+    contextA.session = new EvalSession();
+    const contextB = new Context();
+    contextB.session = new EvalSession();
+
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.selector.keySetLibrary = contextA.selectorBits;
+
+    const patched = el('.beta');
+    patched.keySetLibrary = contextA.selectorBits;
+
+    const find = sel([
+      amp({ selectorContainer: parent as any }),
+      co('>'),
+      el('.tail')
+    ]);
+    find.keySetLibrary = contextB.selectorBits;
+    for (const child of find.value as any[]) {
+      if ('keySetLibrary' in child) {
+        child.keySetLibrary = contextB.selectorBits;
+      }
+    }
+
+    const target = sel([el('.beta'), co('>'), el('.tail')]);
+    target.keySetLibrary = contextA.selectorBits;
+    for (const child of target.value as any[]) {
+      if ('keySetLibrary' in child) {
+        child.keySetLibrary = contextA.selectorBits;
+      }
+    }
+
+    sessionPatchField(parent, 'selector', patched, contextA);
+
+    expect(() => selectorMatch(find, target, undefined, contextA)).not.toThrow();
+    expect(selectorMatch(find, target, undefined, contextA).fullMatch).toBe(true);
+    expect(() => find.compare(target, contextA)).not.toThrow();
+    expect(find.compare(target, contextA)).toBe(0);
+  });
+
   test('rejects completely disjoint simple selectors', async () => {
     let find = el('.a');
     let target = el('.b');
