@@ -2774,14 +2774,30 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Call-time resolution is handled by the current context.rulesContext
       thisContext.rulesContext = outerRules ?? rules;
       const prevGuardSession = thisContext.session;
+      const guardScopeChildren = outerRules
+        ? [...sessionGetChildren(outerRules, thisContext)]
+        : undefined;
       try {
         if (canonicalGuard) {
+          const guardParent = getCandidateParent(candidate as unknown as Node);
+          const seedGuardScopeSession = (guardNode: Condition | Bool | undefined): void => {
+            outerRules ??= Rules.create([]);
+            sessionSetParent(outerRules, guardParent, thisContext);
+            const activeChildren = guardScopeChildren ?? outerRules.value;
+            if (guardScopeChildren) {
+              sessionSetChildren(outerRules, activeChildren, thisContext, { markDirty: false });
+            }
+            for (const child of activeChildren) {
+              outerRules.registerNode(child, undefined, thisContext);
+            }
+            if (guardNode) {
+              outerRules.adopt(guardNode, thisContext);
+            }
+          };
           // Create a fresh session so that adopt() and eval() mutations (parent, evaluated,
           // preEvaluated) go to the session overlay and never corrupt canonical guard state.
           thisContext.session = new EvalSession({ resetEvalState: true });
-          outerRules ??= Rules.create([]);
-          outerRules.adopt(canonicalGuard, thisContext);
-          getCandidateParent(candidate as unknown as Node).adopt(outerRules);
+          seedGuardScopeSession(canonicalGuard);
           /** Allow lookup on the inherited rules */
           passes = false;
           let guardPasses = false;
@@ -2797,7 +2813,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               const prevSession = thisContext.session;
               thisContext.session = new EvalSession({ resetEvalState: true });
               try {
-                outerRules!.adopt(guardNode, thisContext);
+                seedGuardScopeSession(guardNode);
                 thisContext.isDefault = isDefaultValue;
                 const probeResult = await guardNode.eval(thisContext);
                 return probeResult instanceof Bool && probeResult.value === true;

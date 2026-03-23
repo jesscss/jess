@@ -40,14 +40,14 @@ Do not use this as the full node-status matrix or roadmap document:
 
 ### Immediate work
 1. Follow the immediate queue in `node-session-status.md`.
-2. The next live owner is the mixin guard wrapper / lookup path in `rules.ts` / `reference.ts`.
+2. The next live owner is lower `Rules` output shaping on top of the landed shallow-wrapper/materialization helpers in `rules.ts` / `node-base.ts`.
 3. Do not treat matcher internals or extend matching as the current blocker:
    - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
    - `Condition` now adopts `compare(context)` for selector guards on the active path
    - extend matching/rewrite now threads eval `Context` through the active helper pipeline, and Extend looks effectively complete for the fundamentals pass
 4. The remaining hard owners are wrapper/output shaping:
-   - the live mixin guard wrapper / lookup failure (`'color' is not defined`)
-   - any deeper returned-output shaping that survives after the guard path is fixed
+   - deeper returned-output shaping in `Rules`
+   - any remaining shallow-wrapper/materialization contract gaps below `Rules`
    - follow-up use of the new generic compare/context channel where a real consumer benefits
 
 ### Stage status

@@ -470,6 +470,50 @@ describe('Mixin', () => {
       `);
     });
 
+    it('keeps guard wrapper parent writes out of canonical state while guard params still resolve', async () => {
+      context.createSession();
+
+      const guardNode = condition([
+        expr(ref({ key: 'color' }, { type: 'variable' })),
+        '=',
+        any('red')
+      ]);
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        guard: guardNode,
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+      const mixinRoot = rules([mixinDef]);
+      context.root = mixinRoot;
+
+      const captured: Rules[] = [];
+      const originalCreate = Rules.create.bind(Rules);
+      const createSpy = vi.spyOn(Rules, 'create').mockImplementation((...args: Parameters<typeof Rules.create>) => {
+        const created = originalCreate(...args);
+        captured.push(created);
+        return created;
+      });
+      try {
+        const fn = getFunctionFromMixins(mixinDef);
+        const result = await fn.call(context, any('red'));
+        const outerRules = captured.at(-1) as Rules;
+
+        expect(sessionGetParent(outerRules, context)).toBe(mixinRoot);
+        expect(outerRules.parent).toBeUndefined();
+        expect(guardNode.parent).not.toBe(outerRules);
+        expect(String(result)).toBeString(`
+          color: red;
+        `);
+      } finally {
+        createSpy.mockRestore();
+      }
+    });
+
     it('blocks a mixin candidate when its failed guard ancestor exists only in the session parent chain', async () => {
       context.createSession();
 
