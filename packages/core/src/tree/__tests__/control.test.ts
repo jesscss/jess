@@ -319,6 +319,28 @@ describe('Control Nodes', () => {
     expect(String(templateDecl.options.normalizedFromAssign ?? '')).toBe('');
   });
 
+  it('characterizes lookup-safe $for wrappers as still seeing downstream canonical child reparenting during eval', async () => {
+    const context = new Context();
+    context.createSession();
+
+    const loopRules = rules([
+      decl(
+        { name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) },
+        { normalizedFromAssign: AssignmentType.Add }
+      )
+    ]);
+    const templateDecl = loopRules.at(0) as ReturnType<typeof decl>;
+    const wrapper = loopRules.cloneLookupSafeShallowWrapper(context);
+    wrapper.inherit(loopRules);
+    wrapper.unshift(context, vardecl({ name: 'value', value: new Any('a') }));
+
+    const evald = await wrapper.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('padding: a;');
+    expect(templateDecl.parent).not.toBe(loopRules);
+    expect(templateDecl.toTrimmedString()).toContain('padding: $value');
+  });
+
   it('characterizes loop-body rulesVisibility as surviving the $for clone boundary while nested lookup still resolves', async () => {
     const context = new Context();
     context.createSession();

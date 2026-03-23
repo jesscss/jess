@@ -262,6 +262,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
+   * Scope-isolation callers need copied Rules options/visibility while keeping
+   * shared top-level children canonically parented. Active lookups should still
+   * resolve through the wrapper during the current session.
+   */
+  cloneVisibilityIsolationWrapper(ctx: Context): this {
+    return this.cloneLookupSafeShallowWrapper(ctx);
+  }
+
+  /**
    * Lazily create registries for types as needed.
    */
   register(

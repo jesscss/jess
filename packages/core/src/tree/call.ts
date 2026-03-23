@@ -230,7 +230,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private _materializeFunctionArgs(args: List<Node>, context: Context): List<Node> {
     return list(
-      args.value.map(arg => {
+      args.value.map((arg) => {
         const cloned = arg.clone(true, undefined, context);
         cloned.frozen = true;
         return cloned;
@@ -328,9 +328,7 @@ export class Call extends Node<CallValue, CallOptions> {
     };
     const materializeDownstreamResult = <T extends Node>(node: T): T => {
       if (context.session && node === node.sourceNode) {
-        const clone = node.clone(false, undefined, context) as T;
-        clone.inherit(node);
-        return clone;
+        return node.materializeEvaluatedCopy(context) as T;
       }
       return node;
     };

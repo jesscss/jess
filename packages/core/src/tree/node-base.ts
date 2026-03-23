@@ -537,6 +537,50 @@ export abstract class Node<
   }
 
   /**
+   * Create a detached shallow wrapper, then materialize its immediate children
+   * from the active session view.
+   *
+   * This fills the gap between:
+   * - `cloneDetachedShallowWrapper()`, which preserves child identity but keeps
+   *   session-backed child state on the canonical child objects, and
+   * - `materializeEvaluatedCopy()`, which materializes the whole node tree.
+   *
+   * The wrapper metadata remains local to the new node, canonical child parent
+   * links stay intact, and the returned wrapper owns persistent child nodes that
+   * reflect the current session view without requiring an active session later.
+   */
+  cloneDetachedMaterializedWrapper(ctx: Context): this {
+    const wrapper = this.cloneDetachedShallowWrapper(ctx);
+    const ck = (this.constructor as typeof Node).childKeys;
+
+    if (!Array.isArray(ck)) {
+      return wrapper;
+    }
+
+    const materializeValue = (value: unknown): unknown => {
+      if (value instanceof Node) {
+        return value.materializeEvaluatedCopy(ctx);
+      }
+      if (isArray(value)) {
+        return value.map(item => materializeValue(item));
+      }
+      return value;
+    };
+
+    if (ck.length === 1) {
+      const key = ck[0]!;
+      wrapper.setData(materializeValue((wrapper as any)[key]) as NodeValue);
+      return wrapper;
+    }
+
+    for (const key of ck) {
+      wrapper.setData(key!, materializeValue((wrapper as any)[key!]));
+    }
+
+    return wrapper;
+  }
+
+  /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also

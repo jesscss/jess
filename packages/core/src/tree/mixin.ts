@@ -265,7 +265,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     const name = node._getName(context);
     let rules = node._getRulesContainer(context);
     if (context.session) {
-      const isolatedRules = rules.clone(false, undefined, context);
+      const isolatedRules = rules.cloneDetachedUnlockWrapper(context);
       isolatedRules.options = {
         ...isolatedRules.options,
         rulesVisibility: { ...(isolatedRules.options.rulesVisibility ?? {}) }

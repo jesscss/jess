@@ -360,12 +360,16 @@ describe('Mixin', () => {
           decl({ name: 'color', value: any('red') })
         ])
       });
+      const canonicalDecl = mixinDef.rules.at(0)!;
 
       const canonicalVisibility = { ...mixinDef.rules.options.rulesVisibility };
       const preEvald = await mixinDef.preEval(localContext);
 
       expect(preEvald).not.toBe(mixinDef);
       expect(preEvald.rules).not.toBe(mixinDef.rules);
+      expect(preEvald.rules.at(0)).toBe(canonicalDecl);
+      expect(canonicalDecl.parent).toBe(mixinDef.rules);
+      expect(sessionGetParent(canonicalDecl, localContext)).toBe(preEvald.rules);
       expect(preEvald.rules.options.rulesVisibility.Mixin).toBe('private');
       expect(preEvald.rules.options.rulesVisibility.VarDeclaration).toBe('private');
       expect(mixinDef.rules.options.rulesVisibility).toEqual(canonicalVisibility);

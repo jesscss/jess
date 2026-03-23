@@ -237,6 +237,34 @@ describe('Call', () => {
     expect(returnValue.sourceParent).toBeUndefined();
   });
 
+  it('materializes stylesheet-function rules results in a session without reusing canonical child identity', async () => {
+    context.session = new EvalSession();
+    const childDecl = decl({ name: 'color', value: any('red') });
+    const returnValue = rules([childDecl]);
+    const functionNode = fn({
+      name: any('make'),
+      body: rules([
+        decl({ name: 'return', value: returnValue })
+      ])
+    });
+    const node = call({
+      name: functionNode,
+      args: list([])
+    });
+    node.pre = 2;
+    node.post = 1;
+
+    const result = await node.eval(context);
+
+    expect(result.toTrimmedString({ context })).toContain('color: red;');
+    expect(result).not.toBe(returnValue);
+    expect(result.value[0]).not.toBe(childDecl);
+    expect(childDecl.parent).toBe(returnValue);
+    expect(result.pre).toBe(2);
+    expect(result.post).toBe(1);
+    expect(result.sourceParent).toBe(node);
+  });
+
   it('materializes nested-call results in a session before applying outer call provenance', async () => {
     context.session = new EvalSession();
     const returnValue = any('ok');

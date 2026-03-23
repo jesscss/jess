@@ -48,6 +48,8 @@ Do not use this as the full node-status matrix or roadmap document:
 4. The remaining hard owners are wrapper/output shaping:
    - shallow `Rules.clone(false)` reparents shared top-level children too early
    - detached-ruleset unlock now has its own explicit `cloneDetachedUnlockWrapper(context)` seam, so future work no longer needs to thread through raw `clone(false)` at that caller
+   - visibility-isolation callers now also have `cloneVisibilityIsolationWrapper(context)`
+   - detached wrapper plus immediate-child materialization now has `cloneDetachedMaterializedWrapper(context)`
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
    - any remaining downstream consumer paths that still fail to adopt the landed wrapper/materialization helpers consistently
    - follow-up use of the new generic compare/context channel where a real consumer benefits
@@ -55,6 +57,9 @@ Do not use this as the full node-status matrix or roadmap document:
    - do not materialize a fresh tree just to make parentage, lookup, or mutation work during eval
    - only materialize at an explicit downstream boundary where Jess must hand off a standalone evaluated object graph
    - treat any current internal `materializeEvaluatedCopy(...)` use as transitional debt to reduce, not as the target architecture
+6. `control.ts` is no longer a live owner:
+   - `$for` prior-scope reuse is already on `cloneLookupSafeShallowWrapper(ctx)`
+   - the latest characterization proves the remaining parent-integrity leak happens downstream during `wrapper.eval(context)`
 
 ### Stage status
 - Stage 17: complete and committed

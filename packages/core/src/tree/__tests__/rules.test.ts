@@ -29,7 +29,7 @@ import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionGetSourceParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetChildren, sessionSetDependency, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
+import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionGetSourceParent, sessionMarkScopeDirty, sessionPatchField, sessionReplaceNode, sessionSetChildren, sessionSetDependency, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -339,6 +339,79 @@ describe('Rules', () => {
         expect(sessionGetParent(wrappedRuleset, ctx)).toBe(wrapper);
         expect(wrappedRuleset.rules).toBe(nestedBody);
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+      });
+
+      it('cloneVisibilityIsolationWrapper isolates rulesVisibility writes while keeping shared top-level children canonically parented', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+        node.options.rulesVisibility.VarDeclaration = 'optional';
+
+        const wrapper = node.cloneVisibilityIsolationWrapper(ctx);
+        const wrappedRuleset = wrapper.at(0) as typeof nested;
+
+        wrapper.options.rulesVisibility.VarDeclaration = 'private';
+
+        expect(wrapper.options).not.toBe(node.options);
+        expect(wrapper.options.rulesVisibility).not.toBe(node.options.rulesVisibility);
+        expect(wrapper.options.rulesVisibility.VarDeclaration).toBe('private');
+        expect(node.options.rulesVisibility.VarDeclaration).toBe('optional');
+        expect(wrappedRuleset.parent).toBe(node);
+        expect(sessionGetParent(wrappedRuleset, ctx)).toBe(wrapper);
+        expect(wrappedRuleset.rules).toBe(nestedBody);
+        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+      });
+
+      it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active session view', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const nested = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        });
+        const sibling = ruleset({
+          selector: sel([el('.sibling')]) as any,
+          rules: rules([
+            decl({ name: 'background', value: any('white') })
+          ])
+        });
+        const node = rules([nested, sibling]);
+        const patchedSelector = sel([el('.patched')]) as any;
+
+        sessionPatchField(nested, 'selector', patchedSelector, ctx);
+
+        const wrapper = node.cloneDetachedMaterializedWrapper(ctx);
+        wrapper.options.local = true;
+        const wrappedRuleset = wrapper.at(0) as typeof nested;
+        const wrappedSibling = wrapper.at(1) as typeof sibling;
+
+        expect(wrapper).not.toBe(node);
+        expect(wrapper.options.local).toBe(true);
+        expect(node.options.local).toBeUndefined();
+
+        expect(wrappedRuleset).not.toBe(nested);
+        expect(wrappedRuleset.selector.valueOf()).toBe('.patched');
+        expect(wrappedRuleset.parent).toBe(wrapper);
+        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+
+        expect(wrappedSibling).not.toBe(sibling);
+        expect(wrappedSibling.selector.valueOf()).toBe('.sibling');
+        expect(wrappedSibling.parent).toBe(wrapper);
+
+        expect(nested.selector.valueOf()).toBe('.item');
+        expect(nested.parent).toBe(node);
+        expect(sibling.parent).toBe(node);
       });
 
       it('materializeEvaluatedCopy preserves source-root provenance instead of an intermediate derived clone', () => {
