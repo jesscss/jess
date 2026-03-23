@@ -1481,6 +1481,34 @@ describe('Style import', () => {
       expect(importedVar.parent).toBe(sourceRules);
     });
 
+    it('deduped imports do not replace cached evaluated top-level child slots', async () => {
+      const libraryPath = resolve(process.cwd(), 'dedupe-cached-slot.jess');
+      const cachedRuleset = ruleset({
+        selector: sellist([sel([el('.cached-slot')])]),
+        rules: rules([decl({ name: any('color'), value: any('red') })])
+      });
+      const cachedEvaldRules = rules([cachedRuleset]);
+      context.sourceTrees.set(libraryPath, rules([cachedRuleset]));
+      context.evaldTrees.set(libraryPath, cachedEvaldRules);
+      const originalCachedParent = cachedRuleset.parent;
+
+      expect(cachedEvaldRules.at(0)).toBe(cachedRuleset);
+      expect(originalCachedParent).toBeDefined();
+
+      const node = rules([
+        style({ path: quoted(any('dedupe-cached-slot.jess')) }, { type: 'import' })
+      ]);
+
+      const evald = await node.eval(context);
+      const dedupedImport = evald.at(0) as Rules;
+      const dedupedRuleset = dedupedImport.at(0) as typeof cachedRuleset;
+
+      expect(dedupedRuleset).not.toBe(cachedRuleset);
+      expect(cachedEvaldRules.at(0)).toBe(cachedRuleset);
+      expect(cachedRuleset.parent).toBe(originalCachedParent);
+      expect(dedupedRuleset.parent).toBe(dedupedImport);
+    });
+
     it('deduped imports must materialize from evaluated top-level children, not sourceNode copies', async () => {
       const libraryPath = resolve(process.cwd(), 'dedupe-evaluated-state.jess');
       const sourceVar = vardecl({
@@ -1587,7 +1615,7 @@ describe('Style import', () => {
       expect(evaluatedDecl.parent).toBe(evaluatedRuleset.rules);
     });
 
-    it('deduped import wrappers still mutate cached evaluated parent pointers even with detached wrapper finalization', async () => {
+    it('deduped import wrappers keep cached evaluated parent pointers stable with detached wrapper finalization', async () => {
       const libraryPath = resolve(process.cwd(), 'dedupe-ruleset-identity.jess');
       const sourceRuleset = ruleset({
         selector: sellist([sel([el('.dedupe-identity')])]),
@@ -1619,7 +1647,7 @@ describe('Style import', () => {
 
       expect(dedupedRuleset).not.toBe(cachedRuleset);
       expect(dedupedRuleset.parent).toBe(dedupedImport);
-      expect(cachedRuleset.parent).not.toBe(originalCachedParent);
+      expect(cachedRuleset.parent).toBe(originalCachedParent);
       expect(`${dedupedRuleset}`).toContain('color: red');
     });
 

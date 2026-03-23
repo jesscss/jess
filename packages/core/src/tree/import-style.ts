@@ -318,6 +318,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       }
     }
     if (type === 'import' && importOptions!._dedupe === true) {
+      // Detach the shallow wrapper from the cached child array before swapping in
+      // per-import materialized children. Otherwise `setData(i, ...)` mutates the
+      // cached evaluated import root's top-level child slots.
+      out.setData([...out.value]);
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
         const materialized = child.materializeEvaluatedCopy() as Node;
@@ -404,6 +408,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const finalize = async (finalPath: string) => {
       const previousTreeContext = context.treeContext;
       let configuredWithCanonicalParents: Map<Node, Node | undefined> | undefined;
+      let dedupedCanonicalParents: Map<Node, Node | undefined> | undefined;
+      let dedupedCanonicalChildren: Node[] | undefined;
+      let dedupedCachedRules: Rules | undefined;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
       const inheritedReferenceMode = context.inReferenceImportScope;
@@ -479,6 +486,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (type === 'import' && importOptions!.once !== false && !importOptions!.multiple && !inMultipleImportBranch && evaldRules) {
           rules = evaldRules;
           importOptions!._dedupe = true;
+          dedupedCachedRules = rules;
+          dedupedCanonicalChildren = [...rules.value];
+          dedupedCanonicalParents = new Map(
+            rules.value.map(child => [child, child.parent] as const)
+          );
         }
 
         // Declare here so the finally block can restore it regardless of which branch ran.
@@ -742,6 +754,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
         return finalRules;
       } finally {
+        if (dedupedCachedRules && dedupedCanonicalChildren) {
+          dedupedCachedRules.setData([...dedupedCanonicalChildren]);
+        }
+        if (dedupedCanonicalParents) {
+          for (const [canonicalNode, originalParent] of dedupedCanonicalParents) {
+            (canonicalNode as unknown as { parent?: Node }).parent = originalParent;
+          }
+        }
         context.treeContext = previousTreeContext;
         if (pushedImportScope) {
           context.popImportScope();
