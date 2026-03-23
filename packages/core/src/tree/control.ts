@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalSession } from '../eval-session.js';
-import { sessionGetChildren, sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { sessionGetChildren, sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -353,10 +353,10 @@ export class For extends Node<ForValue> {
             const priorScope = new Rules(
               accumulatedNodes
                 .filter(shouldReuseInPriorScope)
-                .map(n => n.cloneLookupSafeShallowWrapper(context))
+                .map(n => n.materializeEvaluatedCopy())
             );
             priorScope.inherit(loopTemplate);
-            priorScope.adopt(loopRules);
+            sessionSetParent(loopRules, priorScope, context);
           }
           const resolvedValue = await value.eval(context);
           let resolvedKey: Node;

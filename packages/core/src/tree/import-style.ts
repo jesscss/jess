@@ -312,7 +312,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (materializeConfiguredComposeChildren) {
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
-        const materialized = child.materializeEvaluatedCopy();
+        const materialized = child.materializeEvaluatedCopy(context);
         out.setData(i, materialized);
         out.value[i]!.index = i;
       }
@@ -324,7 +324,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       out.setData([...out.value]);
       for (let i = 0; i < out.value.length; i++) {
         const child = out.value[i]!;
-        const materialized = child.materializeEvaluatedCopy() as Node;
+        const materialized = child.materializeEvaluatedCopy(context) as Node;
         out.setData(i, materialized);
       }
     }

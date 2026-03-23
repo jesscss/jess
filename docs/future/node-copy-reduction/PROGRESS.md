@@ -24,7 +24,7 @@ Those live in [node-session-status.md](./node-session-status.md).
 - The live guarded-mixin blocker is fixed again on this head, and the focused `mixin` / `rules` / `call` slice is green.
 - `evaluateCandidateOutput(...)` now shapes wrapper output through a cloned eval scope, and `Node.materializeEvaluatedCopy(context)` can now materialize the active session view instead of only canonical state.
 - The remaining `Rules`-local work is now the shallow `Rules.clone(false)` wrapper contract, not guard lookup.
-- `control.ts` still has one live follow-up around `$for` prior-scope second-iteration reuse/materialization, but it is no longer the top owner.
+- `ImportStyle` and `Ruleset` now adopt context-aware materialization on their returned-tree consumer paths, and `$for` prior-scope reuse now feeds materialized copies back into the next iteration without mutating emitted output.
 - `control.ts` prior-scope reuse is now fixed on top of `cloneLookupSafeShallowWrapper(ctx)`, and the focused control suite is green.
 - `Node.compare(context)` now forwards contextual `valueOf`, `Color` has semantic compare behavior, and `Sequence.compare(context)` now preserves the context channel for nested comparisons.
 

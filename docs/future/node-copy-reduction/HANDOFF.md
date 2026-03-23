@@ -48,7 +48,7 @@ Do not use this as the full node-status matrix or roadmap document:
 4. The remaining hard owners are wrapper/output shaping:
    - shallow `Rules.clone(false)` reparents shared top-level children too early
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
-   - the `$for` prior-scope second-iteration reuse/materialization follow-up in `control.ts`
+   - any remaining downstream consumer paths that still fail to adopt the landed materialization helpers consistently
    - follow-up use of the new generic compare/context channel where a real consumer benefits
 
 ### Stage status

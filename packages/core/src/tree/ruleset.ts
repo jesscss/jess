@@ -952,10 +952,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!deep && ctx?.session && this !== this.sourceNode) {
       const selector = cloned._getSelector(ctx);
       if (selector instanceof Node) {
-        cloned.setData('selector', selector.materializeEvaluatedCopy() as Selector | Nil);
+        cloned.setData('selector', selector.materializeEvaluatedCopy(ctx) as Selector | Nil);
       }
       const rules = cloned._getRulesContainer(ctx);
-      cloned.setData('rules', rules.materializeEvaluatedCopy());
+      cloned.setData('rules', rules.materializeEvaluatedCopy(ctx));
     }
     return cloned;
   }
