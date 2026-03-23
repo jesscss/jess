@@ -153,6 +153,24 @@ export class Color extends Node<ColorData, ColorOptions> {
     return newNode;
   }
 
+  override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
+    if (!(b instanceof Color)) {
+      return super.compare(b, context);
+    }
+
+    const aRgba = [...this._rgb, this._alpha] as const;
+    const bRgba = [...b._rgb, b._alpha] as const;
+
+    for (let i = 0; i < aRgba.length; i++) {
+      const cmp = Node.numericCompare(aRgba[i]!, bRgba[i]!);
+      if (cmp !== 0) {
+        return cmp;
+      }
+    }
+
+    return 0;
+  }
+
   private normalizeChannelValue(value: unknown): ChannelValue {
     if (typeof value === 'number') {
       return value;

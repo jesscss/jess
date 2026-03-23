@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
 import { Context } from '../../context.js';
+import { Node } from '../node.js';
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
@@ -307,6 +308,59 @@ describe('Color Node', () => {
       });
 
       expect(color.toTrimmedString()).toBe('rgb(255, 0, 0)');
+    });
+  });
+
+  describe('compare', () => {
+    it('compares semantically equal colors across formats as equal', () => {
+      const left = new Color('#ff0000');
+      const right = new Color({
+        format: ColorFormat.HSL,
+        hsl: [0, 1, 0.5],
+        alpha: 1
+      });
+
+      expect(left.compare(right, new Context())).toBe(0);
+    });
+
+    it('compares colors by normalized rgba channels instead of node object identity', () => {
+      const left = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+      const right = new Color({
+        format: ColorFormat.RGB,
+        rgb: [0, 0, 255],
+        alpha: 1
+      });
+
+      expect(left.compare(right, new Context())).toBe(1);
+      expect(right.compare(left, new Context())).toBe(-1);
+    });
+
+    it('forwards compare(context) through contextual valueOf on the generic node path', () => {
+      class ContextualNode extends Node<string> {
+        static override childKeys = null as null;
+        raw: string;
+
+        constructor(value: string) {
+          super(value);
+          this.raw = value;
+        }
+
+        override valueOf(context?: Context) {
+          return context?.id ?? this.raw;
+        }
+      }
+
+      const left = new ContextualNode('left');
+      const right = new ContextualNode('right');
+      const context = new Context();
+      context.id = 'shared';
+
+      expect(left.compare(right, context)).toBe(0);
+      expect(left.compare(right)).toBe(-1);
     });
   });
 

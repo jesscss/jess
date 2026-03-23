@@ -1624,8 +1624,10 @@ export abstract class Node<
    * undefined = not comparable
    */
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
-    let aVal = this.valueOf();
-    let bVal = b.valueOf();
+    const aValueOf = this as unknown as { valueOf(context?: Context): Primitive };
+    const bValueOf = b as unknown as { valueOf(context?: Context): Primitive };
+    let aVal = context ? aValueOf.valueOf(context) : this.valueOf();
+    let bVal = context ? bValueOf.valueOf(context) : b.valueOf();
     if (aVal === bVal) {
       return 0;
     }
