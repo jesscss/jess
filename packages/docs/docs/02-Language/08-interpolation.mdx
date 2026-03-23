@@ -57,7 +57,7 @@ Note: in normal property values, you can just use `$theme`, but in custom proper
 
 ### 4. :-extend
 ```scss
-$type: $*(.notice); // `*()` can capture a selector
+$type: $*[.notice]; // `$*[]` captures a selector
 .notice {
   color: orange;
 }
