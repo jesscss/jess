@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Call', () => {
@@ -206,6 +206,35 @@ describe('Call', () => {
     expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
     expect(node.toTrimmedString()).toBe('rgb(1)');
     expect(node.options.silentFail).toBeUndefined();
+  });
+
+  it('keeps canonical child parents intact on shallow session clones while exposing the wrapper through the session parent chain', () => {
+    context.session = new EvalSession();
+    const name = ref('rgb', { type: 'function' });
+    const args = list([num(1)]);
+    const node = call({ name, args });
+
+    const clone = node.clone(false, undefined, context);
+
+    expect(name.parent).toBe(node);
+    expect(args.parent).toBe(node);
+    expect(sessionGetParent(name, context)).toBe(clone);
+    expect(sessionGetParent(args, context)).toBe(clone);
+  });
+
+  it('uses the call-local shallow clone in the silent-fail non-function branch without canonically reparenting children', async () => {
+    context.session = new EvalSession();
+    const args = list([num(1)]);
+    const node = call({
+      name: 'rgb',
+      args
+    }, { silentFail: true });
+
+    const evald = await node.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toBe('rgb(1)');
+    expect(args.parent).toBe(node);
+    expect(node.toTrimmedString()).toBe('rgb?(1)');
   });
 
   it('materializes stylesheet-function return nodes in a session before applying call result provenance', async () => {

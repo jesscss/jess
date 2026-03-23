@@ -306,26 +306,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // child Ruleset isolation so implicit-reference extends don't contaminate
     // shared selector state.
     const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
+    const needsDetachedMaterializedWrapper = Boolean(
+      context && (materializeConfiguredComposeChildren || (type === 'import' && importOptions!._dedupe === true))
+    );
     let out = type === 'import' && !shouldCloneImportWrapper
       ? evaluatedRules
-      : evaluatedRules.cloneDetachedShallowWrapper(context) as Rules;
+      : needsDetachedMaterializedWrapper
+        ? evaluatedRules.cloneDetachedMaterializedWrapper(context!) as Rules
+        : evaluatedRules.cloneDetachedShallowWrapper(context) as Rules;
     if (materializeConfiguredComposeChildren) {
       for (let i = 0; i < out.value.length; i++) {
-        const child = out.value[i]!;
-        const materialized = child.materializeEvaluatedCopy(context);
-        out.setData(i, materialized);
         out.value[i]!.index = i;
-      }
-    }
-    if (type === 'import' && importOptions!._dedupe === true) {
-      // Detach the shallow wrapper from the cached child array before swapping in
-      // per-import materialized children. Otherwise `setData(i, ...)` mutates the
-      // cached evaluated import root's top-level child slots.
-      out.setData([...out.value]);
-      for (let i = 0; i < out.value.length; i++) {
-        const child = out.value[i]!;
-        const materialized = child.materializeEvaluatedCopy(context) as Node;
-        out.setData(i, materialized);
       }
     }
     // Import type: variables are visible and re-exported (not local)

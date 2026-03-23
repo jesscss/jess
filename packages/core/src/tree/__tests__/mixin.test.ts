@@ -819,6 +819,58 @@ describe('Mixin', () => {
       `);
     });
 
+    it('characterization: multi-candidate final output wrapper already preserves returned child rules parents and nested source-root provenance', async () => {
+      context.createSession();
+
+      const sourceDecl = decl({ name: 'color', value: any('red') });
+      const sourceRuleset = ruleset({
+        selector: el('.inner'),
+        rules: rules([
+          decl({ name: 'background', value: any('blue') })
+        ])
+      });
+      const mixinA = mixin({
+        name: any('.my-mixin'),
+        rules: rules([sourceDecl])
+      });
+      const mixinB = mixin({
+        name: any('.my-mixin'),
+        rules: rules([sourceRuleset])
+      });
+      const mixinRoot = rules([mixinA, mixinB]);
+      context.root = mixinRoot;
+
+      const fn = getFunctionFromMixins([mixinA, mixinB]);
+      const result = await fn.call(context);
+      const output = result as Rules;
+      const firstOutputRules = output.at(0, context) as Rules;
+      const secondOutputRules = output.at(1, context) as Rules;
+      const outputDecl = firstOutputRules.at(0) as Node & { sourceNode: Node };
+      const outputRuleset = secondOutputRules.at(0) as Node & {
+        sourceNode: Node;
+        selector: Node;
+        rules: Rules;
+      };
+
+      expect(sessionGetParent(firstOutputRules, context)).toBe(output);
+      expect(sessionGetParent(secondOutputRules, context)).toBe(output);
+      expect(firstOutputRules.parent).toBeUndefined();
+      expect(secondOutputRules.parent).toBeUndefined();
+
+      expect(outputDecl.parent).toBe(firstOutputRules);
+      expect(outputDecl.sourceNode).toBe(sourceDecl);
+      expect(outputRuleset.parent).toBe(secondOutputRules);
+      expect(outputRuleset.selector.parent).toBe(outputRuleset);
+      expect(outputRuleset.rules.parent).toBe(outputRuleset);
+      expect(outputRuleset.sourceNode).toBe(sourceRuleset);
+      expect(String(result)).toBeString(`
+        color: red;
+        .inner {
+          background: blue;
+        }
+      `);
+    });
+
     it('should call a mixin that calls another mixin', async () => {
       // Create a base mixin: .base-mixin(@color) { color: @color; }
       const baseMixin = mixin({

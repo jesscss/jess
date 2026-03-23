@@ -1209,6 +1209,41 @@ describe('Rules', () => {
       expect(root.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBeUndefined();
       expect(cloneRegisterSpy).toHaveBeenCalledTimes(2);
     });
+
+    it('shared-child wrapper helpers still inherit shallow-clone cache semantics, while cloneDetachedMaterializedWrapper is the explicit top-level child opt-out', () => {
+      const ctx = new Context();
+      ctx.session = new EvalSession();
+
+      const root = rules([
+        vardecl({ name: 'foo', value: any('bar') })
+      ]);
+      const rootRegisterSpy = vi.spyOn(root, 'registerNode');
+
+      root.getRegistry('declaration');
+      expect(rootRegisterSpy).toHaveBeenCalledTimes(1);
+      rootRegisterSpy.mockClear();
+
+      const detached = root.cloneDetachedShallowWrapper(ctx);
+      const lookup = root.cloneLookupSafeShallowWrapper(ctx);
+      const materialized = root.cloneDetachedMaterializedWrapper(ctx);
+      const detachedRegisterSpy = vi.spyOn(detached, 'registerNode');
+      const lookupRegisterSpy = vi.spyOn(lookup, 'registerNode');
+      const materializedRegisterSpy = vi.spyOn(materialized, 'registerNode');
+
+      expect(detached.value).toBe(root.value);
+      expect(lookup.value).toBe(root.value);
+      expect(materialized.value).not.toBe(root.value);
+      expect(materialized.at(0)).not.toBe(root.at(0));
+
+      expect(detached.find('declaration', 'foo', 'VarDeclaration', { searchParents: false, context: ctx })).toBeDefined();
+      expect(lookup.find('declaration', 'foo', 'VarDeclaration', { searchParents: false, context: ctx })).toBeDefined();
+      expect(materialized.find('declaration', 'foo', 'VarDeclaration', { searchParents: false, context: ctx })).toBeDefined();
+
+      expect(detachedRegisterSpy).not.toHaveBeenCalled();
+      expect(lookupRegisterSpy).not.toHaveBeenCalled();
+      expect(materializedRegisterSpy).toHaveBeenCalledTimes(1);
+      expect(rootRegisterSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('session registry delta', () => {

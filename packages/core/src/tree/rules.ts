@@ -2571,7 +2571,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // aren't corrupted. Evaluate against a cloned wrapper scope so the original
           // parameter wrapper keeps its own session-local child parentage.
           for (const child of rules.value) {
-            evalScope.push(thisContext, (child as Node).clone(false, undefined, thisContext));
+            evalScope.push(
+              thisContext,
+              isNode(child, N.Rules)
+                ? child.cloneVisibilityIsolationWrapper(thisContext)
+                : (child as Node).clone(false, undefined, thisContext)
+            );
           }
           newRules = await evalScope.eval(thisContext);
         }

@@ -50,6 +50,7 @@ Do not use this as the full node-status matrix or roadmap document:
    - detached-ruleset unlock now has its own explicit `cloneDetachedUnlockWrapper(context)` seam, so future work no longer needs to thread through raw `clone(false)` at that caller
    - visibility-isolation callers now also have `cloneVisibilityIsolationWrapper(context)`
    - detached wrapper plus immediate-child materialization now has `cloneDetachedMaterializedWrapper(context)`
+   - `rules.ts` now also uses `cloneVisibilityIsolationWrapper(context)` inside `evaluateCandidateOutput(...)` for `Rules` children
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
    - any remaining downstream consumer paths that still fail to adopt the landed wrapper/materialization helpers consistently
    - follow-up use of the new generic compare/context channel where a real consumer benefits
@@ -60,6 +61,9 @@ Do not use this as the full node-status matrix or roadmap document:
 6. `control.ts` is no longer a live owner:
    - `$for` prior-scope reuse is already on `cloneLookupSafeShallowWrapper(ctx)`
    - the latest characterization proves the remaining parent-integrity leak happens downstream during `wrapper.eval(context)`
+7. `Call` is no longer a live owner either:
+   - its remaining `this.clone(false, ..., context)` sites already flow through the node-local `Call.clone(...)` contract
+   - the focused call suite is green with explicit proof that canonical child parents stay intact
 
 ### Stage status
 - Stage 17: complete and committed

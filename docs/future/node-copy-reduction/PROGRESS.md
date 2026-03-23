@@ -28,10 +28,13 @@ Those live in [node-session-status.md](./node-session-status.md).
 - `Mixin.preEval()` no longer spells raw `rules.clone(false, ..., context)` for visibility isolation; it now uses the explicit detached unlock wrapper seam.
 - `Call` now materializes stylesheet-function `Rules` results through `materializeEvaluatedCopy(context)` instead of shallow clone plus provenance rewiring.
 - `Node.cloneDetachedMaterializedWrapper(context)` and `Rules.cloneVisibilityIsolationWrapper(context)` are now both landed as narrower helper seams around the remaining shallow-wrapper problem.
+- `rules.ts` now uses `cloneVisibilityIsolationWrapper(context)` on the `Rules` child branch inside `evaluateCandidateOutput(...)`, so that caller no longer spells raw `clone(false, ..., context)` either.
+- `ImportStyle` now uses `cloneDetachedMaterializedWrapper(context)` on the returned-tree paths that were previously doing open-coded wrapper detachment plus per-child materialization.
 - The remaining `Rules`-local work is now the shallow `Rules.clone(false)` wrapper contract, not guard lookup.
 - `ImportStyle` and `Ruleset` now adopt context-aware materialization on their returned-tree consumer paths, and `$for` prior-scope reuse now feeds materialized copies back into the next iteration without mutating emitted output. These are still transitional uses to be reduced, not the desired steady-state eval model.
 - `control.ts` prior-scope reuse is now fixed on top of `cloneLookupSafeShallowWrapper(ctx)`, and the focused control suite is green.
 - `control.ts` is no longer the live owner: characterization now proves the remaining parent-integrity leak happens downstream during `wrapper.eval(context)`.
+- `Call` is also no longer a live owner: its remaining shallow session clone sites already go through the node-local `Call.clone(...)` contract, and the focused call suite is green.
 - `Node.compare(context)` now forwards contextual `valueOf`, `Color` has semantic compare behavior, and `Sequence.compare(context)` now preserves the context channel for nested comparisons.
 
 ## Test Baselines
