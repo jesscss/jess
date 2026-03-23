@@ -88,12 +88,9 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
 
 // ── Helper: getAmpersandTemplateValue ────────────────────────────────
 
-function getAmpersandTemplateValue(image: string): string | undefined {
+function getAmpersandTemplateValue(image: string): string | Nil | undefined {
   if (image === '&') {
     return undefined;
-  }
-  if (image.startsWith('&(') && image.endsWith(')')) {
-    return image.slice(2, -1);
   }
   if (image.startsWith('&')) {
     return image.slice(1) || undefined;
@@ -671,7 +668,45 @@ export function simpleSelector(this: P, T: TokenMap) {
         ALT: () => {
           let amp = $.CONSUME(T.Ampersand);
           const value = getAmpersandTemplateValue(amp.image);
-          return new Ampersand(value || undefined, undefined, $.getLocationInfo(amp), $.context);
+          return new Ampersand({ template: value }, undefined, $.getLocationInfo(amp), $.context);
+        }
+      },
+      {
+        ALT: () => {
+          $.startRule();
+          $.CONSUME(T.AmpersandLParen);
+          const parts: string[] = [];
+          let sawQuoted = false;
+          $.MANY(() => {
+            $.OR2([
+              {
+                GATE: () => $.isType(T.QuoteStart),
+                ALT: () => {
+                  const quoted = $.SUBRULE($.string, { ARGS: [ctx] }) as Quoted;
+                  parts.push(quoted.valueOf());
+                  sawQuoted = true;
+                }
+              },
+              {
+                GATE: () => $.isType(T.WS),
+                ALT: () => {
+                  parts.push($.CONSUME(T.WS).image);
+                }
+              },
+              {
+                ALT: () => {
+                  parts.push($.CONSUME(T.AmpersandTemplateContents).image);
+                }
+              }
+            ]);
+          });
+          $.CONSUME(T.AmpersandTemplateEnd);
+          const location = $.endRule();
+          const value = parts.join('');
+          const template: string | Nil = sawQuoted && value === ''
+            ? new Nil()
+            : value;
+          return new Ampersand({ template }, undefined, location, $.context);
         }
       },
       { ALT: () => $.CONSUME(T.InterpolatedIdent) },
@@ -723,7 +758,7 @@ export function simpleSelector(this: P, T: TokenMap) {
     if ($.isToken(selector)) {
       if (selector.tokenType.name === 'Ampersand') {
         const value = getAmpersandTemplateValue(selector.image);
-        return new Ampersand(value || undefined, undefined, $.getLocationInfo(selector), $.context);
+        return new Ampersand({ template: value }, undefined, $.getLocationInfo(selector), $.context);
       }
       if (
         selector.tokenType.name === 'InterpolatedSelector'

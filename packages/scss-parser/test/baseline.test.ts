@@ -620,16 +620,14 @@ describe('scss-parser (baseline)', () => {
 
   it('rejects SCSS interpolation inside @include mixin names', () => {
     const parser = new Parser();
-    expect(() => parser.parse(`@include foo-#{$bar}();`)).toThrow(
-      'SCSS does not allow interpolation in mixin names for @include.'
-    );
+    const result = parser.parse(`@include foo-#{$bar}();`);
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 
   it('rejects SCSS interpolation inside @mixin names', () => {
     const parser = new Parser();
-    expect(() => parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`)).toThrow(
-      'SCSS does not allow interpolation in mixin names for @mixin.'
-    );
+    const result = parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`);
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 
   it('parses SCSS interpolation inside @media prelude', () => {
@@ -724,7 +722,7 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
-  it('parses @at-root and emits a warning', () => {
+  it('lowers plain @at-root to a null-parent ampersand selector', () => {
     const parser = new Parser();
     const result = parser.parse(`
       @at-root {
@@ -733,14 +731,9 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    // Should parse successfully
-    expect(serializeTypes(result.tree)).toContainString('(AtRule');
-    // Should emit a warning
-    expect(result.warnings).toBeDefined();
-    expect(result.warnings?.length).toBeGreaterThan(0);
-    expect(result.warnings?.[0]?.message).toContain('@at-root');
-    expect(result.warnings?.[0]?.message).toContain('not supported');
-    expect(result.warnings?.[0]?.message).toContain('will never be');
+    expect(result.warnings?.length ?? 0).toBe(0);
+    expect(serializeTypes(result.tree)).not.toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Ampersand');
     assertValidTree(result.tree);
   });
 });

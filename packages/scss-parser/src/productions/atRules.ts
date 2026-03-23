@@ -5,10 +5,12 @@ import type { IToken } from '@jesscss/parser';
 import { tokenMatcher, NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
+  Ampersand,
   Any,
   AtRule,
   Call,
   Collection,
+  ComplexSelector,
   Declaration,
   Expression,
   Extend,
@@ -30,7 +32,9 @@ import {
   Reference,
   Rest,
   Rules,
+  Ruleset,
   Sequence,
+  SelectorList,
   StyleImport,
   VarDeclaration,
   While,
@@ -50,6 +54,83 @@ import {
 type P = any;
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+
+function createNullParentAmpersand(context: any, selector?: Selector): Ampersand {
+  return new Ampersand(
+    { template: new Nil(undefined, undefined, selector?.location, context) },
+    undefined,
+    selector?.location,
+    context
+  );
+}
+
+function prefixAtRootSelector(selector: Selector, context: any): Selector {
+  if (isNode(selector, N.SelectorList)) {
+    const list = new SelectorList(
+      (selector as SelectorList).value.map(item => prefixAtRootSelector(item as Selector, context)),
+      undefined,
+      selector.location,
+      context
+    );
+    list.pre = selector.pre;
+    list.post = selector.post;
+    return list as Selector;
+  }
+
+  const amp = createNullParentAmpersand(context, selector);
+  if (isNode(selector, N.ComplexSelector)) {
+    const complex = new ComplexSelector(
+      [amp, ...(selector as ComplexSelector).value] as any,
+      undefined,
+      selector.location,
+      context
+    );
+    complex.pre = selector.pre;
+    complex.post = selector.post;
+    return complex as Selector;
+  }
+
+  const complex = new ComplexSelector([amp, selector] as any, undefined, selector.location, context);
+  complex.pre = selector.pre;
+  complex.post = selector.post;
+  return complex as Selector;
+}
+
+function lowerPlainAtRootRules(rules: RulesType, context: any): void {
+  const transformRule = (node: Node): Node => {
+    if (isNode(node, N.Ruleset)) {
+      const ruleset = node as Ruleset;
+      if (!isNode(ruleset.selector, N.Nil)) {
+        ruleset.setData('selector', prefixAtRootSelector(ruleset.selector as Selector, context));
+      }
+      return ruleset;
+    }
+
+    if (node instanceof AtRule && node.rules) {
+      lowerPlainAtRootRules(node.rules as RulesType, context);
+      return node;
+    }
+
+    if (node instanceof If) {
+      for (const body of node.bodies) {
+        lowerPlainAtRootRules(body as RulesType, context);
+      }
+      if (node.elseBranch) {
+        lowerPlainAtRootRules(node.elseBranch as RulesType, context);
+      }
+      return node;
+    }
+
+    if (node instanceof For || node instanceof While) {
+      lowerPlainAtRootRules(node.rules as RulesType, context);
+      return node;
+    }
+
+    return node;
+  };
+
+  rules.setData(rules.value.map(rule => transformRule(rule)));
+}
 
 function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: any } | undefined {
   if (isNode(selector, N.SelectorList)) {
@@ -1710,8 +1791,9 @@ export function scssDiagnosticAtRule(this: P, T: TokenMap) {
 /**
  * SCSS: `@at-root [selector] { ... }` or `@at-root (without: media) { ... }`
  *
- * Parsed as `AtRule` nodes. This feature is currently unsupported in Jess.
- * A warning is emitted when this directive is encountered.
+ * Plain `@at-root { ... }` is lowered by prefixing contained selectors with a
+ * null-parent ampersand template so they hoist naturally during selector
+ * composition. Prelude/filter forms remain preserved as unsupported at-rules.
  */
 export function scssAtRootAtRule(this: P, T: TokenMap) {
   const $ = this;
@@ -1757,12 +1839,24 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
+
+    if (!prelude) {
+      lowerPlainAtRootRules(rules as RulesType, $.context);
+      const flattened = [...(rules as RulesType).value];
+      if (flattened.length === 0) {
+        return new Nil(undefined, undefined, loc, $.context);
+      }
+      for (const node of flattened.slice(0, -1)) {
+        $.enqueuePendingNode(node);
+      }
+      return flattened[flattened.length - 1]!;
+    }
+
     const name = new Any(atKeyword.image, { role: 'atkeyword' }, $.getLocationInfo(atKeyword), $.context);
     const atRule = new AtRule({ name, prelude: prelude ? $.wrap(prelude, 'both') : undefined, rules }, undefined, loc, $.context);
 
-    // Emit warning that @at-root is unsupported (and will never be)
     $.warnings.push({
-      message: '@at-root is not supported in Jess and will never be. Write utilities at the top level or use separate files/modules instead. See docs for alternatives.',
+      message: '@at-root prelude/filter forms are not yet lowered in Jess. Write the hoisted rules directly or keep the directive preserved for later handling.',
       token: atKeyword,
       deprecation: undefined
     });

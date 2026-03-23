@@ -26,6 +26,50 @@ Here's a basic example of nesting:
 }
 ```
 
+### Advanced ampersand templates
+
+Jess's selector model distinguishes three explicit parent forms:
+
+- `&` means "render the parent normally"
+- `&()` means "render the parent, but hoist this selector to root"
+- `&(nil)` means "do not render the parent at all"
+
+A template without another `&` is shorthand for inserting the parent at that exact slot. So `&-primary` and `&(-primary)` mean the same thing.
+
+```less
+.button {
+  &-primary {
+    font-weight: 700;
+  }
+
+  &() .icon {
+    inline-size: 1em;
+  }
+
+  &(nil).utility {
+    display: contents;
+  }
+}
+```
+
+Conceptually, this lowers to:
+
+```css
+.button-primary {
+  font-weight: 700;
+}
+
+.button .icon {
+  inline-size: 1em;
+}
+
+.utility {
+  display: contents;
+}
+```
+
+When you are working in Less syntax specifically, the equivalent null-parent form is `&('')` rather than `&(nil)`.
+
 ### At-Rule bubbling
 
 One of the best ideas to come out of Less/Sass is the idea of at-rule bubbling, which can make your stylesheets easier to read, by putting different property values next to each other. The CSS Nesting syntax has adopted this, and is now available in all major browsers.
