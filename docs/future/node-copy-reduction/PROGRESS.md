@@ -15,12 +15,12 @@ Those live in [node-session-status.md](./node-session-status.md).
 
 - Immediate next owner is now `control.ts` prior-scope reuse on top of `Node.cloneLookupSafeShallowWrapper(ctx)`.
 - `Node.cloneDetachedShallowWrapper(ctx?)` and `Node.cloneLookupSafeShallowWrapper(ctx)` are both landed and proven.
-- `ImportStyle` now uses detached shallow wrappers for compose/finalization, and `_dedupe` now keeps cached evaluated top-level child slots and parent pointers stable.
+- `ImportStyle` now uses detached shallow wrappers for compose/finalization, `_dedupe` keeps cached evaluated top-level child slots and parent pointers stable, and the focused node-local import suite is green. It is no longer the active owner.
 - `selectorMatch(..., context)` now has the bounded fast-reject fix for mixed selector-bit libraries, so the next matcher work is caller-side operand preparation/adoption, not matcher internals.
 - `Condition` now adopts `compare(context)` on selector-vs-selector guard evaluation.
 - `Extend` matching/rewrite now threads eval `Context` through the active helper pipeline, and focused extend coverage indicates Extend is no longer the active local owner.
-- `Rules` gained two more real local slices: multi-candidate mixin output child `Rules` now keep parentage only in the session layer, and parameter-wrapper population now routes through `outerRules.push(thisContext, ...)`.
-- Focused mixin characterization now says `evaluateCandidateOutput(...)` already returns top-level wrapper children with returned parents and source-root provenance; the next `Rules` compare-related blocker is selector-pattern param operand preparation, not another obvious wrapper-output parent write.
+- `Rules` gained the selector-pattern param prep fix, so mixin selector params now prepare the original selector operand before `compare(argValue, context)` runs.
+- Current `Rules` audit no longer shows another active node-local blocker beyond broader shared shaping primitives.
 
 ## Test Baselines
 

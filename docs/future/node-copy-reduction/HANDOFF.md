@@ -44,11 +44,11 @@ Do not use this as the full node-status matrix or roadmap document:
 3. Do not treat matcher internals or extend matching as the current blocker:
    - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
    - `Condition` now adopts `compare(context)` for selector guards on the active path
-   - extend matching/rewrite now threads eval `Context` through the active helper pipeline and focused extend coverage is green
+   - extend matching/rewrite now threads eval `Context` through the active helper pipeline, and Extend looks effectively complete for the fundamentals pass
 4. The remaining hard owners are wrapper/output shaping:
    - consumer adoption of `cloneLookupSafeShallowWrapper(ctx)` in control prior-scope reuse
-   - selector-pattern param preparation in `rules.ts` before `compare(context)` can help there
-   - any deeper returned-output shaping that survives after those two are checked
+   - any deeper returned-output shaping that survives after the control prior-scope consumer is checked
+   - possible future non-selector `compare(context)` work lower in the generic compare API, not another obvious caller swap
 
 ### Stage status
 - Stage 17: complete and committed
