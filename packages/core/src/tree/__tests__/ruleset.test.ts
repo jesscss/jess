@@ -213,6 +213,8 @@ describe('Rule', () => {
     expect(source.rules.parent).toBe(source);
     expect(cloned.selector.parent).toBe(source);
     expect(cloned.rules.parent).toBe(source);
+    expect(sessionGetParent(cloned.selector, context)).toBe(cloned);
+    expect(sessionGetParent(cloned.rules, context)).toBe(cloned);
   });
 
   it('preEval keeps child rules visibility in the session without mutating canonical rules options', async () => {

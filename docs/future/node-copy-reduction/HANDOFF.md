@@ -52,10 +52,10 @@ Do not use this as the full node-status matrix or roadmap document:
    - detached wrapper plus immediate-child materialization now has `cloneDetachedMaterializedWrapper(context)`
    - `rules.ts` now also uses `cloneVisibilityIsolationWrapper(context)` inside `evaluateCandidateOutput(...)` for `Rules` children
    - guarded candidate preparation in `getFunctionFromMixins()` now also stays on the session-aware shallow-clone path instead of `mixin.copy()` when a session is active
-   - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, which now clearly bottoms out in child-node shallow clone semantics
-   - `Ruleset.clone(false, ..., context)` is now the sharpest next owner on that path: derived rulesets materialize `selector` / `rules`, but source rulesets still share those nested containers with the source ruleset
-   - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
-   - the only remaining local `ImportStyle` pressure is the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity and shared `value[]` across per-import wrappers; shared registry-slot behavior still coincides today but is no longer treated as a separate hard local contract
+   - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, and it now narrows specifically to canonical source-ruleset shallow-clone semantics
+   - `Ruleset.clone(false, ..., context)` source-ruleset behavior is now explicitly characterized as locally consistent today: canonical ownership stays on the source ruleset while the session layer gives the clone active ownership
+   - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary are now more about choosing the right existing wrapper contract than about another missing generic helper
+   - the only remaining local `ImportStyle` pressure is the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity and shared `value[]` across per-import wrappers; shared registry-slot behavior still coincides today but is no longer treated as a separate hard local contract, and `import-style.ts` itself no longer looks like the next production owner
    - follow-up use of the new generic compare/context channel where a real consumer benefits
 5. Internal materialization is not an accepted steady-state eval strategy:
    - do not materialize a fresh tree just to make parentage, lookup, or mutation work during eval
@@ -69,10 +69,11 @@ Do not use this as the full node-status matrix or roadmap document:
    - the focused call suite is green with explicit proof that canonical child parents stay intact
 8. `node-base.ts` does not currently need another generic helper:
    - `registry-characterization.test.ts` now proves `cloneDetachedMaterializedWrapper(context)` gets its own top-level registry slot while preserving canonical top-level parents
+   - `cloneDetachedShallowWrapper()` and `cloneLookupSafeShallowWrapper()` intentionally stay on the canonical registry slot, while `cloneDetachedMaterializedWrapper()` is already the explicit generic fork point
    - the remaining helper pressure is caller adoption and shallow-clone semantics, not another missing generic primitive
-9. `Ruleset` and the plain cached compose wrapper branch are now the two highest-signal remaining local contracts:
-   - `Ruleset`: source-ruleset `clone(false, ..., context)` still shares nested selector/body containers
-   - `ImportStyle`: plain cached compose wrappers intentionally alias the cached compose tree all the way down through `value[]` and registry slot
+9. The two sharpest live contracts are now:
+   - `Rules`: the non-`Rules` child branch of `evaluateCandidateOutput(...)`, narrowed to source-ruleset shallow-clone semantics
+   - plain cached compose wrappers in `ImportStyle`: still a real characterization boundary, but no longer the next local production owner unless the wrapper contract itself changes
 
 ### Stage status
 - Stage 17: complete and committed

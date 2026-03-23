@@ -173,7 +173,7 @@ the next atomic slice changes.
     - `Extend`, `Call`, and `control.ts` are no longer the active owners
     - guarded candidate preparation no longer uses `mixin.copy()` under an active session; it now stays on the session-aware shallow-clone path so canonical guard/name/rules parentage is preserved during candidate gating
     - the remaining `rules.ts` pressure is now the non-`Rules` child branch, which bottoms out in child-node shallow clone semantics rather than another `rules.ts`-local seam
-    - the remaining `Ruleset` pressure is now specifically the source-ruleset `clone(false, ..., context)` branch (`this === this.sourceNode`), which still shares nested selector/body containers while keeping their canonical parents on the source ruleset
+    - the remaining `Ruleset` pressure is now specifically the source-ruleset `clone(false, ..., context)` branch (`this === this.sourceNode`), and the current characterization now proves that branch is locally consistent today: shared selector/body identity, canonical ownership on the source ruleset, active ownership on the clone through the session layer
     - the remaining `ImportStyle` pressure is now only the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity and shared `value[]` across per-import wrappers; shared registry-slot behavior still coincides today but is no longer treated as a separate hard contract
 
 ### Current Batch A: Simple Pending Wrappers
@@ -224,7 +224,7 @@ Use this to record why a node is not next, even if it looks urgent.
 - `ImportStyle` now appears effectively complete for the fundamentals pass; the focused node-local import suite is green and the remaining blocker tests point below the node, not inside `import-style.ts`.
 - `ImportStyle` characterization now also proves the compose-cache branch's local tension explicitly: per-import wrappers need different wrapper metadata while still sharing the exact cached top-level evaluated child identity.
 - `ImportStyle` characterization now also proves shared registry-slot behavior is incidental to that branch today, not a separately pinned local contract. The live import tension is still shared top-level child identity plus shared `value[]`.
-- `Ruleset` characterization now proves the remaining non-derived shallow-clone path is not canonical parent corruption: it is the source-ruleset contract where `selector` and `rules` stay shared with the source ruleset under `clone(false, ..., context)`.
+- `Ruleset` characterization now proves the remaining non-derived shallow-clone path is not canonical parent corruption: it is the source-ruleset contract where `selector` and `rules` stay shared with the source ruleset under `clone(false, ..., context)`, while the session layer gives the clone active ownership. If that contract changes, it will be a deliberate clone-contract change, not a missing `ruleset.ts` cleanup.
 - `Extend` is now partially session-safe on local clone/registration paths, but its broader selector-rewrite pipeline is still a larger clone/copy cluster.
 - Focused extend helper coverage is green across `extend-rules`, `extend-roots`, `extend-list`, and `extend-import-style`; Extend now looks effectively complete for the fundamentals pass, and the remaining red extend item is a snapshot/test-ownership issue in `extend-eval-integration.test.ts`, not a helper-local immutable/session bug.
 - `selectorMatch()` now accepts an optional eval `Context`, uses session-aware key sets when one is passed, and safely fast-rejects selectors from different bitset libraries. The next matcher owner is caller-side operand preparation/adoption, not the matcher core itself.
@@ -233,7 +233,7 @@ Use this to record why a node is not next, even if it looks urgent.
 - Remaining control-family parent-integrity work is no longer the active blocker: `$for` prior-scope reuse now uses `cloneLookupSafeShallowWrapper(ctx)` and the focused control suite is green.
 - `control.ts` characterization now proves that even a lookup-safe `$for` wrapper still sees downstream canonical child reparenting during `wrapper.eval(context)`, so the live owner is below `control.ts`.
 - `Call` characterization now proves its remaining `this.clone(false, ..., context)` sites already go through the node-local shallow-clone contract and are not the live shallow-wrapper owner.
-- `Rules` characterization now proves the next remaining `evaluateCandidateOutput(...)` pressure is the non-`Rules` child branch, and that it bottoms out in the child node's own shallow clone semantics rather than another `rules.ts`-local wrapper seam.
+- `Rules` characterization now proves the next remaining `evaluateCandidateOutput(...)` pressure is the non-`Rules` child branch, and that it now narrows specifically to canonical source-ruleset shallow-clone semantics rather than another `rules.ts`-local wrapper seam.
 - The selector-pattern mixin-param blocker in `rules.ts` is now fixed; the next compare-adoption work is no longer in that branch.
 - The next compare-context owner outside selectors now points lower to the generic compare API (`node-base.ts` / non-selector value nodes such as `color.ts`), not another caller.
 - If a node in Batch A or B cannot be completed without touching a higher-order node, record the exact dependency here before changing the queue.

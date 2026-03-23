@@ -400,6 +400,33 @@ describe('Rules', () => {
         expect(scopedChild.rules.toTrimmedString()).toBe(sourceRuleset.rules.toTrimmedString());
       });
 
+      it('characterizes evaluateCandidateOutput non-Rules child shaping as blocked specifically on canonical source ruleset clone semantics', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const sourceRuleset = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        });
+        const derivedRuleset = sourceRuleset.clone(true);
+        const sourceScopedChild = sourceRuleset.clone(false, undefined, ctx);
+        const derivedScopedChild = derivedRuleset.clone(false, undefined, ctx);
+
+        expect(sourceScopedChild.selector).toBe(sourceRuleset.selector);
+        expect(sourceScopedChild.rules).toBe(sourceRuleset.rules);
+        expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
+        expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
+        expect(sessionGetParent(sourceScopedChild.selector, ctx)).toBe(sourceScopedChild);
+        expect(sessionGetParent(sourceScopedChild.rules, ctx)).toBe(sourceScopedChild);
+
+        expect(derivedScopedChild.selector).not.toBe(derivedRuleset.selector);
+        expect(derivedScopedChild.rules).not.toBe(derivedRuleset.rules);
+        expect(derivedScopedChild.selector.parent).toBe(derivedScopedChild);
+        expect(derivedScopedChild.rules.parent).toBe(derivedScopedChild);
+      });
+
       it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active session view', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();

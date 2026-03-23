@@ -173,6 +173,39 @@ describe('registry characterization', () => {
     expect(materializedWrapper.at(0)?.parent).toBe(materializedWrapper);
   });
 
+  it('keeps detached and lookup-safe shallow wrappers on the canonical registry slot while cloneDetachedMaterializedWrapper is the explicit fork', () => {
+    const canonicalRuleset = ruleset({
+      selector: sellist([sel([el('.shared-wrapper')])]),
+      rules: rules([
+        decl({ name: any('color'), value: any('red') })
+      ])
+    });
+    const canonicalRules = rules([canonicalRuleset]);
+    canonicalRules.getRegistry('ruleset');
+    const canonicalRegistry = peekRegistryData(canonicalRules.value);
+    const context = new Context();
+    context.createSession();
+
+    const detachedWrapper = canonicalRules.cloneDetachedShallowWrapper(context) as Rules;
+    const lookupWrapper = canonicalRules.cloneLookupSafeShallowWrapper(context) as Rules;
+    const materializedWrapper = canonicalRules.cloneDetachedMaterializedWrapper(context) as Rules;
+
+    detachedWrapper.getRegistry('ruleset');
+    lookupWrapper.getRegistry('ruleset');
+    materializedWrapper.getRegistry('ruleset');
+
+    const detachedRegistry = peekRegistryData(detachedWrapper.value);
+    const lookupRegistry = peekRegistryData(lookupWrapper.value);
+    const materializedRegistry = peekRegistryData(materializedWrapper.value);
+
+    expect(detachedWrapper.value).toBe(canonicalRules.value);
+    expect(lookupWrapper.value).toBe(canonicalRules.value);
+    expect(materializedWrapper.value).not.toBe(canonicalRules.value);
+    expect(detachedRegistry).toBe(canonicalRegistry);
+    expect(lookupRegistry).toBe(canonicalRegistry);
+    expect(materializedRegistry).not.toBe(canonicalRegistry);
+  });
+
   it('reuses the same canonical registry slot across repeated _dedupe imports', async () => {
     const context = createTestContext();
     context.sourceTrees.set('library-dedupe.jess', rules([
