@@ -1725,7 +1725,8 @@ describe('Style import', () => {
     });
 
     it('compose cache wrappers still share top-level evaluated child identity across per-import visibility wrappers', async () => {
-      context.sourceTrees.set('library-wrapper-contract.jess', rules([
+      const libraryPath = 'library-wrapper-contract.jess';
+      context.sourceTrees.set(libraryPath, rules([
         ruleset({
           selector: sellist([sel([el('.imported')])]),
           rules: rules([
@@ -1736,11 +1737,11 @@ describe('Style import', () => {
 
       const node = rules([
         style(
-          { path: quoted(any('library-wrapper-contract.jess')) },
+          { path: quoted(any(libraryPath)) },
           { type: 'compose', namespace: '*', importOptions: { mutable: true } }
         ),
         style(
-          { path: quoted(any('library-wrapper-contract.jess')) },
+          { path: quoted(any(libraryPath)) },
           { type: 'compose', namespace: '*', importOptions: { mutable: false, multiple: true } }
         )
       ]);
@@ -1750,9 +1751,14 @@ describe('Style import', () => {
       const second = evald.at(1) as Rules;
       const firstRuleset = first.at(0) as Ruleset;
       const secondRuleset = second.at(0) as Ruleset;
+      const cachedEvaldRules = context.evaldTrees.get(libraryPath)!;
+      const cachedRuleset = cachedEvaldRules.at(0) as Ruleset;
 
       expect(first.options.rulesVisibility.Ruleset).toBe('public');
       expect(second.options.rulesVisibility.Ruleset).toBe('private');
+      expect(cachedEvaldRules).not.toBe(first);
+      expect(cachedEvaldRules).not.toBe(second);
+      expect(firstRuleset).toBe(cachedRuleset);
       expect(firstRuleset).toBe(secondRuleset);
       expect(firstRuleset.parent).not.toBe(first);
       expect(firstRuleset.parent).not.toBe(second);

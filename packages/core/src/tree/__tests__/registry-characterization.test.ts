@@ -121,7 +121,7 @@ describe('registry characterization', () => {
     expect(finalRules.value).toBe(importedRules.value);
   });
 
-  it('detaches the shared child array before cloning _dedupe rulesets', () => {
+  it('detaches the shared child array before cloning _dedupe rulesets in a session-backed finalization path', () => {
     const importedRules = rules([
       ruleset({
         selector: sellist([sel([el('.dedupe-import')])]),
@@ -136,13 +136,41 @@ describe('registry characterization', () => {
       { path: quoted(any('dedupe-import.jess')) },
       { type: 'import', importOptions: { _dedupe: true } }
     );
+    const context = new Context();
+    context.createSession();
 
-    const finalRules = node.getFinalRules(evaluatedRules);
+    const finalRules = node.getFinalRules(evaluatedRules, context);
 
     expect(finalRules).not.toBe(evaluatedRules);
     expect(finalRules.value).not.toBe(importedRules.value);
     expect(finalRules.at(0)).not.toBe(originalRuleset);
     expect(importedRules.at(0)).toBe(originalRuleset);
+  });
+
+  it('gives detached materialized wrappers their own registry slot while preserving canonical top-level parents', () => {
+    const canonicalRuleset = ruleset({
+      selector: sellist([sel([el('.materialized-wrapper')])]),
+      rules: rules([
+        decl({ name: any('color'), value: any('red') })
+      ])
+    });
+    const canonicalRules = rules([canonicalRuleset]);
+    canonicalRules.getRegistry('ruleset');
+    const canonicalRegistry = peekRegistryData(canonicalRules.value);
+    const context = new Context();
+    context.createSession();
+
+    const materializedWrapper = canonicalRules.cloneDetachedMaterializedWrapper(context) as Rules;
+    materializedWrapper.getRegistry('ruleset');
+    const wrapperRegistry = peekRegistryData(materializedWrapper.value);
+
+    expect(materializedWrapper).not.toBe(canonicalRules);
+    expect(materializedWrapper.value).not.toBe(canonicalRules.value);
+    expect(materializedWrapper.at(0)).not.toBe(canonicalRuleset);
+    expect(wrapperRegistry).toBeDefined();
+    expect(wrapperRegistry).not.toBe(canonicalRegistry);
+    expect(canonicalRuleset.parent).toBe(canonicalRules);
+    expect(materializedWrapper.at(0)?.parent).toBe(materializedWrapper);
   });
 
   it('reuses the same canonical registry slot across repeated _dedupe imports', async () => {

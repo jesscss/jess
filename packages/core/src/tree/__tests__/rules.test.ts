@@ -370,6 +370,33 @@ describe('Rules', () => {
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
 
+      it('characterizes evaluateCandidateOutput non-Rules child shaping as still bottoming out in the child node shallow clone semantics', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const sourceBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const sourceRuleset = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: sourceBody
+        });
+        const evalScope = rules([]);
+
+        const scopedChild = sourceRuleset.clone(false, undefined, ctx);
+        evalScope.push(ctx, scopedChild);
+
+        expect(scopedChild).not.toBe(sourceRuleset);
+        expect(scopedChild.parent).toBeUndefined();
+        expect(sessionGetParent(scopedChild, ctx)).toBe(evalScope);
+        expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
+        expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
+        expect(scopedChild.selector).toBe(sourceRuleset.selector);
+        expect(scopedChild.rules).toBe(sourceRuleset.rules);
+        expect(scopedChild.selector.valueOf()).toBe(sourceRuleset.selector.valueOf());
+        expect(scopedChild.rules.toTrimmedString()).toBe(sourceRuleset.rules.toTrimmedString());
+      });
+
       it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active session view', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();

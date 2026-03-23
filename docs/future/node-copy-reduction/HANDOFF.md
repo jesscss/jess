@@ -51,8 +51,9 @@ Do not use this as the full node-status matrix or roadmap document:
    - visibility-isolation callers now also have `cloneVisibilityIsolationWrapper(context)`
    - detached wrapper plus immediate-child materialization now has `cloneDetachedMaterializedWrapper(context)`
    - `rules.ts` now also uses `cloneVisibilityIsolationWrapper(context)` inside `evaluateCandidateOutput(...)` for `Rules` children
+   - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, which now clearly bottoms out in child-node shallow clone semantics
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
-   - any remaining downstream consumer paths that still fail to adopt the landed wrapper/materialization helpers consistently
+   - the only remaining local `ImportStyle` pressure is the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity across per-import wrappers
    - follow-up use of the new generic compare/context channel where a real consumer benefits
 5. Internal materialization is not an accepted steady-state eval strategy:
    - do not materialize a fresh tree just to make parentage, lookup, or mutation work during eval
@@ -64,6 +65,9 @@ Do not use this as the full node-status matrix or roadmap document:
 7. `Call` is no longer a live owner either:
    - its remaining `this.clone(false, ..., context)` sites already flow through the node-local `Call.clone(...)` contract
    - the focused call suite is green with explicit proof that canonical child parents stay intact
+8. `node-base.ts` does not currently need another generic helper:
+   - `registry-characterization.test.ts` now proves `cloneDetachedMaterializedWrapper(context)` gets its own top-level registry slot while preserving canonical top-level parents
+   - the remaining helper pressure is caller adoption and shallow-clone semantics, not another missing generic primitive
 
 ### Stage status
 - Stage 17: complete and committed

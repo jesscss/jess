@@ -923,6 +923,75 @@ describe('Mixin', () => {
       `);
     });
 
+    it('characterization: nested mixin calls already preserve returned declaration parentage and source-root provenance through mixin-specific shaping', async () => {
+      const sourceDecl = decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) });
+      const baseMixin = mixin({
+        name: any('.base-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        rules: rules([sourceDecl])
+      });
+
+      const wrapperMixin = mixin({
+        name: any('.wrapper-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        rules: rules([
+          call({
+            name: ref({ key: '.base-mixin' }, { type: 'mixin' }),
+            args: list([ref({ key: 'color' }, { type: 'variable' })])
+          })
+        ])
+      });
+
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.wrapper-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([baseMixin, wrapperMixin, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const outputRuleset = evald.value.find((node: any) => node?.type === 'Ruleset' && node?.selector?.valueOf?.() === '.test') as Rules & {
+        rules: Rules;
+      };
+      const findDecl = (node: any): (Node & { sourceNode: Node }) | undefined => {
+        if (node?.type === 'Declaration' && node?.name?.valueOf?.() === 'color') {
+          return node;
+        }
+        if (Array.isArray(node?.value)) {
+          for (const child of node.value) {
+            const found = findDecl(child);
+            if (found) {
+              return found;
+            }
+          }
+        }
+        return undefined;
+      };
+      const outputDecl = findDecl(outputRuleset.rules);
+
+      expect(outputRuleset).toBeDefined();
+      expect(outputDecl).toBeDefined();
+      expect(outputRuleset.parent).toBe(evald);
+      expect(outputRuleset.rules.parent).toBe(outputRuleset);
+      let current = outputDecl.parent as Node | undefined;
+      while (current && current !== outputRuleset.rules) {
+        expect(current.type).toBe('Rules');
+        current = current.parent;
+      }
+      expect(current).toBe(outputRuleset.rules);
+      expect(outputDecl.sourceNode).toBe(sourceDecl);
+    });
+
     it('should call a mixin with pattern matching by value', async () => {
       // Create mixins with pattern matching: .mixin(red) and .mixin(blue)
       const redMixin = mixin({
