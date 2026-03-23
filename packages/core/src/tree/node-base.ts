@@ -402,6 +402,54 @@ export abstract class Node<
   }
 
   /**
+   * Create a shallow wrapper node that shares this node's immediate children
+   * while making the wrapper their active session parent.
+   *
+   * This is for lookup-scope wrappers that need shared top-level children to
+   * resolve through the new wrapper during active evaluation, but must not
+   * permanently reparent those children canonically.
+   */
+  cloneLookupSafeShallowWrapper(ctx: Context): this {
+    const ck = (this.constructor as typeof Node).childKeys;
+    const sharedChildren: Array<{
+      child: Node;
+      canonicalParent: Node | undefined;
+    }> = [];
+
+    if (Array.isArray(ck)) {
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (field instanceof Node) {
+          sharedChildren.push({
+            child: field,
+            canonicalParent: field.parent
+          });
+        } else if (isArray(field)) {
+          for (const item of field as unknown[]) {
+            if (item instanceof Node) {
+              sharedChildren.push({
+                child: item,
+                canonicalParent: item.parent
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const wrapper = this.clone(false, undefined, ctx);
+
+    for (const { child, canonicalParent } of sharedChildren) {
+      if (ctx.session) {
+        ctx.session.getRuntime(child).parent = wrapper;
+      }
+      (child as any).parent = canonicalParent;
+    }
+
+    return wrapper;
+  }
+
+  /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also
