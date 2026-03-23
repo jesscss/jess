@@ -35,7 +35,19 @@ Do not use this as the full node-status matrix or roadmap document:
 ## Current state
 
 ### Branch: `jess-dev`
-### Last commit: `99065d2f` — docs(progress): add Live Patch API vision
+### Latest pushed merge-safe boundary before the current fundamentals slice: `c379624f` — `Merge branch 'dev' into jess-dev`
+
+### Immediate work
+1. Follow the immediate queue in `node-session-status.md`.
+2. The next live owner is lower returned-output shaping in `Rules.evaluateCandidateOutput(...)`.
+3. Do not treat matcher internals or extend matching as the current blocker:
+   - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
+   - `Condition` now adopts `compare(context)` for selector guards on the active path
+   - extend matching/rewrite now threads eval `Context` through the active helper pipeline
+4. The remaining hard owners are wrapper/output shaping:
+   - later `Rules` output shaping after wrapper construction
+   - later returned-output shaping downstream of `Rules`
+   - lower lookup-safe shallow-clone semantics that still affect control prior-scope reuse
 
 ### Stage status
 - Stage 17: complete and committed
