@@ -177,7 +177,7 @@ describe('Condition', () => {
       expect(node.negate).toBe(false);
     });
 
-    it('keeps selector guard comparison canonical even when separately evald selector operands can compare under context', async () => {
+    it('uses compare(context) for selector guard comparisons when a session is active', async () => {
       context.session = new EvalSession();
 
       const parent = ruleset({
@@ -205,10 +205,11 @@ describe('Condition', () => {
       left.keySetLibrary = context.selectorBits;
 
       const right = sel([el('.beta'), co('>'), el('.tail')]);
-      right.keySetLibrary = context.selectorBits;
+      const otherBits = new Context().selectorBits;
+      right.keySetLibrary = otherBits;
       for (const child of right.value as any[]) {
         if ('keySetLibrary' in child) {
-          child.keySetLibrary = context.selectorBits;
+          child.keySetLibrary = otherBits;
         }
       }
 
@@ -224,7 +225,7 @@ describe('Condition', () => {
       const evaldRight = await right.eval(context);
 
       expect((evaldLeft as any).compare(evaldRight as any, context)).toBe(0);
-      expect(`${await node.eval(context)}`).toBe('false');
+      expect(`${await node.eval(context)}`).toBe('true');
       expect(`${await node.eval(new Context())}`).toBe('false');
       expect(parent.selector.valueOf()).toBe('.alpha');
     });

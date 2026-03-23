@@ -5,6 +5,10 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { sessionGetField } from './util/session-helpers.js';
 
+function isSelectorLike(node: Node): node is Node & { isSelector: true } {
+  return !!node && typeof node === 'object' && (node as { isSelector?: boolean }).isSelector === true;
+}
+
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
 
@@ -138,12 +142,16 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return new Bool(negated);
   }
 
-  static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
+  static getResult(a: Node, b: Node, op: ConditionOperator, context?: Context): boolean {
     switch (op) {
       case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
       case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
       default:
-        switch (a.compare(b)) {
+        switch (
+          isSelectorLike(a) && isSelectorLike(b)
+            ? a.compare(b, context)
+            : a.compare(b)
+        ) {
           case -1:
             return op === '<' || op === '<=';
           case 0:
@@ -201,7 +209,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         };
         a = normalizeDefaultCall(a);
         b = normalizeDefaultCall(b);
-        let result = Condition.getResult(a, b, op!);
+        let result = Condition.getResult(a, b, op!, context);
         return new Bool(negated ? !result : result);
       }
     );
