@@ -194,6 +194,27 @@ describe('Rule', () => {
     expect(canonical.rules.parent).toBe(canonical);
   });
 
+  it('characterizes source ruleset shallow clone in a session as sharing selector and rules while keeping their canonical parents on the source ruleset', () => {
+    const source = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    context.session = new EvalSession();
+
+    const cloned = source.clone(false, undefined, context);
+
+    expect(cloned).not.toBe(source);
+    expect(cloned.selector).toBe(source.selector);
+    expect(cloned.rules).toBe(source.rules);
+    expect(source.selector.parent).toBe(source);
+    expect(source.rules.parent).toBe(source);
+    expect(cloned.selector.parent).toBe(source);
+    expect(cloned.rules.parent).toBe(source);
+  });
+
   it('preEval keeps child rules visibility in the session without mutating canonical rules options', async () => {
     const node = ruleset({
       selector: el('.alpha'),

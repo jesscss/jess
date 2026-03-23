@@ -207,6 +207,52 @@ describe('registry characterization', () => {
     expect(registryData2).toBe(registryData1);
   });
 
+  it('plain cached compose wrappers still share the cached registry slot when they share top-level child identity', async () => {
+    const context = createTestContext();
+    const libraryPath = 'library-compose-wrapper-registry.jess';
+    context.sourceTrees.set(libraryPath, rules([
+      ruleset({
+        selector: sellist([sel([el('.imported')])]),
+        rules: rules([
+          decl({ name: any('color'), value: any('red') })
+        ])
+      })
+    ]));
+
+    const root = rules([
+      style(
+        { path: quoted(any(libraryPath)) },
+        { type: 'compose', namespace: '*', importOptions: { mutable: true } }
+      ),
+      style(
+        { path: quoted(any(libraryPath)) },
+        { type: 'compose', namespace: '*', importOptions: { mutable: false, multiple: true } }
+      )
+    ]);
+
+    const evald = await root.eval(context);
+    const firstWrapper = evald.at(0) as Rules;
+    const secondWrapper = evald.at(1) as Rules;
+    const cachedEvaldRules = context.evaldTrees.get(libraryPath) as Rules;
+
+    firstWrapper.getRegistry('ruleset');
+    secondWrapper.getRegistry('ruleset');
+    cachedEvaldRules.getRegistry('ruleset');
+
+    const firstRegistry = peekRegistryData(firstWrapper.value);
+    const secondRegistry = peekRegistryData(secondWrapper.value);
+    const cachedRegistry = peekRegistryData(cachedEvaldRules.value);
+
+    expect(firstWrapper).not.toBe(cachedEvaldRules);
+    expect(secondWrapper).not.toBe(cachedEvaldRules);
+    expect(firstWrapper.at(0)).toBe(cachedEvaldRules.at(0));
+    expect(secondWrapper.at(0)).toBe(cachedEvaldRules.at(0));
+    expect(firstWrapper.value).toBe(cachedEvaldRules.value);
+    expect(secondWrapper.value).toBe(cachedEvaldRules.value);
+    expect(firstRegistry).toBe(cachedRegistry);
+    expect(secondRegistry).toBe(cachedRegistry);
+  });
+
   it('keeps mixin expansion parameter vars in the active session delta', async () => {
     const context = new Context({
       leakyRules: true

@@ -990,6 +990,8 @@ describe('Mixin', () => {
       }
       expect(current).toBe(outputRuleset.rules);
       expect(outputDecl.sourceNode).toBe(sourceDecl);
+      expect(sourceDecl.parent).toBe(baseMixin.rules);
+      expect((wrapperMixin.rules.at(0) as Node).parent).toBe(wrapperMixin.rules);
     });
 
     it('should call a mixin with pattern matching by value', async () => {
