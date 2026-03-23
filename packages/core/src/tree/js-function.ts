@@ -1,4 +1,4 @@
-import { Node, defineType, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
+import { Node, defineType, type LocationInfo, type OptionalLocation, type TreeContext, type NodeOptions } from './node.js';
 
 type Fn = (...args: any[]) => any;
 /**
@@ -17,7 +17,7 @@ export class JsFunction extends Node<Fn> {
   constructor(
     value: { name: string; fn: Fn } | Fn,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     const fn = typeof value === 'function' ? value : value.fn;

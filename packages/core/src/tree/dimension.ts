@@ -3,7 +3,7 @@ import { Color, ColorFormat } from './color.js';
 import {
   Node,
   F_STATIC,
-  type LocationInfo,
+  type LocationInfo, type OptionalLocation,
   type NodeOptions,
   type TreeContext,
   defineType
@@ -47,7 +47,7 @@ export class Dimension extends Node<DimensionValue> {
   constructor(
     value: DimensionValue,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);
@@ -380,7 +380,7 @@ defineType(Dimension, 'Dimension');
 export const dimension = (
   value: DimensionValue | [number, string] | number,
   options?: NodeOptions,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   treeContext?: TreeContext
 ) => {
   if (isArray(value)) {

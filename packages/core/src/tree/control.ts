@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo, type OptionalLocation } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
 import { Sequence } from './sequence.js';
@@ -144,7 +144,7 @@ export class If extends Node<IfValue> {
   bodies!: Rules[];
   elseBranch: Rules | undefined;
 
-  constructor(value: IfValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: IfValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.conditions = value.conditions;
     this.bodies = value.bodies;
@@ -213,7 +213,7 @@ export class For extends Node<ForValue> {
   iterable!: Node;
   rules!: Rules;
 
-  constructor(value: ForValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: ForValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.vars = value.vars;
     this.iterable = value.iterable;
@@ -424,7 +424,7 @@ export class Each extends Node<LegacyLoopValue> {
   header!: Sequence;
   rules!: Rules;
 
-  constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: LegacyLoopValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.header = value.header;
     this.rules = value.rules;
@@ -469,7 +469,7 @@ export class While extends Node<WhileValue> {
   condition!: Node;
   rules!: Rules;
 
-  constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: WhileValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.condition = value.condition;
     this.rules = value.rules;

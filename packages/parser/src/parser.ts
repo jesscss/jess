@@ -65,6 +65,7 @@
  */
 import {
   type LocationInfo,
+  type OptionalLocation,
   type IToken,
   type TokenType,
   type OrAlternative,
@@ -944,7 +945,7 @@ export class RecursiveDescentParser {
   }
 
   /** Build LocationInfo spanning a list of tokens and/or nodes */
-  getLocationFromNodes(nodes: Array<IToken | { location?: LocationInfo | [] }>): LocationInfo | undefined {
+  getLocationFromNodes(nodes: Array<IToken | { location?: OptionalLocation }>): LocationInfo | undefined {
     let startOffset = Infinity;
     let startLine = Infinity;
     let startColumn = Infinity;

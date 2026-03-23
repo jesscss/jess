@@ -2,7 +2,7 @@ import {
   Node,
   F_STATIC,
   defineType,
-  type LocationInfo,
+  type LocationInfo, type OptionalLocation,
   type NodeOptions,
   type TreeContext
 } from './node.js';
@@ -95,7 +95,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   value!: Node;
   important: Any<'flag'> | undefined;
 
-  constructor(value: DeclarationValue, options?: Opts, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
     this.value = value.value;
@@ -388,7 +388,7 @@ defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 export const decl = (
   value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   treeContext?: TreeContext
 ) => {
   let { name } = value;

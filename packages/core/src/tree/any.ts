@@ -2,7 +2,7 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, type TreeContext, F_STATIC } from './node-base.js';
+import { Node, defineType, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext, F_STATIC } from './node-base.js';
 import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
@@ -55,7 +55,7 @@ export class Any<
   constructor(
     value: string,
     options?: AnyOptions<Role>,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);
@@ -147,7 +147,7 @@ export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     context?: TreeContext
   ) {
     // Force role to 'keyword'
@@ -162,7 +162,7 @@ defineType(Keyword, 'Keyword');
 export function keyword(
   value: string,
   options?: Omit<NodeOptions, 'role'>,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   context?: TreeContext
 ): Keyword {
   return new Keyword(value, options, location, context);

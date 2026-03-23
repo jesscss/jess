@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { Node, F_STATIC, defineType, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Bool extends Node<boolean> {
@@ -19,7 +19,7 @@ export class Bool extends Node<boolean> {
   constructor(
     value: boolean,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);

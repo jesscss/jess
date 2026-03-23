@@ -2,7 +2,7 @@ import {
   Node,
   defineType,
   type NodeOptions,
-  type LocationInfo,
+  type LocationInfo, type OptionalLocation,
   type TreeContext,
   F_STATIC,
   F_VISIBLE
@@ -359,7 +359,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   constructor(
     value: Node[],
     options?: RulesOptions & NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     let rulesVisibility = options?.rulesVisibility ?? {};

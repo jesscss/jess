@@ -3,7 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { type IRecognitionException, type ILexingError, type ILexingResult } from '@chevrotain/types';
 import type { TreeContext } from './context.js';
-import type { LocationInfo } from './tree/node.js';
+import type { OptionalLocation } from './tree/node.js';
 import type { Deprecation } from './deprecation.js';
 
 type JessFile = TreeContext['file'];
@@ -11,8 +11,8 @@ type JessFile = TreeContext['file'];
 /** Minimal shape for passing context and a node to helpers. */
 export type TreeContextLike = { file: JessFile };
 
-/** Node type carrying a `location` tuple. */
-export type LocNode = { location?: LocationInfo };
+/** Node type carrying a `location` (full span, empty tuple, or unset). */
+export type LocNode = { location?: OptionalLocation };
 
 type Phase = 'parse' | 'resolve' | 'import' | 'eval' | 'extend' | 'plugin';
 type Severity = 'error' | 'warn';

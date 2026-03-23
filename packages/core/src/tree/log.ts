@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { Node, F_VISIBLE, defineType, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { logger } from '../logger.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
@@ -30,7 +30,7 @@ export class Log extends Node<LogValue, NodeOptions> {
   constructor(
     value: LogValue,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);

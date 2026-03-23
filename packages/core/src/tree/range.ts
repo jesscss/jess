@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type RangeValue = {
@@ -36,7 +36,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
   end!: Node;
   step: Node | undefined;
 
-  constructor(value: RangeValue, options?: RangeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: RangeValue, options?: RangeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.start = value.start;
     this.end = value.end;

@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeOptions, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
@@ -17,7 +17,7 @@ export class Negative extends Node<Node> {
 
   value!: Node;
 
-  constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: Node, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     if (value instanceof Node) {

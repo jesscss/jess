@@ -1,7 +1,7 @@
 import {
   defineType,
   Node,
-  type LocationInfo,
+  type LocationInfo, type OptionalLocation,
   type NodeOptions,
   type TreeContext
 } from './node.js';
@@ -38,7 +38,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   name!: string;
   arg: Node | undefined;
 
-  constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
     this.arg = value.arg;

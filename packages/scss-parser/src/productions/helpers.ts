@@ -15,6 +15,7 @@ import {
   Sequence,
   VarDeclaration,
   type LocationInfo,
+  type OptionalLocation,
   type Node,
   type Selector
 } from '@jesscss/core';
@@ -160,7 +161,7 @@ export function asSingleVariableReference(n: Node): Reference | undefined {
   return undefined;
 }
 
-export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: LocationInfo): VarDeclaration {
+export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: OptionalLocation): VarDeclaration {
   const decl = new VarDeclaration(
     {
       name: new Any(name, { role: 'property' }, location, parser.context),
@@ -177,7 +178,7 @@ export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string
 export function toNameInterpolationReplacement(
   parser: ScssRecursiveParser,
   expr: Node,
-  location?: LocationInfo
+  location?: OptionalLocation
 ): Node {
   const simpleRef = asSingleVariableReference(expr);
   if (simpleRef && typeof simpleRef.key === 'string') {

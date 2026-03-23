@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 
 export type CommentOptions = {
   lineComment?: boolean;
@@ -20,7 +20,7 @@ export class Comment extends Node<string, CommentOptions> {
   value!: string;
   lineComment: boolean;
 
-  constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: string, options?: CommentOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     this.lineComment = !!options?.lineComment;

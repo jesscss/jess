@@ -11,7 +11,7 @@ import type { IToken, TokenType, ParserMethod } from '@chevrotain/types';
 
 export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
-import type { LocationInfo } from '@jesscss/core';
+import type { LocationInfo, OptionalLocation } from '@jesscss/core';
 
 import {
   TreeContext,
@@ -402,7 +402,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     ];
   }
 
-  getLocationFromNodes(nodes: Array<IToken | { location?: LocationInfo | [] }>): LocationInfo | undefined {
+  getLocationFromNodes(nodes: Array<IToken | { location?: OptionalLocation }>): LocationInfo | undefined {
     let startOffset = Infinity, startLine = Infinity, startColumn = Infinity;
     let endOffset = -Infinity, endLine = -Infinity, endColumn = -Infinity;
     let found = false;

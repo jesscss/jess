@@ -20,6 +20,11 @@ export type LocationInfo = [
   endColumn: number
 ];
 
+/** Same convention as `@jesscss/core`: full span or empty tuple when unknown. */
+export type LocationInfoOrEmpty = LocationInfo | [];
+
+export type OptionalLocation = LocationInfoOrEmpty | undefined;
+
 // ── Token types ──────────────────────────────────────────────────────
 // Simplified from Chevrotain's token system. We keep compatibility with
 // Chevrotain's IToken shape so we can reuse the existing lexer during

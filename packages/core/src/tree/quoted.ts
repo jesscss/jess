@@ -1,6 +1,6 @@
 import { type Interpolated } from './interpolated.js';
 import { Any } from './any.js';
-import { Node, F_STATIC, F_NON_STATIC, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { Node, F_STATIC, F_NON_STATIC, defineType, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -27,7 +27,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   quote: '"' | '\'' | undefined;
   escaped: boolean;
 
-  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     this.quote = options?.quote;

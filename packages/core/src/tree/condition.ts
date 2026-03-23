@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { F_NON_STATIC, F_VISIBLE, Node, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { F_NON_STATIC, F_VISIBLE, Node, defineType, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
@@ -48,7 +48,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return newNode;
   }
 
-  constructor(value: ConditionValue, options?: ConditionOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: ConditionValue, options?: ConditionOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.left = value[0];
     this.operator = value[1];
