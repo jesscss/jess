@@ -57,6 +57,19 @@ type P = any;
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
+function consumeExactIdentLike($: P): IToken {
+  if ($.RECORDING_PHASE) {
+    return $.OR([
+      { ALT: () => $.CONSUME($.T.Ident) },
+      { ALT: () => $.CONSUME($.T.PlainIdent) }
+    ]) as unknown as IToken;
+  }
+  if ($.LA(1).tokenType === $.T.PlainIdent) {
+    return $.CONSUME($.T.PlainIdent) as unknown as IToken;
+  }
+  return $.CONSUME($.T.Ident) as unknown as IToken;
+}
+
 function parseInterpolatedMixinName(
   $: P,
   ctx: RuleContext,
@@ -66,42 +79,59 @@ function parseInterpolatedMixinName(
   let source = '';
   const replacements: Node[] = [];
 
-  $.AT_LEAST_ONE({
-    DEF: () => {
+  if ($.RECORDING_PHASE) {
+    $.AT_LEAST_ONE({
+      DEF: () => {
+        $.OR([
+          {
+            ALT: () => {
+              $.CONSUME($.T.InterpolationStart);
+              $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+              $.CONSUME($.T.RCurly);
+            }
+          },
+          { ALT: () => $.CONSUME($.T.Ident) },
+          { ALT: () => $.CONSUME($.T.PlainIdent) }
+        ]);
+      }
+    });
+  } else {
+    const consumeNamePart = (): boolean => {
+      if ($.LA(1).tokenType === $.T.InterpolationStart) {
+        $.CONSUME($.T.InterpolationStart);
+        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        $.CONSUME($.T.RCurly);
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
+        return true;
+      }
+
+      if (!endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.Ident) {
+        const tok = $.CONSUME($.T.Ident) as unknown as IToken;
+        source += tok.image;
+        return true;
+      }
+
+      if (!endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.PlainIdent) {
+        const tok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+        source += tok.image;
+        return true;
+      }
+
+      return false;
+    };
+
+    if (!consumeNamePart()) {
       $.OR([
-        {
-          GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-          ALT: () => {
-            $.CONSUME($.T.InterpolationStart);
-            const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-            $.CONSUME($.T.RCurly);
-            if (!$.RECORDING_PHASE) {
-              source += INTERPOLATION_PLACEHOLDER;
-              replacements.push(toNameInterpolationReplacement($, expr, $.getLocationFromNodes([expr])));
-            }
-          }
-        },
-        {
-          GATE: () => !endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.Ident,
-          ALT: () => {
-            const tok = $.CONSUME($.T.Ident) as unknown as IToken;
-            if (!$.RECORDING_PHASE) {
-              source += tok.image;
-            }
-          }
-        },
-        {
-          GATE: () => !endTokens.has($.LA(1).tokenType) && $.LA(1).tokenType === $.T.PlainIdent,
-          ALT: () => {
-            const tok = $.CONSUME($.T.PlainIdent) as unknown as IToken;
-            if (!$.RECORDING_PHASE) {
-              source += tok.image;
-            }
-          }
-        }
+        { ALT: () => $.CONSUME($.T.InterpolationStart) },
+        { ALT: () => $.CONSUME($.T.Ident) },
+        { ALT: () => $.CONSUME($.T.PlainIdent) }
       ]);
     }
-  });
+    while (consumeNamePart()) {
+      // continue
+    }
+  }
 
   const loc = $.endRule();
   if ($.RECORDING_PHASE) {
@@ -992,10 +1022,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
     };
 
     const parseNamespacedDotCall = () => {
-      const ns = $.OR3([
-        { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.PlainIdent) }
-      ]) as unknown as IToken;
+      const ns = consumeExactIdentLike($);
       const dot = $.CONSUME($.T.DotName) as unknown as IToken;
       if ($.RECORDING_PHASE) {
         return;
@@ -1004,10 +1031,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
     };
 
     const parseEscapedNamespacedRulesetCall = () => {
-      const ns = $.OR4([
-        { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.PlainIdent) }
-      ]) as unknown as IToken;
+      const ns = consumeExactIdentLike($);
       $.CONSUME($.T.Unknown); // '.'
       $.CONSUME($.T.Unknown); // '\'
       const member = $.OR5([
@@ -1025,10 +1049,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
     };
 
     const parsePlainMixinCall = () => {
-      const ident = $.OR6([
-        { GATE: () => $.isTypeAt(1, $.T.Ident), ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.PlainIdent) }
-      ]) as unknown as IToken;
+      const ident = consumeExactIdentLike($);
       if ($.RECORDING_PHASE) {
         return;
       }
@@ -1533,12 +1554,15 @@ export function scssMixinParams(this: P, T: TokenMap) {
     const params: Node[] = [];
 
     $.OPTION(() => {
-      $.AT_LEAST_ONE_SEP({
-        SEP: $.T.Comma,
-        DEF: () => {
-          const p = $.SUBRULE($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node;
-          params.push(p);
-        }
+      params.push($.SUBRULE($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node);
+      $.MANY(() => {
+        $.CONSUME($.T.Comma);
+        $.OPTION2({
+          GATE: () => $.LA(1).tokenType !== $.T.RParen,
+          DEF: () => {
+            params.push($.SUBRULE2($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node);
+          }
+        });
       });
     });
 
@@ -1559,12 +1583,15 @@ export function scssMixinParamsAfterFunctionStart(this: P, T: TokenMap) {
     const params: Node[] = [];
 
     $.OPTION(() => {
-      $.AT_LEAST_ONE_SEP({
-        SEP: $.T.Comma,
-        DEF: () => {
-          const p = $.SUBRULE($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node;
-          params.push(p);
-        }
+      params.push($.SUBRULE($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node);
+      $.MANY(() => {
+        $.CONSUME($.T.Comma);
+        $.OPTION2({
+          GATE: () => $.LA(1).tokenType !== $.T.RParen,
+          DEF: () => {
+            params.push($.SUBRULE2($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node);
+          }
+        });
       });
     });
 
@@ -1585,7 +1612,7 @@ export function scssMixinParam(this: P, T: TokenMap) {
 
     let node: Node | undefined;
     $.OR([
-    // ...$rest
+    // Legacy JessCSS form: ...$rest
       {
         GATE: () => $.LA(1).tokenType?.name === 'Ellipsis' || $.LA(1).image === '...',
         ALT: () => {
@@ -1597,9 +1624,14 @@ export function scssMixinParam(this: P, T: TokenMap) {
       {
         ALT: () => {
           const dv = $.CONSUME($.T.DollarVariable);
+          if ($.LA(1).tokenType === $.T.Ellipsis) {
+            $.CONSUME2($.T.Ellipsis);
+            node = new Rest(dv.image.slice(1), undefined, $.getLocationInfo(dv), $.context);
+            return;
+          }
           let defaultValue: Node | undefined;
           $.OPTION(() => {
-          // In SCSS, default params use `:`, which is tokenized as `Assign` in this lexer setup.
+          // In SCSS, default params use `:`, which is tokenized under the Assign category.
             $.CONSUME($.T.Assign);
             defaultValue = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
           });

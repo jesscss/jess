@@ -7,7 +7,7 @@ import {
   type ScssParserConfig,
   type CombinedTokenMap
 } from '@jesscss/scss-parser';
-import { productions as cssProductions } from '@jesscss/css-parser';
+import { productions as cssProductions, type Rule } from '@jesscss/css-parser';
 
 import { type JessExtraTokenType } from './jessTokens.js';
 
@@ -41,31 +41,31 @@ export class JessRecursiveParser extends ScssRecursiveParser {
   // ════════════════════════════════════════════════════════════════════
 
   // ── Jess at-rules ─────────────────────────────────────────────────
-  declare jessComposeAtRule: typeof productions.jessComposeAtRule;
-  declare jessFromAtRule: typeof productions.jessFromAtRule;
-  declare jessExportAtRule: typeof productions.jessExportAtRule;
+  jessComposeAtRule!: Rule;
+  jessFromAtRule!: Rule;
+  jessExportAtRule!: Rule;
 
   // ── Control flow ──────────────────────────────────────────────────
-  declare jessComparison: typeof productions.jessComparison;
-  declare jessConditionInParens: typeof productions.jessConditionInParens;
-  declare jessIfStatement: typeof productions.jessIfStatement;
-  declare jessForStatement: typeof productions.jessForStatement;
+  jessComparison!: Rule;
+  jessConditionInParens!: Rule;
+  jessIfStatement!: Rule;
+  jessForStatement!: Rule;
 
   // ── Mixins ────────────────────────────────────────────────────────
-  declare jessMixinParams: typeof productions.jessMixinParams;
-  declare jessGuard: typeof productions.jessGuard;
-  declare jessMixinDefinition: typeof productions.jessMixinDefinition;
-  declare jessMixinCall: typeof productions.jessMixinCall;
+  jessMixinParams!: Rule;
+  jessGuard!: Rule;
+  jessMixinDefinition!: Rule;
+  jessMixinCall!: Rule;
 
   // ── Values ────────────────────────────────────────────────────────
-  declare jessParenExpression: typeof productions.jessParenExpression;
-  declare jessCallArgs: typeof productions.jessCallArgs;
-  declare jessVarWithAccessors: typeof productions.jessVarWithAccessors;
+  jessParenExpression!: Rule;
+  jessCallArgs!: Rule;
+  jessVarWithAccessors!: Rule;
 
   // ── Root / statements ─────────────────────────────────────────────
-  declare jessCollection: typeof productions.jessCollection;
-  declare varDeclaration: typeof productions.varDeclaration;
-  declare jessExprStatement: typeof productions.jessExprStatement;
+  jessCollection!: Rule;
+  varDeclaration!: Rule;
+  jessExprStatement!: Rule;
 
   constructor(
     T: JessTokenMap,
@@ -73,7 +73,7 @@ export class JessRecursiveParser extends ScssRecursiveParser {
   ) {
     super(T as unknown as CombinedTokenMap, config);
     this.T = T;
-    type ProductionFactory = (this: JessRecursiveParser, T: JessTokenMap) => (ctx?: JessRuleContext) => unknown;
+    type ProductionFactory = (this: JessRecursiveParser, T: JessTokenMap) => Rule;
     const entries = Object.entries(productions) as Array<[keyof typeof productions, ProductionFactory]>;
 
     for (const [key, factory] of entries) {

@@ -2,6 +2,7 @@
 // Converted from Chevrotain-based productions.ts
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser';
+import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   Any,
@@ -15,8 +16,12 @@ import {
   type LocationInfo,
   type Node,
   List,
+  Nil,
+  Paren,
+  Rest,
   Quoted,
   Reference,
+  type Selector,
   SelectorCapture,
   Sequence,
   VarDeclaration,
@@ -44,6 +49,40 @@ type AltContext = (ctx?: RuleContext) => Alt;
 // Save reference to CSS prototype functionCall
 const cssFunctionCall = cssProductions.functionCall;
 const cssDeclaration = cssProductions.declaration;
+
+function saveValueDiagnostic($: P, token: IToken | undefined, location: LocationInfo | undefined, message: string): void {
+  const err: NoViableAltException & {
+    startLine?: number;
+    startColumn?: number;
+    endLine?: number;
+    endColumn?: number;
+    offset?: number;
+    length?: number;
+    location?: LocationInfo;
+  } = new NoViableAltException(
+    message,
+    token ?? $.LA(1),
+    $.LA(0)
+  ) as NoViableAltException & {
+    startLine?: number;
+    startColumn?: number;
+    endLine?: number;
+    endColumn?: number;
+    offset?: number;
+    length?: number;
+    location?: LocationInfo;
+  };
+  if (location) {
+    err.startLine = location[1];
+    err.startColumn = location[2];
+    err.endLine = location[4];
+    err.endColumn = location[5];
+    err.offset = location[0];
+    err.length = Math.max(1, (location[3] - location[0]) + 1);
+    err.location = location;
+  }
+  $.SAVE_ERROR(err);
+}
 
 function consumeScssVarFlags($: P) {
   let sawDefault = false;
@@ -205,10 +244,47 @@ export function scssIdentValue(this: P, T: TokenMap) {
 export function functionCallArgs(this: P, T: TokenMap) {
   const $ = this;
 
+  const parseCallArgument = (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let node: Node;
+    if (
+      $.LA(1).tokenType === $.T.DollarVariable
+      && $.isTypeAt(2, $.T.Assign)
+    ) {
+      const dv = $.CONSUME($.T.DollarVariable) as unknown as IToken;
+      $.CONSUME($.T.Assign);
+      const value = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+      const location = $.endRule();
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+      return new VarDeclaration({ name, value }, undefined, location, $.context);
+    }
+
+    node = $.SUBRULE2($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+    $.OPTION({
+      GATE: () => $.LA(1).tokenType === $.T.Ellipsis,
+      DEF: () => {
+        const ellipsis = $.CONSUME($.T.Ellipsis);
+        if (!$.RECORDING_PHASE) {
+          node = new Rest(node, undefined, $.getLocationFromNodes([node, ellipsis]), $.context);
+        }
+      }
+    });
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    return node ?? new Nil(undefined, undefined, location, $.context);
+  };
+
   return (ctx: RuleContext = {}) => {
     $.startRule();
 
-    let node = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+    let node = parseCallArgument(ctx) as unknown as Node;
     let commaNodes: Node[] | undefined;
     let semiNodes: Node[] | undefined;
     let isSemiList = false;
@@ -224,7 +300,9 @@ export function functionCallArgs(this: P, T: TokenMap) {
           {
             ALT: () => {
               $.CONSUME($.T.Comma);
-              $.SUBRULE2($.valueSequence, { ARGS: [ctx] });
+              $.OPTION2(() => {
+                parseCallArgument(ctx);
+              });
             }
           },
           {
@@ -239,7 +317,10 @@ export function functionCallArgs(this: P, T: TokenMap) {
 
       if (!isSemiList && $.isType($.T.Comma)) {
         $.CONSUME($.T.Comma);
-        node = $.SUBRULE2($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        if ($.LA(1).tokenType === $.T.RParen) {
+          return;
+        }
+        node = parseCallArgument(ctx) as unknown as Node;
         commaNodes!.push($.wrap(node, true));
         return;
       }
@@ -265,6 +346,59 @@ export function functionCallArgs(this: P, T: TokenMap) {
   };
 }
 
+export function parenValue(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    $.CONSUME($.T.LParen);
+
+    let value: Node | undefined;
+    $.OPTION({
+      GATE: () => $.LA(1).tokenType !== $.T.RParen,
+      DEF: () => {
+        value = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Node;
+      }
+    });
+
+    $.CONSUME($.T.RParen);
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    return new Paren(value, { delimiter: 'paren' }, location, $.context);
+  };
+}
+
+export function squareValue(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    $.CONSUME($.T.LSquare);
+
+    let value: Node | undefined;
+    $.OPTION({
+      GATE: () => $.LA(1).tokenType !== $.T.RSquare,
+      DEF: () => {
+        value = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Node;
+      }
+    });
+
+    $.CONSUME($.T.RSquare);
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const delimiter = (
+      isNode(value, N.Any)
+      && value.options?.role === 'ident'
+    ) ? 'square' : 'paren';
+
+    return new Paren(value, { delimiter }, location, $.context);
+  };
+}
+
 /**
  * Override CSS `value` to add SCSS interpolation, map literals, and
  * module-qualified references.
@@ -276,6 +410,10 @@ export function value(this: P, T: TokenMap, valueAlt?: AltContext) {
     {
       GATE: () => $.LA(1).tokenType === $.T.LParen && looksLikeMapLiteral($, $.T),
       ALT: () => $.SUBRULE($.scssMapLiteral, { ARGS: [ctx] })
+    },
+    {
+      GATE: () => $.LA(1).tokenType === $.T.LParen,
+      ALT: () => $.SUBRULE($.parenValue, { ARGS: [ctx] })
     },
     {
       // SCSS interpolation in values: `#{$expr}`
@@ -371,10 +509,18 @@ export function functionCall(this: P, T: TokenMap) {
         ? (call.location as LocationInfo)
         : undefined;
       if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode((firstArg as Quoted).value, N.Any)) {
-        throw new SyntaxError('selector.parse() requires a quoted selector string literal.');
+        saveValueDiagnostic($, undefined, firstArg?.location as LocationInfo | undefined ?? loc, 'selector.parse() requires a quoted selector string literal.');
+        return call;
       }
       const selectorText = String((firstArg as Quoted).value.valueOf());
-      const selector = parseSelectorListExpression(selectorText);
+      let selector: Selector;
+      try {
+        selector = parseSelectorListExpression(selectorText);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        saveValueDiagnostic($, undefined, firstArg.location as LocationInfo | undefined ?? loc, `selector.parse() failed: ${message}`);
+        return call;
+      }
       return new SelectorCapture(selector, undefined, loc, $.context);
     }
 

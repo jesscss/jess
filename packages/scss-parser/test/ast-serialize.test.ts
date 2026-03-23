@@ -49,6 +49,17 @@ describe('scss-parser (ast serialize)', () => {
     `);
   });
 
+  it('serializes Sass bracketed list literals as Paren with delimiter metadata', () => {
+    const { tree, errors, lexerResult } = parser.parse('.a { x: [foo]; y: [1, 2]; z: [[1, 2], [3, 4]]; }');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain(`delimiter: 'square'`);
+    expect(serialized).toContain(`delimiter: 'paren'`);
+    expect(serialized).toContain(`(Paren`);
+  });
+
   it('serializes nested property declarations as a Collection-valued declaration', () => {
     const { tree, errors, lexerResult } = parser.parse('.a { font: { size: 1rem; weight: bold; } }');
     expect(lexerResult.errors).toEqual([]);
@@ -120,6 +131,78 @@ describe('scss-parser (ast serialize)', () => {
     expect(serialized).toContain(`type: 'mixin'`);
     expect(serialized).toContain(`key: 'color'`);
     expect(serialized).toContain(`key: 'count'`);
+  });
+
+  it('serializes bare @include foo; as a mixin call', () => {
+    const { tree, errors, lexerResult } = parser.parse('@include foo;');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(Call');
+    expect(serialized).toContain(`type: 'mixin'`);
+    expect(serialized).toContain(`key: 'foo'`);
+  });
+
+  it('serializes bare @include ns.foo; as a module-qualified mixin call', () => {
+    const { tree, errors, lexerResult } = parser.parse('@include ns.foo;');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(Call');
+    expect(serialized).toContain(`type: 'mixin'`);
+    expect(serialized).toContain(`target:`);
+    expect(serialized).toContain(`key: 'ns'`);
+    expect(serialized).toContain(`key: 'foo'`);
+  });
+
+  it('serializes @include keyword args', () => {
+    const { tree, errors, lexerResult } = parser.parse('@include wrap($x: 1, $y: 2);');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(Call');
+    expect(serialized).toContain('(VarDeclaration');
+    expect(serialized).toContain(`(Any [role=property]`);
+    expect(serialized).toContain(`'x'`);
+    expect(serialized).toContain(`'y'`);
+  });
+
+  it('serializes SCSS suffix rest params and spread args', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+      @mixin foo($a, $rest...,) { @content; }
+      @include foo(1, $args...,);
+    `);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(Rest');
+    expect(serialized).toContain(`key: 'foo'`);
+  });
+
+  it('serializes SCSS literal spread args', () => {
+    const { tree, errors, lexerResult } = parser.parse(`@include wrap(1..., (c: 2)...,);`);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(Rest');
+    expect(serialized).toContain('(Num 1)');
+    expect(serialized).toContain('(Collection');
+  });
+
+  it('serializes plain CSS @import url(...) as an AtRule', () => {
+    const { tree, errors, lexerResult } = parser.parse('@import url("foo.css");');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(AtRule');
+    expect(serialized).toContain(`'@import'`);
+    expect(serialized).toContain('(Url');
   });
 
   it('serializes placeholder rulesets', () => {

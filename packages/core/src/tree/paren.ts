@@ -8,7 +8,8 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type ParenOptions = {
-  escaped: boolean;
+  escaped?: boolean;
+  delimiter?: 'paren' | 'square';
 };
 
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
@@ -44,10 +45,13 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     const w = options.writer!;
     const mark = w.mark();
     const escapeChar = this.options?.escaped ? '~' : '';
+    const delimiter = this.options?.delimiter ?? 'paren';
+    const open = delimiter === 'square' ? '[' : '(';
+    const close = delimiter === 'square' ? ']' : ')';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
-    w.add('(');
+    w.add(open);
     let value = this.value;
     if (value) {
       if (value instanceof Node) {
@@ -57,7 +61,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         w.add(String(value), this);
       }
     }
-    w.add(')');
+    w.add(close);
     return w.getSince(mark);
   }
 
@@ -77,14 +81,21 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (this.options?.escaped && value instanceof Node) {
           return value;
         }
-        while (value instanceof Paren && value.value) {
-          value = value.value;
-        }
-        if (value instanceof Bool || value instanceof Dimension) {
-          return value;
-        }
-        if (isOp && !isOpOrExpression(value)) {
-          return value;
+        const delimiter = this.options?.delimiter ?? 'paren';
+        if (delimiter === 'paren') {
+          while (
+            value instanceof Paren
+            && value.value
+            && (value.options?.delimiter ?? 'paren') === 'paren'
+          ) {
+            value = value.value;
+          }
+          if (value instanceof Bool || value instanceof Dimension) {
+            return value;
+          }
+          if (isOp && !isOpOrExpression(value)) {
+            return value;
+          }
         }
         let node = this.maybeClone(context);
         node.value = value;

@@ -258,6 +258,50 @@ describe('JessLanguageServiceEngine', () => {
       expect(diagnostics.length).toBeGreaterThan(0);
     });
 
+    it('uses the full saved span for unsupported SCSS @forward diagnostics', () => {
+      const engine = createEngine();
+      const input = '@forward "foo" as bar-*;';
+      const doc = createDocument('scss', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diag = diagnostics.find(d =>
+        d.code === 'parse/parser'
+        && d.message.includes('@forward with "as <prefix>-*" prefixing is not supported')
+      );
+
+      expect(diag).toBeDefined();
+      expect(diag?.range.start.line).toBe(0);
+      expect(diag?.range.start.character).toBe(0);
+
+      const lastChar = doc.positionAt(input.length - 1);
+      expect(diag?.range.end.line).toBe(lastChar.line);
+      expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
+    });
+
+    it('uses the full saved span for unsupported SCSS @at-root filter diagnostics', () => {
+      const engine = createEngine();
+      const input = `@at-root (without: media) {
+  .a { color: red; }
+}`;
+      const doc = createDocument('scss', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diag = diagnostics.find(d =>
+        d.code === 'parse/parser'
+        && d.message.includes('@at-root prelude/filter forms are not yet supported in Jess')
+      );
+
+      expect(diag).toBeDefined();
+      expect(diag?.range.start.line).toBe(0);
+      expect(diag?.range.start.character).toBe(0);
+
+      const lastChar = doc.positionAt(input.length - 1);
+      expect(diag?.range.end.line).toBe(lastChar.line);
+      expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
+    });
+
     it('reports multiple parser errors (css/less/scss)', () => {
       // Force multiple *parser* errors by inserting tokens that are structurally invalid as values.
       const inputByLang: Record<'css' | 'less' | 'scss', string> = {

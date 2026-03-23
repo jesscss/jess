@@ -195,6 +195,22 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses SCSS suffix rest params and spread args with trailing commas', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @mixin foo($a, $rest...,) {
+        @content;
+      }
+      @include foo(1, $args...,);
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const serialized = serializeTypes(result.tree);
+    expect(serialized).toContainString(`(Rest`);
+    expect(serialized).toContainString(`key: 'foo'`);
+    assertValidTree(result.tree);
+  });
+
   it('parses @function and rewrites @return into $result declaration', () => {
     const parser = new Parser();
     const result = parser.parse(`
@@ -566,6 +582,45 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses SCSS bare mixin calls in @include (foo;)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include foo;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(Call`);
+    expect(serializeTypes(result.tree)).toContainString(`key: 'foo'`);
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS bare module-qualified mixin calls in @include (ns.foo;)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include ns.foo;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`
+      (Call
+        name: 
+          (Reference
+            target: 
+              (Reference
+                key: 'ns'
+              )
+            key: 'foo'
+    `);
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS @include keyword args', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include wrap($x: 1, $y: 2);`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(VarDeclaration`);
+    expect(serializeTypes(result.tree)).toContainString(`(Any [role=property] 'x')`);
+    expect(serializeTypes(result.tree)).toContainString(`(Any [role=property] 'y')`);
+    assertValidTree(result.tree);
+  });
+
   it('serializes @include ns.foo() as $ns > foo()', () => {
     const parser = new Parser();
     const result = parser.parse(`@include ns.foo();`);
@@ -589,6 +644,17 @@ describe('scss-parser (baseline)', () => {
     expect(out).toContain('|wrap(');
     expect(out).toContain(': @($c, $n)');
     expect(out).toContain('.child');
+    assertValidTree(result.tree);
+  });
+
+  it('preserves plain CSS @import url(...) in SCSS', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import url("foo.css");`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(AtRule`);
+    expect(serializeTypes(result.tree)).toContainString(`'@import'`);
+    expect(serializeTypes(result.tree)).toContainString(`(Url`);
     assertValidTree(result.tree);
   });
 

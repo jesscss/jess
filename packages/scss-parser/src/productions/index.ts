@@ -1,5 +1,5 @@
 export { scssComparison, scssConditionInParens, scssConditionInner, scssConditionAnd, scssConditionOr, scssCondition } from './conditions.js';
-export { functionCallArgs, functionCall, string, scssMapLiteral, scssNestedPropertyCollection, scssIdentValue, declaration, value } from './values.js';
+export { functionCallArgs, functionCall, string, parenValue, squareValue, scssMapLiteral, scssNestedPropertyCollection, scssIdentValue, declaration, value } from './values.js';
 export { simpleSelector, compoundSelector, layerName, main, declarationList } from './selectors.js';
 export {
   importAtRule,

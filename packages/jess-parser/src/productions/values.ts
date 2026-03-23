@@ -219,6 +219,10 @@ export function value(this: P, T: TokenMap) {
           ALT: () => $.SUBRULE($.jessVarWithAccessors, { ARGS: [ctx] })
         },
         {
+          GATE: () => $.LA(1).tokenType === $.T.LParen,
+          ALT: () => $.SUBRULE($.parenValue, { ARGS: [ctx] })
+        },
+        {
           ALT: () => scssValue.call($, T)(ctx)
         }
       ]);
@@ -235,6 +239,10 @@ export function value(this: P, T: TokenMap) {
       && ($.LA(2).tokenType === $.T.DotName || $.LA(2).tokenType === $.T.LSquare)
     ) {
       return $.SUBRULE($.jessVarWithAccessors, { ARGS: [ctx] });
+    }
+
+    if ($.LA(1).tokenType === $.T.LParen) {
+      return $.SUBRULE($.parenValue, { ARGS: [ctx] });
     }
 
     if ($.LA(1).tokenType === $.T.DollarVariable) {

@@ -1,6 +1,6 @@
 import { Lexer } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
-import type { ScssRecursiveParser, TokenMap as ScssTokenMap } from '../scssRecursiveParser.js';
+import type { RuleContext, ScssParserConfig, ScssRecursiveParser, TokenMap as ScssTokenMap } from '../scssRecursiveParser.js';
 import { scssFragments, scssTokens } from '../scssTokens.js';
 import {
   Any,
@@ -19,8 +19,6 @@ import {
   type Node,
   type Selector
 } from '@jesscss/core';
-import type { IToken } from '@jesscss/parser';
-
 export type InterpolationMatch = { start: number; end: number; content: string };
 
 export function findScssInterpolations(value: string): InterpolationMatch[] {
@@ -59,10 +57,10 @@ let interpolationParser:
   | undefined;
 
 /** Store the ScssRecursiveParser class, set lazily to break circular dependency */
-let ScssRecursiveParserClass: (new (T: any, config: any) => ScssRecursiveParser) | undefined;
+let ScssRecursiveParserClass: (new (T: ScssTokenMap, config?: ScssParserConfig) => ScssRecursiveParser) | undefined;
 
 /** Called by ScssRecursiveParser constructor to register itself */
-export function registerScssRecursiveParser(cls: new (T: any, config: any) => ScssRecursiveParser): void {
+export function registerScssRecursiveParser(cls: new (T: ScssTokenMap, config?: ScssParserConfig) => ScssRecursiveParser): void {
   ScssRecursiveParserClass = cls;
 }
 
@@ -78,7 +76,7 @@ export function getInterpolationParser(): { lexer: Lexer; parser: ScssRecursiveP
   if (!ScssRecursiveParserClass) {
     throw new Error('ScssRecursiveParser not registered. Ensure it is imported before calling getInterpolationParser.');
   }
-  const parser = new ScssRecursiveParserClass(T as any, {});
+  const parser = new ScssRecursiveParserClass(T as ScssTokenMap, {});
   interpolationParser = { lexer: chevLexer, parser };
   return interpolationParser;
 }
@@ -86,17 +84,19 @@ export function getInterpolationParser(): { lexer: Lexer; parser: ScssRecursiveP
 export function parseInterpolationExpression(expr: string): Node {
   const { lexer, parser } = getInterpolationParser();
   const lexed = lexer.tokenize(expr);
-  (parser as any).input = lexed.tokens as IToken[];
-  return (parser as any).valueSequence({} as any) as unknown as Node;
+  const ctx: RuleContext = {};
+  parser.input = lexed.tokens;
+  return parser.valueSequence(ctx) as unknown as Node;
 }
 
 export function parseSelectorListExpression(expr: string): Selector {
   const { lexer, parser } = getInterpolationParser();
   const lexed = lexer.tokenize(expr);
-  (parser as any).input = lexed.tokens as IToken[];
-  const out = (parser as any).selectorList({} as any) as unknown as Selector;
-  if ((parser as any).errors.length > 0) {
-    const msg = (parser as any).errors[0]?.message ?? 'Invalid selector.parse() input';
+  const ctx: RuleContext = { inner: true };
+  parser.input = lexed.tokens;
+  const out = parser.selectorList(ctx) as unknown as Selector;
+  if (parser.errors.length > 0) {
+    const msg = parser.errors[0]?.message ?? 'Invalid selector.parse() input';
     throw new SyntaxError(msg);
   }
   return out;
