@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
 import { sessionGetParent, sessionGetSourceParent, sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
@@ -685,6 +685,56 @@ describe('Mixin', () => {
       `);
     });
 
+    it('characterization: evaluateCandidateOutput already returns top-level wrapper children with returned parents and source-root provenance', async () => {
+      context.createSession();
+
+      const sourceDecl = decl({
+        name: 'background',
+        value: ref({ key: 'color' }, { type: 'variable' })
+      });
+      const sourceRuleset = ruleset({
+        selector: el('.inner'),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        rules: rules([
+          sourceDecl,
+          sourceRuleset
+        ])
+      });
+      const mixinRoot = rules([mixinDef]);
+      context.root = mixinRoot;
+
+      const fn = getFunctionFromMixins(mixinDef);
+      const result = await fn.call(context, any('blue'));
+      const outputRules = result as Rules;
+      const outputDecl = outputRules.value.find(
+        (node: any) => node?.type === 'Declaration' && node?.name?.toString?.() === 'background'
+      ) as Node & { sourceNode: Node };
+      const outputRuleset = outputRules.value.find(
+        (node: any) => node?.type === 'Ruleset' && node?.selector
+      ) as Node & { sourceNode: Node };
+
+      expect(outputDecl).toBeDefined();
+      expect(outputRuleset).toBeDefined();
+      expect(outputDecl.parent).toBe(outputRules);
+      expect(outputRuleset.parent).toBe(outputRules);
+      expect(outputDecl.sourceNode).toBe(sourceDecl);
+      expect(outputRuleset.sourceNode).toBe(sourceRuleset);
+      expect(String(result)).toBeString(`
+        background: blue;
+        .inner {
+          color: blue;
+        }
+      `);
+    });
+
     it('keeps multi-candidate mixin output child Rules parents only in the session layer', async () => {
       context.createSession();
 
@@ -880,6 +930,86 @@ describe('Mixin', () => {
         }
       `);
       expect(arg.toTrimmedString()).toBe('10 30');
+    });
+
+    it('characterizes selector pattern params as still needing fully prepared selector operands before compare(context) can help', async () => {
+      const buildRoot = (ctx: Context) => {
+        const parent = ruleset({
+          selector: el('.alpha'),
+          rules: rules([])
+        });
+        parent.selector.keySetLibrary = ctx.selectorBits;
+
+        const patched = el('.beta');
+        patched.keySetLibrary = ctx.selectorBits;
+
+        const find = sel([
+          amp({ selectorContainer: parent as any }),
+          co('>'),
+          el('.tail')
+        ]);
+        find.keySetLibrary = ctx.selectorBits;
+        for (const child of find.value as any[]) {
+          if ('keySetLibrary' in child) {
+            child.keySetLibrary = ctx.selectorBits;
+          }
+        }
+        const patternArg = sellist([find]);
+        patternArg.keySetLibrary = ctx.selectorBits;
+
+        const target = sel([el('.beta'), co('>'), el('.tail')]);
+        const otherBits = new Context().selectorBits;
+        target.keySetLibrary = otherBits;
+        for (const child of target.value as any[]) {
+          if ('keySetLibrary' in child) {
+            child.keySetLibrary = otherBits;
+          }
+        }
+
+        const mixinDef = mixin({
+          name: any('.mixin'),
+          params: list([patternArg]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        });
+
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({
+              name: ref({ key: '.mixin' }, { type: 'mixin' }),
+              args: list([target])
+            })
+          ])
+        });
+
+        return {
+          root: rules([mixinDef, testRuleset]),
+          parent,
+          patched,
+          patternArg,
+          target
+        };
+      };
+
+      const probeContext = new Context({ leakyRules: true });
+      probeContext.createSession();
+      const probe = buildRoot(probeContext);
+      sessionPatchField(probe.parent, 'selector', probe.patched, probeContext);
+
+      const preparedPattern = await probe.patternArg.eval(probeContext);
+      const preparedTarget = await probe.target.eval(probeContext);
+      expect(() => (preparedPattern as any).compare(preparedTarget as any, probeContext))
+        .toThrow('Selector keySet library not found');
+
+      context.createSession();
+      const live = buildRoot(context);
+      context.root = live.root;
+      sessionPatchField(live.parent, 'selector', live.patched, context);
+
+      await expectRejects(live.root.eval(context), ReferenceError, /No matching mixins/);
+      expect(live.parent.selector.valueOf()).toBe('.alpha');
     });
 
     it('should call a mixin with rest parameters', async () => {

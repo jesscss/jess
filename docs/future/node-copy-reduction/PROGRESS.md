@@ -13,13 +13,14 @@ Those live in [node-session-status.md](./node-session-status.md).
 
 ## Current Fundamentals Snapshot
 
-- Immediate next owner is now lower returned-output shaping in `Rules.evaluateCandidateOutput(...)`.
-- `Node.cloneDetachedShallowWrapper(ctx?)` is landed and proven; wrapper construction is no longer the live blocker.
+- Immediate next owner is now `control.ts` prior-scope reuse on top of `Node.cloneLookupSafeShallowWrapper(ctx)`.
+- `Node.cloneDetachedShallowWrapper(ctx?)` and `Node.cloneLookupSafeShallowWrapper(ctx)` are both landed and proven.
 - `ImportStyle` now uses detached shallow wrappers for compose/finalization, and `_dedupe` now keeps cached evaluated top-level child slots and parent pointers stable.
 - `selectorMatch(..., context)` now has the bounded fast-reject fix for mixed selector-bit libraries, so the next matcher work is caller-side operand preparation/adoption, not matcher internals.
 - `Condition` now adopts `compare(context)` on selector-vs-selector guard evaluation.
-- `Extend` matching/rewrite now threads eval `Context` through the active helper pipeline; the next extend owner is wrapper/materialization behavior, not another matcher-local tweak.
-- `Rules` gained two more real local slices: multi-candidate mixin output child `Rules` now keep parentage only in the session layer, and parameter-wrapper population now routes through `outerRules.push(thisContext, ...)`. The next remaining `Rules` work is now clearly downstream output shaping, not wrapper construction.
+- `Extend` matching/rewrite now threads eval `Context` through the active helper pipeline, and focused extend coverage indicates Extend is no longer the active local owner.
+- `Rules` gained two more real local slices: multi-candidate mixin output child `Rules` now keep parentage only in the session layer, and parameter-wrapper population now routes through `outerRules.push(thisContext, ...)`.
+- Focused mixin characterization now says `evaluateCandidateOutput(...)` already returns top-level wrapper children with returned parents and source-root provenance; the next `Rules` compare-related blocker is selector-pattern param operand preparation, not another obvious wrapper-output parent write.
 
 ## Test Baselines
 

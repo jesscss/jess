@@ -40,15 +40,15 @@ Do not use this as the full node-status matrix or roadmap document:
 
 ### Immediate work
 1. Follow the immediate queue in `node-session-status.md`.
-2. The next live owner is lower returned-output shaping in `Rules.evaluateCandidateOutput(...)`.
+2. The next live owner is `control.ts` prior-scope reuse on top of `cloneLookupSafeShallowWrapper(ctx)`.
 3. Do not treat matcher internals or extend matching as the current blocker:
    - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
    - `Condition` now adopts `compare(context)` for selector guards on the active path
-   - extend matching/rewrite now threads eval `Context` through the active helper pipeline
+   - extend matching/rewrite now threads eval `Context` through the active helper pipeline and focused extend coverage is green
 4. The remaining hard owners are wrapper/output shaping:
-   - later `Rules` output shaping after wrapper construction
-   - later returned-output shaping downstream of `Rules`
-   - lower lookup-safe shallow-clone semantics that still affect control prior-scope reuse
+   - consumer adoption of `cloneLookupSafeShallowWrapper(ctx)` in control prior-scope reuse
+   - selector-pattern param preparation in `rules.ts` before `compare(context)` can help there
+   - any deeper returned-output shaping that survives after those two are checked
 
 ### Stage status
 - Stage 17: complete and committed
