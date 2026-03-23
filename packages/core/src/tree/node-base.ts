@@ -345,6 +345,63 @@ export abstract class Node<
   }
 
   /**
+   * Create a shallow wrapper node that shares this node's immediate children
+   * without taking ownership of them. This is for wrapper metadata use-cases
+   * where the new node needs copied options/provenance, but the shared top-level
+   * children must stay canonically parented to their existing owner.
+   *
+   * Unlike `clone(false)`, this explicitly restores any immediate child parent
+   * links that were changed during wrapper construction.
+   */
+  cloneDetachedShallowWrapper(ctx?: Context): this {
+    const ck = (this.constructor as typeof Node).childKeys;
+    const sharedChildren: Array<{
+      child: Node;
+      canonicalParent: Node | undefined;
+      sessionParent: Node | undefined;
+    }> = [];
+
+    if (Array.isArray(ck)) {
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (field instanceof Node) {
+          sharedChildren.push({
+            child: field,
+            canonicalParent: field.parent,
+            sessionParent: ctx?.session?.hasRuntime(field) ? ctx.session.getRuntime(field).parent : undefined
+          });
+        } else if (isArray(field)) {
+          for (const item of field as unknown[]) {
+            if (item instanceof Node) {
+              sharedChildren.push({
+                child: item,
+                canonicalParent: item.parent,
+                sessionParent: ctx?.session?.hasRuntime(item) ? ctx.session.getRuntime(item).parent : undefined
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const wrapper = this.clone(false, undefined, ctx);
+
+    for (const { child, canonicalParent, sessionParent } of sharedChildren) {
+      (child as any).parent = canonicalParent;
+      if (ctx?.session?.hasRuntime(child)) {
+        const runtime = ctx.session.getRuntime(child);
+        if (sessionParent !== undefined) {
+          runtime.parent = sessionParent;
+        } else if (runtime.parent === wrapper) {
+          delete runtime.parent;
+        }
+      }
+    }
+
+    return wrapper;
+  }
+
+  /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also

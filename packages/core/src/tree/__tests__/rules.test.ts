@@ -266,7 +266,47 @@ describe('Rules', () => {
         expect(clonedRuleset.rules.at(0)).toBe(nestedBody.at(0));
       });
 
-      it('characterizes returned param-mixin nested bodies as correctly parented but still clone-derived in provenance', async () => {
+      it('cloneDetachedShallowWrapper carries wrapper metadata without reparenting shared top-level children', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+
+        const wrapper = node.cloneDetachedShallowWrapper(ctx);
+        wrapper.options.local = true;
+        const wrappedRuleset = wrapper.at(0) as typeof nested;
+
+        expect(wrapper).not.toBe(node);
+        expect(wrappedRuleset).toBe(nested);
+        expect(wrapper.options.local).toBe(true);
+        expect(node.options.local).toBeUndefined();
+        expect(wrappedRuleset.parent).toBe(node);
+        expect(sessionGetParent(wrappedRuleset, ctx)).toBe(node);
+        expect(wrappedRuleset.rules).toBe(nestedBody);
+        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+      });
+
+      it('materializeEvaluatedCopy preserves source-root provenance instead of an intermediate derived clone', () => {
+        const sourceBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const derivedBody = sourceBody.clone(true);
+
+        const materialized = derivedBody.materializeEvaluatedCopy();
+
+        expect(derivedBody.sourceNode).toBe(sourceBody);
+        expect(materialized.sourceNode).toBe(sourceBody);
+        expect(materialized.sourceNode).not.toBe(derivedBody);
+      });
+
+      it('characterizes returned param-mixin nested bodies as correctly parented and already source-rooted in provenance', async () => {
         const paramMixin = mixin({
           name: any('.with-param'),
           params: new List([
@@ -300,6 +340,7 @@ describe('Rules', () => {
         expect(outputDecl.parent).toBe(outputBody);
         expect(outputBody.sourceNode).toBeDefined();
         expect(outputBody.sourceNode).not.toBe(outputBody);
+        expect(outputBody.sourceNode!.sourceNode).toBe(outputBody.sourceNode);
         expect(evald.toTrimmedString({ context })).toContain('.item {\n  color: blue;\n}');
       });
 
