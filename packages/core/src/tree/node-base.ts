@@ -340,8 +340,95 @@ export abstract class Node<
    * gets its own parent chain while preserving source provenance metadata via
    * normal clone/inherit behavior.
    */
-  materializeEvaluatedCopy(): this {
-    return this.clone(true);
+  materializeEvaluatedCopy(ctx?: Context): this {
+    if (!ctx?.session) {
+      return this.clone(true);
+    }
+
+    const session = ctx.session;
+    const Class = this.constructor as Class<this>;
+    const ck = (Class as unknown as typeof Node).childKeys;
+    const materializeValue = (value: unknown): unknown => {
+      if (value instanceof Node) {
+        return value.materializeEvaluatedCopy(ctx);
+      }
+      if (isArray(value)) {
+        return value.map(item => materializeValue(item));
+      }
+      return value;
+    };
+    const getFieldFromView = (key: string): unknown => {
+      if (
+        key === 'value'
+        && this.type === 'Rules'
+        && session.hasChildren(this as unknown as Rules)
+      ) {
+        return [...session.getChildren(this as unknown as Rules)!];
+      }
+      if (session.hasField(this, key)) {
+        return session.getField(this, key);
+      }
+      return (this as any)[key];
+    };
+
+    if (ck === null) {
+      const value = materializeValue(
+        session.hasField(this, 'value')
+          ? session.getField(this, 'value')
+          : (this as any).value
+      );
+      const options = session.hasField(this, 'options')
+        ? session.getField(this, 'options')
+        : this._meta?.options;
+      const newNode = new Class(
+        value as any,
+        options ? { ...(options as Record<string, unknown>) } : undefined,
+        this.location,
+        this.treeContext
+      );
+      newNode.inherit(this);
+      if (session.hasRuntime(this)) {
+        const runtime = session.getRuntime(this);
+        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
+          newNode.sourceNode = runtime.sourceNode;
+        }
+        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
+          newNode.sourceParent = runtime.sourceParent;
+        }
+      }
+      return newNode;
+    }
+
+    let cloneData: any;
+    if (ck!.length === 1) {
+      cloneData = materializeValue(getFieldFromView(ck![0]!));
+    } else {
+      cloneData = {};
+      for (const key of ck!) {
+        cloneData[key!] = materializeValue(getFieldFromView(key!));
+      }
+    }
+
+    const options = session.hasField(this, 'options')
+      ? session.getField(this, 'options')
+      : this._meta?.options;
+    const newNode = new Class(
+      cloneData,
+      options ? { ...(options as Record<string, unknown>) } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    if (session.hasRuntime(this)) {
+      const runtime = session.getRuntime(this);
+      if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
+        newNode.sourceNode = runtime.sourceNode;
+      }
+      if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
+        newNode.sourceParent = runtime.sourceParent;
+      }
+    }
+    return newNode;
   }
 
   /**

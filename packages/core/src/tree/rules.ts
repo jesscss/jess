@@ -2539,15 +2539,21 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
           newRules = await rules.eval(thisContext);
         } else {
+          const evalScope = outerRules.clone(true, undefined, thisContext);
+          const evalScopeParent = sessionGetParent(outerRules, thisContext);
+          if (evalScopeParent) {
+            sessionSetParent(evalScope, evalScopeParent, thisContext);
+          }
           // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
           // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
           // hide param vars from registry-based lookup.
-          // Shallow-clone each child before pushing so canonical parents
-          // aren't corrupted. The clones get parent = outerRules from push's adopt.
+          // Body children are still shallow-cloned before pushing so canonical parents
+          // aren't corrupted. Evaluate against a cloned wrapper scope so the original
+          // parameter wrapper keeps its own session-local child parentage.
           for (const child of rules.value) {
-            outerRules.push(thisContext, (child as Node).clone(false, undefined, thisContext));
+            evalScope.push(thisContext, (child as Node).clone(false, undefined, thisContext));
           }
-          newRules = await outerRules.eval(thisContext);
+          newRules = await evalScope.eval(thisContext);
         }
         sessionSetSourceParent(newRules, sourceParent, thisContext);
         sessionSetParent(newRules, getCandidateParent(candidate as unknown as Node), thisContext);

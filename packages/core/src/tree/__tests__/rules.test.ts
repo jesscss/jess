@@ -29,7 +29,7 @@ import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionGetSourceParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetDependency, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
+import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionGetSourceParent, sessionMarkScopeDirty, sessionReplaceNode, sessionSetChildren, sessionSetDependency, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -328,6 +328,39 @@ describe('Rules', () => {
         expect(derivedBody.sourceNode).toBe(sourceBody);
         expect(materialized.sourceNode).toBe(sourceBody);
         expect(materialized.sourceNode).not.toBe(derivedBody);
+      });
+
+      it('materializeEvaluatedCopy can materialize the active session view without mutating canonical children', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: nestedBody
+        });
+        const root = rules([nested]);
+        const replacement = ruleset({
+          selector: sel([el('.other')]) as any,
+          rules: rules([
+            decl({ name: 'color', value: any('blue') })
+          ])
+        });
+
+        sessionSetChildren(root, [replacement], ctx, { markDirty: false });
+
+        const materialized = root.materializeEvaluatedCopy(ctx);
+        const materializedRuleset = materialized.at(0) as typeof replacement;
+
+        expect(materializedRuleset).not.toBe(replacement);
+        expect(materializedRuleset.selector.valueOf()).toBe('.other');
+        expect(materializedRuleset.rules.toTrimmedString()).toBe('color: blue;');
+        expect(materializedRuleset.parent).toBe(materialized);
+        expect(root.at(0)).toBe(nested);
+        expect((root.at(0) as typeof nested).selector.valueOf()).toBe('.item');
+        expect((root.at(0) as typeof nested).rules.toTrimmedString()).toBe('color: red;');
       });
 
       it('characterizes returned param-mixin nested bodies as correctly parented and already source-rooted in provenance', async () => {

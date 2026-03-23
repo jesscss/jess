@@ -603,7 +603,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('characterization: parameter wrapper children are reparented downstream after wrapper construction', async () => {
+    it('keeps parameter wrapper children parented to the original wrapper while output is shaped through a cloned eval scope', async () => {
       context.createSession();
 
       const mixinDef = mixin({
@@ -635,7 +635,7 @@ describe('Mixin', () => {
         expect(outerRules).toBeDefined();
         expect(sessionGetParent(outerRules as Node, context)).toBe(mixinRoot);
         expect((outerRules as Rules).parent).toBeUndefined();
-        expect(sessionGetParent(boundParam, context)).not.toBe(outerRules);
+        expect(sessionGetParent(boundParam, context)).toBe(outerRules);
         expect(boundParam.parent).not.toBe(outerRules);
         expect(String(result)).toBeString(`
           color: blue;

@@ -40,14 +40,15 @@ Do not use this as the full node-status matrix or roadmap document:
 
 ### Immediate work
 1. Follow the immediate queue in `node-session-status.md`.
-2. The next live owner is lower `Rules` output shaping on top of the landed shallow-wrapper/materialization helpers in `rules.ts` / `node-base.ts`.
+2. The next live owner is shallow `Rules.clone(false, ..., context)` semantics on top of the landed shallow-wrapper/materialization helpers in `rules.ts` / `node-base.ts`.
 3. Do not treat matcher internals or extend matching as the current blocker:
    - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
    - `Condition` now adopts `compare(context)` for selector guards on the active path
    - extend matching/rewrite now threads eval `Context` through the active helper pipeline, and Extend looks effectively complete for the fundamentals pass
 4. The remaining hard owners are wrapper/output shaping:
-   - deeper returned-output shaping in `Rules`
-   - any remaining shallow-wrapper/materialization contract gaps below `Rules`
+   - shallow `Rules.clone(false)` reparents shared top-level children too early
+   - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
+   - the `$for` prior-scope second-iteration reuse/materialization follow-up in `control.ts`
    - follow-up use of the new generic compare/context channel where a real consumer benefits
 
 ### Stage status

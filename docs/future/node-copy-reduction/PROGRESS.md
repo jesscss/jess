@@ -13,7 +13,7 @@ Those live in [node-session-status.md](./node-session-status.md).
 
 ## Current Fundamentals Snapshot
 
-- Immediate next owner is now lower `Rules` output shaping on top of the landed shallow-wrapper/materialization helpers in `rules.ts` / `node-base.ts`.
+- Immediate next owner is now shallow `Rules.clone(false, ..., context)` semantics on top of the landed shallow-wrapper/materialization helpers in `rules.ts` / `node-base.ts`.
 - `Node.cloneDetachedShallowWrapper(ctx?)` and `Node.cloneLookupSafeShallowWrapper(ctx)` are both landed and proven.
 - `ImportStyle` now uses detached shallow wrappers for compose/finalization, `_dedupe` keeps cached evaluated top-level child slots and parent pointers stable, and the focused node-local import suite is green. It is no longer the active owner.
 - `selectorMatch(..., context)` now has the bounded fast-reject fix for mixed selector-bit libraries, so the next matcher work is caller-side operand preparation/adoption, not matcher internals.
@@ -22,7 +22,9 @@ Those live in [node-session-status.md](./node-session-status.md).
 - `Extend` matching/rewrite now threads eval `Context` through the active helper pipeline, and focused extend coverage indicates Extend is no longer the active local owner.
 - `Rules` gained the selector-pattern param prep fix, so mixin selector params now prepare the original selector operand before `compare(argValue, context)` runs.
 - The live guarded-mixin blocker is fixed again on this head, and the focused `mixin` / `rules` / `call` slice is green.
-- The remaining `Rules`-local work is now lower wrapper/output shaping, not guard lookup.
+- `evaluateCandidateOutput(...)` now shapes wrapper output through a cloned eval scope, and `Node.materializeEvaluatedCopy(context)` can now materialize the active session view instead of only canonical state.
+- The remaining `Rules`-local work is now the shallow `Rules.clone(false)` wrapper contract, not guard lookup.
+- `control.ts` still has one live follow-up around `$for` prior-scope second-iteration reuse/materialization, but it is no longer the top owner.
 - `control.ts` prior-scope reuse is now fixed on top of `cloneLookupSafeShallowWrapper(ctx)`, and the focused control suite is green.
 - `Node.compare(context)` now forwards contextual `valueOf`, `Color` has semantic compare behavior, and `Sequence.compare(context)` now preserves the context channel for nested comparisons.
 
