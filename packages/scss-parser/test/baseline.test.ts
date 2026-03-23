@@ -60,6 +60,50 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses @content($color, $count) as a mixin call with args', () => {
+    const parser = new Parser();
+    const result = parser.parse('@content($color, $count);');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const call = result.tree.data[0];
+      expect(isNode(call, N.Call)).toBe(true);
+      if (isNode(call, N.Call)) {
+        expect(isNode(call.name, N.Reference)).toBe(true);
+        if (isNode(call.name, N.Reference)) {
+          expect(call.name.options.type).toBe('mixin');
+          expect(String(call.name.key)).toBe('content');
+        }
+        expect(call.args?.value).toHaveLength(2);
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses nested property declarations as a Collection-valued declaration', () => {
+    const parser = new Parser();
+    const result = parser.parse('.a { font: { size: 1rem; weight: bold; } }');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Collection');
+    expect(serializeTypes(result.tree)).toContainString('size');
+    expect(serializeTypes(result.tree)).toContainString('weight');
+    assertValidTree(result.tree);
+  });
+
+  it('parses nested property declarations with a base value as Sequence(..., Collection)', () => {
+    const parser = new Parser();
+    const result = parser.parse('.a { margin: auto { left: 1px; right: 2px; } }');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Sequence');
+    expect(serializeTypes(result.tree)).toContainString('(Collection');
+    expect(serializeTypes(result.tree)).toContainString('left');
+    expect(serializeTypes(result.tree)).toContainString('right');
+    assertValidTree(result.tree);
+  });
+
   it('parses @if/@else if/@else and serializes as $if/$else if/$else', () => {
     const parser = new Parser();
     const result = parser.parse(`
@@ -221,6 +265,79 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses legacy Sass @import "foo" as an import StyleImport with multiple=true', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import "foo";`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'StyleImport');
+      expect(imp && imp.type === 'StyleImport').toBe(true);
+      if (imp && imp.type === 'StyleImport') {
+        expect(imp.options.type).toBe('import');
+        expect(imp.options.importOptions?.multiple).toBe(true);
+        expect(imp.data.path.valueOf()).toBe('foo');
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses comma-separated Sass imports as multiple StyleImport nodes', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import "a", "b";`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imports = root.data.filter(n => n.type === 'StyleImport');
+      expect(imports).toHaveLength(2);
+      expect(imports.every(n => n.type === 'StyleImport' && n.options.importOptions?.multiple === true)).toBe(true);
+      expect(imports.map(n => n.type === 'StyleImport' ? n.data.path.valueOf() : '')).toEqual(['a', 'b']);
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses nested Sass @import inside a ruleset', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.scope { @import "foo"; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const ruleset = root.data.find(n => n.type === 'Ruleset');
+      expect(ruleset && isNode(ruleset, N.Ruleset)).toBe(true);
+      if (ruleset && isNode(ruleset, N.Ruleset)) {
+        const imp = ruleset.data.rules?.data.find(n => n.type === 'StyleImport');
+        expect(imp && imp.type === 'StyleImport').toBe(true);
+        if (imp && imp.type === 'StyleImport') {
+          expect(imp.options.type).toBe('import');
+          expect(imp.options.importOptions?.multiple).toBe(true);
+          expect(imp.data.path.valueOf()).toBe('foo');
+        }
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('preserves plain CSS @import as an AtRule', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import "foo.css";`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const atRule = root.data.find(n => n.type === 'AtRule');
+      expect(atRule && atRule.type === 'AtRule').toBe(true);
+      expect(root.data.some(n => n.type === 'StyleImport')).toBe(false);
+    }
+    assertValidTree(result.tree);
+  });
+
   it('parses @use "foo" as bar (namespace override)', () => {
     const parser = new Parser();
     const result = parser.parse(`@use "foo" as bar;`);
@@ -294,7 +411,8 @@ describe('scss-parser (baseline)', () => {
     const parser = new Parser();
     const result = parser.parse(`@forward "foo" as bar-*;`);
     expect(result.lexerResult.errors.length).toBe(0);
-    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.message).toContain('@forward with "as <prefix>-*" prefixing is not supported');
     const root = result.tree;
     expect(isNode(root, N.Rules)).toBe(true);
     if (isNode(root, N.Rules)) {
@@ -315,7 +433,9 @@ describe('scss-parser (baseline)', () => {
       @forward "foo" hide $a, mixin-b, fn-c;
     `);
     expect(result.lexerResult.errors.length).toBe(0);
-    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(result.errors).toHaveLength(2);
+    expect(result.errors[0]?.message).toContain('@forward with "show"/"hide" lists is not supported');
+    expect(result.errors[1]?.message).toContain('@forward with "show"/"hide" lists is not supported');
     const root = result.tree;
     expect(isNode(root, N.Rules)).toBe(true);
     if (isNode(root, N.Rules)) {
@@ -769,6 +889,38 @@ describe('scss-parser (baseline)', () => {
     expect(result.warnings?.length ?? 0).toBe(0);
     expect(serializeTypes(result.tree)).not.toContainString('(AtRule');
     expect(serializeTypes(result.tree)).toContainString('(Ampersand');
+    assertValidTree(result.tree);
+  });
+
+  it('parses placeholder rulesets', () => {
+    const parser = new Parser();
+    const result = parser.parse(`%foo { color: red; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(BasicSelector`);
+    expect(serializeTypes(result.tree)).toContainString(`foo`);
+    assertValidTree(result.tree);
+  });
+
+  it('lowers @at-root selector shorthand to a null-parent ampersand selector', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@at-root .root-class { color: red; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(result.warnings?.length ?? 0).toBe(0);
+    expect(serializeTypes(result.tree)).not.toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Ampersand');
+    assertValidTree(result.tree);
+  });
+
+  it('parses @at-root filter forms, reports an explicit unsupported error, and continues', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@at-root (without: media) { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.message).toContain('@at-root prelude/filter forms are not yet supported in Jess');
+    expect(result.tree).toBeDefined();
+    expect(serializeTypes(result.tree)).toContainString('(AtRule');
     assertValidTree(result.tree);
   });
 });

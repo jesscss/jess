@@ -72,6 +72,44 @@ function consumeScssVarFlags($: P) {
   return { sawDefault, sawGlobal };
 }
 
+export function scssNestedPropertyCollection(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    $.CONSUME($.T.LCurly);
+
+    const decls: Declaration[] = [];
+
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== $.T.RCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        if ($.LA(1).tokenType === $.T.Semi) {
+          $.CONSUME($.T.Semi);
+          return;
+        }
+
+        const decl = $.SUBRULE($.declaration, { ARGS: [ctx] }) as unknown as Node;
+        if (!$.RECORDING_PHASE && isNode(decl, N.Declaration) && !isNode(decl, N.VarDeclaration)) {
+          decls.push(decl as Declaration);
+        }
+
+        $.OPTION(() => {
+          $.CONSUME2($.T.Semi);
+        });
+      }
+    });
+
+    $.CONSUME($.T.RCurly);
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    return new Collection(decls, undefined, location, $.context);
+  };
+}
+
 export function scssIdentValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
@@ -582,7 +620,23 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
     });
 
     const assign = $.CONSUME($.T.Assign);
-    const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+    let value!: Node;
+    if ($.LA(1).tokenType === $.T.LCurly) {
+      value = $.SUBRULE($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
+    } else {
+      const initialValue = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+      if ($.LA(1).tokenType === $.T.LCurly) {
+        const nested = $.SUBRULE2($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
+        value = new Sequence(
+          [$.wrap(initialValue, true, ctx), nested],
+          undefined,
+          $.getLocationFromNodes([initialValue, nested]),
+          $.context
+        );
+      } else {
+        value = initialValue;
+      }
+    }
     let important: IToken | undefined;
     $.OPTION(() => {
       important = $.CONSUME($.T.Important);
@@ -622,7 +676,23 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
     }
 
     const assign = $.CONSUME($.T.Assign);
-    const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+    let value!: Node;
+    if ($.LA(1).tokenType === $.T.LCurly) {
+      value = $.SUBRULE3($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
+    } else {
+      const initialValue = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+      if ($.LA(1).tokenType === $.T.LCurly) {
+        const nested = $.SUBRULE4($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
+        value = new Sequence(
+          [$.wrap(initialValue, true, ctx), nested],
+          undefined,
+          $.getLocationFromNodes([initialValue, nested]),
+          $.context
+        );
+      } else {
+        value = initialValue;
+      }
+    }
     let important: IToken | undefined;
     $.OPTION(() => {
       important = $.CONSUME($.T.Important);

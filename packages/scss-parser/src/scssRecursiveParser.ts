@@ -202,6 +202,7 @@ export class ScssRecursiveParser extends CssRecursiveParser {
   declare scssConditionInner: typeof productions.scssConditionInner;
   declare scssComparison: typeof productions.scssComparison;
   declare scssMapLiteral: typeof productions.scssMapLiteral;
+  declare scssNestedPropertyCollection: typeof productions.scssNestedPropertyCollection;
   declare scssIdentValue: typeof productions.scssIdentValue;
   declare scssUseAtRule: typeof productions.scssUseAtRule;
   declare scssForwardAtRule: typeof productions.scssForwardAtRule;

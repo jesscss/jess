@@ -36,6 +36,7 @@ import {
   Sequence,
   SelectorList,
   StyleImport,
+  Url,
   VarDeclaration,
   While,
   type AssignmentType,
@@ -355,11 +356,142 @@ function validateExtendTarget($: P, target: any): void {
   ));
 }
 
+function saveUnsupportedSyntaxError(
+  $: P,
+  token: any,
+  loc: any,
+  message: string
+): void {
+  const err = new NoViableAltException(
+    message,
+    token,
+    $.LA(0)
+  ) as NoViableAltException & {
+    startLine?: number;
+    startColumn?: number;
+    endLine?: number;
+    endColumn?: number;
+    offset?: number;
+    length?: number;
+    location?: unknown;
+  };
+  err.startLine = loc?.[1];
+  err.startColumn = loc?.[2];
+  err.endLine = loc?.[4];
+  err.endColumn = loc?.[5];
+  err.offset = loc?.[0];
+  err.length = typeof loc?.[0] === 'number' && typeof loc?.[3] === 'number'
+    ? Math.max(1, (loc[3] - loc[0]) + 1)
+    : undefined;
+  err.location = loc;
+  $.SAVE_ERROR(err);
+}
+
 // Save CSS factory methods for super calls
 const cssMediaAtRule = cssProductions.mediaAtRule;
 const cssContainerAtRule = cssProductions.containerAtRule;
 const cssScopeAtRule = cssProductions.scopeAtRule;
 const cssUnknownAtRule = cssProductions.unknownAtRule;
+
+function isPlainCssImportPath(rawPath: string): boolean {
+  return /\.css(?:$|[?#])/i.test(rawPath)
+    || /^[a-z]+:\/\//i.test(rawPath)
+    || rawPath.startsWith('//');
+}
+
+function isPlainCssImportPrelude(prelude: Node, extraNodes: Node[] | undefined): boolean {
+  if (prelude instanceof Url) {
+    return true;
+  }
+  if (extraNodes && extraNodes.length > 0) {
+    return true;
+  }
+  if (isNode(prelude, N.Quoted)) {
+    return isPlainCssImportPath(prelude.valueOf());
+  }
+  return true;
+}
+
+export function importAtRule(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    const name = $.CONSUME($.T.AtImport) as unknown as IToken;
+    const imports: Node[] = [];
+
+    $.AT_LEAST_ONE_SEP({
+      SEP: $.T.Comma,
+      DEF: () => {
+        const prelude = $.SUBRULE($.importPrelude, { ARGS: [ctx] }) as unknown as Node;
+        let extraNodes: Node[] | undefined;
+        $.OPTION(() => {
+          extraNodes = $.SUBRULE($.importPostlude, { ARGS: [ctx] }) as unknown as Node[];
+        });
+
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+
+        const itemLocation = $.getLocationFromNodes([
+          prelude,
+          ...(extraNodes ?? [])
+        ]);
+
+        if (!isPlainCssImportPrelude(prelude, extraNodes) && isNode(prelude, N.Quoted)) {
+          imports.push(new StyleImport(
+            { path: prelude as Quoted },
+            {
+              type: 'import',
+              importOptions: { multiple: true }
+            },
+            itemLocation,
+            $.context
+          ));
+          return;
+        }
+
+        const preludeNodes = [$.wrap(prelude), ...(extraNodes ?? [])];
+        imports.push(new AtRule(
+          {
+            name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
+            prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
+          },
+          undefined,
+          itemLocation,
+          $.context
+        ));
+      }
+    });
+
+    $.CONSUME($.T.Semi);
+
+    $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    for (const item of imports.slice(0, -1)) {
+      $.enqueuePendingNode(item);
+    }
+    return imports[imports.length - 1]!;
+  };
+}
+
+export function innerAtRule(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.OR([
+    { GATE: () => $.isType($.T.AtImport), ALT: () => $.SUBRULE($.importAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    { GATE: () => $.isType($.T.AtContainer), ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtScope), ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtDocument), ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtLayer), ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtKeyframes), ALT: () => $.SUBRULE($.keyframesAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtMedia), ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtSupports), ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [ctx] }) },
+    { GATE: () => $.isType($.T.AtNested), ALT: () => $.SUBRULE($.nestedAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.unknownAtRule, { ARGS: [ctx] }) }
+  ]);
+}
 
 /**
  * SCSS: `@use` → `StyleImport(type='compose')` for stylesheets,
@@ -578,20 +710,21 @@ export function scssForwardAtRule(this: P, T: TokenMap) {
       return;
     }
 
-    // Emit warnings for unsupported @forward features
     if (forwardAsPrefix) {
-      $.warnings.push({
-        message: '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead (e.g., @-compose "theme" as theme; then access as $theme.colors).',
-        token: atKeyword,
-        deprecation: undefined
-      });
+      saveUnsupportedSyntaxError(
+        $,
+        atKeyword,
+        loc,
+        '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead.'
+      );
     }
     if (forwardShow || forwardHide) {
-      $.warnings.push({
-        message: '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control is the module\'s responsibility, not the forwarding module\'s. Use rulesVisibility options within the module itself.',
-        token: atKeyword,
-        deprecation: undefined
-      });
+      saveUnsupportedSyntaxError(
+        $,
+        atKeyword,
+        loc,
+        '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control belongs to the module itself.'
+      );
     }
 
     return new StyleImport(
@@ -1917,11 +2050,13 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
 
     // Parse optional selector or control arguments
     let prelude: Node | undefined;
+    let preludeKind = 'none' as 'selector' | 'filter' | 'none' | string;
     $.OR([
       {
       // @at-root (without: media) or @at-root (with: rule)
         GATE: () => $.LA(1).tokenType === $.T.LParen,
         ALT: () => {
+          preludeKind = 'filter';
           prelude = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
         }
       },
@@ -1929,11 +2064,12 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
       // @at-root .selector { ... }
         GATE: () => {
           const next = $.LA(1);
-          return next.tokenType === $.T.Ident || next.tokenType === $.T.PlainIdent
-            || next.tokenType === $.T.Dot || next.tokenType === $.T.Hash
-            || next.tokenType === $.T.Colon || next.tokenType === $.T.LBracket;
+          return tokenMatcher(next, $.T.NestedRuleStart)
+            && next.tokenType !== $.T.AtKeyword
+            && next.tokenType !== $.T.LParen;
         },
         ALT: () => {
+          preludeKind = 'selector';
         // Parse as a selector list (CSS parser method)
           prelude = $.SUBRULE($.selectorList, { ARGS: [ctx] }) as unknown as Node;
         }
@@ -1944,13 +2080,30 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
       }
     ]);
 
+    let rules: RulesType;
     $.CONSUME($.T.LCurly);
-    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+    if (preludeKind === 'selector') {
+      rules = $.SUBRULE($.declarationList, { ARGS: [{ ...ctx, inner: true }] }) as unknown as RulesType;
+    } else {
+      rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] }) as unknown as RulesType;
+    }
     $.CONSUME($.T.RCurly);
 
     const loc = $.endRule();
     if ($.RECORDING_PHASE) {
       return;
+    }
+
+    if (preludeKind === 'selector' && prelude) {
+      return new Ruleset(
+        {
+          selector: prefixAtRootSelector(prelude as Selector, $.context),
+          rules
+        },
+        undefined,
+        loc,
+        $.context
+      );
     }
 
     if (!prelude) {
@@ -1967,12 +2120,12 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
 
     const name = new Any(atKeyword.image, { role: 'atkeyword' }, $.getLocationInfo(atKeyword), $.context);
     const atRule = new AtRule({ name, prelude: prelude ? $.wrap(prelude, 'both') : undefined, rules }, undefined, loc, $.context);
-
-    $.warnings.push({
-      message: '@at-root prelude/filter forms are not yet lowered in Jess. Write the hoisted rules directly or keep the directive preserved for later handling.',
-      token: atKeyword,
-      deprecation: undefined
-    });
+    saveUnsupportedSyntaxError(
+      $,
+      atKeyword,
+      loc,
+      '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.'
+    );
 
     return atRule;
   };

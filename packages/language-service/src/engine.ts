@@ -1398,6 +1398,44 @@ export function createEngine(): JessLanguageServiceEngine {
         return null;
       };
 
+      const rangeFromLocationLike = (err: any): Range | null => {
+        const loc = err?.location;
+        if (Array.isArray(loc) && loc.length >= 6) {
+          const startLine = loc[1];
+          const startCol = loc[2];
+          const endLine = loc[4];
+          const endCol = loc[5];
+          if (
+            typeof startLine === 'number'
+            && typeof startCol === 'number'
+            && typeof endLine === 'number'
+            && typeof endCol === 'number'
+          ) {
+            return clampRange({
+              start: pos(startLine, startCol),
+              end: pos(endLine, endCol)
+            } as Range);
+          }
+        }
+
+        const startLine = err?.startLine;
+        const startCol = err?.startColumn;
+        const endLine = err?.endLine;
+        const endCol = err?.endColumn;
+        if (
+          typeof startLine === 'number'
+          && typeof startCol === 'number'
+          && typeof endLine === 'number'
+          && typeof endCol === 'number'
+        ) {
+          return clampRange({
+            start: pos(startLine, startCol),
+            end: pos(endLine, endCol)
+          } as Range);
+        }
+        return null;
+      };
+
       const rangeFromOffsetLike = (err: any): Range | null => {
         const offset = err?.offset;
         const length = err?.length;
@@ -1413,7 +1451,8 @@ export function createEngine(): JessLanguageServiceEngine {
 
       const rangeFromError = (err: any): Range => {
         return (
-          rangeFromTokenLike(err?.token)
+          rangeFromLocationLike(err)
+          ?? rangeFromTokenLike(err?.token)
           ?? rangeFromTokenLike(err?.previousToken)
           ?? rangeFromTokenLike(err)
           ?? rangeFromOffsetLike(err)

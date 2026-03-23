@@ -33,8 +33,11 @@ function expectSingleParseError({ src, options, message }: ErrorCase) {
 const positiveCases: ParseCase[] = [
   { name: 'basic CSS', src: '.a { color: red; }' },
   { name: 'Sass map literal', src: '.a { x: ("regular": 400, "medium": 500); }' },
+  { name: 'nested property declarations', src: '.a { font: { size: 1rem; weight: bold; } }' },
+  { name: 'nested property declarations with base value', src: '.a { margin: auto { left: 1px; right: 2px; } }' },
   { name: 'map.get() desugaring input', src: '.a { x: map.get($font-weights, "medium"); }' },
   { name: '@content', src: '@content;' },
+  { name: '@content with args', src: '@content($color, $count);' },
   { name: '@if / @else if / @else', src: '@if 1 = 1 { .a { color: red; } } @else if 2 = 2 { .b { color: blue; } } @else { .c { color: green; } }' },
   { name: '@if == comparison', src: '@if $a == $b { .x { y: 1; } }' },
   { name: '@if != comparison', src: '@if $a != $b { .x { y: 1; } }' },
@@ -47,15 +50,18 @@ const positiveCases: ParseCase[] = [
   { name: '@include module-qualified mixin call', src: '@include ns.foo($x);' },
   { name: '@include using block', src: '@include wrap(red) using ($c, $n) { .child { color: $c; z-index: $n; } }' },
   { name: '@use import', src: '@use "foo";' },
+  { name: 'legacy Sass @import as StyleImport', src: '@import "foo";' },
+  { name: 'legacy Sass multi @import', src: '@import "a", "b";' },
+  { name: 'nested legacy Sass @import', src: '.scope { @import "foo"; }' },
+  { name: 'plain CSS @import preserved', src: '@import "foo.css";' },
   { name: '@use namespace override', src: '@use "foo" as bar;' },
   { name: '@use wildcard namespace', src: '@use "foo" as *;' },
   { name: '@use sass builtin', src: '@use "sass:map";' },
   { name: '@forward import', src: '@forward "foo";' },
-  { name: '@forward prefixing', src: '@forward "foo" as bar-*;' },
-  { name: '@forward show/hide lists', src: '@forward "foo" show $a, mixin-b, fn-c; @forward "foo" hide $a, mixin-b, fn-c;' },
   { name: '@forward with config', src: '@forward "foo" with ($a: #{$b});' },
   { name: '@extend statement', src: '.a { @extend .b; }' },
   { name: 'placeholder @extend', src: '.a { @extend %foo; }' },
+  { name: 'placeholder ruleset', src: '%foo { color: red; }' },
   { name: 'interpolated @extend target', src: '.a { @extend .b-#{$c}; }' },
   { name: 'allowed selector-list @extend targets', src: '.a { @extend .b, .c; }' },
   { name: 'module-member variable reference', src: '.a { color: ns.$c; }' },
@@ -81,7 +87,8 @@ const positiveCases: ParseCase[] = [
   { name: '@use with interpolated config values', src: '@use "foo" with ($a: #{$b});' },
   { name: '@use with config var flags', src: '@use "foo" with ($a: 1 !default, $b: 2 !global);' },
   { name: 'diagnostic at-rules', src: '@debug "x"; @warn "y"; @error "z";' },
-  { name: '@at-root', src: '@at-root { .a { color: red; } }' }
+  { name: '@at-root', src: '@at-root { .a { color: red; } }' },
+  { name: '@at-root selector shorthand', src: '@at-root .a { color: red; }' }
 ];
 
 const errorCases: ErrorCase[] = [
@@ -90,6 +97,21 @@ const errorCases: ErrorCase[] = [
     src: '.a { @extend .b.c; }',
     options: { context: new TreeContext({ allowExtendSelectors: ['simple'] }) },
     message: '@extend only allows simple selectors'
+  },
+  {
+    name: '@forward prefixing rejection',
+    src: '@forward "foo" as bar-*;',
+    message: '@forward with "as <prefix>-*" prefixing is not supported'
+  },
+  {
+    name: '@forward show/hide rejection',
+    src: '@forward "foo" show $a, mixin-b, fn-c;',
+    message: '@forward with "show"/"hide" lists is not supported'
+  },
+  {
+    name: '@at-root filter rejection',
+    src: '@at-root (without: media) { .a { color: red; } }',
+    message: '@at-root prelude/filter forms are not yet supported in Jess'
   }
 ];
 
