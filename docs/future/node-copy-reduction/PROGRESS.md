@@ -13,14 +13,16 @@ Those live in [node-session-status.md](./node-session-status.md).
 
 ## Current Fundamentals Snapshot
 
-- Immediate next owner is now `control.ts` prior-scope reuse on top of `Node.cloneLookupSafeShallowWrapper(ctx)`.
+- Immediate next owner is now the mixin guard wrapper / lookup path in `rules.ts` / `reference.ts`.
 - `Node.cloneDetachedShallowWrapper(ctx?)` and `Node.cloneLookupSafeShallowWrapper(ctx)` are both landed and proven.
 - `ImportStyle` now uses detached shallow wrappers for compose/finalization, `_dedupe` keeps cached evaluated top-level child slots and parent pointers stable, and the focused node-local import suite is green. It is no longer the active owner.
 - `selectorMatch(..., context)` now has the bounded fast-reject fix for mixed selector-bit libraries, so the next matcher work is caller-side operand preparation/adoption, not matcher internals.
 - `Condition` now adopts `compare(context)` on selector-vs-selector guard evaluation.
 - `Extend` matching/rewrite now threads eval `Context` through the active helper pipeline, and focused extend coverage indicates Extend is no longer the active local owner.
 - `Rules` gained the selector-pattern param prep fix, so mixin selector params now prepare the original selector operand before `compare(argValue, context)` runs.
-- Current `Rules` audit no longer shows another active node-local blocker beyond broader shared shaping primitives.
+- `Rules` still has one live node-local blocker on this head: `mixin.test.ts > should call a mixin with a guard condition` fails with `'color' is not defined`, so the guard wrapper / lookup path is now the top-priority owner.
+- `control.ts` prior-scope reuse remains second: the direct `cloneLookupSafeShallowWrapper(ctx)` swap is not sound yet.
+- `Node.compare(context)` now forwards contextual `valueOf`, `Color` has semantic compare behavior, and `Sequence.compare(context)` now preserves the context channel for nested comparisons.
 
 ## Test Baselines
 
