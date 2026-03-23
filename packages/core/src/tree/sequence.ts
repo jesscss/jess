@@ -2,7 +2,7 @@ import { Node, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
-import { compareNodeArray } from './util/compare.js';
+import { compare, compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -118,11 +118,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override compare(other: Node, context?: Context) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(
-        [...this._getValue(context)],
-        [...other._getValue(context)],
-        equalityMode
-      );
+      const left = [...this._getValue(context)];
+      const right = [...other._getValue(context)];
+      const result = !context
+        ? compareNodeArray(left, right, equalityMode)
+        : compareSequenceItems(left, right, equalityMode, context);
       return result;
     }
     if (other.type === 'Any') {
@@ -292,3 +292,33 @@ export const spaced = (
   }
   return new Sequence(value, options);
 };
+
+function compareSequenceItems(
+  left: Node[],
+  right: Node[],
+  equalityMode: 'coerce' | 'strict',
+  context: Context
+): 0 | 1 | -1 | undefined {
+  let output: 0 | 1 | -1 | undefined;
+
+  if (left.length !== right.length) {
+    return undefined;
+  }
+
+  for (let i = 0; i < left.length; i++) {
+    const a = left[i]!;
+    const b = right[i]!;
+    const result = a instanceof Node && b instanceof Node
+      ? a.compare(b, context)
+      : compare(a, b, equalityMode);
+    if (result === undefined) {
+      return undefined;
+    }
+    if (output === undefined) {
+      output = result;
+    } else if (result !== output) {
+      return undefined;
+    }
+  }
+  return output;
+}

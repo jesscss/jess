@@ -109,6 +109,20 @@ describe('Sequence', () => {
     expect(left.compare(right, context)).toBe(0);
   });
 
+  it('passes context through nested sequence comparisons', () => {
+    const context = new Context();
+    context.session = new EvalSession();
+    const innerLeft = seq([num(10), num(20)]);
+    const innerRight = seq([num(30), num(40)]);
+    const left = seq([innerLeft]);
+    const right = seq([innerRight]);
+
+    sessionPatchField(innerLeft, 'value', [num(30), num(40)], context);
+
+    expect(left.compare(right)).toBe(-1);
+    expect(left.compare(right, context)).toBe(0);
+  });
+
   it('keeps length canonical when session patches exist', () => {
     const context = new Context();
     context.session = new EvalSession();
