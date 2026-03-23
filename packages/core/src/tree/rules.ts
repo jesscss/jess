@@ -2398,7 +2398,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         if (match) {
           /** Make a shallow copy to attach our resolved params (w/ args) */
           let originalMixin = mixin;
-          mixin = mixin.copy();
+          mixin = thisContext.session
+            ? mixin.clone(false, undefined, thisContext)
+            : mixin.copy();
           getCandidateParent(originalMixin as unknown as Node).adopt(mixin);
           (mixin as Mixin).setData('params', params);
           mixinCandidates.push(mixin);

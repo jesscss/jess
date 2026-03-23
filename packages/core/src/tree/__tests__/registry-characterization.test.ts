@@ -253,6 +253,59 @@ describe('registry characterization', () => {
     expect(secondRegistry).toBe(cachedRegistry);
   });
 
+  it('plain compose wrapper registry-slot sharing is not currently a populated local ruleset-registry contract', async () => {
+    const context = createTestContext();
+    const libraryPath = 'library-compose-wrapper-registry-fork.jess';
+    context.sourceTrees.set(libraryPath, rules([
+      ruleset({
+        selector: sellist([sel([el('.imported')])]),
+        rules: rules([
+          decl({ name: any('color'), value: any('red') })
+        ])
+      })
+    ]));
+
+    const root = rules([
+      style(
+        { path: quoted(any(libraryPath)) },
+        { type: 'compose', namespace: '*', importOptions: { mutable: true } }
+      ),
+      style(
+        { path: quoted(any(libraryPath)) },
+        { type: 'compose', namespace: '*', importOptions: { mutable: false, multiple: true } }
+      )
+    ]);
+
+    const evald = await root.eval(context);
+    const wrapper = evald.at(0) as Rules;
+    const sharedRuleset = wrapper.at(0)!;
+    const originalParent = sharedRuleset.parent;
+    const forkedWrapper = wrapper.clone(false) as Rules;
+
+    forkedWrapper.setData([...wrapper.value]);
+    wrapper.getRegistry('ruleset');
+    forkedWrapper.getRegistry('ruleset');
+
+    const wrapperRegistry = peekRegistryData(wrapper.value);
+    const forkedRegistry = peekRegistryData(forkedWrapper.value);
+    const wrapperContainsSharedRuleset = [...(wrapperRegistry?.rulesetIndex?.values() ?? [])]
+      .some(entries => entries.has(sharedRuleset as any));
+    const forkedContainsSharedRuleset = [...(forkedRegistry?.rulesetIndex?.values() ?? [])]
+      .some(entries => entries.has(sharedRuleset as any));
+
+    try {
+      expect(forkedWrapper.value).not.toBe(wrapper.value);
+      expect(forkedWrapper.at(0)).toBe(sharedRuleset);
+      expect(forkedRegistry).toBeDefined();
+      expect(forkedRegistry).not.toBe(wrapperRegistry);
+      expect(wrapperContainsSharedRuleset).toBe(false);
+      expect(forkedContainsSharedRuleset).toBe(false);
+      expect(forkedWrapper.options.rulesVisibility.Ruleset).toBe(wrapper.options.rulesVisibility.Ruleset);
+    } finally {
+      (sharedRuleset as unknown as { parent?: unknown }).parent = originalParent;
+    }
+  });
+
   it('keeps mixin expansion parameter vars in the active session delta', async () => {
     const context = new Context({
       leakyRules: true

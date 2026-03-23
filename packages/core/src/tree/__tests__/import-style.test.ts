@@ -1758,6 +1758,9 @@ describe('Style import', () => {
       expect(second.options.rulesVisibility.Ruleset).toBe('private');
       expect(cachedEvaldRules).not.toBe(first);
       expect(cachedEvaldRules).not.toBe(second);
+      expect(first.options).not.toBe(second.options);
+      expect(first.options).not.toBe(cachedEvaldRules.options);
+      expect(second.options).not.toBe(cachedEvaldRules.options);
       expect(first.value).toBe(cachedEvaldRules.value);
       expect(second.value).toBe(cachedEvaldRules.value);
       expect(first.value[0]).toBe(cachedRuleset);

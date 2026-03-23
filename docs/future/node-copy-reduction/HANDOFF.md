@@ -51,10 +51,11 @@ Do not use this as the full node-status matrix or roadmap document:
    - visibility-isolation callers now also have `cloneVisibilityIsolationWrapper(context)`
    - detached wrapper plus immediate-child materialization now has `cloneDetachedMaterializedWrapper(context)`
    - `rules.ts` now also uses `cloneVisibilityIsolationWrapper(context)` inside `evaluateCandidateOutput(...)` for `Rules` children
+   - guarded candidate preparation in `getFunctionFromMixins()` now also stays on the session-aware shallow-clone path instead of `mixin.copy()` when a session is active
    - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, which now clearly bottoms out in child-node shallow clone semantics
    - `Ruleset.clone(false, ..., context)` is now the sharpest next owner on that path: derived rulesets materialize `selector` / `rules`, but source rulesets still share those nested containers with the source ruleset
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
-   - the only remaining local `ImportStyle` pressure is the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity, shared `value[]`, and the same registry slot across per-import wrappers
+   - the only remaining local `ImportStyle` pressure is the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity and shared `value[]` across per-import wrappers; shared registry-slot behavior still coincides today but is no longer treated as a separate hard local contract
    - follow-up use of the new generic compare/context channel where a real consumer benefits
 5. Internal materialization is not an accepted steady-state eval strategy:
    - do not materialize a fresh tree just to make parentage, lookup, or mutation work during eval

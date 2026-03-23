@@ -23,6 +23,7 @@ Those live in [node-session-status.md](./node-session-status.md).
 - `Extend` matching/rewrite now threads eval `Context` through the active helper pipeline, and focused extend coverage indicates Extend is no longer the active local owner.
 - `Rules` gained the selector-pattern param prep fix, so mixin selector params now prepare the original selector operand before `compare(argValue, context)` runs.
 - The live guarded-mixin blocker is fixed again on this head, and the focused `mixin` / `rules` / `call` slice is green.
+- Guarded candidate preparation in `getFunctionFromMixins()` no longer uses `mixin.copy()` under an active session; it now stays on the session-aware shallow-clone path so canonical guard/name/rules parentage survives candidate gating.
 - `evaluateCandidateOutput(...)` now shapes wrapper output through a cloned eval scope, and `Node.materializeEvaluatedCopy(context)` can now materialize the active session view instead of only canonical state.
 - Architectural rule: internal evaluation should still treat materialization as transitional debt, not a normal strategy. Materialization is only acceptable at an explicit boundary where Jess must hand downstream code a standalone evaluated object graph.
 - `Mixin.preEval()` no longer spells raw `rules.clone(false, ..., context)` for visibility isolation; it now uses the explicit detached unlock wrapper seam.
@@ -34,7 +35,7 @@ Those live in [node-session-status.md](./node-session-status.md).
 - The next `rules.ts` characterization now proves the remaining pressure is the non-`Rules` child branch in `evaluateCandidateOutput(...)`, which bottoms out in the child node's own shallow clone semantics rather than another `rules.ts`-local seam.
 - `ImportStyle` and `Ruleset` now adopt context-aware materialization on their returned-tree consumer paths, and `$for` prior-scope reuse now feeds materialized copies back into the next iteration without mutating emitted output. These are still transitional uses to be reduced, not the desired steady-state eval model.
 - `ImportStyle` characterization now pins the remaining local tension to only the plain cached compose wrapper branch: per-import wrappers need different wrapper metadata while still sharing the exact cached top-level evaluated child identity.
-- `ImportStyle` characterization now also proves that this plain cached compose-wrapper branch still shares the cached `value[]` array and the same registry slot when it shares top-level child identity.
+- `ImportStyle` characterization now also proves that this plain cached compose-wrapper branch still shares the cached `value[]` array when it shares top-level child identity. Shared registry-slot behavior still coincides today, but is no longer treated as a separately hard local contract.
 - `Ruleset` characterization now pins the next non-`Rules` child owner more precisely: for `clone(false, ..., context)`, derived rulesets already materialize `selector` and `rules` onto the clone, while source rulesets still share those nested containers with the source ruleset.
 - `control.ts` prior-scope reuse is now fixed on top of `cloneLookupSafeShallowWrapper(ctx)`, and the focused control suite is green.
 - `control.ts` is no longer the live owner: characterization now proves the remaining parent-integrity leak happens downstream during `wrapper.eval(context)`.

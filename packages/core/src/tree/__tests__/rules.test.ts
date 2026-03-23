@@ -12,6 +12,8 @@ import {
   ref,
   mixin,
   fn,
+  condition,
+  expr,
   Node,
   type Rules,
   List,
@@ -24,6 +26,7 @@ import {
   type Declaration,
   type Selector
 } from '../index.js';
+import { getFunctionFromMixins } from '../rules.js';
 import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
@@ -523,6 +526,47 @@ describe('Rules', () => {
         expect(outputBody.sourceNode).not.toBe(outputBody);
         expect(outputBody.sourceNode!.sourceNode).toBe(outputBody.sourceNode);
         expect(evald.toTrimmedString({ context })).toContain('.item {\n  color: blue;\n}');
+      });
+
+      it('characterizes guarded candidate gating as already preserving canonical guard and source ruleset parentage while returned ruleset output is shaped correctly', async () => {
+        const guardNode = condition([
+          expr(ref({ key: 'color' }, { type: 'variable' })),
+          '=',
+          any('blue')
+        ]);
+        const sourceRuleset = ruleset({
+          selector: sel([el('.inner')]) as any,
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        });
+        const mixinDef = mixin({
+          name: any('.guarded'),
+          params: new List([
+            any('color', { role: 'property' })
+          ]),
+          guard: guardNode,
+          rules: rules([sourceRuleset])
+        });
+        const mixinRoot = rules([mixinDef]);
+        const ctx = new Context();
+        ctx.root = mixinRoot;
+        ctx.createSession();
+
+        const fn = getFunctionFromMixins(mixinDef);
+        const result = await fn.call(ctx, any('blue'));
+        const outputRules = result as Rules;
+        const outputRuleset = outputRules.value.find((node: any) => node?.type === 'Ruleset') as ReturnType<typeof ruleset>;
+
+        expect(outputRuleset).toBeDefined();
+        expect(outputRuleset.parent).toBe(outputRules);
+        expect(outputRuleset.selector.parent).toBe(outputRuleset);
+        expect(outputRuleset.rules.parent).toBe(outputRuleset);
+
+        expect(guardNode.parent).toBe(mixinDef);
+        expect(sourceRuleset.parent).toBe(mixinDef.rules);
+        expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
+        expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
       });
 
       it('peeks into optional child scope', async () => {
