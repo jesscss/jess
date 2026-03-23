@@ -5,10 +5,6 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { sessionGetField } from './util/session-helpers.js';
 
-function isSelectorLike(node: Node): node is Node & { isSelector: true } {
-  return !!node && typeof node === 'object' && (node as { isSelector?: boolean }).isSelector === true;
-}
-
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
 
@@ -147,11 +143,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
       case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
       default:
-        switch (
-          isSelectorLike(a) && isSelectorLike(b)
-            ? a.compare(b, context)
-            : a.compare(b)
-        ) {
+        switch (a.compare(b, context)) {
           case -1:
             return op === '<' || op === '<=';
           case 0:

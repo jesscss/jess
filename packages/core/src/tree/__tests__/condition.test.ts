@@ -1,4 +1,4 @@
-import { amp, bool, co, condition, dimension, el, num, rules, ruleset, sel, sellist } from '../index.js';
+import { amp, bool, co, condition, dimension, el, num, rules, ruleset, sel, sellist, seq } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { sessionPatchField } from '../util/session-helpers.js';
@@ -228,6 +228,25 @@ describe('Condition', () => {
       expect(`${await node.eval(context)}`).toBe('true');
       expect(`${await node.eval(new Context())}`).toBe('false');
       expect(parent.selector.valueOf()).toBe('.alpha');
+    });
+
+    it('uses compare(context) for sequence guard comparisons when a session is active', async () => {
+      context.session = new EvalSession();
+
+      const left = seq([num(10), num(20)]);
+      const right = seq([num(30), num(40)]);
+      const node = condition([
+        left,
+        '=',
+        right
+      ]);
+
+      sessionPatchField(left, 'value', [num(30), num(40)], context);
+
+      expect(left.compare(right)).toBe(-1);
+      expect(left.compare(right, context)).toBe(0);
+      expect(`${await node.eval(context)}`).toBe('true');
+      expect(`${await node.eval(new Context())}`).toBe('false');
     });
   });
 });

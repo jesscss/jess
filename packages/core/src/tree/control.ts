@@ -353,7 +353,7 @@ export class For extends Node<ForValue> {
             const priorScope = new Rules(
               accumulatedNodes
                 .filter(shouldReuseInPriorScope)
-                .map(n => n.clone(false))
+                .map(n => n.cloneLookupSafeShallowWrapper(context))
             );
             priorScope.inherit(loopTemplate);
             priorScope.adopt(loopRules);

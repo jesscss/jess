@@ -454,6 +454,8 @@ describe('Control Nodes', () => {
 
     expect(firstOutputContainer.type).toBe('Rules');
     expect(firstOutputRuleset.type).toBe('Ruleset');
+    expect(firstOutputRuleset.parent).toBe(firstOutputContainer);
+    expect(firstOutputRuleset.rules.parent).toBe(firstOutputRuleset);
     expect(firstOutputContainer.value.map(node => node.type)).toEqual([
       'VarDeclaration',
       'Ruleset',
