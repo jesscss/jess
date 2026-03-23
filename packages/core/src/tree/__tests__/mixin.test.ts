@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
 import { sessionGetParent, sessionGetSourceParent, sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
@@ -830,6 +830,56 @@ describe('Mixin', () => {
           color: blue;
         }
       `);
+    });
+
+    it('matches a sequence pattern parameter against a session-patched argument value', async () => {
+      context.createSession();
+
+      const buildRoot = () => {
+        const mixinDef = mixin({
+          name: any('.mixin'),
+          params: list([
+            seq([num(10), num(20)])
+          ]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        });
+
+        const arg = seq([num(10), num(30)]);
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({
+              name: ref({ key: '.mixin' }, { type: 'mixin' }),
+              args: list([arg])
+            })
+          ])
+        });
+
+        return {
+          root: rules([mixinDef, testRuleset]),
+          arg
+        };
+      };
+
+      const baseline = buildRoot();
+      await expectRejects(baseline.root.eval(new Context({ leakyRules: true })), ReferenceError, /No matching mixins/);
+
+      const { root, arg } = buildRoot();
+      context.root = root;
+
+      sessionPatchField(arg, 'value', [num(10), num(20)], context);
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .test {
+          color: red;
+        }
+      `);
+      expect(arg.toTrimmedString()).toBe('10 30');
     });
 
     it('should call a mixin with rest parameters', async () => {
