@@ -76,22 +76,30 @@ $radius: top-right;
 $theme: dark;
 body {
   --theme-mode: $[theme];
-  custom-color: $['--custom-color'];
   --theme-mode-fallback: $($theme);
+}
+
+.card {
+  border-color: rebeccapurple;
+  box-shadow: 0 0 0 2px $['border-color'];
 }
 ```
 →
 ```css
 body {
   --theme-mode: dark;
-  custom-color: dark;
   --theme-mode-fallback: dark;
+}
+
+.card {
+  border-color: rebeccapurple;
+  box-shadow: 0 0 0 2px rebeccapurple;
 }
 ```
 
 :::info
 
-Note: in normal property values, you can usually just use `$theme`. In custom property values, use interpolation (`$[theme]` or `$(...)`) so intent is explicit.
+Note: in normal property values, you can usually just use `$theme`. In custom property values, use interpolation (`$[theme]` or `$(...)`) so intent is explicit. `$['border-color']` is different: it looks up another declaration value in scope, not a DOM-level custom property.
 
 :::
 
