@@ -43,11 +43,11 @@ Do not use this as the full node-status matrix or roadmap document:
 3. Do not treat matcher internals or extend matching as the current blocker:
    - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
    - `Condition` now adopts `compare(context)` for selector guards on the active path
-   - extend matching/rewrite now threads eval `Context` through the active helper pipeline
+   - extend matching/rewrite now threads eval `Context` through the active helper pipeline, and Extend looks effectively complete for the fundamentals pass
 4. The remaining hard owners are wrapper/output shaping:
-   - later `Rules` output shaping after wrapper construction
-   - later returned-output shaping downstream of `Rules`
-   - lower lookup-safe shallow-clone semantics that still affect control prior-scope reuse
+   - consumer adoption of `cloneLookupSafeShallowWrapper(ctx)` in control prior-scope reuse
+   - any deeper returned-output shaping that survives after the control prior-scope consumer is checked
+   - possible future non-selector `compare(context)` work lower in the generic compare API, not another obvious caller swap
 
 ### Stage status
 - Stage 17: complete and committed
