@@ -47,6 +47,7 @@ Do not use this as the full node-status matrix or roadmap document:
    - extend matching/rewrite now threads eval `Context` through the active helper pipeline, and Extend looks effectively complete for the fundamentals pass
 4. The remaining hard owners are wrapper/output shaping:
    - shallow `Rules.clone(false)` reparents shared top-level children too early
+   - detached-ruleset unlock now has its own explicit `cloneDetachedUnlockWrapper(context)` seam, so future work no longer needs to thread through raw `clone(false)` at that caller
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
    - any remaining downstream consumer paths that still fail to adopt the landed wrapper/materialization helpers consistently
    - follow-up use of the new generic compare/context channel where a real consumer benefits

@@ -251,6 +251,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
+   * Detached ruleset calls unlock shared top-level children into the active
+   * lookup scope, but must not canonically reparent those children.
+   *
+   * Keep this seam local to Rules so the detached-ruleset path does not need
+   * to rely on raw clone(false) semantics.
+   */
+  cloneDetachedUnlockWrapper(ctx: Context): this {
+    return this.cloneLookupSafeShallowWrapper(ctx);
+  }
+
+  /**
    * Lazily create registries for types as needed.
    */
   register(
@@ -2637,7 +2648,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // not eagerly execute/flatten them.
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
-        let unlocked = sourceRules.clone(false, undefined, thisContext);
+        let unlocked = sourceRules.cloneDetachedUnlockWrapper(thisContext);
         sessionSetParent(unlocked, getCandidateParent(candidate as unknown as Node), thisContext);
         sessionSetSourceParent(unlocked, sourceParent ?? caller, thisContext);
         // Detached ruleset calls in Less unlock their contents into the current scope.

@@ -317,6 +317,30 @@ describe('Rules', () => {
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
 
+      it('cloneDetachedUnlockWrapper keeps canonical parentage while giving shared top-level children an unlock-wrapper session parent', () => {
+        const ctx = new Context();
+        ctx.session = new EvalSession();
+
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]) as any,
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+
+        const wrapper = node.cloneDetachedUnlockWrapper(ctx);
+        const wrappedRuleset = wrapper.at(0) as typeof nested;
+
+        expect(wrapper).not.toBe(node);
+        expect(wrappedRuleset).toBe(nested);
+        expect(wrappedRuleset.parent).toBe(node);
+        expect(sessionGetParent(wrappedRuleset, ctx)).toBe(wrapper);
+        expect(wrappedRuleset.rules).toBe(nestedBody);
+        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+      });
+
       it('materializeEvaluatedCopy preserves source-root provenance instead of an intermediate derived clone', () => {
         const sourceBody = rules([
           decl({ name: 'color', value: any('red') })
