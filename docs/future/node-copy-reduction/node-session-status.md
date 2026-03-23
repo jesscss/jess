@@ -32,6 +32,37 @@ Rules:
 3. Only move upward into a more compositional node after the lower-order dependency is stable and committed.
 4. Do not “validate” a low-order migration only through `Rules`, imports, or extend when a narrow node-level proof is possible.
 5. Treat `Rules` as the highest-complexity structural node in this fundamentals pass, not as the default place to discover lower-order gaps.
+6. Do not treat internal materialization as a normal eval strategy. Internal eval should run on canonical nodes plus session state.
+
+## Materialization Rule
+
+The intended steady-state model is:
+
+- canonical node graph is immutable
+- session overlays provide the active evaluated view
+- internal evaluation operates on that session view, not on newly materialized trees
+
+So the rule is:
+
+- internal eval/runtime code should never materialize a new object graph just to keep evaluation moving
+- if an internal path appears to need materialization to make parentage, lookup, or mutation work, treat that as architecture debt and reduce it
+- materialization is only acceptable at an explicit boundary where Jess must hand downstream code a standalone evaluated object graph
+
+Allowed boundary materialization:
+
+- exporting or returning a retained evaluated tree/object model
+- producing a concrete result object that must outlive the current session
+
+Disallowed internal materialization:
+
+- materializing just to simulate mutable parent pointers
+- materializing just to make lookup or visibility work during eval
+- materializing because a legacy `clone()` path used to depend on mutation
+
+Current note:
+
+- some current `materializeEvaluatedCopy(...)` callsites are transitional debt while the fundamentals gate is still open
+- do not add new internal materialization points unless the boundary is explicit and documented
 
 ## Per-Node Done Condition
 
@@ -108,6 +139,7 @@ A node moves from `pending` or `partial` to `complete` only when all of these ar
 5. The node has explicit session-overlay / immutability coverage in `packages/core/src/__tests__/eval-session.test.ts`.
 6. Any broader dependent integration tests needed to confirm the migrated path remain green.
 7. The slice has been committed and pushed as a stable boundary.
+8. The migrated path does not rely on internal materialization as its steady-state eval mechanism.
 
 If any of those are missing, the node stays `partial`.
 
@@ -132,7 +164,7 @@ the next atomic slice changes.
   - note:
     - guarded mixin invocation is green again
     - `evaluateCandidateOutput(...)` now shapes wrapper output through a cloned eval scope
-    - `materializeEvaluatedCopy(context)` can now materialize the active session view
+    - `materializeEvaluatedCopy(context)` exists, but internal eval should treat it as a transitional boundary helper rather than the steady-state solution
     - `ImportStyle` and `Extend` are no longer the active owners
 
 ### Current Batch A: Simple Pending Wrappers
@@ -177,6 +209,7 @@ Use this to record why a node is not next, even if it looks urgent.
 - `ImportStyle` and extend-path work remain high-value but are not allowed to pull the order upward ahead of lower-order node completion.
 - The internal mixin adapter path (`Reference -> getFunctionFromMixins() -> Call -> callWithContext()`) is tracked as its own planned stage. Do not fold that higher-order refactor into a lower-order wrapper-node slice.
 - `Rules` remains partial because reset-session structural work still relies on cloned working trees; that is broader than a node-local `Ruleset` or `Call` patch.
+- Internal materialization is not an accepted steady-state fix for remaining eval-path issues. If a slice only goes green by materializing a fresh internal tree, the real owner is still upstream.
 - `ImportStyle` is no longer the live failing blocker on the focused set; its remaining work is clone-pressure / returned-tree cleanup rather than the old parent-var / `with` / `set` visibility failures.
 - `ImportStyle` now has both `Node.materializeEvaluatedCopy()` and `Node.cloneDetachedShallowWrapper(ctx?)`, its cached compose re-eval path now also uses `cloneLookupSafeShallowWrapper(context)` instead of raw `clone(false)`, and the `_dedupe` path now keeps cached evaluated top-level child slots and parent pointers stable. If more import work remains, it is no longer the old wrapper-finalization bug.
 - `ImportStyle` now appears effectively complete for the fundamentals pass; the focused node-local import suite is green and the remaining blocker tests point below the node, not inside `import-style.ts`.

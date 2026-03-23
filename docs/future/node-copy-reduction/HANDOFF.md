@@ -51,6 +51,10 @@ Do not use this as the full node-status matrix or roadmap document:
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary
    - any remaining downstream consumer paths that still fail to adopt the landed wrapper/materialization helpers consistently
    - follow-up use of the new generic compare/context channel where a real consumer benefits
+5. Internal materialization is not an accepted steady-state eval strategy:
+   - do not materialize a fresh tree just to make parentage, lookup, or mutation work during eval
+   - only materialize at an explicit downstream boundary where Jess must hand off a standalone evaluated object graph
+   - treat any current internal `materializeEvaluatedCopy(...)` use as transitional debt to reduce, not as the target architecture
 
 ### Stage status
 - Stage 17: complete and committed
@@ -68,6 +72,7 @@ Do not use this as the full node-status matrix or roadmap document:
   - guardrail: keep this deferred until the fundamentals-completion gate is actually satisfied; do not fold it into the current node-by-node sessionization queue
 - Current actual stage: fundamentals-completion gate
   - focus: make immutable canonical nodes + session-backed eval writes/replacements true end-to-end
+  - invariant: internal evaluation runs on canonical nodes plus session overlays, not on newly materialized trees
   - order: lower-order node fields first (`Declaration`, `Ruleset`), then more compositional containers
   - checklist: keep `node-session-status.md` accurate as nodes move from `pending` -> `partial` -> done
   - proof rule: every node slice needs a narrow behavior proof plus an explicit immutability/session-overlay proof before moving upward

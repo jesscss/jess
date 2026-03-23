@@ -24,8 +24,9 @@ Those live in [node-session-status.md](./node-session-status.md).
 - `Rules` gained the selector-pattern param prep fix, so mixin selector params now prepare the original selector operand before `compare(argValue, context)` runs.
 - The live guarded-mixin blocker is fixed again on this head, and the focused `mixin` / `rules` / `call` slice is green.
 - `evaluateCandidateOutput(...)` now shapes wrapper output through a cloned eval scope, and `Node.materializeEvaluatedCopy(context)` can now materialize the active session view instead of only canonical state.
+- Architectural rule: internal evaluation should still treat materialization as transitional debt, not a normal strategy. Materialization is only acceptable at an explicit boundary where Jess must hand downstream code a standalone evaluated object graph.
 - The remaining `Rules`-local work is now the shallow `Rules.clone(false)` wrapper contract, not guard lookup.
-- `ImportStyle` and `Ruleset` now adopt context-aware materialization on their returned-tree consumer paths, and `$for` prior-scope reuse now feeds materialized copies back into the next iteration without mutating emitted output.
+- `ImportStyle` and `Ruleset` now adopt context-aware materialization on their returned-tree consumer paths, and `$for` prior-scope reuse now feeds materialized copies back into the next iteration without mutating emitted output. These are still transitional uses to be reduced, not the desired steady-state eval model.
 - `control.ts` prior-scope reuse is now fixed on top of `cloneLookupSafeShallowWrapper(ctx)`, and the focused control suite is green.
 - `Node.compare(context)` now forwards contextual `valueOf`, `Color` has semantic compare behavior, and `Sequence.compare(context)` now preserves the context channel for nested comparisons.
 

@@ -72,6 +72,8 @@ Recommended end state:
 - canonical identity is explicit
 - active structure is session-backed
 - source provenance remains available, but narrow and semantic
+- internal evaluation stays on canonical nodes plus session overlays
+- materialization only happens at an explicit boundary where Jess must produce a standalone evaluated object graph
 
 That means:
 
@@ -79,6 +81,13 @@ That means:
 - canonical-node visibility should come from canonical identity, not provenance ancestry
 - `sourceParent` / `sourceRulesParent` should not be used as stand-ins for active structure
   or canonical identity
+- internal helper code should not materialize fresh trees just to make evaluation work
+
+Important internal rule:
+
+- `NEVER materialize for evaluation`
+- if an eval path appears to need materialization, that is a bug or transitional debt in the architecture
+- materialization is reserved for explicit downstream handoff boundaries, not internal runtime flow
 
 Important sequencing rule:
 

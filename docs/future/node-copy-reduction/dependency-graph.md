@@ -36,6 +36,25 @@ That gate is only cleared when canonical nodes actually behave immutably, eval-t
 replacements/value writes are session-layer operations, tests match baseline with those
 properties true, and merge-to-`dev` is behavior-safe.
 
+## Materialization Boundary Rule
+
+The intended architecture is:
+
+- canonical nodes stay immutable
+- sessions provide the active evaluated view
+- internal evaluation operates on canonical nodes plus session state
+
+Therefore:
+
+- internal evaluation should never materialize a fresh object graph just to keep parentage, lookup, or mutation semantics working
+- if a path appears to need internal materialization, that is architecture debt to reduce, not the target design
+- materialization is only acceptable at an explicit downstream boundary where Jess must hand off a standalone evaluated object graph that can outlive the session
+
+Practical implication:
+
+- a helper like `materializeEvaluatedCopy(...)` is a boundary tool, not the default internal eval mechanism
+- any current internal uses of that helper should be treated as transitional and reduced over time as the fundamentals gate closes
+
 ## Overview
 
 This document covers three tightly coupled architectural advances that build on the
