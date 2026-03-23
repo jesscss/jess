@@ -559,7 +559,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('keeps the parameter wrapper Rules parent only in the session layer', async () => {
+    it('characterization: parameter wrapper children are reparented downstream after wrapper construction', async () => {
       context.createSession();
 
       const mixinDef = mixin({
@@ -586,10 +586,13 @@ describe('Mixin', () => {
         const fn = getFunctionFromMixins(mixinDef);
         const result = await fn.call(context, any('blue'));
         const outerRules = captured.at(-1);
+        const boundParam = (outerRules as Rules).at(0, context) as Node;
 
         expect(outerRules).toBeDefined();
         expect(sessionGetParent(outerRules as Node, context)).toBe(mixinRoot);
         expect((outerRules as Rules).parent).toBeUndefined();
+        expect(sessionGetParent(boundParam, context)).not.toBe(outerRules);
+        expect(boundParam.parent).not.toBe(outerRules);
         expect(String(result)).toBeString(`
           color: blue;
         `);
@@ -679,6 +682,42 @@ describe('Mixin', () => {
         .inner {
           color: blue;
         }
+      `);
+    });
+
+    it('keeps multi-candidate mixin output child Rules parents only in the session layer', async () => {
+      context.createSession();
+
+      const mixinA = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const mixinB = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'background', value: any('blue') })
+        ])
+      });
+      const mixinRoot = rules([mixinA, mixinB]);
+      context.root = mixinRoot;
+
+      const fn = getFunctionFromMixins([mixinA, mixinB]);
+      const result = await fn.call(context);
+      const output = result as Rules;
+      const firstOutputRules = output.at(0, context) as Rules;
+      const secondOutputRules = output.at(1, context) as Rules;
+
+      expect(firstOutputRules).toBeDefined();
+      expect(secondOutputRules).toBeDefined();
+      expect(sessionGetParent(firstOutputRules, context)).toBe(output);
+      expect(sessionGetParent(secondOutputRules, context)).toBe(output);
+      expect(firstOutputRules.parent).toBeUndefined();
+      expect(secondOutputRules.parent).toBeUndefined();
+      expect(String(result)).toBeString(`
+        color: red;
+        background: blue;
       `);
     });
 

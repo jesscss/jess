@@ -2914,7 +2914,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         rule.frozen = true;
         /** Set a sequential index for lookup sorting */
         rule.index = i;
-        output.push(rule);
+        if (thisContext.session) {
+          sessionSetParent(rule, output, thisContext);
+          output.push(thisContext, rule);
+        } else {
+          output.push(rule);
+        }
       }
     }
 
