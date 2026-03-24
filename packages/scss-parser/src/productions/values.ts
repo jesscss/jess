@@ -2,7 +2,7 @@
 // Converted from Chevrotain-based productions.ts
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser';
-import { NoViableAltException } from 'chevrotain';
+import { NoViableAltException, tokenMatcher } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   Any,
@@ -10,6 +10,7 @@ import {
   Collection,
   Declaration,
   CustomDeclaration,
+  Dimension,
   Expression,
   Interpolated,
   INTERPOLATION_PLACEHOLDER,
@@ -17,6 +18,10 @@ import {
   type Node,
   List,
   Nil,
+  Negative,
+  Num,
+  Operation,
+  type Operator,
   Paren,
   Rest,
   Quoted,
@@ -24,6 +29,7 @@ import {
   type Selector,
   SelectorCapture,
   Sequence,
+  shouldOperateWithMathFrames,
   VarDeclaration,
   isNode,
   N,
@@ -49,6 +55,172 @@ type AltContext = (ctx?: RuleContext) => Alt;
 // Save reference to CSS prototype functionCall
 const cssFunctionCall = cssProductions.functionCall;
 const cssDeclaration = cssProductions.declaration;
+
+function getParenFrames(ctx: RuleContext | undefined): boolean[] {
+  return (ctx?.parenFrames as boolean[] | undefined) ?? [];
+}
+
+function getCalcFrames(ctx: RuleContext | undefined): number {
+  return (ctx?.calcFrames as number | undefined) ?? 0;
+}
+
+function wrapOuterExpressionIfNeeded($: P, node: Node, ctx: RuleContext | undefined, location?: LocationInfo): Node {
+  if (!ctx?.wrapInExpression) {
+    return node;
+  }
+  if (isNode(node, N.Expression)) {
+    return node;
+  }
+  if (isNode(node, N.Operation)) {
+    const shouldOperate = shouldOperateWithMathFrames(
+      {
+        mathMode: 'parens-division',
+        parenFrames: getParenFrames(ctx),
+        calcFrames: getCalcFrames(ctx)
+      },
+      node.operator,
+      node.left,
+      node.right
+    );
+    if (shouldOperate) {
+      return new Expression(node, { parens: true }, location ?? (node.location as LocationInfo | undefined), $.context);
+    }
+  }
+  return node;
+}
+
+function nodeFromSignedToken($: P, token: IToken, ctx: RuleContext): Node {
+  const payload = (token as IToken & { payload?: [string, string?] }).payload;
+  if (payload?.[1]) {
+    return new Dimension(
+      { number: parseFloat(payload[0]!), unit: payload[1] },
+      undefined,
+      $.getLocationInfo(token),
+      $.context
+    );
+  }
+  const num = parseFloat(token.image);
+  if (!Number.isNaN(num)) {
+    return new Num(num, undefined, $.getLocationInfo(token), $.context);
+  }
+  return $.processValueToken(token, ctx);
+}
+
+function skipBalanced($: P, startOffset: number, open: unknown, close: unknown): number | undefined {
+  let depth = 0;
+  let offset = startOffset;
+  while (true) {
+    const token = $.LA(offset);
+    if (!token || token.tokenType.name === 'EOF') {
+      return undefined;
+    }
+    if (token.tokenType === open) {
+      depth++;
+    } else if (token.tokenType === close) {
+      depth--;
+      if (depth === 0) {
+        return offset + 1;
+      }
+    }
+    offset++;
+  }
+}
+
+function skipQuotedString($: P, startOffset: number, endToken: unknown): number | undefined {
+  let offset = startOffset + 1;
+  while (true) {
+    const token = $.LA(offset);
+    if (!token || token.tokenType.name === 'EOF') {
+      return undefined;
+    }
+    if (token.tokenType === endToken) {
+      return offset + 1;
+    }
+    offset++;
+  }
+}
+
+function isExpressionAtomStart($: P, T: TokenMap, offset: number): boolean {
+  const tokenType = $.LA(offset).tokenType;
+  return tokenType === T.LParen
+    || tokenType === T.InterpolationStart
+    || tokenType === T.FunctionStart
+    || tokenType === T.NamespacedFunctionStart
+    || tokenType === T.DollarVariable
+    || tokenType === T.Ident
+    || tokenType === T.PlainIdent
+    || tokenType === T.Dimension
+    || tokenType === T.Number
+    || tokenType === T.Color
+    || tokenType === T.UnicodeRange
+    || tokenType === T.SingleQuoteStart
+    || tokenType === T.DoubleQuoteStart
+    || tokenType === T.LSquare;
+}
+
+function skipExpressionAtom($: P, T: TokenMap, startOffset: number): number | undefined {
+  let offset = startOffset;
+  if ($.LA(offset).tokenType === T.Minus) {
+    offset++;
+  }
+  const token = $.LA(offset);
+  if (!token || token.tokenType.name === 'EOF') {
+    return undefined;
+  }
+  if (token.tokenType === T.LParen) {
+    return skipBalanced($, offset, T.LParen, T.RParen);
+  }
+  if (token.tokenType === T.LSquare) {
+    return skipBalanced($, offset, T.LSquare, T.RSquare);
+  }
+  if (token.tokenType === T.SingleQuoteStart) {
+    return skipQuotedString($, offset, T.SingleQuoteEnd);
+  }
+  if (token.tokenType === T.DoubleQuoteStart) {
+    return skipQuotedString($, offset, T.DoubleQuoteEnd);
+  }
+  if (token.tokenType === T.InterpolationStart) {
+    return skipBalanced($, offset, T.InterpolationStart, T.RCurly);
+  }
+  if (token.tokenType === T.FunctionStart || token.tokenType === T.NamespacedFunctionStart) {
+    return skipBalanced($, offset, token.tokenType, T.RParen);
+  }
+  if (isExpressionAtomStart($, T, offset)) {
+    return offset + 1;
+  }
+  return undefined;
+}
+
+function looksLikeIsolatedParenExpression($: P, T: TokenMap): boolean {
+  if ($.LA(1).tokenType !== T.LParen) {
+    return false;
+  }
+  let offset = 2;
+  let next = skipExpressionAtom($, T, offset);
+  if (!next) {
+    return false;
+  }
+  let sawOperator = false;
+  while (true) {
+    const tokenType = $.LA(next).tokenType;
+    if (tokenType === T.RParen) {
+      return sawOperator;
+    }
+    if (
+      tokenType !== T.Plus
+      && tokenType !== T.Minus
+      && tokenType !== T.Star
+      && tokenType !== T.Divide
+    ) {
+      return false;
+    }
+    sawOperator = true;
+    next = skipExpressionAtom($, T, next + 1);
+    if (!next) {
+      return false;
+    }
+  }
+}
 
 function saveValueDiagnostic($: P, token: IToken | undefined, location: LocationInfo | undefined, message: string): void {
   const err: NoViableAltException & {
@@ -241,6 +413,152 @@ export function scssIdentValue(this: P, T: TokenMap) {
   };
 }
 
+function getScssValueAlts($: P, T: TokenMap, ctx: RuleContext = {}): Alt {
+  return [
+    {
+      GATE: () => $.LA(1).tokenType === $.T.LParen && looksLikeMapLiteral($, $.T),
+      ALT: () => $.SUBRULE($.scssMapLiteral, { ARGS: [ctx] })
+    },
+    {
+      GATE: () => $.LA(1).tokenType === $.T.LParen,
+      ALT: () => $.SUBRULE($.parenValue, { ARGS: [ctx] })
+    },
+    {
+      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
+      ALT: () => {
+        $.startRule();
+        $.CONSUME($.T.InterpolationStart);
+        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        $.CONSUME($.T.RCurly);
+        const loc = $.endRule();
+        return new Interpolated(
+          { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
+          { role: 'any' },
+          loc,
+          $.context
+        );
+      }
+    },
+    {
+      GATE: () => $.isTypeAt(1, $.T.FunctionStart),
+      ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] })
+    },
+    { GATE: () => $.LA(1).tokenType === $.T.DollarVariable, ALT: () => $.CONSUME($.T.DollarVariable) },
+    {
+      GATE: () => $.isTypeAt(1, $.T.Ident) || $.LA(1).tokenType === $.T.PlainIdent,
+      ALT: () => $.SUBRULE($.scssIdentValue, { ARGS: [ctx] })
+    },
+    { GATE: () => $.isTypeAt(1, $.T.Dimension), ALT: () => $.CONSUME($.T.Dimension) },
+    { GATE: () => $.isTypeAt(1, $.T.Number), ALT: () => $.CONSUME($.T.Number) },
+    { GATE: () => $.LA(1).tokenType === $.T.Color, ALT: () => $.CONSUME($.T.Color) },
+    { GATE: () => $.LA(1).tokenType === $.T.UnicodeRange, ALT: () => $.CONSUME($.T.UnicodeRange) },
+    {
+      GATE: () => $.LA(1).tokenType === $.T.SingleQuoteStart || $.LA(1).tokenType === $.T.DoubleQuoteStart,
+      ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
+    },
+    { GATE: () => $.LA(1).tokenType === $.T.LSquare, ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
+    {
+      GATE: () => $.legacyMode,
+      ALT: () => $.CONSUME($.T.LegacyMSFilter)
+    }
+  ];
+}
+
+export function expressionValue(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    const minus = $.OPTION(() => $.CONSUME($.T.Minus));
+    let node = $.OR(getScssValueAlts($, T, { ...ctx, preferExpressionInParens: true })) as unknown as Node | IToken;
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    if (!(node instanceof JessNode)) {
+      node = $.processValueToken(node as IToken, ctx);
+    }
+    if (minus) {
+      return new Negative(node as Node, undefined, location, $.context);
+    }
+    return node as Node;
+  };
+}
+
+export function expressionProduct(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let left = (ctx.startValue as Node | undefined) ?? ($.SUBRULE($.expressionValue, { ARGS: [ctx] }) as unknown as Node);
+
+    while (true) {
+      let opToken: IToken | undefined;
+      if ($.isType($.T.Star)) {
+        opToken = $.CONSUME($.T.Star) as unknown as IToken;
+      } else if ((ctx.allowSlashDivision ?? false) && $.LA(1).tokenType === $.T.Divide) {
+        opToken = $.CONSUME($.T.Divide) as unknown as IToken;
+      } else {
+        break;
+      }
+      const right = $.SUBRULE2($.expressionValue, { ARGS: [ctx] }) as unknown as Node;
+      left = new Operation(
+        [$.wrap(left, true), opToken.image as Operator, $.wrap(right)],
+        undefined,
+        $.getLocationFromNodes([left, right]),
+        $.context
+      );
+    }
+
+    $.endRule();
+    return left;
+  };
+}
+
+export function expressionSum(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let left = $.SUBRULE($.expressionProduct, { ARGS: [ctx] }) as unknown as Node;
+
+    while (true) {
+      let right: Node | undefined;
+      let op: string | undefined;
+
+      if ($.isType($.T.Plus)) {
+        const opToken = $.CONSUME($.T.Plus) as unknown as IToken;
+        op = opToken.image;
+        right = $.SUBRULE2($.expressionProduct, { ARGS: [ctx] }) as unknown as Node;
+      } else if ($.isType($.T.Minus)) {
+        const opToken = $.CONSUME2($.T.Minus) as unknown as IToken;
+        op = opToken.image;
+        right = $.SUBRULE3($.expressionProduct, { ARGS: [ctx] }) as unknown as Node;
+      } else if ($.noSep() && tokenMatcher($.LA(1), $.T.Signed)) {
+        const token = $.CONSUME($.T.Signed) as unknown as IToken;
+        op = token.image[0];
+        right = $.SUBRULE4($.expressionProduct, {
+          ARGS: [{ ...ctx, startValue: nodeFromSignedToken($, token, ctx) }]
+        }) as unknown as Node;
+      } else {
+        break;
+      }
+
+      left = new Operation(
+        [$.wrap(left, true), op as Operator, $.wrap(right!)],
+        undefined,
+        $.getLocationFromNodes([left, right!]),
+        $.context
+      );
+    }
+
+    $.endRule();
+    return left;
+  };
+}
+
 export function functionCallArgs(this: P, T: TokenMap) {
   const $ = this;
 
@@ -349,8 +667,26 @@ export function functionCallArgs(this: P, T: TokenMap) {
 export function parenValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const parseAsExpression = (ctx.preferExpressionInParens ?? false) && looksLikeIsolatedParenExpression($, T);
     $.startRule();
     $.CONSUME($.T.LParen);
+
+    if (parseAsExpression) {
+      const exprCtx: RuleContext = {
+        ...ctx,
+        inner: true,
+        wrapInExpression: true,
+        allowSlashDivision: true,
+        parenFrames: [...getParenFrames(ctx), true]
+      };
+      const value = $.SUBRULE($.expressionSum, { ARGS: [exprCtx] }) as unknown as Node;
+      $.CONSUME($.T.RParen);
+      const location = $.endRule();
+      if ($.RECORDING_PHASE) {
+        return;
+      }
+      return wrapOuterExpressionIfNeeded($, value, exprCtx, location);
+    }
 
     let value: Node | undefined;
     $.OPTION({
@@ -364,6 +700,28 @@ export function parenValue(this: P, T: TokenMap) {
     const location = $.endRule();
     if ($.RECORDING_PHASE) {
       return;
+    }
+
+    if (
+      (ctx.preferExpressionInParens ?? false)
+      && isNode(value, N.List)
+      && value.options?.sep === '/'
+      && value.value.length === 2
+    ) {
+      const [left, right] = value.value;
+      const exprCtx: RuleContext = {
+        ...ctx,
+        wrapInExpression: true,
+        allowSlashDivision: true,
+        parenFrames: [...getParenFrames(ctx), true]
+      };
+      const operation = new Operation(
+        [$.wrap(left!, true), '/', $.wrap(right!)],
+        undefined,
+        $.getLocationFromNodes([left!, right!]),
+        $.context
+      );
+      return wrapOuterExpressionIfNeeded($, operation, exprCtx, location);
     }
 
     return new Paren(value, { delimiter: 'paren' }, location, $.context);
@@ -406,71 +764,24 @@ export function squareValue(this: P, T: TokenMap) {
 export function value(this: P, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    valueAlt ??= (ctx: RuleContext = {}) => [
-    {
-      GATE: () => $.LA(1).tokenType === $.T.LParen && looksLikeMapLiteral($, $.T),
-      ALT: () => $.SUBRULE($.scssMapLiteral, { ARGS: [ctx] })
-    },
-    {
-      GATE: () => $.LA(1).tokenType === $.T.LParen,
-      ALT: () => $.SUBRULE($.parenValue, { ARGS: [ctx] })
-    },
-    {
-      // SCSS interpolation in values: `#{$expr}`
-      GATE: () => $.LA(1).tokenType === $.T.InterpolationStart,
-      ALT: () => {
-        $.startRule();
-        $.CONSUME($.T.InterpolationStart);
-        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-        $.CONSUME($.T.RCurly);
-        const loc = $.endRule();
-        return new Interpolated(
-          { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
-          { role: 'any' },
-          loc,
-          $.context
-        );
-      }
-    },
-    {
-      GATE: () => $.isTypeAt(1, $.T.FunctionStart),
-      ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] })
-    },
-    { GATE: () => $.LA(1).tokenType === $.T.DollarVariable, ALT: () => $.CONSUME($.T.DollarVariable) },
-    {
-      GATE: () => $.isTypeAt(1, $.T.Ident) || $.LA(1).tokenType === $.T.PlainIdent,
-      ALT: () => $.SUBRULE($.scssIdentValue, { ARGS: [ctx] })
-    },
-    { GATE: () => $.isTypeAt(1, $.T.Dimension), ALT: () => $.CONSUME($.T.Dimension) },
-    { GATE: () => $.isTypeAt(1, $.T.Number), ALT: () => $.CONSUME($.T.Number) },
-    { GATE: () => $.LA(1).tokenType === $.T.Color, ALT: () => $.CONSUME($.T.Color) },
-    { GATE: () => $.LA(1).tokenType === $.T.UnicodeRange, ALT: () => $.CONSUME($.T.UnicodeRange) },
-    {
-      GATE: () => $.LA(1).tokenType === $.T.SingleQuoteStart || $.LA(1).tokenType === $.T.DoubleQuoteStart,
-      ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
-    },
-    { GATE: () => $.LA(1).tokenType === $.T.LSquare, ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
-    {
-      GATE: () => $.legacyMode,
-      ALT: () => $.CONSUME($.T.LegacyMSFilter)
-    }
-  ];
-
     $.startRule();
-    let node = $.OR(valueAlt!(ctx)) as unknown as Node | IToken;
+    const exprCtx: RuleContext = {
+      ...ctx,
+      wrapInExpression: true,
+      allowSlashDivision: ctx.allowSlashDivision ?? false
+    };
+    valueAlt ??= (innerCtx: RuleContext = {}) => getScssValueAlts($, T, innerCtx);
+    let node = $.SUBRULE($.expressionSum, { ARGS: [exprCtx] }) as unknown as Node;
     let additionalValue: Node | undefined;
     $.OPTION(() => {
-      $.CONSUME($.T.Slash);
+      $.CONSUME($.T.Divide);
       additionalValue = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
     });
     const location = $.endRule();
     if ($.RECORDING_PHASE) {
       return;
     }
-    // Match CSS parser behavior: convert raw tokens into Nodes.
-    if (!(node instanceof JessNode)) {
-      node = $.processValueToken(node as IToken, ctx);
-    }
+    node = wrapOuterExpressionIfNeeded($, node, exprCtx, location);
     if (additionalValue) {
       return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, $.context));
     }

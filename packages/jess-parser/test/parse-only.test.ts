@@ -28,6 +28,7 @@ const cases: ParseCase[] = [
   { name: 'custom property declaration', src: '.a { --color: #333; }' },
   { name: 'calc() value', src: '.a { width: calc(100% - 2px); }' },
   { name: '$(expr) arithmetic expression', src: '.a { width: $(1 + 2); }' },
+  { name: '$(expr) slash division expression', src: '.a { width: $(15px / 30px); }' },
   { name: 'paren list value', src: '.a { grid: ((1, 2), (3, 4)); }' },
   { name: '@media rule', src: '@media (min-width: 768px) { .a { color: red; } }' },
   { name: '@supports rule', src: '@supports (display: grid) { .a { display: grid; } }' },

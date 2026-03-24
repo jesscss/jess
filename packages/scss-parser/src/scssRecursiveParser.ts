@@ -14,6 +14,7 @@ import {
 
 import {
   Reference,
+  type MathMode,
   type Node,
 } from '@jesscss/core';
 
@@ -45,6 +46,20 @@ export type RuleContext = {
   allowComma?: boolean;
   /** Inside an @extend target selector */
   inExtend?: boolean;
+  /** Wrap a parsed outer operation as an Expression when appropriate */
+  wrapInExpression?: boolean;
+  /** Parenthesis math frames; top-most value controls math-in-parens semantics */
+  parenFrames?: boolean[];
+  /** Calc depth counter */
+  calcFrames?: number;
+  /** Seed value for continuing a parsed expression */
+  startValue?: Node;
+  /** Allow slash to parse as division instead of a separator */
+  allowSlashDivision?: boolean;
+  /** Prefer isolated arithmetic parsing for paren groups */
+  preferExpressionInParens?: boolean;
+  /** Reserved for future math-mode alignment with Less */
+  mathMode?: MathMode;
 
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
@@ -201,6 +216,9 @@ export class ScssRecursiveParser extends CssRecursiveParser {
   declare scssConditionInParens: typeof productions.scssConditionInParens;
   declare scssConditionInner: typeof productions.scssConditionInner;
   declare scssComparison: typeof productions.scssComparison;
+  expressionSum!: Rule;
+  expressionProduct!: Rule;
+  expressionValue!: Rule;
   parenValue!: Rule;
   declare scssMapLiteral: typeof productions.scssMapLiteral;
   declare scssNestedPropertyCollection: typeof productions.scssNestedPropertyCollection;

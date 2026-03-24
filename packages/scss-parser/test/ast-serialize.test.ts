@@ -60,6 +60,40 @@ describe('scss-parser (ast serialize)', () => {
     expect(serialized).toContain(`(Paren`);
   });
 
+  it('serializes SCSS arithmetic as Expression(Operation)', () => {
+    const { tree, errors, lexerResult } = parser.parse('.a { width: $v + 2; }');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString(`
+      (Expression
+        (Operation
+    `);
+    expect(serializeTypes(tree)).toContainString(`operator: '+'`);
+  });
+
+  it('serializes isolated parenthesized slash division as Expression(Operation)', () => {
+    const { tree, errors, lexerResult } = parser.parse('.a { width: (15px/30px); }');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString(`
+      (Expression
+        (Operation
+    `);
+    expect(serializeTypes(tree)).toContainString(`operator: '/'`);
+  });
+
+  it('keeps paren list slash forms as grouped values, not arithmetic expressions', () => {
+    const { tree, errors, lexerResult } = parser.parse('.a { font: (bold 15px/30px sans-serif); }');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain(`(Paren`);
+    expect(serialized).not.toContain(`(Expression`);
+  });
+
   it('serializes nested property declarations as a Collection-valued declaration', () => {
     const { tree, errors, lexerResult } = parser.parse('.a { font: { size: 1rem; weight: bold; } }');
     expect(lexerResult.errors).toEqual([]);

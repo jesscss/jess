@@ -58,6 +58,9 @@ export class JessRecursiveParser extends ScssRecursiveParser {
   jessMixinCall!: Rule;
 
   // ── Values ────────────────────────────────────────────────────────
+  declare expressionSum: Rule;
+  declare expressionProduct: Rule;
+  declare expressionValue: Rule;
   jessParenExpression!: Rule;
   jessCallArgs!: Rule;
   jessVarWithAccessors!: Rule;

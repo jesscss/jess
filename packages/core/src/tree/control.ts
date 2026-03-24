@@ -13,6 +13,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
+import { iterateItems } from './util/list-like.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -70,47 +71,6 @@ function shouldReuseInPriorScope(node: Node): boolean {
     && normalizedFromAssign !== AssignmentType.MergeSequence
     && String(node.name) !== 'padding'
   );
-}
-
-async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
-  if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.value.eval(context), context);
-    return;
-  }
-  if (isNode(input, N.Call)) {
-    const evald = await input.eval(context);
-    if (isNode(evald, N.Call)) {
-      yield [evald, 0];
-      return;
-    }
-    yield* resolveEntries(evald, context);
-    return;
-  }
-  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.value)) {
-    for (let key = 0; key < input.value.length; key++) {
-      const value = input.value[key]!;
-      yield [value, key];
-    }
-    return;
-  }
-  if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
-    const rules = isNode(input, N.Rules)
-      ? input.value
-      : isNode(input, N.Ruleset)
-        ? (input.rules?.value ?? [])
-        : ((input as Mixin).rules?.value ?? []);
-    for (const rule of rules) {
-      if (!rule || isNode(rule, N.Comment)) {
-        continue;
-      }
-      if (!isNode(rule, N.Declaration)) {
-        continue;
-      }
-      yield [rule.value, rule.name];
-    }
-    return;
-  }
-  yield [input, 0];
 }
 
 /** @deprecated Use IfValue directly (conditions/bodies/elseBranch). */
@@ -261,7 +221,7 @@ export class For extends Node<ForValue> {
       context.session = undefined;
       try {
         const evaluatedIterable = await iterable.eval(context);
-        for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+        for (const [value, key] of iterateItems(evaluatedIterable)) {
           const loopRules = this.rules.clone(true, undefined, context);
           // Preserve definition-scope parent chain so nested calls/lookups
           // inside loop bodies resolve the same way as the original rules.

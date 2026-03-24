@@ -27,7 +27,9 @@ export function jessParenExpression(this: P, T: TokenMap) {
     $.startRule();
 
     $.CONSUME($.T.DollarParen); // $( — paren is part of the token
-    const inner = $.SUBRULE($.mathSum, { ARGS: [ctx] }) as unknown as Node;
+    const inner = $.SUBRULE($.expressionSum, {
+      ARGS: [{ ...ctx, allowSlashDivision: true }]
+    }) as unknown as Node;
     $.CONSUME($.T.RParen);
 
     const loc = $.endRule();

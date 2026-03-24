@@ -6,6 +6,7 @@ import {
   JsFunction,
   List,
   Nil,
+  Paren,
   VarDeclaration,
   decl,
   expr,
@@ -109,6 +110,17 @@ describe('Control Nodes', () => {
     expect(`${evald}`).toContain('item: solo');
     expect(`${evald}`).toContain('key: 1');
     expect(`${evald}`).toContain('index: 1');
+  });
+
+  it('evaluates $for with paren-wrapped list iterable', async () => {
+    const context = new Context();
+    const iterable = new Paren(list([new Any('a'), new Any('b')]));
+    const root = rules([makeLoop(makePattern(['value', 'key', 'index']), iterable)]);
+    const evald = await root.eval(context);
+    expect(`${evald}`).toContain('item: a');
+    expect(`${evald}`).toContain('item: b');
+    expect(`${evald}`).toContain('key: 1');
+    expect(`${evald}`).toContain('key: 2');
   });
 
   it('supports list pattern bindings', async () => {

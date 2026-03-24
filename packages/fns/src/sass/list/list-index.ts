@@ -7,13 +7,13 @@
  * index(1 2 3, 2) // 2
  * index([a, b, c], d) // null
  */
-import { defineFunction, List, Dimension, Node } from '@jesscss/core';
+import { defineFunction, Dimension, Node, coerceListItems } from '@jesscss/core';
 
 const index = defineFunction(
   'index',
-  function(list: List, value: Node): Dimension | null {
+  function(list: Node, value: Node): Dimension | null {
     // Find the index of the value in the list
-    const listValue = list.value;
+    const listValue = coerceListItems(list);
     for (let i = 0; i < listValue.length; i++) {
       const item = listValue[i];
       // Compare nodes - use compare method if available
@@ -40,7 +40,7 @@ const index = defineFunction(
     params: [
       {
         name: 'list',
-        type: List
+        type: Node
       },
       {
         name: 'value',

@@ -8,12 +8,13 @@
  * separator(1 2 3) // "space"
  * separator(1 / 2 / 3) // "slash"
  */
-import { defineFunction, List, Quoted } from '@jesscss/core';
+import { defineFunction, Node, Quoted } from '@jesscss/core';
+import { getListSeparator } from '@jesscss/core/tree/util/list-like';
 
 const separator = defineFunction(
   'separator',
-  function(list: List): Quoted {
-    const sep = list.options?.sep;
+  function(list: Node): Quoted {
+    const sep = getListSeparator(list);
     // Map Jess separator to Sass separator string
     let separatorStr: string;
     if (sep === ',') {
@@ -30,7 +31,7 @@ const separator = defineFunction(
     params: [
       {
         name: 'list',
-        type: List
+        type: Node
       }
     ]
   }
