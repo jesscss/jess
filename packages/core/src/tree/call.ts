@@ -328,6 +328,20 @@ export class Call extends Node<CallValue, CallOptions> {
     };
     const materializeDownstreamResult = <T extends Node>(node: T): T => {
       if (context.session && node === node.sourceNode) {
+        const childKeys = (node.constructor as typeof Node).childKeys;
+        if (childKeys === null) {
+          const clone = node.clone(false, undefined, context) as T;
+          if (context.session.hasRuntime(node)) {
+            const runtime = context.session.getRuntime(node);
+            if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
+              clone.sourceNode = runtime.sourceNode;
+            }
+            if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
+              clone.sourceParent = runtime.sourceParent;
+            }
+          }
+          return clone;
+        }
         return node.materializeEvaluatedCopy(context) as T;
       }
       return node;

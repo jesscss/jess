@@ -62,18 +62,25 @@ Do not use this as the full node-status matrix or roadmap document:
    - do not materialize a fresh tree just to make parentage, lookup, or mutation work during eval
    - only materialize at an explicit downstream boundary where Jess must hand off a standalone evaluated object graph
    - treat any current internal `materializeEvaluatedCopy(...)` use as transitional debt to reduce, not as the target architecture
-6. `control.ts` is no longer a live owner:
+   - hard status rule: any node that still owns an active internal `materializeEvaluatedCopy(...)` path must remain `partial`, even if its focused behavior tests are green
+6. `control.ts` is no longer a live semantic owner:
    - `$for` prior-scope reuse is already on `cloneLookupSafeShallowWrapper(ctx)`
    - the latest characterization proves the remaining parent-integrity leak happens downstream during `wrapper.eval(context)`
-7. `Call` is no longer a live owner either:
+   - but control-family nodes must stay `partial` while prior-scope reuse still materializes prior output internally
+7. `Call` is no longer a live semantic owner either:
    - its remaining `this.clone(false, ..., context)` sites already flow through the node-local `Call.clone(...)` contract
    - the focused call suite is green with explicit proof that canonical child parents stay intact
-8. `node-base.ts` does not currently need another generic helper:
+   - trivial leaf downstream results now avoid full materialization and use a shallow clone plus runtime provenance carry-over
+   - but `Call` must stay `partial` while composite downstream results still materialize same-source nodes internally during eval
+8. `Ruleset` must also stay `partial`:
+   - source-ruleset shallow clones are now improved and more explicit, and derived-ruleset shallow clones now also clone the selector instead of materializing it
+   - but the derived-ruleset shallow-clone branch still materializes the `rules` body internally during eval-time clone work
+9. `node-base.ts` does not currently need another generic helper:
    - `registry-characterization.test.ts` now proves `cloneDetachedMaterializedWrapper(context)` gets its own top-level registry slot while preserving canonical top-level parents
    - `cloneDetachedShallowWrapper()` and `cloneLookupSafeShallowWrapper()` intentionally stay on the canonical registry slot, while `cloneDetachedMaterializedWrapper()` is already the explicit generic fork point
    - the remaining helper pressure is caller adoption and shallow-clone semantics, not another missing generic primitive
-9. The sharpest live contracts are now:
-   - `Ruleset.clone(false, ..., context)` for source rulesets: this is now the clearest candidate if we decide the shallow-clone contract itself must change
+10. The sharpest live contracts are now:
+   - `Ruleset.clone(false, ..., context)` for derived/source rulesets: this is now the clearest candidate for further reducing internal materialization without violating the shared live-session contract
    - `Rules`: the non-`Rules` child branch of `evaluateCandidateOutput(...)`, but only as the caller exposing that clone contract on public paths
    - plain cached compose wrappers in `ImportStyle`: still a real characterization boundary, but no longer the next local production owner unless the wrapper contract itself changes
 

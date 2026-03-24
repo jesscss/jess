@@ -949,11 +949,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const cloned = super.clone(deep, cloneFn, ctx) as this;
-    if (!deep && ctx?.session && this !== this.sourceNode) {
+    if (!deep && ctx?.session) {
       const selector = cloned._getSelector(ctx);
       if (selector instanceof Node) {
-        cloned.setData('selector', selector.materializeEvaluatedCopy(ctx) as Selector | Nil);
+        cloned.setData(
+          'selector',
+          selector.clone(false, undefined, ctx) as Selector | Nil
+        );
       }
+    }
+    if (!deep && ctx?.session && this !== this.sourceNode) {
       const rules = cloned._getRulesContainer(ctx);
       cloned.setData('rules', rules.materializeEvaluatedCopy(ctx));
     }

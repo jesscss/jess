@@ -373,7 +373,7 @@ describe('Rules', () => {
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
 
-      it('characterizes evaluateCandidateOutput non-Rules child shaping as only exposing child clone(false, ..., context) semantics plus wrapper parent assignment', () => {
+      it('characterizes evaluateCandidateOutput non-Rules child shaping as exposing source-ruleset clone semantics plus wrapper parent assignment', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();
 
@@ -390,20 +390,21 @@ describe('Rules', () => {
         const scopedChild = sourceRuleset.clone(false, undefined, ctx);
         evalScope.push(ctx, scopedChild);
 
-        expect(directClone.selector).toBe(sourceRuleset.selector);
+        expect(directClone.selector).not.toBe(sourceRuleset.selector);
         expect(directClone.rules).toBe(sourceRuleset.rules);
+        expect(directClone.selector.parent).toBe(directClone);
         expect(scopedChild).not.toBe(sourceRuleset);
         expect(scopedChild.parent).toBeUndefined();
         expect(sessionGetParent(scopedChild, ctx)).toBe(evalScope);
         expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
         expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
-        expect(scopedChild.selector).toBe(sourceRuleset.selector);
+        expect(scopedChild.selector).not.toBe(sourceRuleset.selector);
         expect(scopedChild.rules).toBe(sourceRuleset.rules);
         expect(scopedChild.selector.valueOf()).toBe(sourceRuleset.selector.valueOf());
         expect(scopedChild.rules.toTrimmedString()).toBe(sourceRuleset.rules.toTrimmedString());
       });
 
-      it('characterizes evaluateCandidateOutput non-Rules child shaping as needing a deliberate source-ruleset clone-contract change, not another rules.ts cleanup', () => {
+      it('characterizes evaluateCandidateOutput non-Rules child shaping as downstream of the source-ruleset clone contract, not another rules.ts cleanup', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();
 
@@ -417,11 +418,11 @@ describe('Rules', () => {
         const sourceScopedChild = sourceRuleset.clone(false, undefined, ctx);
         const derivedScopedChild = derivedRuleset.clone(false, undefined, ctx);
 
-        expect(sourceScopedChild.selector).toBe(sourceRuleset.selector);
+        expect(sourceScopedChild.selector).not.toBe(sourceRuleset.selector);
         expect(sourceScopedChild.rules).toBe(sourceRuleset.rules);
         expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
         expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
-        expect(sessionGetParent(sourceScopedChild.selector, ctx)).toBe(sourceScopedChild);
+        expect(sourceScopedChild.selector.parent).toBe(sourceScopedChild);
         expect(sessionGetParent(sourceScopedChild.rules, ctx)).toBe(sourceScopedChild);
 
         expect(derivedScopedChild.selector).not.toBe(derivedRuleset.selector);

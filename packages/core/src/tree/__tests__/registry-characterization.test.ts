@@ -189,16 +189,19 @@ describe('registry characterization', () => {
 
     const detachedWrapper = canonicalRules.cloneDetachedShallowWrapper(context) as Rules;
     expect(detachedWrapper.at(0)).toBe(canonicalRuleset);
+    expect(detachedWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
     expect(sessionGetParent(canonicalRuleset, context)).toBe(canonicalRules);
 
     const lookupWrapper = canonicalRules.cloneLookupSafeShallowWrapper(context) as Rules;
     expect(lookupWrapper.at(0)).toBe(canonicalRuleset);
+    expect(lookupWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
     expect(sessionGetParent(canonicalRuleset, context)).toBe(lookupWrapper);
 
     const materializedWrapper = canonicalRules.cloneDetachedMaterializedWrapper(context) as Rules;
     expect(materializedWrapper.at(0)).not.toBe(canonicalRuleset);
+    expect(materializedWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
     expect(sessionGetParent(canonicalRuleset, context)).toBe(lookupWrapper);
 
