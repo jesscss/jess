@@ -156,10 +156,11 @@ the next atomic slice changes.
 
 ### Immediate Next Slice
 
-- shallow `Rules.clone(false, ..., context)` semantics in `rules.ts` / `node-base.ts`
-  - goal: stop shallow `Rules` clones from canonically reparenting shared top-level children while preserving lookup-visible wrapper semantics
+- source-`Ruleset` `clone(false, ..., context)` semantics under the remaining `Rules` wrapper paths
+  - goal: decide whether the source-ruleset shallow-clone contract itself should change, or whether `Rules` should continue to treat that branch as a live shared session view
   - primary proof:
-    - `rules.test.ts`: `characterizes session shallow Rules clones as still canonically reparenting shared top-level children while nested ruleset bodies stay shared`
+    - `ruleset.test.ts`: `characterizes source ruleset shallow clone in a session as sharing selector and rules while keeping their canonical parents on the source ruleset`
+    - `ruleset.test.ts`: `keeps a source ruleset shallow clone as a live session view over shared nested children`
     - `import-style.test.ts`: `returned-tree wrapper cleanup is blocked by shallow Rules.clone(false) reparenting shared top-level children immediately`
   - note:
     - guarded mixin invocation is green again
@@ -172,7 +173,8 @@ the next atomic slice changes.
     - `ImportStyle` now uses `cloneDetachedMaterializedWrapper(context)` on the returned-tree paths that were previously doing open-coded wrapper detachment plus per-child materialization
     - `Extend`, `Call`, and `control.ts` are no longer the active owners
     - guarded candidate preparation no longer uses `mixin.copy()` under an active session; it now stays on the session-aware shallow-clone path so canonical guard/name/rules parentage is preserved during candidate gating
-    - the remaining `rules.ts` pressure is now the non-`Rules` child branch, and the latest rejected experiment proved the tempting local fix would be an internal `materializeEvaluatedCopy(...)` call during `evaluateCandidateOutput(...)`, which is not allowed by the architecture rule
+    - the remaining `rules.ts` pressure is now the non-`Rules` child branch, and the latest characterization proves that branch is only exposing child `clone(false, ..., context)` semantics plus wrapper parent assignment
+    - the latest rejected experiment also proved the tempting local fix would be an internal `materializeEvaluatedCopy(...)` call during `evaluateCandidateOutput(...)`, which is not allowed by the architecture rule
     - the remaining `Ruleset` pressure is now specifically the source-ruleset `clone(false, ..., context)` branch (`this === this.sourceNode`), and the current characterization now proves that branch is locally consistent today: shared selector/body identity, canonical ownership on the source ruleset, active ownership on the clone through the session layer, and a live session view over shared nested children
     - the remaining `ImportStyle` pressure is now only the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity and shared `value[]` across per-import wrappers; shared registry-slot behavior still coincides today but is no longer treated as a separate hard contract
 

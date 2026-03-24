@@ -52,7 +52,7 @@ Do not use this as the full node-status matrix or roadmap document:
    - detached wrapper plus immediate-child materialization now has `cloneDetachedMaterializedWrapper(context)`
    - `rules.ts` now also uses `cloneVisibilityIsolationWrapper(context)` inside `evaluateCandidateOutput(...)` for `Rules` children
    - guarded candidate preparation in `getFunctionFromMixins()` now also stays on the session-aware shallow-clone path instead of `mixin.copy()` when a session is active
-   - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, and it now narrows specifically to canonical source-ruleset shallow-clone semantics
+   - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, but the latest characterization now says that branch is only exposing child clone semantics plus wrapper parent assignment
    - a direct `materializeEvaluatedCopy(context)` fix at that internal eval point was tried and rejected because it violates the no-internal-materialization rule
    - `Ruleset.clone(false, ..., context)` source-ruleset behavior is now explicitly characterized as locally consistent today: canonical ownership stays on the source ruleset while the session layer gives the clone active ownership, and the clone remains a live session view over shared nested children
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary are now more about choosing the right existing wrapper contract than about another missing generic helper

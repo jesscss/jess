@@ -373,7 +373,7 @@ describe('Rules', () => {
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
 
-      it('characterizes evaluateCandidateOutput non-Rules child shaping as still bottoming out in the child node shallow clone semantics', () => {
+      it('characterizes evaluateCandidateOutput non-Rules child shaping as only exposing child clone(false, ..., context) semantics plus wrapper parent assignment', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();
 
@@ -385,10 +385,13 @@ describe('Rules', () => {
           rules: sourceBody
         });
         const evalScope = rules([]);
+        const directClone = sourceRuleset.clone(false, undefined, ctx);
 
         const scopedChild = sourceRuleset.clone(false, undefined, ctx);
         evalScope.push(ctx, scopedChild);
 
+        expect(directClone.selector).toBe(sourceRuleset.selector);
+        expect(directClone.rules).toBe(sourceRuleset.rules);
         expect(scopedChild).not.toBe(sourceRuleset);
         expect(scopedChild.parent).toBeUndefined();
         expect(sessionGetParent(scopedChild, ctx)).toBe(evalScope);
@@ -400,7 +403,7 @@ describe('Rules', () => {
         expect(scopedChild.rules.toTrimmedString()).toBe(sourceRuleset.rules.toTrimmedString());
       });
 
-      it('characterizes evaluateCandidateOutput non-Rules child shaping as blocked specifically on canonical source ruleset clone semantics', () => {
+      it('characterizes evaluateCandidateOutput non-Rules child shaping as needing a deliberate source-ruleset clone-contract change, not another rules.ts cleanup', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();
 
