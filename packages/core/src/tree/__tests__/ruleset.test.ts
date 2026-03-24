@@ -2,7 +2,7 @@ import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '../ind
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { getPrintOptions } from '../util/print.js';
-import { sessionGetParent } from '../util/session-helpers.js';
+import { sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
 import { F_VISIBLE } from '../node.js';
 
 let context: Context;
@@ -215,6 +215,25 @@ describe('Rule', () => {
     expect(cloned.rules.parent).toBe(source);
     expect(sessionGetParent(cloned.selector, context)).toBe(cloned);
     expect(sessionGetParent(cloned.rules, context)).toBe(cloned);
+  });
+
+  it('keeps a source ruleset shallow clone as a live session view over shared nested children', () => {
+    const source = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const sourceDecl = source.rules.at(0)!;
+
+    context.session = new EvalSession();
+
+    const cloned = source.clone(false, undefined, context);
+    sessionPatchField(sourceDecl, 'value', any('blue'), context);
+
+    expect(cloned.rules.at(0)).toBe(sourceDecl);
+    expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
+    expect(source.rules.toTrimmedString()).toBe('color: red;');
   });
 
   it('preEval keeps child rules visibility in the session without mutating canonical rules options', async () => {

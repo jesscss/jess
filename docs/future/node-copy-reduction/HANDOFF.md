@@ -53,7 +53,8 @@ Do not use this as the full node-status matrix or roadmap document:
    - `rules.ts` now also uses `cloneVisibilityIsolationWrapper(context)` inside `evaluateCandidateOutput(...)` for `Rules` children
    - guarded candidate preparation in `getFunctionFromMixins()` now also stays on the session-aware shallow-clone path instead of `mixin.copy()` when a session is active
    - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, and it now narrows specifically to canonical source-ruleset shallow-clone semantics
-   - `Ruleset.clone(false, ..., context)` source-ruleset behavior is now explicitly characterized as locally consistent today: canonical ownership stays on the source ruleset while the session layer gives the clone active ownership
+   - a direct `materializeEvaluatedCopy(context)` fix at that internal eval point was tried and rejected because it violates the no-internal-materialization rule
+   - `Ruleset.clone(false, ..., context)` source-ruleset behavior is now explicitly characterized as locally consistent today: canonical ownership stays on the source ruleset while the session layer gives the clone active ownership, and the clone remains a live session view over shared nested children
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary are now more about choosing the right existing wrapper contract than about another missing generic helper
    - the only remaining local `ImportStyle` pressure is the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity and shared `value[]` across per-import wrappers; shared registry-slot behavior still coincides today but is no longer treated as a separate hard local contract, and `import-style.ts` itself no longer looks like the next production owner
    - follow-up use of the new generic compare/context channel where a real consumer benefits
@@ -71,8 +72,9 @@ Do not use this as the full node-status matrix or roadmap document:
    - `registry-characterization.test.ts` now proves `cloneDetachedMaterializedWrapper(context)` gets its own top-level registry slot while preserving canonical top-level parents
    - `cloneDetachedShallowWrapper()` and `cloneLookupSafeShallowWrapper()` intentionally stay on the canonical registry slot, while `cloneDetachedMaterializedWrapper()` is already the explicit generic fork point
    - the remaining helper pressure is caller adoption and shallow-clone semantics, not another missing generic primitive
-9. The two sharpest live contracts are now:
-   - `Rules`: the non-`Rules` child branch of `evaluateCandidateOutput(...)`, narrowed to source-ruleset shallow-clone semantics
+9. The sharpest live contracts are now:
+   - `Ruleset.clone(false, ..., context)` for source rulesets: this is now the clearest candidate if we decide the shallow-clone contract itself must change
+   - `Rules`: the non-`Rules` child branch of `evaluateCandidateOutput(...)`, but only as the caller exposing that clone contract on public paths
    - plain cached compose wrappers in `ImportStyle`: still a real characterization boundary, but no longer the next local production owner unless the wrapper contract itself changes
 
 ### Stage status
