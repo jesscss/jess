@@ -262,7 +262,6 @@ export class Extend extends Node<ExtendValue> {
             }
           }
         }
-        const beforeMaterialize = resolvedSel.valueOf();
         resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
@@ -330,7 +329,6 @@ export class Extend extends Node<ExtendValue> {
         }
       }
     }
-    const beforeMaterialize = resolvedSel.valueOf();
     resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
     const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame as Ruleset : undefined;
     const docOrder = getDocumentOrderForExtend(rs, context);
