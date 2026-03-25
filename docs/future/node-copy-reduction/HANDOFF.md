@@ -23,6 +23,7 @@ Drive the branch to the point where:
 
 - the session-instance model is real enough to satisfy the repeated-import and repeated-mixin/function proofs
 - every node row in [node-session-status.md](./node-session-status.md) is no longer blocking that model
+- the rest of `packages/core` still behaves compatibly against that model
 - progress docs and status docs are current
 - every clean boundary is committed and pushed
 
@@ -52,6 +53,7 @@ Do not regress into:
 - no new helper family unless it clearly maps to the instance model
 - no internal materialization except at an explicit downstream boundary
 - do not call a local bridge-green slice “done” if it does not move the real model forward
+- do not silently change Jess behavior just to make the refactor easier
 - do not merge to `dev` from this handoff
 
 ## The Work Loop
@@ -69,6 +71,8 @@ Repeat this until the branch reaches the stage gate in [PROGRESS.md](./PROGRESS.
 6. Commit the clean boundary.
 7. Push it.
 8. Re-rank the next owner and repeat.
+
+At major checkpoints, also run broader `packages/core` verification so the branch stays compatible beyond the local proof surface.
 
 ## What To Update
 
@@ -105,8 +109,25 @@ The branch is near merge-ready when all of these are true:
 - sparse dependency-guided shadow state is real enough to carry those proofs
 - bridge helpers are no longer the architectural center of the branch
 - the statuses in [node-session-status.md](./node-session-status.md) reflect that reality
+- the broader `packages/core` behavior is still compatible:
+  - parser-driven paths still evaluate correctly
+  - function/mixin/import behavior still matches intended semantics
+  - integration tests are green or at the accepted baseline
 - docs are current
 - every meaningful boundary is committed and pushed
+
+## Compatibility Gate
+
+The agent should treat compatibility as part of completion, not as optional cleanup after.
+
+That means:
+
+- keep public Jess behavior the same unless there is an intentional, documented change
+- if tests need updates because APIs changed internally, keep the same behavioral expectations whenever possible
+- do not “fix” the suite by weakening expected Jess semantics
+- use local proof tests for development speed, but use broader `packages/core` tests to confirm parser, lookup, function, mixin, import, and selector behavior still compose correctly
+
+If the architecture is cleaner but the broader core behavior regressed, the branch is not done.
 
 Again:
 

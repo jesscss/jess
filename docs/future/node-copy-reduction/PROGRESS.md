@@ -83,6 +83,17 @@ We need to prove:
 - one changed input affects only one downstream path
 - only that path gets thin local state
 
+### Broader core compatibility proof
+
+We also need to prove that the new runtime model still composes with the rest of `packages/core`.
+
+That includes:
+
+- parser-driven evaluation paths
+- function, mixin, and import behavior
+- selector and lookup behavior
+- broader integration surfaces beyond the narrow proof-case tests
+
 ## Hard Rules
 
 ### API rule
@@ -107,6 +118,14 @@ Bridge helpers and wrapper seams are temporary.
 
 Do not add more unless the docs also name the future instance-model primitive they collapse into.
 
+### Compatibility rule
+
+Behavioral compatibility is part of completion.
+
+- update tests when internal APIs change
+- keep the same Jess behavior unless a change is intentional and documented
+- do not weaken broad test expectations just to make the refactor easier
+
 ## Stage Summary
 
 The meaningful next stages are:
@@ -121,6 +140,13 @@ The meaningful next stages are:
 - `SI-8`: re-audit nodes and merge gate
 
 See [dependency-graph.md](./dependency-graph.md) for the stage details.
+
+## Merge-Candidate Meaning
+
+This branch is only near merge-ready when both are true:
+
+- the session-instance model is real enough to satisfy the new proof targets
+- the broader `packages/core` suite is green or back to the accepted baseline with the same semantics
 
 ## Short Version
 
