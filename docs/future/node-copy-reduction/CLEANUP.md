@@ -26,33 +26,33 @@ These files import `type LocationInfo` but never reference it outside the import
 
 | # | File | Status |
 |---|------|--------|
-| UI-1 | `packages/core/src/tree/any.ts` | available |
-| UI-2 | `packages/core/src/tree/ampersand.ts` | available |
-| UI-3 | `packages/core/src/tree/block.ts` | available |
-| UI-4 | `packages/core/src/tree/bool.ts` | available |
-| UI-5 | `packages/core/src/tree/color.ts` | available |
-| UI-6 | `packages/core/src/tree/combinator.ts` | available |
-| UI-7 | `packages/core/src/tree/comment.ts` | available |
-| UI-8 | `packages/core/src/tree/condition.ts` | available |
-| UI-9 | `packages/core/src/tree/declaration.ts` | available |
-| UI-10 | `packages/core/src/tree/declaration-var.ts` | available |
-| UI-11 | `packages/core/src/tree/dimension.ts` | available |
-| UI-12 | `packages/core/src/tree/js-function.ts` | available |
-| UI-13 | `packages/core/src/tree/log.ts` | available |
-| UI-14 | `packages/core/src/tree/negative.ts` | available |
-| UI-15 | `packages/core/src/tree/nil.ts` | available |
-| UI-16 | `packages/core/src/tree/number.ts` | available |
-| UI-17 | `packages/core/src/tree/operation.ts` | available |
-| UI-18 | `packages/core/src/tree/quoted.ts` | available |
-| UI-19 | `packages/core/src/tree/range.ts` | available |
-| UI-20 | `packages/core/src/tree/reference.ts` | available |
-| UI-21 | `packages/core/src/tree/ruleset.ts` | available |
-| UI-22 | `packages/core/src/tree/selector-attr.ts` | available |
-| UI-23 | `packages/core/src/tree/selector-basic.ts` | available |
-| UI-24 | `packages/core/src/tree/selector-capture.ts` | available |
-| UI-25 | `packages/core/src/tree/selector-interpolated.ts` | available |
-| UI-26 | `packages/core/src/tree/selector-pseudo.ts` | available |
-| UI-27 | `packages/core/src/tree/url.ts` | available |
+| UI-1 | `packages/core/src/tree/any.ts` | done |
+| UI-2 | `packages/core/src/tree/ampersand.ts` | done |
+| UI-3 | `packages/core/src/tree/block.ts` | done |
+| UI-4 | `packages/core/src/tree/bool.ts` | done |
+| UI-5 | `packages/core/src/tree/color.ts` | done |
+| UI-6 | `packages/core/src/tree/combinator.ts` | done |
+| UI-7 | `packages/core/src/tree/comment.ts` | done |
+| UI-8 | `packages/core/src/tree/condition.ts` | done |
+| UI-9 | `packages/core/src/tree/declaration.ts` | done |
+| UI-10 | `packages/core/src/tree/declaration-var.ts` | done |
+| UI-11 | `packages/core/src/tree/dimension.ts` | done |
+| UI-12 | `packages/core/src/tree/js-function.ts` | done |
+| UI-13 | `packages/core/src/tree/log.ts` | done |
+| UI-14 | `packages/core/src/tree/negative.ts` | done |
+| UI-15 | `packages/core/src/tree/nil.ts` | done |
+| UI-16 | `packages/core/src/tree/number.ts` | done |
+| UI-17 | `packages/core/src/tree/operation.ts` | done |
+| UI-18 | `packages/core/src/tree/quoted.ts` | done |
+| UI-19 | `packages/core/src/tree/range.ts` | done |
+| UI-20 | `packages/core/src/tree/reference.ts` | done |
+| UI-21 | `packages/core/src/tree/ruleset.ts` | done |
+| UI-22 | `packages/core/src/tree/selector-attr.ts` | done |
+| UI-23 | `packages/core/src/tree/selector-basic.ts` | done |
+| UI-24 | `packages/core/src/tree/selector-capture.ts` | done |
+| UI-25 | `packages/core/src/tree/selector-interpolated.ts` | done |
+| UI-26 | `packages/core/src/tree/selector-pseudo.ts` | done |
+| UI-27 | `packages/core/src/tree/url.ts` | done |
 
 **Recommendation**: Handle UI-1 through UI-27 as a single commit since they are all the same mechanical change (remove `type LocationInfo` from import).
 
