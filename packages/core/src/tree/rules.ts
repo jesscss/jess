@@ -46,7 +46,7 @@ import {
   sessionSetParent,
   sessionSetSourceParent
 } from './util/session-helpers.js';
-import { EvalSession } from '../eval-session.js';
+import { EvalSession, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
 const { isArray } = Array;
 
@@ -2538,6 +2538,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       outerRules?: Rules;
       params?: List<Node>;
       group: number;
+      instanceRoot?: SessionInstanceRoot;
     };
     const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
     let hasDefNoneCandidate = false;
@@ -2545,7 +2546,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       candidate: Mixin,
       rules: Rules,
       outerRules: Rules | undefined,
-      params: List<Node> | undefined
+      params: List<Node> | undefined,
+      instanceRoot?: SessionInstanceRoot
     ): Promise<void> => {
       const currentCall = thisContext.callStack.at(-1);
       // to prevent infinite loops (e.g., .recursion { .recursion(); })
@@ -2608,6 +2610,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           newRules.options.rulesVisibility ??= {};
           newRules.options.rulesVisibility.VarDeclaration = 'private';
         }
+        if (instanceRoot) {
+          newRules._instanceRoot = instanceRoot;
+        }
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -2631,6 +2636,18 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
 
     for (let candidate of evalCandidates) {
+      // Create an instance root for this candidate to track per-call identity.
+      // The instance root is associated with output nodes via _instanceRoot,
+      // enabling reads to resolve through the correct per-call shadow state.
+      const candidateSourceRules = isNode(candidate, N.Ruleset)
+        ? getRootSourceRules((candidate as Ruleset).rules)
+        : (candidate as any).rules
+            ? getRootSourceRules((candidate as any).rules as Rules)
+            : undefined;
+      const candidateInstanceRoot = candidateSourceRules && thisContext.session
+        ? thisContext.session.createInstanceRoot(candidateSourceRules)
+        : undefined;
+
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
         // guard === undefined means passed, guard instanceof Nil means failed
@@ -2656,6 +2673,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark output Rules as mixin output - accessible only when lookup has a target
         rules.options.isMixinOutput = restrictMixinOutputLookup;
+        if (candidateInstanceRoot) {
+          rules._instanceRoot = candidateInstanceRoot;
+        }
         outputRules.push(rules);
         continue;
       }
@@ -2671,6 +2691,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // They must remain visible to untargeted lookups like `.mixin();`.
         unlocked.options.isMixinOutput = false;
         unlocked.index = candidate.index;
+        if (candidateInstanceRoot) {
+          unlocked._instanceRoot = candidateInstanceRoot;
+        }
         outputRules.push(unlocked);
         continue;
       }
@@ -2873,7 +2896,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
                 rules,
                 outerRules,
                 params,
-                group: defaultGroup
+                group: defaultGroup,
+                instanceRoot: candidateInstanceRoot
               });
             }
           } else {
@@ -2901,7 +2925,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         if (canonicalGuard && hasDefault) {
           continue;
         }
-        await evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params);
+        await evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params, candidateInstanceRoot);
       } finally {
         thisContext.rulesContext = rulesContext;
         thisContext.session = prevGuardSession;
@@ -2937,7 +2961,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             pending.candidate,
             pending.rules,
             pending.outerRules,
-            pending.params
+            pending.params,
+            pending.instanceRoot
           );
         } finally {
           thisContext.rulesContext = previousRulesContext;
