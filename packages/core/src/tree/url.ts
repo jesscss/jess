@@ -39,10 +39,10 @@ export class Url extends Node<Quoted | Any> {
     if (value instanceof Node) {
       this.adopt(value, context);
     }
-    if (context.session) {
+    if (context.session && this === this.sourceNode) {
       patchField(this, 'value', value, context);
     } else {
-      this.setData('value', value);
+      this.value = value;
     }
   }
 

@@ -379,12 +379,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
+    const currentValue = this._getValueNode(context);
     const staticNestedCollection =
-      isNode(this.value, N.Collection)
+      isNode(currentValue, N.Collection)
       || (
-        isNode(this.value, N.Sequence)
-        && (this.value as Sequence).value.length > 0
-        && isNode((this.value as Sequence).value[(this.value as Sequence).value.length - 1]!, N.Collection)
+        isNode(currentValue, N.Sequence)
+        && (currentValue as Sequence).value.length > 0
+        && isNode((currentValue as Sequence).value[(currentValue as Sequence).value.length - 1]!, N.Collection)
       );
     if (this.hasFlag(F_STATIC) && !staticNestedCollection) {
       this._setEvaluated(true, context);
@@ -607,7 +608,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (isThenable(expanded)) {
             return (expanded as Promise<Declaration | Rules | Nil>).then((resolvedExpanded) => {
               if (context.hasImportantSource && !node._getImportant(context) && isNode(resolvedExpanded, N.Declaration)) {
-                resolvedExpanded.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+                (resolvedExpanded as Declaration)._setImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               if (context.hasImportantSource) {
                 context.popImportantSource();
