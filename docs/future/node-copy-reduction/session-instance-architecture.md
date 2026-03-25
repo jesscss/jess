@@ -13,6 +13,23 @@ Use it to reason about:
 
 This doc is about the destination, not the bridge helpers.
 
+## Performance Motivation
+
+The guiding star for this entire architecture is **performance**. Specifically:
+
+JIT engines (V8, JSC, SpiderMonkey) are most slowed down by **object creation** — allocation pressure, GC pauses, and cache misses from scattered heap objects. Deep cloning an AST subtree per mixin call or import creates thousands of short-lived objects that the GC must collect.
+
+The instance-root model eliminates this by keeping one canonical tree and overlaying sparse shadow state per placement. Instead of N cloned trees, there is 1 canonical tree + N thin shadow maps. The objects that DO get created (shadow entries) are small, flat, and few — only for nodes that actually diverge.
+
+This is why:
+
+- **Deep cloning is the primary target** — it creates the most objects
+- **Shallow cloning is secondary** — fewer objects but still unnecessary
+- **Materialization is only at the output boundary** — one-time cost, not per-eval
+- **Instance roots are Maps, not trees** — flat structure, cache-friendly
+
+Every design decision should be evaluated against: "does this reduce object creation during eval?"
+
 ## Core Model
 
 Jess should evaluate against:

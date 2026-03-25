@@ -48,6 +48,12 @@ Do not regress into:
 - broad wrapper/helper growth
 - internal materialization as a normal eval strategy
 
+## Guiding Star: Performance Through Reduced Object Creation
+
+JIT engines are most slowed down by object creation — allocation pressure, GC pauses, cache misses. Deep cloning an AST subtree per mixin call or import creates thousands of short-lived objects.
+
+The instance-root model eliminates this: 1 canonical tree + N thin shadow maps instead of N cloned trees. Every design decision should be evaluated against: **”does this reduce object creation during eval?”**
+
 ## Hard Rules
 
 - no explicit instance parameters in ordinary node APIs
@@ -56,6 +62,7 @@ Do not regress into:
 - do not call a local bridge-green slice “done” if it does not move the real model forward
 - do not silently change Jess behavior just to make the refactor easier
 - do not merge to `dev` from this handoff
+- every approach must be reasoned about in terms of object creation cost
 
 ## The Work Loop
 

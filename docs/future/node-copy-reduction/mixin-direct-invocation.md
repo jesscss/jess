@@ -1,5 +1,13 @@
 # Mixin Direct Invocation — Next Pass Plan
 
+## Why This Matters For Performance
+
+Every mixin call currently deep-clones the body — creating a full copy of the AST subtree per call. For a mixin called 100 times, that's 100 cloned trees. JIT engines (V8, JSC) are most slowed down by object creation: allocation pressure, GC pauses, and cache misses from scattered heap objects.
+
+With instance roots: 1 canonical body + 100 thin shadow maps. Shadow entries are flat `Map<Node, ShadowEntry>` lookups, not tree copies. Only nodes that actually diverge from the canonical get entries.
+
+The arg handling also creates unnecessary objects: clone → freeze → spread → re-collect. Direct invocation evaluates args once and binds them via shadow patches.
+
 ## What This Replaces
 
 Currently, `Call` → mixin goes through 8 abstraction layers:
