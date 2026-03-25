@@ -356,7 +356,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // apply output shaping (`pre` / `post` / `sourceParent`, and possibly
       // `makeImportant`) without mutating the canonical source tree.
       if (context.session && node === node.sourceNode && isNode(node, N.Rules)) {
-        return node.materializeEvaluatedCopy(context) as T;
+        return node.cloneDetachedMaterializedWrapper(context) as T;
       }
       return materializeDownstreamResult(node);
     };
