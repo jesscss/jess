@@ -63,8 +63,8 @@ These files import `type LocationInfo` but never reference it outside the import
 ### DC-1: Unused variable `beforeMaterialize` in extend.ts
 - **File**: `packages/core/src/tree/extend.ts`
 - **Lines**: 265, 333
-- **Description**: `const beforeMaterialize = resolvedSel.valueOf()` is assigned twice (once in async path, once in sync path) but the variable is never read after assignment. Both occurrences can be removed.
-- **Status**: available
+- **Description**: `const beforeMaterialize = resolvedSel.valueOf()` was assigned twice (once in async path, once in sync path) but never read. Both removed.
+- **Status**: done
 
 ### DC-2: Unused regex `MULTI_LINE_TRIM` in regex.ts
 - **File**: `packages/core/src/tree/util/regex.ts`
