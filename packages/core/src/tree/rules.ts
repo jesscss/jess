@@ -2757,7 +2757,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         continue;
       }
       let rules = (candidate as any).rules as Rules;
-      rules = rules.clone(true, undefined, thisContext);
+      /** Shallow clone + IR instead of deep clone — O(N) vs O(N²).
+       * ctx.instanceRoot set so clone(false) routes adoption through IR. */
+      const prevIR = thisContext.instanceRoot;
+      if (candidateInstanceRoot) {
+        thisContext.instanceRoot = candidateInstanceRoot;
+      }
+      rules = rules.clone(false, undefined, thisContext);
+      thisContext.instanceRoot = prevIR;
       if (candidateInstanceRoot) {
         rules._instanceRoot = candidateInstanceRoot;
       }
