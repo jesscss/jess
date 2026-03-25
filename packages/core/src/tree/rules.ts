@@ -1626,6 +1626,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             scheduledPriority.delete(rule);
             // Apply the result
             if (result !== rule) {
+              // Store in position's result map (virtual evaluated tree).
+              // TODO: Once all eval paths create positions, remove ?. and the _setChildAt fallback.
+              if (context.position) {
+                context.position.setResult(rule, result);
+              }
               rules._setChildAt(idx, result, context, false);
               queue[q] = [idx, result];
               // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
