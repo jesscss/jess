@@ -463,6 +463,44 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     (this as unknown as { value: Node[] }).value = value;
   }
 
+  /**
+   * Create a shallow body wrapper for mixin eval — O(N) array copy vs O(N²) deep clone.
+   *
+   * Creates a new Rules with a COPY of the children array but does NOT adopt children
+   * (their canonical .parent stays unchanged). Session/IR handles the per-call parent
+   * chain via overlay. Registries are left empty — they'll be populated during eval.
+   *
+   * This replaces clone(true) in the mixin body path for massive perf improvement:
+   * a mixin body with 100 declarations creates 1 array copy + 1 Rules object
+   * instead of recursively cloning all 100+ nodes.
+   */
+  createShallowBodyWrapper(ctx?: Context): Rules {
+    const options = this._cloneOptionsForContext(ctx);
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as LocationInfo
+      : undefined;
+    // Create a new Rules with empty children — bypass constructor adoption
+    const wrapper = new (this.constructor as typeof Rules)(
+      [],
+      options ? { ...options } : undefined,
+      location,
+      this.treeContext
+    );
+    // Now set the children array directly — NOT through the constructor
+    // so adopt() is NOT called on canonical children.
+    wrapper._setValueArray([...this.value]);
+    wrapper.inherit(this);
+    // Set session parent for each child to the wrapper
+    if (ctx?.session || ctx?.instanceRoot) {
+      for (const child of wrapper.value) {
+        if (child instanceof Node) {
+          wrapper.adopt(child, ctx);
+        }
+      }
+    }
+    return wrapper;
+  }
+
   constructor(
     value: readonly Node[],
     options?: RulesOptions & NodeOptions,
