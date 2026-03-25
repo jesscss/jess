@@ -512,6 +512,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _setChildren(value: readonly Node[], context?: Context, markDirty: boolean = true): void {
+    const ir = context?.instanceRoot;
+    if (ir) {
+      ir.setChildren(this, [...value]);
+      for (const child of value) {
+        if (child instanceof Node) {
+          ir.getRuntime(child).parent = this;
+        }
+      }
+      return;
+    }
     if (context?.session && !context.session.resetEvalState) {
       sessionSetChildren(this, value, context, { markDirty });
       return;
@@ -520,6 +530,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _setChildAt(index: number, node: Node, context?: Context, markDirty: boolean = true): void {
+    const ir = context?.instanceRoot;
+    if (ir) {
+      const currentChildren = ir.getChildren(this) ?? this.value;
+      const nextChildren = [...currentChildren];
+      nextChildren[index] = node;
+      ir.setChildren(this, nextChildren);
+      ir.getRuntime(node).parent = this;
+      return;
+    }
     if (context?.session && !context.session.resetEvalState) {
       sessionSetChildAt(this, index, node, context, { markDirty });
       return;
