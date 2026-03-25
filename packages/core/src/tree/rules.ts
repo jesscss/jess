@@ -218,7 +218,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.value,
         options ? { ...options } : undefined,
         location,
-        this.treeContext
+        ctx?.instanceRoot ? ctx : this.treeContext
       ) as this;
 
     if (deep && options) {
