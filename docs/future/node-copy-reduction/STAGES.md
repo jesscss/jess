@@ -65,20 +65,24 @@ Dropped `session` prefix from all helper functions (25 renames across ~40 files)
 
 **Status**: Infrastructure complete, clone replacement blocked.
 
-**What works**: `createShallowBodyWrapper` produces a shallow wrapper with fresh children array (O(N) vs O(N²)). All Rules mutators route through IR when `ctx.instanceRoot` active.
+**Mixin body clone replaced**: `clone(true)` → `clone(false)` ✓
 
-**What blocks clone replacement**: When `ctx.instanceRoot` is activated during `Rules.eval()`, 27 tests fail because individual node types' `preEval`/`evalNode` methods still write eval results directly onto canonical nodes. The shallow wrapper shares children, so call #1's eval state bleeds into call #2.
+46/46 mixin tests pass. 1310/1341 total (1 new regression).
 
-**Specifically tested**:
-- `createShallowBodyWrapper` alone → 4 regressions (shared descendant values leak)
-- With `ctx.instanceRoot` during eval → 27 regressions (too many code paths write to canonical)
-- `clone(false, undefined, ctx)` passing Context to constructor → 7 regressions (canonical `.parent` reads fail when adoption goes through IR)
+**How it works**:
+- `ctx.instanceRoot` set temporarily during `clone(false)`
+- `clone(false)` detects instanceRoot → passes Context to Rules constructor
+- Constructor adopts children through IR (not canonical)
+- Canonical parent chains preserved for shared children
 
-**Next steps** (in order):
-1. Audit all canonical `.parent` reads in eval pipeline, convert to `getParent(node, ctx)`
-2. Enable `clone(false, undefined, ctx)` to pass Context to Rules constructor
-3. Set `ctx.instanceRoot` during eval — should then work with IR-aware mutators + IR-aware constructor
-4. Replace mixin body `clone(true)` with `clone(false)` + IR
+**1 remaining regression**: `at-rule.test.ts > media.less AST serialization` — nested `@media` with interpolated prelude. The shallow clone shares AtRule children, and the interpolated prelude eval writes onto the shared descendant. Fix requires `ctx.instanceRoot` active during nested eval, which currently causes 66 failures from non-IR-aware code paths.
+
+**Steps completed**:
+1. ✅ Audited 7 critical canonical `.parent` reads, converted to `getParent()`
+2. ✅ `clone(false)` passes Context to constructor when instanceRoot active
+3. ✅ Mixin body `clone(true)` → `clone(false)` + IR
+
+**Next step**: Fix nested @media regression by making AtRule prelude eval IR-aware, or by activating `ctx.instanceRoot` during the full eval (requires making more node eval paths IR-aware).
 
 ### Registry Architecture Rewrite
 
