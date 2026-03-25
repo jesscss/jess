@@ -365,6 +365,26 @@ describe('Call', () => {
     expect(childDecl.important?.toTrimmedString()).toBe('!important');
   });
 
+  it('characterizes composite same-source Rules results as still needing a child-identity-breaking returned-tree boundary, not a lookup-safe wrapper', () => {
+    context.session = new EvalSession();
+    const childDecl = decl({ name: 'color', value: any('red') });
+    const returnValue = rules([childDecl]);
+    const node = call({
+      name: returnValue,
+      args: list([])
+    }, { markImportant: true });
+
+    const wrapper = returnValue.cloneLookupSafeShallowWrapper(context);
+
+    expect(wrapper.value[0]).toBe(childDecl);
+    expect(childDecl.parent).toBe(returnValue);
+    expect(sessionGetParent(childDecl, context)).toBe(wrapper);
+
+    node.makeImportant(wrapper);
+
+    expect(childDecl.important?.toTrimmedString()).toBe('!important');
+  });
+
   it('reads a session-patched markImportant option for collection results without mutating canonical options', async () => {
     context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
