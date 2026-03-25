@@ -46,7 +46,7 @@ import {
   setParent,
   setSourceParent
 } from './util/session-helpers.js';
-import { EvalSession, type SessionInstanceRoot } from '../eval-session.js';
+import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
 const { isArray } = Array;
 
@@ -1626,10 +1626,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             scheduledPriority.delete(rule);
             // Apply the result
             if (result !== rule) {
-              // Store in position's result map (virtual evaluated tree).
-              // TODO: Once all eval paths create positions, remove ?. and the _setChildAt fallback.
+              // Store in eval position: patch the parent's value array.
               if (context.position) {
-                context.position.setResult(rule, result);
+                const children = context.position.getField(rules, 'value') as Node[] | undefined
+                  ?? [...rules.value];
+                children[idx] = result;
+                context.position.patchField(rules, 'value', children);
               }
               rules._setChildAt(idx, result, context, false);
               queue[q] = [idx, result];
@@ -2624,6 +2626,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
       try {
         let newRules: Rules;
+        // Create a position for this mixin call in the virtual evaluated tree.
+        const prevPosition = thisContext.position;
+        if (thisContext.session) {
+          thisContext.position = new EvalPosition(rules);
+        }
         if (!outerRules) {
           setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
           newRules = await rules.eval(thisContext);
@@ -2633,8 +2640,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           if (evalScopeParent) {
             setParent(evalScope, evalScopeParent, thisContext);
           }
-          // Push body children into the eval scope so params are visible during body eval.
-          // Children are shallow-cloned to avoid corrupting canonical parent chains.
           for (const child of rules.value) {
             evalScope.push(
               thisContext,
@@ -2645,15 +2650,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           newRules = await evalScope.eval(thisContext);
         }
+        thisContext.position = prevPosition;
         setSourceParent(newRules, sourceParent, thisContext);
         setParent(newRules, getCandidateParent(candidate as unknown as Node), thisContext);
-        // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
-
-        // Visibility should be preserved by Rules.eval - no need to set it explicitly here
-        // The eval'd rules should already have their nodes registered
-        // Ensure the registry is indexed before checking
-        // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         if (thisContext.treeContext?.file) {
           /**

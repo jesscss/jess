@@ -7,7 +7,7 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
-import { EvalSession, type SessionInstanceRoot, type PositionContext } from './eval-session.js';
+import { EvalSession, type SessionInstanceRoot, type EvalPosition } from './eval-session.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -465,14 +465,25 @@ export class Context {
 
   /**
    * The active position in the virtual evaluated tree.
-   *
-   * When set, eval results are stored in the position's result map
-   * instead of being written onto cloned nodes. This is how the
-   * evaluated tree is built sparsely over the canonical tree.
-   *
-   * @see PositionContext
+   * Lazy — allocated on first access, zero cost if never used.
+   * Mixin calls replace this with a child position for their body.
    */
-  position: PositionContext | undefined;
+  private _position: EvalPosition | undefined;
+  get position(): EvalPosition | undefined {
+    return this._position;
+  }
+
+  /** Lazy position access — creates root position on first call */
+  ensurePosition(): EvalPosition {
+    if (!this._position && this.root) {
+      this._position = new EvalPosition(this.root);
+    }
+    return this._position!;
+  }
+
+  set position(value: EvalPosition | undefined) {
+    this._position = value;
+  }
 
   /** Create and attach a new EvalSession to this context. */
   createSession(): EvalSession {

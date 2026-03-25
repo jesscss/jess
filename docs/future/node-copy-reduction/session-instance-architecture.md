@@ -74,12 +74,12 @@ class EvalSession {
 }
 ```
 
-### PositionContext
+### EvalPosition
 
 One per reused placement (mixin call, repeated import).
 
 ```ts
-class PositionContext {
+class EvalPosition {
   readonly session: EvalSession;
   readonly sourceRoot: Node;  // the canonical subtree being reused
 
@@ -91,7 +91,7 @@ class PositionContext {
 }
 ```
 
-When iterating children of a canonical Rules during eval under a PositionContext:
+When iterating children of a canonical Rules during eval under a EvalPosition:
 - For each canonical child, check `positionContext.results.get(child)`
 - If found: use the replacement
 - If not found: the child is unchanged — use it directly (pass-through)
@@ -100,7 +100,7 @@ When iterating children of a canonical Rules during eval under a PositionContext
 
 ```
 evalMixin(canonicalBody, params, context):
-  position = new PositionContext(session, canonicalBody)
+  position = new EvalPosition(session, canonicalBody)
   position.bindings = params
 
   for each child in canonicalBody.children:
@@ -128,7 +128,7 @@ serialize(node, context):
 
 | Old | New |
 |-----|-----|
-| `clone(true)` per mixin call | `new PositionContext()` per call |
+| `clone(true)` per mixin call | `new EvalPosition()` per call |
 | `clone(false)` + session adoption | Direct canonical traversal + result map |
 | `maybeClone()` in preEval | Not needed — canonical is never mutated |
 | `ShadowEntry` with field patches + runtime | `results: Map<Node, Node>` |
@@ -168,7 +168,7 @@ No per-position registry needed for most cases. The canonical registry + binding
 
 - `EvalSession` concept ✓ (renamed/simplified)
 - Session-aware field access helpers ✓ (simplified — just check result map)
-- `node._instanceRoot` concept → becomes `node._position` (which PositionContext this node belongs to)
+- `node._instanceRoot` concept → becomes `node._position` (which EvalPosition this node belongs to)
 - Registry infrastructure ✓ (indexes canonical, checks bindings)
 
 ## What gets removed
@@ -182,8 +182,8 @@ No per-position registry needed for most cases. The canonical registry + binding
 
 ## Migration from current to target
 
-### Phase 1: Introduce PositionContext alongside existing infrastructure
-- Create `PositionContext` class
+### Phase 1: Introduce EvalPosition alongside existing infrastructure
+- Create `EvalPosition` class
 - Use it in `evalMixinDirect` instead of `SessionInstanceRoot`
 - The result map starts empty; eval populates it
 
@@ -198,6 +198,6 @@ No per-position registry needed for most cases. The canonical registry + binding
 - Remove children overlays, ShadowEntry, IR-aware mutators
 
 ### Phase 4: Clean up
-- Remove `SessionInstanceRoot` (replaced by `PositionContext`)
+- Remove `SessionInstanceRoot` (replaced by `EvalPosition`)
 - Simplify session helpers (just check position result map)
 - Remove `maybeClone` entirely

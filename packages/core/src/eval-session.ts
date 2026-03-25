@@ -55,7 +55,7 @@ export interface EvalDependency {
   sourceExpr?: Node;
 }
 
-let nextPositionId = 1;
+let nextEvalPositionId = 1;
 
 /**
  * A position in the virtual evaluated tree.
@@ -66,70 +66,72 @@ let nextPositionId = 1;
  *
  * This is the "virtual clone" — O(R) where R = replacements, not O(N) for all nodes.
  */
-export class PositionContext {
+/**
+ * Per-node field overrides at an eval position.
+ * Sparse — only patched fields are stored.
+ */
+export type NodePatch = Record<string, unknown>;
+
+/**
+ * A position in the virtual evaluated tree.
+ *
+ * Holds sparse state for one placement of a canonical subtree:
+ * - Field-level patches (canonical node's field → override value)
+ * - Child-level replacements (canonical child → replacement node)
+ *
+ * Most nodes at a position are pass-through (no patches, no replacement).
+ * Only nodes that actually diverge during eval get entries.
+ */
+export class EvalPosition {
   readonly id: number;
-  readonly session: EvalSession;
   readonly sourceRoot: Node;
 
   /** Binding deltas for this placement (e.g., changed mixin params) */
   bindings?: Map<string, Node>;
 
-  /** Sparse result map: canonical node → evaluated replacement */
-  private results = new Map<Node, Node>();
+  /** Per-node field patches: sparse overrides on canonical nodes */
+  private patches = new Map<Node, NodePatch>();
 
-  constructor(session: EvalSession, sourceRoot: Node) {
-    this.id = nextPositionId++;
-    this.session = session;
+  constructor(sourceRoot: Node) {
+    this.id = nextEvalPositionId++;
     this.sourceRoot = sourceRoot;
   }
 
-  /** Store an evaluated replacement for a canonical node */
-  setResult(canonical: Node, replacement: Node): void {
-    this.results.set(canonical, replacement);
-  }
-
-  /** Get the evaluated replacement, or undefined if pass-through */
-  getResult(canonical: Node): Node | undefined {
-    return this.results.get(canonical);
-  }
-
-  /** Check if a canonical node has a replacement at this position */
-  hasResult(canonical: Node): boolean {
-    return this.results.has(canonical);
-  }
-
-  /** Number of replacements (measure of sparsity) */
-  get replacementCount(): number {
-    return this.results.size;
-  }
-
-  /**
-   * Get the effective node at this position: replacement if exists, canonical otherwise.
-   * This is the core read operation for the virtual evaluated tree.
-   */
-  resolve(canonical: Node): Node {
-    return this.results.get(canonical) ?? canonical;
-  }
-
-  /**
-   * Resolve children of a canonical container at this position.
-   * Returns the canonical children with replacements applied.
-   */
-  resolveChildren(canonicalChildren: readonly Node[]): readonly Node[] {
-    if (this.results.size === 0) {
-      return canonicalChildren;
+  /** Patch a field on a canonical node at this position */
+  patchField(node: Node, field: string, value: unknown): void {
+    let patch = this.patches.get(node);
+    if (!patch) {
+      patch = {};
+      this.patches.set(node, patch);
     }
-    let hasReplacement = false;
-    for (const child of canonicalChildren) {
-      if (this.results.has(child)) {
-        hasReplacement = true;
-        break;
-      }
+    patch[field] = value;
+  }
+
+  /** Read a patched field, or undefined if not patched */
+  getField(node: Node, field: string): unknown | undefined {
+    const patch = this.patches.get(node);
+    if (!patch) {
+      return undefined;
     }
-    if (!hasReplacement) {
-      return canonicalChildren;
-    }
-    return canonicalChildren.map(child => this.results.get(child) ?? child);
+    return Object.prototype.hasOwnProperty.call(patch, field)
+      ? patch[field]
+      : undefined;
+  }
+
+  /** Check if a field is patched */
+  hasField(node: Node, field: string): boolean {
+    const patch = this.patches.get(node);
+    return !!patch && Object.prototype.hasOwnProperty.call(patch, field);
+  }
+
+  /** Check if a node has any patches at this position */
+  hasPatch(node: Node): boolean {
+    return this.patches.has(node);
+  }
+
+  /** Number of nodes with patches */
+  get size(): number {
+    return this.patches.size;
   }
 }
 
