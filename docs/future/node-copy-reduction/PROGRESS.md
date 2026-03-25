@@ -89,35 +89,44 @@ Proved in `session-instance-proofs.test.ts`:
 - Import eval path wired with instance roots (zero regressions)
 - Dev branch merged (parser fixes included)
 
+## What Was Done in This Handoff
+
+### Direct mixin invocation
+
+`Call.evalNode` now dispatches mixin calls through `evalMixinDirect()` instead of the `getFunctionFromMixins()` → `callWithContext()` → `returnFunc()` roundtrip. This removes 3 abstraction layers.
+
+### Instance root association on mixin output
+
+Each mixin/ruleset candidate creates an instance root for identity tracking. Output nodes carry `_instanceRoot` so reads resolve through the correct per-call shadow state. `node._instanceRoot` is an implicit fallback in session helpers when `ctx.instanceRoot` is not set.
+
+### node._instanceRoot infrastructure
+
+The Node base class has a `_instanceRoot` field. Session helpers resolve: `ctx.instanceRoot` → `node._instanceRoot` → `session` → `canonical`. This enables output nodes to "remember" their eval context.
+
 ## What Remains for Full Merge
 
-### Mixin eval path: replace cloning with shadowing
+### Mixin body clone elimination
 
-The mixin eval path (`getFunctionFromMixins`) currently isolates each call by CLONING the mixin body, then evaluating the clone. This is fundamentally different from the import path (which uses session overlays on a shared canonical tree).
+The mixin eval path still clones the body per call. Instance roots are associated with the cloned output but don't yet replace the clone itself. Replacing cloning requires:
 
-Instance roots cannot simply be added alongside cloning — the clone is already a fresh object, so shadowing it adds nothing. And state written to an instance root during eval becomes inaccessible after the instance root is deactivated, breaking downstream assertions.
+1. Verify each eval code path uses session helpers consistently (no direct canonical mutation)
+2. Replace `rules.clone(true, undefined, ctx)` with instance root shadow state
+3. Replace param `setData('value', boundValue)` with instance root `patchField`
+4. Ensure guard evaluation works against instance-root-backed state
 
-The correct approach is to REPLACE cloning with instance root shadowing:
-
-1. Keep the canonical mixin body as-is (no clone)
-2. Create an instance root per call
-3. Evaluate the canonical body with the instance root active
-4. Shadow entries carry the per-call state (parent chains, eval state, binding deltas)
-5. Output materialization happens at the call boundary
-
-This is a larger refactor because the current loop structure (clone → set parents → eval → extract output) needs to become (create instance root → bind params → eval against canonical → materialize output). The guard evaluation, parameter wrapper, and output shaping all need to work against instance-root-backed state rather than cloned state.
+See [mixin-direct-invocation.md](./mixin-direct-invocation.md) for the full plan.
 
 ### Clone/materialization sunset
 
-Once instance roots carry eval paths, these wrapper methods become unnecessary:
+Once instance roots replace cloning, these wrapper methods become unnecessary:
 
-- `cloneDetachedShallowWrapper` → replaced by instance root with parent shadow
-- `cloneLookupSafeShallowWrapper` → replaced by instance root with parent shadow
-- `cloneDetachedMaterializedWrapper` → replaced by instance root (only at output boundary)
+- `cloneDetachedShallowWrapper` → instance root with parent shadow
+- `cloneLookupSafeShallowWrapper` → instance root with parent shadow
+- `cloneDetachedMaterializedWrapper` → instance root (materialization only at CSS output boundary)
 
-### Parser integration
+### Codebase cleanup
 
-Parsers were updated in `dev` branch. Merge `dev` → `jess-dev` before testing parser-driven eval paths.
+See [CLEANUP.md](./CLEANUP.md) for tracked cleanup items: unused imports, duplicate logic, dead code, materialization artifacts.
 
 ## Hard Rules
 
@@ -153,6 +162,6 @@ This branch is near merge-candidate when:
 - ✓ the broader `packages/core` suite is at the accepted baseline
 - ⚠ mixin eval path wiring is documented but not landed
 
-## Test Baseline (2026-03-25, post dev merge)
+## Test Baseline (2026-03-25, post direct mixin invocation)
 
-- Core: 5 files failed, 82 passed, 3 skipped; 6 tests failed, 1307 passed, 24 skipped
+- Core: 5 files failed, 83 passed, 3 skipped; 6 tests failed, 1311 passed, 24 skipped
