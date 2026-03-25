@@ -1,4 +1,4 @@
-import { defineType, type LocationInfo, type OptionalLocation, Node } from './node.js';
+import { defineType, type OptionalLocation, Node } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';

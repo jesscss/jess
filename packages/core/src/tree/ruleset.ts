@@ -8,7 +8,6 @@ import {
   F_NON_STATIC,
   defineType,
   type NodeOptions,
-  type LocationInfo,
   type OptionalLocation
 } from './node.js';
 import { Rules } from './rules.js';

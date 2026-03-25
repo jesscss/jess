@@ -1,7 +1,7 @@
 import {
   defineType,
   Node,
-  type LocationInfo, type OptionalLocation,
+  type OptionalLocation,
   type NodeOptions,
   type TreeContext
 } from './node.js';

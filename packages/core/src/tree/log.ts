@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, defineType, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { Node, F_VISIBLE, defineType, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { logger } from '../logger.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';

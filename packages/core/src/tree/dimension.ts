@@ -3,7 +3,7 @@ import { Color, ColorFormat } from './color.js';
 import {
   Node,
   F_STATIC,
-  type LocationInfo, type OptionalLocation,
+  type OptionalLocation,
   type NodeOptions,
   type TreeContext,
   defineType

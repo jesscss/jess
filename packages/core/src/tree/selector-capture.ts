@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, defineType, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { Node, defineType, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';

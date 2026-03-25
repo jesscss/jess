@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo, type OptionalLocation } from './node.js';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type OptionalLocation } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { cast } from './util/cast.js';
 import type { FindOptions } from './util/registry-utils.js';

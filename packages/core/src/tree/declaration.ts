@@ -2,7 +2,7 @@ import {
   Node,
   F_STATIC,
   defineType,
-  type LocationInfo, type OptionalLocation,
+  type OptionalLocation,
   type NodeOptions,
   type TreeContext
 } from './node.js';

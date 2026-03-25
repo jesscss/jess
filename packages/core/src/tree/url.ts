@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeOptions, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type Any } from './any.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';

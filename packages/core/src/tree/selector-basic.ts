@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType, F_STATIC, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { defineType, F_STATIC, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 
 export interface BasicSelector extends SimpleSelector<string> {

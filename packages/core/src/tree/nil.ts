@@ -7,7 +7,7 @@ import {
   F_VISIBLE,
   F_STATIC,
   defineType,
-  type LocationInfo, type OptionalLocation,
+  type OptionalLocation,
   type NodeOptions
 } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';

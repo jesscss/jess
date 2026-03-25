@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { F_NON_STATIC, F_VISIBLE, Node, defineType, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
+import { F_NON_STATIC, F_VISIBLE, Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';

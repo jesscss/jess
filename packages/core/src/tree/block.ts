@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { sessionGetField, sessionPatchField } from './util/session-helpers.js';

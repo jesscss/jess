@@ -1,4 +1,4 @@
-import { Node, F_STATIC, defineType, type NodeOptions, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, F_STATIC, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';

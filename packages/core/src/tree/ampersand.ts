@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, type OptionalLocation, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type OptionalLocation, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';

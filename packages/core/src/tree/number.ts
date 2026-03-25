@@ -1,5 +1,5 @@
 import {
-  type LocationInfo, type OptionalLocation,
+  type OptionalLocation,
   type NodeOptions,
   type TreeContext,
   defineType,

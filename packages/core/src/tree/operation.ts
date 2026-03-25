@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_STATIC, type NodeOptions, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_STATIC, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';

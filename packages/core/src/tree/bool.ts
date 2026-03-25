@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { Node, F_STATIC, defineType, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Bool extends Node<boolean> {
