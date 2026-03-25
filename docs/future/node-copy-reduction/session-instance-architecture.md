@@ -2,468 +2,202 @@
 
 ## Purpose
 
-This is the target architecture doc.
-
-Use it to reason about:
-
-- how the final runtime should work
-- what data structures are acceptable
-- how repeated imports/mixins/functions should reuse one immutable source tree
-- how sparse shadow state should work across broad trees
-
-This doc is about the destination, not the bridge helpers.
+This is the target architecture doc. Everything else should align to this.
 
 ## Performance Motivation
 
-The guiding star for this entire architecture is **performance**. Specifically:
+JIT engines are most slowed by **object creation** — allocation pressure, GC pauses, cache misses. Deep cloning creates thousands of short-lived objects per mixin call. Every design decision should reduce object creation during eval.
 
-JIT engines (V8, JSC, SpiderMonkey) are most slowed down by **object creation** — allocation pressure, GC pauses, and cache misses from scattered heap objects. Deep cloning an AST subtree per mixin call or import creates thousands of short-lived objects that the GC must collect.
+## The Model
 
-The instance-root model eliminates this by keeping one canonical tree and overlaying sparse shadow state per placement. Instead of N cloned trees, there is 1 canonical tree + N thin shadow maps. The objects that DO get created (shadow entries) are small, flat, and few — only for nodes that actually diverge.
+### Two trees
 
-This is why:
+1. **Canonical tree** — the parsed AST. Immutable after construction. One per file.
+2. **Evaluated tree** — one per evaluation session. Mostly pointers back to canonical nodes. Sparse replacements where eval produced different values.
 
-- **Deep cloning is the primary target** — it creates the most objects
-- **Shallow cloning is secondary** — fewer objects but still unnecessary
-- **Materialization is only at the output boundary** — one-time cost, not per-eval
-- **Instance roots are Maps, not trees** — flat structure, cache-friendly
+### Virtual nodes
 
-Every design decision should be evaluated against: "does this reduce object creation during eval?"
+A **virtual node** is a position in the evaluated tree. It is either:
 
-## Core Model
+- A **pass-through**: points directly to a canonical node (no change during eval)
+- A **replacement**: a new node produced by eval, placed at a specific position
 
-Jess should evaluate against:
+Most positions are pass-throughs. Only nodes that actually change during eval get replacements.
 
-- one immutable canonical/source tree
-- many lazy session-local instances over that tree
-- sparse shadow state only where behavior diverges
+### Reused canonical subtrees
 
-That means:
+When a mixin body is called 3 times, the canonical body nodes appear at 3 different positions in the ONE evaluated tree. Each position may have different replacements (because mixin params differ), but they all reference the same canonical source.
 
-- no deep clone as the default eval mechanism
-- no one-overlay-per-canonical-node model
-- no public API growth just to thread instance identity around
+```
+Canonical tree:          Evaluated tree:
 
-## The Runtime Objects
+  .theme(@fg) {           call-site-1:
+    color: @fg;             color: red;      ← replacement
+    border: solid;          border: solid;   ← pass-through to canonical
+  }                       call-site-2:
+                            color: blue;     ← different replacement
+                            border: solid;   ← same pass-through
+                          call-site-3:
+                            color: green;    ← different replacement
+                            border: solid;   ← same pass-through
+```
 
-### Canonical source node
+Three positions in the evaluated tree. One canonical `border: solid`. Three different `color` replacements.
 
-The authored node.
+### No cloning
 
-- immutable during eval
-- stable identity
-- shared by every import/call/reuse that originates from it
+There is no deep clone. There is no shallow clone of the body. The evaluated tree IS the result — it's a sparse structure that says "at this position, use this replacement instead of canonical."
+
+The only new objects created during eval are:
+- The replacement nodes themselves (which would be created anyway — `evalNode` returns new nodes when values change)
+- The position entries in the result map (one Map entry per replacement)
+
+### What replaces clone(true)
+
+Today: `clone(true)` creates a full copy of the mixin body tree per call. Each copy is mutated during eval.
+
+Target: Each call creates a **position context** (lightweight — just a Map). The canonical body is walked. Each node evaluates. If the result differs from canonical, it's stored in the position's result map. The position context IS the "clone" — but it's O(R) where R = number of replacements, not O(N) where N = total nodes.
+
+## Data Structures
 
 ### EvalSession
 
-One evaluation run.
-
-It owns:
-
-- the active instance roots
-- dependency tracking for that run
-- session-wide caches that are actually session-wide
-
-It is not “the overlay for a node.”
-
-### SessionInstanceRoot
-
-One distinct evaluated placement of a canonical subtree.
-
-Examples:
-
-- import #2 of a stylesheet
-- mixin call #3
-- stylesheet-function result for one call site
-- one reused `Rules` subtree appearing under a different parent chain
-
-This root owns sparse state for that placement only.
-
-Minimal shape:
+One per top-level evaluation. Owns the evaluated tree.
 
 ```ts
-type SessionInstanceRoot = {
-  session: EvalSession;
-  sourceRoot: Node;
-  bindings?: BindingDelta;
-  overrides: Map<Node, ShadowEntry>;
-  runtime?: Map<Node, RuntimeEntry>;
-  dependencyReach?: DependencyReach;
-};
-```
+class EvalSession {
+  /** The result map: canonical node → evaluated replacement at a position */
+  results: Map<PositionKey, Node>;
 
-The exact fields can change. The important rule is:
-
-- sparse state belongs to the instance root
-- not to one global `WeakMap<canonicalNode, overlay>`
-
-### Lazy node view
-
-A node-shaped runtime object backed by:
-
-- one canonical source node
-- one instance root
-
-It should behave like a normal node:
-
-- `node.value`
-- `node.parent`
-- `node.eval(context)`
-
-It should not require:
-
-- explicit instance parameters
-- a second public API for ordinary node work
-
-This is “proxy-like without requiring JS `Proxy`.”
-
-## Sparse Shadow State
-
-Most source nodes should have no local state at all.
-
-Only touched or dependency-affected nodes should have an entry.
-
-Illustrative shape:
-
-```ts
-type ShadowEntry = {
-  fieldPatches?: Record<string, unknown>;
-  runtime?: {
-    parent?: Node;
-    sourceParent?: Node;
-    index?: number;
-    pre?: number;
-    post?: number;
-    evaluated?: boolean;
-    preEvaluated?: boolean;
-  };
-  childOverrides?: {
-    replacedChildren?: readonly Node[];
-  };
-};
-```
-
-The exact encoding is not the point.
-
-The point is:
-
-- sparse
-- lazy
-- attached to one instance root
-
-## Read Model
-
-When runtime code reads from a node view:
-
-1. resolve the view’s instance root
-2. check for a local shadow entry for that source node
-3. return the patched field if present
-4. otherwise fall back to the canonical source node
-5. for child nodes/arrays:
-   - return child views in the same instance root
-   - unless a child override already exists
-
-This gives:
-
-- no broad object creation for untouched subtrees
-- normal-looking node access
-- source fallback by default
-
-## Write Model
-
-On first divergence for one source node inside one instance root:
-
-1. allocate a local shadow entry
-2. record only the changed field/runtime/child override
-3. leave the rest of the subtree source-backed
-
-If there is no divergence:
-
-- no shadow entry
-- no broad clone
-
-That is the actual “clone without the deep clone” model.
-
-## Lazy Creation Rule
-
-Node views should be created lazily.
-
-Creating one instance root must not imply creating a whole object graph.
-
-The runtime should only pay for:
-
-- a root object for the placement
-- local shadow entries for real divergence
-- local node views for paths that are actually touched
-
-If one param change affects one declaration path, only that slit of the tree should become local.
-
-## Dependency Graph
-
-The dependency graph is part of the runtime architecture, not a later optimization.
-
-It should answer:
-
-- what inputs changed at this instance root
-- which downstream paths actually depend on those inputs
-- which nodes therefore need local shadow state
-
-That is how a broad source tree can still have a very thin session shadow.
-
-## Basic Example: Import The Same File 3 Times
-
-Canonical source:
-
-```jess
-// tokens.jess
-@color: red;
-.button { color: @color; }
-```
-
-Use:
-
-```jess
-@import (multiple) "tokens";
-@import (multiple) "tokens" with (@color: blue);
-@import (multiple) "tokens" with (@color: green);
-```
-
-Desired runtime:
-
-- one canonical parsed tree for `tokens.jess`
-- three instance roots:
-  - `import#1`
-  - `import#2`
-  - `import#3`
-
-Desired sparsity:
-
-- `import#1`: maybe no shadow entry at all
-- `import#2`: one binding delta and only the declaration path affected by `@color`
-- `import#3`: same pattern with a different binding value
-
-What must not happen:
-
-- a cloned tree per import
-- a shadow entry for every node in the file
-
-## Basic Example: Mixin Called 3 Times
-
-Canonical source:
-
-```jess
-.theme(@fg, @bg) {
-  color: @fg;
-  border: 1px solid black;
-  background: @bg;
+  /** Session-wide caches (scopes, registries, etc.) */
+  // ...
 }
 ```
 
-Use:
+### PositionContext
 
-```jess
-.a { .theme(red, white); }
-.b { .theme(red, white); }
-.c { .theme(red, blue); }
-```
-
-Desired runtime:
-
-- one canonical mixin body
-- three instance roots:
-  - `call#a`
-  - `call#b`
-  - `call#c`
-
-Desired sparsity:
-
-- `call#a` and `call#b` differ mainly in placement/provenance
-- `call#c` needs a changed path for `background`
-- `border` stays source-backed in all three
-
-What must not happen:
-
-- a cloned mixin body per call
-- one overlay object per declaration just because the mixin ran
-
-## Multiple Sessions vs Multiple Instances
-
-These are different.
-
-### Multiple sessions
-
-Different top-level evaluations may each have their own `EvalSession`.
-
-That is normal.
-
-### Multiple instances in one session
-
-This is the key requirement.
-
-Inside one session, the same canonical subtree may need:
-
-- multiple parents
-- multiple sourceParent chains
-- multiple binding deltas
-- multiple dependency reaches
-
-That is why one node-keyed overlay is not enough.
-
-## Minimal Implementation Sketch
-
-The simplest acceptable direction is:
-
-1. keep canonical nodes as the authored immutable objects
-2. add instance roots for reused placements
-3. add lazy node views backed by `source node + instance root`
-4. move runtime/provenance state onto the instance root shadow entries
-5. use dependency reach to keep shadow entries narrow
-
-Do not start by generating a second full tree.
-
-## Sunset List
-
-The following are bridge code, not destination concepts:
-
-- growing families of `sessionGet*` / `sessionSet*`
-- growing wrapper-helper taxonomies
-- treating `WeakMap<canonicalNode, runtime>` as the main runtime identity model
-- internal materialization used to rescue eval paths
-
-Any bridge helper that survives should map to one of:
-
-- instance root creation
-- lazy node view creation
-- sparse shadow entry mutation
-
-## Registry Architecture Rewrite
-
-### Why the registry needs rethinking
-
-The current registry system (in `registry-utils.ts`) was designed for a single canonical tree with optional session deltas. It has these characteristics:
-
-- **Context-blind indexing**: `syncRegistryCache()` iterates canonical `.value` directly (no context parameter), bypassing IR overlays
-- **globalRegistryCache keyed by array identity**: `WeakMap<readonly Node[], RegistryData>` — when a shallow wrapper copies the value array, the cache key changes, forcing a full re-index
-- **Session deltas as separate maps**: `SessionRegistryDelta` stores a parallel index per Rules per session — but not per instance root
-- **Eager-ish registration**: nodes are registered during `preEval` and `push()`/`splice()`, not lazily at lookup time
-
-When `ctx.instanceRoot` is active, the registry doesn't see IR-modified children. When multiple instance roots share canonical children, the registry sees the same entries for all of them. This is the root cause of the infinite loops and stale data when `ctx.instanceRoot` is activated during eval.
-
-### Proposed registry model
-
-**Per-instance-root registry snapshots:**
-
-Instead of one canonical registry + session deltas, each instance root should own its own registry view:
+One per reused placement (mixin call, repeated import).
 
 ```ts
-type InstanceRegistryView = {
-  /** Registry built from IR children overlay (or canonical fallback) */
-  declaration: Map<string, Set<Declaration>>;
-  mixin: Map<string, MixinRegistryEntry[]>;
-  ruleset: Map<string, Set<Ruleset>>;
-  function: Map<string, JsFunction | Func>;
-  /** Whether this view is dirty and needs rebuilding */
-  dirty: boolean;
-};
+class PositionContext {
+  readonly session: EvalSession;
+  readonly sourceRoot: Node;  // the canonical subtree being reused
+
+  /** Sparse result map: canonical child → evaluated replacement */
+  results: Map<Node, Node>;
+
+  /** Binding deltas (mixin params, import overrides) */
+  bindings?: Map<string, Node>;
+}
 ```
 
-When an instance root's children overlay changes (via `_setChildAt`, `push`, etc.), the registry view is marked dirty. On next lookup, it rebuilds from the IR children.
+When iterating children of a canonical Rules during eval under a PositionContext:
+- For each canonical child, check `positionContext.results.get(child)`
+- If found: use the replacement
+- If not found: the child is unchanged — use it directly (pass-through)
 
-**Lazy population from canonical + diff:**
-
-Most children in a shallow wrapper are unchanged from canonical. The registry view should:
-
-1. Start from the canonical registry (already built)
-2. Apply only the diffs: nodes added/removed/replaced in the IR children overlay
-3. Cache the result per instance root
-
-This is O(D) where D = number of differing children, not O(N) for the full children array.
-
-**No global registry cache for IR-backed Rules:**
-
-The `globalRegistryCache` keyed by `rules.value` identity should only be used for truly canonical (un-overlaid) children. IR-backed Rules should skip this cache and use their instance root's registry view instead.
-
-### Lookup with instance roots
-
-The current lookup flow is:
+### How eval works with this model
 
 ```
-rules.find(type, key, opts)
-  → getRegistry(type, context)
-    → syncRegistryCache() — reads canonical .value
-    → return index
-  → index.get(key)
-  → if not found: walk parent via sessionGetParent()
+evalMixin(canonicalBody, params, context):
+  position = new PositionContext(session, canonicalBody)
+  position.bindings = params
+
+  for each child in canonicalBody.children:
+    result = child.eval(context)  // context carries position
+    if result !== child:
+      position.results.set(child, result)
+    // if result === child: no entry needed (pass-through)
+
+  return position  // this IS the evaluated mixin body
 ```
 
-The proposed flow:
+### How serialization works
+
+When serializing the evaluated tree, walk positions:
 
 ```
-rules.find(type, key, opts)
-  → getRegistry(type, context)
-    → if ctx.instanceRoot:
-        → get or build instance root's registry view
-        → return IR-aware index
-    → else if ctx.session:
-        → return canonical index + session delta
-    → else:
-        → return canonical index
-  → index.get(key)
-  → if not found: walk parent via sessionGetParent()
+serialize(node, context):
+  position = context.position
+  if position && position.results.has(node):
+    return serialize(position.results.get(node), context)
+  return node.toTrimmedString(context)
 ```
 
-The parent walk already uses `sessionGetParent()` which is IR-aware. The only change is in `getRegistry()` — making it return the right index for the current eval context.
+### What this replaces
 
-### Bitset opportunities
+| Old | New |
+|-----|-----|
+| `clone(true)` per mixin call | `new PositionContext()` per call |
+| `clone(false)` + session adoption | Direct canonical traversal + result map |
+| `maybeClone()` in preEval | Not needed — canonical is never mutated |
+| `ShadowEntry` with field patches + runtime | `results: Map<Node, Node>` |
+| Children overlays | Not needed — walk canonical children, check result map |
+| IR-aware mutators | Not needed — eval returns new nodes, stored in result map |
 
-The current codebase uses bitsets in one place: `RulesetRegistry.find()` for selector subset checks. There are opportunities to extend this:
+## What evalNode must do
 
-**Visibility bitset per Rules:**
-Instead of checking `rulesVisibility[nodeType]` linearly for each child, pre-compute a visibility bitset per Rules. Each node type gets a bit position. Visibility check becomes a single bitwise AND.
+`evalNode` already returns new nodes when values change. That's correct. The rule:
 
-**Registry presence bitset:**
-For each Rules, maintain a bitset of "what declaration names exist in this scope." During parent walk, a quick bitwise check can skip levels that definitely don't have the target. Current cost: O(depth × map.get()) → with bitset: O(depth × 1 bit check).
+- If the node's value is unchanged: return `this` (canonical)
+- If the node's value changed: return a NEW node with the new value
 
-**Instance root diff bitset:**
-Track which child INDICES changed in the IR overlay. When rebuilding the registry view, only re-register changed indices. The diff bitset is O(1) to check "has anything changed at all" and O(D) to enumerate changes.
+The new node is the **replacement**. It gets stored in the position's result map.
 
-**Key presence bloom filter:**
-For large scopes, a bloom filter on declaration keys could fast-reject lookups before touching the Map. This is most useful for the innermost scope where most lookups hit.
+`evalNode` must NOT mutate `this`. It must return a new node or `this`. Most `evalNode` implementations already do this. The ones that mutate `this` need fixing.
 
-### Object creation analysis
+## What preEval must do
 
-Current registry operations create these objects per lookup:
-- 1 FindOptions object
-- 1 Set<Node> for candidates
-- 1 array conversion on return
+`preEval` resolves dynamic names, sets up registries, etc. With this model:
 
-With instance root registries:
-- Same FindOptions/candidates
-- Instance root registry view: created once per instance root, reused across lookups
-- Diff computation: O(D) where D = number of changed children (typically 0 for most lookups)
+- `preEval` should NOT clone (`maybeClone` is eliminated)
+- `preEval` can read canonical fields (immutable)
+- `preEval` writes (eval state, resolved names) go to the position's result map
+- If `preEval` changes the node, return a NEW node. If not, return `this`.
 
-The key win: the registry view is NOT rebuilt per lookup. It's built once when the instance root's children overlay changes, then cached. Most mixin body eval does not change the children array — it evaluates children in place. So the registry view is built once and reused for all lookups during that call's eval.
+## Registry with this model
 
-### Migration plan
+Registries index the canonical children for O(1) lookup. That doesn't change. When a position has binding deltas (mixin params), the registry lookup checks:
 
-1. Add `InstanceRegistryView` to `SessionInstanceRoot`
-2. Modify `Rules.getRegistry(type, context)` to check `ctx.instanceRoot` first
-3. If IR active: return instance root's registry view (build from canonical + diff if dirty)
-4. If not IR: use existing canonical + session delta path
-5. Remove `globalRegistryCache` dependency for IR-backed Rules
-6. Add dirty tracking to instance root children mutations
+1. Position bindings first (mixin params override)
+2. Canonical registry (the pre-built index)
 
-This can be done incrementally — the existing canonical + session delta path stays as the fallback.
+No per-position registry needed for most cases. The canonical registry + binding deltas covers it.
 
-## Short Version
+## What stays from current implementation
 
-The final model is:
+- `EvalSession` concept ✓ (renamed/simplified)
+- Session-aware field access helpers ✓ (simplified — just check result map)
+- `node._instanceRoot` concept → becomes `node._position` (which PositionContext this node belongs to)
+- Registry infrastructure ✓ (indexes canonical, checks bindings)
 
-- immutable source tree
-- many lazy session-local instances
-- sparse dependency-guided shadow state
-- per-instance-root registry views
-- unchanged node API
-- bitset-accelerated scope skip and visibility check
+## What gets removed
 
-Everything still left on this branch should move toward that model directly.
+- `ShadowEntry` (field patches, runtime state) → replaced by simple result map
+- Children overlays → not needed
+- IR-aware `_setChildAt`, `_setChildren`, `push`, `splice`, `unshift` → not needed for this model
+- `maybeClone` → eliminated
+- `clone(true)` in mixin body path → eliminated
+- Per-node eval state tracking in IR → eval state is implicit (has result = evaluated)
+
+## Migration from current to target
+
+### Phase 1: Introduce PositionContext alongside existing infrastructure
+- Create `PositionContext` class
+- Use it in `evalMixinDirect` instead of `SessionInstanceRoot`
+- The result map starts empty; eval populates it
+
+### Phase 2: Make eval pipeline position-aware
+- When position is active, `evalNode` returns go to `position.results`
+- When reading children, check `position.results` before canonical
+- `maybeClone` returns `this` when position active
+
+### Phase 3: Remove cloning from mixin path
+- `clone(true)` → walk canonical with position
+- `clone(false)` → not needed
+- Remove children overlays, ShadowEntry, IR-aware mutators
+
+### Phase 4: Clean up
+- Remove `SessionInstanceRoot` (replaced by `PositionContext`)
+- Simplify session helpers (just check position result map)
+- Remove `maybeClone` entirely
