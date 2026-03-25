@@ -55,6 +55,84 @@ export interface EvalDependency {
   sourceExpr?: Node;
 }
 
+let nextPositionId = 1;
+
+/**
+ * A position in the virtual evaluated tree.
+ *
+ * Represents one placement of a canonical subtree (mixin call, repeated import).
+ * Contains a sparse result map: canonical node → evaluated replacement.
+ * Pass-through nodes (unchanged by eval) have no entry.
+ *
+ * This is the "virtual clone" — O(R) where R = replacements, not O(N) for all nodes.
+ */
+export class PositionContext {
+  readonly id: number;
+  readonly session: EvalSession;
+  readonly sourceRoot: Node;
+
+  /** Binding deltas for this placement (e.g., changed mixin params) */
+  bindings?: Map<string, Node>;
+
+  /** Sparse result map: canonical node → evaluated replacement */
+  private results = new Map<Node, Node>();
+
+  constructor(session: EvalSession, sourceRoot: Node) {
+    this.id = nextPositionId++;
+    this.session = session;
+    this.sourceRoot = sourceRoot;
+  }
+
+  /** Store an evaluated replacement for a canonical node */
+  setResult(canonical: Node, replacement: Node): void {
+    this.results.set(canonical, replacement);
+  }
+
+  /** Get the evaluated replacement, or undefined if pass-through */
+  getResult(canonical: Node): Node | undefined {
+    return this.results.get(canonical);
+  }
+
+  /** Check if a canonical node has a replacement at this position */
+  hasResult(canonical: Node): boolean {
+    return this.results.has(canonical);
+  }
+
+  /** Number of replacements (measure of sparsity) */
+  get replacementCount(): number {
+    return this.results.size;
+  }
+
+  /**
+   * Get the effective node at this position: replacement if exists, canonical otherwise.
+   * This is the core read operation for the virtual evaluated tree.
+   */
+  resolve(canonical: Node): Node {
+    return this.results.get(canonical) ?? canonical;
+  }
+
+  /**
+   * Resolve children of a canonical container at this position.
+   * Returns the canonical children with replacements applied.
+   */
+  resolveChildren(canonicalChildren: readonly Node[]): readonly Node[] {
+    if (this.results.size === 0) {
+      return canonicalChildren;
+    }
+    let hasReplacement = false;
+    for (const child of canonicalChildren) {
+      if (this.results.has(child)) {
+        hasReplacement = true;
+        break;
+      }
+    }
+    if (!hasReplacement) {
+      return canonicalChildren;
+    }
+    return canonicalChildren.map(child => this.results.get(child) ?? child);
+  }
+}
+
 /**
  * Tracks which canonical nodes are affected by binding changes
  * at a particular instance root. Used to keep shadow state sparse:

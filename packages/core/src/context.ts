@@ -7,7 +7,7 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
-import { EvalSession, type SessionInstanceRoot } from './eval-session.js';
+import { EvalSession, type SessionInstanceRoot, type PositionContext } from './eval-session.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -462,6 +462,17 @@ export class Context {
    * @see SessionInstanceRoot
    */
   instanceRoot: SessionInstanceRoot | undefined;
+
+  /**
+   * The active position in the virtual evaluated tree.
+   *
+   * When set, eval results are stored in the position's result map
+   * instead of being written onto cloned nodes. This is how the
+   * evaluated tree is built sparsely over the canonical tree.
+   *
+   * @see PositionContext
+   */
+  position: PositionContext | undefined;
 
   /** Create and attach a new EvalSession to this context. */
   createSession(): EvalSession {
