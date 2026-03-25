@@ -505,27 +505,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     value: readonly Node[],
     options?: RulesOptions & NodeOptions,
     location?: OptionalLocation,
-    treeContext?: TreeContext
+    contextOrTreeContext?: Context | TreeContext
   ) {
+    // Accept either Context or TreeContext as the 4th param.
+    // When Context is passed, adoption routes through session/IR
+    // so canonical parent chains are not corrupted on shared children.
+    const treeContext = contextOrTreeContext instanceof Context
+      ? contextOrTreeContext.treeContext
+      : contextOrTreeContext;
+    const ctx = contextOrTreeContext instanceof Context
+      ? contextOrTreeContext
+      : undefined;
+
     let rulesVisibility = options?.rulesVisibility ?? {};
-    // Set defaults for API-created Rules. Parsers will override these as needed:
-    // - Less mixins/rulesets: VarDeclaration = 'optional', Mixin = 'public'
-    // - Sass mixins/rulesets: VarDeclaration = 'private', Mixin = 'private'
-    // - Imports: VarDeclaration = 'public', Mixin = 'public'
-    // Default to 'public' for API-created Rules (better DX - variables are accessible).
-    // If you want nested Rules to be private, set it explicitly.
     rulesVisibility.Declaration ??= 'public';
     rulesVisibility.Ruleset ??= 'public';
     rulesVisibility.VarDeclaration ??= 'public';
     rulesVisibility.Mixin ??= 'public';
-    // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
     const normalized = (value ?? []) as Node[];
     super(normalized, mergedOptions, location, treeContext);
     this._setValueArray(normalized);
     for (const child of normalized) {
       if (child instanceof Node) {
-        this.adopt(child);
+        this.adopt(child, ctx);
       }
     }
     this.allowRoot = true;
