@@ -137,14 +137,14 @@ serialize(node, context):
 
 ## What evalNode must do
 
-`evalNode` already returns new nodes when values change. That's correct. The rule:
+`evalNode` returns either:
 
-- If the node's value is unchanged: return `this` (canonical)
-- If the node's value changed: return a NEW node with the new value
+- `this` (canonical) — the node is unchanged by eval (pass-through)
+- A **replacement node** — the evaluated result (e.g., `@color` → `red`)
 
-The new node is the **replacement**. It gets stored in the position's result map.
+The replacement is the **virtual node** — it's the natural output of evaluation, not a clone. It gets stored in the position's result map.
 
-`evalNode` must NOT mutate `this`. It must return a new node or `this`. Most `evalNode` implementations already do this. The ones that mutate `this` need fixing.
+`evalNode` must NOT mutate `this` (the canonical node). Most `evalNode` implementations already work this way — they return `this` or construct a new result.
 
 ## What preEval must do
 
@@ -152,8 +152,8 @@ The new node is the **replacement**. It gets stored in the position's result map
 
 - `preEval` should NOT clone (`maybeClone` is eliminated)
 - `preEval` can read canonical fields (immutable)
-- `preEval` writes (eval state, resolved names) go to the position's result map
-- If `preEval` changes the node, return a NEW node. If not, return `this`.
+- `preEval` returns `this` (unchanged) or a replacement node
+- Replacements go into the position's result map
 
 ## Registry with this model
 
