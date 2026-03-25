@@ -1,135 +1,97 @@
 # Node Copy Reduction — Stage Tracking
 
-This is the living tracking document for the entire node copy reduction effort.
-
 ## The Model
 
 Two operations:
 1. **Replace a node** at a position in the tree (field patch on the parent)
 2. **Replace a field** on a node (field patch on the node)
 
-Both are map lookups from `EvalPosition`. No cloning. No special cases. See [session-instance-architecture.md](./session-instance-architecture.md).
+Both are map lookups from `EvalPosition`. No cloning. No special cases.
 
-## Guiding Star
+## Current State
 
-JIT engines are most slowed by object creation. This model creates the minimum: one Map per placement, one entry per changed node. Everything else is a pointer to canonical.
+`EvalPosition` is implemented with `patchField`/`getField`/`hasField`. Read/write paths (`getField`/`patchField` in session-helpers) check position first. Position created per mixin call in `evaluateCandidateOutput`. `maybeClone` skips cloning when position active.
 
-## Completed Stages
+**Test results**: 39/46 mixin tests pass with NO mixin body clone. 17/1341 total failures (7 new from position model, 4 being characterization tests that need updating, rest need debugging).
 
-### Stage 0–6: Node Shape Migration ✓
+## Priority Stages (what's next)
 
-Instance fields, `childKeys`, leaf/container node model. All 31+ node types migrated.
+### P1: Make node fields TypeScript-enforced
 
-### Stage 7–13: Session Infrastructure ✓
+**Why first**: Every remaining failure is caused by direct field mutation that bypasses the position. TypeScript can catch these at compile time if fields are private with position-aware getters/setters.
 
-`EvalSession` with field patches, runtime state, children overlays. Session-aware helpers for all field access. `resetEvalState` for mixin eval sessions.
+**Approach**: For each node type, make eval-time fields `private` with:
+- Getter: reads from `position.getField(this, field) ?? this._field`
+- Setter: routes through `position.patchField(this, field, value)` when position active
 
-### Stage 14–19: Clone Reduction (Bridge) ✓
+**Start with**: AtRule (we're already debugging it). Then Declaration, Ruleset, Mixin, Call — the nodes in the mixin eval hot path.
 
-`clone(true)` → `clone(false)` + session at major eval sites. Shallow wrappers (`cloneDetachedShallowWrapper`, `cloneLookupSafeShallowWrapper`). Session child overlays for Rules.
+**Exit**: TypeScript compilation catches direct field mutations. No more hunting.
 
-### Stage 20: Fundamentals Gate ✓
+### P2: Fix remaining mixin test failures
 
-Per-node session contract audit. Most nodes reached `complete` status for session-aware reads/writes. See [node-session-status.md](./node-session-status.md).
+**Why second**: With P1 done, remaining failures should be clear — either field mutations caught by TS, or logic issues in the eval flow.
 
-## Session-Instance Architecture (SI stages)
+**Current failures** (7 new):
+- 1 `@media` prelude interpolation (`$fallback` not resolved)
+- 1 param var scope (lazy nested lookup)
+- 5 characterization tests (check session layer — need updating for position model)
 
-### SI-1: Instance Root Core ✓
+**Approach**: Debug one test at a time. Fix the underlying issue (direct mutation → position patch). Update characterization tests to check position instead of session.
 
-`SessionInstanceRoot` class with sparse `ShadowEntry` map. `EvalSession.createInstanceRoot()`. `Context.instanceRoot`.
+### P3: Remove remaining clones
 
-### SI-2/3: Lazy Views + Sparse Shadow ✓
+With position model working for mixins, apply same pattern to:
+- Ruleset-as-mixin candidates
+- `evaluateCandidateOutput` evalScope
+- Call Collection/detached rulesets
+- StyleImport compose wrappers
 
-All helpers resolve: `ctx.instanceRoot → node._instanceRoot → session → canonical`. No explicit instance parameter in the public API.
+Each is one clone site → one position creation.
 
-### SI-4: Dependency-Guided Reach ✓
+### P4: Fix the 6 "baseline" failures
 
-`DependencyReach` with `computeDependencyReach()` / `isAffected()`.
+These are on this branch and need fixing:
+- `eval-session.test.ts` — mixin param binding
+- `ampersand.test.ts` × 2 — selector collapse
+- `declaration.test.ts` — rules coalescing
+- `extend-eval-integration.test.ts` — extend chaining AST shape
+- `dependency-graph.test.ts` — variable tracking through mixin params
 
-### SI-5/6: Repeated Import + Mixin Proofs ✓
+### P5: Clean up old infrastructure
 
-17 proof tests demonstrating 3 instance roots over one canonical tree with sparse shadow.
+Remove code that the position model replaces:
+- `SessionInstanceRoot` class (replaced by `EvalPosition`)
+- `ShadowEntry` / `DependencyReach` types
+- `node._instanceRoot` field
+- `resolveInstanceRoot()` helper
+- IR-aware `_setChildAt` / `_setChildren` / `push` / `splice` / `unshift` overrides
+- `createShallowBodyWrapper()` method
+- `maybeClone()` (or reduce to just `return this`)
+- Children overlay infrastructure on `EvalSession`
 
-### SI-7: Direct Mixin Dispatch ✓
+### P6: Registry alignment
 
-`evalMixinDirect()` bypasses `getFunctionFromMixins` → `callWithContext` → `returnFunc` roundtrip. Instance roots associated with all mixin output.
+Registries index canonical children. With position model:
+- Registry reads canonical + checks position for replaced children
+- Per-position registry cache if needed
+- Bitset acceleration opportunities
 
-### SI-8: IR-Aware Eval Infrastructure ✓
+## Completed Work
 
-- `_isEvaluated` / `_setEvaluated` / `_isPreEvaluated` / `_setPreEvaluated` — IR-aware
-- `adopt()` — IR-aware
-- `_setChildAt` / `_setChildren` / `push` / `splice` / `unshift` — IR-aware
-- `Rules.createShallowBodyWrapper()` — O(N) array copy without adopting
-- `Rules` constructor accepts `Context | TreeContext`
-- `syncRegistryCache` — IR-aware (reads from IR children overlay)
-
-### SI-9: API Cleanup ✓
-
-Dropped `session` prefix from all helper functions (25 renames across ~40 files). Functions are now the primary access path, not alternatives.
-
-## Active Work
-
-### Clone Elimination in Mixin Path
-
-**Status**: Infrastructure complete, clone replacement blocked.
-
-**Mixin body clone replaced**: `clone(true)` → `clone(false)` ✓
-
-46/46 mixin tests pass. 1310/1341 total (1 new regression).
-
-**How it works**:
-- `ctx.instanceRoot` set temporarily during `clone(false)`
-- `clone(false)` detects instanceRoot → passes Context to Rules constructor
-- Constructor adopts children through IR (not canonical)
-- Canonical parent chains preserved for shared children
-
-**1 remaining regression**: `at-rule.test.ts > media.less AST serialization` — nested `@media` with interpolated prelude. The shallow clone shares AtRule children, and the interpolated prelude eval writes onto the shared descendant. Fix requires `ctx.instanceRoot` active during nested eval, which currently causes 66 failures from non-IR-aware code paths.
-
-**Steps completed**:
-1. ✅ Audited 7 critical canonical `.parent` reads, converted to `getParent()`
-2. ✅ `clone(false)` passes Context to constructor when instanceRoot active
-3. ✅ Mixin body `clone(true)` → `clone(false)` + IR
-
-**Next step**: Fix nested @media regression by making AtRule prelude eval IR-aware, or by activating `ctx.instanceRoot` during the full eval (requires making more node eval paths IR-aware).
-
-### Registry Architecture Rewrite
-
-**Status**: Proposal documented in [session-instance-architecture.md](./session-instance-architecture.md).
-
-**What's needed**: Per-instance-root registry views built from canonical + diff. Lazy population. Skip `globalRegistryCache` for IR-backed Rules.
-
-**Bitset opportunities**: Visibility bitset, registry presence bitset, instance root diff bitset.
-
-### Remaining Clone Sites
-
-| Location | Clone type | Status |
-|----------|-----------|--------|
-| `rules.ts` getFunctionFromMixins body | ~~`clone(true)`~~ `clone(false)` | ✅ Done (1 @media regression) |
-| `rules.ts` evaluateCandidateOutput evalScope | `clone(true)` | Low priority — outerRules is small (just params) |
-| `rules.ts` Ruleset candidate | `clone(true)` | Needs nested selector context — may need deep clone |
-| `call.ts` Collection/detached rulesets | `clone(true)` | Simpler — one site |
-| `import-style.ts` compose re-eval | `cloneLookupSafeShallowWrapper` | Already shallow |
-| `extend.ts` selector rewriting | `copy(true)` | Structural mutation — edge case |
-
-### Canonical `.parent` Audit ✓
-
-7 critical eval-time `.parent` reads converted to `getParent()`: reference.ts (4x), call.ts (1x), import-style.ts (2x). Remaining `.parent` reads are in extend utilities and non-eval paths — documented in mixin-direct-invocation.md.
-
-### Partial Session Nodes ✓
-
-All nodes are now session-`complete`:
-- Declaration, Paren, Quoted, Url — eval-time mutations now routed through helpers
-- Only `Rules` remains `partial` (has remaining clone sites)
-
-## Reference Documents
-
-- [session-instance-architecture.md](./session-instance-architecture.md) — target architecture + registry rewrite proposal
-- [subsystems.md](./subsystems.md) — target node model, field reference, adapter architecture
-- [mixin-direct-invocation.md](./mixin-direct-invocation.md) — mixin clone elimination plan with experimental findings
-- [node-session-status.md](./node-session-status.md) — per-node session + clone-free status
-- [CLEANUP.md](./CLEANUP.md) — incremental cleanup items for agents
-- [HANDOFF.md](./HANDOFF.md) — starter doc for new agents
+- Stages 0–20: Node shapes, session infrastructure, bridge clone reduction, fundamentals gate
+- SI-1 through SI-9: Instance roots, lazy views, sparse shadow, proofs, direct dispatch, IR-aware infrastructure, API cleanup
+- `EvalPosition` class with field patches
+- `getField`/`patchField` check position first
+- Position created per mixin call
+- `maybeClone` skips when position active
+- Mixin body clone removed (39/46 tests pass)
+- All nodes session-complete (except Rules partial)
+- 25 helper functions renamed (dropped `session` prefix)
+- 7 canonical `.parent` reads converted to `getParent()`
+- AtRule direct mutations partially converted to position patches
 
 ## Test Baseline
 
-**2026-03-25** (post dev merge + SI work): 1311 passed, 6 pre-existing failures, 24 skipped
+**Current** (position model active): 17 failures / 1300 passed / 24 skipped
+**Target**: 0 failures (including the 6 "baseline" ones)
