@@ -96,29 +96,22 @@ Dropped `session` prefix from all helper functions (25 renames across ~40 files)
 
 | Location | Clone type | Status |
 |----------|-----------|--------|
-| `rules.ts` getFunctionFromMixins body | `clone(true)` | Blocked on eval pipeline IR-awareness |
-| `rules.ts` evaluateCandidateOutput evalScope | `clone(true)` | Follows from body clone |
+| `rules.ts` getFunctionFromMixins body | ~~`clone(true)`~~ `clone(false)` | ✅ Done (1 @media regression) |
+| `rules.ts` evaluateCandidateOutput evalScope | `clone(true)` | Low priority — outerRules is small (just params) |
 | `rules.ts` Ruleset candidate | `clone(true)` | Needs nested selector context — may need deep clone |
 | `call.ts` Collection/detached rulesets | `clone(true)` | Simpler — one site |
 | `import-style.ts` compose re-eval | `cloneLookupSafeShallowWrapper` | Already shallow |
 | `extend.ts` selector rewriting | `copy(true)` | Structural mutation — edge case |
 
-### Canonical `.parent` Audit
+### Canonical `.parent` Audit ✓
 
-**Status**: Not started.
+7 critical eval-time `.parent` reads converted to `getParent()`: reference.ts (4x), call.ts (1x), import-style.ts (2x). Remaining `.parent` reads are in extend utilities and non-eval paths — documented in mixin-direct-invocation.md.
 
-**Goal**: Find all places in the eval pipeline that read `node.parent` directly instead of `getParent(node, ctx)`. Convert them to use the helper. This is the prerequisite for IR-aware constructor adoption.
+### Partial Session Nodes ✓
 
-**Scope**: All files under `packages/core/src/tree/` that read `.parent` during eval.
-
-### Partial Session Nodes
-
-These nodes have `partial` session status — some paths still mutate canonical:
-
-- `Declaration` — caller-side mutation paths
-- `Paren` — render/read session-aware, write paths pending
-- `Quoted` — render/read session-aware, write paths pending
-- `Url` — render/read session-aware, write paths pending
+All nodes are now session-`complete`:
+- Declaration, Paren, Quoted, Url — eval-time mutations now routed through helpers
+- Only `Rules` remains `partial` (has remaining clone sites)
 
 ## Reference Documents
 
