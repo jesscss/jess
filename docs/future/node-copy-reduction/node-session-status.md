@@ -100,7 +100,7 @@ These are the only nodes that still have `has-clones`. Everything else is done o
 
 | Node | Clone sites | What needs to happen |
 | --- | --- | --- |
-| `Rules` | `getFunctionFromMixins`: body `clone(true)` per mixin call, `outerRules.clone(true)` in evaluateCandidateOutput, `cloneDetachedUnlockWrapper` for detached rulesets. `preEval`: `clone(false)` for reset-session. | Replace deep clones with instance root shadow per call. Params bound via `patchField`. Output carries `_instanceRoot`. See [mixin-direct-invocation.md](./mixin-direct-invocation.md). |
+| `Rules` | `getFunctionFromMixins`: body `clone(true)` per mixin call, `outerRules.clone(true)` in evaluateCandidateOutput, `cloneDetachedUnlockWrapper` for detached rulesets. `preEval`: `clone(false)` for reset-session. | Shallow clone attempt (body `clone(true)` → `cloneLookupSafeShallowWrapper`) causes 3 regressions because eval-time writes on shared children still bypass instance roots. Remaining direct mutations that need session/IR routing: parent chain writes during child iteration, registry population, `inherit()` calls. Eval state methods (`_isEvaluated`, etc.) are now IR-aware. See [mixin-direct-invocation.md](./mixin-direct-invocation.md). |
 | `Call` | `getFunctionFromMixins` (via Rules), Collection `clone(true)` for detached rulesets. | Follows from Rules clone elimination. Collection path is simpler — one clone site. |
 | `Func` | Uses mixin machinery — `evalCall` creates temp Mixin wrapper. | Follows from Rules clone elimination. |
 | `StyleImport` | `cloneLookupSafeShallowWrapper` for compose re-eval, shallow clone in `getFinalRules`. | Replace shallow wrapper with instance root parent shadow. |
