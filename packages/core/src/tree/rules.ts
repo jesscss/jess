@@ -3014,3 +3014,24 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
   return returnFunc;
 }
+
+/**
+ * Direct mixin invocation — bypasses the JS function wrapper.
+ *
+ * Called from Call.evalNode when the resolved name is a Mixin/Ruleset/array.
+ * This avoids the getFunctionFromMixins → callWithContext → returnFunc
+ * roundtrip and invokes the mixin matching/binding/evaluation directly.
+ */
+export async function evalMixinDirect(
+  context: Context,
+  mixins: MixinEntry | MixinEntry[],
+  args: List<Node> | undefined
+): Promise<Rules | Nil> {
+  const fn = getFunctionFromMixins(mixins);
+  const argNodes = args ? [...args.value] : [];
+  const result = await fn.call(context, ...argNodes);
+  if (result instanceof Node) {
+    return result as Rules;
+  }
+  return new Nil();
+}

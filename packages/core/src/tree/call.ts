@@ -7,7 +7,7 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
+import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
@@ -396,7 +396,26 @@ export class Call extends Node<CallValue, CallOptions> {
       context.parenFrames.pop();
       return adoptCallWhitespace(result);
     } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
-      n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
+      // Direct mixin invocation — skip getFunctionFromMixins/callWithContext wrapper
+      const originalCaller = context.caller;
+      context.caller = this;
+      try {
+        const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
+        if (isNode(result)) {
+          let evald = await result.eval(context);
+          if (markImportant && isNode(evald, N.Rules)) {
+            this.makeImportant(evald as Rules);
+          }
+          context.callStack.pop();
+          context.parenFrames.pop();
+          return adoptCallWhitespace(evald);
+        }
+        context.callStack.pop();
+        context.parenFrames.pop();
+        return adoptCallWhitespace(result);
+      } finally {
+        context.caller = originalCaller;
+      }
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await evalArgNodes(args) ?? list([]);
