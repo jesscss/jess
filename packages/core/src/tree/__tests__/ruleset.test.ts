@@ -171,7 +171,7 @@ describe('Rule', () => {
     expect(preEvald.selector.sourceNode.valueOf()).toBe('.poison');
   });
 
-  it('shallow clone of a derived ruleset gives the clone its own selector while keeping the rules body materialized in a session', () => {
+  it('shallow clone of a derived ruleset gives the clone its own selector while keeping the rules body lookup-safe in a session', () => {
     const canonical = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -189,7 +189,8 @@ describe('Rule', () => {
     expect(cloned.rules).not.toBe(derived.rules);
     expect(cloned.selector.parent).toBe(cloned);
     expect(cloned.rules.parent).toBe(cloned);
-    expect(clonedDecl.parent).toBe(cloned.rules);
+    expect(clonedDecl.parent).toBe(derived.rules);
+    expect(sessionGetParent(clonedDecl, context)).toBe(cloned.rules);
     expect(derived.selector.parent).toBe(derived);
     expect(derived.rules.parent).toBe(derived);
     expect(canonical.selector.parent).toBe(canonical);

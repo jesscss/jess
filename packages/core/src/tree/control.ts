@@ -74,6 +74,13 @@ function shouldReuseInPriorScope(node: Node): boolean {
   );
 }
 
+function cloneForPriorScope(node: Node, context: Context): Node {
+  if (isNode(node, N.Rules)) {
+    return node.cloneLookupSafeShallowWrapper(context);
+  }
+  return node.clone(false, undefined, context);
+}
+
 function getControlField<T>(node: Node, key: string, context: Context | undefined, fallback: T): T {
   if (!context) {
     return fallback;
@@ -353,7 +360,7 @@ export class For extends Node<ForValue> {
             const priorScope = new Rules(
               accumulatedNodes
                 .filter(shouldReuseInPriorScope)
-                .map(n => n.materializeEvaluatedCopy())
+                .map(n => cloneForPriorScope(n, context))
             );
             priorScope.inherit(loopTemplate);
             sessionSetParent(loopRules, priorScope, context);

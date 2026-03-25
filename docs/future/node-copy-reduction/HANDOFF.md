@@ -40,7 +40,9 @@ Do not use this as the full node-status matrix or roadmap document:
 
 ### Immediate work
 1. Follow the immediate queue in `node-session-status.md`.
-2. The next live owner is shallow `Rules.clone(false, ..., context)` semantics on top of the landed shallow-wrapper/materialization helpers in `rules.ts` / `node-base.ts`.
+2. The next live owners are the remaining internal-materialization debt sites:
+   - `Ruleset.clone(false, ..., context)` on the derived-ruleset `rules` body
+   - `Call.materializeDownstreamResult(...)` for composite downstream results
 3. Do not treat matcher internals or extend matching as the current blocker:
    - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
    - `Condition` now adopts `compare(context)` for selector guards on the active path
@@ -64,25 +66,25 @@ Do not use this as the full node-status matrix or roadmap document:
    - treat any current internal `materializeEvaluatedCopy(...)` use as transitional debt to reduce, not as the target architecture
    - hard status rule: any node that still owns an active internal `materializeEvaluatedCopy(...)` path must remain `partial`, even if its focused behavior tests are green
 6. `control.ts` is no longer a live semantic owner:
-   - `$for` prior-scope reuse is already on `cloneLookupSafeShallowWrapper(ctx)`
+   - `$for` prior-scope reuse now uses lookup-safe wrappers/shallow clones instead of internal materialization
    - the latest characterization proves the remaining parent-integrity leak happens downstream during `wrapper.eval(context)`
-   - but control-family nodes must stay `partial` while prior-scope reuse still materializes prior output internally
+   - control-family nodes are back out of the internal-materialization queue
 7. `Call` is no longer a live semantic owner either:
    - its remaining `this.clone(false, ..., context)` sites already flow through the node-local `Call.clone(...)` contract
    - the focused call suite is green with explicit proof that canonical child parents stay intact
    - trivial leaf downstream results now avoid full materialization and use a shallow clone plus runtime provenance carry-over
    - but `Call` must stay `partial` while composite downstream results still materialize same-source nodes internally during eval
 8. `Ruleset` must also stay `partial`:
-   - source-ruleset shallow clones are now improved and more explicit, and derived-ruleset shallow clones now also clone the selector instead of materializing it
-   - but the derived-ruleset shallow-clone branch still materializes the `rules` body internally during eval-time clone work
+   - source-ruleset shallow clones are now improved and more explicit, and derived-ruleset shallow clones now also clone the selector and use a lookup-safe shallow wrapper for the `rules` body
+   - but the derived-ruleset shallow-clone branch still carries the remaining body-level debt below the no-internal-materialization completion bar
 9. `node-base.ts` does not currently need another generic helper:
    - `registry-characterization.test.ts` now proves `cloneDetachedMaterializedWrapper(context)` gets its own top-level registry slot while preserving canonical top-level parents
    - `cloneDetachedShallowWrapper()` and `cloneLookupSafeShallowWrapper()` intentionally stay on the canonical registry slot, while `cloneDetachedMaterializedWrapper()` is already the explicit generic fork point
    - the remaining helper pressure is caller adoption and shallow-clone semantics, not another missing generic primitive
 10. The sharpest live contracts are now:
-   - `Ruleset.clone(false, ..., context)` for derived/source rulesets: this is now the clearest candidate for further reducing internal materialization without violating the shared live-session contract
-   - `Rules`: the non-`Rules` child branch of `evaluateCandidateOutput(...)`, but only as the caller exposing that clone contract on public paths
-   - plain cached compose wrappers in `ImportStyle`: still a real characterization boundary, but no longer the next local production owner unless the wrapper contract itself changes
+   - `Ruleset.clone(false, ..., context)` for derived/source rulesets: this is still the clearest candidate for further reducing internal materialization without violating the shared live-session contract
+   - `Call.materializeDownstreamResult(...)`: only the composite branch remains in the queue after the leaf reduction
+   - `Rules`: the non-`Rules` child branch of `evaluateCandidateOutput(...)`, but only as the caller exposing the clone contract on public paths
 
 ### Stage status
 - Stage 17: complete and committed
