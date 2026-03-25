@@ -198,6 +198,8 @@ Materialization only happens at the final CSS output boundary — when Jess seri
 
 **Attempt 3**: IR-aware `_setChildAt` + IR-aware `push()` → still hangs because the Rules constructor at line 487 calls `this.adopt(child)` on ALL passed children, setting their `.parent` to the new clone and corrupting canonical parent chains.
 
+**Attempt 5**: Rules constructor accepts `Context | TreeContext`, `clone(false)` passes Context → 7 regressions because canonical `.parent` becomes undefined when adoption goes through IR, and some eval/lookup code still reads `node.parent` directly instead of `sessionGetParent(node, ctx)`. The fix: audit all canonical `.parent` reads and convert to session helpers.
+
 **Attempt 4**: `clone(false)` for mixin body → hangs for the same reason (constructor adopts all children).
 
 ### Root cause
@@ -219,7 +221,9 @@ This is essentially a `Rules.createShallowBodyWrapper(ctx)` method — similar t
 1. ✅ Extract dispatch to `evalMixinDirect` (done)
 2. Create `Rules.createShallowBodyWrapper(ctx)` that copies value array without adopting
 3. Replace `rules.clone(true, undefined, thisContext)` with `createShallowBodyWrapper`
-4. Set `ctx.instanceRoot` during eval, restore after
-5. Replace param `setData` with instance root `patchField`
-6. Remove the `getFunctionFromMixins` wrapper (inline into `evalMixinDirect`)
-7. Update `callWithContext` to only handle JS function calls
+4. **Audit canonical `.parent` reads**: Find all places in the eval pipeline that read `node.parent` directly instead of `sessionGetParent(node, ctx)`. Convert them to use session helpers. This is the prerequisite for IR-aware adoption — when `clone(false)` passes Context to the constructor, `adopt()` routes through IR, leaving canonical `.parent` undefined. Any code reading canonical `.parent` will break. (7 regressions found when tested globally.)
+5. **Enable `clone(false, undefined, ctx)` to pass Context to constructor**: Change `ctx ?? this.treeContext` in clone — then shallow clone automatically gets IR-aware adoption.
+6. Set `ctx.instanceRoot` during eval, restore after
+7. Replace param `setData` with instance root `patchField`
+8. Remove the `getFunctionFromMixins` wrapper (inline into `evalMixinDirect`)
+9. Update `callWithContext` to only handle JS function calls

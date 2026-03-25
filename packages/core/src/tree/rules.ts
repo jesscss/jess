@@ -505,16 +505,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     value: readonly Node[],
     options?: RulesOptions & NodeOptions,
     location?: OptionalLocation,
-    contextOrTreeContext?: Context | TreeContext
+    context?: Context | TreeContext
   ) {
-    // Accept either Context or TreeContext as the 4th param.
-    // When Context is passed, adoption routes through session/IR
-    // so canonical parent chains are not corrupted on shared children.
-    const treeContext = contextOrTreeContext instanceof Context
-      ? contextOrTreeContext.treeContext
-      : contextOrTreeContext;
-    const ctx = contextOrTreeContext instanceof Context
-      ? contextOrTreeContext
+    const treeContext = context instanceof Context
+      ? context.treeContext
+      : context;
+    const ctx = context instanceof Context
+      ? context
       : undefined;
 
     let rulesVisibility = options?.rulesVisibility ?? {};
