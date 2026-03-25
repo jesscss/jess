@@ -336,6 +336,125 @@ Any bridge helper that survives should map to one of:
 - lazy node view creation
 - sparse shadow entry mutation
 
+## Registry Architecture Rewrite
+
+### Why the registry needs rethinking
+
+The current registry system (in `registry-utils.ts`) was designed for a single canonical tree with optional session deltas. It has these characteristics:
+
+- **Context-blind indexing**: `syncRegistryCache()` iterates canonical `.value` directly (no context parameter), bypassing IR overlays
+- **globalRegistryCache keyed by array identity**: `WeakMap<readonly Node[], RegistryData>` — when a shallow wrapper copies the value array, the cache key changes, forcing a full re-index
+- **Session deltas as separate maps**: `SessionRegistryDelta` stores a parallel index per Rules per session — but not per instance root
+- **Eager-ish registration**: nodes are registered during `preEval` and `push()`/`splice()`, not lazily at lookup time
+
+When `ctx.instanceRoot` is active, the registry doesn't see IR-modified children. When multiple instance roots share canonical children, the registry sees the same entries for all of them. This is the root cause of the infinite loops and stale data when `ctx.instanceRoot` is activated during eval.
+
+### Proposed registry model
+
+**Per-instance-root registry snapshots:**
+
+Instead of one canonical registry + session deltas, each instance root should own its own registry view:
+
+```ts
+type InstanceRegistryView = {
+  /** Registry built from IR children overlay (or canonical fallback) */
+  declaration: Map<string, Set<Declaration>>;
+  mixin: Map<string, MixinRegistryEntry[]>;
+  ruleset: Map<string, Set<Ruleset>>;
+  function: Map<string, JsFunction | Func>;
+  /** Whether this view is dirty and needs rebuilding */
+  dirty: boolean;
+};
+```
+
+When an instance root's children overlay changes (via `_setChildAt`, `push`, etc.), the registry view is marked dirty. On next lookup, it rebuilds from the IR children.
+
+**Lazy population from canonical + diff:**
+
+Most children in a shallow wrapper are unchanged from canonical. The registry view should:
+
+1. Start from the canonical registry (already built)
+2. Apply only the diffs: nodes added/removed/replaced in the IR children overlay
+3. Cache the result per instance root
+
+This is O(D) where D = number of differing children, not O(N) for the full children array.
+
+**No global registry cache for IR-backed Rules:**
+
+The `globalRegistryCache` keyed by `rules.value` identity should only be used for truly canonical (un-overlaid) children. IR-backed Rules should skip this cache and use their instance root's registry view instead.
+
+### Lookup with instance roots
+
+The current lookup flow is:
+
+```
+rules.find(type, key, opts)
+  → getRegistry(type, context)
+    → syncRegistryCache() — reads canonical .value
+    → return index
+  → index.get(key)
+  → if not found: walk parent via sessionGetParent()
+```
+
+The proposed flow:
+
+```
+rules.find(type, key, opts)
+  → getRegistry(type, context)
+    → if ctx.instanceRoot:
+        → get or build instance root's registry view
+        → return IR-aware index
+    → else if ctx.session:
+        → return canonical index + session delta
+    → else:
+        → return canonical index
+  → index.get(key)
+  → if not found: walk parent via sessionGetParent()
+```
+
+The parent walk already uses `sessionGetParent()` which is IR-aware. The only change is in `getRegistry()` — making it return the right index for the current eval context.
+
+### Bitset opportunities
+
+The current codebase uses bitsets in one place: `RulesetRegistry.find()` for selector subset checks. There are opportunities to extend this:
+
+**Visibility bitset per Rules:**
+Instead of checking `rulesVisibility[nodeType]` linearly for each child, pre-compute a visibility bitset per Rules. Each node type gets a bit position. Visibility check becomes a single bitwise AND.
+
+**Registry presence bitset:**
+For each Rules, maintain a bitset of "what declaration names exist in this scope." During parent walk, a quick bitwise check can skip levels that definitely don't have the target. Current cost: O(depth × map.get()) → with bitset: O(depth × 1 bit check).
+
+**Instance root diff bitset:**
+Track which child INDICES changed in the IR overlay. When rebuilding the registry view, only re-register changed indices. The diff bitset is O(1) to check "has anything changed at all" and O(D) to enumerate changes.
+
+**Key presence bloom filter:**
+For large scopes, a bloom filter on declaration keys could fast-reject lookups before touching the Map. This is most useful for the innermost scope where most lookups hit.
+
+### Object creation analysis
+
+Current registry operations create these objects per lookup:
+- 1 FindOptions object
+- 1 Set<Node> for candidates
+- 1 array conversion on return
+
+With instance root registries:
+- Same FindOptions/candidates
+- Instance root registry view: created once per instance root, reused across lookups
+- Diff computation: O(D) where D = number of changed children (typically 0 for most lookups)
+
+The key win: the registry view is NOT rebuilt per lookup. It's built once when the instance root's children overlay changes, then cached. Most mixin body eval does not change the children array — it evaluates children in place. So the registry view is built once and reused for all lookups during that call's eval.
+
+### Migration plan
+
+1. Add `InstanceRegistryView` to `SessionInstanceRoot`
+2. Modify `Rules.getRegistry(type, context)` to check `ctx.instanceRoot` first
+3. If IR active: return instance root's registry view (build from canonical + diff if dirty)
+4. If not IR: use existing canonical + session delta path
+5. Remove `globalRegistryCache` dependency for IR-backed Rules
+6. Add dirty tracking to instance root children mutations
+
+This can be done incrementally — the existing canonical + session delta path stays as the fallback.
+
 ## Short Version
 
 The final model is:
@@ -343,6 +462,8 @@ The final model is:
 - immutable source tree
 - many lazy session-local instances
 - sparse dependency-guided shadow state
+- per-instance-root registry views
 - unchanged node API
+- bitset-accelerated scope skip and visibility check
 
 Everything still left on this branch should move toward that model directly.
