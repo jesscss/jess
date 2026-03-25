@@ -56,6 +56,18 @@ export interface EvalDependency {
 }
 
 /**
+ * Tracks which canonical nodes are affected by binding changes
+ * at a particular instance root. Used to keep shadow state sparse:
+ * only nodes whose dependencies include a changed binding get shadow entries.
+ */
+export interface DependencyReach {
+  /** The set of VarDeclarations whose values changed at this instance root */
+  changedBindings: Set<VarDeclaration>;
+  /** Canonical nodes known to depend on at least one changed binding */
+  affectedNodes: Set<Node>;
+}
+
+/**
  * Sparse shadow entry for one canonical node inside one instance root.
  *
  * Only nodes that actually diverge from the canonical source get an entry.
@@ -89,6 +101,9 @@ export class SessionInstanceRoot {
   /** Binding deltas for this placement (e.g., changed variable values) */
   bindings?: Map<string, Node>;
 
+  /** Dependency reach — which canonical nodes are affected by binding changes */
+  dependencyReach?: DependencyReach;
+
   /** Sparse shadow entries keyed by canonical source node */
   private overrides = new Map<Node, ShadowEntry>();
 
@@ -96,6 +111,43 @@ export class SessionInstanceRoot {
     this.id = nextInstanceId++;
     this.session = session;
     this.sourceRoot = sourceRoot;
+  }
+
+  /**
+   * Compute which canonical nodes are affected by this root's binding changes.
+   *
+   * Uses the session's per-node dependency annotations to determine which
+   * nodes depend on the changed bindings, so only those nodes need shadow state.
+   */
+  computeDependencyReach(changedVars: Set<VarDeclaration>): DependencyReach {
+    const affected = new Set<Node>();
+    const session = this.session;
+
+    for (const [node] of this.overrides) {
+      const dep = session.getDependency(node);
+      if (dep?.dependsOn) {
+        for (const varDecl of dep.dependsOn) {
+          if (changedVars.has(varDecl)) {
+            affected.add(node);
+            break;
+          }
+        }
+      }
+    }
+
+    this.dependencyReach = { changedBindings: changedVars, affectedNodes: affected };
+    return this.dependencyReach;
+  }
+
+  /**
+   * Check whether a canonical node is within the dependency reach of this root.
+   * If no dependency reach has been computed, conservatively returns true.
+   */
+  isAffected(node: Node): boolean {
+    if (!this.dependencyReach) {
+      return true;
+    }
+    return this.dependencyReach.affectedNodes.has(node);
   }
 
   // -- Shadow entry access --

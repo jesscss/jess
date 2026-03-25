@@ -1822,5 +1822,51 @@ describe('session-aware helpers', () => {
       // Canonical is untouched
       expect(node.value).toBe('red');
     });
+
+    it('dependency reach narrows affected nodes', () => {
+      const session = new EvalSession();
+      const colorVar = vardecl({ name: any('@color'), value: new Keyword('red') });
+      const bgVar = vardecl({ name: any('@bg'), value: new Keyword('white') });
+      const colorNode = new Keyword('red');
+      const bgNode = new Keyword('white');
+      const borderNode = new Keyword('none');
+
+      const container = rules([colorVar, bgVar]);
+      const root = session.createInstanceRoot(container);
+
+      // Mark dependencies: colorNode depends on @color, bgNode depends on @bg
+      session.setDependency(colorNode, { dependsOn: new Set([colorVar]) });
+      session.setDependency(bgNode, { dependsOn: new Set([bgVar]) });
+      // borderNode has no dependencies (static)
+
+      // Root changes only @color
+      root.patchField(colorNode, 'value', new Keyword('blue'));
+      root.patchField(bgNode, 'value', new Keyword('gray'));
+      root.patchField(borderNode, 'value', new Keyword('solid'));
+
+      // Compute reach for only @color changed
+      const reach = root.computeDependencyReach(new Set([colorVar]));
+
+      // Only colorNode is affected
+      expect(reach.affectedNodes.size).toBe(1);
+      expect(reach.affectedNodes.has(colorNode)).toBe(true);
+      expect(reach.affectedNodes.has(bgNode)).toBe(false);
+      expect(reach.affectedNodes.has(borderNode)).toBe(false);
+
+      // isAffected reflects the same
+      expect(root.isAffected(colorNode)).toBe(true);
+      expect(root.isAffected(bgNode)).toBe(false);
+      expect(root.isAffected(borderNode)).toBe(false);
+    });
+
+    it('isAffected is conservative when no reach computed', () => {
+      const session = new EvalSession();
+      const container = rules([]);
+      const root = session.createInstanceRoot(container);
+      const node = new Keyword('test');
+
+      // No computeDependencyReach called — should be conservative (true)
+      expect(root.isAffected(node)).toBe(true);
+    });
   });
 });

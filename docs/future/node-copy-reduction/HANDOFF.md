@@ -149,3 +149,4 @@ Use those tests to prove repeated reuse, sparse divergence, and ownership shifts
 
 - ignore unrelated dirty files under `packages/docs-content/...` unless explicitly asked to work there
 - challenge any change that only makes the bridge more elaborate without moving toward instance roots/views
+- parsers were updated and are passing again in the `dev` branch (not this `jess-dev` branch); if parser integration testing is needed, merge `dev` into `jess-dev` at that time
