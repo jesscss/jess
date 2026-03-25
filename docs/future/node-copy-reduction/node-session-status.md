@@ -2,45 +2,52 @@
 
 ## Purpose
 
-This file tracks node status relative to the current bridge, while keeping the branch anchored to the final session-instance model.
-
-Read the rows this way:
-
-- they describe how settled a node is under the current bridge
-- they do not mean the final architecture is solved
+This file tracks node status relative to the session-instance model.
 
 ## Global Gate
 
-No node inventory is enough to merge this branch until the session-instance model lands:
+The session-instance model is now landed:
 
-- one immutable source tree
-- many lazy session-local instances over it
-- sparse dependency-guided shadow state
+- `SessionInstanceRoot` — many instances of one canonical subtree in one session
+- Sparse shadow state — only divergent nodes get entries
+- Instance-root-aware helpers — resolution: instanceRoot → session → canonical
+- Dependency reach — narrows shadow entries to affected nodes
+- Import eval path — wired with instance roots
+
+Remaining: mixin eval path wiring (documented in PROGRESS.md).
 
 ## Status Legend
 
 | Status | Meaning |
 | --- | --- |
-| `proof-case` | This node is actively proving that the bridge is insufficient and the instance model is needed. |
-| `bridge-stable` | Useful bridge work is landed and locally stable enough to stop prioritizing the node for now. Re-audit later. |
+| `instance-ready` | This node works correctly under the instance-root model. |
+| `wired` | Instance roots are wired into this node's eval path. |
+| `bridge-stable` | Bridge work is landed; instance root wiring is not yet active for this node's eval path. |
 | `leaf` | Effectively scalar or opaque for this work. |
 | `inherited` | Status follows a parent/base node. |
 
-## Current Proof Cases
+## Wired Nodes
 
-These are the nodes that should keep the branch oriented toward the final model.
+These nodes have instance roots active in their eval paths.
 
-| Node | Why it matters now |
-| --- | --- |
-| `Call` | Same-source composite `Rules` results are the sharpest proof that one-overlay-per-node is not enough. |
-| `StyleImport` | Repeated imports need distinct instance roots with thin local state. |
-| `Mixin` | Repeated invocation over one canonical body needs sparse per-call shadow state. |
-| `Func` | Composite function returns need the same instance-root model as mixins/imports. |
-| `Rules` | Still exposes lower wrapper/clone behavior that the proof cases fall through. |
+| Node | Status | Detail |
+| --- | --- | --- |
+| `StyleImport` | wired | Instance root created per import placement in evalNode. |
+
+## Instance-Ready (Model Proved)
+
+These nodes are proved by the session-instance proof tests but their eval paths are not yet wired.
+
+| Node | Status | Detail |
+| --- | --- | --- |
+| `Call` | instance-ready | Proof tests show 3 instance roots over one mixin body. Eval path needs `getFunctionFromMixins` restructure. |
+| `Mixin` | instance-ready | Proof tests show independent eval state per call. Eval path needs restructure. |
+| `Func` | instance-ready | Same model as Mixin. Eval path needs restructure. |
+| `Rules` | instance-ready | Children overlays and parent chains proved per instance root. Used as instance root source. |
 
 ## Bridge-Stable Nodes
 
-These nodes are not the current architectural owners.
+These nodes are not the current architectural owners. Re-audit after mixin wiring.
 
 ### Bridge-stable containers
 
@@ -101,28 +108,18 @@ These nodes are not the current architectural owners.
 - `JsObject`
 - `JsFunction`
 
-## How To Read “Bridge-Stable”
+## How To Read Statuses
 
-`bridge-stable` means:
+- `wired` means instance roots are actively used in the eval path
+- `instance-ready` means the model is proved but the eval path still uses the bridge
+- `bridge-stable` means bridge work is landed but the node is not a current proof case
+- Re-audit bridge-stable nodes after mixin eval path wiring
 
-- local migration work is good enough for now
-- the node is not the current proof case
-- revisit it after instance roots and lazy node views are real
+## Remaining Work
 
-It does not mean:
+The next work is:
 
-- final architecture complete
-- safe to ignore after the stage reset
-
-## Immediate Work
-
-The next work is not “touch every remaining row.”
-
-It is:
-
-1. land instance roots
-2. land lazy node views
-3. move sparse shadow state to those roots
-4. connect dependency reach to sparse writes
-5. prove repeated imports
-6. prove repeated mixin/function reuse
+1. Restructure `getFunctionFromMixins` to accept instance roots per candidate
+2. Wire instance roots in `call.ts` for function/mixin results
+3. Retire clone wrappers that become unnecessary
+4. Re-audit bridge-stable nodes after wiring is complete

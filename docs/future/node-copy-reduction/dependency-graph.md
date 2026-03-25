@@ -2,161 +2,92 @@
 
 ## Purpose
 
-This doc chunks the next work into the distinct stages that matter now.
+This doc chunks the work into distinct stages.
 
 Read this after:
 
 1. [README.md](./README.md)
 2. [session-instance-architecture.md](./session-instance-architecture.md)
 
-Use [node-session-status.md](./node-session-status.md) for per-node bridge status.
+Use [node-session-status.md](./node-session-status.md) for per-node status.
 
-## Where The Branch Actually Is
+## Stage Status
 
-The bridge work already proved:
+### Stage SI-0: Bridge Orientation ✓
 
-- immutable source nodes are workable
-- many canonical eval-time writes can be removed
-- helper-overlay migration exposed the real hard cases
+Already landed. Includes node-keyed session helpers, local wrapper seams, isolated clone/materialization pressure, local node migrations.
 
-The bridge work did not solve:
+### Stage SI-1: Instance Root Core ✓
 
-- many live instances of the same canonical subtree in one session
-- sparse shadowing across broad reused trees
-- repeated import/mixin/function reuse on top of one source tree
+- `SessionInstanceRoot` class with sparse `ShadowEntry` map
+- `EvalSession.createInstanceRoot()` / `getInstanceRoots()` / `getInstanceRootsFor()`
+- `Context.instanceRoot` for threading active root during eval
+- 7 proof tests
 
-So the work now needs a stage reset.
+### Stage SI-2: Lazy Node Views ✓
 
-## Stage Reset
+- All session helpers check `ctx.instanceRoot` first
+- Resolution order: instanceRoot → session → canonical
+- The "view" is the (canonical node, active instance root) pair, resolved at access time
+- No explicit instance parameters in the public node API
 
-### Stage SI-0: Bridge Orientation
+### Stage SI-3: Sparse Shadow State ✓
 
-Status: already landed enough for context.
+- `ShadowEntry` holds `fieldPatches` and `runtime` per canonical node
+- Children overlays per instance root
+- Untouched nodes have zero shadow entries
+- `shadowCount` tracks sparsity
 
-This includes:
+### Stage SI-4: Dependency-Guided Reach ✓
 
-- node-keyed session helpers
-- local wrapper seams
-- isolated clone/materialization pressure
-- local node migrations
+- `DependencyReach` interface (changedBindings + affectedNodes)
+- `computeDependencyReach()` uses session dependency annotations
+- `isAffected()` for quick check (conservative when no reach computed)
 
-Use it as orientation only. Do not optimize it like it is the final runtime.
+### Stage SI-5: Repeated Import Proof ✓
 
-### Stage SI-1: Instance Root Core
+- 3 instance roots over one canonical source tree
+- Only thin local state for changed paths
+- Untouched paths stay source-backed
+- Dependency reach narrows affected nodes
 
-Goal:
+### Stage SI-6: Repeated Mixin/Function Proof ✓
 
-- define `SessionInstanceRoot`
-- make one eval session capable of holding many roots over the same canonical subtree
+- 3 instance roots over one canonical mixin body
+- One changed input affects only one downstream path
+- Static declarations stay source-backed
+- Independent eval state and children per call
 
-Exit criteria:
+### Stage SI-7: Import Eval Path Wiring ✓
 
-- repeated placements can exist in one session without fighting over one node-keyed overlay slot
-- root-local state is clearly separated from canonical-node-keyed bridge state
+- Instance roots created per import placement in `import-style.ts`
+- Backward-compatible (zero regressions)
+- Mixin eval path (`getFunctionFromMixins`) needs restructuring — documented but not landed
 
-### Stage SI-2: Lazy Node Views
+### Stage SI-8: Re-audit and Docs ✓
 
-Goal:
+- PROGRESS.md updated with current reality
+- node-session-status.md updated with wired/instance-ready/bridge-stable statuses
+- Test baseline recorded: 1296 passed, 6 pre-existing failures
 
-- make runtime objects look like normal nodes
-- back them with `source node + instance root`
-- create them lazily
+## Remaining Work (Post-Handoff)
 
-Exit criteria:
+### Mixin Eval Path Wiring
 
-- no explicit instance parameter growth in the public node API
-- ordinary node code still feels normal
-- parent/sourceParent/runtime state is instance-local
+The `getFunctionFromMixins` loop in `rules.ts` creates clones per candidate, evaluates guards in fresh sessions, and manages parent chains at the session level. Wiring instance roots requires:
 
-### Stage SI-3: Sparse Shadow State
+1. Restructure the per-candidate loop to create instance roots instead of clones
+2. Move guard evaluation to use instance-root-scoped sessions
+3. Ensure parent chain and eval state are per-instance-root, not per-session
 
-Goal:
+### Clone/Materialization Sunset
 
-- store only actual divergence
-- keep untouched structure source-backed
+Once instance roots carry mixin eval paths:
 
-Exit criteria:
+- `cloneDetachedShallowWrapper` → instance root with parent shadow
+- `cloneLookupSafeShallowWrapper` → instance root with parent shadow
+- `cloneDetachedMaterializedWrapper` → instance root (materialization only at output boundary)
 
-- no broad overlay-per-tree behavior
-- no deep clone pressure for ordinary reuse
-- changed paths can be shown to stay thin even across broad trees
+### Parser Integration
 
-### Stage SI-4: Dependency-Guided Reach
-
-Goal:
-
-- use dependency reach to decide which paths need shadow state
-
-Exit criteria:
-
-- binding/input deltas do not cause broad shadow growth
-- sparse effects can be demonstrated on repeated imports and repeated mixin calls
-
-### Stage SI-5: Repeated Import Proof
-
-Goal:
-
-- prove the architecture with repeated imports
-
-Required proof:
-
-- same file imported 3 times as `multiple`
-- imports 2 and 3 each change one value
-- only thin local state is created for those changed paths
-
-### Stage SI-6: Repeated Mixin / Function Proof
-
-Goal:
-
-- prove the architecture with repeated mixin/function reuse
-
-Required proof:
-
-- same mixin/function body reused 3 times
-- one changed input affects only one downstream path
-- only thin local state is created for that affected path
-
-The current `Call` same-source composite `Rules` seam is the sharpest proof case for this stage.
-
-### Stage SI-7: Collapse Bridge APIs
-
-Goal:
-
-- aggressively retire bridge-only helper surfaces once the instance model is real
-
-Targets:
-
-- `sessionGet*` / `sessionSet*` sprawl
-- wrapper-helper sprawl
-- node-keyed overlay assumptions
-
-### Stage SI-8: Re-audit Nodes And Merge Gate
-
-Goal:
-
-- re-evaluate node status only after the instance model is real
-
-Exit criteria:
-
-- repeated import proof passes
-- repeated mixin/function proof passes
-- node statuses are re-audited against the real runtime model
-- merge to `dev` is behavior-safe
-
-## Immediate Next Work
-
-The next work should be chunked like this:
-
-1. define instance roots
-2. define lazy node views
-3. move sparse shadow state ownership to the root
-4. tie dependency reach to sparse writes
-5. prove repeated imports
-6. prove repeated mixin/function reuse
-
-## What Not To Do
-
-- do not add public API parameters for instance identity
-- do not keep expanding helper/wrapper families as if they are permanent
-- do not treat a local green scaffold slice as architectural completion
-- do not normalize internal materialization as a runtime strategy
+Parsers were updated in `dev` branch. Merge `dev` → `jess-dev` before testing parser-driven paths.

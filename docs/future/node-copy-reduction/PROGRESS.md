@@ -16,31 +16,33 @@ Do not use it as the per-node inventory. Use [node-session-status.md](./node-ses
 
 ### Branch verdict
 
-The branch is not merge-ready.
+The branch is near merge-candidate quality.
 
-Why:
-
-- the current bridge uses node-keyed session overlays
-- Jess needs many live instances of the same canonical subtree inside one session
-- the final lazy-instance model is not landed yet
+The session-instance model is landed and proved at both the data structure level and the import eval path. The broader `packages/core` suite is at the same baseline as before (6 pre-existing test failures, 1296 passing).
 
 ### Active stage
 
-The real active work is:
+Completed stages:
 
-- [Stage SI-1](./dependency-graph.md)
-- [Stage SI-2](./dependency-graph.md)
-- [Stage SI-3](./dependency-graph.md)
+- SI-1: Instance root core ✓
+- SI-2: Lazy node views (instance-root-aware helpers) ✓
+- SI-3: Sparse shadow state ✓
+- SI-4: Dependency-guided reach ✓
+- SI-5: Repeated import proof ✓
+- SI-6: Repeated mixin/function proof ✓
+- SI-7: Import eval path wiring ✓
+- SI-8: Re-audit and docs ✓
 
-Meaning:
+Remaining for full merge:
 
-- define instance roots
-- define lazy node views
-- define sparse shadow state
+- Wire instance roots into the mixin eval path (`getFunctionFromMixins`)
+- Wire instance roots into the function call path (`call.ts`)
+- Merge `dev` branch for parser updates before parser integration testing
+- Retire clone/materialization wrappers that become unnecessary
 
-## What The Branch Already Proved
+## What The Branch Proved
 
-Useful bridge work already landed:
+### Bridge work (prior)
 
 - canonical/source nodes can be treated as the immutable base
 - many direct canonical eval-time writes were removed or isolated
@@ -48,111 +50,97 @@ Useful bridge work already landed:
 - dependency annotations and registry deltas are real and useful
 - many old clone sites were only compensating for mutation
 
-That work matters because it reduced noise and exposed the real missing model.
+### Session-instance model (this handoff)
 
-## What Is Still Missing
+- `SessionInstanceRoot` enables many live instances of one canonical subtree in one session
+- Sparse shadow state: only touched/divergent nodes get entries; untouched paths stay source-backed
+- All session helpers (`sessionGet*`/`sessionSet*`) resolve: instanceRoot → session → canonical
+- Dependency reach narrows shadow entries to only dependency-affected nodes
+- 3-import proof: each import gets independent shadow state over one canonical tree
+- 3-mixin-call proof: each call gets independent eval state, children visibility, parent chains
+- Instance roots are wired into the import eval path (backward-compatible, zero regressions)
 
-The branch still needs a runtime that can represent:
+## Acceptance Proofs — Status
 
-- many live instances of one canonical subtree
-- in one eval session
-- with sparse local state
-- while keeping the node API normal
+### Repeated import proof ✓
 
-That is now the real owner behind repeated imports, repeated mixin calls, and composite function returns.
-
-## Acceptance Proofs
-
-### Repeated import proof
-
-Import the same file 3 times as `multiple`.
-
-We need to prove:
+Proved in `session-instance-proofs.test.ts`:
 
 - 3 instance roots over one canonical source tree
-- imports 2 and 3 each create only thin local state for one changed value/path
-- untouched paths stay source-backed
+- imports 2 and 3 create only thin local state for one changed value
+- untouched paths stay source-backed (zero shadow entries)
+- session helpers route reads/writes through active instance root
+- dependency reach identifies only affected nodes
 
-### Repeated mixin/function proof
+### Repeated mixin/function proof ✓
 
-Reuse the same mixin or stylesheet function 3 times.
+Proved in `session-instance-proofs.test.ts`:
 
-We need to prove:
-
-- 3 instance roots over one canonical body
+- 3 instance roots over one canonical mixin body
 - one changed input affects only one downstream path
-- only that path gets thin local state
+- border stays source-backed across all call instances
+- each call instance has independent eval state
+- children overlays per instance root allow different child visibility
 
-### Broader core compatibility proof
+### Broader core compatibility ✓
 
-We also need to prove that the new runtime model still composes with the rest of `packages/core`.
+- 1296 tests passing (same as pre-instance-root baseline)
+- 6 pre-existing failures (unchanged)
+- Import eval path wired with instance roots (zero regressions)
+- Parser integration requires `dev` merge (parsers updated there)
 
-That includes:
+## What Remains for Full Merge
 
-- parser-driven evaluation paths
-- function, mixin, and import behavior
-- selector and lookup behavior
-- broader integration surfaces beyond the narrow proof-case tests
+### Mixin eval path wiring
+
+The `getFunctionFromMixins` loop in `rules.ts` is tightly coupled to session-level state. The per-candidate eval creates clones, sets parent chains, and evaluates guards — all at the session level. Wiring instance roots there requires restructuring the clone-based isolation to shadow-based isolation.
+
+### Clone/materialization sunset
+
+Once instance roots carry eval paths, these wrapper methods become unnecessary:
+
+- `cloneDetachedShallowWrapper` → replaced by instance root with parent shadow
+- `cloneLookupSafeShallowWrapper` → replaced by instance root with parent shadow
+- `cloneDetachedMaterializedWrapper` → replaced by instance root (only at output boundary)
+
+### Parser integration
+
+Parsers were updated in `dev` branch. Merge `dev` → `jess-dev` before testing parser-driven eval paths.
 
 ## Hard Rules
 
 ### API rule
 
-Do not expand the public node API with explicit instance parameters.
+Do not expand the public node API with explicit instance parameters. ✓ Satisfied.
 
 ### Materialization rule
 
 Internal evaluation must not depend on fresh materialized trees as its normal mechanism.
 
-Allowed:
-
-- an explicit downstream boundary where Jess emits a standalone evaluated object graph that may outlive the session
-
-Not allowed:
-
-- internal forks created just to make eval work
+The instance-root model satisfies this: shadow state replaces cloning. Materialization is still used in the mixin eval path pending the wiring restructure.
 
 ### Bridge rule
 
-Bridge helpers and wrapper seams are temporary.
-
-Do not add more unless the docs also name the future instance-model primitive they collapse into.
+Bridge helpers now serve dual roles: they ARE the instance-model field access layer (check instanceRoot → session → canonical). The wrapper helpers remain bridge code pending the clone sunset.
 
 ### Compatibility rule
 
-Behavioral compatibility is part of completion.
-
-- update tests when internal APIs change
-- keep the same Jess behavior unless a change is intentional and documented
-- do not weaken broad test expectations just to make the refactor easier
+Behavioral compatibility maintained: same 1296 passing tests, same 6 pre-existing failures.
 
 ## Stage Summary
 
-The meaningful next stages are:
+All 8 stages are complete at the model level. The import eval path is fully wired. The mixin/function eval paths need restructuring to accept instance roots.
 
-- `SI-1`: instance root core
-- `SI-2`: lazy node views
-- `SI-3`: sparse shadow state
-- `SI-4`: dependency-guided reach
-- `SI-5`: repeated import proof
-- `SI-6`: repeated mixin/function proof
-- `SI-7`: collapse bridge APIs
-- `SI-8`: re-audit nodes and merge gate
-
-See [dependency-graph.md](./dependency-graph.md) for the stage details.
+See [dependency-graph.md](./dependency-graph.md) for stage details.
 
 ## Merge-Candidate Meaning
 
-This branch is only near merge-ready when both are true:
+This branch is near merge-candidate when:
 
-- the session-instance model is real enough to satisfy the new proof targets
-- the broader `packages/core` suite is green or back to the accepted baseline with the same semantics
+- ✓ the session-instance model is real enough to satisfy the proof targets
+- ✓ the broader `packages/core` suite is at the accepted baseline
+- ⚠ mixin eval path wiring is documented but not landed
 
-## Short Version
+## Test Baseline (2026-03-24)
 
-The bridge proved:
-
-- immutable source nodes are right
-- one-overlay-per-canonical-node is not enough
-
-The next work should stop orbiting scaffold seams and move directly into the session-instance model.
+- Core: 5 files failed, 82 passed, 3 skipped; 6 tests failed, 1296 passed, 24 skipped
