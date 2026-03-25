@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EvalSession } from '../eval-session.js';
+import { EvalSession, SessionInstanceRoot } from '../eval-session.js';
 import { Keyword, Dimension, Context, vardecl, any, num, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, jsfunc, block, Negative, rest, attr, nil } from '../index.js';
 import { AssignmentType } from '../tree/declaration.js';
 import {
@@ -515,7 +515,9 @@ describe('session-aware helpers', () => {
       const root = rules([
         vardecl({
           name: any('fn'),
-          value: jsfunc({ name: 'fn', fn: () => { throw new Error('boom'); } })
+          value: jsfunc({ name: 'fn', fn: () => {
+            throw new Error('boom');
+          } })
         }),
         node
       ]);
@@ -538,7 +540,9 @@ describe('session-aware helpers', () => {
       const root = rules([
         vardecl({
           name: any('fn'),
-          value: jsfunc({ name: 'fn', fn: () => { throw new Error('boom'); } })
+          value: jsfunc({ name: 'fn', fn: () => {
+            throw new Error('boom');
+          } })
         }),
         node
       ]);
@@ -929,7 +933,7 @@ describe('session-aware helpers', () => {
 
       expect(result.toTrimmedString({ context: ctx })).toBe('cyan, magenta, black');
       expect(node.toTrimmedString()).toBe('red');
-      expect(node.value.map((item) => item.toTrimmedString())).toEqual(['red']);
+      expect(node.value.map(item => item.toTrimmedString())).toEqual(['red']);
     });
 
     it('Sequence rendering reads patched items from the active session', () => {
@@ -951,7 +955,7 @@ describe('session-aware helpers', () => {
       const evald = await node.eval(ctx);
 
       expect(evald.toTrimmedString({ context: ctx })).toBe('10 20');
-      expect(node.value.map((item) => item.type)).toEqual(['Num', 'Nil', 'Num']);
+      expect(node.value.map(item => item.type)).toEqual(['Num', 'Nil', 'Num']);
     });
 
     it('QueryCondition rendering reads patched items from the active session', () => {
@@ -1571,6 +1575,150 @@ describe('session-aware helpers', () => {
       expect(evald.toTrimmedString({ context: ctx })).toBe('{red}');
       expect(node.value).toBe(original);
       expect(sessionGetField(node, 'value', ctx)).not.toBe(original);
+    });
+  });
+
+  describe('SessionInstanceRoot', () => {
+    it('creates instance roots over a canonical subtree', () => {
+      const session = new EvalSession();
+      const canonical = rules([decl({ name: 'color', value: new Keyword('red') })]);
+
+      const root1 = session.createInstanceRoot(canonical);
+      const root2 = session.createInstanceRoot(canonical);
+      const root3 = session.createInstanceRoot(canonical);
+
+      expect(root1.sourceRoot).toBe(canonical);
+      expect(root2.sourceRoot).toBe(canonical);
+      expect(root3.sourceRoot).toBe(canonical);
+
+      expect(root1.id).not.toBe(root2.id);
+      expect(root2.id).not.toBe(root3.id);
+
+      expect(session.getInstanceRoots()).toHaveLength(3);
+      expect(session.getInstanceRootsFor(canonical)).toHaveLength(3);
+    });
+
+    it('holds independent sparse shadow state per root', () => {
+      const session = new EvalSession();
+      const canonical = rules([decl({ name: 'color', value: new Keyword('red') })]);
+      const colorDecl = canonical.value[0]!;
+
+      const root1 = session.createInstanceRoot(canonical);
+      const root2 = session.createInstanceRoot(canonical);
+      const root3 = session.createInstanceRoot(canonical);
+
+      // Root 2 patches the color to blue
+      root2.patchField(colorDecl, 'value', new Keyword('blue'));
+
+      // Root 3 patches the color to green
+      root3.patchField(colorDecl, 'value', new Keyword('green'));
+
+      // Root 1 has no shadow entry — source-backed
+      expect(root1.hasShadow(colorDecl)).toBe(false);
+      expect(root1.getField(colorDecl, 'value')).toBeUndefined();
+
+      // Root 2 has its own patch
+      expect(root2.hasShadow(colorDecl)).toBe(true);
+      expect(root2.getField(colorDecl, 'value')).toBeInstanceOf(Keyword);
+      expect((root2.getField(colorDecl, 'value') as any).value).toBe('blue');
+
+      // Root 3 has its own independent patch
+      expect(root3.hasShadow(colorDecl)).toBe(true);
+      expect((root3.getField(colorDecl, 'value') as any).value).toBe('green');
+
+      // Canonical node is unmodified
+      expect((colorDecl as any).value).toBeInstanceOf(Keyword);
+    });
+
+    it('tracks shadow count per root (sparsity proof)', () => {
+      const session = new EvalSession();
+      const canonical = rules([
+        decl({ name: 'color', value: new Keyword('red') }),
+        decl({ name: 'background', value: new Keyword('white') }),
+        decl({ name: 'border', value: new Keyword('none') })
+      ]);
+
+      const root1 = session.createInstanceRoot(canonical);
+      const root2 = session.createInstanceRoot(canonical);
+
+      // Root 1: no changes — zero shadow entries
+      expect(root1.shadowCount).toBe(0);
+
+      // Root 2: change only the color declaration
+      const colorDecl = canonical.value[0]!;
+      root2.patchField(colorDecl, 'value', new Keyword('blue'));
+
+      // Only 1 shadow entry despite 3 declarations in the tree
+      expect(root2.shadowCount).toBe(1);
+
+      // border and background stay source-backed
+      expect(root2.hasShadow(canonical.value[1]!)).toBe(false);
+      expect(root2.hasShadow(canonical.value[2]!)).toBe(false);
+    });
+
+    it('holds independent runtime state per root', () => {
+      const session = new EvalSession();
+      const canonical = rules([decl({ name: 'color', value: new Keyword('red') })]);
+      const colorDecl = canonical.value[0]!;
+
+      const root1 = session.createInstanceRoot(canonical);
+      const root2 = session.createInstanceRoot(canonical);
+
+      // Each root can set different parent for the same canonical node
+      const parent1 = rules([]);
+      const parent2 = rules([]);
+      root1.getRuntime(colorDecl).parent = parent1;
+      root2.getRuntime(colorDecl).parent = parent2;
+
+      expect(root1.getRuntime(colorDecl).parent).toBe(parent1);
+      expect(root2.getRuntime(colorDecl).parent).toBe(parent2);
+    });
+
+    it('binding deltas are per-root', () => {
+      const session = new EvalSession();
+      const canonical = rules([decl({ name: 'color', value: new Keyword('red') })]);
+
+      const root1 = session.createInstanceRoot(canonical);
+      const root2 = session.createInstanceRoot(canonical);
+      const root3 = session.createInstanceRoot(canonical);
+
+      // Root 1: no bindings (default)
+      // Root 2: override @color to blue
+      root2.bindings = new Map([['@color', new Keyword('blue')]]);
+      // Root 3: override @color to green
+      root3.bindings = new Map([['@color', new Keyword('green')]]);
+
+      expect(root1.bindings).toBeUndefined();
+      expect(root2.bindings!.get('@color')!.value).toBe('blue');
+      expect(root3.bindings!.get('@color')!.value).toBe('green');
+    });
+
+    it('roots for different canonical subtrees do not mix', () => {
+      const session = new EvalSession();
+      const treeA = rules([decl({ name: 'a', value: new Keyword('1') })]);
+      const treeB = rules([decl({ name: 'b', value: new Keyword('2') })]);
+
+      session.createInstanceRoot(treeA);
+      session.createInstanceRoot(treeA);
+      session.createInstanceRoot(treeB);
+
+      expect(session.getInstanceRootsFor(treeA)).toHaveLength(2);
+      expect(session.getInstanceRootsFor(treeB)).toHaveLength(1);
+      expect(session.getInstanceRoots()).toHaveLength(3);
+    });
+
+    it('Context carries the active instance root', () => {
+      const session = new EvalSession();
+      const canonical = rules([decl({ name: 'color', value: new Keyword('red') })]);
+      const root = session.createInstanceRoot(canonical);
+
+      const ctx = new Context();
+      ctx.session = session;
+      ctx.instanceRoot = root;
+
+      expect(ctx.instanceRoot).toBe(root);
+      expect(ctx.instanceRoot!.session).toBe(session);
+      expect(ctx.instanceRoot!.sourceRoot).toBe(canonical);
     });
   });
 });

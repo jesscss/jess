@@ -7,7 +7,7 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
-import { EvalSession } from './eval-session.js';
+import { EvalSession, type SessionInstanceRoot } from './eval-session.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -449,6 +449,19 @@ export class Context {
    * @see EvalSession
    */
   session: EvalSession | undefined;
+
+  /**
+   * The active instance root for the current eval scope.
+   *
+   * When set, field reads/writes should check the instance root's
+   * sparse shadow state before falling back to the session or
+   * canonical node. This enables multiple placements of the same
+   * canonical subtree (e.g., repeated imports, repeated mixin calls)
+   * to carry independent local state.
+   *
+   * @see SessionInstanceRoot
+   */
+  instanceRoot: SessionInstanceRoot | undefined;
 
   /** Create and attach a new EvalSession to this context. */
   createSession(): EvalSession {

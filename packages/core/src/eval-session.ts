@@ -55,7 +55,114 @@ export interface EvalDependency {
   sourceExpr?: Node;
 }
 
+/**
+ * Sparse shadow entry for one canonical node inside one instance root.
+ *
+ * Only nodes that actually diverge from the canonical source get an entry.
+ * Untouched nodes stay source-backed with zero per-instance cost.
+ */
+export interface ShadowEntry {
+  fieldPatches?: Record<string, unknown>;
+  runtime?: RuntimeState;
+}
+
 let nextSessionId = 1;
+let nextInstanceId = 1;
+
+/**
+ * One distinct evaluated placement of a canonical subtree.
+ *
+ * Examples of placements:
+ * - import #2 of a stylesheet (same file imported 3× as `multiple`)
+ * - mixin call #3 (same mixin body reused with different bindings)
+ * - stylesheet-function result for one call site
+ *
+ * Each root owns sparse shadow state for its placement only.
+ * Multiple roots can exist over the same canonical subtree
+ * in one EvalSession without fighting over a single overlay slot.
+ */
+export class SessionInstanceRoot {
+  readonly id: number;
+  readonly session: EvalSession;
+  readonly sourceRoot: Node;
+
+  /** Binding deltas for this placement (e.g., changed variable values) */
+  bindings?: Map<string, Node>;
+
+  /** Sparse shadow entries keyed by canonical source node */
+  private overrides = new Map<Node, ShadowEntry>();
+
+  constructor(session: EvalSession, sourceRoot: Node) {
+    this.id = nextInstanceId++;
+    this.session = session;
+    this.sourceRoot = sourceRoot;
+  }
+
+  // -- Shadow entry access --
+
+  getShadow(node: Node): ShadowEntry | undefined {
+    return this.overrides.get(node);
+  }
+
+  ensureShadow(node: Node): ShadowEntry {
+    let entry = this.overrides.get(node);
+    if (!entry) {
+      entry = {};
+      this.overrides.set(node, entry);
+    }
+    return entry;
+  }
+
+  hasShadow(node: Node): boolean {
+    return this.overrides.has(node);
+  }
+
+  // -- Field patch API (instance-local) --
+
+  patchField(node: Node, key: string, value: unknown): void {
+    const entry = this.ensureShadow(node);
+    if (!entry.fieldPatches) {
+      entry.fieldPatches = {};
+    }
+    entry.fieldPatches[key] = value;
+  }
+
+  getField(node: Node, key: string): unknown | undefined {
+    const entry = this.overrides.get(node);
+    if (!entry?.fieldPatches) {
+      return undefined;
+    }
+    return Object.prototype.hasOwnProperty.call(entry.fieldPatches, key)
+      ? entry.fieldPatches[key]
+      : undefined;
+  }
+
+  hasField(node: Node, key: string): boolean {
+    const entry = this.overrides.get(node);
+    return !!entry?.fieldPatches
+      && Object.prototype.hasOwnProperty.call(entry.fieldPatches, key);
+  }
+
+  // -- Runtime state API (instance-local) --
+
+  getRuntime(node: Node): RuntimeState {
+    const entry = this.ensureShadow(node);
+    if (!entry.runtime) {
+      entry.runtime = {};
+    }
+    return entry.runtime;
+  }
+
+  hasRuntime(node: Node): boolean {
+    const entry = this.overrides.get(node);
+    return !!entry?.runtime;
+  }
+
+  /** Number of canonical nodes that have shadow entries in this root */
+  get shadowCount(): number {
+    return this.overrides.size;
+  }
+}
 
 /**
  * EvalSession: a lightweight overlay on a canonical AST.
@@ -91,6 +198,9 @@ export class EvalSession {
    * Used for patch-only sessions (extend, import reference).
    */
   readonly resetEvalState: boolean;
+
+  /** Instance roots owned by this session */
+  private instanceRoots: SessionInstanceRoot[] = [];
 
   /** Per-node field overrides */
   private patches = new WeakMap<Node, NodePatch>();
@@ -263,5 +373,29 @@ export class EvalSession {
 
   hasChildren(rules: Rules): boolean {
     return this.children.has(rules);
+  }
+
+  // -- Instance root API --
+
+  /**
+   * Create a new instance root for a canonical subtree.
+   *
+   * Multiple roots can exist over the same sourceRoot in one session.
+   * Each root holds its own sparse shadow state.
+   */
+  createInstanceRoot(sourceRoot: Node): SessionInstanceRoot {
+    const root = new SessionInstanceRoot(this, sourceRoot);
+    this.instanceRoots.push(root);
+    return root;
+  }
+
+  /** All instance roots in this session. */
+  getInstanceRoots(): readonly SessionInstanceRoot[] {
+    return this.instanceRoots;
+  }
+
+  /** Instance roots whose sourceRoot matches the given canonical node. */
+  getInstanceRootsFor(sourceRoot: Node): SessionInstanceRoot[] {
+    return this.instanceRoots.filter(r => r.sourceRoot === sourceRoot);
   }
 }
