@@ -852,6 +852,13 @@ export abstract class Node<
   // ------------------------------------------------------------------
 
   protected _isPreEvaluated(context: Context): boolean {
+    const ir = context.instanceRoot ?? this._instanceRoot;
+    if (ir && ir.hasRuntime(this)) {
+      const runtime = ir.getShadow(this)!.runtime!;
+      if (runtime.preEvaluated !== undefined) {
+        return runtime.preEvaluated;
+      }
+    }
     const session = context.session;
     if (session) {
       if (session.hasRuntime(this)) {
@@ -869,6 +876,11 @@ export abstract class Node<
   }
 
   protected _setPreEvaluated(value: boolean, context: Context): void {
+    const ir = context.instanceRoot ?? this._instanceRoot;
+    if (ir) {
+      ir.getRuntime(this).preEvaluated = value;
+      return;
+    }
     if (context.session) {
       context.session.getRuntime(this).preEvaluated = value;
     } else {
@@ -877,6 +889,13 @@ export abstract class Node<
   }
 
   protected _isEvaluated(context: Context): boolean {
+    const ir = context.instanceRoot ?? this._instanceRoot;
+    if (ir && ir.hasRuntime(this)) {
+      const runtime = ir.getShadow(this)!.runtime!;
+      if (runtime.evaluated !== undefined) {
+        return runtime.evaluated;
+      }
+    }
     const session = context.session;
     if (session) {
       if (session.hasRuntime(this)) {
@@ -893,6 +912,11 @@ export abstract class Node<
   }
 
   protected _setEvaluated(value: boolean, context: Context): void {
+    const ir = context.instanceRoot ?? this._instanceRoot;
+    if (ir) {
+      ir.getRuntime(this).evaluated = value;
+      return;
+    }
     if (context.session) {
       context.session.getRuntime(this).evaluated = value;
     } else {

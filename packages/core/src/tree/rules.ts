@@ -2568,12 +2568,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           if (evalScopeParent) {
             sessionSetParent(evalScope, evalScopeParent, thisContext);
           }
-          // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
-          // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
-          // hide param vars from registry-based lookup.
-          // Body children are still shallow-cloned before pushing so canonical parents
-          // aren't corrupted. Evaluate against a cloned wrapper scope so the original
-          // parameter wrapper keeps its own session-local child parentage.
+          // Push body children into the eval scope so params are visible during body eval.
+          // Children are shallow-cloned to avoid corrupting canonical parent chains.
           for (const child of rules.value) {
             evalScope.push(
               thisContext,
@@ -2659,6 +2655,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         const candidateRules = (candidate as Ruleset).rules;
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true, undefined, thisContext);
+        if (candidateInstanceRoot) {
+          rules._instanceRoot = candidateInstanceRoot;
+        }
         /** Adopt for lookup, then adopt for sorting */
         sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
         sessionSetSourceParent(rules, sourceParent, thisContext);
@@ -2698,8 +2697,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         continue;
       }
       let rules = (candidate as any).rules as Rules;
-      /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(true, undefined, thisContext);
+      if (candidateInstanceRoot) {
+        rules._instanceRoot = candidateInstanceRoot;
+      }
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
