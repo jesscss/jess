@@ -12,7 +12,7 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, getParent, patchField } from './util/session-helpers.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -389,7 +389,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
       if (hasRulesetParent) {
         // Mark for hoisting - this will render at root level but in-place
-        node.hoistToRoot = true;
+        if (context.position) {
+          context.position.patchField(node, 'hoistToRoot', true);
+        } else {
+          node.hoistToRoot = true;
+        }
         // We'll clear rulesetFrames when evaluating internal rules
         // to prevent selector inheritance from piercing through
         shouldClearRulesetFrames = true;
@@ -398,7 +402,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {
-      node.frames = [...context.frames];
+      if (context.position) {
+        context.position.patchField(node, 'frames', [...context.frames]);
+      } else {
+        node.frames = [...context.frames];
+      }
     }
 
     const tryMergeNestedMedia = () => {
@@ -460,9 +468,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (liftedRulesContext && isNode(liftedRulesContext, N.Rules)) {
             let cursor: any = liftedRulesContext;
             let depth = 0;
-            while (cursor?.parent && depth++ < 10) {
-              if (isNode(cursor.parent, N.AtRule) && isNode(cursor.parent.parent, N.Rules)) {
-                cursor = cursor.parent.parent;
+            while (getParent(cursor, context) && depth++ < 10) {
+              const cursorParent = getParent(cursor, context);
+              if (isNode(cursorParent, N.AtRule) && isNode(getParent(cursorParent, context), N.Rules)) {
+                cursor = getParent(cursorParent, context);
                 continue;
               }
               break;
@@ -485,7 +494,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         let rules = node._getRulesContainer(context);
         if (rules) {
           if (context.opts.collapseNesting) {
-            node.hoistToRoot = true;
+            if (context.position) {
+              context.position.patchField(node, 'hoistToRoot', true);
+            } else {
+              node.hoistToRoot = true;
+            }
           }
           // Push to frames before evaluating rules so we can use context.frames to find parent layers
           // This allows nested layers to find their parent layer names
