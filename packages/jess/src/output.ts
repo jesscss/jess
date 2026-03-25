@@ -1,4 +1,4 @@
-import type { LocationInfo } from '@jesscss/core';
+import type { OptionalLocation } from '@jesscss/core';
 
 export class OutputCollector {
   strings: string[] = [];
@@ -8,14 +8,14 @@ export class OutputCollector {
   line: number = 0;
   column: number = 0;
 
-  add(str: string, originalLocation?: LocationInfo) {
+  add(str: string, originalLocation?: OptionalLocation) {
     this.strings.push(str);
     /**
      * @todo
      * @see https://hacks.mozilla.org/2013/05/compiling-to-javascript-and-debugging-with-source-maps/
      * @see https://github.com/mozilla/source-map
      */
-    if (originalLocation) {
+    if (originalLocation?.length === 6) {
       this.map.push(originalLocation);
     }
   }

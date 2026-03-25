@@ -1,6 +1,6 @@
 import { Lexer } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
-import type { ScssRecursiveParser, TokenMap as ScssTokenMap } from '../scssRecursiveParser.js';
+import type { RuleContext, ScssParserConfig, ScssRecursiveParser, TokenMap as ScssTokenMap } from '../scssRecursiveParser.js';
 import { scssFragments, scssTokens } from '../scssTokens.js';
 import {
   Any,
@@ -15,11 +15,10 @@ import {
   Sequence,
   VarDeclaration,
   type LocationInfo,
+  type OptionalLocation,
   type Node,
   type Selector
 } from '@jesscss/core';
-import type { IToken } from '@jesscss/parser';
-
 export type InterpolationMatch = { start: number; end: number; content: string };
 
 export function findScssInterpolations(value: string): InterpolationMatch[] {
@@ -58,10 +57,10 @@ let interpolationParser:
   | undefined;
 
 /** Store the ScssRecursiveParser class, set lazily to break circular dependency */
-let ScssRecursiveParserClass: (new (T: any, config: any) => ScssRecursiveParser) | undefined;
+let ScssRecursiveParserClass: (new (T: ScssTokenMap, config?: ScssParserConfig) => ScssRecursiveParser) | undefined;
 
 /** Called by ScssRecursiveParser constructor to register itself */
-export function registerScssRecursiveParser(cls: new (T: any, config: any) => ScssRecursiveParser): void {
+export function registerScssRecursiveParser(cls: new (T: ScssTokenMap, config?: ScssParserConfig) => ScssRecursiveParser): void {
   ScssRecursiveParserClass = cls;
 }
 
@@ -77,7 +76,7 @@ export function getInterpolationParser(): { lexer: Lexer; parser: ScssRecursiveP
   if (!ScssRecursiveParserClass) {
     throw new Error('ScssRecursiveParser not registered. Ensure it is imported before calling getInterpolationParser.');
   }
-  const parser = new ScssRecursiveParserClass(T as any, {});
+  const parser = new ScssRecursiveParserClass(T as ScssTokenMap, {});
   interpolationParser = { lexer: chevLexer, parser };
   return interpolationParser;
 }
@@ -85,17 +84,19 @@ export function getInterpolationParser(): { lexer: Lexer; parser: ScssRecursiveP
 export function parseInterpolationExpression(expr: string): Node {
   const { lexer, parser } = getInterpolationParser();
   const lexed = lexer.tokenize(expr);
-  (parser as any).input = lexed.tokens as IToken[];
-  return (parser as any).valueSequence({} as any) as unknown as Node;
+  const ctx: RuleContext = {};
+  parser.input = lexed.tokens;
+  return parser.valueSequence(ctx) as unknown as Node;
 }
 
 export function parseSelectorListExpression(expr: string): Selector {
   const { lexer, parser } = getInterpolationParser();
   const lexed = lexer.tokenize(expr);
-  (parser as any).input = lexed.tokens as IToken[];
-  const out = (parser as any).selectorList({} as any) as unknown as Selector;
-  if ((parser as any).errors.length > 0) {
-    const msg = (parser as any).errors[0]?.message ?? 'Invalid selector.parse() input';
+  const ctx: RuleContext = { inner: true };
+  parser.input = lexed.tokens;
+  const out = parser.selectorList(ctx) as unknown as Selector;
+  if (parser.errors.length > 0) {
+    const msg = parser.errors[0]?.message ?? 'Invalid selector.parse() input';
     throw new SyntaxError(msg);
   }
   return out;
@@ -160,7 +161,7 @@ export function asSingleVariableReference(n: Node): Reference | undefined {
   return undefined;
 }
 
-export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: LocationInfo): VarDeclaration {
+export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: OptionalLocation): VarDeclaration {
   const decl = new VarDeclaration(
     {
       name: new Any(name, { role: 'property' }, location, parser.context),
@@ -177,7 +178,7 @@ export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string
 export function toNameInterpolationReplacement(
   parser: ScssRecursiveParser,
   expr: Node,
-  location?: LocationInfo
+  location?: OptionalLocation
 ): Node {
   const simpleRef = asSingleVariableReference(expr);
   if (simpleRef && typeof simpleRef.key === 'string') {
@@ -284,13 +285,16 @@ export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): 
     return call;
   }
   const ref = makeNamespacedReference(parser, parts, 'function');
-  return new Call({ name: ref, args: call.args }, call.options, call.location, parser.context);
+  const location = Array.isArray(call.location) && call.location.length === 6
+    ? call.location
+    : undefined;
+  return new Call({ name: ref, args: call.args }, call.options, location, parser.context);
 }
 
 export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {
   let depth = 0;
   for (let i = 1; i < 50; i++) {
-    const tok = parser.LA(i);
+    const tok = (parser as any).LA(i);
     if (tok.tokenType === T.LParen) {
       depth++;
     }
@@ -315,7 +319,7 @@ export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap
 
 export function looksLikeScssComparison(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {
   for (let i = 1; i < 30; i++) {
-    const tok = parser.LA(i);
+    const tok = (parser as any).LA(i);
     const tt = tok.tokenType;
     if (
       tt === T.LCurly
@@ -369,4 +373,3 @@ export function defaultNamespaceFromPath(path: string): string | undefined {
   const noExt = base.replace(/\.(scss|sass|css|jess|js|ts|json)$/i, '');
   return noExt || undefined;
 }
-

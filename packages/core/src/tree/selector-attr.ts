@@ -1,4 +1,4 @@
-import { defineType, type LocationInfo, Node } from './node.js';
+import { defineType, type LocationInfo, type OptionalLocation, Node } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -51,7 +51,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return newNode;
   }
 
-  constructor(data: AttributeSelectorValue, options?: undefined, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(data: AttributeSelectorValue, options?: undefined, location?: OptionalLocation, treeContext?: TreeContext) {
     super(data as any, options, location, treeContext);
     this.name = data.name;
     this.op = data.op;
@@ -154,6 +154,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
   value: AttributeSelectorValue,
   options?: undefined,
-  location?: LocationInfo | 0,
+  location?: OptionalLocation | 0,
   treeContext?: TreeContext
 ) => AttributeSelector;

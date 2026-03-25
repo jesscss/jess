@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType, F_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { defineType, F_STATIC, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { Selector } from './selector.js';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
@@ -18,7 +18,7 @@ export class Combinator extends Selector<Combinators> {
   constructor(
     value: Combinators,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);

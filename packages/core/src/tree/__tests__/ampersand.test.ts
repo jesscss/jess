@@ -1,6 +1,6 @@
 import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
-  compound,
+  compound, nil,
   type SimpleSelector, type Combinator, type Selector
 } from '../index.js';
 import { Context } from '../../context.js';
@@ -144,7 +144,7 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
-    // Empty appendValue with SelectorList parent: no :is() wrapping needed.
+    // Empty template with SelectorList parent: no :is() wrapping needed.
     expect(css).toBeString(`
       .one,
       .two {
@@ -152,6 +152,34 @@ describe('Ampersand', () => {
       }
       .one,
       .two {
+        inner: one two;
+      }`
+    );
+  });
+
+  it('should render explicit ampersand template forms', () => {
+    expect(amp().toTrimmedString()).toBe('&');
+    expect(amp({ template: '' }).toTrimmedString()).toBe('&()');
+    expect(amp({ template: nil() }).toTrimmedString()).toBe('&(nil)');
+    expect(amp({ template: '-1' }).toTrimmedString()).toBe('&(-1)');
+  });
+
+  it('should reject invalid ampersand templates during eval', async () => {
+    const node = wrapAmp([amp({ template: 'nil' }) as any, el('.three')]);
+    context = new Context({ collapseNesting: true });
+    await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand template');
+  });
+
+  it('should omit the parent entirely for &(nil)', async () => {
+    const node = wrapAmp([amp({ template: nil() }) as any, el('.three')]);
+    context = new Context({ collapseNesting: true });
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+    expect(css).toBeString(`
+      .one.two {
+        chungus: foo bar;
+      }
+      .three {
         inner: one two;
       }`
     );

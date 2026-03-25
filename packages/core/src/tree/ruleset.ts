@@ -1,7 +1,18 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_NON_STATIC, defineType, type NodeOptions } from './node.js';
+import {
+  Node,
+  F_VISIBLE,
+  F_AMPERSAND,
+  F_EXTENDED,
+  F_EXTEND_TARGET,
+  F_IMPLICIT_AMPERSAND,
+  F_NON_STATIC,
+  defineType,
+  type NodeOptions,
+  type LocationInfo,
+  type OptionalLocation
+} from './node.js';
 import { Rules } from './rules.js';
 import type { Context, TreeContext } from '../context.js';
-import { type LocationInfo } from './node.js';
 import { Nil } from './nil.js';
 import { Bool } from './bool.js';
 import type { Condition } from './condition.js';
@@ -79,7 +90,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   /** Patched selector from extend — used by serialization instead of canonical selector. */
   _extendedSelector: Selector | Nil | undefined;
 
-  constructor(value: NarrowRulesetValue<T>, options?: RulesetOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: NarrowRulesetValue<T>, options?: RulesetOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.selector = value.selector;
     this.rules = value.rules;
@@ -640,7 +651,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return false;
     }
     if (isNode(sel, N.Ampersand)) {
-      return !(sel as Ampersand).appendValue;
+      return (sel as Ampersand).isPlainAmpersand();
     }
     if (isNode(sel, N.CompoundSelector | N.ComplexSelector)) {
       const items = (sel as unknown as { value?: unknown[] }).value;
@@ -649,11 +660,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       return items.length === 1
         && isNode(items[0] as Node, N.Ampersand)
-        && !(items[0] as Ampersand).appendValue;
+        && (items[0] as Ampersand).isPlainAmpersand();
     }
     if (isNode(sel, N.SelectorList)) {
       return (sel as SelectorList).value.every(
-        item => isNode(item, N.Ampersand) && !(item as Ampersand).appendValue
+        item => isNode(item, N.Ampersand) && (item as Ampersand).isPlainAmpersand()
       );
     }
     return false;

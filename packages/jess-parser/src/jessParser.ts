@@ -1,7 +1,6 @@
-import { Lexer } from 'chevrotain';
+import { Lexer, type IToken } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
-import { type IToken, MismatchedTokenError } from '@jesscss/parser';
 
 import { jessFragments, jessTokens } from './jessTokens.js';
 import { JessRecursiveParser, type JessParserConfig, type TokenMap } from './jessRecursiveParser.js';
@@ -44,30 +43,12 @@ export class JessParser {
       parser.context = options.context;
     }
     parser.input = lexerResult.tokens as IToken[];
-    let tree: Node | undefined;
-    try {
-      tree = (parser as any)[rule]() as Node;
-    } catch (e: any) {
-      if (e && e.token) {
-        parser.errors.push(e);
-      } else {
-        throw e;
-      }
-    }
-
-    if (parser.errors.length === 0 && (parser as any).pos < (parser as any).tokens.length) {
-      const unconsumed = (parser as any).tokens[(parser as any).pos] as IToken;
-      parser.errors.push(new MismatchedTokenError(
-        unconsumed,
-        { name: 'EOF', PATTERN: undefined as any },
-        ['stylesheet']
-      ));
-    }
+    const tree = (parser as any)[rule]() as Node;
 
     const warnings = [...parser.warnings];
 
     return {
-      tree: tree!,
+      tree,
       lexerResult,
       errors: parser.errors as any,
       warnings

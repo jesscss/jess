@@ -69,6 +69,18 @@ export type LocationInfo = [
 ];
 
 /**
+ * Values returned by {@link Node.location}: a full six-number span, or `[]` when unknown.
+ * The empty tuple is the lazy default assigned by the `location` getter.
+ */
+export type LocationInfoOrEmpty = LocationInfo | [];
+
+/**
+ * Location argument for node construction and APIs that accept another node's `location`.
+ * Same shape as {@link LocationInfoOrEmpty}, or `undefined` to defer to the empty default.
+ */
+export type OptionalLocation = LocationInfoOrEmpty | undefined;
+
+/**
  * Utility type to mark a node's value as generated
  */
 export type GeneratedNodeValue<T> = T extends object ? T & { generated: true } : T;
@@ -175,8 +187,8 @@ export abstract class Node<
   Data = NodeValue,
   O extends NodeOptions = NodeOptions
 > {
-  _location: LocationInfo | [] | undefined;
-  get location() {
+  _location: OptionalLocation;
+  get location(): LocationInfoOrEmpty {
     return (this._location ??= []);
   }
 
@@ -953,7 +965,7 @@ export abstract class Node<
   constructor(
     value: Data,
     options?: O,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     (this as any).parent = undefined;

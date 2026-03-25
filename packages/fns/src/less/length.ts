@@ -1,19 +1,9 @@
-import { defineFunction, Node, List, Sequence, Dimension } from '@jesscss/core';
-
-function getItems(value: Node): readonly Node[] {
-  if (value instanceof List && value.length === 1 && value.value[0] instanceof Sequence) {
-    return value.value[0].value;
-  }
-  if (value instanceof List || value instanceof Sequence) {
-    return value.value;
-  }
-  return [value];
-}
+import { defineFunction, Node, Dimension, coerceListItems } from '@jesscss/core';
 
 const length = defineFunction(
   'length',
   function(value: Node): Dimension {
-    const items = getItems(value);
+    const items = coerceListItems(value);
     return new Dimension({ number: items.length, unit: undefined });
   },
   {

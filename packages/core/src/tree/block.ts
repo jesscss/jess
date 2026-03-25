@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
@@ -23,7 +23,7 @@ export class Block extends Node<Node, BlockOptions> {
 
   value!: Node;
 
-  constructor(value: Node, options?: BlockOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: Node, options?: BlockOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     if (this.value instanceof Node) {

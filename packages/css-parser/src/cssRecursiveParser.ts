@@ -11,7 +11,7 @@ import type { IToken, TokenType, ParserMethod } from '@chevrotain/types';
 
 export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
-import type { LocationInfo } from '@jesscss/core';
+import type { LocationInfo, OptionalLocation } from '@jesscss/core';
 
 import {
   TreeContext,
@@ -78,6 +78,8 @@ export interface CssRecursiveParserConfig {
   legacyMode?: boolean;
   /** Enable error recovery (for language services) */
   recoveryEnabled?: boolean;
+  /** Temporary escape hatch for grammars still being migrated to strict self-analysis. */
+  skipValidations?: boolean;
 }
 
 // ── Parser ───────────────────────────────────────────────────────────
@@ -118,10 +120,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   ) {
     super([...Object.values(T), EOF], {
       recoveryEnabled: config.recoveryEnabled ?? false,
-      maxLookahead: 1
-      // TODO: Fix in fork — ambiguity validation should warn, not throw.
-      // The speculative engine handles ambiguities correctly at runtime.
-      // skipValidations: true
+      maxLookahead: 1,
+      // TODO: Remove once all parsers are fully migrated for upstream Chevrotain validation.
+      skipValidations: config.skipValidations ?? false
     });
     this.T = T;
     this.legacyMode = config.legacyMode ?? true;
@@ -401,7 +402,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     ];
   }
 
-  getLocationFromNodes(nodes: Array<IToken | { location?: LocationInfo | [] }>): LocationInfo | undefined {
+  getLocationFromNodes(nodes: Array<IToken | { location?: OptionalLocation }>): LocationInfo | undefined {
     let startOffset = Infinity, startLine = Infinity, startColumn = Infinity;
     let endOffset = -Infinity, endLine = -Infinity, endColumn = -Infinity;
     let found = false;

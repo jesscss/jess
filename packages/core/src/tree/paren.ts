@@ -2,14 +2,15 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext } from './node.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
 
 export type ParenOptions = {
-  escaped: boolean;
+  escaped?: boolean;
+  delimiter?: 'paren' | 'square';
 };
 
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
@@ -29,7 +30,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   value: Node | undefined;
 
-  constructor(value?: Node, options?: ParenOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value?: Node, options?: ParenOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     if (value instanceof Node) {
@@ -72,11 +73,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const escapeChar = this._isEscaped(options.context) ? '~' : '';
+    const parenOptions = this._getOptions(options.context);
+    const escapeChar = parenOptions?.escaped ? '~' : '';
+    const delimiter = parenOptions?.delimiter ?? 'paren';
+    const open = delimiter === 'square' ? '[' : '(';
+    const close = delimiter === 'square' ? ']' : ')';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
-    w.add('(');
+    w.add(open);
     let value = this._getValue(options.context);
     if (value) {
       if (value instanceof Node) {
@@ -86,7 +91,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         w.add(String(value), this);
       }
     }
-    w.add(')');
+    w.add(close);
     return w.getSince(mark);
   }
 
@@ -106,12 +111,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (this._isEscaped(context) && value instanceof Node) {
           return value;
         }
-        value = this._unwrapValue(value, context);
-        if (value instanceof Bool || value instanceof Dimension) {
-          return value;
-        }
-        if (isOp && !isOpOrExpression(value)) {
-          return value;
+        const delimiter = this._getOptions(context)?.delimiter ?? 'paren';
+        if (delimiter === 'paren') {
+          value = this._unwrapValue(value, context);
+          if (value instanceof Bool || value instanceof Dimension) {
+            return value;
+          }
+          if (isOp && !isOpOrExpression(value)) {
+            return value;
+          }
         }
         let node = this.maybeClone(context);
         if (node === this && context.session && !context.session.resetEvalState) {

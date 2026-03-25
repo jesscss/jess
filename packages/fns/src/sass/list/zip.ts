@@ -6,25 +6,27 @@
  * @example
  * zip(1px 2px, 3px 4px) // (1px 3px) (2px 4px)
  */
-import { defineFunction, List } from '@jesscss/core';
+import { defineFunction, List, Node } from '@jesscss/core';
+import { coerceListItems } from '@jesscss/core';
+import { createSassListResult } from './util.js';
 
 const zip = defineFunction(
   'zip',
-  function(...lists: List[]): List {
+  function(...lists: Node[]): List {
     if (lists.length === 0) {
       return new List([], { sep: ',' });
     }
 
-    // Find the maximum length
-    const maxLength = Math.max(...lists.map(l => l.length));
+    const itemLists = lists.map(list => coerceListItems(list));
+    const maxLength = Math.max(...itemLists.map(list => list.length));
 
     // Zip the lists
     const zipped: List[] = [];
     for (let i = 0; i < maxLength; i++) {
-      const row: any[] = [];
-      for (const list of lists) {
+      const row: Node[] = [];
+      for (const list of itemLists) {
         if (i < list.length) {
-          row.push(list.value[i]);
+          row.push(list[i]!);
         } else {
           // Sass behavior: stops when any list ends
           break;
@@ -32,7 +34,7 @@ const zip = defineFunction(
       }
       if (row.length > 0 && row.length === lists.length) {
         // Only add row if all lists have this index
-        zipped.push(new List(row, { sep: undefined })); // Space-separated inner lists
+        zipped.push(createSassListResult(row, undefined, false)); // Space-separated inner lists
       }
     }
 
@@ -43,7 +45,7 @@ const zip = defineFunction(
     params: [
       {
         name: 'lists',
-        type: List,
+        type: Node,
         rest: true
       }
     ]

@@ -8,50 +8,27 @@
  * join(1, 2, comma) // 1, 2
  * join([1], [2], comma, true) // [1, 2]
  */
-import { defineFunction, List, Node, Quoted, Bool } from '@jesscss/core';
+import { defineFunction, Node, Quoted, Bool } from '@jesscss/core';
+import { createSassListResult, getSassListInfo, resolveSassBracketed, resolveSassSeparator } from './util.js';
 
 const join = defineFunction(
   'join',
-  function(list1: List, list2: List, separator?: Quoted, bracketed?: Bool | Quoted): List {
-    // Determine separator
-    let sep: ',' | ';' | '/' | undefined = list1.options?.sep;
-
-    if (separator) {
-      const sepStr = separator.valueOf();
-      if (sepStr === 'comma') {
-        sep = ',';
-      } else if (sepStr === 'slash') {
-        sep = '/';
-      } else if (sepStr === 'space') {
-        sep = undefined; // Space is default
-      } else if (sepStr === 'auto') {
-        // Use first list's separator, or second's, or default to space
-        sep = list1.options?.sep ?? list2.options?.sep ?? undefined;
-      } else {
-        throw new Error(`$separator: Must be "space", "comma", "slash", or "auto".`);
-      }
-    } else {
-      // Auto behavior: use first list's separator, or second's, or default to space
-      sep = list1.options?.sep ?? list2.options?.sep ?? undefined;
-    }
-
-    // Join the lists
-    const newList = new List([...list1.value, ...list2.value], { sep });
-
-    // Note: bracketed parameter is not yet fully supported in Jess AST
-    // TODO: Handle bracketed lists when Jess AST supports it
-
-    return newList;
+  function(list1: Node, list2: Node, separator?: Quoted, bracketed?: Bool | Quoted): Node {
+    const left = getSassListInfo(list1);
+    const right = getSassListInfo(list2);
+    const sep = resolveSassSeparator(separator, left.sep ?? right.sep);
+    const isBracketed = resolveSassBracketed(bracketed, left.bracketed);
+    return createSassListResult([...left.items, ...right.items], sep, isBracketed);
   },
   {
     params: [
       {
         name: 'list1',
-        type: List
+        type: Node
       },
       {
         name: 'list2',
-        type: List
+        type: Node
       },
       {
         name: 'separator',

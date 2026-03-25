@@ -1,4 +1,4 @@
-import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
+import { F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
 import type { Condition } from './condition.js';
 import { type List } from './list.js';
 import type { Any, AnyRole } from './any.js';
@@ -138,7 +138,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return newNode;
   }
 
-  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
+  constructor(value: MixinValue, options?: MixinOptions, location?: OptionalLocation, context?: TreeContext) {
     super(value, options, location, context);
     this.name = value.name;
     this.rules = value.rules;

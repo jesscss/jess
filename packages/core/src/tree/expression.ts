@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_NON_STATIC, defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
+import { Node, F_NON_STATIC, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { sessionGetDependency, sessionGetField, sessionSetDependency, sessionSetParent } from './util/session-helpers.js';
@@ -42,7 +42,7 @@ export class Expression extends Node<Node> {
     return newNode;
   }
 
-  constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: Node, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     if (value instanceof Node) {

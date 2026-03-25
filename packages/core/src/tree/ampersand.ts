@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, type OptionalLocation, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -10,7 +10,11 @@ import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './util/ampersand-template.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
+
+const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
+const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
 
 export type AmpersandValue = {
   /**
@@ -62,9 +66,18 @@ export type AmpersandValue = {
        color: red;
      }
 
+   *
+   * `undefined` => plain `&`
+   * `''` => `&()` root-hoist while still rendering the parent
+   * `string` => `&(template)` / `&-suffix`
+   * `Nil` => `&(nil)` and suppress the parent entirely
+   *
+   * A template without an `&` is shorthand for replacing the parent selector
+   * at the same location. So `template: '-1'` means the `&-1` form.
    */
-  /** Set to an empty string to hoist to root */
-  appendValue?: string;
+  template?: string | Nil;
+  /** @deprecated Use `template` */
+  appendValue?: string | Nil;
 
   /**
    * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector ("pointer").
@@ -98,37 +111,59 @@ export interface Ampersand {
   type: 'Ampersand';
   shortType: 'amp';
 }
-export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
+export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
   static override childKeys = null as null;
 
-  appendValue: string | undefined;
+  template: string | Nil | undefined;
 
   private _storedSelector: Selector | Nil | undefined;
   private _selectorContainer: SelectorContainer | undefined;
 
   constructor(
-    value?: AmpersandValue | string,
+    value?: AmpersandValue | string | Nil,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
-    let finalAppendValue: string | undefined;
-    if (typeof value === 'string') {
-      finalAppendValue = value;
-      super({ appendValue: value } as any, options, location, treeContext);
+    let finalTemplate: string | Nil | undefined;
+    if (typeof value === 'string' || value instanceof Nil) {
+      finalTemplate = value;
+      super(value as any, options, location, treeContext);
     } else {
-      finalAppendValue = value?.appendValue;
-      super({ appendValue: finalAppendValue } as any, options, location, treeContext);
+      finalTemplate = value?.template ?? value?.appendValue;
+      super(finalTemplate as any, options, location, treeContext);
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
         this._storedSelector = getSelectorFromContainer(selectorContainer);
       }
     }
-    this.appendValue = finalAppendValue;
+    this.template = finalTemplate;
+    if (finalTemplate instanceof Nil) {
+      this.adopt(finalTemplate as unknown as Node);
+    }
 
     // Set the F_AMPERSAND flag so it bubbles up to parent selectors
     this.addFlag(F_AMPERSAND);
+  }
+
+  isPlainAmpersand(): boolean {
+    return this.template === undefined;
+  }
+
+  omitsParent(): boolean {
+    return isNode(this.template as Node | undefined, N.Nil);
+  }
+
+  get appendValue(): string | Nil | undefined {
+    return this.template;
+  }
+
+  set appendValue(value: string | Nil | undefined) {
+    this.template = value;
+    if (value instanceof Nil) {
+      this.adopt(value as unknown as Node);
+    }
   }
 
   override computeKeySets(): void {
@@ -195,11 +230,13 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { appendValue } = this;
-    if (appendValue) {
+    const { template } = this;
+    if (template !== undefined) {
       w.add('&(');
-      if (appendValue) {
-        w.add(appendValue, this);
+      if (isNode(template as Node, N.Nil)) {
+        w.add('nil', this);
+      } else if (typeof template === 'string' && template) {
+        w.add(template, this);
       }
       w.add(')');
     } else {
@@ -247,14 +284,19 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     this.keySetLibrary = context.selectorBits;
-    const { appendValue } = this;
+    const { template } = this;
     const selectorContainer = this._selectorContainer;
     const storedSelector = getSelectorFromContainer(selectorContainer, context);
-    // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
-    if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
+    // Check if template is defined (including empty string), or if hoistToRoot/collapseNesting is set
+    if (template !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
       let selector = storedSelector ?? frame?.getEffectiveSelector?.(false, context) ?? frame?.selector;
+      if (isNode(template as Node | undefined, N.Nil)) {
+        const result = new Nil(undefined, undefined, undefined, this.treeContext);
+        result.hoistToRoot = true;
+        return result;
+      }
       if (!selector) {
         return new Nil();
       }
@@ -272,8 +314,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       selector.pre = undefined;
       selector.post = undefined;
 
-      if (appendValue && !isNode(selector, N.Nil)) {
-        const isTemplateMerge = appendValue.includes('&');
+      if (typeof template === 'string' && template && !isNode(selector, N.Nil)) {
+        const normalizedTemplate = template.replace(ampersandTemplateInterpolationRegex, 'x');
+        if (!ampersandTemplateRegex.test(normalizedTemplate)) {
+          throw new SyntaxError(`Invalid ampersand template "${template}"`);
+        }
+        const isTemplateMerge = template.includes('&');
         if (isTemplateMerge) {
           const isIdentJoinChar = (char: string | undefined): boolean => {
             return !!char && /[a-zA-Z0-9_-]/.test(char);
@@ -326,8 +372,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             }
             const merged = baseSelectors.map((item) => {
               const value = item.toTrimmedString();
-              assertValidTemplateJoin(appendValue, value);
-              return new BasicSelector(appendValue.split('&').join(value)).inherit(baseSelector);
+              assertValidTemplateJoin(template, value);
+              return new BasicSelector(template.split('&').join(value)).inherit(baseSelector);
             });
             if (merged.length === 1) {
               return merged[0]!;
@@ -355,15 +401,15 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
                 if (typeof (s as any).value === 'string') {
-                  s.setData((s as any).value + appendValue);
+                  s.setData((s as any).value + template);
                   appended = true;
                   break;
                 }
-                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+                throw new SyntaxError(`Cannot append "${template}" to this type of selector`);
               }
             }
             if (!appended) {
-              throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+              throw new SyntaxError(`Cannot append "${template}" to this type of selector`);
             }
           };
 
@@ -376,7 +422,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
 
       let result: Selector | Nil;
-      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (this.hoistToRoot || !!appendValue);
+      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (this.hoistToRoot || template !== undefined);
       const shouldWrapComplexSelector = isNode(selector, N.ComplexSelector);
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
@@ -386,7 +432,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         result = selector;
       }
 
-      if (appendValue !== undefined) {
+      if (template !== undefined) {
         result.hoistToRoot = true;
       }
       if (shouldWrapSelectorList || shouldWrapComplexSelector || this.hoistToRoot) {
@@ -412,9 +458,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newNode = super.clone(deep, cloneFn) as this;
     // super.clone() for leaf nodes calls new Ampersand((this as any).value, ...).
-    // Ampersand stores its data in the appendValue instance field, not in .value,
+    // Ampersand stores its data in the template instance field, not in .value,
     // so we must patch it explicitly on the clone.
-    newNode.appendValue = this.appendValue;
+    newNode.template = this.template;
+    if (newNode.template instanceof Nil) {
+      newNode.adopt(newNode.template as unknown as Node);
+    }
     // Don't copy _selectorContainer — clones must rebind to the current eval
     // context frame (e.g. call-site for mixin clones, not definition-site).
     return newNode;

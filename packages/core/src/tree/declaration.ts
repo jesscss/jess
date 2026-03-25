@@ -2,7 +2,7 @@ import {
   Node,
   F_STATIC,
   defineType,
-  type LocationInfo,
+  type LocationInfo, type OptionalLocation,
   type NodeOptions,
   type TreeContext
 } from './node.js';
@@ -13,9 +13,11 @@ import { Interpolated } from './interpolated.js';
 import { Any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
-import { spaced } from './sequence.js';
+import { Sequence, spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
+import { Collection } from './collection.js';
+import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
@@ -102,7 +104,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   value!: Node;
   important: Any<'flag'> | undefined;
 
-  constructor(value: DeclarationValue, options?: Opts, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
     this.value = value.value;
@@ -377,7 +379,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
-    if (this.hasFlag(F_STATIC)) {
+    const staticNestedCollection =
+      isNode(this.value, N.Collection)
+      || (
+        isNode(this.value, N.Sequence)
+        && (this.value as Sequence).value.length > 0
+        && isNode((this.value as Sequence).value[(this.value as Sequence).value.length - 1]!, N.Collection)
+      );
+    if (this.hasFlag(F_STATIC) && !staticNestedCollection) {
       this._setEvaluated(true, context);
       return this;
     }
@@ -397,6 +406,116 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const cloned = source.clone(false);
           copyDependency(source, cloned);
           return cloned;
+        };
+        const splitNestedPropertyValue = (valueNode: Node): { baseValue?: Node; collection: Collection } | undefined => {
+          if (isNode(valueNode, N.Collection)) {
+            return { collection: valueNode as Collection };
+          }
+          if (!isNode(valueNode, N.Sequence)) {
+            return undefined;
+          }
+          const items = [...(valueNode as Sequence).value];
+          if (items.length === 0) {
+            return undefined;
+          }
+          const last = items[items.length - 1]!;
+          if (!isNode(last, N.Collection)) {
+            return undefined;
+          }
+          if (items.length === 1) {
+            return { collection: last as Collection };
+          }
+          const baseItems = items.slice(0, -1).map(item => item.copy(true));
+          const baseValue = baseItems.length === 1
+            ? baseItems[0]!
+            : new Sequence(baseItems, undefined, valueNode.location, this.treeContext);
+          return { baseValue, collection: last as Collection };
+        };
+        const cloneImportant = () => node.important?.copy(true) as Any<'flag'> | undefined;
+        const makePropertyName = (prefix: string, childName: NameValue): Any<'property'> =>
+          new Any(
+            `${prefix}-${String(childName.valueOf())}`,
+            { role: 'property' },
+            childName.location ?? node.location,
+            this.treeContext
+          );
+        const expandNestedPropertyDeclaration = (declNode: Declaration): MaybePromise<Declaration | Rules | Nil> => {
+          const nested = splitNestedPropertyValue(declNode.value);
+          if (!nested) {
+            return declNode;
+          }
+
+          const expanded: Node[] = [];
+          const declCtor = declNode.constructor as any;
+          const prefix = String(declNode.name.valueOf());
+
+          if (nested.baseValue) {
+            expanded.push(new declCtor(
+              {
+                name: declNode.name.copy(true) as NameValue,
+                value: nested.baseValue.copy(true),
+                important: cloneImportant()
+              },
+              { ...declNode.options } as any,
+              declNode.location,
+              this.treeContext
+            ));
+          }
+
+          const entries = nested.collection.value.filter(
+            child => isNode(child, N.Declaration) && !isNode(child, N.VarDeclaration)
+          ) as Declaration[];
+
+          const processEntry = (index: number): MaybePromise<void> => {
+            if (index >= entries.length) {
+              return;
+            }
+
+            const current = entries[index]!;
+            const preEvaluated = current.preEval(context) as Declaration | Nil | Promise<Declaration | Nil>;
+            const afterPreEval = (resolvedCurrent: Declaration | Nil): MaybePromise<void> => {
+              if (resolvedCurrent instanceof Nil || !isNode(resolvedCurrent, N.Declaration) || isNode(resolvedCurrent, N.VarDeclaration)) {
+                return processEntry(index + 1);
+              }
+
+              const prefixedDecl = new declCtor(
+                {
+                  name: makePropertyName(prefix, resolvedCurrent.name as NameValue),
+                  value: resolvedCurrent.value.copy(true),
+                  important: (resolvedCurrent.important?.copy(true) as Any<'flag'> | undefined)
+                },
+                { ...resolvedCurrent.options } as any,
+                resolvedCurrent.location,
+                this.treeContext
+              );
+
+              const evaluated = prefixedDecl.eval(context) as Declaration | Rules | Nil | Promise<Declaration | Rules | Nil>;
+              const afterEval = (resolvedPrefixed: Declaration | Rules | Nil): MaybePromise<void> => {
+                if (!(resolvedPrefixed instanceof Nil)) {
+                  if (isNode(resolvedPrefixed, N.Rules)) {
+                    expanded.push(...(resolvedPrefixed as Rules).value);
+                  } else {
+                    expanded.push(resolvedPrefixed as Declaration);
+                  }
+                }
+                return processEntry(index + 1);
+              };
+
+              return isThenable(evaluated)
+                ? (evaluated as Promise<Declaration | Rules | Nil>).then(afterEval)
+                : afterEval(evaluated as Declaration | Rules | Nil);
+            };
+
+            return isThenable(preEvaluated)
+              ? (preEvaluated as Promise<Declaration | Nil>).then(afterPreEval)
+              : afterPreEval(preEvaluated as Declaration | Nil);
+          };
+
+          const finish = () => new Rules(expanded, undefined, declNode.location, this.treeContext);
+          const processed = processEntry(0);
+          return isThenable(processed)
+            ? (processed as Promise<void>).then(finish)
+            : finish();
         };
         const normalizeMergedLeadingPlaceholder = () => {
           const normalizedAssign = node._getOptions(context)?.normalizedFromAssign;
@@ -484,6 +603,24 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           node._setValueNode(maybeNewValue as Node, context);
           normalizeMergedLeadingPlaceholder();
           copyDependency(maybeNewValue as Node, node._getValueNode(context));
+          const expanded = expandNestedPropertyDeclaration(node);
+          if (isThenable(expanded)) {
+            return (expanded as Promise<Declaration | Rules | Nil>).then((resolvedExpanded) => {
+              if (context.hasImportantSource && !node._getImportant(context) && isNode(resolvedExpanded, N.Declaration)) {
+                resolvedExpanded.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+              }
+              if (context.hasImportantSource) {
+                context.popImportantSource();
+              }
+              return resolvedExpanded;
+            });
+          }
+          if (expanded !== node) {
+            if (context.hasImportantSource) {
+              context.popImportantSource();
+            }
+            return expanded;
+          }
           // Merge !important from referenced declarations
           if (context.hasImportantSource && !node._getImportant(context)) {
             node._setImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
@@ -506,7 +643,7 @@ defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 export const decl = (
   value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   treeContext?: TreeContext
 ) => {
   let { name } = value;

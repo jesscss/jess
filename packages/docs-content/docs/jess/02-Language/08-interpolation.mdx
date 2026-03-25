@@ -103,13 +103,15 @@ Note: in normal property values, you can usually just use `$theme`. In custom pr
 
 :::
 
-### 4. :-extend
+### 4. $extend
 ```scss
 $type: $*[.notice];
 .notice {
   color: orange;
 }
-.danger:-extend($(type));
+.danger {
+  $extend $type;
+}
 ```
 →
 ```css

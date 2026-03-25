@@ -3,8 +3,6 @@
 
 import type { RuleContext, ExtendTarget, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken, IOrAlt } from 'chevrotain';
-import { productions as cssProductions } from '@jesscss/css-parser';
-
 import {
   type TreeContext,
   Node,
@@ -35,6 +33,7 @@ import {
   Url,
   Nil,
   Collection,
+  type ComplexSelectorValue,
   type ComplexSelectorComponent,
   type Selector,
   INTERPOLATION_PLACEHOLDER,
@@ -51,9 +50,6 @@ import { all } from 'known-css-properties';
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
-
-// Save reference to CSS production factory for delegation
-const cssComplexSelector = cssProductions.complexSelector;
 
 // ── Helper: interpolation regex and getInterpolated ──────────────────
 
@@ -92,12 +88,9 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
 
 // ── Helper: getAmpersandTemplateValue ────────────────────────────────
 
-function getAmpersandTemplateValue(image: string): string | undefined {
+function getAmpersandTemplateValue(image: string): string | Nil | undefined {
   if (image === '&') {
     return undefined;
-  }
-  if (image.startsWith('&(') && image.endsWith(')')) {
-    return image.slice(2, -1);
   }
   if (image.startsWith('&')) {
     return image.slice(1) || undefined;
@@ -337,6 +330,84 @@ export function relativeSelector(this: P, T: TokenMap) {
   };
 }
 
+export function forgivingSelectorList(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let sequences: ComplexSelector[] | undefined;
+    let i = 0;
+
+    if (!RECORDING_PHASE) {
+      sequences = [];
+    }
+
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Comma,
+      DEF: () => {
+        const selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          i++;
+          if (i === 1 && ctx.qualifiedRule) {
+            sequences!.push($.wrap(selector, true));
+          } else {
+            sequences!.push($.wrap(selector, i === 1 ? true : 'both'));
+          }
+        }
+      }
+    });
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    const location = $.endRule();
+    if (sequences!.length === 1) {
+      return sequences![0];
+    }
+    return new SelectorList(sequences!, undefined, location, $.context);
+  };
+}
+
+export function selectorList(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let sequences: ComplexSelector[] | undefined;
+    let i = 0;
+
+    if (!RECORDING_PHASE) {
+      sequences = [];
+    }
+
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Comma,
+      DEF: () => {
+        const selector = $.SUBRULE2($.complexSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          i++;
+          if (i === 1 && ctx.qualifiedRule) {
+            sequences!.push($.wrap(selector, true));
+          } else {
+            sequences!.push($.wrap(selector, i === 1 ? true : 'both'));
+          }
+        }
+      }
+    });
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    const location = $.endRule();
+    if (sequences!.length === 1) {
+      return sequences![0];
+    }
+    return new SelectorList(sequences!, undefined, location, $.context);
+  };
+}
+
 export function compoundSelector(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
@@ -369,12 +440,13 @@ export function compoundSelector(this: P, T: TokenMap) {
         }
       }
     });
-    if (!RECORDING_PHASE) {
-      if (selectors!.length === 1) {
-        return selectors![0]!;
-      }
-      return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), $.context);
+    if (RECORDING_PHASE) {
+      return;
     }
+    if (selectors!.length === 1) {
+      return selectors![0]!;
+    }
+    return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), $.context);
   };
 }
 
@@ -384,34 +456,100 @@ export function compoundSelector(this: P, T: TokenMap) {
 export function complexSelector(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    let selector: Selector = cssComplexSelector.call(
-      $, T, (ctx: RuleContext) => () => !ctx.inExtend || !$.isType(T.All)
-    )(ctx)!;
-    let isQualifiedRule = !!ctx.qualifiedRule;
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let selectors: ComplexSelectorValue | undefined;
+    if (!RECORDING_PHASE) {
+      selectors = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] }) as ComplexSelectorComponent];
+    } else {
+      $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
+    }
+
+    $.MANY({
+      GATE: () => {
+        if (ctx.inExtend && $.isType(T.All)) {
+          return false;
+        }
+        return $.hasWS() || $.isType(T.Combinator);
+      },
+      DEF: () => {
+        let co: IToken | undefined;
+        let combinator: Combinator | undefined;
+
+        $.OPTION(() => {
+          co = $.CONSUME(T.Combinator);
+        });
+
+        if (!RECORDING_PHASE) {
+          if (co) {
+            combinator = $.wrap(
+              new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context),
+              'both'
+            );
+          } else {
+            const startOffset = $.LA(1).startOffset;
+            combinator = new Combinator(' ', undefined, undefined, $.context);
+            let pre = $.getPrePost(startOffset);
+            if (pre === 1) {
+              pre = 0;
+            } else if (pre) {
+              const last = pre[pre.length - 1];
+              if (typeof last === 'string' && last.endsWith(' ')) {
+                pre[pre.length - 1] = last.slice(0, -1);
+              }
+            }
+            combinator.pre = pre;
+          }
+        }
+
+        const compound = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          selectors!.push(combinator!, compound as ComplexSelectorComponent);
+        }
+      }
+    });
+
+    let selector: Selector | undefined;
+    if (!RECORDING_PHASE) {
+      const location = $.endRule();
+      selector = selectors!.length === 1
+        ? selectors![0] as Selector
+        : new ComplexSelector(selectors!, undefined, location, $.context);
+    }
+
     let flag: IToken | undefined;
 
-    $.OR([
-      {
-        /** When we're inside the :extend(...), we can capture the "all" keyword */
-        GATE: () => !!ctx.inExtend,
-        ALT: () => flag = $.CONSUME(T.All)
-      },
-      {
-        GATE: () => isQualifiedRule && !ctx.inExtend,
-        ALT: () => {
-          ctx.selector = selector;
-          $.SUBRULE($.extend, { ARGS: [ctx] });
-          ctx.selector = undefined;
-        }
-      },
-      {
-        ALT: () => undefined
+    /** Inside :extend(...), only consume the optional trailing "all" keyword. */
+    $.OPTION2({
+      GATE: () => !!ctx.inExtend && $.isType(T.All),
+      DEF: () => {
+        flag = $.CONSUME(T.All);
       }
-    ]);
+    });
+
+    /**
+     * Outside :extend(...), only enter the extend production when the next token
+     * is actually :extend(. Do not commit based on context alone.
+     */
+    $.OPTION3({
+      GATE: () => !ctx.inExtend && !!ctx.qualifiedRule && $.isType(T.Extend),
+      DEF: () => {
+        const initialSelector = ctx.selector;
+        if (!RECORDING_PHASE) {
+          ctx.selector = selector;
+        }
+        try {
+          $.SUBRULE($.extend, { ARGS: [ctx] });
+        } finally {
+          ctx.selector = initialSelector;
+        }
+      }
+    });
 
     if (ctx.inExtend) {
-      validateExtendTarget($, selector, ':extend()');
-      (ctx.extendTargets ??= []).push({ selector: ctx.selector, target: selector, flag });
+      validateExtendTarget($, selector!, ':extend()');
+      (ctx.extendTargets ??= []).push({ selector: ctx.selector, target: selector!, flag });
     }
 
     return selector;
@@ -530,7 +668,45 @@ export function simpleSelector(this: P, T: TokenMap) {
         ALT: () => {
           let amp = $.CONSUME(T.Ampersand);
           const value = getAmpersandTemplateValue(amp.image);
-          return new Ampersand(value || undefined, undefined, $.getLocationInfo(amp), $.context);
+          return new Ampersand({ template: value }, undefined, $.getLocationInfo(amp), $.context);
+        }
+      },
+      {
+        ALT: () => {
+          $.startRule();
+          $.CONSUME(T.AmpersandLParen);
+          const parts: string[] = [];
+          let sawQuoted = false;
+          $.MANY(() => {
+            $.OR2([
+              {
+                GATE: () => $.isType(T.QuoteStart),
+                ALT: () => {
+                  const quoted = $.SUBRULE($.string, { ARGS: [ctx] }) as Quoted;
+                  parts.push(quoted.valueOf());
+                  sawQuoted = true;
+                }
+              },
+              {
+                GATE: () => $.isType(T.WS),
+                ALT: () => {
+                  parts.push($.CONSUME(T.WS).image);
+                }
+              },
+              {
+                ALT: () => {
+                  parts.push($.CONSUME(T.AmpersandTemplateContents).image);
+                }
+              }
+            ]);
+          });
+          $.CONSUME(T.AmpersandTemplateEnd);
+          const location = $.endRule();
+          const value = parts.join('');
+          const template: string | Nil = sawQuoted && value === ''
+            ? new Nil()
+            : value;
+          return new Ampersand({ template }, undefined, location, $.context);
         }
       },
       { ALT: () => $.CONSUME(T.InterpolatedIdent) },
@@ -582,7 +758,7 @@ export function simpleSelector(this: P, T: TokenMap) {
     if ($.isToken(selector)) {
       if (selector.tokenType.name === 'Ampersand') {
         const value = getAmpersandTemplateValue(selector.image);
-        return new Ampersand(value || undefined, undefined, $.getLocationInfo(selector), $.context);
+        return new Ampersand({ template: value }, undefined, $.getLocationInfo(selector), $.context);
       }
       if (
         selector.tokenType.name === 'InterpolatedSelector'

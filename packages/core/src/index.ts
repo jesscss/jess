@@ -18,6 +18,8 @@ export * from './tree/util/collections.js';
 export * from './tree/util/session-helpers.js';
 export * from './tree/util/print.js';
 export * from './tree/util/serialize-types.js';
+export * from './tree/util/ampersand-template.js';
+export * from './tree/util/list-like.js';
 export * from './conversions.js';
 export * from './types/index.js';
 export * from './visitor/index.js';

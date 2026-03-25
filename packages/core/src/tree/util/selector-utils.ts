@@ -5,6 +5,7 @@ import { CompoundSelector } from '../selector-compound.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { BasicSelector } from '../selector-basic.js';
+import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './ampersand-template.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Node } from '../node.js';
 import { isNode } from './is-node.js';
@@ -15,8 +16,11 @@ import type { Ampersand } from '../ampersand.js';
 import type { Context } from '../../context.js';
 import { sessionGetParent } from './session-helpers.js';
 
+const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
+const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
+
 /**
- * Returns true when `sel` is purely `&` with no appendValue — meaning the
+ * Returns true when `sel` is purely `&` with no explicit template — meaning the
  * ruleset's selector is an unmodified mirror of its parent. Such rulesets
  * are updated by refreshNestedRulesetSelectors and should not be directly
  * targeted by the extend loop.
@@ -26,19 +30,19 @@ export function isBareAmpersandOwnSelector(sel: Selector | Nil): boolean {
     return false;
   }
   if (isNode(sel, N.Ampersand)) {
-    return !(sel as unknown as Ampersand).appendValue;
+    return (sel as unknown as Ampersand).isPlainAmpersand();
   }
   if (isNode(sel, N.CompoundSelector)) {
     const items = (sel as CompoundSelector).value;
     return items.length === 1
       && isNode(items[0] as Node, N.Ampersand)
-      && !((items[0] as Node) as Ampersand).appendValue;
+      && ((items[0] as Node) as Ampersand).isPlainAmpersand();
   }
   if (isNode(sel, N.ComplexSelector)) {
     const items = (sel as ComplexSelector).value;
     return items.length === 1
       && isNode(items[0] as Node, N.Ampersand)
-      && !((items[0] as Node) as Ampersand).appendValue;
+      && ((items[0] as Node) as Ampersand).isPlainAmpersand();
   }
   return false;
 }
@@ -231,12 +235,17 @@ export function selectorHasAuthoredAmpersand(selector: Selector): boolean {
 }
 
 /**
- * Apply an ampersand's appendValue (suffix like `-1` or template like `.&-foo`)
+ * Apply an ampersand's template (suffix like `-1` or template like `.&-foo`)
  * to a resolved parent selector. Mirrors the logic in Ampersand.evalNode but
  * operates on the already-resolved replacement selector.
  */
-function applyAppendValue(resolved: Selector, appendValue: string, inherit: Selector): Selector {
-  const isTemplateMerge = appendValue.includes('&');
+function applyTemplate(resolved: Selector, template: string, inherit: Selector): Selector {
+  const normalizedTemplate = template.replace(ampersandTemplateInterpolationRegex, 'x');
+  if (!ampersandTemplateRegex.test(normalizedTemplate)) {
+    throw new SyntaxError(`Invalid ampersand template "${template}"`);
+  }
+
+  const isTemplateMerge = template.includes('&');
   if (isTemplateMerge) {
     const isIdentJoinChar = (char: string | undefined): boolean =>
       !!char && /[a-zA-Z0-9_-]/.test(char);
@@ -264,8 +273,8 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
     };
     const applyTemplate = (sel: Selector): Selector => {
       const value = sel.toTrimmedString();
-      assertValidTemplateJoin(appendValue, value);
-      return new BasicSelector(appendValue.split('&').join(value)).inherit(inherit);
+      assertValidTemplateJoin(template, value);
+      return new BasicSelector(template.split('&').join(value)).inherit(inherit);
     };
     const distributeTemplate = (sel: Selector): Selector => {
       if (
@@ -287,8 +296,8 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
       if (selectorStr.includes(',')) {
         const parts = selectorStr.split(',').map(s => s.trim()).filter(Boolean);
         const mapped = parts.map((part) => {
-          assertValidTemplateJoin(appendValue, part);
-          return new BasicSelector(appendValue.split('&').join(part)).inherit(inherit);
+          assertValidTemplateJoin(template, part);
+          return new BasicSelector(template.split('&').join(part)).inherit(inherit);
         });
         return mapped.length === 1 ? mapped[0]! : SelectorList.create(mapped).inherit(inherit) as Selector;
       }
@@ -301,13 +310,13 @@ function applyAppendValue(resolved: Selector, appendValue: string, inherit: Sele
     for (const s of n.nodes(true)) {
       if (isNode(s, N.SimpleSelector)) {
         if (isNode(s, N.BasicSelector)) {
-          (s as BasicSelector).setData((s as BasicSelector).value + appendValue);
+          (s as BasicSelector).setData((s as BasicSelector).value + template);
           return;
         }
-        throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+        throw new SyntaxError(`Cannot append "${template}" to this type of selector`);
       }
     }
-    throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+    throw new SyntaxError(`Cannot append "${template}" to this type of selector`);
   };
 
   // Unwrap generated :is(SelectorList) so append distributes to all items
@@ -335,15 +344,20 @@ function resolveAuthoredAmpersands(
   atTopLevel: boolean = true
 ): Selector {
   if (isNode(selector, N.Ampersand)) {
-    const appendValue = (selector as Ampersand).appendValue;
+    const template = (selector as Ampersand).template;
+    if (isNode(template as Node | undefined, N.Nil)) {
+      const nilResult = new Nil().inherit(selector) as unknown as Selector;
+      (nilResult as unknown as Nil).hoistToRoot = true;
+      return nilResult;
+    }
     const replacement = getParentReplacementForAmpersand(parentSelector, true);
     let resolved = replacement.length === 1
       ? replacement[0]!
       : ComplexSelector.create(replacement as any).inherit(selector) as Selector;
-    if (appendValue) {
-      resolved = applyAppendValue(resolved, appendValue, selector);
+    if (typeof template === 'string' && template) {
+      resolved = applyTemplate(resolved, template, selector);
     }
-    if (appendValue !== undefined) {
+    if (template !== undefined) {
       resolved.hoistToRoot = true;
     }
     return resolved;
@@ -364,7 +378,7 @@ function resolveAuthoredAmpersands(
       compoundData.length >= 2
       && isNode(compoundData[0], N.Ampersand)
       && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)
-      && !(compoundData[0] as Ampersand).appendValue
+      && (compoundData[0] as Ampersand).isPlainAmpersand()
       && isNode(parentSelector, N.ComplexSelector)
     ) {
       const parentParts = [...(parentSelector as ComplexSelector).value] as Selector[];
@@ -387,18 +401,25 @@ function resolveAuthoredAmpersands(
     for (let i = 0; i < selectorData.length; i++) {
       const item = selectorData[i] as Selector;
       if (isNode(item, N.Ampersand) && !item.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        const appendValue = (item as Ampersand).appendValue;
+        const template = (item as Ampersand).template;
         const atStart = !isCompound && i === 0;
+        if (isNode(template as Node | undefined, N.Nil)) {
+          hasAppendValue = true;
+          continue;
+        }
         const parts = getParentReplacementForAmpersand(parentSelector, atStart);
-        if (appendValue) {
+        if (typeof template === 'string' && template) {
           let resolved = parts.length === 1
             ? parts[0]!
             : ComplexSelector.create(parts as any).inherit(item) as Selector;
-          resolved = applyAppendValue(resolved, appendValue, item);
+          resolved = applyTemplate(resolved, template, item);
           nextData.push(resolved);
           hasAppendValue = true;
         } else {
           nextData.push(...parts);
+          if (template !== undefined) {
+            hasAppendValue = true;
+          }
         }
         continue;
       }
@@ -411,8 +432,8 @@ function resolveAuthoredAmpersands(
       ) {
         const compoundData = (item as CompoundSelector).value as readonly Selector[];
         if (compoundData.length > 0 && isNode(compoundData[0], N.Ampersand) && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)) {
-          const ampAppend = (compoundData[0] as Ampersand).appendValue;
-          if (!ampAppend) {
+          const ampTemplate = (compoundData[0] as Ampersand).template;
+          if (ampTemplate === undefined) {
             const parentParts = [...(parentSelector as ComplexSelector).value] as Selector[];
             const remaining = compoundData.slice(1).map(d => resolveAuthoredAmpersands(d as Selector, parentSelector));
             const lastParentPart = parentParts[parentParts.length - 1]!.copy(true) as Selector;
@@ -437,6 +458,11 @@ function resolveAuthoredAmpersands(
         const bIsTag = isNode(b, N.BasicSelector) && (b as BasicSelector).isTag ? 0 : 1;
         return aIsTag - bIsTag;
       });
+    }
+    if (nextData.length === 0) {
+      const nilResult = new Nil().inherit(selector) as unknown as Selector;
+      (nilResult as unknown as Nil).hoistToRoot = hasAppendValue;
+      return nilResult;
     }
     const ctor = !isCompound ? ComplexSelector : CompoundSelector;
     const result = ctor.create(nextData as any).inherit(selector) as Selector;

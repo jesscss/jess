@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { Node, defineType, type LocationInfo, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -20,7 +20,7 @@ export class SelectorCapture extends Node<Selector> {
 
   value!: Selector;
 
-  constructor(value: Selector, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: Selector, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     if (this.value instanceof Node) {

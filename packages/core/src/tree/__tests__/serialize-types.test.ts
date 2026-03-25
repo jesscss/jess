@@ -349,7 +349,7 @@ describe('serializeTypes utility coverage', () => {
         name: property('extend-list'),
         value: new ExtendList([
           new Extend({
-            selector: new Ampersand({ appendValue: '-tail' }),
+            selector: new Ampersand({ template: '-tail' }),
             target: new BasicSelector('.base'),
             flag: ExtendFlag.Exact
           })

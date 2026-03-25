@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -129,7 +129,7 @@ export class Call extends Node<CallValue, CallOptions> {
     return newNode;
   }
 
-  constructor(value: CallValue, options?: CallOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: CallValue, options?: CallOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
     this.args = value.args;

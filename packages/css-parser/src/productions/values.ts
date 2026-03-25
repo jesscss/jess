@@ -33,10 +33,11 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
         $.OPTION(() => {
           important = $.CONSUME(T.Important);
         });
-        if (!$.RECORDING_PHASE) {
-          let nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
-          return [nameNode, assign, value, important];
+        if ($.RECORDING_PHASE) {
+          return;
         }
+        let nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
+        return [nameNode, assign, value, important];
       }
     },
     {
@@ -55,12 +56,13 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
             nodes!.push(val);
           }
         });
-        if (!RECORDING_PHASE) {
-          let location = $.endRule();
-          let nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
-          let value = new Sequence(nodes!, undefined, location, this.context);
-          return [nameNode, assign, value];
+        if (RECORDING_PHASE) {
+          return;
         }
+        let location = $.endRule();
+        let nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
+        let value = new Sequence(nodes!, undefined, location, this.context);
+        return [nameNode, assign, value];
       }
     }
   ];
@@ -107,6 +109,15 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
   // Avoid knownFunctions here to remove ambiguity with custom blocks.
   alt ??= (ctx: RuleContext = {}) => [
     {
+      GATE: () => $.LA(1).tokenType.name === 'ColorIntStart' || $.LA(1).tokenType.name === 'ColorIdentStart',
+      ALT: () => {
+        const token = $.CONSUME($.LA(1).tokenType as any);
+        if (!$.RECORDING_PHASE) {
+          return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+        }
+      }
+    },
+    {
       ALT: () => {
         return $.SUBRULE($.customBlock, { ARGS: [ctx] });
       }
@@ -119,6 +130,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
     {
       ALT: () => {
         const token = $.OR3([
+          { ALT: () => $.CONSUME(T.Color) },
           { ALT: () => $.CONSUME(T.Value) },
           { ALT: () => $.CONSUME(T.CustomProperty) },
           { ALT: () => $.CONSUME(T.Colon) },
@@ -135,6 +147,10 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
   ];
 
   return (ctx: RuleContext = {}) => {
+    if (!$.RECORDING_PHASE && ($.LA(1).tokenType.name === 'ColorIntStart' || $.LA(1).tokenType.name === 'ColorIdentStart')) {
+      const token = $.CONSUME($.LA(1).tokenType as any);
+      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+    }
     return $.OR(alt(ctx));
   };
 }
@@ -147,9 +163,10 @@ export function innerCustomValue(this: C, T: TokenMap, alt?: AltContext) {
       ALT: () => {
         /** Can also have semi-colons */
         let semi = $.CONSUME(T.Semi);
-        if (!$.RECORDING_PHASE) {
-          return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), this.context));
+        if ($.RECORDING_PHASE) {
+          return;
         }
+        return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), this.context));
       }
     },
     { ALT: () => $.SUBRULE($.customValue, { ARGS: [ctx] }) }
@@ -180,12 +197,13 @@ export function extraTokens(this: C, T: TokenMap, alt?: AltContext) {
 
   return (ctx: RuleContext = {}) => {
     let node: Node = $.OR(alt(ctx));
-    if (!$.RECORDING_PHASE) {
-      if (!(node instanceof Node)) {
-        node = $.wrap($.processValueToken(node));
-      }
-      return node;
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    if (!(node instanceof Node)) {
+      node = $.wrap($.processValueToken(node));
+    }
+    return node;
   };
 }
 
@@ -326,13 +344,14 @@ export function valueList(this: C, T: TokenMap) {
       }
     });
 
-    if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      if (nodes!.length === 1) {
-        return nodes![0];
-      }
-      return new List(nodes!, undefined, location, this.context);
+    if (RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    if (nodes!.length === 1) {
+      return nodes![0];
+    }
+    return new List(nodes!, undefined, location, this.context);
   };
 }
 
@@ -357,13 +376,14 @@ export function valueSequence(this: C, T: TokenMap) {
       }
     });
 
-    if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      if (nodes!.length === 1) {
-        return $.wrap(nodes![0]!, true);
-      }
-      return $.wrap(new Sequence(nodes!, undefined, location, this.context), true);
+    if (RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    if (nodes!.length === 1) {
+      return $.wrap(nodes![0]!, true);
+    }
+    return $.wrap(new Sequence(nodes!, undefined, location, this.context), true);
   };
 }
 
@@ -375,11 +395,12 @@ export function squareValue(this: C, T: TokenMap) {
     $.CONSUME(T.LSquare);
     let ident = $.CONSUME(T.Ident);
     $.CONSUME(T.RSquare);
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      let identNode = new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context);
-      return new Block(identNode, { type: 'square' }, location, this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    let identNode = new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context);
+    return new Block(identNode, { type: 'square' }, location, this.context);
   };
 }
 
@@ -434,16 +455,17 @@ export function value(this: C, T: TokenMap, valueAlt?: AltContext) {
       $.CONSUME(T.Slash);
       additionalValue = $.SUBRULE($.value, { ARGS: [ctx] });
     });
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      if (!(node instanceof Node)) {
-        node = $.processValueToken(node);
-      }
-      if (additionalValue) {
-        return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, this.context));
-      }
-      return $.wrap(node);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    if (!(node instanceof Node)) {
+      node = $.processValueToken(node);
+    }
+    if (additionalValue) {
+      return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, this.context));
+    }
+    return $.wrap(node);
   };
 }
 
@@ -458,16 +480,17 @@ export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
         let contents: IToken | undefined;
         $.OPTION2(() => contents = $.CONSUME(T.SingleQuoteStringContents));
         $.CONSUME(T.SingleQuoteEnd);
-        if (!$.RECORDING_PHASE) {
-          let location = $.endRule();
-          const escaped = quote.image.startsWith('~');
-          const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
-          let value = contents?.image ?? '';
-          if (escaped) {
-            value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
-          }
-          return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
+        if ($.RECORDING_PHASE) {
+          return;
         }
+        let location = $.endRule();
+        const escaped = quote.image.startsWith('~');
+        const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
+        let value = contents?.image ?? '';
+        if (escaped) {
+          value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
+        }
+        return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
       }
     },
     {
@@ -477,16 +500,17 @@ export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
         let contents: IToken | undefined;
         $.OPTION3(() => contents = $.CONSUME(T.DoubleQuoteStringContents));
         $.CONSUME(T.DoubleQuoteEnd);
-        if (!$.RECORDING_PHASE) {
-          let location = $.endRule();
-          const escaped = quote.image.startsWith('~');
-          const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
-          let value = contents?.image ?? '';
-          if (escaped) {
-            value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
-          }
-          return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
+        if ($.RECORDING_PHASE) {
+          return;
         }
+        let location = $.endRule();
+        const escaped = quote.image.startsWith('~');
+        const quoteChar = quote.image.replace(/^~/, '') as '"' | '\'';
+        let value = contents?.image ?? '';
+        if (escaped) {
+          value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
+        }
+        return new Quoted(new Any(value, { role: 'any' }), { quote: quoteChar, escaped }, location, this.context);
       }
     }
   ];
@@ -506,23 +530,46 @@ export function mathSum(this: C, T: TokenMap) {
   //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
   //   ;
   return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
+    if ($.RECORDING_PHASE) {
+      $.MANY2(() => $.CONSUME(T.WS));
+      $.SUBRULE($.mathProduct, { ARGS: [ctx] });
+      $.MANY(() => {
+        $.MANY3(() => $.CONSUME2(T.WS));
+        $.OR(opAlt);
+        $.MANY4(() => $.CONSUME3(T.WS));
+        $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
+      });
+      $.MANY5(() => $.CONSUME4(T.WS));
+      return;
+    }
+
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME(T.WS);
+    }
 
     let left: Node = $.SUBRULE($.mathProduct, { ARGS: [ctx] });
 
-    $.MANY(() => {
-      let op = $.OR(opAlt);
-      let right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
-
-      if (!RECORDING_PHASE) {
-        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    while (true) {
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME2(T.WS);
       }
-    });
-    if (!RECORDING_PHASE) {
-      left._location = $.endRule();
-      return left;
+      const tt = $.LA(1).tokenType;
+      if (tt !== T.Plus && tt !== T.Minus) {
+        break;
+      }
+      const op = $.CONSUME(tt as any);
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME3(T.WS);
+      }
+      const right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
+      left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
     }
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME4(T.WS);
+    }
+    left._location = $.endRule();
+    return left;
   };
 }
 
@@ -538,24 +585,46 @@ export function mathProduct(this: C, T: TokenMap) {
   ];
 
   return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
+    if ($.RECORDING_PHASE) {
+      $.MANY2(() => $.CONSUME(T.WS));
+      $.SUBRULE($.mathValue, { ARGS: [ctx] });
+      $.MANY(() => {
+        $.MANY3(() => $.CONSUME2(T.WS));
+        $.OR(opAlt);
+        $.MANY4(() => $.CONSUME3(T.WS));
+        $.SUBRULE2($.mathValue, { ARGS: [ctx] });
+      });
+      $.MANY5(() => $.CONSUME4(T.WS));
+      return;
+    }
+
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME(T.WS);
+    }
 
     let left: Node = $.SUBRULE($.mathValue, { ARGS: [ctx] });
 
-    $.MANY(() => {
-      let op = $.OR(opAlt);
-      let right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
-
-      if (!RECORDING_PHASE) {
-        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
+    while (true) {
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME2(T.WS);
       }
-    });
-
-    if (!RECORDING_PHASE) {
-      left._location = $.endRule();
-      return left;
+      const tt = $.LA(1).tokenType;
+      if (tt !== T.Star && tt !== T.Divide) {
+        break;
+      }
+      const op = $.CONSUME(tt as any);
+      while ($.LA(1).tokenType === T.WS) {
+        $.CONSUME3(T.WS);
+      }
+      let right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
+      left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
     }
+    while ($.LA(1).tokenType === T.WS) {
+      $.CONSUME4(T.WS);
+    }
+    left._location = $.endRule();
+    return left;
   };
 }
 
@@ -585,12 +654,13 @@ export function mathValue(this: C, T: TokenMap, alt?: AltContext) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let node: Node = $.OR(alt(ctx));
-    if (!RECORDING_PHASE) {
-      if (!(node instanceof Node)) {
-        node = $.processValueToken(node);
-      }
-      return $.wrap(node, 'both');
+    if (RECORDING_PHASE) {
+      return;
     }
+    if (!(node instanceof Node)) {
+      node = $.processValueToken(node);
+    }
+    return $.wrap(node, 'both');
   };
 }
 
@@ -600,12 +670,15 @@ export function mathParen(this: C, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     $.CONSUME(T.LParen);
+    $.MANY(() => $.CONSUME(T.WS));
     let node = $.SUBRULE($.mathSum, { ARGS: [ctx] });
+    $.MANY2(() => $.CONSUME2(T.WS));
     $.CONSUME(T.RParen);
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      return new Paren(node, undefined, location, this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    return new Paren(node, undefined, location, this.context);
   };
 }
 
@@ -651,13 +724,14 @@ export function ifFunctionArgs(this: C, T: TokenMap) {
       }
     });
     $.OPTION(() => $.CONSUME2(T.Semi));
-    if (!RECORDING_PHASE) {
-      const location = $.endRule();
-      if (branches!.length === 1) {
-        return branches![0]!;
-      }
-      return new List(branches!, { sep: ';' }, location, this.context);
+    if (RECORDING_PHASE) {
+      return;
     }
+    const location = $.endRule();
+    if (branches!.length === 1) {
+      return branches![0]!;
+    }
+    return new List(branches!, { sep: ';' }, location, this.context);
   };
 }
 
@@ -692,23 +766,24 @@ export function varFunction(this: C, T: TokenMap) {
     });
     $.CONSUME(T.RParen);
 
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      let propNode = $.wrap(new Any(prop.image, { role: 'customprop' }, $.getLocationInfo(prop), this.context), 'both');
-      if (!args) {
-        args = new List([propNode], undefined, $.getLocationInfo(prop), this.context);
-      } else {
-        let { startOffset, startLine, startColumn } = prop;
-        args.value.unshift(propNode);
-        args.location[0] = startOffset;
-        args.location[1] = startLine!;
-        args.location[2] = startColumn!;
-      }
-      return new Call({
-        name: 'var',
-        args
-      }, undefined, location, this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    let propNode = $.wrap(new Any(prop.image, { role: 'customprop' }, $.getLocationInfo(prop), this.context), 'both');
+    if (!args) {
+      args = new List([propNode], undefined, $.getLocationInfo(prop), this.context);
+    } else {
+      let { startOffset, startLine, startColumn } = prop;
+      args.value.unshift(propNode);
+      args.location[0] = startOffset;
+      args.location[1] = startLine!;
+      args.location[2] = startColumn!;
+    }
+    return new Call({
+      name: 'var',
+      args
+    }, undefined, location, this.context);
   };
 }
 
@@ -719,16 +794,18 @@ export function calcFunction(this: C, T: TokenMap) {
     $.startRule();
 
     $.CONSUME(T.Calc);
+    $.MANY(() => $.CONSUME(T.WS));
     let args = $.SUBRULE($.mathSum, { ARGS: [ctx] });
+    $.MANY2(() => $.CONSUME2(T.WS));
     $.CONSUME2(T.RParen);
-
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      return new Call({
-        name: 'calc',
-        args: new List([args])
-      }, undefined, location, this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    return new Call({
+      name: 'calc',
+      args: new List([args])
+    }, undefined, location, this.context);
   };
 }
 
@@ -746,14 +823,14 @@ export function urlFunction(this: C, T: TokenMap, alt?: AltContext) {
     $.CONSUME(T.UrlStart);
     let node: Any | IToken = $.OR(alt(ctx));
     $.CONSUME(T.UrlEnd);
-
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      if (!(node instanceof Node)) {
-        /** Whitespace should be included in the NonQuotedUrl */
-        node = new Any(node.image, { role: 'urlvalue' }, $.getLocationInfo(node), this.context);
-      }
-      return new Url(node, undefined, location, this.context);
+    if ($.RECORDING_PHASE) {
+      return;
     }
+    let location = $.endRule();
+    if (!(node instanceof Node)) {
+      /** Whitespace should be included in the NonQuotedUrl */
+      node = new Any(node.image, { role: 'urlvalue' }, $.getLocationInfo(node), this.context);
+    }
+    return new Url(node, undefined, location, this.context);
   };
 }

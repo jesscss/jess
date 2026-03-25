@@ -1,4 +1,4 @@
-import { List, Dimension, Context, Num, Quoted, Bool } from '@jesscss/core';
+import { Any, List, Dimension, Context, Num, Quoted, Bool, Paren } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 import length from '../list/length.js';
 import nth from '../list/nth.js';
@@ -29,10 +29,15 @@ describe('Sass list functions', () => {
       expect((result as Dimension).data.number).toBe(0);
     });
 
-    it('works with object parameters', () => {
+    it('works with direct list arguments', () => {
       const list = new List([new Num(1), new Num(2)]);
-      const result = length({ list });
+      const result = length(list);
       expect((result as Dimension).data.number).toBe(2);
+    });
+
+    it('treats a scalar as a list of one item', () => {
+      const result = length(new Any('solo'));
+      expect((result as Dimension).data.number).toBe(1);
     });
   });
 
@@ -79,6 +84,11 @@ describe('Sass list functions', () => {
       const result = nth({ list, n });
       expect((result as Num).valueOf()).toBe(10);
     });
+
+    it('accepts a bracketed paren-wrapped list', () => {
+      const result = nth(new Paren(new List([new Num(10), new Num(20)]), { delimiter: 'square' }), new Dimension({ number: 2 }));
+      expect((result as Num).valueOf()).toBe(20);
+    });
   });
 
   describe('index()', () => {
@@ -119,6 +129,12 @@ describe('Sass list functions', () => {
       const result = index({ list, value });
       expect((result as Dimension).data.number).toBe(2);
     });
+
+    it('treats a scalar as a list of one item', () => {
+      const value = new Any('solo');
+      const result = index(value, new Any('solo'));
+      expect((result as Dimension).data.number).toBe(1);
+    });
   });
 
   describe('separator()', () => {
@@ -155,10 +171,31 @@ describe('Sass list functions', () => {
       const result = separator({ list });
       expect((result as Quoted).valueOf()).toBe('comma');
     });
+
+    it('returns "space" for scalar inputs', () => {
+      const result = separator(new Any('solo'));
+      expect((result as Quoted).valueOf()).toBe('space');
+    });
   });
 
   describe('is-bracketed()', () => {
-    it('returns false (placeholder implementation)', () => {
+    it('returns true for a list wrapped in square delimiters', () => {
+      const list = new List([new Num(1), new Num(2)]);
+      new Paren(list, { delimiter: 'square' });
+      const result = isBracketed(list);
+      expect(result).toBeInstanceOf(Bool);
+      expect((result as Bool).data).toBe(true);
+    });
+
+    it('returns false for a list wrapped in ordinary parens', () => {
+      const list = new List([new Num(1), new Num(2)]);
+      new Paren(list, { delimiter: 'paren' });
+      const result = isBracketed(list);
+      expect(result).toBeInstanceOf(Bool);
+      expect((result as Bool).data).toBe(false);
+    });
+
+    it('returns false for an unwrapped list', () => {
       const list = new List([new Num(1), new Num(2)]);
       const result = isBracketed(list);
       expect(result).toBeInstanceOf(Bool);
@@ -167,9 +204,15 @@ describe('Sass list functions', () => {
 
     it('works with object parameters', () => {
       const list = new List([new Num(1)]);
+      new Paren(list, { delimiter: 'square' });
       const result = isBracketed({ list });
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).data).toBe(false);
+      expect((result as Bool).data).toBe(true);
+    });
+
+    it('returns true when called with the bracketed paren directly', () => {
+      const result = isBracketed(new Paren(new List([new Num(1)]), { delimiter: 'square' }));
+      expect((result as Bool).data).toBe(true);
     });
   });
 });

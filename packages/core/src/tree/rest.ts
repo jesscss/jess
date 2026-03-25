@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType, Node, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
+import { defineType, Node, type OptionalLocation, type TreeContext, type NodeOptions } from './node.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { sessionGetField } from './util/session-helpers.js';
@@ -18,7 +18,7 @@ export class Rest extends Node<Node | string | undefined> {
 
   value: Node | string | undefined;
 
-  constructor(value?: Node | string, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value?: Node | string, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     if (this.value instanceof Node) {

@@ -1,17 +1,21 @@
 export {
-  stylesheet, main, declarationList, declaration, mediaQuery, mediaInParens,
+  stylesheet, main, declarationList, declaration, mediaQuery, mediaCondition,
+  mediaConditionWithoutOr, lessMediaQueryFromString, lessMediaQueryFromReference,
+  lessMediaQueryTail, supportsAtRule, lessSupportsCondition, lessSupportsInParens,
+  mediaInParens, supportsInParens,
   mediaFeature, containerInParens, mfValue, mfNonIdentifierValue, wrappedDeclarationList,
   qualifiedRuleBody, qualifiedRule, mixinOrQualifiedRule
 } from './root.js';
 
 export {
-  relativeSelector, compoundSelector, complexSelector, ampersandExtend,
+  relativeSelector, forgivingSelectorList, selectorList, compoundSelector, complexSelector, ampersandExtend,
   extend, simpleSelector, anonymousMixinDefinition, importAtRule,
   varDeclarationOrCall, selectorCapture, valueSequence, squareValue
 } from './selectors.js';
 
 export {
   expressionSum, expressionProduct, expressionValue, nthValue, knownFunctions,
+  customValue, innerCustomValue, customBlock, mathProduct, mathSum,
   calcFunction, ifFunction, booleanFunction, varReference, valueReference,
   functionCall, functionCallArgs, value, string, mathValue
 } from './values.js';

@@ -30,6 +30,7 @@
     "dev": "pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json -w",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
+    "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts test/sass-spec.smoke.test.ts",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
@@ -37,7 +38,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser": "workspace:*",
-    "chevrotain": "^12.0.0"
+    "chevrotain": "npm:@jesscss/chevrotain@12.0.0-jesscss.0"
   },
   "devDependencies": {
     "sass-spec": "github:sass/sass-spec"

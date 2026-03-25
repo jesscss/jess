@@ -235,6 +235,56 @@ describe('AtRule', () => {
     });
   });
 
+  describe('root-only at-rules', () => {
+    it('hoists nested @property rules to the stylesheet root', async () => {
+      context = new Context({ bubbleRootAtRules: true });
+
+      const node = rules([
+        ruleset({
+          selector: sel([el('.card')]) as any,
+          rules: rules([
+            atrule({
+              name: any('@property', { role: 'atkeyword' }),
+              prelude: any('--accent', { role: 'ident' }),
+              rules: rules([
+                decl({
+                  name: 'syntax',
+                  value: quoted(any('<color>', { role: 'any' }))
+                }),
+                decl({
+                  name: 'inherits',
+                  value: any('false', { role: 'keyword' })
+                }),
+                decl({
+                  name: 'initial-value',
+                  value: any('rebeccapurple', { role: 'keyword' })
+                })
+              ])
+            }),
+            decl({
+              name: 'color',
+              value: any('var(--accent)', { role: 'any' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        @property --accent {
+          syntax: "<color>";
+          inherits: false;
+          initial-value: rebeccapurple;
+        }
+        .card {
+          color: var(--accent);
+        }
+      `);
+    });
+  });
+
   describe('@media with mixins and parameters', () => {
     it('should handle mixin with nested @media using parameter', async () => {
       // Represents:

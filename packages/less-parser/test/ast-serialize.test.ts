@@ -17,6 +17,12 @@ const parser = {
 };
 
 describe('serializeTypes coverage', () => {
+  test('paren list value parses', () => {
+    const { errors, tree } = parser.parse('.a { grid: ((1, 2), (3, 4)); }');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toContain('(Paren');
+  });
+
   test('charset', () => {
     const { errors, tree } = parser.parse('@charset "UTF-8";');
     expect(errors.length).toBe(0);

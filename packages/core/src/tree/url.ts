@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, type NodeOptions, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type Any } from './any.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
@@ -21,7 +21,7 @@ export class Url extends Node<Quoted | Any> {
 
   value!: Quoted | Any;
 
-  constructor(value: Quoted | Any, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.value = value;
     if (value instanceof Node) {

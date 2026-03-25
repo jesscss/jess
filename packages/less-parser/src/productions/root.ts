@@ -38,6 +38,7 @@ import {
   Condition,
   VarDeclaration,
   Declaration,
+  CustomDeclaration,
   DefaultGuard,
   Rest,
   StyleImport,
@@ -72,7 +73,6 @@ type AltContext = (ctx?: RuleContext) => Alt;
 const cssMain = cssProductions.main;
 const cssDeclaration = cssProductions.declaration;
 const cssMediaTypeQuery = cssProductions.mediaTypeQuery;
-const cssMediaInParens = cssProductions.mediaInParens;
 
 // ── Helper functions ──────────────────────────────────────────────────
 
@@ -191,16 +191,24 @@ export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContex
 
 function isEscapedString($: P, T: TokenMap): boolean {
   const next = $.LA(1);
-  return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~');
+  return (
+    next.image.startsWith('~')
+    && (
+      tokenMatcher(next, T.QuoteStart)
+      || tokenMatcher(next, T.DoubleQuoteStart)
+      || tokenMatcher(next, T.SingleQuoteStart)
+    )
+  );
 }
 
-function startsBareMediaQueryValue($: P, T: TokenMap): boolean {
+function startsLessMediaQueryReference($: P, T: TokenMap): boolean {
   if (
     $.isType(T.AtName)
     || $.isType(T.PropertyReference)
     || $.isType(T.NestedReference)
     || $.isType(T.DotName)
     || $.isType(T.HashName)
+    || $.isType(T.InterpolatedIdent)
     || $.isType(T.InterpolatedSelector)
   ) {
     return true;
@@ -225,6 +233,29 @@ function startsBareMediaQueryValue($: P, T: TokenMap): boolean {
       )
     )
   );
+}
+
+function startsCustomValue($: P, T: TokenMap): boolean {
+  return $.isType(T.LParen)
+    || $.isType(T.FunctionStart)
+    || $.isType(T.FunctionalPseudoClass)
+    || $.isType(T.LSquare)
+    || $.isType(T.LCurly)
+    || $.isType(T.SingleQuoteStart)
+    || $.isType(T.DoubleQuoteStart)
+    || $.isType(T.Value)
+    || $.isType(T.PlainIdent)
+    || $.isType(T.AtKeyword)
+    || $.isType(T.PropertyReference)
+    || $.isType(T.CustomProperty)
+    || $.isType(T.Dimension)
+    || $.isType(T.Number)
+    || $.isType(T.Color)
+    || $.isType(T.UnicodeRange)
+    || $.isType(T.Colon)
+    || $.isType(T.Comma)
+    || $.isType(T.Important)
+    || $.isType(T.Unknown);
 }
 
 function isVariableLike($: P, T: TokenMap): boolean {
@@ -392,6 +423,7 @@ export function main(this: P, T: TokenMap) {
         tt3 === T.Colon
         || tt3 === T.NthPseudoClass
         || tt3 === T.SelectorPseudoClass
+        || tokenMatcher($.LA(3), T.FunctionStart)
       ) {
         return true;
       }
@@ -404,9 +436,12 @@ export function main(this: P, T: TokenMap) {
       const next = $.LA(1).tokenType;
       return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
     };
+    const isCustomPropertyStart = () =>
+      $.isType(T.InterpolatedCustomProperty) || $.isType(T.CustomProperty);
     const isAtRuleStart = () => tokenMatcher($.LA(1), T.AtName);
     const shouldTryQualifiedRule = () =>
-      !isMixinOrQualifiedStart()
+      !isCustomPropertyStart()
+      && !isMixinOrQualifiedStart()
       && !isAtRuleStart()
       && shouldTryQualifiedRuleInDeclarationList();
 
@@ -426,6 +461,10 @@ export function main(this: P, T: TokenMap) {
         {
           GATE: () => !isVariable && isAtRuleStart(),
           ALT: () => $.SUBRULE5($.atRule, { ARGS: [ctx] })
+        },
+        {
+          GATE: isCustomPropertyStart,
+          ALT: () => $.SUBRULE7($.declaration, { ARGS: [ctx] })
         },
         {
           GATE: shouldTryQualifiedRule,
@@ -504,18 +543,19 @@ export function main(this: P, T: TokenMap) {
       }
     });
 
-    if (!RECORDING_PHASE) {
-      // Process any extendNodes that were set (e.g., by ampersandExtend at root level)
-      if (ctx.extendNodes && ctx.extendNodes!.length > 0) {
-        // Filter out Nil nodes (returned by ampersandExtend to avoid duplication)
-        const filteredRules = rules!.filter(r => !(r instanceof Nil));
-        rules = [...ctx.extendNodes!, ...filteredRules];
-        ctx.extendNodes = undefined;
-      }
-      let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
-      // Attaches remaining whitespace at the end of rules
-      return $.wrap(returnNode!, true);
+    if (RECORDING_PHASE) {
+      return;
     }
+    // Process any extendNodes that were set (e.g., by ampersandExtend at root level)
+    if (ctx.extendNodes && ctx.extendNodes!.length > 0) {
+      // Filter out Nil nodes (returned by ampersandExtend to avoid duplication)
+      const filteredRules = rules!.filter(r => !(r instanceof Nil));
+      rules = [...ctx.extendNodes!, ...filteredRules];
+      ctx.extendNodes = undefined;
+    }
+    let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
+    // Attaches remaining whitespace at the end of rules
+    return $.wrap(returnNode!, true);
   };
 }
 
@@ -552,6 +592,7 @@ export function declarationList(this: P, T: TokenMap) {
         tt3 === T.Colon
         || tt3 === T.NthPseudoClass
         || tt3 === T.SelectorPseudoClass
+        || tokenMatcher($.LA(3), T.FunctionStart)
       ) {
         return true;
       }
@@ -564,14 +605,17 @@ export function declarationList(this: P, T: TokenMap) {
       const next = $.LA(1).tokenType;
       return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
     };
+    const isCustomPropertyStart = () =>
+      $.isType(T.InterpolatedCustomProperty) || $.isType(T.CustomProperty);
     const isAtRuleStart = () => tokenMatcher($.LA(1), T.AtName);
     const shouldTryQualifiedRule = () =>
-      !isMixinOrQualifiedStart()
+      !isCustomPropertyStart()
+      && !isMixinOrQualifiedStart()
       && !isAtRuleStart()
       && shouldTryQualifiedRuleInDeclarationList();
 
-    let ruleAlt = (ctx: RuleContext = {}): Alt => {
-      let isVariable = isVariableLike($, T);
+    const ruleAlt = (ctx: RuleContext = {}): Alt => {
+      const isVariable = isVariableLike($, T);
       return [
         {
           GATE: isMixinOrQualifiedStart,
@@ -589,15 +633,18 @@ export function declarationList(this: P, T: TokenMap) {
         },
         { ALT: () => $.SUBRULE4($.ampersandExtend, { ARGS: [ctx] }) },
         {
+          GATE: () => $.check(T.FunctionStart),
           ALT: () => {
             const fnCall = $.SUBRULE5($.functionCall, { ARGS: [ctx] });
             if (fnCall instanceof Call) {
-              // Less allows function calls like `each(...){...}` in declaration lists
-              // without a required trailing semicolon.
               fnCall.requiredSemi = false;
             }
             return fnCall;
           }
+        },
+        {
+          GATE: isCustomPropertyStart,
+          ALT: () => $.SUBRULE8($.declaration, { ARGS: [ctx] })
         },
         {
           GATE: shouldTryQualifiedRule,
@@ -621,7 +668,41 @@ export function declarationList(this: P, T: TokenMap) {
 export function declaration(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    let ruleAlt = (ctx: RuleContext = {}): Alt => [
+    const customPropertyAlt = (consumeName: () => IToken, occurrence: 2 | 3) => ({
+      ALT: () => {
+        let nodes: Node[] | undefined;
+        if (!$.RECORDING_PHASE) {
+          nodes = [];
+        }
+        const name = consumeName();
+        const assign = occurrence === 2
+          ? $.CONSUME2(T.Assign)
+          : $.CONSUME3(T.Assign);
+        $.startRule();
+        while (startsCustomValue($, T)) {
+          const val = occurrence === 2
+            ? $.SUBRULE2($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] })
+            : $.SUBRULE3($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
+          if (!$.RECORDING_PHASE) {
+            nodes!.push(val);
+          }
+        }
+        if (!$.RECORDING_PHASE) {
+          const location = $.endRule();
+          let nameNode: Node;
+          const nameValue = name.image;
+          if (nameValue.includes('@') || nameValue.includes('$')) {
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), $.context);
+          } else {
+            nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+          }
+          const value = new Sequence(nodes!, undefined, location, $.context);
+          return [nameNode, assign, value];
+        }
+      }
+    });
+
+    const ruleAlt = (ctx: RuleContext = {}): Alt => [
       {
         ALT: () => {
           let name: IToken;
@@ -636,7 +717,7 @@ export function declaration(this: P, T: TokenMap) {
               ALT: () => name = $.CONSUME(T.LegacyPropIdent)
             }
           ]);
-          let assign = $.CONSUME(T.Assign);
+          const assign = $.CONSUME(T.Assign);
           let value: Node | undefined;
           if ($.looseMode) {
             $.OPTION2({
@@ -658,7 +739,7 @@ export function declaration(this: P, T: TokenMap) {
           });
           if (!$.RECORDING_PHASE) {
             let nameNode: Node;
-            let nameValue = name!.image;
+            const nameValue = name!.image;
             if (nameValue.includes('@') || nameValue.includes('$')) {
               nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), $.context);
             } else {
@@ -668,38 +749,8 @@ export function declaration(this: P, T: TokenMap) {
           }
         }
       },
-      {
-        ALT: () => {
-          let nodes: Node[];
-          if (!$.RECORDING_PHASE) {
-            nodes = [];
-          }
-          let name = $.OR3([
-            { ALT: () => $.CONSUME(T.InterpolatedCustomProperty) },
-            { ALT: () => $.CONSUME(T.CustomProperty) }
-          ]);
-          let assign = $.CONSUME2(T.Assign);
-          $.startRule();
-          $.MANY(() => {
-            let val = $.SUBRULE2($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
-            if (!$.RECORDING_PHASE) {
-              nodes!.push(val);
-            }
-          });
-          if (!$.RECORDING_PHASE) {
-            let location = $.endRule();
-            let nameNode: Node;
-            let nameValue = name.image;
-            if (nameValue.includes('@') || nameValue.includes('$')) {
-              nameNode = getInterpolated(nameValue, $.getLocationInfo(name), $.context);
-            } else {
-              nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
-            }
-            let value = new Sequence(nodes!, undefined, location, $.context);
-            return [nameNode, assign, value];
-          }
-        }
-      }
+      customPropertyAlt(() => $.CONSUME(T.InterpolatedCustomProperty), 2),
+      customPropertyAlt(() => $.CONSUME(T.CustomProperty), 3)
     ];
 
     return cssDeclaration.call($, T, ruleAlt)(ctx);
@@ -709,29 +760,48 @@ export function declaration(this: P, T: TokenMap) {
 export function mediaInParens(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    return $.OR([
-      /**
-       * It's up to the Less author to validate that this will produce
-       * valid media queries.
-       */
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.LParen);
+
+    const node = $.OR([
       {
-        /** Allow escaped strings */
+        GATE: () => $.startsMediaCondition(T),
+        ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] })
+      },
+      {
         GATE: () => isEscapedString($, T),
         ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
       },
-      /**
-       * After Less evaluation, should throw an error
-       * if the value of `@myvar` is a ruleset
-       */
       {
-        ALT: () => {
-          return $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
-        }
+        /**
+         * Less allows media/container conditions to be supplied by variables or
+         * namespaced references, but only when the inner token stream actually
+         * starts like a Less reference, not a plain CSS media feature.
+         */
+        GATE: () => (
+          $.isType(T.PropertyReference)
+          || $.isType(T.NestedReference)
+          || $.isType(T.AtName)
+          || $.isType(T.HashName)
+          || $.isType(T.DotName)
+          || $.isType(T.ColorIdentStart)
+          || $.isType(T.InterpolatedSelector)
+        ),
+        ALT: () => $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
       },
       {
-        ALT: () => cssMediaInParens.call($, T)(ctx)
+        ALT: () => $.SUBRULE($.mediaFeature, { ARGS: [ctx] })
       }
     ]);
+
+    $.CONSUME(T.RParen);
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    const location = $.endRule();
+    return $.wrap(new Paren($.wrap(node, 'both'), undefined, location, $.context));
   };
 }
 
@@ -741,75 +811,323 @@ export function mediaQuery(this: P, T: TokenMap) {
     return $.OR2([
       {
         GATE: () => $.startsMediaCondition(T),
-        ALT: () => $.SUBRULE($.mediaCondition, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [ctx] })
       },
       {
-        GATE: () => isEscapedString($, T) || startsBareMediaQueryValue($, T),
-        ALT: () => {
-          const RECORDING_PHASE = $.RECORDING_PHASE;
-          $.startRule();
-          let nodes: Node[] | undefined;
-          if (!RECORDING_PHASE) {
-            nodes = [];
-          }
-
-          const first = $.OR3([
-            {
-              GATE: () => isEscapedString($, T),
-              ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
-            },
-            {
-              ALT: () => $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
-            }
-          ]);
-
-          if (!RECORDING_PHASE) {
-            nodes!.push(first);
-          }
-
-          $.MANY({
-            GATE: () => $.isType(T.And),
-            DEF: () => {
-              const andToken = $.CONSUME(T.And);
-              const next = $.OR4([
-                {
-                  GATE: () => isEscapedString($, T),
-                  ALT: () => $.SUBRULE3($.string, { ARGS: [ctx] })
-                },
-                {
-                  GATE: () => startsBareMediaQueryValue($, T),
-                  ALT: () => $.SUBRULE4($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
-                },
-                {
-                  GATE: () => $.startsMediaCondition(T),
-                  ALT: () => $.SUBRULE5($.mediaConditionWithoutOr, { ARGS: [ctx] })
-                },
-                {
-                  ALT: () => $.SUBRULE6($.mediaType, { ARGS: [ctx] })
-                }
-              ]);
-
-              if (!RECORDING_PHASE) {
-                nodes!.push($.wrap(new Keyword(andToken.image, undefined, $.getLocationInfo(andToken), $.context), 'both'));
-                nodes!.push(next);
-              }
-            }
-          });
-
-          if (!RECORDING_PHASE) {
-            const location = $.endRule();
-            if (nodes!.length === 1) {
-              return nodes![0]!;
-            }
-            return new QueryCondition(nodes!, undefined, location, $.context);
-          }
-        }
+        GATE: () => isEscapedString($, T),
+        ALT: () => $.SUBRULE($.lessMediaQueryFromString, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => startsLessMediaQueryReference($, T),
+        ALT: () => $.SUBRULE2($.lessMediaQueryFromReference, { ARGS: [ctx] })
       },
       {
         ALT: () => $.SUBRULE7($.mediaTypeQuery, { ARGS: [ctx] })
       }
     ]);
   };
+}
+
+export function mediaCondition(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [ctx] });
+}
+
+export function lessMediaQueryFromString(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const first = $.SUBRULE($.string, { ARGS: [ctx] });
+    return $.SUBRULE($.lessMediaQueryTail, { ARGS: [{ ...ctx, startValue: first }] });
+  };
+}
+
+export function lessMediaQueryFromReference(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const first = $.SUBRULE($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
+    return $.SUBRULE2($.lessMediaQueryTail, { ARGS: [{ ...ctx, startValue: first }] });
+  };
+}
+
+export function lessMediaQueryTail(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let nodes: Node[] | undefined;
+    if (!RECORDING_PHASE) {
+      nodes = [ctx.startValue!];
+    }
+
+    $.MANY({
+      GATE: () => $.isType(T.And),
+      DEF: () => {
+        const andToken = $.CONSUME(T.And);
+        const next = $.OR([
+          {
+            GATE: () => isEscapedString($, T),
+            ALT: () => $.SUBRULE2($.string, { ARGS: [ctx] })
+          },
+          {
+            GATE: () => startsLessMediaQueryReference($, T),
+            ALT: () => $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
+          },
+          {
+            GATE: () => $.startsMediaCondition(T),
+            ALT: () => $.SUBRULE2($.mediaConditionWithoutOr, { ARGS: [ctx] })
+          },
+          {
+            ALT: () => $.SUBRULE2($.mediaType, { ARGS: [ctx] })
+          }
+        ]);
+
+        if (!RECORDING_PHASE) {
+          nodes!.push($.wrap(new Keyword(andToken.image, undefined, $.getLocationInfo(andToken), $.context), 'both'));
+          nodes!.push(next);
+        }
+      }
+    });
+
+    if (RECORDING_PHASE) {
+      return;
+    }
+    const location = $.endRule();
+    if (nodes!.length === 1) {
+      return nodes![0]!;
+    }
+    return new QueryCondition(nodes!, undefined, location, $.context);
+  };
+}
+
+export function mediaConditionWithoutOr(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.OR([
+    { ALT: () => $.SUBRULE($.mediaNot, { ARGS: [ctx] }) },
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        let nodes: Node[] | undefined;
+        if (!RECORDING_PHASE) {
+          nodes = [];
+        }
+        const node = $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          nodes!.push(node);
+        }
+        $.MANY({
+          GATE: () => $.isType(T.And),
+          DEF: () => {
+            const rule = $.SUBRULE($.mediaAnd, { ARGS: [ctx] });
+            if (!RECORDING_PHASE) {
+              nodes!.push(...rule);
+            }
+          }
+        });
+        if (RECORDING_PHASE) {
+          return;
+        }
+        if (nodes!.length === 1) {
+          $.endRule();
+          return nodes![0]!;
+        }
+        return new QueryCondition(nodes!, undefined, $.endRule(), $.context);
+      }
+    }
+  ]);
+}
+
+export function supportsAtRule(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    const name = $.CONSUME(T.AtSupports);
+    const prelude = $.SUBRULE($.lessSupportsCondition, { ARGS: [ctx] });
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
+    $.CONSUME(T.RCurly);
+
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    const location = $.endRule();
+    return new AtRule({
+      name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
+      prelude: $.wrap(prelude, 'both'),
+      rules
+    }, { nestable: true }, location, $.context);
+  };
+}
+
+export function lessSupportsCondition(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.OR([
+    {
+      GATE: () => $.isType(T.Not),
+      ALT: () => {
+        $.startRule();
+        const keyword = $.CONSUME(T.Not);
+        const value = $.SUBRULE($.lessSupportsInParens, { ARGS: [ctx] });
+
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        const location = $.endRule();
+        return new QueryCondition([
+          $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
+          value
+        ], undefined, location, $.context);
+      }
+    },
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        let left = $.SUBRULE2($.lessSupportsInParens, { ARGS: [ctx] });
+
+        $.MANY({
+          GATE: () => $.isType(T.And) || $.isType(T.Or),
+          DEF: () => {
+            const keyword = $.OR2([
+              { ALT: () => $.CONSUME(T.And) },
+              { ALT: () => $.CONSUME(T.Or) }
+            ]);
+            const right = $.SUBRULE3($.lessSupportsInParens, { ARGS: [ctx] });
+            if (!RECORDING_PHASE) {
+              const [startOffset, startLine, startColumn] = left.location;
+              const [,,, endOffset, endLine, endColumn] = right.location;
+              left = new QueryCondition([
+                left,
+                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
+                right
+              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
+            }
+          }
+        });
+
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        $.endRule();
+        return left;
+      }
+    }
+  ]);
+}
+
+export function lessSupportsInParens(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.OR([
+    {
+      GATE: () => $.isType(T.Ident) && $.isTypeAt(2, T.LParen),
+      ALT: () => {
+        $.startRule();
+        const name = $.CONSUME(T.Ident);
+        $.CONSUME(T.LParen);
+        const args = $.SUBRULE($.valueList, { ARGS: [ctx] });
+        $.CONSUME2(T.RParen);
+
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        const location = $.endRule();
+        return new Call({ name: name.image, args }, undefined, location, $.context);
+      }
+    },
+    {
+      GATE: () => $.isType(T.LParen),
+      ALT: () => {
+        $.startRule();
+        $.CONSUME3(T.LParen);
+        let value: Node | undefined;
+        $.OPTION({
+          GATE: () => (
+            $.isType(T.Not)
+            || $.isType(T.LParen)
+            || ($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
+          ),
+          DEF: () => {
+            value = $.SUBRULE($.lessSupportsCondition, { ARGS: [ctx] });
+          }
+        });
+        $.OPTION2({
+          GATE: () => (
+            !$.isType(T.Not)
+            && !$.isType(T.LParen)
+            && !($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
+          ),
+          DEF: () => {
+            value = $.SUBRULE($.declaration, { ARGS: [ctx] });
+          }
+        });
+        $.CONSUME4(T.RParen);
+
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        const location = $.endRule();
+        return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, $.context));
+      }
+    }
+  ]);
+}
+
+export function supportsInParens(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => $.OR([
+    {
+      GATE: () => $.isType(T.Ident) && $.isTypeAt(2, T.LParen),
+      ALT: () => {
+        $.startRule();
+        const name = $.CONSUME(T.Ident);
+        $.CONSUME(T.LParen);
+        const args = $.SUBRULE($.valueList, { ARGS: [ctx] });
+        $.CONSUME2(T.RParen);
+
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        const location = $.endRule();
+        return new Call({ name: name.image, args }, undefined, location, $.context);
+      }
+    },
+    {
+      GATE: () => $.isType(T.LParen),
+      ALT: () => {
+        $.startRule();
+        $.CONSUME3(T.LParen);
+        let value: Node | undefined;
+        $.OPTION({
+          GATE: () => (
+            $.isType(T.Not)
+            || $.isType(T.LParen)
+            || ($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
+          ),
+          DEF: () => {
+            value = $.SUBRULE($.supportsCondition, { ARGS: [ctx] });
+          }
+        });
+        $.OPTION2({
+          GATE: () => (
+            !$.isType(T.Not)
+            && !$.isType(T.LParen)
+            && !($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
+          ),
+          DEF: () => {
+            value = $.SUBRULE($.declaration, { ARGS: [ctx] });
+          }
+        });
+        $.CONSUME4(T.RParen);
+
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        const location = $.endRule();
+        return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, $.context));
+      }
+    }
+  ]);
 }
 
 export function containerInParens(this: P, T: TokenMap) {
@@ -1049,76 +1367,76 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
     // After declarationList, check if new extends were added (e.g., by ampersandExtend)
     // If so, merge them with the saved extends; otherwise restore the saved extends
-    const newExtends = ctx.extendNodes as Extend[] | undefined;
-    if (newExtends && newExtends.length) {
+      const newExtends = ctx.extendNodes as Extend[] | undefined;
+      if (newExtends && newExtends.length) {
       // New extends were added during declarationList (e.g., &:extend())
-      if (savedExtendNodes && savedExtendNodes.length > 0) {
+        if (savedExtendNodes && savedExtendNodes.length > 0) {
         // Merge with saved extends
-        ctx.extendNodes = [...savedExtendNodes, ...newExtends];
-      } else {
+          ctx.extendNodes = [...savedExtendNodes, ...newExtends];
+        } else {
         // Keep the new extends
-        ctx.extendNodes = newExtends;
-      }
-    } else {
+          ctx.extendNodes = newExtends;
+        }
+      } else {
       // No new extends, restore saved extends
-      ctx.extendNodes = savedExtendNodes;
-    }
-    let extend = ctx.extendNodes;
-    if (extend?.length) {
+        ctx.extendNodes = savedExtendNodes;
+      }
+      let extend = ctx.extendNodes;
+      if (extend?.length) {
       /** If it's not a selector list, then our only extend does not need to be grouped */
-      if (!isSelectorList) {
+        if (!isSelectorList) {
         /** For extends inside rulesets (not bubbled), selector should be undefined
          * so it defaults to ampersand and resolves to the ruleset's selector */
-        for (let e of extend) {
-          e.selector = undefined;
-        }
-        rules.setData([...extend, ...rules.value]);
-        ctx.extendNodes = undefined;
-      } else {
-        const selectorList = selector as SelectorList;
-        const selectorCount = selectorList.value.length;
-        const extendCount = extend.length;
+          for (let e of extend) {
+            e.selector = undefined;
+          }
+          rules.setData([...extend, ...rules.value]);
+          ctx.extendNodes = undefined;
+        } else {
+          const selectorList = selector as SelectorList;
+          const selectorCount = selectorList.value.length;
+          const extendCount = extend.length;
 
-        // Determine if extends should bubble up:
-        // 1. If any selectors in the list have extends (extendCount < selectorCount)
-        // 2. If all selectors have extends but their "all" flags don't match
-        let shouldBubble = false;
+          // Determine if extends should bubble up:
+          // 1. If any selectors in the list have extends (extendCount < selectorCount)
+          // 2. If all selectors have extends but their "all" flags don't match
+          let shouldBubble = false;
 
-        if (extendCount < selectorCount) {
+          if (extendCount < selectorCount) {
           // Some selectors have extends, some don't - bubble up
-          shouldBubble = true;
-        } else if (extendCount === selectorCount) {
+            shouldBubble = true;
+          } else if (extendCount === selectorCount) {
           // All selectors have extends - check if flags match
-          let finalExtends = groupExtendsByTargetAndFlag(extend);
-          if (finalExtends.length === 1) {
+            let finalExtends = groupExtendsByTargetAndFlag(extend);
+            if (finalExtends.length === 1) {
             // All extends have same target and flag - can be inside ruleset
-            let extendNodes = finalExtends[0]!;
-            let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
-            finalExtend.selector = undefined;
-            rules.setData([finalExtend, ...rules.value]);
-            ctx.extendNodes = undefined;
-          } else {
+              let extendNodes = finalExtends[0]!;
+              let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
+              finalExtend.selector = undefined;
+              rules.setData([finalExtend, ...rules.value]);
+              ctx.extendNodes = undefined;
+            } else {
             // Multiple extend groups (different targets/flags) - bubble up
+              shouldBubble = true;
+            }
+          } else {
+          // extendCount > selectorCount - shouldn't happen, but bubble to be safe
             shouldBubble = true;
           }
-        } else {
-          // extendCount > selectorCount - shouldn't happen, but bubble to be safe
-          shouldBubble = true;
-        }
 
-        if (shouldBubble) {
+          if (shouldBubble) {
           // Keep extends in ctx.extendNodes so they bubble up to qualifiedRule
           // Don't clear ctx.extendNodes - let them bubble
           // The extends will be prepended above the ruleset in qualifiedRule
+          }
         }
       }
-    }
-    let node = new Ruleset({ selector, rules, guard }, undefined, undefined, $.context);
-    let [startOffset, startLine, startColumn] = selector.location!;
-    let { endOffset, endLine, endColumn } = end;
-    node._location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
+      let node = new Ruleset({ selector, rules, guard }, undefined, undefined, $.context);
+      let [startOffset, startLine, startColumn] = selector.location!;
+      let { endOffset, endLine, endColumn } = end;
+      node._location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
 
-    return node;
+      return node;
     }
   };
 }
@@ -1356,7 +1674,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     }
     return $.OR2([
       {
-        GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
+        GATE: () => (isPossibleMixinDefinition || isPossibleMixinCall) && $.isType(T.LParen),
         ALT: () => {
           args = $.SUBRULE3($.mixinArgs, { ARGS: [ctx] });
           let next = $.LA(1).tokenType;
@@ -1421,6 +1739,23 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         }
       },
       {
+        GATE: () => isPossibleMixinCall && $.isType(T.Semi),
+        ALT: () => {
+          // Call terminated by a semi-colon and not parens, deprecated
+          const semi = $.CONSUME(T.Semi);
+          const location = $.endRule();
+          if (!$.RECORDING_PHASE) {
+            // Mixin call without parentheses - deprecated
+            $.warnDeprecation(
+              'Calling a mixin without parentheses is deprecated',
+              semi,
+              'mixin-call-no-parens'
+            );
+            return createMixinCall(location);
+          }
+        }
+      },
+      {
         /** Parse as qualified rule */
         ALT: () => {
           $.endRule();
@@ -1453,23 +1788,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             ctx.extendNodes = undefined;
           }
           return rule;
-        }
-      },
-      {
-        GATE: () => isPossibleMixinCall,
-        ALT: () => {
-          // Call terminated by a semi-colon and not parens, deprecated
-          const semi = $.CONSUME(T.Semi);
-          const location = $.endRule();
-          if (!$.RECORDING_PHASE) {
-            // Mixin call without parentheses - deprecated
-            $.warnDeprecation(
-              'Calling a mixin without parentheses is deprecated',
-              semi,
-              'mixin-call-no-parens'
-            );
-            return createMixinCall(location);
-          }
         }
       }
     ]);
