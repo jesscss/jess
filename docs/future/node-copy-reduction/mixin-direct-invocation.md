@@ -179,12 +179,47 @@ Materialization only happens at the final CSS output boundary — when Jess seri
 3. **Source provenance**: `sourceNode` / `sourceParent` chains are used for diagnostics and deduplication. These need to work correctly under instance roots.
 4. **Nested mixin calls**: A mixin calling another mixin creates nested instance roots. The nesting needs to compose correctly.
 
+## Experimental Findings (2026-03-25)
+
+### Infrastructure landed (stable, committed)
+
+- `_setChildAt` / `_setChildren` route through `ctx.instanceRoot` children overlay
+- `adopt()` routes through `ctx.instanceRoot`
+- `_isEvaluated` / `_setEvaluated` / `_isPreEvaluated` / `_setPreEvaluated` check instance roots
+- `node._instanceRoot` with `resolveInstanceRoot` in all session helpers
+- `evalMixinDirect` for direct dispatch (bypasses function wrapper)
+- Instance roots associated with mixin output
+
+### What was tried and why it fails
+
+**Attempt 1**: `cloneLookupSafeShallowWrapper` for mixin body → 3 regressions because eval writes values onto shared children (at-rule media values leak between calls).
+
+**Attempt 2**: `cloneLookupSafeShallowWrapper` + IR-aware `_setChildAt` → infinite loop because `push()`, `splice()`, `unshift()` and the Rules constructor all access `this.value` directly, bypassing IR.
+
+**Attempt 3**: IR-aware `_setChildAt` + IR-aware `push()` → still hangs because the Rules constructor at line 487 calls `this.adopt(child)` on ALL passed children, setting their `.parent` to the new clone and corrupting canonical parent chains.
+
+**Attempt 4**: `clone(false)` for mixin body → hangs for the same reason (constructor adopts all children).
+
+### Root cause
+
+`Rules.clone(false)` and `Rules.constructor` always call `this.adopt(child)` on every child in the value array. This sets `child.parent = newRules` unconditionally. When children are shared with the canonical tree, this corrupts canonical parent chains.
+
+### The fix needed
+
+A new clone mode that:
+1. Creates a fresh Rules with a COPY of the value array (`[...this.value]`)
+2. Does NOT adopt children (leaves their `.parent` unchanged)
+3. Uses session/IR to set the clone as the parent in the overlay
+4. Skips registry population (registries will be populated lazily during eval)
+
+This is essentially a `Rules.createShallowBodyWrapper(ctx)` method — similar to `cloneLookupSafeShallowWrapper` but it copies the children array (O(N) for the array, not O(N²) for deep tree clone) and doesn't re-adopt.
+
 ## Entry Points for Implementation
 
-1. Start by extracting the candidate matching + param binding logic from `returnFunc` into a standalone function
-2. Wire that function to be callable from `Call.evalNode` directly
-3. Replace the clone steps with instance root creation
-4. Replace param `setData` with instance root `patchField`
-5. Replace `evaluateCandidateOutput`'s clone-eval with instance-root-eval + materialize
-6. Remove the `getFunctionFromMixins` wrapper
+1. ✅ Extract dispatch to `evalMixinDirect` (done)
+2. Create `Rules.createShallowBodyWrapper(ctx)` that copies value array without adopting
+3. Replace `rules.clone(true, undefined, thisContext)` with `createShallowBodyWrapper`
+4. Set `ctx.instanceRoot` during eval, restore after
+5. Replace param `setData` with instance root `patchField`
+6. Remove the `getFunctionFromMixins` wrapper (inline into `evalMixinDirect`)
 7. Update `callWithContext` to only handle JS function calls
