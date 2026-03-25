@@ -70,17 +70,17 @@ These files import `type LocationInfo` but never reference it outside the import
 - **File**: `packages/core/src/tree/util/regex.ts`
 - **Line**: 2
 - **Description**: `MULTI_LINE_TRIM` is exported but never imported by any file in the codebase. `LIST_ITEM_TRIM` on line 3 is still used by `list.ts`.
-- **Status**: available
+- **Status**: done
 
 ### DC-3: Unused functions in format.ts
 - **File**: `packages/core/src/tree/util/format.ts`
-- **Description**: Both `normalizeFilenameToNamespace` and `normalizeContinuationIndent` are exported but never imported or used anywhere else in the codebase. The entire file can be removed, or at minimum these two functions deleted.
-- **Status**: available
+- **Description**: Both `normalizeFilenameToNamespace` and `normalizeContinuationIndent` are exported but never imported or used anywhere else in the codebase. Entire file removed.
+- **Status**: done
 
 ### DC-4: Unused debug trace functions in extend-trace-debug.ts
 - **File**: `packages/core/src/tree/util/extend-trace-debug.ts`
-- **Description**: All four exported functions (`shouldTraceExtend`, `shouldTraceExtendMd`, `getExtendTraceRunId`, `isConstructedRun`) are only referenced within the file itself and an archive copy (`archive/extend-trace-debug.ts`). No production code imports or calls any of them. The entire file is dead code used only for manual debugging. Consider removing or gating behind a debug flag that actually gets imported.
-- **Status**: available
+- **Description**: All four exported functions (`shouldTraceExtend`, `shouldTraceExtendMd`, `getExtendTraceRunId`, `isConstructedRun`) are only referenced within the file itself and an archive copy (`archive/extend-trace-debug.ts`). No production code imports or calls any of them. Entire file removed (archive copy left in place).
+- **Status**: done
 
 ### DC-5: Commented-out visitor methods across node files
 - **File**: `packages/core/src/tree/at-rule.ts` (lines 663-696)
