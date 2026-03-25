@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { EvalSession, SessionInstanceRoot } from '../eval-session.js';
 import { Keyword, Dimension, Context, vardecl, any, num, Operation, decl, el, rules, rawrules, ruleset, atrule, seq, mixin, list, condition, call, pseudo, sellist, sel, compound, co, expr, paren, quoted, url, selcap, query, fn, range, ref, interpolated, interpolatedSelector, js, jsfunc, block, Negative, rest, attr, nil } from '../index.js';
+import type { Rules as RulesType } from '../tree/rules.js';
 import { AssignmentType } from '../tree/declaration.js';
 import {
   sessionGetDependency,
@@ -1719,6 +1720,107 @@ describe('session-aware helpers', () => {
       expect(ctx.instanceRoot).toBe(root);
       expect(ctx.instanceRoot!.session).toBe(session);
       expect(ctx.instanceRoot!.sourceRoot).toBe(canonical);
+    });
+
+    it('session helpers route through active instance root', () => {
+      const session = new EvalSession();
+      const node = new Keyword('red');
+
+      const container = rules([]);
+      const root1 = session.createInstanceRoot(container);
+      const root2 = session.createInstanceRoot(container);
+
+      const ctx = new Context();
+      ctx.session = session;
+
+      // Patch via root1
+      ctx.instanceRoot = root1;
+      sessionPatchField(node, 'value', 'blue', ctx);
+      sessionSetParent(node, container, ctx);
+      sessionSetEvaluated(node, true, ctx);
+
+      // Patch via root2
+      ctx.instanceRoot = root2;
+      sessionPatchField(node, 'value', 'green', ctx);
+      sessionSetParent(node, undefined, ctx);
+      sessionSetEvaluated(node, false, ctx);
+
+      // Read back from root1
+      ctx.instanceRoot = root1;
+      expect(sessionGetField(node, 'value', ctx)).toBe('blue');
+      expect(sessionGetParent(node, ctx)).toBe(container);
+      expect(sessionIsEvaluated(node, ctx)).toBe(true);
+
+      // Read back from root2 — independent
+      ctx.instanceRoot = root2;
+      expect(sessionGetField(node, 'value', ctx)).toBe('green');
+      expect(sessionGetParent(node, ctx)).toBeUndefined();
+      expect(sessionIsEvaluated(node, ctx)).toBe(false);
+
+      // Without instance root, falls through to session (nothing there), then canonical
+      ctx.instanceRoot = undefined;
+      expect(sessionGetField(node, 'value', ctx)).toBe('red');
+    });
+
+    it('instance root children overlay is independent per root', () => {
+      const session = new EvalSession();
+      const child1 = decl({ name: 'a', value: new Keyword('1') });
+      const child2 = decl({ name: 'b', value: new Keyword('2') });
+      const child3 = decl({ name: 'c', value: new Keyword('3') });
+      const canonical = rules([child1, child2]) as RulesType;
+
+      const root1 = session.createInstanceRoot(canonical);
+      const root2 = session.createInstanceRoot(canonical);
+
+      const ctx = new Context();
+      ctx.session = session;
+
+      // Root 1: append child3
+      ctx.instanceRoot = root1;
+      sessionAppendChildren(canonical, [child3], ctx);
+
+      // Root 2: no changes
+      ctx.instanceRoot = root2;
+
+      // Root 1 sees 3 children
+      ctx.instanceRoot = root1;
+      expect(sessionGetChildren(canonical, ctx)).toHaveLength(3);
+
+      // Root 2 sees original 2 children (source-backed)
+      ctx.instanceRoot = root2;
+      expect(sessionGetChildren(canonical, ctx)).toHaveLength(2);
+
+      // No instance root: also sees original 2
+      ctx.instanceRoot = undefined;
+      expect(sessionGetChildren(canonical, ctx)).toHaveLength(2);
+    });
+
+    it('instance root field patches override session-level patches', () => {
+      const session = new EvalSession();
+      const node = new Keyword('red');
+      const container = rules([]);
+      const root = session.createInstanceRoot(container);
+
+      const ctx = new Context();
+      ctx.session = session;
+
+      // Session-level patch
+      session.patchField(node, 'value', 'blue');
+
+      // Without instance root, see session patch
+      expect(sessionGetField(node, 'value', ctx)).toBe('blue');
+
+      // Instance root overrides session
+      ctx.instanceRoot = root;
+      root.patchField(node, 'value', 'green');
+      expect(sessionGetField(node, 'value', ctx)).toBe('green');
+
+      // Session still has its own value
+      ctx.instanceRoot = undefined;
+      expect(sessionGetField(node, 'value', ctx)).toBe('blue');
+
+      // Canonical is untouched
+      expect(node.value).toBe('red');
     });
   });
 });

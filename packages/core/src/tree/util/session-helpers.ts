@@ -22,15 +22,18 @@ import { N } from '../node-type.js';
  */
 
 /**
- * Read a field from a node, checking session patches first.
- * Falls through to the node's own field when no session exists
- * or the field is unpatched.
+ * Read a field from a node, checking instance root then session patches.
+ * Resolution order: instanceRoot → session → canonical node.
  */
 export function sessionGetField<T = unknown>(
   node: Node,
   key: string,
   ctx: Context
 ): T {
+  const ir = ctx.instanceRoot;
+  if (ir && ir.hasField(node, key)) {
+    return ir.getField(node, key) as T;
+  }
   const session = ctx.session;
   if (session && session.hasField(node, key)) {
     return session.getField(node, key) as T;
@@ -39,8 +42,8 @@ export function sessionGetField<T = unknown>(
 }
 
 /**
- * Write a field on a node. If a session exists, the write goes to
- * the session overlay; otherwise it mutates the node directly.
+ * Write a field on a node. Routes to instanceRoot, session, or direct mutation.
+ * Write target: instanceRoot → session → canonical node.
  */
 export function sessionPatchField(
   node: Node,
@@ -48,6 +51,11 @@ export function sessionPatchField(
   value: unknown,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    ir.patchField(node, key, value);
+    return;
+  }
   const session = ctx.session;
   if (session) {
     session.patchField(node, key, value);
@@ -132,12 +140,19 @@ export function isTopLevelVarDeclaration(
 }
 
 /**
- * Get the parent of a node, respecting session runtime state.
+ * Get the parent of a node. Resolution: instanceRoot → session → canonical.
  */
 export function sessionGetParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
+  const ir = ctx.instanceRoot;
+  if (ir && ir.hasRuntime(node)) {
+    const runtime = ir.getShadow(node)!.runtime!;
+    if (Object.prototype.hasOwnProperty.call(runtime, 'parent')) {
+      return runtime.parent;
+    }
+  }
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -149,13 +164,18 @@ export function sessionGetParent(
 }
 
 /**
- * Set the parent of a node in the session, or directly if no session.
+ * Set the parent of a node. Write target: instanceRoot → session → canonical.
  */
 export function sessionSetParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    ir.getRuntime(node).parent = parent;
+    return;
+  }
   const session = ctx.session;
   if (session) {
     session.getRuntime(node).parent = parent;
@@ -169,12 +189,19 @@ export function sessionSetParent(
 }
 
 /**
- * Check whether a node has been evaluated in this session.
+ * Check whether a node has been evaluated. Resolution: instanceRoot → session → canonical.
  */
 export function sessionIsEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
+  const ir = ctx.instanceRoot;
+  if (ir && ir.hasRuntime(node)) {
+    const runtime = ir.getShadow(node)!.runtime!;
+    if (runtime.evaluated !== undefined) {
+      return runtime.evaluated;
+    }
+  }
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -186,13 +213,18 @@ export function sessionIsEvaluated(
 }
 
 /**
- * Mark a node as evaluated in this session.
+ * Mark a node as evaluated. Write target: instanceRoot → session → canonical.
  */
 export function sessionSetEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    ir.getRuntime(node).evaluated = value;
+    return;
+  }
   const session = ctx.session;
   if (session) {
     session.getRuntime(node).evaluated = value;
@@ -202,12 +234,19 @@ export function sessionSetEvaluated(
 }
 
 /**
- * Check whether a node's preEval phase has completed in this session.
+ * Check whether a node's preEval phase has completed. Resolution: instanceRoot → session → canonical.
  */
 export function sessionIsPreEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
+  const ir = ctx.instanceRoot;
+  if (ir && ir.hasRuntime(node)) {
+    const runtime = ir.getShadow(node)!.runtime!;
+    if (runtime.preEvaluated !== undefined) {
+      return runtime.preEvaluated;
+    }
+  }
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -219,13 +258,18 @@ export function sessionIsPreEvaluated(
 }
 
 /**
- * Mark a node's preEval phase as completed in this session.
+ * Mark a node's preEval phase as completed. Write target: instanceRoot → session → canonical.
  */
 export function sessionSetPreEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    ir.getRuntime(node).preEvaluated = value;
+    return;
+  }
   const session = ctx.session;
   if (session) {
     session.getRuntime(node).preEvaluated = value;
@@ -235,12 +279,19 @@ export function sessionSetPreEvaluated(
 }
 
 /**
- * Get the eval index of a node, respecting session runtime state.
+ * Get the eval index of a node. Resolution: instanceRoot → session → canonical.
  */
 export function sessionGetIndex(
   node: Node,
   ctx: Context
 ): number {
+  const ir = ctx.instanceRoot;
+  if (ir && ir.hasRuntime(node)) {
+    const runtime = ir.getShadow(node)!.runtime!;
+    if (runtime.index !== undefined) {
+      return runtime.index;
+    }
+  }
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -252,13 +303,18 @@ export function sessionGetIndex(
 }
 
 /**
- * Set the eval index of a node in the session, or directly if no session.
+ * Set the eval index of a node. Write target: instanceRoot → session → canonical.
  */
 export function sessionSetIndex(
   node: Node,
   index: number,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    ir.getRuntime(node).index = index;
+    return;
+  }
   const session = ctx.session;
   if (session) {
     session.getRuntime(node).index = index;
@@ -268,12 +324,19 @@ export function sessionSetIndex(
 }
 
 /**
- * Get the source parent of a node, respecting session runtime state.
+ * Get the source parent of a node. Resolution: instanceRoot → session → canonical.
  */
 export function sessionGetSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
+  const ir = ctx.instanceRoot;
+  if (ir && ir.hasRuntime(node)) {
+    const runtime = ir.getShadow(node)!.runtime!;
+    if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
+      return runtime.sourceParent;
+    }
+  }
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -285,13 +348,18 @@ export function sessionGetSourceParent(
 }
 
 /**
- * Set the source parent of a node in the session, or directly if no session.
+ * Set the source parent of a node. Write target: instanceRoot → session → canonical.
  */
 export function sessionSetSourceParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    ir.getRuntime(node).sourceParent = parent;
+    return;
+  }
   const session = ctx.session;
   if (session) {
     session.getRuntime(node).sourceParent = parent;
@@ -302,13 +370,36 @@ export function sessionSetSourceParent(
 
 /**
  * Bulk-set multiple runtime state fields on a node.
- * Routes through session when active; falls back to direct mutation.
+ * Write target: instanceRoot → session → canonical.
  */
 export function sessionSetRuntimeState(
   node: Node,
   patch: Partial<RuntimeState>,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    const runtime = ir.getRuntime(node);
+    if (Object.prototype.hasOwnProperty.call(patch, 'parent')) {
+      runtime.parent = patch.parent;
+    }
+    if (patch.index !== undefined) {
+      runtime.index = patch.index;
+    }
+    if (patch.evaluated !== undefined) {
+      runtime.evaluated = patch.evaluated;
+    }
+    if (patch.preEvaluated !== undefined) {
+      runtime.preEvaluated = patch.preEvaluated;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'sourceParent')) {
+      runtime.sourceParent = patch.sourceParent;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'sourceNode')) {
+      runtime.sourceNode = patch.sourceNode;
+    }
+    return;
+  }
   const session = ctx.session;
   if (session) {
     const runtime = session.getRuntime(node);
@@ -358,12 +449,16 @@ export function sessionSetRuntimeState(
 
 /**
  * Read the children array of a Rules node.
- * Falls through to rules.value. Session-local children are introduced in Stage 9.
+ * Resolution: instanceRoot → session → canonical (rules.value).
  */
 export function sessionGetChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    return ir.getChildren(rules) ?? rules.value;
+  }
   const session = ctx.session;
   if (session) {
     return session.getChildren(rules) ?? rules.value;
@@ -381,6 +476,25 @@ export function sessionSetChildren(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    const prevChildren = sessionGetChildren(rules, ctx);
+    const nextChildren = [...nodes];
+    const nextSet = new Set(nextChildren);
+    ir.setChildren(rules, nextChildren);
+    for (const child of prevChildren) {
+      if (!nextSet.has(child)) {
+        sessionSetParent(child, undefined, ctx);
+      }
+    }
+    for (const child of nextChildren) {
+      sessionSetParent(child, rules, ctx);
+    }
+    if (options.markDirty !== false) {
+      sessionMarkScopeDirty(rules, ctx);
+    }
+    return;
+  }
   const session = ctx.session;
   if (session) {
     const prevChildren = sessionGetChildren(rules, ctx);
@@ -410,6 +524,25 @@ export function sessionSetChildAt(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    const currentChildren = sessionGetChildren(rules, ctx);
+    const prev = currentChildren[index];
+    if (prev === node) {
+      return;
+    }
+    const nextChildren = [...currentChildren];
+    nextChildren[index] = node;
+    ir.setChildren(rules, nextChildren);
+    sessionSetParent(node, rules, ctx);
+    if (prev) {
+      sessionSetParent(prev, undefined, ctx);
+    }
+    if (options.markDirty !== false) {
+      sessionMarkScopeDirty(rules, ctx);
+    }
+    return;
+  }
   const session = ctx.session;
   if (session) {
     const currentChildren = sessionGetChildren(rules, ctx);
@@ -441,6 +574,16 @@ export function sessionAppendChildren(
   nodes: Node[],
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    const nextValue = [...sessionGetChildren(rules, ctx), ...nodes];
+    ir.setChildren(rules, nextValue);
+    for (const node of nodes) {
+      sessionSetParent(node, rules, ctx);
+    }
+    sessionMarkScopeDirty(rules, ctx);
+    return;
+  }
   const session = ctx.session;
   if (session) {
     const nextValue = [...sessionGetChildren(rules, ctx), ...nodes];
@@ -463,6 +606,16 @@ export function sessionPrependChildren(
   nodes: Node[],
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    const nextValue = [...nodes, ...sessionGetChildren(rules, ctx)];
+    ir.setChildren(rules, nextValue);
+    for (const node of nodes) {
+      sessionSetParent(node, rules, ctx);
+    }
+    sessionMarkScopeDirty(rules, ctx);
+    return;
+  }
   const session = ctx.session;
   if (session) {
     const nextValue = [...nodes, ...sessionGetChildren(rules, ctx)];
@@ -488,6 +641,15 @@ export function sessionRemoveChild(
   const currentChildren = sessionGetChildren(rules, ctx);
   const idx = currentChildren.indexOf(child);
   if (idx >= 0) {
+    const ir = ctx.instanceRoot;
+    if (ir) {
+      const nextValue = [...currentChildren];
+      nextValue.splice(idx, 1);
+      ir.setChildren(rules, nextValue);
+      sessionSetParent(child, undefined, ctx);
+      sessionMarkScopeDirty(rules, ctx);
+      return;
+    }
     if (ctx.session) {
       const nextValue = [...currentChildren];
       nextValue.splice(idx, 1);
@@ -502,13 +664,30 @@ export function sessionRemoveChild(
 
 /**
  * Replace a node with a replacement in its parent Rules.
- * Stage 9 will store this in the session overlay rather than mutating directly.
+ * Write target: instanceRoot → session → canonical.
  */
 export function sessionReplaceNode(
   node: Node,
   replacement: Node,
   ctx: Context
 ): void {
+  const ir = ctx.instanceRoot;
+  if (ir) {
+    const parent = sessionGetParent(node, ctx);
+    if (parent && isNode(parent, N.Rules)) {
+      const currentChildren = sessionGetChildren(parent, ctx);
+      const idx = currentChildren.indexOf(node);
+      if (idx >= 0) {
+        const nextValue = [...currentChildren];
+        nextValue[idx] = replacement;
+        ir.setChildren(parent, nextValue);
+        sessionSetParent(replacement, parent, ctx);
+        sessionSetParent(node, undefined, ctx);
+        sessionMarkScopeDirty(parent, ctx);
+        return;
+      }
+    }
+  }
   if (ctx.session) {
     const parent = sessionGetParent(node, ctx);
     if (parent && isNode(parent, N.Rules)) {

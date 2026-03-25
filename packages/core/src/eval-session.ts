@@ -158,6 +158,22 @@ export class SessionInstanceRoot {
     return !!entry?.runtime;
   }
 
+  // -- Children overlay API (instance-local) --
+
+  private childrenOverrides = new Map<Node, readonly Node[]>();
+
+  setChildren(container: Node, value: readonly Node[]): void {
+    this.childrenOverrides.set(container, value);
+  }
+
+  getChildren(container: Node): readonly Node[] | undefined {
+    return this.childrenOverrides.get(container);
+  }
+
+  hasChildren(container: Node): boolean {
+    return this.childrenOverrides.has(container);
+  }
+
   /** Number of canonical nodes that have shadow entries in this root */
   get shadowCount(): number {
     return this.overrides.size;
