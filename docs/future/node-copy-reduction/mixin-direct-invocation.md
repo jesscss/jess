@@ -1,0 +1,159 @@
+# Mixin Direct Invocation — Next Pass Plan
+
+## What This Replaces
+
+Currently, `Call` → mixin goes through 8 abstraction layers:
+
+1. `Call.evalNode` resolves name → finds Mixin/Ruleset/array
+2. `getFunctionFromMixins()` wraps candidates in a generic JS `returnFunc`
+3. `Call.evalNode` extracts the function, calls `callWithContext()`
+4. `callWithContext()` normalizes args and invokes `returnFunc.call(context, ...args)`
+5. `returnFunc` collects/clones/freezes args → `nodeArgs: Node[]`
+6. `returnFunc` matches `nodeArgs` to candidate params, binds via `param.setData('value', ...)`
+7. For each match, clones mixin body, creates eval scope, evaluates
+8. Wraps output Rules, sorts, returns
+
+The function-wrapper layer (steps 2–4) exists so that mixin calls and JS function calls share the same dispatch. But mixin calls don't need that indirection — they're AST operations, not JS function calls.
+
+## What The Next Pass Should Do
+
+Combine two changes into one refactor:
+
+### A. Remove the function wrapper abstraction
+
+Call should invoke mixins directly without creating a JS function. The parameter binding, candidate matching, and body evaluation should happen inline in a new `Call.evalMixinCall()` method (or similar) rather than through `getFunctionFromMixins()` → `callWithContext()` → `returnFunc()`.
+
+### B. Replace body cloning with instance root shadowing
+
+Instead of cloning the mixin body per call, use instance roots:
+
+1. Keep the canonical mixin body as-is (no clone)
+2. Create an instance root per call
+3. Bind params into the instance root's shadow state
+4. Evaluate the canonical body with the instance root active
+5. Materialize output at the call boundary
+
+## Current Flow (detailed)
+
+```
+Call.evalNode (call.ts:398-399)
+  ↓ getFunctionFromMixins(mixin) → returnFunc (rules.ts:2106-3015)
+  ↓ cast(returnFunc) → n
+Call.evalNode (call.ts:464-474)
+  ↓ callWithContext(context, fn, ...args.value) (define-function.ts:313-334)
+    ↓ returnFunc.call(context, ...args)
+      ↓ collect/clone/freeze args → nodeArgs (rules.ts:2154-2209)
+      ↓ match candidates: param count, named/positional/pattern (rules.ts:2251-2407)
+      ↓ for each matched candidate:
+        ↓ clone body rules (rules.ts:2644, 2679, 2693)
+        ↓ create param wrapper (outerRules), push params (rules.ts:2730-2813)
+        ↓ evaluate guard if any (rules.ts:2816-2904)
+        ↓ evaluateCandidateOutput:
+          ↓ clone outerRules, push body children (rules.ts:2564-2582)
+          ↓ eval scope (rules.ts:2583)
+          ↓ set sourceParent/parent in session (rules.ts:2585-2586)
+          ↓ push to outputRules
+      ↓ sort outputRules, wrap in Rules, return (rules.ts:2954-3012)
+```
+
+## Target Flow
+
+```
+Call.evalNode (call.ts)
+  ↓ resolves name → Mixin/Ruleset/array
+  ↓ Call.evalMixinCall(candidates, args, context)
+    ↓ evaluate args once (no clone/freeze, just eval)
+    ↓ for each candidate:
+      ↓ match params (named/positional/pattern) — same logic, simpler plumbing
+      ↓ create instance root for canonical body
+      ↓ bind params into instance root shadow (not param.setData)
+      ↓ evaluate guard against instance root if needed
+      ↓ if passes:
+        ↓ evaluate canonical body with instance root active
+        ↓ materialize output at call boundary
+        ↓ push to outputRules
+    ↓ sort, wrap, return
+```
+
+## Key Differences
+
+| Aspect | Current | Target |
+|--------|---------|--------|
+| Function wrapper | `getFunctionFromMixins()` returns JS function | Direct method on Call or inline |
+| Dispatch | `callWithContext()` normalizes and invokes | Direct invocation |
+| Arg handling | Clone → freeze → spread → re-collect | Evaluate once, pass directly |
+| Body isolation | Clone mixin body per call | Instance root shadow per call |
+| Param binding | `param.setData('value', boundValue)` | Instance root shadow entry |
+| Output | Cloned Rules with session parent chains | Materialized from instance root |
+
+## What To Keep
+
+- Candidate matching logic (param count, named/positional, pattern matching, rest params)
+- Guard evaluation semantics
+- Default guard disambiguation (`DEF_TRUE` / `DEF_FALSE` / `DEF_NONE`)
+- Output sorting by candidate order
+- `isMixinOutput` visibility semantics
+- `@arguments` variable construction
+
+## What To Remove
+
+- `getFunctionFromMixins()` function (the returned `returnFunc` closure)
+- `callWithContext()` dispatch for mixin calls (keep for JS function calls)
+- Arg clone/freeze/spread cycle
+- Body `rules.clone(true, undefined, thisContext)` calls
+- `outerRules` clone-and-push pattern (replaced by instance root param binding)
+
+## Param Binding via Instance Root
+
+Currently params are bound by mutating `VarDeclaration.setData('value', boundValue)` on the cloned param nodes. With instance roots:
+
+```ts
+// Instead of:
+param.setData('value', boundValue);
+
+// Do:
+instanceRoot.patchField(param, 'value', boundValue);
+```
+
+The session helpers already resolve through instance root first, so `sessionGetField(param, 'value', ctx)` will return the bound value when the instance root is active.
+
+## Guard Evaluation
+
+Guards currently eval in a fresh `EvalSession({ resetEvalState: true })`. With instance roots, the guard can eval against the same instance root that has the param bindings, using a nested session for reset-state:
+
+```ts
+const guardSession = new EvalSession({ resetEvalState: true });
+const prevSession = ctx.session;
+ctx.session = guardSession;
+// ctx.instanceRoot stays pointing to the call's instance root
+// so guard can see bound params via instance root shadow
+const guardResult = await guard.eval(ctx);
+ctx.session = prevSession;
+```
+
+## Output Materialization
+
+At the call boundary, the evaluated instance root state needs to be materialized into a standalone `Rules` tree:
+
+```ts
+const output = sourceRoot.materializeFromInstanceRoot(instanceRoot, ctx);
+```
+
+This is the one place where materialization is architecturally correct — the call boundary is an explicit downstream boundary where Jess emits a standalone evaluated object graph.
+
+## Risk Areas
+
+1. **Registry population**: The current flow registers declarations/mixins from cloned Rules. Instance-root-backed eval needs registry entries from the canonical body + shadow state.
+2. **Parent chain walking**: Lookup walks parent chains. Under instance roots, parents are in shadow state, so `sessionGetParent` must be used consistently.
+3. **Source provenance**: `sourceNode` / `sourceParent` chains are used for diagnostics and deduplication. These need to work correctly under instance roots.
+4. **Nested mixin calls**: A mixin calling another mixin creates nested instance roots. The nesting needs to compose correctly.
+
+## Entry Points for Implementation
+
+1. Start by extracting the candidate matching + param binding logic from `returnFunc` into a standalone function
+2. Wire that function to be callable from `Call.evalNode` directly
+3. Replace the clone steps with instance root creation
+4. Replace param `setData` with instance root `patchField`
+5. Replace `evaluateCandidateOutput`'s clone-eval with instance-root-eval + materialize
+6. Remove the `getFunctionFromMixins` wrapper
+7. Update `callWithContext` to only handle JS function calls

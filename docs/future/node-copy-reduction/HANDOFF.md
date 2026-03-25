@@ -14,6 +14,7 @@ Keep this file short. Put detail elsewhere.
 2. [dependency-graph.md](./dependency-graph.md)
 3. [PROGRESS.md](./PROGRESS.md)
 4. [node-session-status.md](./node-session-status.md)
+5. [mixin-direct-invocation.md](./mixin-direct-invocation.md) — the next major refactor
 
 Use those docs as the source of truth. Do not rebuild their content here.
 
@@ -145,8 +146,17 @@ Use these as concrete proof surfaces when you need examples:
 
 Use those tests to prove repeated reuse, sparse divergence, and ownership shifts.
 
+## Next Major Refactor: Mixin Direct Invocation
+
+The next pass should combine two changes:
+
+1. **Remove the function wrapper**: `Call` should invoke mixins directly without going through `getFunctionFromMixins()` → `callWithContext()` → `returnFunc()`
+2. **Replace body cloning with instance root shadowing**: use instance roots instead of `rules.clone(true)` per call
+
+These target the same code and should be done together. See [mixin-direct-invocation.md](./mixin-direct-invocation.md) for the full plan, current flow mapping, target flow, and implementation entry points.
+
 ## Working Tree Notes
 
 - ignore unrelated dirty files under `packages/docs-content/...` unless explicitly asked to work there
 - challenge any change that only makes the bridge more elaborate without moving toward instance roots/views
-- parsers were updated and are passing again in the `dev` branch (not this `jess-dev` branch); if parser integration testing is needed, merge `dev` into `jess-dev` at that time
+- `dev` branch has been merged into `jess-dev` (parser fixes included)
