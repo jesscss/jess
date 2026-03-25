@@ -30,14 +30,18 @@ function resolveInstanceRoot(node: Node, ctx: Context): SessionInstanceRoot | un
  */
 
 /**
- * Read a field from a node, checking instance root then session patches.
- * Resolution order: instanceRoot → session → canonical node.
+ * Read a field from a node.
+ * Resolution: position → instanceRoot → session → canonical.
  */
 export function getField<T = unknown>(
   node: Node,
   key: string,
   ctx: Context
 ): T {
+  const pos = ctx.position;
+  if (pos && pos.hasField(node, key)) {
+    return pos.getField(node, key) as T;
+  }
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasField(node, key)) {
     return ir.getField(node, key) as T;
@@ -50,8 +54,8 @@ export function getField<T = unknown>(
 }
 
 /**
- * Write a field on a node. Routes to instanceRoot, session, or direct mutation.
- * Write target: instanceRoot → session → canonical node.
+ * Write a field on a node.
+ * Write target: position → instanceRoot → session → canonical.
  */
 export function patchField(
   node: Node,
@@ -59,6 +63,11 @@ export function patchField(
   value: unknown,
   ctx: Context
 ): void {
+  const pos = ctx.position;
+  if (pos) {
+    pos.patchField(node, key, value);
+    return;
+  }
   const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.patchField(node, key, value);
