@@ -326,25 +326,39 @@ export class Call extends Node<CallValue, CallOptions> {
       node.sourceParent = this;
       return node;
     };
+    const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
+      const clone = node.clone(false, undefined, context) as T;
+      if (context.session.hasRuntime(node)) {
+        const runtime = context.session.getRuntime(node);
+        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
+          clone.sourceNode = runtime.sourceNode;
+        }
+        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
+          clone.sourceParent = runtime.sourceParent;
+        }
+      }
+      return clone;
+    };
     const materializeDownstreamResult = <T extends Node>(node: T): T => {
       if (context.session && node === node.sourceNode) {
         const childKeys = (node.constructor as typeof Node).childKeys;
         if (childKeys === null) {
-          const clone = node.clone(false, undefined, context) as T;
-          if (context.session.hasRuntime(node)) {
-            const runtime = context.session.getRuntime(node);
-            if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
-              clone.sourceNode = runtime.sourceNode;
-            }
-            if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
-              clone.sourceParent = runtime.sourceParent;
-            }
-          }
-          return clone;
+          return cloneLeafDownstreamResult(node);
         }
         return node.materializeEvaluatedCopy(context) as T;
       }
       return node;
+    };
+    const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
+      // Transitional explicit boundary:
+      // stylesheet-defined functions that return same-source composite Rules
+      // still need a detached returned-tree boundary before this Call can
+      // apply output shaping (`pre` / `post` / `sourceParent`, and possibly
+      // `makeImportant`) without mutating the canonical source tree.
+      if (context.session && node === node.sourceNode && isNode(node, N.Rules)) {
+        return node.materializeEvaluatedCopy(context) as T;
+      }
+      return materializeDownstreamResult(node);
     };
     const evalArgNodes = async (nodes?: List<Node>) => {
       if (!nodes) {
@@ -390,7 +404,7 @@ export class Call extends Node<CallValue, CallOptions> {
       context.callStack.pop();
       context.parenFrames.pop();
       return applyDependencyToResult(
-        adoptCallWhitespace(materializeDownstreamResult(result)),
+        adoptCallWhitespace(materializeStylesheetFunctionRulesBoundary(result)),
         argNodes.value
       );
     } else if (isNode(n, N.Collection)) {

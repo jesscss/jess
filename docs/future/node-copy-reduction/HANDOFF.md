@@ -72,7 +72,8 @@ Do not use this as the full node-status matrix or roadmap document:
    - its remaining `this.clone(false, ..., context)` sites already flow through the node-local `Call.clone(...)` contract
    - the focused call suite is green with explicit proof that canonical child parents stay intact
    - trivial leaf downstream results now avoid full materialization and use a shallow clone plus runtime provenance carry-over
-   - but `Call` must stay `partial` while composite downstream results still materialize same-source nodes internally during eval
+   - stylesheet-function same-source composite `Rules` results now go through an explicit branch-local boundary seam instead of the generic downstream helper
+   - but `Call` must stay `partial` while that composite `Rules` branch still materializes during active eval
 8. `Ruleset` is back over the completion bar for this fundamentals pass:
    - source-ruleset shallow clones are now improved and more explicit
    - derived-ruleset shallow clones now also clone the selector and use a lookup-safe shallow wrapper for the `rules` body

@@ -28,7 +28,7 @@ Those live in [node-session-status.md](./node-session-status.md).
 - Architectural rule: internal evaluation should still treat materialization as transitional debt, not a normal strategy. Materialization is only acceptable at an explicit boundary where Jess must hand downstream code a standalone evaluated object graph.
 - Hard completion rule: any node with an active internal eval/runtime `materializeEvaluatedCopy(...)` path must stay `partial` until that path is removed or moved to an explicit boundary.
 - `Mixin.preEval()` no longer spells raw `rules.clone(false, ..., context)` for visibility isolation; it now uses the explicit detached unlock wrapper seam.
-- `Call` now materializes stylesheet-function `Rules` results through `materializeEvaluatedCopy(context)` instead of shallow clone plus provenance rewiring.
+- `Call` now routes stylesheet-function same-source composite `Rules` results through an explicit branch-local boundary seam instead of hiding that case inside the generic downstream helper.
 - `Node.cloneDetachedMaterializedWrapper(context)` and `Rules.cloneVisibilityIsolationWrapper(context)` are now both landed as narrower helper seams around the remaining shallow-wrapper problem.
 - `rules.ts` now uses `cloneVisibilityIsolationWrapper(context)` on the `Rules` child branch inside `evaluateCandidateOutput(...)`, so that caller no longer spells raw `clone(false, ..., context)` either.
 - `ImportStyle` now uses `cloneDetachedMaterializedWrapper(context)` on the returned-tree paths that were previously doing open-coded wrapper detachment plus per-child materialization.
