@@ -2,9 +2,17 @@
 
 This is the living tracking document for the entire node copy reduction effort.
 
+## The Model
+
+Two operations:
+1. **Replace a node** at a position in the tree (field patch on the parent)
+2. **Replace a field** on a node (field patch on the node)
+
+Both are map lookups from `EvalPosition`. No cloning. No special cases. See [session-instance-architecture.md](./session-instance-architecture.md).
+
 ## Guiding Star
 
-JIT engines are most slowed by object creation. Deep cloning creates O(N²) objects per mixin call. The target: immutable canonical trees + sparse instance-root shadowing = O(1) per placement.
+JIT engines are most slowed by object creation. This model creates the minimum: one Map per placement, one entry per changed node. Everything else is a pointer to canonical.
 
 ## Completed Stages
 

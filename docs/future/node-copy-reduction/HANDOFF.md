@@ -38,16 +38,15 @@ Important:
 
 ## Target Architecture
 
-Work toward exactly this:
+Two operations:
+1. **Replace a node** at a position in the tree (field patch on the parent)
+2. **Replace a field** on a node (field patch on the node)
 
-- one immutable canonical/source tree
-- many lazy session-local instances over that tree
-- sparse dependency-guided shadow state
-- unchanged, elegant node API
+Both are map lookups from `EvalPosition`. No cloning. No special cases.
+See [session-instance-architecture.md](./session-instance-architecture.md).
 
 Do not regress into:
-
-- one-overlay-per-canonical-node as the destination
+- cloning as an isolation mechanism
 - broad wrapper/helper growth
 - internal materialization as a normal eval strategy
 
