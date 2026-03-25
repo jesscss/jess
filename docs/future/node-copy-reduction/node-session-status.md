@@ -32,11 +32,11 @@ Since all session helpers resolve `instanceRoot → node._instanceRoot → sessi
 
 | Node | Session | Clone-free | Notes |
 | --- | --- | --- | --- |
-| `Declaration` | `partial` | n/a | Active eval/serialization reads use session helpers. Caller-side mutation paths still need finishing. |
+| `Declaration` | `complete` | n/a | All eval-time reads and writes use session helpers. |
 | `VarDeclaration` | `inherited` | n/a | Inherits `Declaration` field behavior. |
 | `CustomDeclaration` | `inherited` | n/a | Inherits `Declaration`. |
 | `Ruleset` | `complete` | n/a | All fields session-aware on active eval/render paths. |
-| `Rules` | `partial` | has-clones | Session child-array overlays landed. `getFunctionFromMixins` still deep-clones mixin bodies and param wrappers per call. `preEval` still clones for reset-session. |
+| `Rules` | `partial` | has-clones | Session child-array overlays landed. Mixin body clone(true) → clone(false) ✓. Ruleset-as-mixin still needs deep clone (nested selectors). `preEval` still clones for reset-session. 1 regression: media.less nested @media prelude eval state leak. |
 | `RawRules` | `complete` | n/a | Serializer reads session child overlay. |
 | `AtRule` | `complete` | n/a | Render and eval read through session-aware view. |
 | `Mixin` | `complete` | n/a | Render reads session-aware. Remaining work is in callers (Rules/Call), not this node. |
@@ -58,9 +58,9 @@ Since all session helpers resolve `instanceRoot → node._instanceRoot → sessi
 | `Rest` | `complete` | n/a | Session-aware reads. |
 | `Extend` | `complete` | has-clones | Session-aware getters for all fields. But extend selector rewriting still uses structural copies. |
 | `ExtendList` | `complete` | n/a | Session-aware reads. |
-| `Paren` | `partial` | n/a | Render/read path session-aware. |
-| `Quoted` | `partial` | n/a | Render/read path session-aware. |
-| `Url` | `partial` | n/a | Render/read path session-aware. |
+| `Paren` | `complete` | n/a | All eval-time mutations session-aware. |
+| `Quoted` | `complete` | n/a | All eval-time mutations session-aware. |
+| `Url` | `complete` | n/a | All eval-time mutations session-aware. |
 
 ## Selector Nodes
 
