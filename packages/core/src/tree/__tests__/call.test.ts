@@ -345,6 +345,26 @@ describe('Call', () => {
     expect(childDecl.toTrimmedString({ context })).toBe('color: red');
   });
 
+  it('characterizes composite same-source Rules results as still needing a returned-tree boundary, not a shallow clone', () => {
+    context.session = new EvalSession();
+    const childDecl = decl({ name: 'color', value: any('red') });
+    const returnValue = rules([childDecl]);
+    const node = call({
+      name: returnValue,
+      args: list([])
+    }, { markImportant: true });
+
+    const shallow = returnValue.clone(false, undefined, context);
+
+    expect(shallow.value[0]).toBe(childDecl);
+    expect(childDecl.parent).toBe(shallow);
+    expect(returnValue.value[0]).toBe(childDecl);
+
+    node.makeImportant(shallow);
+
+    expect(childDecl.important?.toTrimmedString()).toBe('!important');
+  });
+
   it('reads a session-patched markImportant option for collection results without mutating canonical options', async () => {
     context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });

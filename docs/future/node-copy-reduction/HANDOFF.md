@@ -40,8 +40,7 @@ Do not use this as the full node-status matrix or roadmap document:
 
 ### Immediate work
 1. Follow the immediate queue in `node-session-status.md`.
-2. The next live owners are the remaining internal-materialization debt sites:
-   - `Ruleset.clone(false, ..., context)` on the derived-ruleset `rules` body
+2. The next live owner is the remaining internal-materialization debt site:
    - `Call.materializeDownstreamResult(...)` for composite downstream results
 3. Do not treat matcher internals or extend matching as the current blocker:
    - `selectorMatch(..., context)` now safely handles mixed selector-bit libraries
@@ -56,7 +55,7 @@ Do not use this as the full node-status matrix or roadmap document:
    - guarded candidate preparation in `getFunctionFromMixins()` now also stays on the session-aware shallow-clone path instead of `mixin.copy()` when a session is active
    - the remaining `rules.ts` pressure is the non-`Rules` child branch of `evaluateCandidateOutput(...)`, but the latest characterization now says that branch is only exposing child clone semantics plus wrapper parent assignment
    - a direct `materializeEvaluatedCopy(context)` fix at that internal eval point was tried and rejected because it violates the no-internal-materialization rule
-   - `Ruleset.clone(false, ..., context)` source-ruleset behavior is now explicitly characterized as locally consistent today: canonical ownership stays on the source ruleset while the session layer gives the clone active ownership, and the clone remains a live session view over shared nested children
+   - `Ruleset.clone(false, ..., context)` is now characterized as a shared live-session contract on both source-ruleset and derived-ruleset paths, not the next internal-materialization blocker
    - any remaining wrapper/materialization contract gaps below that `Rules` shallow-clone boundary are now more about choosing the right existing wrapper contract than about another missing generic helper
    - the only remaining local `ImportStyle` pressure is the plain cached compose wrapper branch that must preserve shared top-level evaluated child identity and shared `value[]` across per-import wrappers; shared registry-slot behavior still coincides today but is no longer treated as a separate hard local contract, and `import-style.ts` itself no longer looks like the next production owner
    - follow-up use of the new generic compare/context channel where a real consumer benefits
@@ -74,17 +73,18 @@ Do not use this as the full node-status matrix or roadmap document:
    - the focused call suite is green with explicit proof that canonical child parents stay intact
    - trivial leaf downstream results now avoid full materialization and use a shallow clone plus runtime provenance carry-over
    - but `Call` must stay `partial` while composite downstream results still materialize same-source nodes internally during eval
-8. `Ruleset` must also stay `partial`:
-   - source-ruleset shallow clones are now improved and more explicit, and derived-ruleset shallow clones now also clone the selector and use a lookup-safe shallow wrapper for the `rules` body
-   - but the derived-ruleset shallow-clone branch still carries the remaining body-level debt below the no-internal-materialization completion bar
+8. `Ruleset` is back over the completion bar for this fundamentals pass:
+   - source-ruleset shallow clones are now improved and more explicit
+   - derived-ruleset shallow clones now also clone the selector and use a lookup-safe shallow wrapper for the `rules` body
+   - focused characterization now proves both branches are shared live-session behavior, not active internal-materialization debt
 9. `node-base.ts` does not currently need another generic helper:
    - `registry-characterization.test.ts` now proves `cloneDetachedMaterializedWrapper(context)` gets its own top-level registry slot while preserving canonical top-level parents
    - `cloneDetachedShallowWrapper()` and `cloneLookupSafeShallowWrapper()` intentionally stay on the canonical registry slot, while `cloneDetachedMaterializedWrapper()` is already the explicit generic fork point
    - the remaining helper pressure is caller adoption and shallow-clone semantics, not another missing generic primitive
 10. The sharpest live contracts are now:
-   - `Ruleset.clone(false, ..., context)` for derived/source rulesets: this is still the clearest candidate for further reducing internal materialization without violating the shared live-session contract
    - `Call.materializeDownstreamResult(...)`: only the composite branch remains in the queue after the leaf reduction
    - `Rules`: the non-`Rules` child branch of `evaluateCandidateOutput(...)`, but only as the caller exposing the clone contract on public paths
+   - `Ruleset.clone(false, ..., context)`: now a characterization boundary, not the next materialization owner
 
 ### Stage status
 - Stage 17: complete and committed

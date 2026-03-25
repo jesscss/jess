@@ -197,6 +197,26 @@ describe('Rule', () => {
     expect(canonical.rules.parent).toBe(canonical);
   });
 
+  it('keeps a derived ruleset shallow clone as a live session view over the shared rules body', () => {
+    const canonical = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const derived = canonical.clone(true);
+    const derivedDecl = derived.rules.at(0)!;
+
+    context.session = new EvalSession();
+
+    const cloned = derived.clone(false, undefined, context);
+    sessionPatchField(derivedDecl, 'value', any('blue'), context);
+
+    expect(cloned.rules.at(0)).toBe(derivedDecl);
+    expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
+    expect(derived.rules.toTrimmedString()).toBe('color: red;');
+  });
+
   it('gives a source ruleset shallow clone its own selector while keeping the rules body shared on the source ruleset', () => {
     const source = ruleset({
       selector: el('.alpha'),
