@@ -9,7 +9,7 @@ import { EvalSession } from '../eval-session.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { getField } from './util/session-helpers.js';
+import { getField, getParent } from './util/session-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
@@ -595,7 +595,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the rules have not been evaluated yet
        * - the import type is `import`
       */
-        const shouldIsolateSelectorFrames = !isNode(this.parent?.parent, N.Ruleset | N.AtRule);
+        const activeParent = getParent(this, context);
+        const shouldIsolateSelectorFrames = !isNode(activeParent ? getParent(activeParent, context) : undefined, N.Ruleset | N.AtRule);
         const prevRulesetFrames = shouldIsolateSelectorFrames ? context.rulesetFrames : undefined;
         const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {

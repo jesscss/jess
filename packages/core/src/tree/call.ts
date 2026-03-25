@@ -11,7 +11,7 @@ import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { getField, mergeDependencies, patchField, setDependency } from './util/session-helpers.js';
+import { getField, getParent, mergeDependencies, patchField, setDependency } from './util/session-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -517,7 +517,7 @@ export class Call extends Node<CallValue, CallOptions> {
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          if (this.parent?.type === 'SelectorCapture') {
+          if (getParent(this, context)?.type === 'SelectorCapture') {
             return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {

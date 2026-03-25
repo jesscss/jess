@@ -565,7 +565,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'function':
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                const inCall = isNode(this.parent, N.Call);
+                const inCall = isNode(getParent(this, context), N.Call);
                 const findFunction = () =>
                   targetRules.find('function', `${keyStr}`, undefined, opts)
                   ?? targetRules.findSessionPatchedFunction(`${keyStr}`, opts);
@@ -607,7 +607,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 }
                 // Some Less built-ins are invoked in mixin-like call positions.
                 // If a mixin lookup misses during a Call, allow function fallback.
-                if (isNode(this.parent, N.Call)) {
+                if (isNode(getParent(this, context), N.Call)) {
                   const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                   return targetRules.find('function', `${keyStr}`, undefined, opts);
                 }
@@ -626,7 +626,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 if (mixinOrRuleset) {
                   return mixinOrRuleset;
                 }
-                if (isNode(this.parent, N.Call)) {
+                if (isNode(getParent(this, context), N.Call)) {
                   const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                   return targetRules.find('function', `${keyStr}`, undefined, opts);
                 }
@@ -737,7 +737,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           // When a mixin-ruleset reference is used as the target of another
           // Reference (e.g. #theme -> .dark -> .navbar), preserve the resolved
           // scope entry instead of eagerly converting it into a callable mixin.
-          if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
+          if (type === 'mixin-ruleset' && !isNode(getParent(this, context), N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
               setSourceParent(first as Node, this, context);
