@@ -404,3 +404,102 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(sessionGetChildren(body as Rules, ctx)).toHaveLength(2);
   });
 });
+
+describe('node._instanceRoot association', () => {
+  it('node remembers its instance root after ctx.instanceRoot is cleared', () => {
+    const session = new EvalSession();
+    const node = new Keyword('red');
+    const container = rules([]);
+    const root = session.createInstanceRoot(container);
+
+    const ctx = new Context();
+    ctx.session = session;
+
+    // Write while instance root is active on context
+    ctx.instanceRoot = root;
+    sessionPatchField(node, 'value', 'blue', ctx);
+
+    // Clear context instance root
+    ctx.instanceRoot = undefined;
+
+    // Without node._instanceRoot, read falls through to session then canonical
+    expect(sessionGetField(node, 'value', ctx)).toBe('red');
+
+    // Set node._instanceRoot — now reads resolve through it
+    node._instanceRoot = root;
+    expect(sessionGetField(node, 'value', ctx)).toBe('blue');
+  });
+
+  it('ctx.instanceRoot takes priority over node._instanceRoot', () => {
+    const session = new EvalSession();
+    const node = new Keyword('red');
+    const container = rules([]);
+
+    const rootA = session.createInstanceRoot(container);
+    const rootB = session.createInstanceRoot(container);
+
+    // Patch different values in each root
+    rootA.patchField(node, 'value', 'blue');
+    rootB.patchField(node, 'value', 'green');
+
+    // Node carries rootA
+    node._instanceRoot = rootA;
+
+    const ctx = new Context();
+    ctx.session = session;
+
+    // No ctx.instanceRoot — reads from node._instanceRoot (rootA)
+    expect(sessionGetField(node, 'value', ctx)).toBe('blue');
+
+    // Set ctx.instanceRoot to rootB — overrides node._instanceRoot
+    ctx.instanceRoot = rootB;
+    expect(sessionGetField(node, 'value', ctx)).toBe('green');
+  });
+
+  it('writes go to node._instanceRoot when no ctx.instanceRoot', () => {
+    const session = new EvalSession();
+    const node = new Keyword('red');
+    const container = rules([]);
+    const root = session.createInstanceRoot(container);
+
+    node._instanceRoot = root;
+
+    const ctx = new Context();
+    ctx.session = session;
+
+    // Write with no ctx.instanceRoot — goes to node._instanceRoot
+    sessionPatchField(node, 'value', 'green', ctx);
+
+    // Verify it's in the instance root
+    expect(root.getField(node, 'value')).toBe('green');
+
+    // Verify session was NOT written to
+    expect(session.hasField(node, 'value')).toBe(false);
+
+    // Read back through helper
+    expect(sessionGetField(node, 'value', ctx)).toBe('green');
+  });
+
+  it('parent chains resolve through node._instanceRoot', () => {
+    const session = new EvalSession();
+    const parent1 = rules([]);
+    const parent2 = rules([]);
+    const child = new Keyword('test');
+    const root = session.createInstanceRoot(parent1);
+
+    const ctx = new Context();
+    ctx.session = session;
+
+    // Set parent via instance root
+    ctx.instanceRoot = root;
+    sessionSetParent(child, parent1, ctx);
+    ctx.instanceRoot = undefined;
+
+    // Without association, parent falls through to canonical
+    expect(sessionGetParent(child, ctx)).toBeUndefined();
+
+    // With association, parent resolves through instance root
+    child._instanceRoot = root;
+    expect(sessionGetParent(child, ctx)).toBe(parent1);
+  });
+});

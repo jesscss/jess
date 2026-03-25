@@ -1,10 +1,18 @@
 import type { Node } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
-import type { EvalDependency, RuntimeState } from '../../eval-session.js';
+import type { EvalDependency, RuntimeState, SessionInstanceRoot } from '../../eval-session.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
+
+/**
+ * Resolve the active instance root for a node.
+ * Priority: ctx.instanceRoot → node._instanceRoot → undefined.
+ */
+function resolveInstanceRoot(node: Node, ctx: Context): SessionInstanceRoot | undefined {
+  return ctx.instanceRoot ?? node._instanceRoot;
+}
 
 /**
  * Session-aware field read/write helpers.
@@ -30,7 +38,7 @@ export function sessionGetField<T = unknown>(
   key: string,
   ctx: Context
 ): T {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasField(node, key)) {
     return ir.getField(node, key) as T;
   }
@@ -51,7 +59,7 @@ export function sessionPatchField(
   value: unknown,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.patchField(node, key, value);
     return;
@@ -146,7 +154,7 @@ export function sessionGetParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
     if (Object.prototype.hasOwnProperty.call(runtime, 'parent')) {
@@ -171,7 +179,7 @@ export function sessionSetParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.getRuntime(node).parent = parent;
     return;
@@ -195,7 +203,7 @@ export function sessionIsEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
     if (runtime.evaluated !== undefined) {
@@ -220,7 +228,7 @@ export function sessionSetEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.getRuntime(node).evaluated = value;
     return;
@@ -240,7 +248,7 @@ export function sessionIsPreEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
     if (runtime.preEvaluated !== undefined) {
@@ -265,7 +273,7 @@ export function sessionSetPreEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.getRuntime(node).preEvaluated = value;
     return;
@@ -285,7 +293,7 @@ export function sessionGetIndex(
   node: Node,
   ctx: Context
 ): number {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
     if (runtime.index !== undefined) {
@@ -310,7 +318,7 @@ export function sessionSetIndex(
   index: number,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.getRuntime(node).index = index;
     return;
@@ -330,7 +338,7 @@ export function sessionGetSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
     if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
@@ -355,7 +363,7 @@ export function sessionSetSourceParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.getRuntime(node).sourceParent = parent;
     return;
@@ -377,7 +385,7 @@ export function sessionSetRuntimeState(
   patch: Partial<RuntimeState>,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     const runtime = ir.getRuntime(node);
     if (Object.prototype.hasOwnProperty.call(patch, 'parent')) {
@@ -455,7 +463,7 @@ export function sessionGetChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
     return ir.getChildren(rules) ?? rules.value;
   }
@@ -476,7 +484,7 @@ export function sessionSetChildren(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
     const prevChildren = sessionGetChildren(rules, ctx);
     const nextChildren = [...nodes];
@@ -524,7 +532,7 @@ export function sessionSetChildAt(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
     const currentChildren = sessionGetChildren(rules, ctx);
     const prev = currentChildren[index];
@@ -574,7 +582,7 @@ export function sessionAppendChildren(
   nodes: Node[],
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
     const nextValue = [...sessionGetChildren(rules, ctx), ...nodes];
     ir.setChildren(rules, nextValue);
@@ -606,7 +614,7 @@ export function sessionPrependChildren(
   nodes: Node[],
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
     const nextValue = [...nodes, ...sessionGetChildren(rules, ctx)];
     ir.setChildren(rules, nextValue);
@@ -641,7 +649,7 @@ export function sessionRemoveChild(
   const currentChildren = sessionGetChildren(rules, ctx);
   const idx = currentChildren.indexOf(child);
   if (idx >= 0) {
-    const ir = ctx.instanceRoot;
+    const ir = resolveInstanceRoot(rules, ctx);
     if (ir) {
       const nextValue = [...currentChildren];
       nextValue.splice(idx, 1);
@@ -671,7 +679,7 @@ export function sessionReplaceNode(
   replacement: Node,
   ctx: Context
 ): void {
-  const ir = ctx.instanceRoot;
+  const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     const parent = sessionGetParent(node, ctx);
     if (parent && isNode(parent, N.Rules)) {

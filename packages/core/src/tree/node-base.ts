@@ -3,7 +3,7 @@ import {
   type TreeContext,
   type Context
 } from '../context.js';
-import { EvalSession } from '../eval-session.js';
+import { EvalSession, type SessionInstanceRoot } from '../eval-session.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
@@ -245,6 +245,14 @@ export abstract class Node<
 
   /** Will be copied during inherit */
   state = F_DEFAULT;
+
+  /**
+   * The instance root this node belongs to. Set when a node is produced
+   * by an instance-root-backed eval (e.g., mixin call output).
+   * Session helpers check this as an implicit fallback when `ctx.instanceRoot`
+   * is not set, so the node "remembers" its eval context.
+   */
+  _instanceRoot: SessionInstanceRoot | undefined;
 
   get preEvaluated() {
     return (this._metaFlags & M_PRE_EVALUATED) !== 0;
