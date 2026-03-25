@@ -68,7 +68,7 @@ Do not use this as the full node-status matrix or roadmap document:
    - `$for` prior-scope reuse now uses lookup-safe wrappers/shallow clones instead of internal materialization
    - the latest characterization proves the remaining parent-integrity leak happens downstream during `wrapper.eval(context)`
    - control-family nodes are back out of the internal-materialization queue
-7. `Call` is no longer a live semantic owner either:
+7. `Call` is now the live semantic owner on this axis:
    - its remaining `this.clone(false, ..., context)` sites already flow through the node-local `Call.clone(...)` contract
    - the focused call suite is green with explicit proof that canonical child parents stay intact
    - trivial leaf downstream results now avoid full materialization and use a shallow clone plus runtime provenance carry-over
