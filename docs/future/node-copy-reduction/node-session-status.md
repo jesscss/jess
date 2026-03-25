@@ -3,9 +3,11 @@
 This is the concrete per-node inventory. It tracks two dimensions:
 
 1. **Session contract** — are reads/writes session-aware? (`complete` / `partial` / `pending` / `leaf`)
-2. **Instance root** — is the node wired into the instance-root model? (`wired` / `associated` / `not yet`)
+2. **Clone-free** — does this node's eval path avoid internal cloning? (`complete` / `has-clones` / `n/a`)
 
-A node is only fully done when both dimensions are complete.
+A node is fully done when both dimensions are complete.
+
+Since all session helpers resolve `instanceRoot → node._instanceRoot → session → canonical`, every session-complete node automatically works under instance roots. The remaining work is eliminating clones in the few nodes that create them.
 
 ## Status Legend
 
@@ -15,100 +17,96 @@ A node is only fully done when both dimensions are complete.
 | --- | --- |
 | `complete` | All active reads/writes use session helpers. Canonical fields are not mutated during eval. Has proof tests. |
 | `partial` | Some paths are session-aware, but some still mutate canonical or lack proof. |
-| `pending` | Not yet audited or migrated. |
 | `leaf` | Scalar/opaque value node. No session-backed write surface needed. |
 | `inherited` | Inherits session behavior from parent class. |
 
-### Instance root
+### Clone-free
 
 | Status | Meaning |
 | --- | --- |
-| `wired` | Instance roots are created and active in the eval path for this node. |
-| `associated` | Output carries `_instanceRoot` but cloning is not yet replaced with shadowing. |
-| `not yet` | Instance root work has not reached this node's eval path. |
-| `n/a` | Not applicable (leaf nodes, inherited). |
+| `complete` | No internal `clone()` / `copy()` / `materialize()` in this node's eval path. |
+| `has-clones` | This node's eval path still creates clones that should be replaced with instance root shadowing. |
+| `n/a` | Node doesn't clone (reads/writes only). Automatically works under instance roots via session helpers. |
 
 ## Core Containers And Eval Nodes
 
-| Node | Session | Instance Root | Notes |
+| Node | Session | Clone-free | Notes |
 | --- | --- | --- | --- |
-| `Declaration` | `partial` | not yet | Active eval/serialization reads and field writes for `name` / `value` / `important` now use session helpers. Caller-side mutation paths still need to be finished. |
-| `VarDeclaration` | `inherited` | not yet | Inherits `Declaration` field behavior. Remaining mixin-param binding work is in callers, not in the node class itself. |
-| `CustomDeclaration` | `inherited` | n/a | Inherits `Declaration`; custom eval wrapper only toggles `context.inCustom`. |
-| `Ruleset` | `complete` | not yet | `selector` / `rules` / `guard` / extend-managed selector fields are session-aware on active eval/render paths. |
-| `Rules` | `partial` | associated | Non-reset sessions have child-array overlays and session-backed reads/writes through major preEval/eval/coalescing loops. Instance roots are created per mixin candidate and associated with output. Reset-session structural work still relies on cloned working trees. |
-| `RawRules` | `complete` | not yet | Serializer reads session child overlay. Has both behavior and immutability proofs. |
-| `AtRule` | `complete` | not yet | Render and eval read `name` / `prelude` / `rules` through session-aware view. |
-| `Mixin` | `complete` | associated | Render reads for `name` / `params` / `guard` / `rules` are session-aware. Output carries `_instanceRoot` per candidate. Remaining work is caller-side invocation. |
-| `Call` | `complete` | associated | Render reads for `name` / `args` / `contentNode` are session-aware. Now dispatches mixins directly via `evalMixinDirect()`. Output carries `_instanceRoot`. |
-| `Func` | `complete` | not yet | Render reads for `name` / `params` / `body` are session-aware. `evalCall()` reads through session view. |
-| `StyleImport` | `complete` | wired | Instance root created per import placement in evalNode. Session-aware path resolution, `with`/`set` injection, and returned-tree finalization. |
-| `Expression` | `complete` | not yet | Render/read path for `value` is session-aware. Clone preserves session-patched value. |
-| `Operation` | `complete` | not yet | Render and eval read `left` / `right` through session-aware view. |
-| `Condition` | `complete` | not yet | Render, eval, and clone read `left` / `operator` / `right` / `negate` through session-aware view. |
-| `Sequence` | `complete` | not yet | Render, eval, clone, and `operate()` use session-aware `value[]` path. |
-| `List` | `complete` | not yet | Render/read path for `value[]` is session-aware. `operate()` consumes session-patched items. |
-| `Range` | `complete` | not yet | Render and eval read `start` / `end` / `step` through session-aware view. |
-| `Reference` | `complete` | not yet | Render and eval read `target` / `key` through session-aware view. Ancestor walks use `sessionGetParent`. |
-| `Interpolated` | `complete` | not yet | Render and eval read `source` / `replacements` through session-aware view. |
-| `ImportJs` | `complete` | not yet | Render and eval read `path` / `imports` through session-aware view. |
-| `If` / `For` / control | `complete` | not yet | All control nodes read fields through session-aware view. Loop results use `sessionGetChildren`. |
-| `Block` | `complete` | not yet | Render and eval read `value` through session-aware view. |
-| `Negative` | `complete` | not yet | Render and eval read `value` through session-aware view. |
-| `Rest` | `complete` | not yet | Serialization reads `value` through session-aware view. |
-| `Extend` | `complete` | not yet | Clone and evalNode use session-aware getters for `selector` / `target` / `namespace` / `flag`. |
-| `ExtendList` | `complete` | not yet | `toTrimmedString()` reads `value` through session layer. |
-| `Paren` | `partial` | not yet | Wrapper render/read path for `value` is session-aware. |
-| `Quoted` | `partial` | not yet | Render/read path for `value` is session-aware. |
-| `Url` | `partial` | not yet | Render/read path for `value` is session-aware. |
+| `Declaration` | `partial` | n/a | Active eval/serialization reads use session helpers. Caller-side mutation paths still need finishing. |
+| `VarDeclaration` | `inherited` | n/a | Inherits `Declaration` field behavior. |
+| `CustomDeclaration` | `inherited` | n/a | Inherits `Declaration`. |
+| `Ruleset` | `complete` | n/a | All fields session-aware on active eval/render paths. |
+| `Rules` | `partial` | has-clones | Session child-array overlays landed. `getFunctionFromMixins` still deep-clones mixin bodies and param wrappers per call. `preEval` still clones for reset-session. |
+| `RawRules` | `complete` | n/a | Serializer reads session child overlay. |
+| `AtRule` | `complete` | n/a | Render and eval read through session-aware view. |
+| `Mixin` | `complete` | n/a | Render reads session-aware. Remaining work is in callers (Rules/Call), not this node. |
+| `Call` | `complete` | has-clones | Session-aware reads. Direct dispatch via `evalMixinDirect()`. But internally delegates to `getFunctionFromMixins` which deep-clones. Also clones for Collection/detached rulesets. |
+| `Func` | `complete` | has-clones | Session-aware reads. `evalCall()` creates temporary mixin wrapper. Uses same clone machinery as Call. |
+| `StyleImport` | `complete` | has-clones | Instance root created per import placement. Still uses `cloneLookupSafeShallowWrapper` for compose re-eval and `cloneDetachedMaterializedWrapper` for output. |
+| `Expression` | `complete` | n/a | Session-aware reads. Clone preserves session-patched value. |
+| `Operation` | `complete` | n/a | Session-aware reads for `left` / `right`. |
+| `Condition` | `complete` | n/a | Session-aware reads for all fields. |
+| `Sequence` | `complete` | n/a | Session-aware `value[]` path. |
+| `List` | `complete` | n/a | Session-aware `value[]` path. |
+| `Range` | `complete` | n/a | Session-aware reads. |
+| `Reference` | `complete` | n/a | Session-aware reads. Ancestor walks use `sessionGetParent`. |
+| `Interpolated` | `complete` | n/a | Session-aware reads. |
+| `ImportJs` | `complete` | n/a | Session-aware reads. |
+| `If` / `For` / control | `complete` | n/a | All fields session-aware. Loop results use `sessionGetChildren`. |
+| `Block` | `complete` | n/a | Session-aware reads. |
+| `Negative` | `complete` | n/a | Session-aware reads. |
+| `Rest` | `complete` | n/a | Session-aware reads. |
+| `Extend` | `complete` | has-clones | Session-aware getters for all fields. But extend selector rewriting still uses structural copies. |
+| `ExtendList` | `complete` | n/a | Session-aware reads. |
+| `Paren` | `partial` | n/a | Render/read path session-aware. |
+| `Quoted` | `partial` | n/a | Render/read path session-aware. |
+| `Url` | `partial` | n/a | Render/read path session-aware. |
 
 ## Selector Nodes
 
-| Node | Session | Instance Root | Notes |
+| Node | Session | Clone-free | Notes |
 | --- | --- | --- | --- |
 | `BasicSelector` | `leaf` | n/a | Scalar selector token. |
-| `AttributeSelector` | `complete` | not yet | Render and eval read `name` / `value` through session-aware view. |
-| `InterpolatedSelector` | `complete` | not yet | Render and eval read wrapped interpolated value through session-aware view. |
-| `Ampersand` | `complete` | not yet | `valueOf(context?)` and `getResolvedSelector(context?)` read session-patched parent selector. |
-| `PseudoSelector` | `complete` | not yet | Render and eval read `name` / `arg` through session-aware view. |
-| `CompoundSelector` | `complete` | not yet | Render and eval read `value[]` through session-aware view. |
-| `ComplexSelector` | `complete` | not yet | Render and eval read `value[]` through session-aware view. `getKeySet(context)` composes session-specific key set. |
-| `SelectorList` | `complete` | not yet | Render and eval read `value[]` through session-aware view. |
-| `SelectorCapture` | `complete` | not yet | Render and eval read `value` through session-aware path. `preEval()` replacement is session-backed. |
+| `AttributeSelector` | `complete` | n/a | Session-aware reads. |
+| `InterpolatedSelector` | `complete` | n/a | Session-aware reads. |
+| `Ampersand` | `complete` | n/a | Session-aware reads. |
+| `PseudoSelector` | `complete` | n/a | Session-aware reads. |
+| `CompoundSelector` | `complete` | n/a | Session-aware reads. |
+| `ComplexSelector` | `complete` | n/a | Session-aware reads. `getKeySet(context)` composes session-specific key set. |
+| `SelectorList` | `complete` | n/a | Session-aware reads. |
+| `SelectorCapture` | `complete` | n/a | Session-aware reads. |
 
 ## Leaf / Opaque Value Nodes
 
-| Node | Session | Instance Root | Notes |
+| Node | Session | Clone-free | Notes |
 | --- | --- | --- | --- |
-| `Any` | `leaf` | n/a | Scalar token node. |
-| `Bool` | `leaf` | n/a | Scalar token node. |
-| `Color` | `leaf` | n/a | Scalar value node. |
-| `Comment` | `leaf` | n/a | Opaque token/comment node. |
-| `Combinator` | `leaf` | n/a | Scalar selector token node. |
-| `DefaultGuard` | `leaf` | n/a | Scalar control marker. |
-| `Dimension` | `leaf` | n/a | Numeric value object. |
-| `JsArray` | `leaf` | n/a | Opaque JS payload node. |
-| `JsObject` | `leaf` | n/a | Opaque JS payload node. |
-| `JsFunction` | `leaf` | n/a | Opaque JS function payload node. |
-| `JsExpression` | `leaf` | n/a | Opaque string payload plus eval hook. |
-| `Nil` | `leaf` | n/a | Sentinel value node. |
-| `Num` | `leaf` | n/a | Numeric scalar node. |
+| `Any` | `leaf` | n/a | |
+| `Bool` | `leaf` | n/a | |
+| `Color` | `leaf` | n/a | |
+| `Comment` | `leaf` | n/a | |
+| `Combinator` | `leaf` | n/a | |
+| `DefaultGuard` | `leaf` | n/a | |
+| `Dimension` | `leaf` | n/a | |
+| `JsArray` | `leaf` | n/a | |
+| `JsObject` | `leaf` | n/a | |
+| `JsFunction` | `leaf` | n/a | |
+| `JsExpression` | `leaf` | n/a | |
+| `Nil` | `leaf` | n/a | |
+| `Num` | `leaf` | n/a | |
 
-## What "Complete" Means End-to-End
+## Nodes With Remaining Clones
 
-A node is fully complete when:
+These are the only nodes that still have `has-clones`. Everything else is done or n/a.
 
-1. **Session**: all active reads/writes use session helpers (`complete`)
-2. **Instance root**: eval path creates instance roots, output carries `_instanceRoot` (`wired` or `associated`)
-3. **Clone-free**: no internal `clone()` / `copy()` / `materialize()` in that node's eval path — isolation is purely via instance root shadowing
+| Node | Clone sites | What needs to happen |
+| --- | --- | --- |
+| `Rules` | `getFunctionFromMixins`: body `clone(true)` per mixin call, `outerRules.clone(true)` in evaluateCandidateOutput, `cloneDetachedUnlockWrapper` for detached rulesets. `preEval`: `clone(false)` for reset-session. | Replace deep clones with instance root shadow per call. Params bound via `patchField`. Output carries `_instanceRoot`. See [mixin-direct-invocation.md](./mixin-direct-invocation.md). |
+| `Call` | `getFunctionFromMixins` (via Rules), Collection `clone(true)` for detached rulesets. | Follows from Rules clone elimination. Collection path is simpler — one clone site. |
+| `Func` | Uses mixin machinery — `evalCall` creates temp Mixin wrapper. | Follows from Rules clone elimination. |
+| `StyleImport` | `cloneLookupSafeShallowWrapper` for compose re-eval, shallow clone in `getFinalRules`. | Replace shallow wrapper with instance root parent shadow. |
+| `Extend` | `materializeImplicitAmpersands`, `copy(true)` in extend-core selector rewriting. | Extend mutates selectors structurally. Needs investigation — may be a legitimate edge case. |
 
-The goal is to remove the entire cloning architecture in favor of instance roots. Internal cloning should not exist in a complete node's eval path.
-
-The only place materialization is allowed is at the **final output boundary** — when Jess serializes the evaluated tree to CSS or hands off a standalone object graph that outlives the session.
-
-### Edge cases where a clone might survive
-
-If any of these turn out to add more complexity via shadowing than a simple clone, they should be documented here with a reason:
+## Edge Cases Where Clone Might Survive
 
 | Case | Status | Notes |
 | --- | --- | --- |
@@ -117,10 +115,11 @@ If any of these turn out to add more complexity via shadowing than a simple clon
 
 If a case is kept as a clone, it must be documented here with a concrete reason. "It was easier" is not a reason.
 
-### Current status
+## What "Complete" Means End-to-End
 
-- Most nodes are session-`complete` (the bridge work)
-- `StyleImport` is the only `wired` node
-- `Rules`, `Mixin`, `Call` have instance root `associated` (output carries `_instanceRoot` but clone not yet replaced)
-- Clone-free eval is the next frontier (see [mixin-direct-invocation.md](./mixin-direct-invocation.md))
-- No node has reached full end-to-end complete yet
+A node is fully complete when:
+
+1. **Session**: all active reads/writes use session helpers (`complete`)
+2. **Clone-free**: no internal `clone()` / `copy()` / `materialize()` in that node's eval path (`complete` or `n/a`)
+
+The goal is to remove the entire cloning architecture in favor of instance roots. Materialization only at the final CSS output boundary.
