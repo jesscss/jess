@@ -1258,6 +1258,11 @@ export abstract class Node<
 
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
     if (context.session?.resetEvalState) {
+      // Position provides isolation — no clone needed.
+      // Eval state and field changes go to position patches.
+      if (context.position) {
+        return this;
+      }
       return this.clone(deep, cloneFn, context);
     }
     return this;

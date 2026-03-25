@@ -2635,20 +2635,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
           newRules = await rules.eval(thisContext);
         } else {
-          const evalScope = outerRules.clone(true, undefined, thisContext);
-          const evalScopeParent = getParent(outerRules, thisContext);
-          if (evalScopeParent) {
-            setParent(evalScope, evalScopeParent, thisContext);
-          }
-          for (const child of rules.value) {
-            evalScope.push(
-              thisContext,
-              isNode(child, N.Rules)
-                ? child.cloneVisibilityIsolationWrapper(thisContext)
-                : (child as Node).clone(false, undefined, thisContext)
-            );
-          }
-          newRules = await evalScope.eval(thisContext);
+          // Patch body's parent to outerRules so param lookups walk:
+          // body → outerRules (has params) → parent scope.
+          // No clone needed — position carries the parent patch.
+          setParent(rules, outerRules, thisContext);
+          newRules = await rules.eval(thisContext);
         }
         thisContext.position = prevPosition;
         setSourceParent(newRules, sourceParent, thisContext);
@@ -2762,21 +2753,18 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         continue;
       }
       let rules = (candidate as any).rules as Rules;
-      /** Shallow clone + IR instead of deep clone — O(N) vs O(N²).
-       * ctx.instanceRoot set so clone(false) routes adoption through IR. */
-      const prevIR = thisContext.instanceRoot;
-      if (candidateInstanceRoot) {
-        thisContext.instanceRoot = candidateInstanceRoot;
-      }
-      rules = rules.clone(false, undefined, thisContext);
-      thisContext.instanceRoot = prevIR;
+      // No clone — position carries all eval state as patches.
       if (candidateInstanceRoot) {
         rules._instanceRoot = candidateInstanceRoot;
       }
-      // During mixin evaluation, local declarations must be directly visible in the current scope
-      // so they properly shadow outer params/variables while the body executes.
-      rules.options.rulesVisibility ??= {};
-      rules.options.rulesVisibility.VarDeclaration = 'public';
+      // Patch visibility and parent through position (not canonical mutation).
+      patchField(rules, 'options', {
+        ...rules.options,
+        rulesVisibility: {
+          ...(rules.options.rulesVisibility ?? {}),
+          VarDeclaration: 'public'
+        }
+      }, thisContext);
       setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
       setSourceParent(rules, sourceParent, thisContext);
       // Don't set index before evaluation - let evaluation assign the correct index
