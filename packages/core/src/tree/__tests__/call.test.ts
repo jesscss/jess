@@ -419,6 +419,33 @@ describe('Call', () => {
     expect(childDecl.important?.toTrimmedString()).toBe('!important');
   });
 
+  it('characterizes the exact lower helper contract for stylesheet-function same-source Rules results', () => {
+    context.session = new EvalSession();
+    const childDecl = decl({ name: 'color', value: any('red') });
+    const returnValue = rules([childDecl]);
+    const node = call({
+      name: returnValue,
+      args: list([])
+    }, { markImportant: true });
+    node.pre = 2;
+    node.post = 1;
+
+    const returned = returnValue.cloneDetachedMaterializedWrapper(context);
+    node.makeImportant(returned);
+    returned.pre = node.pre;
+    returned.post = node.post;
+    returned.sourceParent = node;
+
+    expect(returned).not.toBe(returnValue);
+    expect(returned.value[0]).not.toBe(childDecl);
+    expect(childDecl.parent).toBe(returnValue);
+    expect(returned.value[0].toTrimmedString({ context })).toBe('color: red !important');
+    expect(returned.pre).toBe(2);
+    expect(returned.post).toBe(1);
+    expect(returned.sourceParent).toBe(node);
+    expect(childDecl.important).toBeUndefined();
+  });
+
   it('reads a session-patched markImportant option for collection results without mutating canonical options', async () => {
     context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
