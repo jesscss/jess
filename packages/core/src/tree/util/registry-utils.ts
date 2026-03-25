@@ -164,7 +164,12 @@ export function isRegistryIndexing(rules: Rules | readonly Node[]): boolean {
 }
 
 export function syncRegistryCache(rules: Rules, context?: Context): void {
-  const value = rules.value;
+  // When an instance root has a children overlay for this Rules,
+  // use the IR children for registry sync instead of canonical .value.
+  // This ensures lookups during IR-backed eval see the correct children.
+  const ir = context?.instanceRoot;
+  const irChildren = ir?.getChildren(rules);
+  const value = irChildren ?? rules.value;
   if (getSessionRegistryDelta(rules, context)) {
     return;
   }
