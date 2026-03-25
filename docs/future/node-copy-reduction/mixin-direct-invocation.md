@@ -70,7 +70,7 @@ Call.evalNode (call.ts)
       ↓ evaluate guard against instance root if needed
       ↓ if passes:
         ↓ evaluate canonical body with instance root active
-        ↓ materialize output at call boundary
+        ↓ associate instance root with output (no materialization)
         ↓ push to outputRules
     ↓ sort, wrap, return
 ```
@@ -84,7 +84,7 @@ Call.evalNode (call.ts)
 | Arg handling | Clone → freeze → spread → re-collect | Evaluate once, pass directly |
 | Body isolation | Clone mixin body per call | Instance root shadow per call |
 | Param binding | `param.setData('value', boundValue)` | Instance root shadow entry |
-| Output | Cloned Rules with session parent chains | Materialized from instance root |
+| Output | Cloned Rules with session parent chains | Canonical body + associated instance root |
 
 ## What To Keep
 
@@ -131,15 +131,38 @@ const guardResult = await guard.eval(ctx);
 ctx.session = prevSession;
 ```
 
-## Output Materialization
+## Output: Instance Root Association, Not Materialization
 
-At the call boundary, the evaluated instance root state needs to be materialized into a standalone `Rules` tree:
+The mixin call should NOT materialize at the call boundary — that would just replace `clone()` with `materialize()` for the same cost.
+
+Instead, the canonical body + its instance root survive as a pair. The instance root stays alive as long as the output is reachable. When the caller inserts the output into its scope, reads through session helpers resolve the right shadow state.
+
+The cleanest approach: output nodes carry a reference to their instance root:
 
 ```ts
-const output = sourceRoot.materializeFromInstanceRoot(instanceRoot, ctx);
+// After eval, associate the instance root with the output
+output._instanceRoot = instanceRoot;
 ```
 
-This is the one place where materialization is architecturally correct — the call boundary is an explicit downstream boundary where Jess emits a standalone evaluated object graph.
+When session helpers read from this node and `ctx.instanceRoot` isn't set, they check `node._instanceRoot` as an implicit fallback:
+
+```ts
+function sessionGetField(node, key, ctx) {
+  const ir = ctx.instanceRoot ?? (node as any)._instanceRoot;
+  if (ir && ir.hasField(node, key)) {
+    return ir.getField(node, key);
+  }
+  // ... session fallback, then canonical
+}
+```
+
+This means:
+- No materialization cost at the call boundary
+- Each mixin call's output "remembers" its instance root
+- Multiple outputs from different calls resolve independently
+- The public node API stays unchanged (no explicit instance parameter)
+
+Materialization only happens at the final CSS output boundary — when Jess serializes the evaluated tree to a string or standalone object graph that outlives the session.
 
 ## Risk Areas
 
