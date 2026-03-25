@@ -328,6 +328,40 @@ describe('Call', () => {
     expect(returnValue.sourceParent).toBeUndefined();
   });
 
+  it('keeps nested-call composite Rules results out of the remaining same-source owner branch', async () => {
+    context.session = new EvalSession();
+    const childDecl = decl({ name: 'color', value: any('red') });
+    const returnValue = rules([childDecl]);
+    const functionNode = fn({
+      name: any('make'),
+      body: rules([
+        decl({ name: 'return', value: returnValue })
+      ])
+    });
+    const aliasCall = call({
+      name: functionNode,
+      args: list([])
+    });
+    const aliasRef = ref('alias', { type: 'variable' });
+    vi.spyOn(aliasRef, 'eval').mockResolvedValue(aliasCall);
+    const node = call({
+      name: aliasRef,
+      args: list([])
+    });
+    node.pre = 2;
+    node.post = 1;
+
+    const result = await node.eval(context);
+
+    expect(result.toTrimmedString({ context })).toContain('color: red;');
+    expect(result).not.toBe(returnValue);
+    expect(result.value[0]).not.toBe(childDecl);
+    expect(result.pre).toBe(2);
+    expect(result.post).toBe(1);
+    expect(result.sourceParent).toBe(node);
+    expect(childDecl.parent).toBe(returnValue);
+  });
+
   it('materializes collection results without mutating canonical collection children', async () => {
     context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
