@@ -11,7 +11,7 @@ import {
 } from '../../../index.js';
 import { Context } from '../../../context.js';
 import { EvalSession } from '../../../eval-session.js';
-import { sessionPatchField } from '../session-helpers.js';
+import { patchField } from '../session-helpers.js';
 import {
   selectorMatch
 } from '../selector-match-core.js';
@@ -61,8 +61,8 @@ describe('basic selectors', () => {
     const target = amp({ selectorContainer: parent as any });
     target.keySetLibrary = contextA.selectorBits;
 
-    sessionPatchField(parent, 'selector', beta, contextA);
-    sessionPatchField(parent, 'selector', gamma, contextB);
+    patchField(parent, 'selector', beta, contextA);
+    patchField(parent, 'selector', gamma, contextB);
 
     expect(target.getKeySet(contextA).equals(contextA.selectorBits.getBitset(['.beta']))).toBe(true);
     expect(target.getKeySet(contextB).equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(true);
@@ -91,8 +91,8 @@ describe('basic selectors', () => {
     const target = amp({ selectorContainer: parent as any });
     target.keySetLibrary = contextA.selectorBits;
 
-    sessionPatchField(parent, 'selector', beta, contextA);
-    sessionPatchField(parent, 'selector', gamma, contextB);
+    patchField(parent, 'selector', beta, contextA);
+    patchField(parent, 'selector', gamma, contextB);
 
     expect(selectorMatch(beta, target, undefined, contextA).fullMatch).toBe(true);
     expect(selectorMatch(gamma, target, undefined, contextA).fullMatch).toBe(false);

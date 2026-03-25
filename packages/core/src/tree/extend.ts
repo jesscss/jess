@@ -11,7 +11,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { getField } from './util/session-helpers.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -113,25 +113,25 @@ export class Extend extends Node<ExtendValue> {
 
   private _getSelector(context?: Context): Selector | undefined {
     return context
-      ? sessionGetField<Selector | undefined>(this, 'selector', context)
+      ? getField<Selector | undefined>(this, 'selector', context)
       : this.selector;
   }
 
   private _getTarget(context?: Context): Selector {
     return context
-      ? sessionGetField<Selector>(this, 'target', context)
+      ? getField<Selector>(this, 'target', context)
       : this.target;
   }
 
   private _getNamespace(context?: Context): string | undefined {
     return context
-      ? sessionGetField<string | undefined>(this, 'namespace', context)
+      ? getField<string | undefined>(this, 'namespace', context)
       : this.namespace;
   }
 
   private _getFlag(context?: Context): ExtendFlag | undefined {
     return context
-      ? sessionGetField<ExtendFlag | undefined>(this, 'flag', context)
+      ? getField<ExtendFlag | undefined>(this, 'flag', context)
       : this.flag;
   }
 

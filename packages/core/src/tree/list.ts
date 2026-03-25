@@ -5,7 +5,7 @@ import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
+import { getField, patchField, setParent } from './util/session-helpers.js';
 
 export type ListOptions = {
   /**
@@ -62,17 +62,17 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   private _getValue(context?: Context): T[] {
     return context
-      ? sessionGetField<T[]>(this, 'value', context)
+      ? getField<T[]>(this, 'value', context)
       : this.value;
   }
 
   private _setValue(value: T[], context: Context): void {
     if (context.session) {
       for (const child of value) {
-        sessionSetParent(child, this, context);
+        setParent(child, this, context);
       }
       if (this === this.sourceNode) {
-        sessionPatchField(this, 'value', value, context);
+        patchField(this, 'value', value, context);
         return;
       }
     } else {

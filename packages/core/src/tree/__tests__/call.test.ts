@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
+import { getParent, patchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Call', () => {
@@ -99,7 +99,7 @@ describe('Call', () => {
       node
     ]);
 
-    sessionPatchField(node, 'args', list([patchedArg]), context);
+    patchField(node, 'args', list([patchedArg]), context);
 
     const evald = await root.eval(context);
 
@@ -127,7 +127,7 @@ describe('Call', () => {
       node
     ]);
 
-    sessionPatchField(node, 'contentNode', any('patched'), context);
+    patchField(node, 'contentNode', any('patched'), context);
 
     const evald = await root.eval(context);
 
@@ -153,7 +153,7 @@ describe('Call', () => {
       node
     ]);
 
-    sessionPatchField(arg, 'value', [num(3), num(4)], context);
+    patchField(arg, 'value', [num(3), num(4)], context);
 
     const evald = await root.eval(context);
 
@@ -184,7 +184,7 @@ describe('Call', () => {
       args: list([num(1)])
     });
 
-    sessionPatchField(node, 'options', { silentFail: true }, context);
+    patchField(node, 'options', { silentFail: true }, context);
 
     expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
     expect(node.toTrimmedString()).toBe('rgb(1)');
@@ -198,7 +198,7 @@ describe('Call', () => {
       args: list([num(1)])
     });
 
-    sessionPatchField(node, 'options', { silentFail: true }, context);
+    patchField(node, 'options', { silentFail: true }, context);
 
     const evald = await node.eval(context);
 
@@ -218,8 +218,8 @@ describe('Call', () => {
 
     expect(name.parent).toBe(node);
     expect(args.parent).toBe(node);
-    expect(sessionGetParent(name, context)).toBe(clone);
-    expect(sessionGetParent(args, context)).toBe(clone);
+    expect(getParent(name, context)).toBe(clone);
+    expect(getParent(args, context)).toBe(clone);
   });
 
   it('uses the call-local shallow clone in the silent-fail non-function branch without canonically reparenting children', async () => {
@@ -412,7 +412,7 @@ describe('Call', () => {
 
     expect(wrapper.value[0]).toBe(childDecl);
     expect(childDecl.parent).toBe(returnValue);
-    expect(sessionGetParent(childDecl, context)).toBe(wrapper);
+    expect(getParent(childDecl, context)).toBe(wrapper);
 
     node.makeImportant(wrapper);
 
@@ -455,7 +455,7 @@ describe('Call', () => {
       args: list([])
     });
 
-    sessionPatchField(node, 'options', { markImportant: true }, context);
+    patchField(node, 'options', { markImportant: true }, context);
 
     const result = await node.eval(context);
 

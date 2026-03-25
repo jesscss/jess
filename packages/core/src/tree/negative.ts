@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { getField } from './util/session-helpers.js';
 
 /**
  * The negative sign before a node
@@ -31,7 +31,7 @@ export class Negative extends Node<Node> {
 
   private _getValue(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'value', context)
+      ? getField<Node>(this, 'value', context)
       : this.value;
   }
 

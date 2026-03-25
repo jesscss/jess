@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { getField, patchField } from './util/session-helpers.js';
 
 export type PseudoSelectorValue = {
   /**
@@ -50,13 +50,13 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   private _getName(context?: Context): string {
     return context
-      ? sessionGetField<string>(this, 'name', context)
+      ? getField<string>(this, 'name', context)
       : this.name;
   }
 
   private _getArg(context?: Context): Node | undefined {
     return context
-      ? sessionGetField<Node | undefined>(this, 'arg', context)
+      ? getField<Node | undefined>(this, 'arg', context)
       : this.arg;
   }
 
@@ -65,7 +65,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       this.adopt(arg, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'arg', arg, context);
+      patchField(this, 'arg', arg, context);
     } else {
       this.arg = arg;
     }

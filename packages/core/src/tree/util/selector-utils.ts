@@ -14,7 +14,7 @@ import { Nil } from '../nil.js';
 import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
 import type { Ampersand } from '../ampersand.js';
 import type { Context } from '../../context.js';
-import { sessionGetParent } from './session-helpers.js';
+import { getParent } from './session-helpers.js';
 
 const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
 const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
@@ -100,8 +100,8 @@ export function wrapInGeneratedIs(selector: Selector): Selector {
 
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
 export function getParentRuleset(node: Node, context?: Context): Ruleset | undefined {
-  const rules = context ? sessionGetParent(node, context) : node.parent;
-  const parent = rules && (context ? sessionGetParent(rules, context) : rules.parent);
+  const rules = context ? getParent(node, context) : node.parent;
+  const parent = rules && (context ? getParent(rules, context) : rules.parent);
   return parent && isNode(parent, N.Ruleset)
     ? parent as Ruleset
     : undefined;

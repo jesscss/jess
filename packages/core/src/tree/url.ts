@@ -5,7 +5,7 @@ import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Context } from '../context.js';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { getField, patchField } from './util/session-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**
@@ -31,7 +31,7 @@ export class Url extends Node<Quoted | Any> {
 
   private _getValue(context?: Context): Quoted | Any {
     return context
-      ? sessionGetField<Quoted | Any>(this, 'value', context)
+      ? getField<Quoted | Any>(this, 'value', context)
       : this.value;
   }
 
@@ -40,7 +40,7 @@ export class Url extends Node<Quoted | Any> {
       this.adopt(value, context);
     }
     if (context.session) {
-      sessionPatchField(this, 'value', value, context);
+      patchField(this, 'value', value, context);
     } else {
       this.setData('value', value);
     }

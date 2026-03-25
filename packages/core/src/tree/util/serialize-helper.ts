@@ -7,7 +7,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
-import { sessionGetField } from './session-helpers.js';
+import { getField } from './session-helpers.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -79,7 +79,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
   }
   const rules = options.context
-    ? sessionGetField<typeof node.rules | undefined>(node, 'rules', options.context)
+    ? getField<typeof node.rules | undefined>(node, 'rules', options.context)
     : node.rules;
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {

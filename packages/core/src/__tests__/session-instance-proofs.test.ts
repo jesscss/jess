@@ -33,14 +33,14 @@ import {
   type Rules
 } from '../index.js';
 import {
-  sessionGetField,
-  sessionPatchField,
-  sessionSetParent,
-  sessionGetParent,
-  sessionSetEvaluated,
-  sessionIsEvaluated,
-  sessionGetChildren,
-  sessionAppendChildren
+  getField,
+  patchField,
+  setParent,
+  getParent,
+  setEvaluated,
+  isEvaluated,
+  getChildren,
+  appendChildren
 } from '../tree/util/session-helpers.js';
 
 /**
@@ -168,16 +168,16 @@ describe('SI-5: Repeated import proof', () => {
 
     // Write to import2's instance
     ctx.instanceRoot = import2;
-    sessionPatchField(colorVar, 'value', new Keyword('blue'), ctx);
+    patchField(colorVar, 'value', new Keyword('blue'), ctx);
 
     // Read from import1 — source-backed
     ctx.instanceRoot = import1;
-    expect(sessionGetField(colorVar, 'value', ctx)).toBeInstanceOf(Keyword);
-    expect((sessionGetField(colorVar, 'value', ctx) as Keyword).value).toBe('red');
+    expect(getField(colorVar, 'value', ctx)).toBeInstanceOf(Keyword);
+    expect((getField(colorVar, 'value', ctx) as Keyword).value).toBe('red');
 
     // Read from import2 — sees the blue override
     ctx.instanceRoot = import2;
-    expect((sessionGetField(colorVar, 'value', ctx) as Keyword).value).toBe('blue');
+    expect((getField(colorVar, 'value', ctx) as Keyword).value).toBe('blue');
   });
 
   it('dependency reach identifies only @color-dependent nodes', () => {
@@ -220,18 +220,18 @@ describe('SI-5: Repeated import proof', () => {
 
     // Import 1 placed under parent1
     ctx.instanceRoot = import1;
-    sessionSetParent(tree, parent1, ctx);
+    setParent(tree, parent1, ctx);
 
     // Import 2 placed under parent2
     ctx.instanceRoot = import2;
-    sessionSetParent(tree, parent2, ctx);
+    setParent(tree, parent2, ctx);
 
     // Read back — independent
     ctx.instanceRoot = import1;
-    expect(sessionGetParent(tree, ctx)).toBe(parent1);
+    expect(getParent(tree, ctx)).toBe(parent1);
 
     ctx.instanceRoot = import2;
-    expect(sessionGetParent(tree, ctx)).toBe(parent2);
+    expect(getParent(tree, ctx)).toBe(parent2);
   });
 });
 
@@ -337,16 +337,16 @@ describe('SI-6: Repeated mixin/function proof', () => {
 
     // callC overrides background to blue
     ctx.instanceRoot = callC;
-    sessionPatchField(bgDecl, 'value', new Keyword('blue'), ctx);
+    patchField(bgDecl, 'value', new Keyword('blue'), ctx);
 
     // callA reads source-backed value (a Reference node, not overridden)
     ctx.instanceRoot = callA;
-    const aValue = sessionGetField(bgDecl, 'value', ctx);
+    const aValue = getField(bgDecl, 'value', ctx);
     expect(aValue).not.toBeInstanceOf(Keyword);
 
     // callC reads its own override
     ctx.instanceRoot = callC;
-    const cValue = sessionGetField<Keyword>(bgDecl, 'value', ctx);
+    const cValue = getField<Keyword>(bgDecl, 'value', ctx);
     expect(cValue).toBeInstanceOf(Keyword);
     expect(cValue.value).toBe('blue');
   });
@@ -363,21 +363,21 @@ describe('SI-6: Repeated mixin/function proof', () => {
 
     // Mark callA's declarations as evaluated
     ctx.instanceRoot = callA;
-    sessionSetEvaluated(colorDecl, true, ctx);
-    sessionSetEvaluated(borderDecl, true, ctx);
-    sessionSetEvaluated(bgDecl, true, ctx);
+    setEvaluated(colorDecl, true, ctx);
+    setEvaluated(borderDecl, true, ctx);
+    setEvaluated(bgDecl, true, ctx);
 
     // callB's declarations are NOT evaluated
     ctx.instanceRoot = callB;
-    expect(sessionIsEvaluated(colorDecl, ctx)).toBe(false);
-    expect(sessionIsEvaluated(borderDecl, ctx)).toBe(false);
-    expect(sessionIsEvaluated(bgDecl, ctx)).toBe(false);
+    expect(isEvaluated(colorDecl, ctx)).toBe(false);
+    expect(isEvaluated(borderDecl, ctx)).toBe(false);
+    expect(isEvaluated(bgDecl, ctx)).toBe(false);
 
     // callA's are still marked
     ctx.instanceRoot = callA;
-    expect(sessionIsEvaluated(colorDecl, ctx)).toBe(true);
-    expect(sessionIsEvaluated(borderDecl, ctx)).toBe(true);
-    expect(sessionIsEvaluated(bgDecl, ctx)).toBe(true);
+    expect(isEvaluated(colorDecl, ctx)).toBe(true);
+    expect(isEvaluated(borderDecl, ctx)).toBe(true);
+    expect(isEvaluated(bgDecl, ctx)).toBe(true);
   });
 
   it('children overlays per instance root allow different child visibility', () => {
@@ -392,16 +392,16 @@ describe('SI-6: Repeated mixin/function proof', () => {
 
     // callA: remove bgDecl (simulate guard condition hiding it)
     ctx.instanceRoot = callA;
-    const aChildren = sessionGetChildren(body as Rules, ctx).filter(c => c !== bgDecl);
+    const aChildren = getChildren(body as Rules, ctx).filter(c => c !== bgDecl);
     callA.setChildren(body, aChildren);
 
     // callB: full body
     ctx.instanceRoot = callB;
-    expect(sessionGetChildren(body as Rules, ctx)).toHaveLength(3);
+    expect(getChildren(body as Rules, ctx)).toHaveLength(3);
 
     // callA sees only 2
     ctx.instanceRoot = callA;
-    expect(sessionGetChildren(body as Rules, ctx)).toHaveLength(2);
+    expect(getChildren(body as Rules, ctx)).toHaveLength(2);
   });
 });
 
@@ -417,17 +417,17 @@ describe('node._instanceRoot association', () => {
 
     // Write while instance root is active on context
     ctx.instanceRoot = root;
-    sessionPatchField(node, 'value', 'blue', ctx);
+    patchField(node, 'value', 'blue', ctx);
 
     // Clear context instance root
     ctx.instanceRoot = undefined;
 
     // Without node._instanceRoot, read falls through to session then canonical
-    expect(sessionGetField(node, 'value', ctx)).toBe('red');
+    expect(getField(node, 'value', ctx)).toBe('red');
 
     // Set node._instanceRoot — now reads resolve through it
     node._instanceRoot = root;
-    expect(sessionGetField(node, 'value', ctx)).toBe('blue');
+    expect(getField(node, 'value', ctx)).toBe('blue');
   });
 
   it('ctx.instanceRoot takes priority over node._instanceRoot', () => {
@@ -449,11 +449,11 @@ describe('node._instanceRoot association', () => {
     ctx.session = session;
 
     // No ctx.instanceRoot — reads from node._instanceRoot (rootA)
-    expect(sessionGetField(node, 'value', ctx)).toBe('blue');
+    expect(getField(node, 'value', ctx)).toBe('blue');
 
     // Set ctx.instanceRoot to rootB — overrides node._instanceRoot
     ctx.instanceRoot = rootB;
-    expect(sessionGetField(node, 'value', ctx)).toBe('green');
+    expect(getField(node, 'value', ctx)).toBe('green');
   });
 
   it('writes go to node._instanceRoot when no ctx.instanceRoot', () => {
@@ -468,7 +468,7 @@ describe('node._instanceRoot association', () => {
     ctx.session = session;
 
     // Write with no ctx.instanceRoot — goes to node._instanceRoot
-    sessionPatchField(node, 'value', 'green', ctx);
+    patchField(node, 'value', 'green', ctx);
 
     // Verify it's in the instance root
     expect(root.getField(node, 'value')).toBe('green');
@@ -477,7 +477,7 @@ describe('node._instanceRoot association', () => {
     expect(session.hasField(node, 'value')).toBe(false);
 
     // Read back through helper
-    expect(sessionGetField(node, 'value', ctx)).toBe('green');
+    expect(getField(node, 'value', ctx)).toBe('green');
   });
 
   it('parent chains resolve through node._instanceRoot', () => {
@@ -492,14 +492,14 @@ describe('node._instanceRoot association', () => {
 
     // Set parent via instance root
     ctx.instanceRoot = root;
-    sessionSetParent(child, parent1, ctx);
+    setParent(child, parent1, ctx);
     ctx.instanceRoot = undefined;
 
     // Without association, parent falls through to canonical
-    expect(sessionGetParent(child, ctx)).toBeUndefined();
+    expect(getParent(child, ctx)).toBeUndefined();
 
     // With association, parent resolves through instance root
     child._instanceRoot = root;
-    expect(sessionGetParent(child, ctx)).toBe(parent1);
+    expect(getParent(child, ctx)).toBe(parent1);
   });
 });

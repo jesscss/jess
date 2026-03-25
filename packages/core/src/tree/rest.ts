@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import { defineType, Node, type OptionalLocation, type TreeContext, type NodeOptions } from './node.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { getField } from './util/session-helpers.js';
 
 /**
  * A rest expression (e.g. ...$var). By itself it doesn't do much.
@@ -28,7 +28,7 @@ export class Rest extends Node<Node | string | undefined> {
 
   private _getValue(context?: Context): Node | string | undefined {
     return context
-      ? sessionGetField<Node | string | undefined>(this, 'value', context)
+      ? getField<Node | string | undefined>(this, 'value', context)
       : this.value;
   }
 

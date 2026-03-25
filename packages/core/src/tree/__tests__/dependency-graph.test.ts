@@ -12,7 +12,7 @@ import {
   ref,
   rules,
   ruleset,
-  sessionGetDependency,
+  getDependency,
   vardecl
 } from '../../index.js';
 import { isNode } from '../util/is-node.js';
@@ -23,7 +23,7 @@ import type { Rules } from '../rules.js';
 import type { Ruleset } from '../ruleset.js';
 
 function getFirstRuleset(root: Rules): Ruleset {
-  const rulesetNode = root.value.find((node) => isNode(node, N.Ruleset));
+  const rulesetNode = root.value.find(node => isNode(node, N.Ruleset));
   expect(rulesetNode).toBeDefined();
   return rulesetNode as Ruleset;
 }
@@ -33,7 +33,7 @@ function collectDeclarations(node: Node): Declaration[] {
     return [node as Declaration];
   }
   if (isNode(node, N.Rules)) {
-    return node.value.flatMap((child) => collectDeclarations(child));
+    return node.value.flatMap(child => collectDeclarations(child));
   }
   return [];
 }
@@ -59,7 +59,7 @@ describe('dependency graph propagation', () => {
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
 
-    expect(sessionGetDependency(declaration.value, ctx)).toBeNull();
+    expect(getDependency(declaration.value, ctx)).toBeNull();
   });
 
   it('tracks direct top-level variable references', async () => {
@@ -79,11 +79,11 @@ describe('dependency graph propagation', () => {
 
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
-    const dependency = sessionGetDependency(declaration.value, ctx);
+    const dependency = getDependency(declaration.value, ctx);
 
     expect(dependency).not.toBeNull();
     expect(dependency?.dependsOn?.size).toBe(1);
-    expect([...dependency!.dependsOn!].map((dep) => dep.name.valueOf())).toEqual(['base']);
+    expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
   });
 
   it('propagates dependencies through operations', async () => {
@@ -110,10 +110,10 @@ describe('dependency graph propagation', () => {
 
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
-    const dependency = sessionGetDependency(declaration.value, ctx);
+    const dependency = getDependency(declaration.value, ctx);
 
     expect(dependency).not.toBeNull();
-    expect([...dependency!.dependsOn!].map((dep) => dep.name.valueOf())).toEqual(['base']);
+    expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
   });
 
   it('treats mixin params with static inputs as static', async () => {
@@ -143,7 +143,7 @@ describe('dependency graph propagation', () => {
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
 
-    expect(sessionGetDependency(declaration.value, ctx)).toBeNull();
+    expect(getDependency(declaration.value, ctx)).toBeNull();
   });
 
   it('tracks top-level vars through mixin parameter binding', async () => {
@@ -174,10 +174,10 @@ describe('dependency graph propagation', () => {
 
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
-    const dependency = sessionGetDependency(declaration.value, ctx);
+    const dependency = getDependency(declaration.value, ctx);
 
     expect(dependency).not.toBeNull();
     expect(dependency?.dependsOn?.size).toBe(1);
-    expect([...dependency!.dependsOn!].map((dep) => dep.name.valueOf())).toEqual(['base']);
+    expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
   });
 });

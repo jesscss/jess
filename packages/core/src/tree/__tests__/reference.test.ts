@@ -3,7 +3,7 @@ import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetSourceParent, sessionSetParent } from '../util/session-helpers.js';
+import { getSourceParent, setParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -286,7 +286,7 @@ describe('reference', () => {
       }
 
       const lookup = ref({ key: 'foo' }, { type: 'variable', resolution: 'linear' });
-      sessionSetParent(lookup, hostDecl, context);
+      setParent(lookup, hostDecl, context);
 
       const evald = await lookup.eval(context);
 
@@ -314,7 +314,7 @@ describe('reference', () => {
       }
 
       const lookup = ref({ key: 'foo' }, { type: 'variable' });
-      sessionSetParent(lookup, hostDecl, context);
+      setParent(lookup, hostDecl, context);
 
       const evald = await lookup.eval(context);
 
@@ -337,7 +337,7 @@ describe('reference', () => {
       context.session = new EvalSession();
       context.root = outer;
       context.rulesContext = inner;
-      sessionSetParent(inner, outer, context);
+      setParent(inner, outer, context);
 
       const evald = await inner.at(0)!.eval(context);
 
@@ -384,7 +384,7 @@ describe('reference', () => {
       const resolved = await lookup.eval(context);
 
       expect(resolved.type).toBe('JsFunction');
-      expect(sessionGetSourceParent(theme, context)).toBe(themeLookup);
+      expect(getSourceParent(theme, context)).toBe(themeLookup);
       expect(theme.sourceParent).toBeUndefined();
     });
 

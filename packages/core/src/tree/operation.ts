@@ -8,11 +8,11 @@ import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 import {
-  sessionGetField,
-  sessionMergeDependencies,
-  sessionPatchField,
-  sessionSetDependency,
-  sessionSetEvaluated
+  getField,
+  mergeDependencies,
+  patchField,
+  setDependency,
+  setEvaluated
 } from './util/session-helpers.js';
 
 export type { Operator };
@@ -73,14 +73,14 @@ export class Operation extends Node<OperationValue> {
 
   private _getLeft(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'left', context)
+      ? getField<Node>(this, 'left', context)
       : this.left;
   }
 
   private _setLeft(left: Node, context: Context): void {
     this.adopt(left);
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'left', left, context);
+      patchField(this, 'left', left, context);
     } else {
       this.left = left;
     }
@@ -88,14 +88,14 @@ export class Operation extends Node<OperationValue> {
 
   private _getRight(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'right', context)
+      ? getField<Node>(this, 'right', context)
       : this.right;
   }
 
   private _setRight(right: Node, context: Context): void {
     this.adopt(right);
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'right', right, context);
+      patchField(this, 'right', right, context);
     } else {
       this.right = right;
     }
@@ -124,9 +124,9 @@ export class Operation extends Node<OperationValue> {
     const right = n._getRight(context);
     const maybeLeft = left.eval(context);
     const applyMergedDependency = (result: Node, l: Node, r: Node): Node => {
-      const dependency = sessionMergeDependencies([l, r], context);
+      const dependency = mergeDependencies([l, r], context);
       if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-        sessionSetDependency(result, {
+        setDependency(result, {
           dependsOn: new Set(dependency.dependsOn),
           sourceExpr: this
         }, context);
@@ -164,9 +164,9 @@ export class Operation extends Node<OperationValue> {
                 : n;
               calcOperation._setLeft(l, context);
               calcOperation._setRight(r, context);
-              sessionSetEvaluated(calcOperation, true, context);
-              sessionSetEvaluated(l, true, context);
-              sessionSetEvaluated(r, true, context);
+              setEvaluated(calcOperation, true, context);
+              setEvaluated(l, true, context);
+              setEvaluated(r, true, context);
               const calcCall = new Call({ name: 'calc', args: list([calcOperation]) });
               calcCall.pre = left.pre;
               calcCall.post = right.post;

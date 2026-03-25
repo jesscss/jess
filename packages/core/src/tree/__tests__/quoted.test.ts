@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { any, expr, interpolated, quoted } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { patchField } from '../util/session-helpers.js';
 
 describe('Quoted', () => {
   it('serializes a quoted string', () => {
@@ -52,8 +52,8 @@ describe('Quoted', () => {
     firstSession.createSession();
     secondSession.createSession();
 
-    sessionPatchField(node, 'value', 'cyan', firstSession);
-    sessionPatchField(node, 'value', 'magenta', secondSession);
+    patchField(node, 'value', 'cyan', firstSession);
+    patchField(node, 'value', 'magenta', secondSession);
 
     expect(node.toTrimmedString({ context: firstSession })).toBe('"cyan"');
     expect(node.toTrimmedString({ context: secondSession })).toBe('"magenta"');
@@ -69,8 +69,8 @@ describe('Quoted', () => {
     firstSession.createSession();
     secondSession.createSession();
 
-    sessionPatchField(left, 'value', 'cyan', firstSession);
-    sessionPatchField(left, 'value', 'magenta', secondSession);
+    patchField(left, 'value', 'cyan', firstSession);
+    patchField(left, 'value', 'magenta', secondSession);
 
     expect(left.toTrimmedString({ context: firstSession })).toBe('"cyan"');
     expect(left.toTrimmedString({ context: secondSession })).toBe('"magenta"');

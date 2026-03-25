@@ -11,7 +11,7 @@ import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { freezeChildren } from './util/cloning.js';
-import { sessionGetField, sessionGetParent, sessionSetParent } from './util/session-helpers.js';
+import { getField, getParent, setParent } from './util/session-helpers.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -80,19 +80,19 @@ export class Func extends Node<FuncValue, FuncOptions> {
 
   private _getName(context?: Context): FuncValue['name'] {
     return context
-      ? sessionGetField<FuncValue['name']>(this, 'name', context)
+      ? getField<FuncValue['name']>(this, 'name', context)
       : this.name;
   }
 
   private _getParams(context?: Context): FuncValue['params'] {
     return context
-      ? sessionGetField<FuncValue['params']>(this, 'params', context)
+      ? getField<FuncValue['params']>(this, 'params', context)
       : this.params;
   }
 
   private _getBody(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'body', context)
+      ? getField<Node>(this, 'body', context)
       : this.body;
   }
 
@@ -149,9 +149,9 @@ export class Func extends Node<FuncValue, FuncOptions> {
       this.treeContext
     );
     // Ensure it participates in the same parent chain as this function definition.
-    const parent = sessionGetParent(this, context);
+    const parent = getParent(this, context);
     if (parent) {
-      sessionSetParent(mixinLike, parent, context);
+      setParent(mixinLike, parent, context);
     }
 
     const fn = getFunctionFromMixins(mixinLike);
@@ -167,7 +167,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    const returnValue = sessionGetField<Node>(decl, 'value', context);
+    const returnValue = getField<Node>(decl, 'value', context);
     return await returnValue.eval(context);
   }
 }

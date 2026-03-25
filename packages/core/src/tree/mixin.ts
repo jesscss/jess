@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { getField, patchField } from './util/session-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -166,7 +166,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   private _getName(context?: Context): Any<AnyRole> | Interpolated<AnyRole> | undefined {
     return context
-      ? sessionGetField<Any<AnyRole> | Interpolated<AnyRole> | undefined>(this, 'name', context)
+      ? getField<Any<AnyRole> | Interpolated<AnyRole> | undefined>(this, 'name', context)
       : this.name;
   }
 
@@ -175,7 +175,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       this.adopt(name);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'name', name, context);
+      patchField(this, 'name', name, context);
     } else {
       this.name = name;
     }
@@ -184,14 +184,14 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   private _getRulesContainer(context?: Context): Rules {
     return context
-      ? sessionGetField<Rules>(this, 'rules', context)
+      ? getField<Rules>(this, 'rules', context)
       : this.rules;
   }
 
   private _setRulesContainer(rules: Rules, context: Context): void {
     this.adopt(rules, context);
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'rules', rules, context);
+      patchField(this, 'rules', rules, context);
     } else {
       this.rules = rules;
     }
@@ -199,13 +199,13 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   private _getParams(context?: Context): List<Node> | undefined {
     return context
-      ? sessionGetField<List<Node> | undefined>(this, 'params', context)
+      ? getField<List<Node> | undefined>(this, 'params', context)
       : this.params;
   }
 
   private _getGuard(context?: Context): Condition | undefined {
     return context
-      ? sessionGetField<Condition | undefined>(this, 'guard', context)
+      ? getField<Condition | undefined>(this, 'guard', context)
       : this.guard;
   }
 

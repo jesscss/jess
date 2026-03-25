@@ -1,7 +1,7 @@
 import type { Context } from '../context.js';
 import { Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { getField } from './util/session-helpers.js';
 
 export type RangeValue = {
   start: Node;
@@ -59,19 +59,19 @@ export class Range extends Node<RangeValue, RangeOptions> {
 
   private _getStart(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'start', context)
+      ? getField<Node>(this, 'start', context)
       : this.start;
   }
 
   private _getEnd(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'end', context)
+      ? getField<Node>(this, 'end', context)
       : this.end;
   }
 
   private _getStep(context?: Context): Node | undefined {
     return context
-      ? sessionGetField<Node | undefined>(this, 'step', context)
+      ? getField<Node | undefined>(this, 'step', context)
       : this.step;
   }
 

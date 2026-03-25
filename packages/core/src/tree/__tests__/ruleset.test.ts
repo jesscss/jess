@@ -2,7 +2,7 @@ import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '../ind
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { getPrintOptions } from '../util/print.js';
-import { sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
+import { getParent, patchField } from '../util/session-helpers.js';
 import { F_VISIBLE } from '../node.js';
 
 let context: Context;
@@ -190,7 +190,7 @@ describe('Rule', () => {
     expect(cloned.selector.parent).toBe(cloned);
     expect(cloned.rules.parent).toBe(cloned);
     expect(clonedDecl.parent).toBe(derived.rules);
-    expect(sessionGetParent(clonedDecl, context)).toBe(cloned.rules);
+    expect(getParent(clonedDecl, context)).toBe(cloned.rules);
     expect(derived.selector.parent).toBe(derived);
     expect(derived.rules.parent).toBe(derived);
     expect(canonical.selector.parent).toBe(canonical);
@@ -210,7 +210,7 @@ describe('Rule', () => {
     context.session = new EvalSession();
 
     const cloned = derived.clone(false, undefined, context);
-    sessionPatchField(derivedDecl, 'value', any('blue'), context);
+    patchField(derivedDecl, 'value', any('blue'), context);
 
     expect(cloned.rules.at(0)).toBe(derivedDecl);
     expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
@@ -236,7 +236,7 @@ describe('Rule', () => {
     expect(source.rules.parent).toBe(source);
     expect(cloned.selector.parent).toBe(cloned);
     expect(cloned.rules.parent).toBe(source);
-    expect(sessionGetParent(cloned.rules, context)).toBe(cloned);
+    expect(getParent(cloned.rules, context)).toBe(cloned);
   });
 
   it('keeps a source ruleset shallow clone as a live session view over shared nested children', () => {
@@ -251,7 +251,7 @@ describe('Rule', () => {
     context.session = new EvalSession();
 
     const cloned = source.clone(false, undefined, context);
-    sessionPatchField(sourceDecl, 'value', any('blue'), context);
+    patchField(sourceDecl, 'value', any('blue'), context);
 
     expect(cloned.rules.at(0)).toBe(sourceDecl);
     expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
@@ -306,8 +306,8 @@ describe('Rule', () => {
     const registeredRulesets = context.extendRoots.getRulesets(root);
 
     expect(currentRules).toBe(patchedRules);
-    expect(sessionGetParent(currentRules, context)).toBe(preEvaldBase);
-    expect(sessionGetParent(preEvaldNested, context)).toBe(currentRules);
+    expect(getParent(currentRules, context)).toBe(preEvaldBase);
+    expect(getParent(preEvaldNested, context)).toBe(currentRules);
     expect(preEvaldNested.getEffectiveSelector(false, context).valueOf()).toBe('.base .leaf');
     expect(preEvaldNested.valueOf(context)).toBe('.base .leaf');
     expect(

@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalSession } from '../eval-session.js';
-import { sessionGetChildren, sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
+import { getChildren, getField, patchField, setParent } from './util/session-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -87,7 +87,7 @@ function getControlField<T>(node: Node, key: string, context: Context | undefine
   }
   const session = context.session;
   if (!session) {
-    return sessionGetField<T>(node, key, context);
+    return getField<T>(node, key, context);
   }
   if (session.hasField(node, key)) {
     return session.getField(node, key) as T;
@@ -96,15 +96,15 @@ function getControlField<T>(node: Node, key: string, context: Context | undefine
   if (sourceNode !== node && session.hasField(sourceNode, key)) {
     return session.getField(sourceNode, key) as T;
   }
-  return sessionGetField<T>(node, key, context);
+  return getField<T>(node, key, context);
 }
 
 function getControlDeclarationValue(node: Node, context: Context): Node {
-  return sessionGetField<Node>(node, 'value', context);
+  return getField<Node>(node, 'value', context);
 }
 
 function getControlDeclarationName(node: Node, context: Context): string {
-  return String(sessionGetField<Node>(node, 'name', context));
+  return String(getField<Node>(node, 'name', context));
 }
 
 function getControlDeclarationAssignType(node: Node, context: Context): AssignmentType | undefined {
@@ -120,7 +120,7 @@ function getControlDeclarationAssignType(node: Node, context: Context): Assignme
 function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
   node.adopt(value, context);
   if (context.session && !context.session.resetEvalState) {
-    sessionPatchField(node, 'value', value, context);
+    patchField(node, 'value', value, context);
     return;
   }
   node.setData('value', value);
@@ -367,7 +367,7 @@ export class For extends Node<ForValue> {
                 .map(n => cloneForPriorScope(n, context))
             );
             priorScope.inherit(loopTemplate);
-            sessionSetParent(loopRules, priorScope, context);
+            setParent(loopRules, priorScope, context);
           }
           const resolvedValue = await value.eval(context);
           let resolvedKey: Node;
@@ -391,7 +391,7 @@ export class For extends Node<ForValue> {
           counter++;
           const result = await loopRules.eval(context);
           if (isNode(result, N.Rules)) {
-            for (const outNode of sessionGetChildren(result, context)) {
+            for (const outNode of getChildren(result, context)) {
               if (isNode(outNode, N.Declaration)) {
                 const normalizedFromAssign = getControlDeclarationAssignType(outNode, context);
                 const outName = getControlDeclarationName(outNode, context);

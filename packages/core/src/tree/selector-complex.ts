@@ -14,7 +14,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { getField, patchField } from './util/session-helpers.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -55,7 +55,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   private _getValue(context?: Context): ComplexSelectorValue {
     return context
-      ? sessionGetField<ComplexSelectorValue>(this, 'value', context)
+      ? getField<ComplexSelectorValue>(this, 'value', context)
       : this.value;
   }
 
@@ -66,7 +66,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'value', value, context);
+      patchField(this, 'value', value, context);
     } else {
       this.value = value;
     }
@@ -156,8 +156,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
             ? originalOnly.clone(false, undefined, context)
             : originalOnly;
           only.inherit(selector);
-          if (sessionGetField<boolean | undefined>(selector, 'hoistToRoot', context)) {
-            sessionPatchField(only, 'hoistToRoot', true, context);
+          if (getField<boolean | undefined>(selector, 'hoistToRoot', context)) {
+            patchField(only, 'hoistToRoot', true, context);
           }
           return only;
         }

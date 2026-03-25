@@ -15,7 +15,7 @@ import type { SessionRegistryDelta } from '../../eval-session.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { sessionGetChildren, sessionGetDependency, sessionGetParent } from './session-helpers.js';
+import { getChildren, getDependency, getParent } from './session-helpers.js';
 
 const { isArray } = Array;
 
@@ -1259,7 +1259,7 @@ export class MixinRegistry extends Registry<
       }
       do {
         rules = rules && this.context
-          ? sessionGetParent(rules, this.context) as Rules | undefined
+          ? getParent(rules, this.context) as Rules | undefined
           : rules?.parent as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
@@ -1337,13 +1337,13 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
 
       do {
         rules = rules && this.context
-          ? sessionGetParent(rules, this.context) as Rules | undefined
+          ? getParent(rules, this.context) as Rules | undefined
           : rules?.parent as Rules;
         if (
           findRoot
           && rules?.type === 'Rules'
           && (this.context
-            ? sessionGetParent(rules, this.context) === undefined
+            ? getParent(rules, this.context) === undefined
             : rules?.parent === undefined)
         ) {
           /** We're at the root */
@@ -1548,7 +1548,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       if (!changedVars || changedVars.size === 0) {
         return true;
       }
-      const dependency = sessionGetDependency(declaration.value, this.context!);
+      const dependency = getDependency(declaration.value, this.context!);
       if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
         return false;
       }
@@ -1698,7 +1698,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       do {
         rules = rules && this.context
-          ? sessionGetParent(rules, this.context) as Rules | undefined
+          ? getParent(rules, this.context) as Rules | undefined
           : rules?.parent as Rules;
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
@@ -1736,7 +1736,7 @@ export function getDirectDeclarationsByKey(
   key: string | undefined,
   context?: Context
 ): Declaration[] {
-  const children = context ? sessionGetChildren(rules, context) : rules.value;
+  const children = context ? getChildren(rules, context) : rules.value;
   const matches: Declaration[] = [];
   for (const child of children) {
     if (!isNode(child, N.Declaration | N.VarDeclaration)) {

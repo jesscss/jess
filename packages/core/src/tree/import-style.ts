@@ -9,7 +9,7 @@ import { EvalSession } from '../eval-session.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { sessionGetField } from './util/session-helpers.js';
+import { getField } from './util/session-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
@@ -182,21 +182,21 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!context) {
       return this.path;
     }
-    return sessionGetField<Quoted | Url>(this, 'path', context);
+    return getField<Quoted | Url>(this, 'path', context);
   }
 
   private _getWithNode(context?: Context): Reference | Collection | undefined {
     if (!context) {
       return this.withNode;
     }
-    return sessionGetField<Reference | Collection | undefined>(this, 'withNode', context);
+    return getField<Reference | Collection | undefined>(this, 'withNode', context);
   }
 
   private _getWithType(context?: Context): 'with' | 'set' | undefined {
     if (!context) {
       return this.withType;
     }
-    return sessionGetField<'with' | 'set' | undefined>(this, 'withType', context);
+    return getField<'with' | 'set' | undefined>(this, 'withType', context);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -764,7 +764,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (resolvedPath instanceof Url) {
         return resolvedPath.pathValue(context);
       }
-      const quotedValue = sessionGetField<string | Node>(resolvedPath, 'value', context);
+      const quotedValue = getField<string | Node>(resolvedPath, 'value', context);
       if (isNode(quotedValue)) {
         return String((quotedValue as Node).valueOf());
       }

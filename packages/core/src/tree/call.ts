@@ -11,7 +11,7 @@ import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { sessionGetField, sessionMergeDependencies, sessionPatchField, sessionSetDependency } from './util/session-helpers.js';
+import { getField, mergeDependencies, patchField, setDependency } from './util/session-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -150,25 +150,25 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private _getName(context?: Context): string | Node {
     return context
-      ? sessionGetField<string | Node>(this, 'name', context)
+      ? getField<string | Node>(this, 'name', context)
       : this.name;
   }
 
   private _getArgs(context?: Context): List<Node> | undefined {
     return context
-      ? sessionGetField<List<Node> | undefined>(this, 'args', context)
+      ? getField<List<Node> | undefined>(this, 'args', context)
       : this.args;
   }
 
   private _getContentNode(context?: Context): Node | undefined {
     return context
-      ? sessionGetField<Node | undefined>(this, 'contentNode', context)
+      ? getField<Node | undefined>(this, 'contentNode', context)
       : this.contentNode;
   }
 
   private _getOptions(context?: Context): CallOptions | undefined {
     return context
-      ? sessionGetField<CallOptions | undefined>(this, 'options', context)
+      ? getField<CallOptions | undefined>(this, 'options', context)
       : this.options;
   }
 
@@ -177,7 +177,7 @@ export class Call extends Node<CallValue, CallOptions> {
       this.adopt(name);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'name', name, context);
+      patchField(this, 'name', name, context);
     } else {
       this.name = name;
     }
@@ -188,7 +188,7 @@ export class Call extends Node<CallValue, CallOptions> {
       this.adopt(args);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'args', args, context);
+      patchField(this, 'args', args, context);
     } else {
       this.args = args;
     }
@@ -308,12 +308,12 @@ export class Call extends Node<CallValue, CallOptions> {
       result: T,
       nodes?: readonly (Node | undefined)[]
     ): T => {
-      const dependency = sessionMergeDependencies(
+      const dependency = mergeDependencies(
         nodes ? [result, ...nodes] : [result],
         context
       );
       if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-        sessionSetDependency(result, {
+        setDependency(result, {
           dependsOn: new Set(dependency.dependsOn),
           sourceExpr: this
         }, context);

@@ -22,7 +22,7 @@ import {
   vardecl
 } from '../index.js';
 import { Context } from '../../context.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { patchField } from '../util/session-helpers.js';
 
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
@@ -213,7 +213,7 @@ describe('Control Nodes', () => {
     const root = rules([loop]);
     const patchedIterable = list([new Any('patched')]);
 
-    sessionPatchField(loop, 'iterable', patchedIterable, context);
+    patchField(loop, 'iterable', patchedIterable, context);
 
     const evald = await root.eval(context);
 
@@ -233,8 +233,8 @@ describe('Control Nodes', () => {
     });
     const patchedBody = rules([decl({ name: 'color', value: new Any('blue') })]);
 
-    sessionPatchField(ifNode, 'conditions', [new Any('false', { role: 'any' })], context);
-    sessionPatchField(ifNode, 'bodies', [patchedBody], context);
+    patchField(ifNode, 'conditions', [new Any('false', { role: 'any' })], context);
+    patchField(ifNode, 'bodies', [patchedBody], context);
 
     expect(ifNode.toTrimmedString({ context })).toContain('$if (false)');
     expect(ifNode.toTrimmedString({ context })).toContain('color: blue;');
@@ -254,8 +254,8 @@ describe('Control Nodes', () => {
     });
     const patchedRules = rules([decl({ name: 'color', value: new Any('blue') })]);
 
-    sessionPatchField(whileNode, 'condition', new Any('false', { role: 'any' }), context);
-    sessionPatchField(whileNode, 'rules', patchedRules, context);
+    patchField(whileNode, 'condition', new Any('false', { role: 'any' }), context);
+    patchField(whileNode, 'rules', patchedRules, context);
 
     expect(whileNode.toTrimmedString({ context })).toContain('$while (false)');
     expect(whileNode.toTrimmedString({ context })).toContain('color: blue;');
@@ -276,8 +276,8 @@ describe('Control Nodes', () => {
     const patchedHeader = expr(list([new Any('patched')]));
     const patchedRules = rules([decl({ name: 'color', value: new Any('blue') })]);
 
-    sessionPatchField(eachNode, 'header', patchedHeader, context);
-    sessionPatchField(eachNode, 'rules', patchedRules, context);
+    patchField(eachNode, 'header', patchedHeader, context);
+    patchField(eachNode, 'rules', patchedRules, context);
 
     expect(eachNode.toTrimmedString({ context })).toContain('$each $(patched)');
     expect(eachNode.toTrimmedString({ context })).toContain('color: blue;');
@@ -318,7 +318,7 @@ describe('Control Nodes', () => {
     const templateDecl = loop.rules.at(0) as ReturnType<typeof decl>;
     const root = rules([loop]);
 
-    sessionPatchField(templateDecl, 'options', {
+    patchField(templateDecl, 'options', {
       ...templateDecl.options,
       normalizedFromAssign: AssignmentType.Add
     }, context);
@@ -371,7 +371,7 @@ describe('Control Nodes', () => {
       loop
     ]);
 
-    sessionPatchField(loop.rules, 'options', {
+    patchField(loop.rules, 'options', {
       ...loop.rules.options,
       rulesVisibility: {
         ...loop.rules.options.rulesVisibility,
@@ -401,8 +401,8 @@ describe('Control Nodes', () => {
     ]);
     const root = rules([makeLoop(makePattern(['value', 'key'], 'block'), iterableRules, loopRules)]);
 
-    sessionPatchField(iterDecl, 'name', new Any('uno', { role: 'property' }), context);
-    sessionPatchField(iterDecl, 'value', new Any('green'), context);
+    patchField(iterDecl, 'name', new Any('uno', { role: 'property' }), context);
+    patchField(iterDecl, 'value', new Any('green'), context);
 
     const evald = await root.eval(context);
 

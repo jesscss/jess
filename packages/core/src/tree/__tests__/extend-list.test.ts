@@ -1,6 +1,6 @@
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { patchField } from '../util/session-helpers.js';
 import { ExtendList } from '../extend-list.js';
 import { Extend, ExtendFlag } from '../extend.js';
 import { BasicSelector } from '../selector-basic.js';
@@ -16,7 +16,7 @@ describe('ExtendList', () => {
       })
     ]);
 
-    sessionPatchField(node, 'value', [
+    patchField(node, 'value', [
       new Extend({
         target: new BasicSelector('.patched')
       })

@@ -6,7 +6,7 @@ import type { BitSetLibrary } from './util/bitset.js';
 import { Interpolated } from './interpolated.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { getField } from './util/session-helpers.js';
 
 const { isArray } = Array;
 
@@ -53,7 +53,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
 
   private _getValue(context?: Context): Interpolated {
     return context
-      ? sessionGetField<Interpolated>(this, 'value', context)
+      ? getField<Interpolated>(this, 'value', context)
       : this.value;
   }
 

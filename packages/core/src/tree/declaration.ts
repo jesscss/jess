@@ -21,11 +21,11 @@ import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
-  sessionGetDependency,
-  sessionGetField,
-  sessionMergeDependencies,
-  sessionPatchField,
-  sessionSetDependency
+  getDependency,
+  getField,
+  mergeDependencies,
+  patchField,
+  setDependency
 } from './util/session-helpers.js';
 
 export const enum AssignmentType {
@@ -133,7 +133,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _getName(context?: Context): NameValue {
     return context
-      ? sessionGetField<NameValue>(this, 'name', context)
+      ? getField<NameValue>(this, 'name', context)
       : this.name;
   }
 
@@ -147,13 +147,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _getOptions(context?: Context): Opts | undefined {
     return context
-      ? sessionGetField<Opts | undefined>(this, 'options', context)
+      ? getField<Opts | undefined>(this, 'options', context)
       : this.options;
   }
 
   private _setOptions(options: Opts | undefined, context: Context): void {
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'options', options, context);
+      patchField(this, 'options', options, context);
       return;
     }
     this.options = options;
@@ -164,7 +164,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       this.adopt(name, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'name', name, context);
+      patchField(this, 'name', name, context);
       return;
     }
     this.name = name;
@@ -172,14 +172,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _getValueNode(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'value', context)
+      ? getField<Node>(this, 'value', context)
       : this.value;
   }
 
   private _setValueNode(value: Node, context: Context): void {
     this.adopt(value, context);
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'value', value, context);
+      patchField(this, 'value', value, context);
       return;
     }
     this.value = value;
@@ -187,7 +187,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _getImportant(context?: Context): Any<'flag'> | undefined {
     return context
-      ? sessionGetField<Any<'flag'> | undefined>(this, 'important', context)
+      ? getField<Any<'flag'> | undefined>(this, 'important', context)
       : this.important;
   }
 
@@ -196,7 +196,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       this.adopt(important, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'important', important, context);
+      patchField(this, 'important', important, context);
       return;
     }
     this.important = important;
@@ -394,9 +394,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       () => {
         let node = this;
         const copyDependency = (source: Node, target: Node) => {
-          const dependency = sessionGetDependency(source, context);
+          const dependency = getDependency(source, context);
           if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-            sessionSetDependency(target, {
+            setDependency(target, {
               dependsOn: new Set(dependency.dependsOn),
               sourceExpr: dependency.sourceExpr
             }, context);
@@ -550,9 +550,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const clonedRest = rest.map(item => cloneWithDependency(item));
           node._setValueNode(new List(clonedRest), context);
-          const dependency = sessionMergeDependencies(clonedRest, context);
+          const dependency = mergeDependencies(clonedRest, context);
           if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-            sessionSetDependency(node._getValueNode(context), {
+            setDependency(node._getValueNode(context), {
               dependsOn: new Set(dependency.dependsOn),
               sourceExpr: dependency.sourceExpr
             }, context);

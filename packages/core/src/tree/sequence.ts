@@ -7,7 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetField, sessionPatchField, sessionSetParent } from './util/session-helpers.js';
+import { getField, patchField, setParent } from './util/session-helpers.js';
 
 export type SequenceOptions = {
   /**
@@ -60,7 +60,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     newNode.value = clonedValue;
     if (ctx?.session) {
       for (const child of clonedValue) {
-        sessionSetParent(child, newNode, ctx);
+        setParent(child, newNode, ctx);
       }
     } else {
       for (const child of clonedValue) {
@@ -77,13 +77,13 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   protected _getValue(context?: Context): Node[] {
     return context
-      ? sessionGetField<Node[]>(this, 'value', context)
+      ? getField<Node[]>(this, 'value', context)
       : this.value;
   }
 
   protected _getOptions(context?: Context): SequenceOptions | undefined {
     return context
-      ? sessionGetField<SequenceOptions | undefined>(this, 'options', context)
+      ? getField<SequenceOptions | undefined>(this, 'options', context)
       : this.options;
   }
 
@@ -95,10 +95,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   protected _setValue(value: Node[], context: Context): void {
     if (context.session) {
       for (const child of value) {
-        sessionSetParent(child, this, context);
+        setParent(child, this, context);
       }
       if (this === this.sourceNode) {
-        sessionPatchField(this, 'value', value, context);
+        patchField(this, 'value', value, context);
         return;
       }
     } else {

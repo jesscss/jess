@@ -32,7 +32,7 @@ import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { sessionGetChildren, sessionGetIndex, sessionGetParent, sessionGetSourceParent, sessionMarkScopeDirty, sessionPatchField, sessionReplaceNode, sessionSetChildren, sessionSetDependency, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
+import { getChildren, getIndex, getParent, getSourceParent, markScopeDirty, patchField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -237,7 +237,7 @@ describe('Rules', () => {
         const ctx = new Context();
         ctx.session = new EvalSession();
 
-        sessionSetParent(inherited, node, ctx);
+        setParent(inherited, node, ctx);
 
         expect(inherited.findSessionPatchedFunction('feature', {
           context: ctx,
@@ -262,7 +262,7 @@ describe('Rules', () => {
         const clonedRuleset = cloned.at(0) as typeof nested;
 
         expect(clonedRuleset).toBe(nested);
-        expect(sessionGetParent(clonedRuleset, ctx)).toBe(cloned);
+        expect(getParent(clonedRuleset, ctx)).toBe(cloned);
         expect(clonedRuleset.parent).toBe(cloned);
         expect(clonedRuleset.rules).toBe(nestedBody);
         expect(clonedRuleset.rules.parent).toBe(clonedRuleset);
@@ -291,7 +291,7 @@ describe('Rules', () => {
         expect(wrapper.options.local).toBe(true);
         expect(node.options.local).toBeUndefined();
         expect(wrappedRuleset.parent).toBe(node);
-        expect(sessionGetParent(wrappedRuleset, ctx)).toBe(node);
+        expect(getParent(wrappedRuleset, ctx)).toBe(node);
         expect(wrappedRuleset.rules).toBe(nestedBody);
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
@@ -315,7 +315,7 @@ describe('Rules', () => {
         expect(wrapper).not.toBe(node);
         expect(wrappedRuleset).toBe(nested);
         expect(wrappedRuleset.parent).toBe(node);
-        expect(sessionGetParent(wrappedRuleset, ctx)).toBe(wrapper);
+        expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
         expect(wrappedRuleset.rules).toBe(nestedBody);
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
@@ -339,7 +339,7 @@ describe('Rules', () => {
         expect(wrapper).not.toBe(node);
         expect(wrappedRuleset).toBe(nested);
         expect(wrappedRuleset.parent).toBe(node);
-        expect(sessionGetParent(wrappedRuleset, ctx)).toBe(wrapper);
+        expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
         expect(wrappedRuleset.rules).toBe(nestedBody);
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
@@ -368,7 +368,7 @@ describe('Rules', () => {
         expect(wrapper.options.rulesVisibility.VarDeclaration).toBe('private');
         expect(node.options.rulesVisibility.VarDeclaration).toBe('optional');
         expect(wrappedRuleset.parent).toBe(node);
-        expect(sessionGetParent(wrappedRuleset, ctx)).toBe(wrapper);
+        expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
         expect(wrappedRuleset.rules).toBe(nestedBody);
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
@@ -395,7 +395,7 @@ describe('Rules', () => {
         expect(directClone.selector.parent).toBe(directClone);
         expect(scopedChild).not.toBe(sourceRuleset);
         expect(scopedChild.parent).toBeUndefined();
-        expect(sessionGetParent(scopedChild, ctx)).toBe(evalScope);
+        expect(getParent(scopedChild, ctx)).toBe(evalScope);
         expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
         expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
         expect(scopedChild.selector).not.toBe(sourceRuleset.selector);
@@ -423,7 +423,7 @@ describe('Rules', () => {
         expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
         expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
         expect(sourceScopedChild.selector.parent).toBe(sourceScopedChild);
-        expect(sessionGetParent(sourceScopedChild.rules, ctx)).toBe(sourceScopedChild);
+        expect(getParent(sourceScopedChild.rules, ctx)).toBe(sourceScopedChild);
 
         expect(derivedScopedChild.selector).not.toBe(derivedRuleset.selector);
         expect(derivedScopedChild.rules).not.toBe(derivedRuleset.rules);
@@ -450,7 +450,7 @@ describe('Rules', () => {
         const node = rules([nested, sibling]);
         const patchedSelector = sel([el('.patched')]) as any;
 
-        sessionPatchField(nested, 'selector', patchedSelector, ctx);
+        patchField(nested, 'selector', patchedSelector, ctx);
 
         const wrapper = node.cloneDetachedMaterializedWrapper(ctx);
         wrapper.options.local = true;
@@ -507,7 +507,7 @@ describe('Rules', () => {
           ])
         });
 
-        sessionSetChildren(root, [replacement], ctx, { markDirty: false });
+        setChildren(root, [replacement], ctx, { markDirty: false });
 
         const materialized = root.materializeEvaluatedCopy(ctx);
         const materializedRuleset = materialized.at(0) as typeof replacement;
@@ -1379,7 +1379,7 @@ describe('Rules', () => {
 
       root.getRegistry('declaration');
       root.register('declaration', injected, ctx);
-      sessionMarkScopeDirty(root, ctx);
+      markScopeDirty(root, ctx);
 
       expect(root.find('declaration', 'bar', 'VarDeclaration', {
         context: ctx,
@@ -1397,7 +1397,7 @@ describe('Rules', () => {
       target.unshift(ctx, shared);
 
       expect(shared.parent).toBe(source);
-      expect(sessionGetParent(shared, ctx)).toBe(target);
+      expect(getParent(shared, ctx)).toBe(target);
     });
 
     it('keeps canonical parent pointers intact when splicing shared nodes in a session', () => {
@@ -1410,7 +1410,7 @@ describe('Rules', () => {
       target.splice(ctx, 0, 0, shared);
 
       expect(shared.parent).toBe(source);
-      expect(sessionGetParent(shared, ctx)).toBe(target);
+      expect(getParent(shared, ctx)).toBe(target);
     });
 
     it('keeps canonical children intact when unshifting in a non-reset session', () => {
@@ -1427,7 +1427,7 @@ describe('Rules', () => {
       expect(target.at(0, ctx)).toBe(inserted);
       expect(target.at(1, ctx)).toBe(original);
       expect(inserted.parent).toBeUndefined();
-      expect(sessionGetParent(inserted, ctx)).toBe(target);
+      expect(getParent(inserted, ctx)).toBe(target);
     });
 
     it('keeps canonical children intact when splicing in a non-reset session', () => {
@@ -1444,7 +1444,7 @@ describe('Rules', () => {
       expect(target.at(0)).toBe(original);
       expect(target.at(0, ctx)).toBe(replacement);
       expect(replacement.parent).toBeUndefined();
-      expect(sessionGetParent(replacement, ctx)).toBe(target);
+      expect(getParent(replacement, ctx)).toBe(target);
     });
 
     it('falls through to canonical declarations when a session overlay does not depend on changed vars', () => {
@@ -1461,7 +1461,7 @@ describe('Rules', () => {
       const derivedOverlay = vardecl({ name: 'derived', value: any('crimson') });
       const plainOverlay = vardecl({ name: 'plain', value: any('cyan') });
 
-      sessionSetDependency(derivedOverlay.value, {
+      setDependency(derivedOverlay.value, {
         dependsOn: new Set([changed as VarDeclaration]),
         sourceExpr: derivedOverlay.value
       }, ctx);
@@ -1486,12 +1486,12 @@ describe('Rules', () => {
       const ctx = new Context();
       ctx.session = new EvalSession();
 
-      sessionReplaceNode(original, replacement, ctx);
+      replaceNode(original, replacement, ctx);
       const preEvald = await root.preEval(ctx);
 
       expect(preEvald.at(0, ctx)).toBe(replacement);
       expect(preEvald.at(0)).toBe(original);
-      expect(sessionGetIndex(replacement, ctx)).toBe(0);
+      expect(getIndex(replacement, ctx)).toBe(0);
       expect(replacement.index).toBeUndefined();
       expect(root.value[0]).toBe(original);
     });
@@ -1506,7 +1506,7 @@ describe('Rules', () => {
       const replaced = preEvald.at(0, ctx);
 
       expect(isNode(replaced as Node, N.Nil)).toBe(true);
-      expect(sessionGetParent(replaced as Node, ctx)).toBe(root);
+      expect(getParent(replaced as Node, ctx)).toBe(root);
       expect((replaced as Node).parent).toBeUndefined();
       expect(preEvald.at(0)).toBe(charset);
       expect(root.value[0]).toBe(charset);
@@ -1521,13 +1521,13 @@ describe('Rules', () => {
       const ctx = new Context();
       ctx.session = new EvalSession();
 
-      sessionReplaceNode(placeholder, existing, ctx);
+      replaceNode(placeholder, existing, ctx);
       await root.eval(ctx);
 
-      const sessionChildren = sessionGetChildren(root, ctx);
+      const sessionChildren = getChildren(root, ctx);
       const inserted = sessionChildren.find(child => `${child}` === '$one: three');
       expect(isNode(inserted, N.VarDeclaration)).toBe(true);
-      expect(sessionGetParent(inserted as VarDeclaration, ctx)).toBe(root);
+      expect(getParent(inserted as VarDeclaration, ctx)).toBe(root);
       expect(sessionChildren.map(child => `${child}`)).toEqual(expect.arrayContaining([
         '$one: one',
         '$one: three',
@@ -1554,7 +1554,7 @@ describe('Rules', () => {
       if (!mergedPreEvald) {
         throw new Error('Expected merged declaration at index 1');
       }
-      sessionSetParent(mergedPreEvald, foreignScope, ctx);
+      setParent(mergedPreEvald, foreignScope, ctx);
 
       const evald = await preEvald.eval(ctx);
       const mergedEvald = evald.at(1, ctx);
@@ -1574,7 +1574,7 @@ describe('Rules', () => {
       const preEvald = await child.preEval(ctx);
 
       expect(preEvald).not.toBe(child);
-      expect(sessionGetParent(preEvald as Rules, ctx)).toBe(root);
+      expect(getParent(preEvald as Rules, ctx)).toBe(root);
       expect((preEvald as Rules).parent).toBeUndefined();
     });
 
@@ -1594,11 +1594,11 @@ describe('Rules', () => {
       const ctx = new Context();
       ctx.session = new EvalSession({ resetEvalState: true });
 
-      sessionSetParent(wrapper, media, ctx);
+      setParent(wrapper, media, ctx);
       const preEvald = await wrapper.preEval(ctx);
 
       expect(preEvald).toBe(wrapper);
-      expect(sessionGetParent(wrapper, ctx)).toBe(media);
+      expect(getParent(wrapper, ctx)).toBe(media);
       expect(wrapper.parent).toBeUndefined();
     });
 
@@ -1619,7 +1619,7 @@ describe('Rules', () => {
       ctx.session = new EvalSession();
       ctx.root = root;
 
-      sessionReplaceNode(original, replacement, ctx);
+      replaceNode(original, replacement, ctx);
       const evald = await targetRules.eval(ctx);
 
       expect(evald.toTrimmedString({ context: ctx })).toBe('color: red;');
@@ -1643,12 +1643,12 @@ describe('Rules', () => {
       const ctx = new Context();
       ctx.session = new EvalSession();
 
-      sessionSetSourceParent(callProduced, caller, ctx);
+      setSourceParent(callProduced, caller, ctx);
       (root as any)._normalizeCallDeclarationRulesOrder(root, ctx);
 
-      expect(sessionGetSourceParent(callProduced, ctx)).toBe(caller);
+      expect(getSourceParent(callProduced, ctx)).toBe(caller);
       expect(callProduced.sourceParent).toBeUndefined();
-      expect(sessionGetChildren(root, ctx)[0]).toBe(callProduced);
+      expect(getChildren(root, ctx)[0]).toBe(callProduced);
       expect(root.value[0]).toBe(nested);
       expect(root.value[1]).toBe(callProduced);
     });

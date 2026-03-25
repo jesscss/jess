@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetDependency, sessionGetField, sessionSetDependency, sessionSetParent } from './util/session-helpers.js';
+import { getDependency, getField, setDependency, setParent } from './util/session-helpers.js';
 
 /**
  * An expression is a node that returns a value.
@@ -35,7 +35,7 @@ export class Expression extends Node<Node> {
       this.treeContext
     );
     if (!deep && ctx?.session) {
-      sessionSetParent(clonedValue, newNode, ctx);
+      setParent(clonedValue, newNode, ctx);
       (clonedValue as unknown as { parent?: Node }).parent = priorParent;
     }
     newNode.inherit(this);
@@ -53,7 +53,7 @@ export class Expression extends Node<Node> {
 
   private _getValue(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'value', context)
+      ? getField<Node>(this, 'value', context)
       : this.value;
   }
 
@@ -61,9 +61,9 @@ export class Expression extends Node<Node> {
     const value = this._getValue(context);
     const out = value.eval(context);
     const applyDependency = (result: Node): Node => {
-      const dependency = sessionGetDependency(result, context);
+      const dependency = getDependency(result, context);
       if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-        sessionSetDependency(result, {
+        setDependency(result, {
           dependsOn: new Set(dependency.dependsOn),
           sourceExpr: this
         }, context);

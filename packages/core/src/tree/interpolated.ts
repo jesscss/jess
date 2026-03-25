@@ -10,7 +10,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField, sessionIsEvaluated, sessionPatchField, sessionSetEvaluated } from './util/session-helpers.js';
+import { getField, isEvaluated, patchField, setEvaluated } from './util/session-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -107,13 +107,13 @@ export class Interpolated<
 
   private _getSource(context?: Context): string {
     return context
-      ? sessionGetField<string>(this, 'source', context)
+      ? getField<string>(this, 'source', context)
       : this.source;
   }
 
   private _getReplacements(context?: Context): Node[] {
     return context
-      ? sessionGetField<Node[]>(this, 'replacements', context)
+      ? getField<Node[]>(this, 'replacements', context)
       : this.replacements;
   }
 
@@ -182,7 +182,7 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (!(context ? sessionIsEvaluated(replacement, context) : replacement.evaluated)) {
+      if (!(context ? isEvaluated(replacement, context) : replacement.evaluated)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
@@ -192,7 +192,7 @@ export class Interpolated<
     }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
-      if (!(context ? sessionIsEvaluated(replacement, context) : replacement.evaluated)) {
+      if (!(context ? isEvaluated(replacement, context) : replacement.evaluated)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       let part = replacement.toTrimmedString();
@@ -255,7 +255,7 @@ export class Interpolated<
     let node = this;
     let replacements = [...node._getReplacements(context)];
     const markEvaluated = (result: Node): Node => {
-      sessionSetEvaluated(result, true, context);
+      setEvaluated(result, true, context);
       return result;
     };
 
@@ -272,7 +272,7 @@ export class Interpolated<
     if (isThenable(maybe)) {
       return maybe.then(() => {
         if (context.session) {
-          sessionPatchField(node, 'replacements', replacements, context);
+          patchField(node, 'replacements', replacements, context);
         } else {
           node.setData('replacements', replacements);
         }
@@ -280,7 +280,7 @@ export class Interpolated<
       });
     }
     if (context.session) {
-      sessionPatchField(node, 'replacements', replacements, context);
+      patchField(node, 'replacements', replacements, context);
     } else {
       node.setData('replacements', replacements);
     }

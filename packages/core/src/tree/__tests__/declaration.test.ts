@@ -1,8 +1,8 @@
-import { coll, decl, rules, ruleset, el, color, any } from '..';
+import { coll, decl, rules, ruleset, el, color, any } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { AssignmentType } from '../declaration.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { patchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Declaration', () => {
@@ -131,7 +131,7 @@ describe('Declaration', () => {
     ]);
 
     context.session = new EvalSession();
-    sessionPatchField(first, 'name', any('background', { role: 'property' }), context);
+    patchField(first, 'name', any('background', { role: 'property' }), context);
 
     expect(node.toString({ context })).toBeString(`
       .x {
@@ -154,7 +154,7 @@ describe('Declaration', () => {
     ]);
 
     context.session = new EvalSession();
-    sessionPatchField(merged, 'name', any('color', { role: 'property' }), context);
+    patchField(merged, 'name', any('color', { role: 'property' }), context);
 
     const evald = await node.eval(context);
     const css = evald.toString({ context });

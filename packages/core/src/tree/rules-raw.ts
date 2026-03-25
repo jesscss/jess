@@ -1,7 +1,7 @@
 import { defineType } from './node.js';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { sessionGetChildren } from './util/session-helpers.js';
+import { getChildren } from './util/session-helpers.js';
 
 /**
  * A rules container that emits its content verbatim inside braces,
@@ -23,7 +23,7 @@ export class RawRules extends Rules {
     const w = options.writer!;
     const mark = w.mark();
     const children = options.context
-      ? sessionGetChildren(this, options.context)
+      ? getChildren(this, options.context)
       : this.value;
     w.add('{');
     // Emit children using toString to preserve exact whitespace/comments
@@ -40,7 +40,7 @@ export class RawRules extends Rules {
     const w = options.writer!;
     const mark = w.mark();
     const children = options.context
-      ? sessionGetChildren(this, options.context)
+      ? getChildren(this, options.context)
       : this.value;
     for (const child of children) {
       child.toString(options);

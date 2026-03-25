@@ -17,7 +17,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionGetField, sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
+import { getField, getParent, patchField } from '../util/session-helpers.js';
 import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { processExtends } from '../util/extend-roots.js';
 
@@ -121,7 +121,7 @@ describe('Rules extend', () => {
 
       await root.eval(context);
 
-      expect(sessionGetField(headerNav, 'hoistToRoot', context)).toBe(true);
+      expect(getField(headerNav, 'hoistToRoot', context)).toBe(true);
       expect(headerNav.hoistToRoot).toBeUndefined();
     });
 
@@ -161,7 +161,7 @@ describe('Rules extend', () => {
 
       await root.eval(context);
 
-      expect(sessionGetField(headerNav, 'hoistToRoot', context)).toBe(true);
+      expect(getField(headerNav, 'hoistToRoot', context)).toBe(true);
 
       context.extendRoots.registerRuleset(root, header);
       context.extendRoots.registerRuleset(root, headerNav);
@@ -175,7 +175,7 @@ describe('Rules extend', () => {
       ] as any];
       processExtends(context);
 
-      expect(sessionGetField(headerNav, 'hoistToRoot', context)).toBeUndefined();
+      expect(getField(headerNav, 'hoistToRoot', context)).toBeUndefined();
     });
 
     it('does not re-parent canonical selector or target during a shallow clone in a session', () => {
@@ -209,9 +209,9 @@ describe('Rules extend', () => {
         flag: ExtendFlag.Exact
       });
 
-      sessionPatchField(node, 'target', el('.other'), context);
-      sessionPatchField(node, 'namespace', 'patched', context);
-      sessionPatchField(node, 'flag', ExtendFlag.All, context);
+      patchField(node, 'target', el('.other'), context);
+      patchField(node, 'namespace', 'patched', context);
+      patchField(node, 'flag', ExtendFlag.All, context);
 
       const cloned = node.clone(false, undefined, context);
 
@@ -232,7 +232,7 @@ describe('Rules extend', () => {
       context.session = new EvalSession();
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
-      sessionPatchField(extension, 'target', el('.other'), context);
+      patchField(extension, 'target', el('.other'), context);
 
       await extension.evalNode(context);
 
@@ -251,7 +251,7 @@ describe('Rules extend', () => {
       context.session = new EvalSession();
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
-      sessionPatchField(extension, 'namespace', 'patched', context);
+      patchField(extension, 'namespace', 'patched', context);
 
       await extension.evalNode(context);
 
@@ -266,7 +266,7 @@ describe('Rules extend', () => {
       });
 
       context.session = new EvalSession();
-      sessionPatchField(extension, 'target', el('.other'), context);
+      patchField(extension, 'target', el('.other'), context);
 
       expect(extension.valueOf(context)).toBe('$extend .other');
       expect(extension.valueOf()).toBe('$extend .base');
@@ -287,7 +287,7 @@ describe('Rules extend', () => {
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
       context.rulesetFrames.push(frame);
-      sessionPatchField(extension, 'selector', el('.patched'), context);
+      patchField(extension, 'selector', el('.patched'), context);
 
       await extension.evalNode(context);
 
@@ -859,7 +859,7 @@ describe('Rules extend', () => {
         end
       ]);
 
-      sessionPatchField(base, 'rules', patchedBaseRules, context);
+      patchField(base, 'rules', patchedBaseRules, context);
 
       const evald = await node.eval(context);
       const css = evald.toString({ context });
@@ -868,8 +868,8 @@ describe('Rules extend', () => {
       expect(css).toContain('.end {');
       expect(css).toContain('color: red;');
       expect(context.warnings).toHaveLength(0);
-      expect(sessionGetParent(patchedBaseRules, context)).toBe(base);
-      expect(sessionGetParent(nestedLeaf, context)).toBe(patchedBaseRules);
+      expect(getParent(patchedBaseRules, context)).toBe(base);
+      expect(getParent(nestedLeaf, context)).toBe(patchedBaseRules);
       expect(nestedLeaf.parent).toBe(patchedBaseRules);
       expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toBe(':is(.base,.mid) :is(.leaf),.end');
       expect(nestedLeaf.valueOf(context)).toBe(':is(.base,.mid) :is(.leaf),.end');
@@ -900,7 +900,7 @@ describe('Rules extend', () => {
       });
       const node = rules([base, end]);
 
-      sessionPatchField(base, 'selector', sellist([sel([el('.beta')])]), context);
+      patchField(base, 'selector', sellist([sel([el('.beta')])]), context);
 
       const evald = await node.eval(context);
       const css = evald.toString({ context });

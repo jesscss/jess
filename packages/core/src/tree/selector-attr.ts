@@ -4,7 +4,7 @@ import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { getField, patchField } from './util/session-helpers.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -67,13 +67,13 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 
   private _getName(context?: Context): string | Node {
     return context
-      ? sessionGetField<string | Node>(this, 'name', context)
+      ? getField<string | Node>(this, 'name', context)
       : this.name;
   }
 
   private _getValue(context?: Context): Node | undefined {
     return context
-      ? sessionGetField<Node | undefined>(this, 'value', context)
+      ? getField<Node | undefined>(this, 'value', context)
       : this.value;
   }
 
@@ -88,10 +88,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       const node = this.maybeClone(context);
 
       if (name !== currentName) {
-        sessionPatchField(node, 'name', name, context);
+        patchField(node, 'name', name, context);
       }
       if (value !== currentValue) {
-        sessionPatchField(node, 'value', value, context);
+        patchField(node, 'value', value, context);
       }
 
       return node;

@@ -32,19 +32,19 @@ import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import {
-  sessionGetChildren,
-  sessionGetDependency,
-  sessionGetField,
-  sessionGetParent,
-  sessionGetSourceParent,
-  sessionMergeDependencies,
-  sessionPatchField,
-  sessionSetChildren,
-  sessionSetChildAt,
-  sessionSetDependency,
-  sessionSetIndex,
-  sessionSetParent,
-  sessionSetSourceParent
+  getChildren,
+  getDependency,
+  getField,
+  getParent,
+  getSourceParent,
+  mergeDependencies,
+  patchField,
+  setChildren,
+  setChildAt,
+  setDependency,
+  setIndex,
+  setParent,
+  setSourceParent
 } from './util/session-helpers.js';
 import { EvalSession, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
@@ -167,7 +167,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility: Record<string, RulesVisibility>;
   } {
     return context
-      ? sessionGetField<RulesOptions & NodeOptions & {
+      ? getField<RulesOptions & NodeOptions & {
         rulesVisibility: Record<string, RulesVisibility>;
       }>(this, 'options', context)
       : this.options;
@@ -180,7 +180,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context?: Context
   ): void {
     if (context?.session && this === this.sourceNode) {
-      sessionPatchField(this, 'options', options, context);
+      patchField(this, 'options', options, context);
       return;
     }
     this.options = options;
@@ -230,9 +230,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     if (ctx?.session?.resetEvalState) {
-      const parent = sessionGetParent(this, ctx);
+      const parent = getParent(this, ctx);
       if (parent) {
-        sessionSetParent(newRules, parent, ctx);
+        setParent(newRules, parent, ctx);
         (newRules as unknown as { parent?: Node }).parent = undefined;
       }
     }
@@ -356,8 +356,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       do {
-        rules = sessionGetParent(rules, context) as Rules | undefined;
-        if (findRoot && rules?.type === 'Rules' && sessionGetParent(rules, context) === undefined) {
+        rules = getParent(rules, context) as Rules | undefined;
+        if (findRoot && rules?.type === 'Rules' && getParent(rules, context) === undefined) {
           break;
         }
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
@@ -545,7 +545,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _getChildren(context?: Context): readonly Node[] {
     return context
-      ? sessionGetChildren(this, context)
+      ? getChildren(this, context)
       : this.value;
   }
 
@@ -561,7 +561,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     if (context?.session && !context.session.resetEvalState) {
-      sessionSetChildren(this, value, context, { markDirty });
+      setChildren(this, value, context, { markDirty });
       return;
     }
     this.setData([...value]);
@@ -578,7 +578,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     if (context?.session && !context.session.resetEvalState) {
-      sessionSetChildAt(this, index, node, context, { markDirty });
+      setChildAt(this, index, node, context, { markDirty });
       return;
     }
     this.setData(index, node);
@@ -842,7 +842,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
           // Find the Rules node that contains the found declaration
           let foundRules: Rules | undefined = context
-            ? sessionGetParent(result, context) as Rules | undefined
+            ? getParent(result, context) as Rules | undefined
             : result.parent as Rules | undefined;
 
           if (!foundRules) {
@@ -1008,7 +1008,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
-      const activeParent = sessionGetParent(this, context);
+      const activeParent = getParent(this, context);
       const parentAtRule = activeParent?.type === 'AtRule' ? activeParent : null;
       const isNestableAtRuleBody =
         parentAtRule
@@ -1039,11 +1039,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       for (let i = 0; i < children.length; i++) {
         let n = children[i]!;
-        sessionSetIndex(n, i, context);
+        setIndex(n, i, context);
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
-      const parent = sessionGetParent(this, context);
-      if (parent && !sessionGetParent(rules, context)) {
+      const parent = getParent(this, context);
+      if (parent && !getParent(rules, context)) {
         parent.adopt(rules, context);
       }
 
@@ -1110,7 +1110,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Nodes that don't register by name (Call, Expression, etc.) skip
       // both preEval and dynamic resolution — they're handled by the eval queue.
       if (!this._isRegisterableType(node)) {
-        sessionSetIndex(node, index, context);
+        setIndex(node, index, context);
         return;
       }
       if (this._hasStaticName(node)) {
@@ -1121,7 +1121,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules._setChildAt(index, preEvaldNode, context, false);
             rules.adopt(preEvaldNode, context);
-            sessionSetIndex(preEvaldNode as Node, index, context);
+            setIndex(preEvaldNode as Node, index, context);
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
               staticNodes.push(preEvaldNode);
@@ -1133,7 +1133,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         rules._setChildAt(index, preEvald as Node, context, false);
         rules.adopt(preEvald as Node, context);
-        sessionSetIndex(preEvald as Node, index, context);
+        setIndex(preEvald as Node, index, context);
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
         this._registerNodeIfEligible(rules, nodeToRegister, context);
@@ -1634,7 +1634,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               if (isNode(result, N.Rules)) {
                 // Set the index of the imported Rules to the StyleImport's index
                 // so we can compare Rules indices when determining which variable was declared later
-                sessionSetIndex(result, idx, context);
+                setIndex(result, idx, context);
                 rules.adopt(result, context);
                 rules.registerNode(result, {
                   rulesVisibility: result.options.rulesVisibility,
@@ -1693,29 +1693,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const useSessionFields = Boolean(context?.session && !context.session.resetEvalState);
     const getDeclValue = (node: Node): Node => (
       useSessionFields && context
-        ? sessionGetField<Node>(node, 'value', context)
+        ? getField<Node>(node, 'value', context)
         : (node as any).value
     );
     const getDeclImportant = (node: Node): Node | undefined => (
       useSessionFields && context
-        ? sessionGetField<Node | undefined>(node, 'important', context)
+        ? getField<Node | undefined>(node, 'important', context)
         : (node as any).important
     );
     const getDeclName = (node: Node): string => {
       const name = useSessionFields && context
-        ? sessionGetField<Node>(node, 'name', context)
+        ? getField<Node>(node, 'name', context)
         : (node as any).name;
       return String((name as any)?.valueOf?.() ?? name);
     };
     const getDeclAssign = (node: Node): string => {
       const options = useSessionFields && context
-        ? sessionGetField<Record<string, unknown> | undefined>(node, 'options', context)
+        ? getField<Record<string, unknown> | undefined>(node, 'options', context)
         : node.options;
       return String(options?.normalizedFromAssign ?? '');
     };
     const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
       if (useSessionFields && context) {
-        sessionPatchField(node, key, value, context);
+        patchField(node, key, value, context);
         return;
       }
       node.setData(key, value);
@@ -1826,7 +1826,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         && prior !== node
         && (
           useSessionFields && context
-            ? sessionGetParent(prior, context) !== sessionGetParent(node, context)
+            ? getParent(prior, context) !== getParent(node, context)
             : prior.parent !== node.parent
         )
       ) {
@@ -1870,7 +1870,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const afterNested = children.slice(firstNestedIdx);
     const shouldMove = (n: Node) => {
       const sourceParent = context
-        ? sessionGetSourceParent(n, context)
+        ? getSourceParent(n, context)
         : n.sourceParent;
       if (
         !isNode(n, N.Rules)
@@ -2009,7 +2009,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                     if (isNode(currentDecl, N.VarDeclaration) && !currentDecl.options?.setDefined) {
                       // Only throw if the variable is a direct child of the Rules node (same level)
                       // Nested variables (e.g., inside rulesets) are allowed to shadow
-                      if (sessionGetParent(currentDecl, context) === rules) {
+                      if (getParent(currentDecl, context) === rules) {
                         throw new ReferenceError(`"${key}" is readonly`);
                       }
                     }
@@ -2183,18 +2183,18 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
     let caller = thisContext.caller;
     const getSessionRulesParent = (node: Node | undefined): Rules | undefined => {
-      let possibleRules = node ? sessionGetParent(node, thisContext) : undefined;
+      let possibleRules = node ? getParent(node, thisContext) : undefined;
       while (possibleRules && possibleRules.type !== 'Rules') {
-        possibleRules = sessionGetParent(possibleRules, thisContext);
+        possibleRules = getParent(possibleRules, thisContext);
       }
       return possibleRules as Rules | undefined;
     };
     const getSessionSourceRulesParent = (node: Node | undefined): Rules | undefined => {
       let current = node;
-      let sourceParent = current ? sessionGetSourceParent(current, thisContext) : undefined;
+      let sourceParent = current ? getSourceParent(current, thisContext) : undefined;
       while (current && !sourceParent) {
-        current = sessionGetParent(current, thisContext);
-        sourceParent = current ? sessionGetSourceParent(current, thisContext) : undefined;
+        current = getParent(current, thisContext);
+        sourceParent = current ? getSourceParent(current, thisContext) : undefined;
       }
       return sourceParent ? getSessionRulesParent(sourceParent) : undefined;
     };
@@ -2202,10 +2202,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       ? (caller as any).name
       : caller;
     let sourceParent = callerSourceNode
-      ? sessionGetSourceParent(callerSourceNode, thisContext)
+      ? getSourceParent(callerSourceNode, thisContext)
       : undefined;
     const getCandidateParent = (node: Node): Node => {
-      const parent = sessionGetParent(node, thisContext);
+      const parent = getParent(node, thisContext);
       if (!parent) {
         throw new ReferenceError(`${node.type} candidate must have a parent during mixin evaluation`);
       }
@@ -2288,9 +2288,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
     };
     const copyDependency = (source: Node, target: Node): void => {
-      const dependency = sessionGetDependency(source, thisContext);
+      const dependency = getDependency(source, thisContext);
       if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-        sessionSetDependency(target, {
+        setDependency(target, {
           dependsOn: new Set(dependency.dependsOn),
           sourceExpr: dependency.sourceExpr
         }, thisContext);
@@ -2380,7 +2380,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
             if (bindingSourceParent) {
-              sessionSetSourceParent(boundValue, bindingSourceParent, thisContext);
+              setSourceParent(boundValue, bindingSourceParent, thisContext);
             }
             normalizeBoundLeadingItemWhitespace(boundValue);
             copyDependency(argValue, boundValue);
@@ -2390,7 +2390,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const boundValue = argValue.copy(true, freezeChildren);
             boundValue.frozen = true;
             if (bindingSourceParent) {
-              sessionSetSourceParent(boundValue, bindingSourceParent, thisContext);
+              setSourceParent(boundValue, bindingSourceParent, thisContext);
             }
             normalizeBoundLeadingItemWhitespace(boundValue);
             copyDependency(argValue, boundValue);
@@ -2408,9 +2408,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               return cloned;
             });
             const restValue = new Sequence(rest);
-            const dependency = sessionMergeDependencies(rest, thisContext);
+            const dependency = mergeDependencies(rest, thisContext);
             if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-              sessionSetDependency(restValue, {
+              setDependency(restValue, {
                 dependsOn: new Set(dependency.dependsOn),
                 sourceExpr: dependency.sourceExpr
               }, thisContext);
@@ -2514,7 +2514,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       return false;
     };
     const hasFailedGuardAncestor = (node: Node): boolean => {
-      let current: Node | undefined = sessionGetParent(node, thisContext);
+      let current: Node | undefined = getParent(node, thisContext);
       while (current) {
         if (isNode(current, N.Ruleset)) {
           const guardNode = (current as Ruleset).guard;
@@ -2522,7 +2522,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             return true;
           }
         }
-        current = sessionGetParent(current, thisContext);
+        current = getParent(current, thisContext);
       }
       return false;
     };
@@ -2620,13 +2620,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       try {
         let newRules: Rules;
         if (!outerRules) {
-          sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
+          setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
           newRules = await rules.eval(thisContext);
         } else {
           const evalScope = outerRules.clone(true, undefined, thisContext);
-          const evalScopeParent = sessionGetParent(outerRules, thisContext);
+          const evalScopeParent = getParent(outerRules, thisContext);
           if (evalScopeParent) {
-            sessionSetParent(evalScope, evalScopeParent, thisContext);
+            setParent(evalScope, evalScopeParent, thisContext);
           }
           // Push body children into the eval scope so params are visible during body eval.
           // Children are shallow-cloned to avoid corrupting canonical parent chains.
@@ -2640,8 +2640,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           newRules = await evalScope.eval(thisContext);
         }
-        sessionSetSourceParent(newRules, sourceParent, thisContext);
-        sessionSetParent(newRules, getCandidateParent(candidate as unknown as Node), thisContext);
+        setSourceParent(newRules, sourceParent, thisContext);
+        setParent(newRules, getCandidateParent(candidate as unknown as Node), thisContext);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
 
@@ -2719,14 +2719,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           rules._instanceRoot = candidateInstanceRoot;
         }
         /** Adopt for lookup, then adopt for sorting */
-        sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
-        sessionSetSourceParent(rules, sourceParent, thisContext);
+        setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
+        setSourceParent(rules, sourceParent, thisContext);
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
         thisContext.rulesContext = originalContext;
-        sessionSetSourceParent(rules, sourceParent, thisContext);
-        sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
+        setSourceParent(rules, sourceParent, thisContext);
+        setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
@@ -2744,8 +2744,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
         let unlocked = sourceRules.cloneDetachedUnlockWrapper(thisContext);
-        sessionSetParent(unlocked, getCandidateParent(candidate as unknown as Node), thisContext);
-        sessionSetSourceParent(unlocked, sourceParent ?? caller, thisContext);
+        setParent(unlocked, getCandidateParent(candidate as unknown as Node), thisContext);
+        setSourceParent(unlocked, sourceParent ?? caller, thisContext);
         // Detached ruleset calls in Less unlock their contents into the current scope.
         // They must remain visible to untargeted lookups like `.mixin();`.
         unlocked.options.isMixinOutput = false;
@@ -2765,8 +2765,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
       rules.options.rulesVisibility.VarDeclaration = 'public';
-      sessionSetParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
-      sessionSetSourceParent(rules, sourceParent, thisContext);
+      setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
+      setSourceParent(rules, sourceParent, thisContext);
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,
@@ -2777,7 +2777,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
       /** Now we need to add our parameters, if any */
       let params = thisContext.session
-        ? sessionGetField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
+        ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
         : (candidate as any).params as List<Node> | undefined;
       if (params) {
         outerRules = Rules.create([], {
@@ -2788,7 +2788,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             Mixin: 'public'
           }
         });
-        sessionSetParent(
+        setParent(
           outerRules,
           thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node),
           thisContext
@@ -2892,17 +2892,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       thisContext.rulesContext = outerRules ?? rules;
       const prevGuardSession = thisContext.session;
       const guardScopeChildren = outerRules
-        ? [...sessionGetChildren(outerRules, thisContext)]
+        ? [...getChildren(outerRules, thisContext)]
         : undefined;
       try {
         if (canonicalGuard) {
           const guardParent = getCandidateParent(candidate as unknown as Node);
           const seedGuardScopeSession = (guardNode: Condition | Bool | undefined): void => {
             outerRules ??= Rules.create([]);
-            sessionSetParent(outerRules, guardParent, thisContext);
+            setParent(outerRules, guardParent, thisContext);
             const activeChildren = guardScopeChildren ?? outerRules.value;
             if (guardScopeChildren) {
-              sessionSetChildren(outerRules, activeChildren, thisContext, { markDirty: false });
+              setChildren(outerRules, activeChildren, thisContext, { markDirty: false });
             }
             for (const child of activeChildren) {
               outerRules.registerNode(child, undefined, thisContext);
@@ -3069,7 +3069,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         /** Set a sequential index for lookup sorting */
         rule.index = i;
         if (thisContext.session) {
-          sessionSetParent(rule, output, thisContext);
+          setParent(rule, output, thisContext);
           output.push(thisContext, rule);
         } else {
           output.push(rule);

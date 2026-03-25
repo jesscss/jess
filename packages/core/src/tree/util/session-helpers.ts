@@ -33,7 +33,7 @@ function resolveInstanceRoot(node: Node, ctx: Context): SessionInstanceRoot | un
  * Read a field from a node, checking instance root then session patches.
  * Resolution order: instanceRoot → session → canonical node.
  */
-export function sessionGetField<T = unknown>(
+export function getField<T = unknown>(
   node: Node,
   key: string,
   ctx: Context
@@ -53,7 +53,7 @@ export function sessionGetField<T = unknown>(
  * Write a field on a node. Routes to instanceRoot, session, or direct mutation.
  * Write target: instanceRoot → session → canonical node.
  */
-export function sessionPatchField(
+export function patchField(
   node: Node,
   key: string,
   value: unknown,
@@ -72,7 +72,7 @@ export function sessionPatchField(
   }
 }
 
-export function sessionGetDependency(
+export function getDependency(
   node: Node,
   ctx: Context
 ): EvalDependency | null {
@@ -83,7 +83,7 @@ export function sessionGetDependency(
   return session.getDependency(node) ?? null;
 }
 
-export function sessionSetDependency(
+export function setDependency(
   node: Node,
   dependency: EvalDependency,
   ctx: Context
@@ -95,15 +95,15 @@ export function sessionSetDependency(
   session.setDependency(node, dependency);
 }
 
-export function sessionIsStatic(
+export function isStatic(
   node: Node,
   ctx: Context
 ): boolean {
-  const dependency = sessionGetDependency(node, ctx);
+  const dependency = getDependency(node, ctx);
   return !dependency?.dependsOn || dependency.dependsOn.size === 0;
 }
 
-export function sessionMergeDependencies(
+export function mergeDependencies(
   nodes: readonly (Node | undefined)[],
   ctx: Context
 ): EvalDependency | null {
@@ -118,7 +118,7 @@ export function sessionMergeDependencies(
     if (!node) {
       continue;
     }
-    const dependency = sessionGetDependency(node, ctx);
+    const dependency = getDependency(node, ctx);
     if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
       continue;
     }
@@ -143,14 +143,14 @@ export function isTopLevelVarDeclaration(
   if (!isNode(node, N.VarDeclaration)) {
     return false;
   }
-  const parent = sessionGetParent(node, ctx);
+  const parent = getParent(node, ctx);
   return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
 }
 
 /**
  * Get the parent of a node. Resolution: instanceRoot → session → canonical.
  */
-export function sessionGetParent(
+export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
@@ -174,7 +174,7 @@ export function sessionGetParent(
 /**
  * Set the parent of a node. Write target: instanceRoot → session → canonical.
  */
-export function sessionSetParent(
+export function setParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
@@ -199,7 +199,7 @@ export function sessionSetParent(
 /**
  * Check whether a node has been evaluated. Resolution: instanceRoot → session → canonical.
  */
-export function sessionIsEvaluated(
+export function isEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
@@ -223,7 +223,7 @@ export function sessionIsEvaluated(
 /**
  * Mark a node as evaluated. Write target: instanceRoot → session → canonical.
  */
-export function sessionSetEvaluated(
+export function setEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
@@ -244,7 +244,7 @@ export function sessionSetEvaluated(
 /**
  * Check whether a node's preEval phase has completed. Resolution: instanceRoot → session → canonical.
  */
-export function sessionIsPreEvaluated(
+export function isPreEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
@@ -268,7 +268,7 @@ export function sessionIsPreEvaluated(
 /**
  * Mark a node's preEval phase as completed. Write target: instanceRoot → session → canonical.
  */
-export function sessionSetPreEvaluated(
+export function setPreEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
@@ -289,7 +289,7 @@ export function sessionSetPreEvaluated(
 /**
  * Get the eval index of a node. Resolution: instanceRoot → session → canonical.
  */
-export function sessionGetIndex(
+export function getIndex(
   node: Node,
   ctx: Context
 ): number {
@@ -313,7 +313,7 @@ export function sessionGetIndex(
 /**
  * Set the eval index of a node. Write target: instanceRoot → session → canonical.
  */
-export function sessionSetIndex(
+export function setIndex(
   node: Node,
   index: number,
   ctx: Context
@@ -334,7 +334,7 @@ export function sessionSetIndex(
 /**
  * Get the source parent of a node. Resolution: instanceRoot → session → canonical.
  */
-export function sessionGetSourceParent(
+export function getSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
@@ -358,7 +358,7 @@ export function sessionGetSourceParent(
 /**
  * Set the source parent of a node. Write target: instanceRoot → session → canonical.
  */
-export function sessionSetSourceParent(
+export function setSourceParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
@@ -380,7 +380,7 @@ export function sessionSetSourceParent(
  * Bulk-set multiple runtime state fields on a node.
  * Write target: instanceRoot → session → canonical.
  */
-export function sessionSetRuntimeState(
+export function setRuntimeState(
   node: Node,
   patch: Partial<RuntimeState>,
   ctx: Context
@@ -459,7 +459,7 @@ export function sessionSetRuntimeState(
  * Read the children array of a Rules node.
  * Resolution: instanceRoot → session → canonical (rules.value).
  */
-export function sessionGetChildren(
+export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
@@ -478,7 +478,7 @@ type SessionChildrenWriteOptions = {
   markDirty?: boolean;
 };
 
-export function sessionSetChildren(
+export function setChildren(
   rules: Rules,
   nodes: readonly Node[],
   ctx: Context,
@@ -486,46 +486,46 @@ export function sessionSetChildren(
 ): void {
   const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
-    const prevChildren = sessionGetChildren(rules, ctx);
+    const prevChildren = getChildren(rules, ctx);
     const nextChildren = [...nodes];
     const nextSet = new Set(nextChildren);
     ir.setChildren(rules, nextChildren);
     for (const child of prevChildren) {
       if (!nextSet.has(child)) {
-        sessionSetParent(child, undefined, ctx);
+        setParent(child, undefined, ctx);
       }
     }
     for (const child of nextChildren) {
-      sessionSetParent(child, rules, ctx);
+      setParent(child, rules, ctx);
     }
     if (options.markDirty !== false) {
-      sessionMarkScopeDirty(rules, ctx);
+      markScopeDirty(rules, ctx);
     }
     return;
   }
   const session = ctx.session;
   if (session) {
-    const prevChildren = sessionGetChildren(rules, ctx);
+    const prevChildren = getChildren(rules, ctx);
     const nextChildren = [...nodes];
     const nextSet = new Set(nextChildren);
     session.setChildren(rules, nextChildren);
     for (const child of prevChildren) {
       if (!nextSet.has(child)) {
-        sessionSetParent(child, undefined, ctx);
+        setParent(child, undefined, ctx);
       }
     }
     for (const child of nextChildren) {
-      sessionSetParent(child, rules, ctx);
+      setParent(child, rules, ctx);
     }
     if (options.markDirty !== false) {
-      sessionMarkScopeDirty(rules, ctx);
+      markScopeDirty(rules, ctx);
     }
     return;
   }
   rules.setData([...nodes]);
 }
 
-export function sessionSetChildAt(
+export function setChildAt(
   rules: Rules,
   index: number,
   node: Node,
@@ -534,7 +534,7 @@ export function sessionSetChildAt(
 ): void {
   const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
-    const currentChildren = sessionGetChildren(rules, ctx);
+    const currentChildren = getChildren(rules, ctx);
     const prev = currentChildren[index];
     if (prev === node) {
       return;
@@ -542,18 +542,18 @@ export function sessionSetChildAt(
     const nextChildren = [...currentChildren];
     nextChildren[index] = node;
     ir.setChildren(rules, nextChildren);
-    sessionSetParent(node, rules, ctx);
+    setParent(node, rules, ctx);
     if (prev) {
-      sessionSetParent(prev, undefined, ctx);
+      setParent(prev, undefined, ctx);
     }
     if (options.markDirty !== false) {
-      sessionMarkScopeDirty(rules, ctx);
+      markScopeDirty(rules, ctx);
     }
     return;
   }
   const session = ctx.session;
   if (session) {
-    const currentChildren = sessionGetChildren(rules, ctx);
+    const currentChildren = getChildren(rules, ctx);
     const prev = currentChildren[index];
     if (prev === node) {
       return;
@@ -561,12 +561,12 @@ export function sessionSetChildAt(
     const nextChildren = [...currentChildren];
     nextChildren[index] = node;
     session.setChildren(rules, nextChildren);
-    sessionSetParent(node, rules, ctx);
+    setParent(node, rules, ctx);
     if (prev) {
-      sessionSetParent(prev, undefined, ctx);
+      setParent(prev, undefined, ctx);
     }
     if (options.markDirty !== false) {
-      sessionMarkScopeDirty(rules, ctx);
+      markScopeDirty(rules, ctx);
     }
     return;
   }
@@ -577,29 +577,29 @@ export function sessionSetChildAt(
  * Append child nodes to a Rules node.
  * Stage 9 will route into session-local children when a session is active.
  */
-export function sessionAppendChildren(
+export function appendChildren(
   rules: Rules,
   nodes: Node[],
   ctx: Context
 ): void {
   const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
-    const nextValue = [...sessionGetChildren(rules, ctx), ...nodes];
+    const nextValue = [...getChildren(rules, ctx), ...nodes];
     ir.setChildren(rules, nextValue);
     for (const node of nodes) {
-      sessionSetParent(node, rules, ctx);
+      setParent(node, rules, ctx);
     }
-    sessionMarkScopeDirty(rules, ctx);
+    markScopeDirty(rules, ctx);
     return;
   }
   const session = ctx.session;
   if (session) {
-    const nextValue = [...sessionGetChildren(rules, ctx), ...nodes];
+    const nextValue = [...getChildren(rules, ctx), ...nodes];
     session.setChildren(rules, nextValue);
     for (const node of nodes) {
-      sessionSetParent(node, rules, ctx);
+      setParent(node, rules, ctx);
     }
-    sessionMarkScopeDirty(rules, ctx);
+    markScopeDirty(rules, ctx);
     return;
   }
   rules.push(ctx, ...nodes);
@@ -609,29 +609,29 @@ export function sessionAppendChildren(
  * Prepend child nodes to a Rules node.
  * Stage 9 will route into session-local children when a session is active.
  */
-export function sessionPrependChildren(
+export function prependChildren(
   rules: Rules,
   nodes: Node[],
   ctx: Context
 ): void {
   const ir = resolveInstanceRoot(rules, ctx);
   if (ir) {
-    const nextValue = [...nodes, ...sessionGetChildren(rules, ctx)];
+    const nextValue = [...nodes, ...getChildren(rules, ctx)];
     ir.setChildren(rules, nextValue);
     for (const node of nodes) {
-      sessionSetParent(node, rules, ctx);
+      setParent(node, rules, ctx);
     }
-    sessionMarkScopeDirty(rules, ctx);
+    markScopeDirty(rules, ctx);
     return;
   }
   const session = ctx.session;
   if (session) {
-    const nextValue = [...nodes, ...sessionGetChildren(rules, ctx)];
+    const nextValue = [...nodes, ...getChildren(rules, ctx)];
     session.setChildren(rules, nextValue);
     for (const node of nodes) {
-      sessionSetParent(node, rules, ctx);
+      setParent(node, rules, ctx);
     }
-    sessionMarkScopeDirty(rules, ctx);
+    markScopeDirty(rules, ctx);
     return;
   }
   rules.unshift(ctx, ...nodes);
@@ -641,12 +641,12 @@ export function sessionPrependChildren(
  * Remove a child node from a Rules node.
  * Stage 9 will route into session-local children when a session is active.
  */
-export function sessionRemoveChild(
+export function removeChild(
   rules: Rules,
   child: Node,
   ctx: Context
 ): void {
-  const currentChildren = sessionGetChildren(rules, ctx);
+  const currentChildren = getChildren(rules, ctx);
   const idx = currentChildren.indexOf(child);
   if (idx >= 0) {
     const ir = resolveInstanceRoot(rules, ctx);
@@ -654,16 +654,16 @@ export function sessionRemoveChild(
       const nextValue = [...currentChildren];
       nextValue.splice(idx, 1);
       ir.setChildren(rules, nextValue);
-      sessionSetParent(child, undefined, ctx);
-      sessionMarkScopeDirty(rules, ctx);
+      setParent(child, undefined, ctx);
+      markScopeDirty(rules, ctx);
       return;
     }
     if (ctx.session) {
       const nextValue = [...currentChildren];
       nextValue.splice(idx, 1);
       ctx.session.setChildren(rules, nextValue);
-      sessionSetParent(child, undefined, ctx);
-      sessionMarkScopeDirty(rules, ctx);
+      setParent(child, undefined, ctx);
+      markScopeDirty(rules, ctx);
       return;
     }
     rules.splice(ctx, idx, 1);
@@ -674,40 +674,40 @@ export function sessionRemoveChild(
  * Replace a node with a replacement in its parent Rules.
  * Write target: instanceRoot → session → canonical.
  */
-export function sessionReplaceNode(
+export function replaceNode(
   node: Node,
   replacement: Node,
   ctx: Context
 ): void {
   const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
-    const parent = sessionGetParent(node, ctx);
+    const parent = getParent(node, ctx);
     if (parent && isNode(parent, N.Rules)) {
-      const currentChildren = sessionGetChildren(parent, ctx);
+      const currentChildren = getChildren(parent, ctx);
       const idx = currentChildren.indexOf(node);
       if (idx >= 0) {
         const nextValue = [...currentChildren];
         nextValue[idx] = replacement;
         ir.setChildren(parent, nextValue);
-        sessionSetParent(replacement, parent, ctx);
-        sessionSetParent(node, undefined, ctx);
-        sessionMarkScopeDirty(parent, ctx);
+        setParent(replacement, parent, ctx);
+        setParent(node, undefined, ctx);
+        markScopeDirty(parent, ctx);
         return;
       }
     }
   }
   if (ctx.session) {
-    const parent = sessionGetParent(node, ctx);
+    const parent = getParent(node, ctx);
     if (parent && isNode(parent, N.Rules)) {
-      const currentChildren = sessionGetChildren(parent, ctx);
+      const currentChildren = getChildren(parent, ctx);
       const idx = currentChildren.indexOf(node);
       if (idx >= 0) {
         const nextValue = [...currentChildren];
         nextValue[idx] = replacement;
         ctx.session.setChildren(parent, nextValue);
-        sessionSetParent(replacement, parent, ctx);
-        sessionSetParent(node, undefined, ctx);
-        sessionMarkScopeDirty(parent, ctx);
+        setParent(replacement, parent, ctx);
+        setParent(node, undefined, ctx);
+        markScopeDirty(parent, ctx);
         return;
       }
     }
@@ -729,7 +729,7 @@ export function sessionReplaceNode(
  * Invalidate a Rules node's scope registry so the next lookup rebuilds it.
  * Stage 9 will make this session-local when session-local children are active.
  */
-export function sessionMarkScopeDirty(
+export function markScopeDirty(
   rules: Rules,
   ctx: Context
 ): void {

@@ -10,13 +10,16 @@ Keep this file short. Put detail elsewhere.
 
 ## Read Order
 
-1. [session-instance-architecture.md](./session-instance-architecture.md)
-2. [dependency-graph.md](./dependency-graph.md)
-3. [PROGRESS.md](./PROGRESS.md)
-4. [node-session-status.md](./node-session-status.md)
-5. [mixin-direct-invocation.md](./mixin-direct-invocation.md) — the next major refactor
+1. [STAGES.md](./STAGES.md) — the single stage tracking document (what's done, what's active, what's next)
+2. [session-instance-architecture.md](./session-instance-architecture.md) — target architecture + registry rewrite
+3. [node-session-status.md](./node-session-status.md) — per-node completion status
+4. [mixin-direct-invocation.md](./mixin-direct-invocation.md) — mixin clone elimination plan
+5. [subsystems.md](./subsystems.md) — target node model and field reference
 
-Use those docs as the source of truth. Do not rebuild their content here.
+Historical docs (context only, not actively maintained):
+- `dependency-graph.md` — superseded by STAGES.md
+- `migration.md` — superseded by STAGES.md
+- `PROGRESS.md` — superseded by STAGES.md
 
 ## Branch Goal
 

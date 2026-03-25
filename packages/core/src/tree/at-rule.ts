@@ -12,7 +12,7 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { getField, patchField } from './util/session-helpers.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -98,14 +98,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private _getName(context?: Context): Any<'atkeyword'> | Interpolated<'atkeyword'> {
     return context
-      ? sessionGetField<Any<'atkeyword'> | Interpolated<'atkeyword'>>(this, 'name', context)
+      ? getField<Any<'atkeyword'> | Interpolated<'atkeyword'>>(this, 'name', context)
       : this.name;
   }
 
   private _setName(name: Any<'atkeyword'> | Interpolated<'atkeyword'>, context: Context): void {
     this.adopt(name);
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'name', name, context);
+      patchField(this, 'name', name, context);
     } else {
       this.name = name;
     }
@@ -114,7 +114,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private _getPrelude(context?: Context): Node | undefined {
     return context
-      ? sessionGetField<Node | undefined>(this, 'prelude', context)
+      ? getField<Node | undefined>(this, 'prelude', context)
       : this.prelude;
   }
 
@@ -123,7 +123,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       this.adopt(prelude);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'prelude', prelude, context);
+      patchField(this, 'prelude', prelude, context);
     } else {
       this.prelude = prelude;
     }
@@ -132,7 +132,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private _getRulesContainer(context?: Context): Rules | undefined {
     return context
-      ? sessionGetField<Rules | undefined>(this, 'rules', context)
+      ? getField<Rules | undefined>(this, 'rules', context)
       : this.rules;
   }
 
@@ -141,7 +141,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       this.adopt(rules);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'rules', rules, context);
+      patchField(this, 'rules', rules, context);
     } else {
       this.rules = rules;
     }

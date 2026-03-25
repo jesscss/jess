@@ -22,12 +22,12 @@ import type { Color } from './color.js';
 import type { VarDeclaration } from './declaration-var.js';
 import {
   isTopLevelVarDeclaration,
-  sessionGetDependency,
-  sessionGetField,
-  sessionGetParent,
-  sessionGetSourceParent,
-  sessionSetSourceParent,
-  sessionSetDependency
+  getDependency,
+  getField,
+  getParent,
+  getSourceParent,
+  setSourceParent,
+  setDependency
 } from './util/session-helpers.js';
 /**
  * The type is determined by syntax
@@ -124,25 +124,25 @@ function isInsideSelectorCapture(node: Node | undefined, context?: Context): boo
     if (cursor.type === 'SelectorCapture') {
       return true;
     }
-    cursor = context ? sessionGetParent(cursor, context) : cursor.parent;
+    cursor = context ? getParent(cursor, context) : cursor.parent;
   }
   return false;
 }
 
 function getSessionRulesParent(node: Node, context: Context): Rules | undefined {
-  let possibleRules: Node | undefined = sessionGetParent(node, context);
+  let possibleRules: Node | undefined = getParent(node, context);
   while (possibleRules && possibleRules.type !== 'Rules') {
-    possibleRules = sessionGetParent(possibleRules, context);
+    possibleRules = getParent(possibleRules, context);
   }
   return possibleRules as Rules | undefined;
 }
 
 function getSessionSourceRulesParent(node: Node, context: Context): Rules | undefined {
   let current: Node | undefined = node;
-  let sourceParent = sessionGetSourceParent(node, context);
+  let sourceParent = getSourceParent(node, context);
   while (current && !sourceParent) {
-    current = sessionGetParent(current, context);
-    sourceParent = current ? sessionGetSourceParent(current, context) : undefined;
+    current = getParent(current, context);
+    sourceParent = current ? getSourceParent(current, context) : undefined;
   }
   return sourceParent ? getSessionRulesParent(sourceParent, context) : undefined;
 }
@@ -184,13 +184,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
   private _getTarget(context?: Context): Reference | Call | undefined {
     return context
-      ? sessionGetField<Reference | Call | undefined>(this, 'target', context)
+      ? getField<Reference | Call | undefined>(this, 'target', context)
       : this.target;
   }
 
   private _getKey(context?: Context): ReferenceValue['key'] {
     return context
-      ? sessionGetField<ReferenceValue['key']>(this, 'key', context)
+      ? getField<ReferenceValue['key']>(this, 'key', context)
       : this.key;
   }
 
@@ -424,14 +424,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         originalFilter ??= () => true;
         const isInterpolatedVariable =
           this.options.type === 'variable'
-          && sessionGetParent(this, context)?.type === 'Interpolated';
+          && getParent(this, context)?.type === 'Interpolated';
         const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
           let cursor: Node | undefined = activeRules;
           while (cursor) {
             if (cursor === paramParent) {
               return true;
             }
-            cursor = sessionGetParent(cursor, context);
+            cursor = getParent(cursor, context);
           }
           return false;
         };
@@ -439,7 +439,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           const passesOriginal = originalFilter!(n);
           const blockedParamVar = isNode(n, N.VarDeclaration)
             && Boolean(n.options?.paramVar)
-            && !isWithinParamVarScope(sessionGetParent(n, context), context.rulesContext);
+            && !isWithinParamVarScope(getParent(n, context), context.rulesContext);
           const blockedBySearchScope = context.searchScope.has(n);
           return passesOriginal && !blockedBySearchScope && !blockedParamVar;
         };
@@ -463,7 +463,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             // If this node doesn't have an index, climb up until we find one
             if (startIndex === undefined) {
               while (currentNode && startIndex === undefined) {
-                currentNode = sessionGetParent(currentNode, context);
+                currentNode = getParent(currentNode, context);
                 if (currentNode) {
                   startIndex = currentNode.index;
                 }
@@ -472,7 +472,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
             // Now climb up until we find a node that has a Rules parent
             while (currentNode) {
-              const currentParent = sessionGetParent(currentNode, context);
+              const currentParent = getParent(currentNode, context);
               if (!currentParent || isNode(currentParent, N.Rules)) {
                 break;
               }
@@ -498,7 +498,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
               if (startIndex === undefined) {
                 while (currentNode && startIndex === undefined) {
-                  currentNode = sessionGetParent(currentNode, context);
+                  currentNode = getParent(currentNode, context);
                   if (currentNode) {
                     startIndex = currentNode.index;
                   }
@@ -506,7 +506,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
 
               while (currentNode) {
-                const currentParent = sessionGetParent(currentNode, context);
+                const currentParent = getParent(currentNode, context);
                 if (!currentParent || isNode(currentParent, N.Rules)) {
                   break;
                 }
@@ -717,15 +717,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               out.frozen = true;
               out.pre = this.pre;
               out.post = this.post;
-              sessionSetSourceParent(out, this, context);
+              setSourceParent(out, this, context);
               const dependency = isTopLevelVarDeclaration(returnVal as Node, context)
                 ? {
                     dependsOn: new Set<VarDeclaration>([returnVal as VarDeclaration]),
                     sourceExpr: this as Node
                   }
-                : sessionGetDependency(evald, context);
+                : getDependency(evald, context);
               if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-                sessionSetDependency(out, {
+                setDependency(out, {
                   dependsOn: new Set(dependency.dependsOn),
                   sourceExpr: dependency.sourceExpr ?? this
                 }, context);
@@ -740,7 +740,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
-              sessionSetSourceParent(first as Node, this, context);
+              setSourceParent(first as Node, this, context);
               context.popReference();
               return cast(first);
             }
@@ -750,7 +750,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           for (let item of returnVal) {
-            sessionSetSourceParent(item, this, context);
+            setSourceParent(item, this, context);
             if (!isNode(item, N.Mixin | N.Ruleset)) {
               context.popReference();
               return cast(undefined);
@@ -763,7 +763,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();
-        sessionSetSourceParent(result, this, context);
+        setSourceParent(result, this, context);
         return result;
       }
     );

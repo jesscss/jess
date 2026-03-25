@@ -17,7 +17,7 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
-import { sessionGetField, sessionPatchField } from './session-helpers.js';
+import { getField, patchField } from './session-helpers.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -664,13 +664,13 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
 
 function getRulesetHoistToRoot(ruleset: Ruleset, context?: Context): boolean | undefined {
   return context
-    ? sessionGetField<boolean | undefined>(ruleset, 'hoistToRoot', context)
+    ? getField<boolean | undefined>(ruleset, 'hoistToRoot', context)
     : ruleset.hoistToRoot;
 }
 
 function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, context?: Context): void {
   if (context?.session) {
-    sessionPatchField(ruleset, 'hoistToRoot', value, context);
+    patchField(ruleset, 'hoistToRoot', value, context);
     return;
   }
   ruleset.hoistToRoot = value;

@@ -1,7 +1,7 @@
 import { TreeContext, list, spaced, num, any, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { patchField } from '../util/session-helpers.js';
 
 describe('List compare', () => {
   it('treats separator differences as equal in strict mode', () => {
@@ -35,7 +35,7 @@ describe('List', () => {
     context.createSession();
     const node = list([any('red'), any('blue')]);
 
-    sessionPatchField(node, 'value', [any('cyan'), any('magenta')], context);
+    patchField(node, 'value', [any('cyan'), any('magenta')], context);
 
     expect(node.toTrimmedString({ context })).toBe('cyan, magenta');
     expect(node.toTrimmedString()).toBe('red, blue');
@@ -45,7 +45,7 @@ describe('List', () => {
     context.createSession();
     const left = list([any('red')]);
 
-    sessionPatchField(left, 'value', [any('cyan'), any('magenta')], context);
+    patchField(left, 'value', [any('cyan'), any('magenta')], context);
 
     const result = left.operate(any('black'), '+', context);
 
@@ -58,7 +58,7 @@ describe('List', () => {
     const left = list([any('red')]);
     const right = list([any('blue')]);
 
-    sessionPatchField(right, 'value', [any('cyan'), any('magenta')], context);
+    patchField(right, 'value', [any('cyan'), any('magenta')], context);
 
     const result = left.operate(right, '+', context);
 
@@ -104,7 +104,7 @@ describe('List', () => {
     context.createSession();
     const node = list([any('red'), any('blue')]);
 
-    sessionPatchField(node, 'value', [any('cyan'), any('magenta'), any('black')], context);
+    patchField(node, 'value', [any('cyan'), any('magenta'), any('black')], context);
 
     expect(node.toTrimmedString({ context })).toBe('cyan, magenta, black');
     expect(node.length).toBe(2);
@@ -121,8 +121,8 @@ describe('List', () => {
 
     expect(node.valueOf()).toBe('red;blue');
 
-    sessionPatchField(node, 'value', [any('cyan'), any('magenta')], firstSession);
-    sessionPatchField(node, 'value', [any('black'), any('white')], secondSession);
+    patchField(node, 'value', [any('cyan'), any('magenta')], firstSession);
+    patchField(node, 'value', [any('black'), any('white')], secondSession);
 
     expect(node.toTrimmedString({ context: firstSession })).toBe('cyan, magenta');
     expect(node.toTrimmedString({ context: secondSession })).toBe('black, white');
@@ -134,7 +134,7 @@ describe('List', () => {
     const left = list([any('red'), any('blue')]);
     const right = list([any('red'), any('blue')]);
 
-    sessionPatchField(left, 'value', [any('cyan'), any('magenta')], context);
+    patchField(left, 'value', [any('cyan'), any('magenta')], context);
 
     expect(left.toTrimmedString({ context })).toBe('cyan, magenta');
     expect(left.compare(right)).toBe(0);

@@ -3,7 +3,7 @@ import { F_NON_STATIC, F_VISIBLE, Node, defineType, type OptionalLocation, type 
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField } from './util/session-helpers.js';
+import { getField } from './util/session-helpers.js';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -78,25 +78,25 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   private _getLeft(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'left', context)
+      ? getField<Node>(this, 'left', context)
       : this.left;
   }
 
   private _getOperator(context?: Context): ConditionOperator | undefined {
     return context
-      ? sessionGetField<ConditionOperator | undefined>(this, 'operator', context)
+      ? getField<ConditionOperator | undefined>(this, 'operator', context)
       : this.operator;
   }
 
   private _getRight(context?: Context): Node | undefined {
     return context
-      ? sessionGetField<Node | undefined>(this, 'right', context)
+      ? getField<Node | undefined>(this, 'right', context)
       : this.right;
   }
 
   private _getNegate(context?: Context): boolean {
     return context
-      ? sessionGetField<boolean>(this, 'negate', context)
+      ? getField<boolean>(this, 'negate', context)
       : this.negate;
   }
 
@@ -190,7 +190,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
           if (node.type !== 'Call') {
             return node;
           }
-          const rawCallName = sessionGetField<string | Node | undefined>(node, 'name', context);
+          const rawCallName = getField<string | Node | undefined>(node, 'name', context);
           const callName = String(typeof rawCallName === 'string'
             ? rawCallName
             : rawCallName?.valueOf?.() ?? '');

@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import { Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { sessionGetField, sessionPatchField } from './util/session-helpers.js';
+import { getField, patchField } from './util/session-helpers.js';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
@@ -33,7 +33,7 @@ export class Block extends Node<Node, BlockOptions> {
 
   private _getValue(context?: Context): Node {
     return context
-      ? sessionGetField<Node>(this, 'value', context)
+      ? getField<Node>(this, 'value', context)
       : this.value;
   }
 
@@ -42,7 +42,7 @@ export class Block extends Node<Node, BlockOptions> {
     const finish = (nextValue: Node): Block => {
       if (nextValue !== value) {
         if (context.session) {
-          sessionPatchField(this, 'value', nextValue, context);
+          patchField(this, 'value', nextValue, context);
         } else {
           this.setData('value', nextValue);
         }

@@ -2,7 +2,7 @@ import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../
 import { Context } from '../../../context.js';
 import { EvalSession } from '../../../eval-session.js';
 import { selectorMatch } from '../selector-match-core.js';
-import { sessionPatchField } from '../session-helpers.js';
+import { patchField } from '../session-helpers.js';
 
 describe('BitSets and selectors', () => {
   let context: Context;
@@ -154,7 +154,7 @@ describe('Fast-reject in selectorMatch', () => {
     const findList = sellist([find]);
     findList.keySetLibrary = context.selectorBits;
 
-    sessionPatchField(parent, 'selector', patched, context);
+    patchField(parent, 'selector', patched, context);
 
     expect(selectorMatch(find, target).fullMatch).toBe(false);
     expect(selectorMatch(find, target, undefined, context).fullMatch).toBe(true);
@@ -199,7 +199,7 @@ describe('Fast-reject in selectorMatch', () => {
       }
     }
 
-    sessionPatchField(parent, 'selector', patched, contextA);
+    patchField(parent, 'selector', patched, contextA);
 
     expect(() => selectorMatch(find, target, undefined, contextA)).not.toThrow();
     expect(selectorMatch(find, target, undefined, contextA).fullMatch).toBe(true);

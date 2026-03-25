@@ -1,7 +1,7 @@
 import { any, expr, sel, compound, el, co, pseudo, sellist, amp, rules, ruleset } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionGetField, sessionPatchField } from '../util/session-helpers.js';
+import { getField, patchField } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -102,11 +102,11 @@ describe('Complex selector', () => {
       const child = el('.target');
       const node = sel([child]);
 
-      sessionPatchField(node, 'hoistToRoot', true, context);
+      patchField(node, 'hoistToRoot', true, context);
 
       const evald = await node.eval(context);
 
-      expect(sessionGetField(evald, 'hoistToRoot', context)).toBe(true);
+      expect(getField(evald, 'hoistToRoot', context)).toBe(true);
       expect(evald.hoistToRoot).toBeUndefined();
       expect(node.hoistToRoot).toBeUndefined();
     });
@@ -134,7 +134,7 @@ describe('Complex selector', () => {
       ]);
       const canonicalValue = node.valueOf();
 
-      sessionPatchField(node, 'value', [
+      patchField(node, 'value', [
         el('.patched'),
         co('>'),
         el('.live')
@@ -177,7 +177,7 @@ describe('Complex selector', () => {
 
       const patched = el('.beta');
       patched.keySetLibrary = context.selectorBits;
-      sessionPatchField(parent, 'selector', patched, context);
+      patchField(parent, 'selector', patched, context);
 
       expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha', '>', '.tail']))).toBe(true);
       expect(node.getKeySet(context).equals(context.selectorBits.getBitset(['.beta', '>', '.tail']))).toBe(true);

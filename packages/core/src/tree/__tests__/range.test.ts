@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { any, range } from '../index.js';
 import { Context } from '../../context.js';
-import { sessionPatchField } from '../util/session-helpers.js';
+import { patchField } from '../util/session-helpers.js';
 
 describe('Range', () => {
   it('serializes inclusive and exclusive bounds', () => {
@@ -21,9 +21,9 @@ describe('Range', () => {
       { includeEnd: false }
     );
 
-    sessionPatchField(node, 'start', any('2'), context);
-    sessionPatchField(node, 'end', any('4'), context);
-    sessionPatchField(node, 'step', any('3'), context);
+    patchField(node, 'start', any('2'), context);
+    patchField(node, 'end', any('4'), context);
+    patchField(node, 'step', any('3'), context);
 
     expect(node.toTrimmedString({ context })).toBe('2 to <4 step 3');
     expect(node.toTrimmedString()).toBe('1 to <3 step 2');
@@ -40,7 +40,7 @@ describe('Range', () => {
       { includeEnd: false }
     );
 
-    sessionPatchField(node, 'start', any('9'), context);
+    patchField(node, 'start', any('9'), context);
 
     const evald = await node.eval(context);
 

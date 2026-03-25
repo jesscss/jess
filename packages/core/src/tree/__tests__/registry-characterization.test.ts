@@ -19,7 +19,7 @@ import {
 import { Context } from '../../context.js';
 import { createTestContext } from './import-style-test-helpers.js';
 import { peekRegistryData } from '../util/registry-utils.js';
-import { sessionGetParent } from '../util/session-helpers.js';
+import { getParent } from '../util/session-helpers.js';
 
 describe('registry characterization', () => {
   it('reuses the same canonical registry slot across cached compose imports', async () => {
@@ -191,19 +191,19 @@ describe('registry characterization', () => {
     expect(detachedWrapper.at(0)).toBe(canonicalRuleset);
     expect(detachedWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
-    expect(sessionGetParent(canonicalRuleset, context)).toBe(canonicalRules);
+    expect(getParent(canonicalRuleset, context)).toBe(canonicalRules);
 
     const lookupWrapper = canonicalRules.cloneLookupSafeShallowWrapper(context) as Rules;
     expect(lookupWrapper.at(0)).toBe(canonicalRuleset);
     expect(lookupWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
-    expect(sessionGetParent(canonicalRuleset, context)).toBe(lookupWrapper);
+    expect(getParent(canonicalRuleset, context)).toBe(lookupWrapper);
 
     const materializedWrapper = canonicalRules.cloneDetachedMaterializedWrapper(context) as Rules;
     expect(materializedWrapper.at(0)).not.toBe(canonicalRuleset);
     expect(materializedWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
-    expect(sessionGetParent(canonicalRuleset, context)).toBe(lookupWrapper);
+    expect(getParent(canonicalRuleset, context)).toBe(lookupWrapper);
 
     detachedWrapper.getRegistry('ruleset');
     lookupWrapper.getRegistry('ruleset');

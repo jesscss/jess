@@ -30,7 +30,7 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
-import { sessionGetField, sessionGetParent, sessionPatchField } from './util/session-helpers.js';
+import { getField, getParent, patchField } from './util/session-helpers.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -180,7 +180,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _getRulesetOptions(context?: Context): RulesetOptions {
     return context
-      ? sessionGetField<RulesetOptions>(this, 'options', context)
+      ? getField<RulesetOptions>(this, 'options', context)
       : this.options;
   }
 
@@ -198,7 +198,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       ownSelector: selector
     };
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'options', nextOptions, context);
+      patchField(this, 'options', nextOptions, context);
     } else {
       this.options = nextOptions;
     }
@@ -206,19 +206,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _getSelector(context?: Context): Selector | Nil {
     return context
-      ? sessionGetField<Selector | Nil>(this, 'selector', context)
+      ? getField<Selector | Nil>(this, 'selector', context)
       : this.selector;
   }
 
   private _getHoistToRoot(context?: Context): boolean | undefined {
     return context
-      ? sessionGetField<boolean | undefined>(this, 'hoistToRoot', context)
+      ? getField<boolean | undefined>(this, 'hoistToRoot', context)
       : this.hoistToRoot;
   }
 
   private _setHoistToRoot(value: boolean | undefined, context: Context): void {
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'hoistToRoot', value, context);
+      patchField(this, 'hoistToRoot', value, context);
     } else {
       this.hoistToRoot = value;
     }
@@ -234,7 +234,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(selector, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'selector', selector, context);
+      patchField(this, 'selector', selector, context);
     } else {
       this.selector = selector;
     }
@@ -267,9 +267,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _getRulesContainer(context?: Context): Rules {
     const rules = context
-      ? sessionGetField<Rules>(this, 'rules', context)
+      ? getField<Rules>(this, 'rules', context)
       : this.rules;
-    if (context?.session && sessionGetParent(rules, context) !== this) {
+    if (context?.session && getParent(rules, context) !== this) {
       this.adopt(rules, context);
     }
     return rules;
@@ -286,7 +286,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(rules, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'rules', rules, context);
+      patchField(this, 'rules', rules, context);
     } else {
       this.rules = rules;
     }
@@ -294,7 +294,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _getGuard(context?: Context): Condition | Nil | undefined {
     return context
-      ? sessionGetField<Condition | Nil | undefined>(this, 'guard', context)
+      ? getField<Condition | Nil | undefined>(this, 'guard', context)
       : this.guard;
   }
 
@@ -307,7 +307,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(guard, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'guard', guard, context);
+      patchField(this, 'guard', guard, context);
     } else {
       this.guard = guard;
     }
@@ -315,7 +315,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _getSelectorBeforeExtend(context?: Context): Selector | Nil | undefined {
     return context
-      ? sessionGetField<Selector | Nil | undefined>(this, 'selectorBeforeExtend', context)
+      ? getField<Selector | Nil | undefined>(this, 'selectorBeforeExtend', context)
       : this.selectorBeforeExtend;
   }
 
@@ -332,7 +332,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(selector, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, 'selectorBeforeExtend', selector, context);
+      patchField(this, 'selectorBeforeExtend', selector, context);
     } else {
       this.selectorBeforeExtend = selector;
     }
@@ -340,7 +340,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _getExtendedSelector(context?: Context): Selector | Nil | undefined {
     return context
-      ? sessionGetField<Selector | Nil | undefined>(this, '_extendedSelector', context)
+      ? getField<Selector | Nil | undefined>(this, '_extendedSelector', context)
       : this._extendedSelector;
   }
 
@@ -358,7 +358,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(selector, context);
     }
     if (context.session && this === this.sourceNode) {
-      sessionPatchField(this, '_extendedSelector', selector, context);
+      patchField(this, '_extendedSelector', selector, context);
     } else {
       this._extendedSelector = selector;
     }
@@ -388,12 +388,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private _hasAncestorRuleset(context?: Context): boolean {
-    let current = context ? sessionGetParent(this, context) : this.parent;
+    let current = context ? getParent(this, context) : this.parent;
     while (current) {
       if (isNode(current, N.Ruleset)) {
         return true;
       }
-      current = context ? sessionGetParent(current, context) : current.parent;
+      current = context ? getParent(current, context) : current.parent;
     }
     return false;
   }
@@ -676,7 +676,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return true;
       }
       current = (context
-        ? sessionGetParent(current, context)
+        ? getParent(current, context)
         : current.parent) as Node | undefined;
     }
     return false;

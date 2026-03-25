@@ -1,7 +1,7 @@
 import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionGetParent, sessionPatchField } from '../util/session-helpers.js';
+import { getParent, patchField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -25,7 +25,7 @@ describe('Expression', () => {
     const rule = expr(any('foo'));
     context.session = new EvalSession({ resetEvalState: true });
 
-    sessionPatchField(rule, 'value', shared, context);
+    patchField(rule, 'value', shared, context);
     const preEvald = await rule.preEval(context);
 
     expect(preEvald).not.toBe(rule);
@@ -33,7 +33,7 @@ describe('Expression', () => {
     expect(`${preEvald}`).toBe('$(bar)');
     expect(rule.value).not.toBe(shared);
     expect(shared.parent).toBe(source);
-    expect(sessionGetParent(shared, context)).toBe(preEvald);
+    expect(getParent(shared, context)).toBe(preEvald);
   });
 
   // it('should serialize to a module', () => {

@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { sessionGetParent, sessionGetSourceParent, sessionPatchField, sessionSetParent, sessionSetSourceParent } from '../util/session-helpers.js';
+import { getParent, getSourceParent, patchField, setParent, setSourceParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -150,7 +150,7 @@ describe('Mixin', () => {
         ])
       });
       const sessionParent = rules([]);
-      sessionSetParent(mixinRuleset, sessionParent, context);
+      setParent(mixinRuleset, sessionParent, context);
 
       const fn = getFunctionFromMixins(mixinRuleset);
       const result = await fn.call(context);
@@ -369,7 +369,7 @@ describe('Mixin', () => {
       expect(preEvald.rules).not.toBe(mixinDef.rules);
       expect(preEvald.rules.at(0)).toBe(canonicalDecl);
       expect(canonicalDecl.parent).toBe(mixinDef.rules);
-      expect(sessionGetParent(canonicalDecl, localContext)).toBe(preEvald.rules);
+      expect(getParent(canonicalDecl, localContext)).toBe(preEvald.rules);
       expect(preEvald.rules.options.rulesVisibility.Mixin).toBe('private');
       expect(preEvald.rules.options.rulesVisibility.VarDeclaration).toBe('private');
       expect(mixinDef.rules.options.rulesVisibility).toEqual(canonicalVisibility);
@@ -399,10 +399,10 @@ describe('Mixin', () => {
         rules: canonicalRules
       });
 
-      sessionPatchField(mixinDef, 'name', any('.patched-mixin'), localContext);
-      sessionPatchField(mixinDef, 'params', patchedParams, localContext);
-      sessionPatchField(mixinDef, 'guard', patchedGuard, localContext);
-      sessionPatchField(mixinDef, 'rules', patchedRules, localContext);
+      patchField(mixinDef, 'name', any('.patched-mixin'), localContext);
+      patchField(mixinDef, 'params', patchedParams, localContext);
+      patchField(mixinDef, 'guard', patchedGuard, localContext);
+      patchField(mixinDef, 'rules', patchedRules, localContext);
 
       const preEvald = await mixinDef.preEval(localContext);
 
@@ -507,7 +507,7 @@ describe('Mixin', () => {
         const result = await fn.call(context, any('red'));
         const outerRules = captured.at(-1) as Rules;
 
-        expect(sessionGetParent(outerRules, context)).toBe(mixinRoot);
+        expect(getParent(outerRules, context)).toBe(mixinRoot);
         expect(outerRules.parent).toBeUndefined();
         expect(guardNode.parent).not.toBe(outerRules);
         expect(String(result)).toBeString(`
@@ -532,7 +532,7 @@ describe('Mixin', () => {
         guard: nil(),
         rules: rules([])
       });
-      sessionSetParent(mixinDef, failedAncestor, context);
+      setParent(mixinDef, failedAncestor, context);
 
       const fn = getFunctionFromMixins(mixinDef);
 
@@ -564,7 +564,7 @@ describe('Mixin', () => {
         args: list([ref({ key: 'theme' }, { type: 'variable' })])
       });
 
-      sessionSetSourceParent((caller as any).name, sourceAnchor, context);
+      setSourceParent((caller as any).name, sourceAnchor, context);
       context.caller = caller;
 
       const fn = getFunctionFromMixins(mixinDef);
@@ -592,15 +592,15 @@ describe('Mixin', () => {
         args: list([])
       });
 
-      sessionSetSourceParent((caller as any).name, sourceAnchor, context);
+      setSourceParent((caller as any).name, sourceAnchor, context);
       context.caller = caller;
 
       const fn = getFunctionFromMixins(mixinDef);
       const result = await fn.call(context);
 
-      expect(sessionGetParent(result as Node, context)).toBe(mixinRoot);
+      expect(getParent(result as Node, context)).toBe(mixinRoot);
       expect((result as Node).parent).toBeUndefined();
-      expect(sessionGetSourceParent(result as Node, context)).toBe(sourceAnchor);
+      expect(getSourceParent(result as Node, context)).toBe(sourceAnchor);
       expect((result as Node).sourceParent).toBeUndefined();
       expect(String(result)).toBeString(`
         color: red;
@@ -637,9 +637,9 @@ describe('Mixin', () => {
         const boundParam = (outerRules as Rules).at(0, context) as Node;
 
         expect(outerRules).toBeDefined();
-        expect(sessionGetParent(outerRules as Node, context)).toBe(mixinRoot);
+        expect(getParent(outerRules as Node, context)).toBe(mixinRoot);
         expect((outerRules as Rules).parent).toBeUndefined();
-        expect(sessionGetParent(boundParam, context)).toBe(outerRules);
+        expect(getParent(boundParam, context)).toBe(outerRules);
         expect(boundParam.parent).not.toBe(outerRules);
         expect(String(result)).toBeString(`
           color: blue;
@@ -670,7 +670,7 @@ describe('Mixin', () => {
         args: list([any('blue')])
       });
 
-      sessionSetSourceParent((caller as any).name, sourceAnchor, context);
+      setSourceParent((caller as any).name, sourceAnchor, context);
       context.caller = caller;
 
       const captured: Rules[] = [];
@@ -688,7 +688,7 @@ describe('Mixin', () => {
         const boundParam = outerRules.at(0) as any;
         const boundValue = boundParam.value as Node;
 
-        expect(sessionGetSourceParent(boundValue, context)).toBe(caller);
+        expect(getSourceParent(boundValue, context)).toBe(caller);
         expect(boundValue.sourceParent).toBeUndefined();
       } finally {
         createSpy.mockRestore();
@@ -809,8 +809,8 @@ describe('Mixin', () => {
 
       expect(firstOutputRules).toBeDefined();
       expect(secondOutputRules).toBeDefined();
-      expect(sessionGetParent(firstOutputRules, context)).toBe(output);
-      expect(sessionGetParent(secondOutputRules, context)).toBe(output);
+      expect(getParent(firstOutputRules, context)).toBe(output);
+      expect(getParent(secondOutputRules, context)).toBe(output);
       expect(firstOutputRules.parent).toBeUndefined();
       expect(secondOutputRules.parent).toBeUndefined();
       expect(String(result)).toBeString(`
@@ -852,8 +852,8 @@ describe('Mixin', () => {
         rules: Rules;
       };
 
-      expect(sessionGetParent(firstOutputRules, context)).toBe(output);
-      expect(sessionGetParent(secondOutputRules, context)).toBe(output);
+      expect(getParent(firstOutputRules, context)).toBe(output);
+      expect(getParent(secondOutputRules, context)).toBe(output);
       expect(firstOutputRules.parent).toBeUndefined();
       expect(secondOutputRules.parent).toBeUndefined();
 
@@ -1090,7 +1090,7 @@ describe('Mixin', () => {
       const { root, arg } = buildRoot();
       context.root = root;
 
-      sessionPatchField(arg, 'value', [num(10), num(20)], context);
+      patchField(arg, 'value', [num(10), num(20)], context);
 
       const evald = await root.eval(context);
       const css = evald.toString({ context });
@@ -1167,7 +1167,7 @@ describe('Mixin', () => {
       context.createSession();
       const live = buildRoot(context);
       context.root = live.root;
-      sessionPatchField(live.parent, 'selector', live.patched, context);
+      patchField(live.parent, 'selector', live.patched, context);
 
       const evald = await live.root.eval(context);
       const css = evald.toString({ context });

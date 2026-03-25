@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { any, quoted, url } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { sessionGetField } from '../util/session-helpers.js';
+import { getField } from '../util/session-helpers.js';
 
 describe('Url', () => {
   it('eval stores an evaluated child in the session overlay without mutating the canonical value', async () => {
@@ -17,7 +17,7 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(sessionGetField(node, 'value', ctx)).toBe(replacement);
+    expect(getField(node, 'value', ctx)).toBe(replacement);
     expect(node.value).toBe(original);
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
     expect(node.toTrimmedString()).toBe('url("a.png")');
@@ -35,7 +35,7 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(sessionGetField(node, 'value', ctx)).toBe(replacement);
+    expect(getField(node, 'value', ctx)).toBe(replacement);
     expect(node.valueOf()).toBe('a.png');
     expect(evald.valueOf()).toBe('a.png');
     expect(node.pathValue(ctx)).toBe('b.png');
