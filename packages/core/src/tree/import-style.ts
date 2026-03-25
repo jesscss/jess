@@ -598,17 +598,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         const shouldIsolateSelectorFrames = !isNode(this.parent?.parent, N.Ruleset | N.AtRule);
         const prevRulesetFrames = shouldIsolateSelectorFrames ? context.rulesetFrames : undefined;
         const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
-        const prevInstanceRoot = context.instanceRoot;
         if (withValues || !evaldRules || type === 'import') {
           if (!withValues) {
             prevSession = context.session;
             context.session = new EvalSession({ resetEvalState: true });
-          }
-          // Create an instance root for this import placement.
-          // This enables multiple imports of the same file to carry
-          // independent sparse shadow state without cloning.
-          if (context.session) {
-            context.instanceRoot = context.session.createInstanceRoot(rules);
           }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
@@ -654,7 +647,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             rules = await rules.eval(context);
           } finally {
             context.session = prevSession;
-            context.instanceRoot = prevInstanceRoot;
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
@@ -683,10 +675,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           if (!prevReEvalSession) {
             context.session = new EvalSession({ resetEvalState: true });
           }
-          // Instance root for this re-evaluation placement
-          if (context.session) {
-            context.instanceRoot = context.session.createInstanceRoot(rules);
-          }
           rules = rules.cloneLookupSafeShallowWrapper(context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
@@ -698,7 +686,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             rules = await rules.eval(context);
           } finally {
             context.session = prevReEvalSession;
-            context.instanceRoot = prevInstanceRoot;
             if (shouldIsolateSelectorFrames) {
               context.rulesetFrames = prevRulesetFrames!;
               context.frames = prevFrames!;
