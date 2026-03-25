@@ -100,10 +100,27 @@ A node is fully complete when:
 
 1. **Session**: all active reads/writes use session helpers (`complete`)
 2. **Instance root**: eval path creates instance roots, output carries `_instanceRoot` (`wired` or `associated`)
-3. **Clone-free**: body cloning is replaced with instance root shadowing (future — no node has reached this yet)
+3. **Clone-free**: no internal `clone()` / `copy()` / `materialize()` in that node's eval path — isolation is purely via instance root shadowing
 
-Currently:
+The goal is to remove the entire cloning architecture in favor of instance roots. Internal cloning should not exist in a complete node's eval path.
+
+The only place materialization is allowed is at the **final output boundary** — when Jess serializes the evaluated tree to CSS or hands off a standalone object graph that outlives the session.
+
+### Edge cases where a clone might survive
+
+If any of these turn out to add more complexity via shadowing than a simple clone, they should be documented here with a reason:
+
+| Case | Status | Notes |
+| --- | --- | --- |
+| Extend selector rewriting | not yet evaluated | Extend structurally mutates selectors (adds new alternatives). Shadow-based extend may require tracking per-selector shadow arrays. Needs investigation. |
+| `@arguments` construction | not yet evaluated | Currently deep-copies arg nodes into a Sequence. Could shadow instead, but the args are frozen copies already — may not be worth the complexity. |
+
+If a case is kept as a clone, it must be documented here with a concrete reason. "It was easier" is not a reason.
+
+### Current status
+
 - Most nodes are session-`complete` (the bridge work)
 - `StyleImport` is the only `wired` node
 - `Rules`, `Mixin`, `Call` have instance root `associated` (output carries `_instanceRoot` but clone not yet replaced)
 - Clone-free eval is the next frontier (see [mixin-direct-invocation.md](./mixin-direct-invocation.md))
+- No node has reached full end-to-end complete yet
