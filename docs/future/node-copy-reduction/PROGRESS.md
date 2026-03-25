@@ -84,16 +84,28 @@ Proved in `session-instance-proofs.test.ts`:
 
 ### Broader core compatibility ✓
 
-- 1296 tests passing (same as pre-instance-root baseline)
+- 1307 tests passing (post dev merge)
 - 6 pre-existing failures (unchanged)
 - Import eval path wired with instance roots (zero regressions)
-- Parser integration requires `dev` merge (parsers updated there)
+- Dev branch merged (parser fixes included)
 
 ## What Remains for Full Merge
 
-### Mixin eval path wiring
+### Mixin eval path: replace cloning with shadowing
 
-The `getFunctionFromMixins` loop in `rules.ts` is tightly coupled to session-level state. The per-candidate eval creates clones, sets parent chains, and evaluates guards — all at the session level. Wiring instance roots there requires restructuring the clone-based isolation to shadow-based isolation.
+The mixin eval path (`getFunctionFromMixins`) currently isolates each call by CLONING the mixin body, then evaluating the clone. This is fundamentally different from the import path (which uses session overlays on a shared canonical tree).
+
+Instance roots cannot simply be added alongside cloning — the clone is already a fresh object, so shadowing it adds nothing. And state written to an instance root during eval becomes inaccessible after the instance root is deactivated, breaking downstream assertions.
+
+The correct approach is to REPLACE cloning with instance root shadowing:
+
+1. Keep the canonical mixin body as-is (no clone)
+2. Create an instance root per call
+3. Evaluate the canonical body with the instance root active
+4. Shadow entries carry the per-call state (parent chains, eval state, binding deltas)
+5. Output materialization happens at the call boundary
+
+This is a larger refactor because the current loop structure (clone → set parents → eval → extract output) needs to become (create instance root → bind params → eval against canonical → materialize output). The guard evaluation, parameter wrapper, and output shaping all need to work against instance-root-backed state rather than cloned state.
 
 ### Clone/materialization sunset
 
@@ -141,6 +153,6 @@ This branch is near merge-candidate when:
 - ✓ the broader `packages/core` suite is at the accepted baseline
 - ⚠ mixin eval path wiring is documented but not landed
 
-## Test Baseline (2026-03-24)
+## Test Baseline (2026-03-25, post dev merge)
 
-- Core: 5 files failed, 82 passed, 3 skipped; 6 tests failed, 1296 passed, 24 skipped
+- Core: 5 files failed, 82 passed, 3 skipped; 6 tests failed, 1307 passed, 24 skipped
