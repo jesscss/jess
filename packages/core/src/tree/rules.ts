@@ -50,8 +50,7 @@ import {
   classifyMixinDefaultGroup,
   finalizeMixinInvocationOutput,
   MixinDefaultGroup,
-  normalizeMixinInvocationParams,
-  prepareMixinInvocationScope,
+  prepareMixinCandidateInvocation,
   projectMixinParamScopeIntoOutput,
   resolveWinningMixinDefaultGroups,
   seedMixinGuardScope,
@@ -2762,52 +2761,29 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         continue;
       }
       let rules = (candidate as any).rules as Rules;
-      // No clone — position carries all eval state as patches.
-      if (candidateInstanceRoot) {
-        rules._instanceRoot = candidateInstanceRoot;
-      }
-      // Patch visibility and parent through position (not canonical mutation).
-      patchField(rules, 'options', {
-        ...rules.options,
-        rulesVisibility: {
-          ...(rules.options.rulesVisibility ?? {}),
-          VarDeclaration: 'public'
-        }
-      }, thisContext);
-      setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
-      setSourceParent(rules, sourceParent, thisContext);
-      // Don't set index before evaluation - let evaluation assign the correct index
-      /**
-       * If we have params or a guard, we need to create a wrapper rules object,
-       * so that the lookups of params and guard do not look at the cloned rules,
-       * but instead look upwards / outwards.
-       */
-      let outerRules: Rules | undefined;
-
-      /** Now we need to add our parameters, if any */
       let params = thisContext.session
         ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
         : (candidate as any).params as List<Node> | undefined;
-      params = normalizeMixinInvocationParams(params, thisContext);
-      if (params) {
-        outerRules = prepareMixinInvocationScope(
-          rules,
-          thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node),
-          candidate.index,
-          params,
-          nodeArgs,
-          thisContext
-        );
-      }
+      const prepared = prepareMixinCandidateInvocation(
+        rules,
+        params,
+        getCandidateParent(candidate as unknown as Node),
+        sourceParent,
+        candidate.index,
+        nodeArgs,
+        thisContext,
+        candidateInstanceRoot
+      );
+      rules = prepared.rules;
+      params = prepared.params;
+      let outerRules = prepared.outerRules;
 
       /** Now we can evaluate our guards, if any */
       const canonicalGuard: Condition | Bool | undefined = (candidate as any).guard;
       let passes = true;
-      const lookupScope = outerRules ?? rules;
+      const lookupScope = prepared.lookupScope;
       const prevGuardSession = thisContext.session;
-      const guardScopeChildren = outerRules
-        ? [...getChildren(outerRules, thisContext)]
-        : undefined;
+      const guardScopeChildren = prepared.guardScopeChildren;
       try {
         if (canonicalGuard) {
           const guardParent = getCandidateParent(candidate as unknown as Node);

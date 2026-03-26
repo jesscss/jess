@@ -30,6 +30,10 @@ pieces are actually extracted versus still trapped in the monolith.
 - `normalizeMixinInvocationParams(...)`
   - rest-param conversion and auto-generated rest names no longer live inline
     in the candidate loop
+- `prepareMixinCandidateInvocation(...)`
+  - the normal candidate path now has one helper for instance-root wiring,
+    visibility patching, parent/source wiring, param normalization, and lookup
+    scope construction
 
 ### Remaining
 

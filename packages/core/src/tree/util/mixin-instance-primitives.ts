@@ -1,4 +1,5 @@
 import type { Context } from '../../context.js';
+import type { SessionInstanceRoot } from '../../eval-session.js';
 import type { Node } from '../node-base.js';
 import { Rules } from '../rules.js';
 import type { VarDeclaration } from '../declaration-var.js';
@@ -10,7 +11,7 @@ import { N } from '../node-type.js';
 import { F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
-import { getChildren, patchField, setChildren, setParent } from './session-helpers.js';
+import { getChildren, patchField, setChildren, setParent, setSourceParent } from './session-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export const enum MixinDefaultGroup {
@@ -19,6 +20,14 @@ export const enum MixinDefaultGroup {
   True = 1,
   False = 2
 }
+
+export type PreparedMixinCandidateInvocation = {
+  rules: Rules;
+  params: List<Node> | undefined;
+  outerRules: Rules | undefined;
+  lookupScope: Rules;
+  guardScopeChildren: readonly Node[] | undefined;
+};
 
 /**
  * Bind one mixin param through the active instance root instead of mutating the
@@ -233,6 +242,60 @@ export function normalizeMixinInvocationParams(
   }
 
   return params;
+}
+
+/**
+ * Prepare the normal mixin-candidate body for direct invocation.
+ *
+ * This is the slice of the old candidate loop that wires per-call identity,
+ * visibility, parent/source provenance, param normalization, and lookup scope
+ * construction before guard evaluation or output shaping runs.
+ */
+export function prepareMixinCandidateInvocation(
+  rules: Rules,
+  params: List<Node> | undefined,
+  parent: Node | undefined,
+  sourceParent: Node | undefined,
+  index: number,
+  nodeArgs: readonly Node[],
+  context: Context,
+  instanceRoot?: SessionInstanceRoot
+): PreparedMixinCandidateInvocation {
+  if (instanceRoot) {
+    rules._instanceRoot = instanceRoot;
+  }
+
+  patchField(rules, 'options', {
+    ...rules.options,
+    rulesVisibility: {
+      ...(rules.options.rulesVisibility ?? {}),
+      VarDeclaration: 'public'
+    }
+  }, context);
+  setParent(rules, parent, context);
+  setSourceParent(rules, sourceParent, context);
+
+  const normalizedParams = normalizeMixinInvocationParams(params, context);
+  const outerRules = normalizedParams
+    ? prepareMixinInvocationScope(
+        rules,
+        context.rulesContext ?? parent,
+        index,
+        normalizedParams,
+        nodeArgs,
+        context
+      )
+    : undefined;
+
+  return {
+    rules,
+    params: normalizedParams,
+    outerRules,
+    lookupScope: outerRules ?? rules,
+    guardScopeChildren: outerRules
+      ? [...getChildren(outerRules, context)]
+      : undefined
+  };
 }
 
 /**

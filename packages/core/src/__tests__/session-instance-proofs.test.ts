@@ -56,6 +56,7 @@ import {
   normalizeMixinInvocationParams,
   MixinDefaultGroup,
   populateMixinParamScope,
+  prepareMixinCandidateInvocation,
   prepareMixinInvocationScope,
   projectMixinParamScopeIntoOutput,
   resolveWinningMixinDefaultGroups,
@@ -695,6 +696,39 @@ describe('SI-6: Repeated mixin/function proof', () => {
 
     expect(first.getPropertyName(ctx)).toBe('rest');
     expect(second.getPropertyName(ctx)).toBe('rest2');
+  });
+
+  it('prepareMixinCandidateInvocation wires normal candidate scope without cloning the body', () => {
+    const outer = rules([]);
+    const body = rules([
+      decl({ name: any('margin'), value: ref('tail', { type: 'variable' }) })
+    ]);
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(body);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.rulesContext = outer;
+
+    const prepared = prepareMixinCandidateInvocation(
+      body,
+      list([any('a', { role: 'property' }), rest(undefined)]),
+      outer,
+      outer,
+      3,
+      [any('10px'), any('20px')],
+      ctx,
+      instanceRoot
+    );
+
+    expect(prepared.rules).toBe(body);
+    expect(prepared.outerRules).toBeDefined();
+    expect(prepared.lookupScope).toBe(prepared.outerRules);
+    expect(prepared.guardScopeChildren).toEqual(getChildren(prepared.outerRules!, ctx));
+    expect(getParent(body, ctx)).toBe(prepared.outerRules);
+    expect(prepared.params?.value[1]?.type).toBe('VarDeclaration');
+    expect((prepared.params?.value[1] as VarDeclaration).getPropertyName(ctx)).toBe('rest');
+    expect(getField<any>(body, 'options', ctx).rulesVisibility.VarDeclaration).toBe('public');
   });
 
   it('classifyMixinDefaultGroup maps default() probe pairs into stable groups', () => {
