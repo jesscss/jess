@@ -157,12 +157,16 @@ export function isTopLevelVarDeclaration(
 }
 
 /**
- * Get the parent of a node. Resolution: instanceRoot → session → canonical.
+ * Get the parent of a node. Resolution: position → instanceRoot → session → canonical.
  */
 export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
+  const pos = ctx.position;
+  if (pos && pos.hasField(node, 'parent')) {
+    return pos.getField(node, 'parent') as Node | undefined;
+  }
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;

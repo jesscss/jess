@@ -852,6 +852,10 @@ export abstract class Node<
   // ------------------------------------------------------------------
 
   protected _isPreEvaluated(context: Context): boolean {
+    const pos = context.position;
+    if (pos && pos.hasField(this, '_preEvaluated')) {
+      return pos.getField(this, '_preEvaluated') as boolean;
+    }
     const ir = context.instanceRoot ?? this._instanceRoot;
     if (ir && ir.hasRuntime(this)) {
       const runtime = ir.getShadow(this)!.runtime!;
@@ -876,6 +880,11 @@ export abstract class Node<
   }
 
   protected _setPreEvaluated(value: boolean, context: Context): void {
+    const pos = context.position;
+    if (pos) {
+      pos.patchField(this, '_preEvaluated', value);
+      return;
+    }
     const ir = context.instanceRoot ?? this._instanceRoot;
     if (ir) {
       ir.getRuntime(this).preEvaluated = value;
@@ -889,6 +898,10 @@ export abstract class Node<
   }
 
   protected _isEvaluated(context: Context): boolean {
+    const pos = context.position;
+    if (pos && pos.hasField(this, '_evaluated')) {
+      return pos.getField(this, '_evaluated') as boolean;
+    }
     const ir = context.instanceRoot ?? this._instanceRoot;
     if (ir && ir.hasRuntime(this)) {
       const runtime = ir.getShadow(this)!.runtime!;
@@ -912,6 +925,11 @@ export abstract class Node<
   }
 
   protected _setEvaluated(value: boolean, context: Context): void {
+    const pos = context.position;
+    if (pos) {
+      pos.patchField(this, '_evaluated', value);
+      return;
+    }
     const ir = context.instanceRoot ?? this._instanceRoot;
     if (ir) {
       ir.getRuntime(this).evaluated = value;
