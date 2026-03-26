@@ -992,7 +992,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         let selector = this._getSelector(context);
         const frame = atIndex(context.rulesetFrames, -1);
         if (frame && (this._getHoistToRoot(context) ?? context.opts.collapseNesting)) {
-          this._setHoistToRoot(true, context);
+          setField(this, 'hoistToRoot', true, context);
         }
 
         if (selector instanceof Nil) {
@@ -1000,7 +1000,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // This allows rules to be output even when there's no selector context
           // We don't push frames because there's no selector context
           // Store Nil in selector so next step can detect this case
-          this._setSelector(selector as Selector | Nil, context);
+          setField(this, 'selector', selector as Selector | Nil, context);
           const evaluatedRules = this._getRulesContainer(context).eval(context);
           // Update this.rules to point to evaluated Rules to prevent circular reference
           // when debug code traverses the AST
@@ -1015,7 +1015,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this._getSelectorSourceNode(this._getSelector(context), context);
-        this._setSelector(selector as Selector | Nil, context);
+        setField(this, 'selector', selector as Selector | Nil, context);
         // Restore the sourceNode on the new selector so it's available when copying
         if (preservedSourceNode && this._getSelector(context)) {
           {
@@ -1030,7 +1030,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           }
         }
         if (context.opts.collapseNesting) {
-          this._setHoistToRoot(true, context);
+          setField(this, 'hoistToRoot', true, context);
         }
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);

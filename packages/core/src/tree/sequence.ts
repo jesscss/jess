@@ -112,7 +112,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   protected _setValueAt(index: number, value: Node, context: Context): void {
     const next = [...this._getValue(context)];
     next[index] = value;
-    this._setValue(next, context);
+    setField(this, 'value', next, context);
   }
 
   override compare(other: Node, context?: Context) {
@@ -204,11 +204,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       if (values.length) {
         values[0]!.pre = 1;
       }
-      newSequence._setValue([...newSequence._getValue(context), ...values], context);
+      setField(newSequence, 'value', [...newSequence._getValue(context), ...values], context);
     } else {
       b = b.maybeClone(context);
       b.pre = 1;
-      newSequence._setValue([...newSequence._getValue(context), b], context);
+      setField(newSequence, 'value', [...newSequence._getValue(context), b], context);
     }
     return newSequence;
   }
@@ -249,7 +249,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       },
       (node) => {
         const value = node._getValue(context).filter(n => n && !(n instanceof Nil));
-        node._setValue(value, context);
+        setField(node, 'value', value, context);
         if (value.length === 1 && !node._getOptions(context)?.preserveWhitespace) {
           return value[0]!;
         }
