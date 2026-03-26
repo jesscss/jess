@@ -80,8 +80,8 @@ export interface Call {
 export class Call extends Node<CallValue, CallOptions> {
   static override childKeys = ['name', 'args', 'contentNode'] as const;
 
-  name!: string | Node;
-  args: List<Node> | undefined;
+  readonly name!: string | Node;
+  readonly args: List<Node> | undefined;
   contentNode: Node | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
@@ -170,28 +170,6 @@ export class Call extends Node<CallValue, CallOptions> {
     return context
       ? getField<CallOptions | undefined>(this, 'options', context)
       : this.options;
-  }
-
-  private _setName(name: string | Node, context: Context): void {
-    if (name instanceof Node) {
-      this.adopt(name);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'name', name, context);
-    } else {
-      this.name = name;
-    }
-  }
-
-  private _setArgs(args: List<Node> | undefined, context: Context): void {
-    if (args instanceof Node) {
-      this.adopt(args);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'args', args, context);
-    } else {
-      this.args = args;
-    }
   }
 
   private _normalizeFallbackArgSpacing(node: Node): void {
@@ -549,10 +527,10 @@ export class Call extends Node<CallValue, CallOptions> {
           : this.clone()).inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
-        newCall._setName(isNode(name, N.Reference) && name.options.fallbackValue === true
+        setField(newCall, 'name', isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.key)
           : String(n.valueOf()), context);
-        newCall._setArgs(this._materializeFallbackArgs(await evalArgNodes(args)), context);
+        setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
         return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.value);
       } finally {
         context.caller = originalCaller;
@@ -590,8 +568,8 @@ export class Call extends Node<CallValue, CallOptions> {
           return applyDependencyToResult(new Paren(evaluatedArgs.value[0]!), evaluatedArgs.value);
         }
       }
-      node._setName(n, context);
-      node._setArgs(evaluatedArgs, context);
+      setField(node, 'name', n, context);
+      setField(node, 'args', evaluatedArgs, context);
       return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.value);
     };
   }

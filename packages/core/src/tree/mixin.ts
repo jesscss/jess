@@ -83,10 +83,10 @@ export interface Mixin {
 export class Mixin extends Node<MixinValue, MixinOptions> {
   static override childKeys = ['name', 'rules', 'params', 'guard'] as const;
 
-  name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
-  rules!: Rules;
-  params: List<Node> | undefined;
-  guard: Condition | undefined;
+  readonly name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  readonly rules!: Rules;
+  readonly params: List<Node> | undefined;
+  readonly guard: Condition | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const name = this._getName(ctx);
@@ -170,31 +170,10 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       : this.name;
   }
 
-  private _setName(name: Any<AnyRole> | Interpolated<AnyRole> | undefined, context: Context): void {
-    if (name instanceof Node) {
-      this.adopt(name);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'name', name, context);
-    } else {
-      this.name = name;
-    }
-    this._keySet = undefined;
-  }
-
   private _getRulesContainer(context?: Context): Rules {
     return context
       ? getField<Rules>(this, 'rules', context)
       : this.rules;
-  }
-
-  private _setRulesContainer(rules: Rules, context: Context): void {
-    this.adopt(rules, context);
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'rules', rules, context);
-    } else {
-      this.rules = rules;
-    }
   }
 
   private _getParams(context?: Context): List<Node> | undefined {
@@ -272,7 +251,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
         ...isolatedRules.options,
         rulesVisibility: { ...(isolatedRules.options.rulesVisibility ?? {}) }
       };
-      node._setRulesContainer(isolatedRules, context);
+      setField(node, 'rules', isolatedRules, context);
       rules = isolatedRules;
     }
     if (context.leakyRules) {
@@ -288,11 +267,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          node._setName(key, context);
+          setField(node, 'name', key, context);
           return node;
         });
       }
-      node._setName(maybeKey as Any<'name'>, context);
+      setField(node, 'name', maybeKey as Any<'name'>, context);
     }
     return node;
   }
