@@ -47,9 +47,12 @@ import {
   setSourceParent
 } from './util/session-helpers.js';
 import {
+  classifyMixinDefaultGroup,
   finalizeMixinInvocationOutput,
+  MixinDefaultGroup,
   prepareMixinInvocationScope,
   projectMixinParamScopeIntoOutput,
+  resolveWinningMixinDefaultGroups,
   seedMixinGuardScope,
   withMixinLookupScope
 } from './util/mixin-instance-primitives.js';
@@ -2602,16 +2605,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       return current;
     };
 
-    const DEF_FALSE_EITHER = -1;
-    const DEF_NONE = 0;
-    const DEF_TRUE = 1;
-    const DEF_FALSE = 2;
     type DefaultPendingCandidate = {
       candidate: Mixin;
       rules: Rules;
       outerRules?: Rules;
       params?: List<Node>;
-      group: number;
+      group: MixinDefaultGroup;
       instanceRoot?: SessionInstanceRoot;
     };
     const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
@@ -2865,7 +2864,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           /** Allow lookup on the inherited rules */
           passes = false;
           let guardPasses = false;
-          let defaultGroup = DEF_FALSE_EITHER;
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
@@ -2898,17 +2896,18 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const passWhenDefaultFalse = await evalWithDefault(false);
             const passWhenDefaultTrue = await evalWithDefault(true);
             thisContext.isDefault = originalIsDefault;
-            if (passWhenDefaultFalse || passWhenDefaultTrue) {
+            const defaultGroup = classifyMixinDefaultGroup(
+              passWhenDefaultFalse,
+              passWhenDefaultTrue
+            );
+            if (defaultGroup !== undefined) {
               passes = true;
-              if (passWhenDefaultFalse && passWhenDefaultTrue) {
-                defaultGroup = DEF_NONE;
+              if (defaultGroup === MixinDefaultGroup.None) {
                 hasDefNoneCandidate = true;
-              } else {
-                defaultGroup = passWhenDefaultTrue ? DEF_TRUE : DEF_FALSE;
               }
             }
             guardPasses = passes;
-            if (passes) {
+            if (passes && defaultGroup !== undefined) {
               pendingDefaultCandidates.push({
                 candidate: candidate as Mixin,
                 rules,
@@ -2958,25 +2957,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
 
     if (pendingDefaultCandidates.length > 0) {
-      let defTrueCount = 0;
-      let defFalseCount = 0;
-      for (const pending of pendingDefaultCandidates) {
-        if (pending.group === DEF_TRUE) {
-          defTrueCount++;
-        } else if (pending.group === DEF_FALSE) {
-          defFalseCount++;
-        } else if (pending.group === DEF_NONE) {
-          hasDefNoneCandidate = true;
-        }
-      }
-
-      const defaultResult = hasDefNoneCandidate ? DEF_FALSE : DEF_TRUE;
-      if (!hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1) {
-        throw new ReferenceError('Ambiguous use of default() while matching mixins.');
-      }
+      const winningGroups = resolveWinningMixinDefaultGroups(
+        pendingDefaultCandidates.map(pending => pending.group)
+      );
 
       for (const pending of pendingDefaultCandidates) {
-        if (pending.group !== DEF_NONE && pending.group !== defaultResult) {
+        if (!winningGroups.has(pending.group)) {
           continue;
         }
         await withMixinLookupScope(

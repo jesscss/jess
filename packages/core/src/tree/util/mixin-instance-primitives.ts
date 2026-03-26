@@ -13,6 +13,13 @@ import { freezeChildren } from './cloning.js';
 import { getChildren, patchField, setChildren, setParent } from './session-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
+export const enum MixinDefaultGroup {
+  FalseEither = -1,
+  None = 0,
+  True = 1,
+  False = 2
+}
+
 /**
  * Bind one mixin param through the active instance root instead of mutating the
  * canonical VarDeclaration. This is the smallest useful primitive behind direct
@@ -275,4 +282,53 @@ export function projectMixinParamScopeIntoOutput(
   merged.inherit(output);
   merged._instanceRoot = output._instanceRoot;
   return merged;
+}
+
+/**
+ * Classify a default() guard probe pair into Less-style default groups.
+ */
+export function classifyMixinDefaultGroup(
+  passWhenDefaultFalse: boolean,
+  passWhenDefaultTrue: boolean
+): MixinDefaultGroup | undefined {
+  if (!passWhenDefaultFalse && !passWhenDefaultTrue) {
+    return undefined;
+  }
+  if (passWhenDefaultFalse && passWhenDefaultTrue) {
+    return MixinDefaultGroup.None;
+  }
+  return passWhenDefaultTrue
+    ? MixinDefaultGroup.True
+    : MixinDefaultGroup.False;
+}
+
+/**
+ * Resolve which default() candidate groups should win for the current call.
+ */
+export function resolveWinningMixinDefaultGroups(
+  groups: readonly MixinDefaultGroup[]
+): Set<MixinDefaultGroup> {
+  let hasDefNoneCandidate = false;
+  let defTrueCount = 0;
+  let defFalseCount = 0;
+
+  for (const group of groups) {
+    if (group === MixinDefaultGroup.True) {
+      defTrueCount++;
+    } else if (group === MixinDefaultGroup.False) {
+      defFalseCount++;
+    } else if (group === MixinDefaultGroup.None) {
+      hasDefNoneCandidate = true;
+    }
+  }
+
+  if (!hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1) {
+    throw new ReferenceError('Ambiguous use of default() while matching mixins.');
+  }
+
+  if (hasDefNoneCandidate) {
+    return new Set([MixinDefaultGroup.None, MixinDefaultGroup.False]);
+  }
+
+  return new Set([MixinDefaultGroup.True]);
 }

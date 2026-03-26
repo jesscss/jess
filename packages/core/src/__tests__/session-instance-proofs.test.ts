@@ -48,12 +48,15 @@ import {
 import {
   attachMixinBodyToParamScope,
   bindMixinParamValue,
+  classifyMixinDefaultGroup,
   createMixinParamScope,
   defineMixinArgumentsInScope,
   finalizeMixinInvocationOutput,
+  MixinDefaultGroup,
   populateMixinParamScope,
   prepareMixinInvocationScope,
   projectMixinParamScopeIntoOutput,
+  resolveWinningMixinDefaultGroups,
   seedMixinGuardScope,
   withMixinLookupScope
 } from '../tree/util/mixin-instance-primitives.js';
@@ -660,6 +663,25 @@ describe('SI-6: Repeated mixin/function proof', () => {
       color: red;
     `);
     expect(sourceDecl.parent).toBe(body);
+  });
+
+  it('classifyMixinDefaultGroup maps default() probe pairs into stable groups', () => {
+    expect(classifyMixinDefaultGroup(false, false)).toBeUndefined();
+    expect(classifyMixinDefaultGroup(true, true)).toBe(MixinDefaultGroup.None);
+    expect(classifyMixinDefaultGroup(false, true)).toBe(MixinDefaultGroup.True);
+    expect(classifyMixinDefaultGroup(true, false)).toBe(MixinDefaultGroup.False);
+  });
+
+  it('resolveWinningMixinDefaultGroups applies Less default() ambiguity rules', () => {
+    expect(
+      resolveWinningMixinDefaultGroups([MixinDefaultGroup.None, MixinDefaultGroup.True])
+    ).toEqual(new Set([MixinDefaultGroup.None, MixinDefaultGroup.False]));
+    expect(
+      resolveWinningMixinDefaultGroups([MixinDefaultGroup.True])
+    ).toEqual(new Set([MixinDefaultGroup.True]));
+    expect(() =>
+      resolveWinningMixinDefaultGroups([MixinDefaultGroup.True, MixinDefaultGroup.False])
+    ).toThrow(/Ambiguous use of default/);
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

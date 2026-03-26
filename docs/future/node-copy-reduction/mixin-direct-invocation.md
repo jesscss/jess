@@ -24,6 +24,9 @@ pieces are actually extracted versus still trapped in the monolith.
 - `projectMixinParamScopeIntoOutput(...)`
   - bound param vars and rest vars are projected into the returned output shape
     explicitly, instead of being hidden inside the old wrapper/body clone flow
+- `classifyMixinDefaultGroup(...)`
+- `resolveWinningMixinDefaultGroups(...)`
+  - default() disambiguation no longer has to live inline inside the candidate loop
 
 ### Remaining
 
