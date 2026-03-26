@@ -1332,7 +1332,8 @@ export async function evaluateCandidateOutput(
     if (instanceRoot) {
       newRules._instanceRoot = instanceRoot;
     }
-    // Carry the per-call position on the output node
+    // Carry the per-call position on the output node.
+    // TODO: serialization needs to resolve fields through this position.
     if (callPosition) {
       newRules._evalPosition = callPosition;
     }

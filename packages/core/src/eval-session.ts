@@ -133,6 +133,17 @@ export class EvalPosition {
   get size(): number {
     return this.patches.size;
   }
+
+  /**
+   * Set `_evalPosition` on every node this position has patches for.
+   * This allows serialization to resolve patched fields without needing
+   * an active context — the node "remembers" its call's position.
+   */
+  propagateToPatched(): void {
+    for (const node of this.patches.keys()) {
+      (node as any)._evalPosition = this;
+    }
+  }
 }
 
 /**
