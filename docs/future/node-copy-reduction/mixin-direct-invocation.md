@@ -43,6 +43,12 @@ pieces are actually extracted versus still trapped in the monolith.
 - `assembleMixinInvocationOutput(...)`
   - final mixin output ordering, single-rule passthrough, and multi-rule wrapper
     assembly now live outside the candidate loop
+- `evaluateRulesetMixinCandidateOutput(...)`
+  - the ruleset-candidate branch now has its own production seam for clone/eval/
+    mixin-output shaping instead of staying inline in the dispatch loop
+- `unlockDetachedRulesetMixinCandidateOutput(...)`
+  - detached-ruleset unlock shaping is now a direct helper instead of a special
+    case embedded in the dispatch loop
 
 ### Remaining
 

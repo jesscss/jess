@@ -41,6 +41,7 @@ import {
   patchField,
   setParent,
   getParent,
+  getSourceParent,
   setEvaluated,
   isEvaluated,
   getChildren,
@@ -54,6 +55,7 @@ import {
   createMixinParamScope,
   defineMixinArgumentsInScope,
   evaluateMixinGuardCandidate,
+  evaluateRulesetMixinCandidateOutput,
   finalizeMixinInvocationOutput,
   normalizeMixinInvocationParams,
   MixinDefaultGroup,
@@ -64,6 +66,7 @@ import {
   replayWinningMixinDefaultCandidates,
   resolveWinningMixinDefaultGroups,
   seedMixinGuardScope,
+  unlockDetachedRulesetMixinCandidateOutput,
   withMixinLookupScope
 } from '../tree/util/mixin-instance-primitives.js';
 import { DefaultGuard } from '../tree/default-guard.js';
@@ -857,6 +860,60 @@ describe('SI-6: Repeated mixin/function proof', () => {
 
     expect(assembled).toBe(output);
     expect(assembled.options.isMixinOutput).toBe(false);
+  });
+
+  it('evaluateRulesetMixinCandidateOutput keeps ruleset-candidate shaping out of the candidate loop', async () => {
+    const outer = rules([]);
+    const body = rules([decl({ name: any('color'), value: any('red') })]);
+    const candidate = ruleset({
+      selector: sellist([sel([el('.card')])]),
+      rules: body
+    });
+    candidate.index = 4;
+    outer.push(candidate);
+
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = new EvalSession({ resetEvalState: true });
+    const instanceRoot = ctx.session.createInstanceRoot(body);
+
+    const evaluated = await evaluateRulesetMixinCandidateOutput(
+      body,
+      outer,
+      outer,
+      candidate.index!,
+      true,
+      ctx,
+      instanceRoot
+    );
+
+    expect(evaluated.index).toBe(4);
+    expect(evaluated.options.isMixinOutput).toBe(true);
+    expect(getParent(evaluated, ctx)).toBe(outer);
+    expect(getSourceParent(evaluated, ctx)).toBe(outer);
+    expect(evaluated._instanceRoot).toBe(instanceRoot);
+  });
+
+  it('unlockDetachedRulesetMixinCandidateOutput keeps detached unlock shaping explicit', () => {
+    const outer = rules([]);
+    const body = rules([decl({ name: any('color'), value: any('red') })]);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = new EvalSession();
+    const instanceRoot = ctx.session.createInstanceRoot(body);
+
+    const unlocked = unlockDetachedRulesetMixinCandidateOutput(
+      body,
+      outer,
+      outer,
+      7,
+      ctx,
+      instanceRoot
+    );
+
+    expect(unlocked.options.isMixinOutput).toBe(false);
+    expect(unlocked.index).toBe(7);
+    expect(getParent(unlocked, ctx)).toBe(outer);
+    expect(getSourceParent(unlocked, ctx)).toBe(outer);
+    expect(unlocked._instanceRoot).toBe(instanceRoot);
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

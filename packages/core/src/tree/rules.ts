@@ -48,11 +48,13 @@ import {
 import {
   assembleMixinInvocationOutput,
   evaluateMixinGuardCandidate,
+  evaluateRulesetMixinCandidateOutput,
   finalizeMixinInvocationOutput,
   type PendingMixinDefaultCandidate,
   prepareMixinCandidateInvocation,
   projectMixinParamScopeIntoOutput,
   replayWinningMixinDefaultCandidates,
+  unlockDetachedRulesetMixinCandidateOutput,
   withMixinLookupScope
 } from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
@@ -2708,27 +2710,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
         const candidateRules = (candidate as Ruleset).rules;
         const sourceRules = getRootSourceRules(candidateRules);
-        let rules = sourceRules.clone(true, undefined, thisContext);
-        if (candidateInstanceRoot) {
-          rules._instanceRoot = candidateInstanceRoot;
-        }
-        /** Adopt for lookup, then adopt for sorting */
-        setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
-        setSourceParent(rules, sourceParent, thisContext);
-        let originalContext = thisContext.rulesContext;
-        thisContext.rulesContext = rules;
-        rules = await rules.eval(thisContext);
-        thisContext.rulesContext = originalContext;
-        setSourceParent(rules, sourceParent, thisContext);
-        setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
-        // Rules should have index from eval, but ensure it matches candidate for sorting
-        rules.index = candidate.index;
-        // Skip empty Rules (e.g., containing only invisible nodes like comments)
-        // Mark output Rules as mixin output - accessible only when lookup has a target
-        rules.options.isMixinOutput = restrictMixinOutputLookup;
-        if (candidateInstanceRoot) {
-          rules._instanceRoot = candidateInstanceRoot;
-        }
+        const rules = await evaluateRulesetMixinCandidateOutput(
+          sourceRules,
+          getCandidateParent(candidate as unknown as Node),
+          sourceParent,
+          candidate.index,
+          restrictMixinOutputLookup,
+          thisContext,
+          candidateInstanceRoot
+        );
         outputRules.push(rules);
         continue;
       }
@@ -2737,16 +2727,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // not eagerly execute/flatten them.
       if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
         const sourceRules = getRootSourceRules((candidate as any).rules);
-        let unlocked = sourceRules.cloneDetachedUnlockWrapper(thisContext);
-        setParent(unlocked, getCandidateParent(candidate as unknown as Node), thisContext);
-        setSourceParent(unlocked, sourceParent ?? caller, thisContext);
-        // Detached ruleset calls in Less unlock their contents into the current scope.
-        // They must remain visible to untargeted lookups like `.mixin();`.
-        unlocked.options.isMixinOutput = false;
-        unlocked.index = candidate.index;
-        if (candidateInstanceRoot) {
-          unlocked._instanceRoot = candidateInstanceRoot;
-        }
+        const unlocked = unlockDetachedRulesetMixinCandidateOutput(
+          sourceRules,
+          getCandidateParent(candidate as unknown as Node),
+          sourceParent ?? caller,
+          candidate.index,
+          thisContext,
+          candidateInstanceRoot
+        );
         outputRules.push(unlocked);
         continue;
       }

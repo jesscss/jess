@@ -605,3 +605,62 @@ export function assembleMixinInvocationOutput(
 
   return output;
 }
+
+/**
+ * Evaluate a ruleset candidate whose guard already passed during Ruleset
+ * evaluation, preserving mixin-output semantics and instance-root association.
+ */
+export async function evaluateRulesetMixinCandidateOutput(
+  sourceRules: Rules,
+  parent: Node | undefined,
+  sourceParent: Node | undefined,
+  candidateIndex: number,
+  restrictMixinOutputLookup: boolean,
+  context: Context,
+  instanceRoot?: SessionInstanceRoot
+): Promise<Rules> {
+  let rules = sourceRules.clone(true, undefined, context);
+  if (instanceRoot) {
+    rules._instanceRoot = instanceRoot;
+  }
+  setParent(rules, parent, context);
+  setSourceParent(rules, sourceParent, context);
+  const previousRulesContext = context.rulesContext;
+  context.rulesContext = rules;
+  try {
+    rules = await rules.eval(context);
+  } finally {
+    context.rulesContext = previousRulesContext;
+  }
+  setSourceParent(rules, sourceParent, context);
+  setParent(rules, parent, context);
+  rules.index = candidateIndex;
+  rules.options.isMixinOutput = restrictMixinOutputLookup;
+  if (instanceRoot) {
+    rules._instanceRoot = instanceRoot;
+  }
+  return rules;
+}
+
+/**
+ * Create the unlocked output for a detached ruleset call without flattening
+ * the source body eagerly.
+ */
+export function unlockDetachedRulesetMixinCandidateOutput(
+  sourceRules: Rules,
+  parent: Node | undefined,
+  sourceParent: Node | undefined,
+  candidateIndex: number,
+  context: Context,
+  instanceRoot?: SessionInstanceRoot
+): Rules {
+  const unlocked = sourceRules.cloneDetachedUnlockWrapper(context);
+  setParent(unlocked, parent, context);
+  setSourceParent(unlocked, sourceParent, context);
+  unlocked.options.isMixinOutput = false;
+  unlocked.index = candidateIndex;
+  if (instanceRoot) {
+    unlocked._instanceRoot = instanceRoot;
+  }
+  return unlocked;
+}
