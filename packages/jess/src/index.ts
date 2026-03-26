@@ -813,7 +813,7 @@ export class Compiler {
       context
     };
 
-    let css = measureProfileSync(profile, 'toString', () => tree.toString(printOptions));
+    let css = measureProfileSync(profile, 'render', () => tree.render(context, printOptions));
     css = measureProfileSync(profile, 'postProcessCss', () => {
       let nextCss = css;
       for (const plugin of context.plugins || []) {

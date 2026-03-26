@@ -1767,6 +1767,17 @@ export abstract class Node<
   }
 
   /**
+   * Serialize the evaluated tree. Requires context so position patches
+   * (the virtual evaluated tree) are resolved during serialization.
+   *
+   * Use this instead of toString() when serializing eval results.
+   * toString() serializes the canonical (parsed) tree without eval state.
+   */
+  render(context: Context, options?: PrintOptions): string {
+    return this.toString({ ...options, context });
+  }
+
+  /**
    * The form of the node without pre/post comments and white-space
    *
    * @note - Internally, this still calls `toString()` on each value,

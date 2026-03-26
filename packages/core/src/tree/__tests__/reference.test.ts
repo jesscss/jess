@@ -82,7 +82,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red;
       `);
     });
@@ -99,7 +99,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         foo: red;
         bar: red;
       `);
@@ -118,7 +118,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red;
       `);
     });
@@ -135,7 +135,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red;
         foo: red;
       `);
@@ -162,7 +162,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red red;
       `);
     });
@@ -191,7 +191,7 @@ describe('reference', () => {
       context.rulesContext = preEvald;
 
       const evald = await lookup.eval(context);
-      expect(evald.toString({ context })).toBe('blue');
+      expect(evald.render(context)).toBe('blue');
       expect(lookup.key).toBe('foo');
     });
 
@@ -228,7 +228,7 @@ describe('reference', () => {
       context.rulesContext = preEvald;
 
       const evald = await lookup.eval(context);
-      expect(evald.toString({ context })).toBe('blue');
+      expect(evald.render(context)).toBe('blue');
       expect(lookup.target).toBe(target);
     });
 
@@ -246,7 +246,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         [data="test3"] {
           color: red;
         }
@@ -290,7 +290,7 @@ describe('reference', () => {
 
       const evald = await lookup.eval(context);
 
-      expect(evald.toString({ context })).toBe('red');
+      expect(evald.render(context)).toBe('red');
     });
 
     it('uses the session parent chain to anchor default variable resolution without rulesContext', async () => {
@@ -318,7 +318,7 @@ describe('reference', () => {
 
       const evald = await lookup.eval(context);
 
-      expect(evald.toString({ context })).toBe('red');
+      expect(evald.render(context)).toBe('red');
     });
 
     it('uses the session parent chain for mixin lookup without an explicit target', async () => {
@@ -341,7 +341,7 @@ describe('reference', () => {
 
       const evald = await inner.at(0)!.eval(context);
 
-      expect(evald.toString({ context })).toContainString('color: red');
+      expect(evald.render(context)).toContainString('color: red');
     });
   });
 
@@ -406,7 +406,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .\\123 {
           a: ok;
         }
@@ -434,7 +434,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         #\\31a {
           a: ok;
         }
@@ -464,7 +464,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .a.\\32b {
           a: ok;
         }
@@ -539,7 +539,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: red;
         }
@@ -590,7 +590,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: red;
         }
@@ -641,7 +641,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: red;
         }
@@ -730,7 +730,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: cyan;
         }
