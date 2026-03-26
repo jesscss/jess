@@ -10,7 +10,6 @@ import {
 import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { comparePosition } from './util/compare.js';
 import { cast } from './util/cast.js';
 import { type Ruleset } from './ruleset.js';
 import { type Mixin } from './mixin.js';
@@ -47,6 +46,7 @@ import {
   setSourceParent
 } from './util/session-helpers.js';
 import {
+  assembleMixinInvocationOutput,
   evaluateMixinGuardCandidate,
   finalizeMixinInvocationOutput,
   type PendingMixinDefaultCandidate,
@@ -2823,49 +2823,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
     thisContext.session = prevMixinSession;
 
-    /**
-     * Now that we have output rules, sort them by
-     * their original order
-     */
-    outputRules.sort(comparePosition);
-    /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
-    let output: Rules;
-    if (outputRules.length === 1) {
-      output = outputRules[0]!;
-      // Preserve explicit visibility semantics from special cases like detached-ruleset
-      // unlocking, and only default to mixin-output visibility when not already set.
-      output.options.isMixinOutput ??= restrictMixinOutputLookup;
-    } else {
-      /**
-       * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
-       * This prevents mixin output from being searched by untargeted lookups.
-       */
-      output = Rules.create([], {
-        rulesVisibility: {
-          Ruleset: 'public',
-          Declaration: 'public',
-          VarDeclaration: 'public',
-          Mixin: 'public'
-        },
-        isMixinOutput: restrictMixinOutputLookup
-      });
-      /**
-       * Add rules but keep their original parents for further lazy lookups.
-       * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)
-       */
-      for (let i = 0; i < outputRules.length; i++) {
-        let rule = outputRules[i]!;
-        rule.frozen = true;
-        /** Set a sequential index for lookup sorting */
-        rule.index = i;
-        if (thisContext.session) {
-          setParent(rule, output, thisContext);
-          output.push(thisContext, rule);
-        } else {
-          output.push(rule);
-        }
-      }
-    }
+    const output = assembleMixinInvocationOutput(
+      outputRules,
+      restrictMixinOutputLookup,
+      thisContext
+    );
 
     /**
      * IMPORTANT: Do NOT force `output` to be evaluated here.

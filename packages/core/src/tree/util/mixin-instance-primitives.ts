@@ -13,6 +13,7 @@ import { N } from '../node-type.js';
 import { F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
+import { comparePosition } from './compare.js';
 import { getChildren, patchField, setChildren, setParent, setSourceParent } from './session-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -561,4 +562,46 @@ export async function replayWinningMixinDefaultCandidates<TCandidate>(
       () => evaluateCandidateOutput(pending)
     );
   }
+}
+
+/**
+ * Assemble the final mixin output `Rules` from already-evaluated candidate
+ * results, preserving source order and mixin-output visibility semantics.
+ */
+export function assembleMixinInvocationOutput(
+  outputRules: Rules[],
+  restrictMixinOutputLookup: boolean,
+  context: Context
+): Rules {
+  outputRules.sort(comparePosition);
+
+  if (outputRules.length === 1) {
+    const output = outputRules[0]!;
+    output.options.isMixinOutput ??= restrictMixinOutputLookup;
+    return output;
+  }
+
+  const output = Rules.create([], {
+    rulesVisibility: {
+      Ruleset: 'public',
+      Declaration: 'public',
+      VarDeclaration: 'public',
+      Mixin: 'public'
+    },
+    isMixinOutput: restrictMixinOutputLookup
+  });
+
+  for (let i = 0; i < outputRules.length; i++) {
+    const rule = outputRules[i]!;
+    rule.frozen = true;
+    rule.index = i;
+    if (context.session) {
+      setParent(rule, output, context);
+      output.push(context, rule);
+    } else {
+      output.push(rule);
+    }
+  }
+
+  return output;
 }

@@ -40,6 +40,9 @@ pieces are actually extracted versus still trapped in the monolith.
 - `replayWinningMixinDefaultCandidates(...)`
   - pending `default()` replay now lives outside the candidate loop too, with
     the correct lookup scope re-established per winning candidate
+- `assembleMixinInvocationOutput(...)`
+  - final mixin output ordering, single-rule passthrough, and multi-rule wrapper
+    assembly now live outside the candidate loop
 
 ### Remaining
 

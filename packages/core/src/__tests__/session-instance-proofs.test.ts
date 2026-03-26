@@ -48,6 +48,7 @@ import {
 } from '../tree/util/session-helpers.js';
 import {
   attachMixinBodyToParamScope,
+  assembleMixinInvocationOutput,
   bindMixinParamValue,
   classifyMixinDefaultGroup,
   createMixinParamScope,
@@ -816,6 +817,46 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(replayed).toEqual(['none:true', 'false:true']);
     expect(ctx.rulesContext).toBeUndefined();
     expect(ctx.lookupScope).toBeUndefined();
+  });
+
+  it('assembleMixinInvocationOutput sorts candidate rules by source order and wraps them lookup-safely', () => {
+    const root = rules([]);
+    const firstBody = rules([decl({ name: any('color'), value: any('red') })]);
+    const secondBody = rules([decl({ name: any('background'), value: any('blue') })]);
+    const first = ruleset({ selector: sellist([sel([el('.a')])]), rules: firstBody });
+    const second = ruleset({ selector: sellist([sel([el('.b')])]), rules: secondBody });
+    root.push(first);
+    root.push(second);
+    first.index = 0;
+    second.index = 1;
+
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = new EvalSession();
+
+    const output = assembleMixinInvocationOutput([secondBody, firstBody], true, ctx);
+    const children = getChildren(output, ctx);
+
+    expect(children[0]).toBe(firstBody);
+    expect(children[1]).toBe(secondBody);
+    expect(getParent(firstBody, ctx)).toBe(output);
+    expect(getParent(secondBody, ctx)).toBe(output);
+    expect(firstBody.parent).toBe(first);
+    expect(secondBody.parent).toBe(second);
+    expect(firstBody.index).toBe(0);
+    expect(secondBody.index).toBe(1);
+    expect(firstBody.frozen).toBe(true);
+    expect(secondBody.frozen).toBe(true);
+    expect(output.options.isMixinOutput).toBe(true);
+  });
+
+  it('assembleMixinInvocationOutput preserves single-rule passthrough semantics', () => {
+    const output = rules([]);
+    const ctx = new Context({ leakyRules: true });
+
+    const assembled = assembleMixinInvocationOutput([output], false, ctx);
+
+    expect(assembled).toBe(output);
+    expect(assembled.options.isMixinOutput).toBe(false);
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {
