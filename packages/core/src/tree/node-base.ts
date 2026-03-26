@@ -892,45 +892,11 @@ export abstract class Node<
     if (pos && pos.hasField(this, '_preEvaluated')) {
       return pos.getField(this, '_preEvaluated') as boolean;
     }
-    const ir = context.instanceRoot ?? this._instanceRoot;
-    if (ir && ir.hasRuntime(this)) {
-      const runtime = ir.getShadow(this)!.runtime!;
-      if (runtime.preEvaluated !== undefined) {
-        return runtime.preEvaluated;
-      }
-    }
-    const session = context.session;
-    if (session) {
-      if (session.hasRuntime(this)) {
-        const runtime = session.getRuntime(this);
-        if (runtime.preEvaluated !== undefined) {
-          return runtime.preEvaluated;
-        }
-      }
-      // resetEvalState sessions: unvisited nodes are "not yet evaluated"
-      if (session.resetEvalState) {
-        return false;
-      }
-    }
     return this.preEvaluated;
   }
 
   protected _setPreEvaluated(value: boolean, context: Context): void {
-    const pos = context.position;
-    if (pos) {
-      pos.patchField(this, '_preEvaluated', value);
-      return;
-    }
-    const ir = context.instanceRoot ?? this._instanceRoot;
-    if (ir) {
-      ir.getRuntime(this).preEvaluated = value;
-      return;
-    }
-    if (context.session) {
-      context.session.getRuntime(this).preEvaluated = value;
-    } else {
-      this.preEvaluated = value;
-    }
+    context.ensurePosition().patchField(this, '_preEvaluated', value);
   }
 
   protected _isEvaluated(context: Context): boolean {
@@ -938,44 +904,11 @@ export abstract class Node<
     if (pos && pos.hasField(this, '_evaluated')) {
       return pos.getField(this, '_evaluated') as boolean;
     }
-    const ir = context.instanceRoot ?? this._instanceRoot;
-    if (ir && ir.hasRuntime(this)) {
-      const runtime = ir.getShadow(this)!.runtime!;
-      if (runtime.evaluated !== undefined) {
-        return runtime.evaluated;
-      }
-    }
-    const session = context.session;
-    if (session) {
-      if (session.hasRuntime(this)) {
-        const runtime = session.getRuntime(this);
-        if (runtime.evaluated !== undefined) {
-          return runtime.evaluated;
-        }
-      }
-      if (session.resetEvalState) {
-        return false;
-      }
-    }
     return this.evaluated;
   }
 
   protected _setEvaluated(value: boolean, context: Context): void {
-    const pos = context.position;
-    if (pos) {
-      pos.patchField(this, '_evaluated', value);
-      return;
-    }
-    const ir = context.instanceRoot ?? this._instanceRoot;
-    if (ir) {
-      ir.getRuntime(this).evaluated = value;
-      return;
-    }
-    if (context.session) {
-      context.session.getRuntime(this).evaluated = value;
-    } else {
-      this.evaluated = value;
-    }
+    context.ensurePosition().patchField(this, '_evaluated', value);
   }
 
   /**
