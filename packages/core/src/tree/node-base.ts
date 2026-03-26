@@ -344,21 +344,20 @@ export abstract class Node<
   }
 
   /**
-   * Materialize a copy from this node's provenance root rather than from the
-   * current wrapper node itself. This keeps context-free copy paths aligned with
-   * the authored source shape when a node is acting as a derived view.
+   * @removal-target — node-copy-reduction
+   * Target: remove entirely. Materialization from sourceNode is a clone.
+   * Callers should read through session helpers on the canonical node instead.
    */
   materializeCopy(deep?: boolean): this {
     return this.sourceNode.copy(deep) as this;
   }
 
   /**
-   * Materialize the current evaluated/view node shape as a persistent tree.
-   *
-   * Unlike `materializeCopy()`, this preserves the node's current evaluated
-   * subtree state rather than rebuilding from `sourceNode`. The returned tree
-   * gets its own parent chain while preserving source provenance metadata via
-   * normal clone/inherit behavior.
+   * @removal-target — node-copy-reduction
+   * Target: remove entirely. Internal eval paths should never materialize.
+   * Materialization is only allowed at the final CSS output boundary where
+   * Jess serializes the evaluated tree to a standalone object graph.
+   * All internal consumers should read through position/session helpers.
    */
   materializeEvaluatedCopy(ctx?: Context): this {
     if (!ctx?.session) {
@@ -590,6 +589,13 @@ export abstract class Node<
    * The wrapper metadata remains local to the new node, canonical child parent
    * links stay intact, and the returned wrapper owns persistent child nodes that
    * reflect the current session view without requiring an active session later.
+   */
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove entirely. This deep-materializes mixin output from the
+   * session state, creating a full object tree per call. Replace with
+   * carrying the EvalPosition on the output node — downstream reads
+   * resolve through position patches, no materialization needed.
    */
   cloneDetachedMaterializedWrapper(ctx: Context): this {
     const wrapper = this.cloneDetachedShallowWrapper(ctx);
@@ -1296,6 +1302,14 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: `return this` unconditionally. Position provides isolation;
+   * eval state and field changes go to EvalPosition patches.
+   * The clone(deep) fallback exists only because not all eval paths
+   * create a position yet. Once every eval path ensures a position,
+   * this entire method becomes `return this`.
+   */
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
     if (context.session?.resetEvalState) {
       // Position provides isolation — no clone needed.
@@ -1308,6 +1322,13 @@ export abstract class Node<
     return this;
   }
 
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove entirely. Replace call sites with `node.eval(context)`
+   * inside an EvalPosition. The "cloned" part was to isolate eval side effects;
+   * positions do that without cloning. The session push/pop can remain as a
+   * thin `ensureSession` helper if needed, but the clone is the problem.
+   */
   clonedEval(context: Context): MaybePromise<Node> {
     const prevSession = context.session;
     if (!prevSession) {
@@ -1325,16 +1346,12 @@ export abstract class Node<
   }
 
   /**
-   * Creates a copy of the current node.
-   *
-   * @note - In the Less source, nodes were always cloned before
-   * mutating, which is why I did it here. However... the only
-   * utility for cloning is to preserve the original node,
-   * or (maybe?) to create a copy which is output differently.
-   *
-   * But... considering the high cost of cloning in terms of
-   * object creation, and the low utility of preserving the original
-   * node, I think we should just only clone when we need to.
+   * @removal-target — node-copy-reduction (eval-path callers)
+   * Eval-path callers (maybeClone, mixin body clone, evalNode clone)
+   * should be replaced with EvalPosition field patches. The clone
+   * method itself survives for non-eval uses (selector composition,
+   * extend application, output serialization boundary) but should
+   * never be called in the eval hot path.
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     let Class = this.constructor as Class<this>;

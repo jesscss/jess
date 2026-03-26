@@ -220,6 +220,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return w.getSince(mark);
   }
 
+  /** @removal-target — node-copy-reduction: parent chain fixup after clone.
+   * Unnecessary when position carries parent patches. */
   private materializeCloneParentLinks(node: Node): void {
     for (const child of node.children()) {
       if (child !== child.sourceNode) {
@@ -229,6 +231,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
   }
 
+  /** @removal-target — node-copy-reduction: clone(true) on prelude nodes.
+   * Prelude should be read from canonical + position patches. */
   private materializePostludePrelude(current: Node): {
     atRuleName: '@media' | '@supports' | '@layer';
     prelude: Node;
@@ -305,6 +309,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // keeps its canonical child array / registry slot. `_dedupe` still needs
     // child Ruleset isolation so implicit-reference extends don't contaminate
     // shared selector state.
+    /** @removal-target — node-copy-reduction: materialize/clone wrappers.
+     * Import/compose results should carry their EvalPosition. No wrapper
+     * cloning needed — position patches provide isolation per import. */
     const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
     const needsDetachedMaterializedWrapper = Boolean(
       context && (materializeConfiguredComposeChildren || (type === 'import' && importOptions!._dedupe === true))

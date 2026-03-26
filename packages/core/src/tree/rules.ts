@@ -1005,6 +1005,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override preEval(context: Context) {
     if (!this._isPreEvaluated(context)) {
       context.depth++;
+      /** @removal-target — node-copy-reduction: maybeClone → return this.
+       * Registry population, child indexing, and prelude eval should
+       * all work against canonical nodes + position patches. */
       let rules = this.maybeClone(context);
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
@@ -1747,6 +1750,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return;
       }
+      /** @removal-target — node-copy-reduction: copy(true) for merge values.
+       * Merged values should be composed via position patches on the
+       * canonical declaration, not by copying and reassembling values. */
       const priorValue = getDeclValue(prior).copy(true, freezeChildren);
       const nextValue = getDeclValue(decl).copy(true, freezeChildren);
       setDeclField(decl, 'value', assign === '&_:'

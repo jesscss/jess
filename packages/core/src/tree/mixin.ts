@@ -258,6 +258,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
+    /** @removal-target — node-copy-reduction: maybeClone → return this.
+     * Name interpolation result should go through position.patchField. */
     let node = this.maybeClone(context);
     node._setPreEvaluated(true, context);
     node.sourceNode ??= this;

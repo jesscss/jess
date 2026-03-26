@@ -263,7 +263,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    /** We need to clone declarations, because we alter their options */
+    /** @removal-target — node-copy-reduction: maybeClone → return this.
+     * Options changes should go through position.patchField(this, 'options', ...) */
     let node = this.maybeClone(context);
     node._setPreEvaluated(true, context);
     // Index should already be assigned by parent Rules

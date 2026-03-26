@@ -212,6 +212,11 @@ export class Call extends Node<CallValue, CallOptions> {
     }
   }
 
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove clone(true) on args. Fallback args should be read
+   * from canonical nodes; spacing normalization should be a print concern.
+   */
   private _materializeFallbackArgs(args: List<Node> | undefined): List<Node> | undefined {
     if (!args) {
       return undefined;
@@ -228,6 +233,11 @@ export class Call extends Node<CallValue, CallOptions> {
     return clonedArgs;
   }
 
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove clone(true) on args. Function args should be evaluated
+   * in a position; freezing is a read-only concern that positions handle.
+   */
   private _materializeFunctionArgs(args: List<Node>, context: Context): List<Node> {
     return list(
       args.value.map((arg) => {
@@ -326,6 +336,8 @@ export class Call extends Node<CallValue, CallOptions> {
       node.sourceParent = this;
       return node;
     };
+    /** @removal-target — node-copy-reduction: clone(false) + runtime copy.
+     * Position isolates; downstream reads resolve through session helpers. */
     const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
       const clone = node.clone(false, undefined, context) as T;
       if (context.session.hasRuntime(node)) {
@@ -339,6 +351,8 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return clone;
     };
+    /** @removal-target — node-copy-reduction: remove entirely.
+     * No internal materialization; position patches provide isolation. */
     const materializeDownstreamResult = <T extends Node>(node: T): T => {
       if (context.session && node === node.sourceNode) {
         const childKeys = (node.constructor as typeof Node).childKeys;
@@ -349,12 +363,10 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return node;
     };
+    /** @removal-target — node-copy-reduction: remove entirely.
+     * Output shaping (pre/post/sourceParent/makeImportant) should go through
+     * position.patchField on the result node. No materialization boundary. */
     const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
-      // Transitional explicit boundary:
-      // stylesheet-defined functions that return same-source composite Rules
-      // still need a detached returned-tree boundary before this Call can
-      // apply output shaping (`pre` / `post` / `sourceParent`, and possibly
-      // `makeImportant`) without mutating the canonical source tree.
       if (context.session && node === node.sourceNode && isNode(node, N.Rules)) {
         return node.cloneDetachedMaterializedWrapper(context) as T;
       }
@@ -436,6 +448,8 @@ export class Call extends Node<CallValue, CallOptions> {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       const Rules = await getRules();
+      /** @removal-target — node-copy-reduction: clone(true) for Collection unlock.
+       * Detached ruleset children should be referenced through position, not cloned. */
       let rules = Rules.create(
         n.value.map(child => child.clone(true, undefined, context)),
         n.options ? { ...n.options } : undefined
@@ -528,6 +542,8 @@ export class Call extends Node<CallValue, CallOptions> {
         if (!callOptions.silentFail || shouldRethrowForMode) {
           throw e;
         }
+        /** @removal-target — node-copy-reduction: clone for silentFail fallback.
+         * Options/name/args changes should go through position patches. */
         let newCall = (context.session
           ? this.clone(false, undefined, context)
           : this.clone()).inherit(this);
@@ -556,6 +572,8 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       context.parenFrames.pop();
       context.callStack.pop();
+      /** @removal-target — node-copy-reduction: clone for non-mixin call eval.
+       * All field mutations (name, args, options) should go through position. */
       const needsMaterializedClone = Boolean(context.session && callOptions.silentFail);
       const node = needsMaterializedClone
         ? this.clone(false, undefined, context)

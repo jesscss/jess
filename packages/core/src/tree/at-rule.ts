@@ -181,6 +181,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this._isPreEvaluated(context)) {
+      /** @removal-target — node-copy-reduction: maybeClone → return this.
+       * preEval writes (hoistToRoot, frames, ownSelector) should go through
+       * position.patchField. sourceNode assignment becomes unnecessary. */
       const node = this.maybeClone(context);
       node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules

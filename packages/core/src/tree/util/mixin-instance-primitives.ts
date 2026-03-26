@@ -515,6 +515,13 @@ export async function evaluateMixinGuardCandidate(
  * still being active during later serialization or downstream composition, so
  * this boundary materializes only the returned wrapper/result shape.
  */
+/**
+ * @removal-target — node-copy-reduction
+ * Target: remove materialization entirely. Mixin output should carry its
+ * EvalPosition; downstream reads resolve through position patches.
+ * No cloneDetachedMaterializedWrapper — that creates a full object tree
+ * per call, exactly what the virtual tree architecture eliminates.
+ */
 export function finalizeMixinInvocationOutput(
   rules: Rules,
   context: Context
@@ -534,6 +541,12 @@ export function finalizeMixinInvocationOutput(
  * Older mixin semantics exposed bound param vars at the top of the returned
  * rules block. Keep that behavior as an explicit output-shaping primitive
  * instead of leaving it implicit inside `getFunctionFromMixins()`.
+ */
+/**
+ * @removal-target — node-copy-reduction
+ * Target: remove materializeEvaluatedCopy on params. Param vars should be
+ * readable through the carried position/session, not materialized into
+ * the output. The position already holds the bound values.
  */
 export function projectMixinParamScopeIntoOutput(
   output: Rules,
@@ -698,6 +711,10 @@ export function assembleMixinInvocationOutput(
 /**
  * Evaluate a ruleset candidate whose guard already passed during Ruleset
  * evaluation, preserving mixin-output semantics and instance-root association.
+ *
+ * @removal-target — node-copy-reduction: clone(true) on sourceRules.
+ * Replace with new EvalPosition(sourceRules) — eval the canonical body
+ * with position patches instead of deep cloning it.
  */
 export async function evaluateRulesetMixinCandidateOutput(
   sourceRules: Rules,
@@ -888,9 +905,11 @@ function copyDependency(source: Node, target: Node, context: Context): void {
 /**
  * Evaluate raw call args into a flat array of frozen Node values.
  *
- * This replaces the clone/freeze/spread cycle that lived inline in returnFunc.
- * Named args (VarDeclaration) have their values evaluated but are not themselves
- * registered in scope. Rest args are expanded.
+ * @removal-target — node-copy-reduction (copy/clonedEval/freeze cycle)
+ * Target: evaluate args in a position instead of copy+clonedEval+freeze.
+ * The copy(true, freezeChildren) + clonedEval pattern creates full deep
+ * copies of every arg. With positions, eval args in a fresh position and
+ * bind results via position patches — no copies, no freezing needed.
  */
 export async function evaluateMixinArgs(
   args: any[],
@@ -967,7 +986,12 @@ async function preparePatternOperand(node: Node, context: Context): Promise<Node
  * Match the mixin array against evaluated args. Returns the candidates whose
  * param signatures match (with params bound).
  *
- * This replaces the inline candidate matching loop in returnFunc.
+ * @removal-target — node-copy-reduction (copy/freeze in param binding)
+ * The copy(true, freezeChildren) calls on bound values create full deep
+ * copies of every arg value per candidate. With positions, bind through
+ * position.patchField instead — no copies needed.
+ * The params.copy(true) and mixin.clone(false)/mixin.copy() also create
+ * objects that positions can eliminate.
  */
 export async function matchMixinCandidates(
   mixinArr: MixinEntry[],
