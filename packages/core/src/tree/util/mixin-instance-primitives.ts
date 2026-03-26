@@ -154,3 +154,27 @@ export function seedMixinGuardScope(
   }
   return nextScope;
 }
+
+/**
+ * Prepare the transient scope used by a single mixin invocation. This is the
+ * smallest complete lookup-ready scope primitive for direct canonical-body eval:
+ * the caller gets a param scope with registered params / @arguments and the
+ * canonical body attached through session parent shadow only.
+ */
+export function prepareMixinInvocationScope(
+  body: Rules,
+  parent: Node | undefined,
+  index: number,
+  params: List<Node> | undefined,
+  nodeArgs: readonly Node[],
+  context: Context
+): Rules | undefined {
+  if (!params) {
+    return undefined;
+  }
+  const scope = createMixinParamScope(parent, index, context);
+  populateMixinParamScope(scope, params, context);
+  defineMixinArgumentsInScope(scope, params, nodeArgs, context);
+  attachMixinBodyToParamScope(body, scope, context);
+  return scope;
+}

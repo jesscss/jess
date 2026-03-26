@@ -47,9 +47,7 @@ import {
   setSourceParent
 } from './util/session-helpers.js';
 import {
-  createMixinParamScope,
-  defineMixinArgumentsInScope,
-  populateMixinParamScope,
+  prepareMixinInvocationScope,
   seedMixinGuardScope
 } from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
@@ -2786,12 +2784,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
         : (candidate as any).params as List<Node> | undefined;
       if (params) {
-        outerRules = createMixinParamScope(
-          thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node),
-          candidate.index,
-          thisContext
-        );
-
         for (let i = 0; i < params.value.length; i++) {
           let param = params.value[i]!;
           if (param.type === 'Rest') {
@@ -2834,8 +2826,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
         }
-        populateMixinParamScope(outerRules, params, thisContext);
-        defineMixinArgumentsInScope(outerRules, params, nodeArgs, thisContext);
+        outerRules = prepareMixinInvocationScope(
+          rules,
+          thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node),
+          candidate.index,
+          params,
+          nodeArgs,
+          thisContext
+        );
       }
 
       /** Now we can evaluate our guards, if any */

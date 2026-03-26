@@ -50,6 +50,7 @@ import {
   bindMixinParamValue,
   createMixinParamScope,
   defineMixinArgumentsInScope,
+  prepareMixinInvocationScope,
   populateMixinParamScope,
   seedMixinGuardScope
 } from '../tree/util/mixin-instance-primitives.js';
@@ -546,10 +547,10 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(getChildren(scope, ctx)).toEqual(scopeChildren);
   });
 
-  it('characterizes direct canonical body evaluation as still needing lookup/registry plumbing beyond param shadow + parent shadow', async () => {
+  it('characterizes prepareMixinInvocationScope as still needing canonical-body lookup plumbing', async () => {
     const fgParam = vardecl({ name: 'fg', value: nil() });
     const bgParam = vardecl({ name: 'bg', value: nil() });
-    const paramScope = rules([fgParam, bgParam]);
+    const bodyRoot = rules([]);
     const colorDecl = decl({ name: any('color'), value: ref('fg', { type: 'variable' }) });
     const bgDecl = decl({ name: any('background'), value: ref('bg', { type: 'variable' }) });
     const body = rules([colorDecl, bgDecl]);
@@ -560,22 +561,31 @@ describe('SI-6: Repeated mixin/function proof', () => {
     ctx.session = session;
     ctx.instanceRoot = instanceRoot;
     ctx.rulesContext = body;
-    ctx.root = paramScope;
+    ctx.root = bodyRoot;
 
     bindMixinParamValue(fgParam, any('red'), ctx);
     bindMixinParamValue(bgParam, any('blue'), ctx);
-    attachMixinBodyToParamScope(body, paramScope, ctx);
+    const paramScope = prepareMixinInvocationScope(
+      body,
+      bodyRoot,
+      0,
+      list([fgParam, bgParam]),
+      [],
+      ctx
+    );
 
-    const evaldColor = await colorDecl.eval(ctx);
-    const evaldBg = await bgDecl.eval(ctx);
+    const evaldBody = await body.eval(ctx);
 
-    expect(evaldColor.toTrimmedString()).toBe('$fg');
-    expect(evaldBg.toTrimmedString()).toBe('$bg');
+    expect(paramScope).toBeDefined();
+    expect(String(evaldBody)).toContain('color: $fg;');
+    expect(String(evaldBody)).toContain('background: $bg;');
+    expect(body.parent).toBeUndefined();
+    expect(getParent(body, ctx)).toBe(paramScope);
   });
 
-  it('characterizes guard evaluation as still needing reset-session lookup plumbing beyond param shadow', async () => {
+  it('characterizes guard evaluation as still needing reset-session lookup plumbing beyond prepareMixinInvocationScope', async () => {
     const fgParam = vardecl({ name: 'fg', value: nil() });
-    const paramScope = rules([fgParam]);
+    const body = rules([]);
     const guard = condition([
       ref('fg', { type: 'variable' }),
       '=',
@@ -583,21 +593,30 @@ describe('SI-6: Repeated mixin/function proof', () => {
     ]);
 
     const session = new EvalSession();
-    const instanceRoot = session.createInstanceRoot(paramScope);
+    const instanceRoot = session.createInstanceRoot(body);
     const ctx = new Context({ leakyRules: true });
     ctx.session = session;
     ctx.instanceRoot = instanceRoot;
-    ctx.root = paramScope;
-    ctx.rulesContext = paramScope;
+    ctx.root = body;
+    ctx.rulesContext = body;
 
-    // Future primitive shape:
-    // evaluateMixinGuardAgainstInstanceRoot(guard, instanceRoot, ctx)
     bindMixinParamValue(fgParam, any('red'), ctx);
-    setParent(guard, paramScope, ctx);
+    const paramScope = prepareMixinInvocationScope(
+      body,
+      body,
+      0,
+      list([fgParam]),
+      [],
+      ctx
+    )!;
+    ctx.rulesContext = paramScope;
 
     const previousSession = ctx.session;
     ctx.session = new EvalSession({ resetEvalState: true });
+    let guardScope: Rules | undefined;
     try {
+      guardScope = seedMixinGuardScope(paramScope, body, guard, ctx, [...getChildren(paramScope, ctx)]);
+      ctx.rulesContext = guardScope;
       const result = await guard.eval(ctx);
       expect(result.toTrimmedString()).toBe('false');
     } finally {
@@ -606,7 +625,7 @@ describe('SI-6: Repeated mixin/function proof', () => {
 
     expect(fgParam.value.type).toBe('Nil');
     expect(guard.parent).toBeUndefined();
-    expect(getParent(guard, ctx)).toBe(paramScope);
+    expect(getParent(guard, ctx)).toBe(guardScope);
   });
 });
 
