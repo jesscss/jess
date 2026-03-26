@@ -14,7 +14,7 @@ import {
   isStatic,
   setIndex,
   mergeDependencies,
-  patchField,
+  setField,
   getChildren,
   appendChildren,
   prependChildren,
@@ -34,7 +34,7 @@ describe('EvalSession', () => {
       const session = new EvalSession();
       const node = new Keyword('red');
 
-      session.patchField(node, 'value', 'blue');
+      session.setField(node, 'value', 'blue');
       expect(session.getField(node, 'value')).toBe('blue');
     });
 
@@ -49,7 +49,7 @@ describe('EvalSession', () => {
       const session = new EvalSession();
       const node = new Keyword('red');
 
-      session.patchField(node, 'value', undefined);
+      session.setField(node, 'value', undefined);
       expect(session.hasField(node, 'value')).toBe(true);
       expect(session.getField(node, 'value')).toBeUndefined();
     });
@@ -58,7 +58,7 @@ describe('EvalSession', () => {
       const session = new EvalSession();
       const node = new Keyword('red');
 
-      session.patchField(node, 'value', 'blue');
+      session.setField(node, 'value', 'blue');
       expect(node.value).toBe('red');
       expect(session.getField(node, 'value')).toBe('blue');
     });
@@ -74,7 +74,7 @@ describe('EvalSession', () => {
       const session = new EvalSession();
       const node = new Keyword('red');
 
-      session.patchField(node, 'value', 'blue');
+      session.setField(node, 'value', 'blue');
       expect(session.hasPatches(node)).toBe(true);
     });
   });
@@ -85,8 +85,8 @@ describe('EvalSession', () => {
       const session2 = new EvalSession();
       const node = new Keyword('red');
 
-      session1.patchField(node, 'value', 'blue');
-      session2.patchField(node, 'value', 'green');
+      session1.setField(node, 'value', 'blue');
+      session2.setField(node, 'value', 'green');
 
       expect(session1.getField(node, 'value')).toBe('blue');
       expect(session2.getField(node, 'value')).toBe('green');
@@ -225,7 +225,7 @@ describe('EvalSession', () => {
 });
 
 describe('session-aware helpers', () => {
-  describe('getField / patchField', () => {
+  describe('getField / setField', () => {
     it('falls through to node field when no session', () => {
       const ctx = new Context();
       const node = new Dimension({ number: 10, unit: 'px' });
@@ -238,7 +238,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = new Dimension({ number: 10, unit: 'px' });
 
-      patchField(node, 'number', 20, ctx);
+      setField(node, 'number', 20, ctx);
       expect(getField<number>(node, 'number', ctx)).toBe(20);
       expect(node.number).toBe(10);
     });
@@ -255,7 +255,7 @@ describe('session-aware helpers', () => {
       const ctx = new Context();
       const node = new Dimension({ number: 10, unit: 'px' });
 
-      patchField(node, 'number', 20, ctx);
+      setField(node, 'number', 20, ctx);
       expect(node.number).toBe(20);
     });
 
@@ -264,8 +264,8 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = decl({ name: 'color', value: any('red') });
 
-      patchField(node, 'name', any('background', { role: 'property' }), ctx);
-      patchField(node, 'value', any('blue'), ctx);
+      setField(node, 'name', any('background', { role: 'property' }), ctx);
+      setField(node, 'value', any('blue'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('background: blue');
       expect(node.toTrimmedString()).toBe('color: red');
@@ -296,8 +296,8 @@ describe('session-aware helpers', () => {
       });
       const patchedRules = rules([decl({ name: 'background', value: any('blue') })]);
 
-      patchField(node, 'selector', el('.b'), ctx);
-      patchField(node, 'rules', patchedRules, ctx);
+      setField(node, 'selector', el('.b'), ctx);
+      setField(node, 'rules', patchedRules, ctx);
 
       const sessionOut = node.toTrimmedString({ context: ctx });
       const canonicalOut = node.toTrimmedString();
@@ -340,9 +340,9 @@ describe('session-aware helpers', () => {
       });
       const patchedRules = rules([decl({ name: 'background', value: any('blue') })]);
 
-      patchField(node, 'name', any('@supports', { role: 'atkeyword' }), ctx);
-      patchField(node, 'prelude', seq([any('(display:grid)')]), ctx);
-      patchField(node, 'rules', patchedRules, ctx);
+      setField(node, 'name', any('@supports', { role: 'atkeyword' }), ctx);
+      setField(node, 'prelude', seq([any('(display:grid)')]), ctx);
+      setField(node, 'rules', patchedRules, ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('@supports (display:grid) {\n  background: blue;\n}\n');
       expect(node.toTrimmedString()).toBe('@media screen {\n  color: red;\n}\n');
@@ -383,10 +383,10 @@ describe('session-aware helpers', () => {
       });
       const patchedRules = rules([decl({ name: 'background', value: any('blue') })]);
 
-      patchField(node, 'name', any('.patched'), ctx);
-      patchField(node, 'params', list([any('size', { role: 'property' })]), ctx);
-      patchField(node, 'guard', condition([any('true')]), ctx);
-      patchField(node, 'rules', patchedRules, ctx);
+      setField(node, 'name', any('.patched'), ctx);
+      setField(node, 'params', list([any('size', { role: 'property' })]), ctx);
+      setField(node, 'guard', condition([any('true')]), ctx);
+      setField(node, 'rules', patchedRules, ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('.patched(size) when true {\n  background: blue;\n}');
       expect(node.toTrimmedString()).toBe('.base(color) {\n  color: red;\n}');
@@ -475,9 +475,9 @@ describe('session-aware helpers', () => {
         contentNode: any('fallback')
       });
 
-      patchField(node, 'name', any('hsl'), ctx);
-      patchField(node, 'args', list([any('120deg'), any('50%')]), ctx);
-      patchField(node, 'contentNode', any('patched'), ctx);
+      setField(node, 'name', any('hsl'), ctx);
+      setField(node, 'args', list([any('120deg'), any('50%')]), ctx);
+      setField(node, 'contentNode', any('patched'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('hsl(120deg, 50%): patched');
       expect(node.toTrimmedString()).toBe('rgb(red, blue): fallback');
@@ -549,7 +549,7 @@ describe('session-aware helpers', () => {
       ]);
       ctx.root = root;
 
-      patchField(node, 'contentNode', any('patched'), ctx);
+      setField(node, 'contentNode', any('patched'), ctx);
 
       const evald = await node.eval(ctx);
 
@@ -566,8 +566,8 @@ describe('session-aware helpers', () => {
         arg: any('red')
       });
 
-      patchField(node, 'name', ':where', ctx);
-      patchField(node, 'arg', any('blue'), ctx);
+      setField(node, 'name', ':where', ctx);
+      setField(node, 'arg', any('blue'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe(':where(blue)');
       expect(node.toTrimmedString()).toBe(':not(red)');
@@ -593,7 +593,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = sellist([el('.a'), el('.b')]);
 
-      patchField(node, 'value', [el('.x'), el('.y')], ctx);
+      setField(node, 'value', [el('.x'), el('.y')], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('.x,\n.y');
       expect(node.toTrimmedString()).toBe('.a,\n.b');
@@ -619,7 +619,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = sel([el('.a'), co('>'), el('.b') as any]);
 
-      patchField(node, 'value', [el('.x'), co('>'), el('.y') as any], ctx);
+      setField(node, 'value', [el('.x'), co('>'), el('.y') as any], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('.x > .y');
       expect(node.toTrimmedString()).toBe('.a > .b');
@@ -650,7 +650,7 @@ describe('session-aware helpers', () => {
       const child = el('.target');
       const node = sel([child]);
 
-      patchField(node, 'hoistToRoot', true, ctx);
+      setField(node, 'hoistToRoot', true, ctx);
 
       const evald = await node.eval(ctx);
 
@@ -664,7 +664,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = compound([el('button') as any, el('.a') as any]);
 
-      patchField(node, 'value', [el('input') as any, el('.b') as any], ctx);
+      setField(node, 'value', [el('input') as any, el('.b') as any], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('input.b');
       expect(node.toTrimmedString()).toBe('button.a');
@@ -692,7 +692,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = expr(any('red'));
 
-      patchField(node, 'value', any('blue'), ctx);
+      setField(node, 'value', any('blue'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('$(blue)');
       expect(node.toTrimmedString()).toBe('$(red)');
@@ -703,7 +703,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = paren(any('red'));
 
-      patchField(node, 'value', any('blue'), ctx);
+      setField(node, 'value', any('blue'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('(blue)');
       expect(node.toTrimmedString()).toBe('(red)');
@@ -732,7 +732,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = block(any('red'));
 
-      patchField(node, 'value', any('blue'), ctx);
+      setField(node, 'value', any('blue'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('{blue}');
       expect(node.toTrimmedString()).toBe('{red}');
@@ -744,7 +744,7 @@ describe('session-aware helpers', () => {
       const node = new Negative(new Dimension({ number: 2, unit: 'px' }));
       const renderPatched = new Dimension({ number: 3, unit: 'px' });
 
-      patchField(node, 'value', renderPatched, ctx);
+      setField(node, 'value', renderPatched, ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('-3px');
       expect(node.toTrimmedString()).toBe('-2px');
@@ -754,7 +754,7 @@ describe('session-aware helpers', () => {
         throw new TypeError('Expected Negative.preEval() to return a Negative');
       }
       const evalPatched = new Dimension({ number: 4, unit: 'px' });
-      patchField(preEvald, 'value', evalPatched, ctx);
+      setField(preEvald, 'value', evalPatched, ctx);
 
       const sessionEvald = await preEvald.eval(ctx);
       const canonicalEvald = await node.eval(new Context());
@@ -771,7 +771,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = rest('args');
 
-      patchField(node, 'value', 'tail', ctx);
+      setField(node, 'value', 'tail', ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('...$$tail');
       expect(node.toTrimmedString()).toBe('...$$args');
@@ -787,8 +787,8 @@ describe('session-aware helpers', () => {
         value: any('red')
       });
 
-      patchField(node, 'name', any('data-theme'), ctx);
-      patchField(node, 'value', quoted('blue'), ctx);
+      setField(node, 'name', any('data-theme'), ctx);
+      setField(node, 'value', quoted('blue'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('[data-theme="blue"]');
       expect(node.toTrimmedString()).toBe('[data=red]');
@@ -808,7 +808,7 @@ describe('session-aware helpers', () => {
         replacements: [any('beta')]
       });
 
-      patchField(node, 'value', renderPatched, ctx);
+      setField(node, 'value', renderPatched, ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('.beta');
       expect(node.toTrimmedString()).toBe('.alpha');
@@ -821,7 +821,7 @@ describe('session-aware helpers', () => {
         source: '.%%',
         replacements: [any('gamma')]
       });
-      patchField(preEvald, 'value', evalPatched, ctx);
+      setField(preEvald, 'value', evalPatched, ctx);
 
       const sessionEvald = await preEvald.eval(ctx);
       const canonicalEvald = await node.eval(new Context());
@@ -838,7 +838,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = quoted('red');
 
-      patchField(node, 'value', any('blue'), ctx);
+      setField(node, 'value', any('blue'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('\"blue\"');
       expect(node.toTrimmedString()).toBe('\"red\"');
@@ -865,7 +865,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = url(quoted('a.png'));
 
-      patchField(node, 'value', quoted('b.png'), ctx);
+      setField(node, 'value', quoted('b.png'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('url(\"b.png\")');
       expect(node.toTrimmedString()).toBe('url(\"a.png\")');
@@ -892,7 +892,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = selcap(el('.a'));
 
-      patchField(node, 'value', sellist([el('.x'), el('.y')]), ctx);
+      setField(node, 'value', sellist([el('.x'), el('.y')]), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('*[.x,\n.y]');
       expect(node.toTrimmedString()).toBe('*[.a]');
@@ -903,7 +903,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = selcap(el('.a'));
 
-      patchField(node, 'value', sellist([el('.x'), el('.y')]), ctx);
+      setField(node, 'value', sellist([el('.x'), el('.y')]), ctx);
 
       const result = await node.eval(ctx);
 
@@ -917,7 +917,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = list([any('red'), any('blue')]);
 
-      patchField(node, 'value', [any('cyan'), any('magenta')], ctx);
+      setField(node, 'value', [any('cyan'), any('magenta')], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('cyan, magenta');
       expect(node.toTrimmedString()).toBe('red, blue');
@@ -928,7 +928,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = list([any('red')]);
 
-      patchField(node, 'value', [any('cyan'), any('magenta')], ctx);
+      setField(node, 'value', [any('cyan'), any('magenta')], ctx);
 
       const result = node.operate(any('black'), '+', ctx);
 
@@ -942,7 +942,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = seq([any('red'), any('blue')]);
 
-      patchField(node, 'value', [any('cyan'), any('magenta')], ctx);
+      setField(node, 'value', [any('cyan'), any('magenta')], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('cyan magenta');
       expect(node.toTrimmedString()).toBe('red blue');
@@ -964,7 +964,7 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = query([any('screen'), any('and'), paren(any('color'))]);
 
-      patchField(node, 'value', [any('print'), any('and'), paren(any('monochrome'))], ctx);
+      setField(node, 'value', [any('print'), any('and'), paren(any('monochrome'))], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('print and (monochrome)');
       expect(node.toTrimmedString()).toBe('screen and (color)');
@@ -975,9 +975,9 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = condition([any('a'), '=', any('b')]);
 
-      patchField(node, 'left', any('x'), ctx);
-      patchField(node, 'operator', '>=', ctx);
-      patchField(node, 'right', any('y'), ctx);
+      setField(node, 'left', any('x'), ctx);
+      setField(node, 'operator', '>=', ctx);
+      setField(node, 'right', any('y'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('(x >= y)');
       expect(node.toTrimmedString()).toBe('(a = b)');
@@ -993,9 +993,9 @@ describe('session-aware helpers', () => {
       });
       const patchedBody = rules([decl({ name: 'return', value: any('blue') })]);
 
-      patchField(node, 'name', any('patched'), ctx);
-      patchField(node, 'params', list([any('size')]), ctx);
-      patchField(node, 'body', patchedBody, ctx);
+      setField(node, 'name', any('patched'), ctx);
+      setField(node, 'params', list([any('size')]), ctx);
+      setField(node, 'body', patchedBody, ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('$function patched(size) {\n  return: blue;\n}');
       expect(node.toTrimmedString()).toBe('$function base(color) {\n  return: red;\n}');
@@ -1025,8 +1025,8 @@ describe('session-aware helpers', () => {
       const root = rules([node]);
       ctx.root = root;
 
-      patchField(node, 'params', patchedParams, ctx);
-      patchField(node, 'body', patchedBody, ctx);
+      setField(node, 'params', patchedParams, ctx);
+      setField(node, 'body', patchedBody, ctx);
 
       const result = await node.evalCall(ctx, list([any('blue')]));
 
@@ -1043,9 +1043,9 @@ describe('session-aware helpers', () => {
         { includeEnd: false }
       );
 
-      patchField(node, 'start', any('2'), ctx);
-      patchField(node, 'end', any('4'), ctx);
-      patchField(node, 'step', any('3'), ctx);
+      setField(node, 'start', any('2'), ctx);
+      setField(node, 'end', any('4'), ctx);
+      setField(node, 'step', any('3'), ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('2 to <4 step 3');
       expect(node.toTrimmedString()).toBe('1 to <3 step 2');
@@ -1056,8 +1056,8 @@ describe('session-aware helpers', () => {
       ctx.createSession();
       const node = ref({ target: ref('ns'), key: 'foo' }, { type: 'declaration' });
 
-      patchField(node, 'target', ref('theme'), ctx);
-      patchField(node, 'key', 'bar', ctx);
+      setField(node, 'target', ref('theme'), ctx);
+      setField(node, 'key', 'bar', ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('$theme.bar');
       expect(node.toTrimmedString()).toBe('$ns.foo');
@@ -1081,7 +1081,7 @@ describe('session-aware helpers', () => {
           value: lookup
         })
       ]);
-      patchField(lookup, 'key', 'bar', ctx);
+      setField(lookup, 'key', 'bar', ctx);
       const preEvald = await scope.preEval(ctx);
       ctx.root = preEvald;
       ctx.rulesContext = preEvald;
@@ -1100,8 +1100,8 @@ describe('session-aware helpers', () => {
         replacements: [any('red')]
       });
 
-      patchField(node, 'source', 'color-%%', ctx);
-      patchField(node, 'replacements', [any('blue')], ctx);
+      setField(node, 'source', 'color-%%', ctx);
+      setField(node, 'replacements', [any('blue')], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('color-blue');
       expect(node.toTrimmedString()).toBe('--red');
@@ -1131,8 +1131,8 @@ describe('session-aware helpers', () => {
         imports: ['foo']
       });
 
-      patchField(node, 'path', quoted('b.js'), ctx);
-      patchField(node, 'imports', [['bar', 'baz']], ctx);
+      setField(node, 'path', quoted('b.js'), ctx);
+      setField(node, 'imports', [['bar', 'baz']], ctx);
 
       expect(node.toTrimmedString({ context: ctx })).toBe('@-from \"b.js\" import ( bar as baz );');
       expect(node.toTrimmedString()).toBe('@-from \"a.js\" import ( foo );');
@@ -1609,10 +1609,10 @@ describe('session-aware helpers', () => {
       const root3 = session.createInstanceRoot(canonical);
 
       // Root 2 patches the color to blue
-      root2.patchField(colorDecl, 'value', new Keyword('blue'));
+      root2.setField(colorDecl, 'value', new Keyword('blue'));
 
       // Root 3 patches the color to green
-      root3.patchField(colorDecl, 'value', new Keyword('green'));
+      root3.setField(colorDecl, 'value', new Keyword('green'));
 
       // Root 1 has no shadow entry — source-backed
       expect(root1.hasShadow(colorDecl)).toBe(false);
@@ -1647,7 +1647,7 @@ describe('session-aware helpers', () => {
 
       // Root 2: change only the color declaration
       const colorDecl = canonical.value[0]!;
-      root2.patchField(colorDecl, 'value', new Keyword('blue'));
+      root2.setField(colorDecl, 'value', new Keyword('blue'));
 
       // Only 1 shadow entry despite 3 declarations in the tree
       expect(root2.shadowCount).toBe(1);
@@ -1735,13 +1735,13 @@ describe('session-aware helpers', () => {
 
       // Patch via root1
       ctx.instanceRoot = root1;
-      patchField(node, 'value', 'blue', ctx);
+      setField(node, 'value', 'blue', ctx);
       setParent(node, container, ctx);
       setEvaluated(node, true, ctx);
 
       // Patch via root2
       ctx.instanceRoot = root2;
-      patchField(node, 'value', 'green', ctx);
+      setField(node, 'value', 'green', ctx);
       setParent(node, undefined, ctx);
       setEvaluated(node, false, ctx);
 
@@ -1805,14 +1805,14 @@ describe('session-aware helpers', () => {
       ctx.session = session;
 
       // Session-level patch
-      session.patchField(node, 'value', 'blue');
+      session.setField(node, 'value', 'blue');
 
       // Without instance root, see session patch
       expect(getField(node, 'value', ctx)).toBe('blue');
 
       // Instance root overrides session
       ctx.instanceRoot = root;
-      root.patchField(node, 'value', 'green');
+      root.setField(node, 'value', 'green');
       expect(getField(node, 'value', ctx)).toBe('green');
 
       // Session still has its own value
@@ -1840,9 +1840,9 @@ describe('session-aware helpers', () => {
       // borderNode has no dependencies (static)
 
       // Root changes only @color
-      root.patchField(colorNode, 'value', new Keyword('blue'));
-      root.patchField(bgNode, 'value', new Keyword('gray'));
-      root.patchField(borderNode, 'value', new Keyword('solid'));
+      root.setField(colorNode, 'value', new Keyword('blue'));
+      root.setField(bgNode, 'value', new Keyword('gray'));
+      root.setField(borderNode, 'value', new Keyword('solid'));
 
       // Compute reach for only @color changed
       const reach = root.computeDependencyReach(new Set([colorVar]));

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Context } from '../../context.js';
 import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
-import { patchField, setParent } from '../util/session-helpers.js';
+import { setField, setParent } from '../util/session-helpers.js';
 import * as rulesModule from '../rules.js';
 
 afterEach(() => {
@@ -100,7 +100,7 @@ describe('Func', () => {
     const evaluatedRules = rules([returnDecl]);
 
     vi.spyOn(rulesModule, 'getFunctionFromMixins').mockReturnValue(async () => evaluatedRules as any);
-    patchField(returnDecl, 'value', any('patched'), ctx);
+    setField(returnDecl, 'value', any('patched'), ctx);
 
     const result = await node.evalCall(ctx, list([]));
 
@@ -149,7 +149,7 @@ describe('Func', () => {
     const functionNode = tree.at(0) as ReturnType<typeof fn>;
     const callNode = tree.at(1) as ReturnType<typeof call>;
 
-    patchField(functionNode, 'name', any('renamed'), ctx);
+    setField(functionNode, 'name', any('renamed'), ctx);
 
     const result = await callNode.eval(ctx);
 

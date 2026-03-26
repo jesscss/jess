@@ -25,7 +25,7 @@ import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
-import { patchField, replaceNode } from '../util/session-helpers.js';
+import { setField, replaceNode } from '../util/session-helpers.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -788,8 +788,8 @@ describe('Style import', () => {
       const replacementRules = rules([
         vardecl({ name: 'baseColor', value: any('blue') })
       ]);
-      patchField(importNode, 'withNode', replacementRules as any, context);
-      patchField(importNode, 'withType', 'with', context);
+      setField(importNode, 'withNode', replacementRules as any, context);
+      setField(importNode, 'withType', 'with', context);
 
       const node = rules([importNode]);
       const evald = await node.eval(context);
@@ -1247,7 +1247,7 @@ describe('Style import', () => {
       const originalPath = quoted(any('wrong-path.jess'));
       const replacementValue = any('import/quoted-session-path.jess');
       vi.spyOn(originalPath, 'eval').mockImplementation((ctx) => {
-        patchField(originalPath, 'value', replacementValue, ctx as Context);
+        setField(originalPath, 'value', replacementValue, ctx as Context);
         return originalPath;
       });
 
@@ -1272,7 +1272,7 @@ describe('Style import', () => {
       const originalPath = quoted(any('wrong-path.jess'));
       const replacementPath = quoted(any('import/node-session-path.jess'));
       const importNode = style({ path: originalPath }, { type: 'import' });
-      patchField(importNode, 'path', replacementPath, context);
+      setField(importNode, 'path', replacementPath, context);
 
       const node = rules([importNode]);
       const evald = await node.eval(context);

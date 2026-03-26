@@ -1,7 +1,7 @@
 import { any, nil, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { patchField } from '../util/session-helpers.js';
+import { setField } from '../util/session-helpers.js';
 
 /**
  * @todo - sequences need to make sure that the result could be re-parsed
@@ -28,7 +28,7 @@ describe('Sequence', () => {
     context.session = new EvalSession();
     const rule = seq([num(10), num(20)]);
 
-    patchField(rule, 'value', [num(30), num(40)], context);
+    setField(rule, 'value', [num(30), num(40)], context);
 
     expect(rule.toTrimmedString({ context })).toBe('30 40');
     expect(rule.toTrimmedString()).toBe('10 20');
@@ -40,7 +40,7 @@ describe('Sequence', () => {
     context.createSession();
     const rule = seq([num(10), num(20)]);
 
-    patchField(rule, 'value', [num(30), num(40)], context);
+    setField(rule, 'value', [num(30), num(40)], context);
 
     const evald = await rule.eval(context);
 
@@ -72,7 +72,7 @@ describe('Sequence', () => {
     context.root = root;
     context.rulesContext = root;
 
-    patchField(node, 'options', { preserveWhitespace: true }, context);
+    setField(node, 'options', { preserveWhitespace: true }, context);
 
     const evald = await node.eval(context);
 
@@ -92,7 +92,7 @@ describe('Sequence', () => {
     const left = seq([num(10), num(20)]);
     const right = seq([num(30), num(40)]);
 
-    patchField(left, 'value', [num(30), num(40)], context);
+    setField(left, 'value', [num(30), num(40)], context);
 
     expect(left.compare(right, context)).toBe(0);
   });
@@ -103,7 +103,7 @@ describe('Sequence', () => {
     const left = seq([num(10), num(20)]);
     const right = seq([num(30), num(40)]);
 
-    patchField(left, 'value', [num(30), num(40)], context);
+    setField(left, 'value', [num(30), num(40)], context);
 
     expect(left.compare(right)).toBe(-1);
     expect(left.compare(right, context)).toBe(0);
@@ -117,7 +117,7 @@ describe('Sequence', () => {
     const left = seq([innerLeft]);
     const right = seq([innerRight]);
 
-    patchField(innerLeft, 'value', [num(30), num(40)], context);
+    setField(innerLeft, 'value', [num(30), num(40)], context);
 
     expect(left.compare(right)).toBe(-1);
     expect(left.compare(right, context)).toBe(0);
@@ -128,7 +128,7 @@ describe('Sequence', () => {
     context.session = new EvalSession();
     const node = seq([num(10), num(20)]);
 
-    patchField(node, 'value', [num(30)], context);
+    setField(node, 'value', [num(30)], context);
 
     expect(node.length).toBe(2);
     expect(node.toTrimmedString({ context })).toBe('30');
@@ -141,8 +141,8 @@ describe('Sequence', () => {
     leftContext.session = new EvalSession();
     rightContext.session = new EvalSession();
 
-    patchField(node, 'value', [num(30)], leftContext);
-    patchField(node, 'value', [num(40), num(50), num(60)], rightContext);
+    setField(node, 'value', [num(30)], leftContext);
+    setField(node, 'value', [num(40), num(50), num(60)], rightContext);
 
     expect(node.length).toBe(2);
     expect(node.toTrimmedString({ context: leftContext })).toBe('30');
@@ -154,7 +154,7 @@ describe('Sequence', () => {
     context.session = new EvalSession();
     const node = seq([num(10), num(20)]);
 
-    patchField(node, 'value', [num(30)], context);
+    setField(node, 'value', [num(30)], context);
 
     expect(node.valueOf()).toBe('1020');
     expect(node.toTrimmedString({ context })).toBe('30');

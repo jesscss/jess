@@ -11,7 +11,7 @@ import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { getField, getParent, mergeDependencies, patchField, setDependency } from './util/session-helpers.js';
+import { getField, getParent, mergeDependencies, setField, setDependency } from './util/session-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -177,7 +177,7 @@ export class Call extends Node<CallValue, CallOptions> {
       this.adopt(name);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'name', name, context);
+      setField(this, 'name', name, context);
     } else {
       this.name = name;
     }
@@ -188,7 +188,7 @@ export class Call extends Node<CallValue, CallOptions> {
       this.adopt(args);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'args', args, context);
+      setField(this, 'args', args, context);
     } else {
       this.args = args;
     }
@@ -365,7 +365,7 @@ export class Call extends Node<CallValue, CallOptions> {
     };
     /** @removal-target — node-copy-reduction: remove entirely.
      * Output shaping (pre/post/sourceParent/makeImportant) should go through
-     * position.patchField on the result node. No materialization boundary. */
+     * position.setField on the result node. No materialization boundary. */
     const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
       if (context.session && node === node.sourceNode && isNode(node, N.Rules)) {
         return node.cloneDetachedMaterializedWrapper(context) as T;

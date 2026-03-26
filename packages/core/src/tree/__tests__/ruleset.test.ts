@@ -2,7 +2,7 @@ import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '../ind
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { getPrintOptions } from '../util/print.js';
-import { getParent, patchField } from '../util/session-helpers.js';
+import { getParent, setField } from '../util/session-helpers.js';
 import { F_VISIBLE } from '../node.js';
 
 let context: Context;
@@ -67,7 +67,7 @@ describe('Rule', () => {
     });
 
     context.session = new EvalSession();
-    context.session.patchField(node, 'selector', el('.beta'));
+    context.session.setField(node, 'selector', el('.beta'));
 
     expect(node.valueOf(context)).toBe('.beta');
     expect(node.valueOf()).toBe('.alpha');
@@ -83,9 +83,9 @@ describe('Rule', () => {
     });
 
     context.session = new EvalSession();
-    context.session.patchField(node, 'selector', amp());
-    context.session.patchField(node, 'hoistToRoot', true);
-    context.session.patchField(node, 'options', {
+    context.session.setField(node, 'selector', amp());
+    context.session.setField(node, 'hoistToRoot', true);
+    context.session.setField(node, 'options', {
       ...node.options,
       ownSelector: amp()
     });
@@ -106,7 +106,7 @@ describe('Rule', () => {
     });
 
     context.session = new EvalSession();
-    context.session.patchField(node, 'options', {
+    context.session.setField(node, 'options', {
       ...node.options,
       ownSelector: el('.beta')
     });
@@ -210,7 +210,7 @@ describe('Rule', () => {
     context.session = new EvalSession();
 
     const cloned = derived.clone(false, undefined, context);
-    patchField(derivedDecl, 'value', any('blue'), context);
+    setField(derivedDecl, 'value', any('blue'), context);
 
     expect(cloned.rules.at(0)).toBe(derivedDecl);
     expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
@@ -251,7 +251,7 @@ describe('Rule', () => {
     context.session = new EvalSession();
 
     const cloned = source.clone(false, undefined, context);
-    patchField(sourceDecl, 'value', any('blue'), context);
+    setField(sourceDecl, 'value', any('blue'), context);
 
     expect(cloned.rules.at(0)).toBe(sourceDecl);
     expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
@@ -296,7 +296,7 @@ describe('Rule', () => {
     const root = rules([base]);
 
     context.session = new EvalSession();
-    context.session.patchField(base, 'rules', patchedRules);
+    context.session.setField(base, 'rules', patchedRules);
     context.extendRoots.registerRoot(root);
     context.extendRoots.pushExtendRoot(root);
 
@@ -326,7 +326,7 @@ describe('Rule', () => {
     const emptyRules = rules([]);
 
     context.session = new EvalSession();
-    context.session.patchField(node, 'rules', emptyRules);
+    context.session.setField(node, 'rules', emptyRules);
 
     const evald = await node.eval(context);
 
@@ -345,7 +345,7 @@ describe('Rule', () => {
     });
 
     context.session = new EvalSession();
-    context.session.patchField(node, 'options', {
+    context.session.setField(node, 'options', {
       ...node.options,
       resolvedHoistWrapper: true
     });

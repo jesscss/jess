@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -67,7 +67,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
       const out = this.maybeClone(context) as JsImport;
       if (nextPath !== path) {
         if (context.session && out === this) {
-          patchField(this, 'path', nextPath, context);
+          setField(this, 'path', nextPath, context);
         } else {
           out.setData('path', nextPath);
         }

@@ -2,7 +2,7 @@ import { coll, decl, rules, ruleset, el, color, any } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { AssignmentType } from '../declaration.js';
-import { patchField } from '../util/session-helpers.js';
+import { setField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Declaration', () => {
@@ -49,7 +49,7 @@ describe('Declaration', () => {
     ]);
 
     context.session = new EvalSession();
-    context.session.patchField(rule, 'value', patchedValue);
+    context.session.setField(rule, 'value', patchedValue);
 
     expect(rule.toTrimmedString({ context })).toContain('{');
     expect(rule.requiredSemi).toBe(true);
@@ -65,7 +65,7 @@ describe('Declaration', () => {
     });
 
     context.session = new EvalSession();
-    context.session.patchField(rule, 'value', any('blue'));
+    context.session.setField(rule, 'value', any('blue'));
 
     expect(rule.toTrimmedString({ context })).toBe('color: blue');
     expect(rule.requiredSemi).toBe(false);
@@ -85,7 +85,7 @@ describe('Declaration', () => {
     ]);
 
     context.session = new EvalSession();
-    context.session.patchField(rule, 'value', patchedValue);
+    context.session.setField(rule, 'value', patchedValue);
 
     expect(node.toString({ context })).toBeString(`
       .x {
@@ -111,7 +111,7 @@ describe('Declaration', () => {
     ]);
 
     context.session = new EvalSession();
-    context.session.patchField(rule, 'value', any('blue'));
+    context.session.setField(rule, 'value', any('blue'));
 
     expect(node.toString({ context })).toBeString(`
       .x {
@@ -131,7 +131,7 @@ describe('Declaration', () => {
     ]);
 
     context.session = new EvalSession();
-    patchField(first, 'name', any('background', { role: 'property' }), context);
+    setField(first, 'name', any('background', { role: 'property' }), context);
 
     expect(node.toString({ context })).toBeString(`
       .x {
@@ -154,7 +154,7 @@ describe('Declaration', () => {
     ]);
 
     context.session = new EvalSession();
-    patchField(merged, 'name', any('color', { role: 'property' }), context);
+    setField(merged, 'name', any('color', { role: 'property' }), context);
 
     const evald = await node.eval(context);
     const css = evald.toString({ context });

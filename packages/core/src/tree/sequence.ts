@@ -7,7 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, patchField, setParent } from './util/session-helpers.js';
+import { getField, setField, setParent } from './util/session-helpers.js';
 
 export type SequenceOptions = {
   /**
@@ -98,7 +98,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         setParent(child, this, context);
       }
       if (this === this.sourceNode) {
-        patchField(this, 'value', value, context);
+        setField(this, 'value', value, context);
         return;
       }
     } else {

@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getParent, patchField } from '../util/session-helpers.js';
+import { getParent, setField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Call', () => {
@@ -99,7 +99,7 @@ describe('Call', () => {
       node
     ]);
 
-    patchField(node, 'args', list([patchedArg]), context);
+    setField(node, 'args', list([patchedArg]), context);
 
     const evald = await root.eval(context);
 
@@ -127,7 +127,7 @@ describe('Call', () => {
       node
     ]);
 
-    patchField(node, 'contentNode', any('patched'), context);
+    setField(node, 'contentNode', any('patched'), context);
 
     const evald = await root.eval(context);
 
@@ -153,7 +153,7 @@ describe('Call', () => {
       node
     ]);
 
-    patchField(arg, 'value', [num(3), num(4)], context);
+    setField(arg, 'value', [num(3), num(4)], context);
 
     const evald = await root.eval(context);
 
@@ -184,7 +184,7 @@ describe('Call', () => {
       args: list([num(1)])
     });
 
-    patchField(node, 'options', { silentFail: true }, context);
+    setField(node, 'options', { silentFail: true }, context);
 
     expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
     expect(node.toTrimmedString()).toBe('rgb(1)');
@@ -198,7 +198,7 @@ describe('Call', () => {
       args: list([num(1)])
     });
 
-    patchField(node, 'options', { silentFail: true }, context);
+    setField(node, 'options', { silentFail: true }, context);
 
     const evald = await node.eval(context);
 
@@ -455,7 +455,7 @@ describe('Call', () => {
       args: list([])
     });
 
-    patchField(node, 'options', { markImportant: true }, context);
+    setField(node, 'options', { markImportant: true }, context);
 
     const result = await node.eval(context);
 

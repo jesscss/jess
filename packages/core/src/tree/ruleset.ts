@@ -30,7 +30,7 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
-import { getField, getParent, patchField } from './util/session-helpers.js';
+import { getField, getParent, setField } from './util/session-helpers.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -198,7 +198,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       ownSelector: selector
     };
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'options', nextOptions, context);
+      setField(this, 'options', nextOptions, context);
     } else {
       this.options = nextOptions;
     }
@@ -218,7 +218,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _setHoistToRoot(value: boolean | undefined, context: Context): void {
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'hoistToRoot', value, context);
+      setField(this, 'hoistToRoot', value, context);
     } else {
       this.hoistToRoot = value;
     }
@@ -234,7 +234,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(selector, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'selector', selector, context);
+      setField(this, 'selector', selector, context);
     } else {
       this.selector = selector;
     }
@@ -286,7 +286,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(rules, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'rules', rules, context);
+      setField(this, 'rules', rules, context);
     } else {
       this.rules = rules;
     }
@@ -307,7 +307,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(guard, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'guard', guard, context);
+      setField(this, 'guard', guard, context);
     } else {
       this.guard = guard;
     }
@@ -332,7 +332,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(selector, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'selectorBeforeExtend', selector, context);
+      setField(this, 'selectorBeforeExtend', selector, context);
     } else {
       this.selectorBeforeExtend = selector;
     }
@@ -358,7 +358,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(selector, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, '_extendedSelector', selector, context);
+      setField(this, '_extendedSelector', selector, context);
     } else {
       this._extendedSelector = selector;
     }
@@ -809,7 +809,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!this._isPreEvaluated(context)) {
       /** @removal-target — node-copy-reduction: maybeClone → return this.
        * Selector composition, guard eval, and options writes should go
-       * through position.patchField. */
+       * through position.setField. */
       const node = this.maybeClone(context);
       node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules

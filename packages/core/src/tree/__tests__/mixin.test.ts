@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { getParent, getSourceParent, patchField, setParent, setSourceParent } from '../util/session-helpers.js';
+import { getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -400,10 +400,10 @@ describe('Mixin', () => {
         rules: canonicalRules
       });
 
-      patchField(mixinDef, 'name', any('.patched-mixin'), localContext);
-      patchField(mixinDef, 'params', patchedParams, localContext);
-      patchField(mixinDef, 'guard', patchedGuard, localContext);
-      patchField(mixinDef, 'rules', patchedRules, localContext);
+      setField(mixinDef, 'name', any('.patched-mixin'), localContext);
+      setField(mixinDef, 'params', patchedParams, localContext);
+      setField(mixinDef, 'guard', patchedGuard, localContext);
+      setField(mixinDef, 'rules', patchedRules, localContext);
 
       const preEvald = await mixinDef.preEval(localContext);
 
@@ -1092,7 +1092,7 @@ describe('Mixin', () => {
       const { root, arg } = buildRoot();
       context.root = root;
 
-      patchField(arg, 'value', [num(10), num(20)], context);
+      setField(arg, 'value', [num(10), num(20)], context);
 
       const evald = await root.eval(context);
       const css = evald.toString({ context });
@@ -1169,7 +1169,7 @@ describe('Mixin', () => {
       context.createSession();
       const live = buildRoot(context);
       context.root = live.root;
-      patchField(live.parent, 'selector', live.patched, context);
+      setField(live.parent, 'selector', live.patched, context);
 
       const evald = await live.root.eval(context);
       const css = evald.toString({ context });

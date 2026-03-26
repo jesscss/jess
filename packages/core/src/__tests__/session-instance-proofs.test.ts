@@ -38,7 +38,7 @@ import {
 } from '../index.js';
 import {
   getField,
-  patchField,
+  setField,
   setParent,
   getParent,
   getSourceParent,
@@ -153,14 +153,14 @@ describe('SI-5: Repeated import proof', () => {
 
     // Import 2: override @color to blue
     import2.bindings = new Map([['@color', new Keyword('blue')]]);
-    import2.patchField(colorVar, 'value', new Keyword('blue'));
+    import2.setField(colorVar, 'value', new Keyword('blue'));
     // Only the var declaration needs a shadow entry
     expect(import2.shadowCount).toBe(1);
     expect(import2.hasShadow(colorVar)).toBe(true);
 
     // Import 3: override @color to green
     import3.bindings = new Map([['@color', new Keyword('green')]]);
-    import3.patchField(colorVar, 'value', new Keyword('green'));
+    import3.setField(colorVar, 'value', new Keyword('green'));
     expect(import3.shadowCount).toBe(1);
     expect(import3.hasShadow(colorVar)).toBe(true);
 
@@ -177,7 +177,7 @@ describe('SI-5: Repeated import proof', () => {
     const root = session.createInstanceRoot(tree);
 
     // Only override the variable
-    root.patchField(colorVar, 'value', new Keyword('blue'));
+    root.setField(colorVar, 'value', new Keyword('blue'));
 
     // Everything else has zero shadow state
     expect(root.hasShadow(buttonDecl)).toBe(false);
@@ -201,7 +201,7 @@ describe('SI-5: Repeated import proof', () => {
 
     // Write to import2's instance
     ctx.instanceRoot = import2;
-    patchField(colorVar, 'value', new Keyword('blue'), ctx);
+    setField(colorVar, 'value', new Keyword('blue'), ctx);
 
     // Read from import1 — source-backed
     ctx.instanceRoot = import1;
@@ -227,8 +227,8 @@ describe('SI-5: Repeated import proof', () => {
     session.setDependency(buttonRuleset, { dependsOn: null });
 
     // Shadow both for testing
-    root.patchField(buttonDecl, 'value', new Keyword('blue'));
-    root.patchField(buttonRuleset, 'value', new Keyword('unused'));
+    root.setField(buttonDecl, 'value', new Keyword('blue'));
+    root.setField(buttonRuleset, 'value', new Keyword('unused'));
 
     const reach = root.computeDependencyReach(new Set([colorVar]));
 
@@ -301,7 +301,7 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(callB.shadowCount).toBe(0);
 
     // callC: only bg changes — only bgDecl needs shadow state
-    callC.patchField(bgDecl, 'value', new Keyword('blue'));
+    callC.setField(bgDecl, 'value', new Keyword('blue'));
     expect(callC.shadowCount).toBe(1);
     expect(callC.hasShadow(bgDecl)).toBe(true);
 
@@ -327,7 +327,7 @@ describe('SI-6: Repeated mixin/function proof', () => {
     session.setDependency(bgDecl, { dependsOn: new Set([bgParam]) });
 
     // Shadow the bg declaration
-    callC.patchField(bgDecl, 'value', new Keyword('blue'));
+    callC.setField(bgDecl, 'value', new Keyword('blue'));
 
     // Compute reach: only @bg changed
     const reach = callC.computeDependencyReach(new Set([bgParam]));
@@ -370,7 +370,7 @@ describe('SI-6: Repeated mixin/function proof', () => {
 
     // callC overrides background to blue
     ctx.instanceRoot = callC;
-    patchField(bgDecl, 'value', new Keyword('blue'), ctx);
+    setField(bgDecl, 'value', new Keyword('blue'), ctx);
 
     // callA reads source-backed value (a Reference node, not overridden)
     ctx.instanceRoot = callA;
@@ -1145,7 +1145,7 @@ describe('node._instanceRoot association', () => {
 
     // Write while instance root is active on context
     ctx.instanceRoot = root;
-    patchField(node, 'value', 'blue', ctx);
+    setField(node, 'value', 'blue', ctx);
 
     // Clear context instance root
     ctx.instanceRoot = undefined;
@@ -1167,8 +1167,8 @@ describe('node._instanceRoot association', () => {
     const rootB = session.createInstanceRoot(container);
 
     // Patch different values in each root
-    rootA.patchField(node, 'value', 'blue');
-    rootB.patchField(node, 'value', 'green');
+    rootA.setField(node, 'value', 'blue');
+    rootB.setField(node, 'value', 'green');
 
     // Node carries rootA
     node._instanceRoot = rootA;
@@ -1196,7 +1196,7 @@ describe('node._instanceRoot association', () => {
     ctx.session = session;
 
     // Write with no ctx.instanceRoot — goes to node._instanceRoot
-    patchField(node, 'value', 'green', ctx);
+    setField(node, 'value', 'green', ctx);
 
     // Verify it's in the instance root
     expect(root.getField(node, 'value')).toBe('green');

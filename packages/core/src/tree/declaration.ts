@@ -24,7 +24,7 @@ import {
   getDependency,
   getField,
   mergeDependencies,
-  patchField,
+  setField,
   setDependency
 } from './util/session-helpers.js';
 
@@ -225,7 +225,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override preEval(context: Context): MaybePromise<this> {
     /** @removal-target — node-copy-reduction: maybeClone → return this.
-     * Options changes should go through position.patchField(this, 'options', ...) */
+     * Options changes should go through position.setField(this, 'options', ...) */
     let node = this.maybeClone(context);
     node._setPreEvaluated(true, context);
     // Index should already be assigned by parent Rules
@@ -275,7 +275,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            patchField(node, 'value', value, context);
+            setField(node, 'value', value, context);
             break;
           }
           case AssignmentType.Add: {
@@ -283,7 +283,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              patchField(node, 'value', new List([
+              setField(node, 'value', new List([
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
@@ -294,7 +294,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 value
               ]), context);
             } else {
-              patchField(node, 'value', new Operation([
+              setField(node, 'value', new Operation([
                 new Reference({ key }, { type }),
                 '+',
                 value
@@ -303,7 +303,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             break;
           }
           case AssignmentType.CondAssign: {
-            patchField(node, 'value', new Reference({ key }, {
+            setField(node, 'value', new Reference({ key }, {
               type,
               fallbackValue: value
             }), context);
@@ -312,16 +312,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         nextOptions.normalizedFromAssign = normalizedAssign;
         nextOptions.assign = AssignmentType.Default;
-        patchField(node, 'options', nextOptions, context);
+        setField(node, 'options', nextOptions, context);
       }
       const out = node._getValueNode(context).preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          patchField(node, 'value', value, context);
+          setField(node, 'value', value, context);
           return node;
         });
       }
-      patchField(node, 'value', out, context);
+      setField(node, 'value', out, context);
       return node;
     };
 
@@ -329,12 +329,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          patchField(node, 'name', key, context);
+          setField(node, 'name', key, context);
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      patchField(node, 'name', key, context);
+      setField(node, 'name', key, context);
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);
@@ -504,15 +504,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            patchField(node, 'value', new Nil(), context);
+            setField(node, 'value', new Nil(), context);
             return;
           }
           if (rest.length === 1) {
-            patchField(node, 'value', cloneWithDependency(rest[0]!), context);
+            setField(node, 'value', cloneWithDependency(rest[0]!), context);
             return;
           }
           const clonedRest = rest.map(item => cloneWithDependency(item));
-          patchField(node, 'value', new List(clonedRest), context);
+          setField(node, 'value', new List(clonedRest), context);
           const dependency = mergeDependencies(clonedRest, context);
           if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
             setDependency(node._getValueNode(context), {
@@ -545,12 +545,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              patchField(node, 'value', newValue, context);
+              setField(node, 'value', newValue, context);
               normalizeMergedLeadingPlaceholder();
               copyDependency(newValue, node._getValueNode(context));
               // Merge !important from referenced declarations
               if (context.hasImportantSource && !node._getImportant(context)) {
-                patchField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+                setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
@@ -563,14 +563,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          patchField(node, 'value', maybeNewValue as Node, context);
+          setField(node, 'value', maybeNewValue as Node, context);
           normalizeMergedLeadingPlaceholder();
           copyDependency(maybeNewValue as Node, node._getValueNode(context));
           const expanded = expandNestedPropertyDeclaration(node);
           if (isThenable(expanded)) {
             return (expanded as Promise<Declaration | Rules | Nil>).then((resolvedExpanded) => {
               if (context.hasImportantSource && !node._getImportant(context) && isNode(resolvedExpanded, N.Declaration)) {
-                patchField(resolvedExpanded as Declaration, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+                setField(resolvedExpanded as Declaration, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               if (context.hasImportantSource) {
                 context.popImportantSource();
@@ -586,7 +586,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           // Merge !important from referenced declarations
           if (context.hasImportantSource && !node._getImportant(context)) {
-            patchField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+            setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
           }
           // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {

@@ -9,7 +9,7 @@ import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { N } from './node-type.js';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 /**
  * @example
@@ -53,7 +53,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       this.adopt(child, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'value', value, context);
+      setField(this, 'value', value, context);
     } else {
       this.value = value;
     }

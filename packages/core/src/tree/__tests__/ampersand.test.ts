@@ -6,7 +6,7 @@ import {
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
-import { patchField } from '../util/session-helpers.js';
+import { setField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Ampersand', () => {
@@ -378,7 +378,7 @@ describe('Ampersand', () => {
     const node = amp({ selectorContainer: parent as any });
     node.addFlag(F_IMPLICIT_AMPERSAND);
 
-    patchField(parent, 'selector', el('.beta'), context);
+    setField(parent, 'selector', el('.beta'), context);
 
     expect(node.valueOf(context)).toBe('.beta');
     expect(node.valueOf()).toBe('.alpha');
@@ -403,7 +403,7 @@ describe('Ampersand', () => {
     const node = amp({ selectorContainer: parent as any });
     node.keySetLibrary = context.selectorBits;
 
-    patchField(parent, 'selector', patched, context);
+    setField(parent, 'selector', patched, context);
 
     expect(node.valueOf(context)).toBe('.beta');
     expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha']))).toBe(true);
@@ -430,8 +430,8 @@ describe('Ampersand', () => {
     const node = amp({ selectorContainer: parent as any });
     node.keySetLibrary = contextA.selectorBits;
 
-    patchField(parent, 'selector', beta, contextA);
-    patchField(parent, 'selector', gamma, contextB);
+    setField(parent, 'selector', beta, contextA);
+    setField(parent, 'selector', gamma, contextB);
 
     expect(node.valueOf(contextA)).toBe('.beta');
     expect(node.valueOf(contextB)).toBe('.gamma');
@@ -460,8 +460,8 @@ describe('Ampersand', () => {
     const node = amp({ selectorContainer: parent as any });
     node.keySetLibrary = contextA.selectorBits;
 
-    patchField(parent, 'selector', beta, contextA);
-    patchField(parent, 'selector', gamma, contextB);
+    setField(parent, 'selector', beta, contextA);
+    setField(parent, 'selector', gamma, contextB);
 
     expect(node.getKeySet(contextA).equals(contextA.selectorBits.getBitset(['.beta']))).toBe(true);
     expect(node.getKeySet(contextB).equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(true);

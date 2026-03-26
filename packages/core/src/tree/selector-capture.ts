@@ -3,7 +3,7 @@ import { Node, defineType, type OptionalLocation, type NodeOptions, type TreeCon
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 export interface SelectorCapture extends Node<Selector> {
   type: 'SelectorCapture';
@@ -37,7 +37,7 @@ export class SelectorCapture extends Node<Selector> {
   private _setValue(value: Selector, context?: Context): void {
     if (context?.session && this.sourceNode === this) {
       this.adopt(value, context);
-      patchField(this, 'value', value, context);
+      setField(this, 'value', value, context);
       return;
     }
     this.value = value;

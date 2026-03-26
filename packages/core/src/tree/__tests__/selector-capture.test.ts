@@ -3,7 +3,7 @@ import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { Selector } from '../selector.js';
 import { el, selcap, sellist } from '../index.js';
-import { patchField } from '../util/session-helpers.js';
+import { setField } from '../util/session-helpers.js';
 
 class PreEvalReplacingSelector extends Selector<string> {
   static override childKeys = [] as const;
@@ -42,7 +42,7 @@ describe('SelectorCapture', () => {
     context.createSession();
     const node = selcap(el('.a'));
 
-    patchField(node, 'value', sellist([el('.x'), el('.y')]), context);
+    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
 
     expect(node.toTrimmedString({ context })).toBe('*[.x,\n.y]');
     expect(node.toTrimmedString()).toBe('*[.a]');
@@ -53,7 +53,7 @@ describe('SelectorCapture', () => {
     context.createSession();
     const node = selcap(el('.a'));
 
-    patchField(node, 'value', sellist([el('.x'), el('.y')]), context);
+    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
 
     expect(node.valueOf()).toBe('.a');
     expect(node.toTrimmedString({ context })).toBe('*[.x,\n.y]');
@@ -65,7 +65,7 @@ describe('SelectorCapture', () => {
     context.createSession();
     const node = selcap(el('.a'));
 
-    patchField(node, 'value', sellist([el('.x'), el('.y')]), context);
+    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
 
     const result = await node.eval(context);
     expect(result.toTrimmedString({ context })).toBe('.x,\n.y');

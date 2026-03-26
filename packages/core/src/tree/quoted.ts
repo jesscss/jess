@@ -4,7 +4,7 @@ import { Node, F_STATIC, F_NON_STATIC, defineType, type OptionalLocation, type T
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -57,7 +57,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       this.adopt(value, context);
     }
     if (context?.session && this.sourceNode === this) {
-      patchField(this, 'value', value as string | Any | Interpolated, context);
+      setField(this, 'value', value as string | Any | Interpolated, context);
       return;
     }
     this.value = value as string | Any | Interpolated;

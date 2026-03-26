@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -175,7 +175,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       this.adopt(name);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'name', name, context);
+      setField(this, 'name', name, context);
     } else {
       this.name = name;
     }
@@ -191,7 +191,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   private _setRulesContainer(rules: Rules, context: Context): void {
     this.adopt(rules, context);
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'rules', rules, context);
+      setField(this, 'rules', rules, context);
     } else {
       this.rules = rules;
     }
@@ -259,7 +259,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
     /** @removal-target — node-copy-reduction: maybeClone → return this.
-     * Name interpolation result should go through position.patchField. */
+     * Name interpolation result should go through position.setField. */
     let node = this.maybeClone(context);
     node._setPreEvaluated(true, context);
     node.sourceNode ??= this;

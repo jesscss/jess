@@ -896,7 +896,7 @@ export abstract class Node<
   }
 
   protected _setPreEvaluated(value: boolean, context: Context): void {
-    context.ensurePosition().patchField(this, '_preEvaluated', value);
+    context.ensurePosition().setField(this, '_preEvaluated', value);
   }
 
   protected _isEvaluated(context: Context): boolean {
@@ -908,7 +908,7 @@ export abstract class Node<
   }
 
   protected _setEvaluated(value: boolean, context: Context): void {
-    context.ensurePosition().patchField(this, '_evaluated', value);
+    context.ensurePosition().setField(this, '_evaluated', value);
   }
 
   /**
@@ -1073,7 +1073,7 @@ export abstract class Node<
         return (out as Promise<Node>).then((result) => {
           if (result !== value) {
             if (pos && typeof key === 'string') {
-              pos.patchField(this, key, result);
+              pos.setField(this, key, result);
             } else {
               collection[key] = result;
             }
@@ -1086,7 +1086,7 @@ export abstract class Node<
       }
       if (out !== value) {
         if (pos && typeof key === 'string') {
-          pos.patchField(this, key, out);
+          pos.setField(this, key, out);
         } else {
           collection[key] = out as Node;
         }
@@ -1140,7 +1140,7 @@ export abstract class Node<
           const result = func(field, idx++);
           if (result !== field) {
             if (pos) {
-              pos.patchField(this, key!, result);
+              pos.setField(this, key!, result);
             } else {
               (this as any)[key!] = result;
             }

@@ -10,7 +10,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, isEvaluated, patchField, setEvaluated } from './util/session-helpers.js';
+import { getField, isEvaluated, setField, setEvaluated } from './util/session-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -272,7 +272,7 @@ export class Interpolated<
     if (isThenable(maybe)) {
       return maybe.then(() => {
         if (context.session) {
-          patchField(node, 'replacements', replacements, context);
+          setField(node, 'replacements', replacements, context);
         } else {
           node.setData('replacements', replacements);
         }
@@ -280,7 +280,7 @@ export class Interpolated<
       });
     }
     if (context.session) {
-      patchField(node, 'replacements', replacements, context);
+      setField(node, 'replacements', replacements, context);
     } else {
       node.setData('replacements', replacements);
     }

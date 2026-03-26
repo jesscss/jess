@@ -185,7 +185,7 @@ describe('reference', () => {
       ]);
 
       context.session = new EvalSession();
-      context.session.patchField(lookup, 'key', 'bar');
+      context.session.setField(lookup, 'key', 'bar');
       const preEvald = await scope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
@@ -218,7 +218,7 @@ describe('reference', () => {
       ]);
 
       context.session = new EvalSession();
-      context.session.patchField(
+      context.session.setField(
         lookup,
         'target',
         ref({ key: '.theme-b' }, { type: 'mixin-ruleset' })

@@ -10,7 +10,7 @@ import { list } from './list.js';
 import {
   getField,
   mergeDependencies,
-  patchField,
+  setField,
   setDependency,
   setEvaluated
 } from './util/session-helpers.js';
@@ -80,7 +80,7 @@ export class Operation extends Node<OperationValue> {
   private _setLeft(left: Node, context: Context): void {
     this.adopt(left);
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'left', left, context);
+      setField(this, 'left', left, context);
     } else {
       this.left = left;
     }
@@ -95,7 +95,7 @@ export class Operation extends Node<OperationValue> {
   private _setRight(right: Node, context: Context): void {
     this.adopt(right);
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'right', right, context);
+      setField(this, 'right', right, context);
     } else {
       this.right = right;
     }

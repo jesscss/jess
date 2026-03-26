@@ -32,7 +32,7 @@ import { Context, TreeContext } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getChildren, getIndex, getParent, getSourceParent, markScopeDirty, patchField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/session-helpers.js';
+import { getChildren, getIndex, getParent, getSourceParent, markScopeDirty, setField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/session-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -450,7 +450,7 @@ describe('Rules', () => {
         const node = rules([nested, sibling]);
         const patchedSelector = sel([el('.patched')]) as any;
 
-        patchField(nested, 'selector', patchedSelector, ctx);
+        setField(nested, 'selector', patchedSelector, ctx);
 
         const wrapper = node.cloneDetachedMaterializedWrapper(ctx);
         wrapper.options.local = true;

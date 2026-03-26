@@ -5,7 +5,7 @@ import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Context } from '../context.js';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**
@@ -40,7 +40,7 @@ export class Url extends Node<Quoted | Any> {
       this.adopt(value, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'value', value, context);
+      setField(this, 'value', value, context);
     } else {
       this.value = value;
     }

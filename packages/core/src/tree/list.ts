@@ -5,7 +5,7 @@ import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { getField, patchField, setParent } from './util/session-helpers.js';
+import { getField, setField, setParent } from './util/session-helpers.js';
 
 export type ListOptions = {
   /**
@@ -72,7 +72,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
         setParent(child, this, context);
       }
       if (this === this.sourceNode) {
-        patchField(this, 'value', value, context);
+        setField(this, 'value', value, context);
         return;
       }
     } else {

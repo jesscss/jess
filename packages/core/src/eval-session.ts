@@ -98,7 +98,7 @@ export class EvalPosition {
   }
 
   /** Patch a field on a canonical node at this position */
-  patchField(node: Node, field: string, value: unknown): void {
+  setField(node: Node, field: string, value: unknown): void {
     let patch = this.patches.get(node);
     if (!patch) {
       patch = {};
@@ -262,7 +262,7 @@ export class SessionInstanceRoot {
 
   // -- Field patch API (instance-local) --
 
-  patchField(node: Node, key: string, value: unknown): void {
+  setField(node: Node, key: string, value: unknown): void {
     const entry = this.ensureShadow(node);
     if (!entry.fieldPatches) {
       entry.fieldPatches = {};
@@ -396,7 +396,7 @@ export class EvalSession {
    * Store a field override for a node in this session.
    * The canonical node is not mutated.
    */
-  patchField(node: Node, key: string, value: unknown): void {
+  setField(node: Node, key: string, value: unknown): void {
     let patch = this.patches.get(node);
     if (!patch) {
       patch = {};

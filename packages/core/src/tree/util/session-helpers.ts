@@ -18,11 +18,11 @@ function resolveInstanceRoot(node: Node, ctx: Context): SessionInstanceRoot | un
  *
  * Architecture: two layers only.
  *   Read:  position.getField(node, key) ?? node[key]
- *   Write: context.ensurePosition().patchField(node, key, value)
+ *   Write: context.ensurePosition().setField(node, key, value)
  *
  * Legacy layers (instanceRoot, session) are preserved temporarily in
  * getField for backward compatibility during migration but will be
- * removed. patchField and setParent already route through position only.
+ * removed. setField and setParent already route through position only.
  */
 
 /**
@@ -62,13 +62,13 @@ export function getField<T = unknown>(
  * `ensurePosition()` lazily creates one if needed.
  * Never falls through to canonical mutation.
  */
-export function patchField(
+export function setField(
   node: Node,
   key: string,
   value: unknown,
   ctx: Context
 ): void {
-  ctx.ensurePosition().patchField(node, key, value);
+  ctx.ensurePosition().setField(node, key, value);
 }
 
 export function getDependency(
@@ -184,7 +184,7 @@ export function setParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  ctx.ensurePosition().patchField(node, 'parent', parent);
+  ctx.ensurePosition().setField(node, 'parent', parent);
 }
 
 /**
@@ -219,7 +219,7 @@ export function setEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  ctx.ensurePosition().patchField(node, '_evaluated', value);
+  ctx.ensurePosition().setField(node, '_evaluated', value);
 }
 
 /**
@@ -254,7 +254,7 @@ export function setPreEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  ctx.ensurePosition().patchField(node, '_preEvaluated', value);
+  ctx.ensurePosition().setField(node, '_preEvaluated', value);
 }
 
 /**
@@ -289,7 +289,7 @@ export function setIndex(
   index: number,
   ctx: Context
 ): void {
-  ctx.ensurePosition().patchField(node, 'index', index);
+  ctx.ensurePosition().setField(node, 'index', index);
 }
 
 /**
@@ -324,7 +324,7 @@ export function setSourceParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  ctx.ensurePosition().patchField(node, 'sourceParent', parent);
+  ctx.ensurePosition().setField(node, 'sourceParent', parent);
 }
 
 /**
@@ -338,7 +338,7 @@ export function setRuntimeState(
   const pos = ctx.ensurePosition();
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined || Object.prototype.hasOwnProperty.call(patch, key)) {
-      pos.patchField(node, key, value);
+      pos.setField(node, key, value);
     }
   }
 }
@@ -371,7 +371,7 @@ export function setChildren(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
-  ctx.ensurePosition().patchField(rules, 'value', [...nodes]);
+  ctx.ensurePosition().setField(rules, 'value', [...nodes]);
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);
   }
@@ -396,7 +396,7 @@ export function setChildAt(
     return;
   }
   currentChildren[index] = node;
-  pos.patchField(rules, 'value', currentChildren);
+  pos.setField(rules, 'value', currentChildren);
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);
   }
@@ -414,7 +414,7 @@ export function appendChildren(
   const current = pos.hasField(rules, 'value')
     ? pos.getField(rules, 'value') as Node[]
     : [...rules.value];
-  pos.patchField(rules, 'value', [...current, ...nodes]);
+  pos.setField(rules, 'value', [...current, ...nodes]);
   markScopeDirty(rules, ctx);
 }
 
@@ -430,7 +430,7 @@ export function prependChildren(
   const current = pos.hasField(rules, 'value')
     ? pos.getField(rules, 'value') as Node[]
     : [...rules.value];
-  pos.patchField(rules, 'value', [...nodes, ...current]);
+  pos.setField(rules, 'value', [...nodes, ...current]);
   markScopeDirty(rules, ctx);
 }
 

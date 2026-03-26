@@ -15,7 +15,7 @@ import { F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
-import { getChildren, getDependency, getField, getParent, getSourceParent, mergeDependencies, patchField, setChildren, setDependency, setParent, setSourceParent } from './session-helpers.js';
+import { getChildren, getDependency, getField, getParent, getSourceParent, mergeDependencies, setField, setChildren, setDependency, setParent, setSourceParent } from './session-helpers.js';
 import type { Mixin } from '../mixin.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { cast } from './cast.js';
@@ -146,7 +146,7 @@ export function bindMixinParamValue(
   value: Node,
   context: Context
 ): void {
-  patchField(param, 'value', value, context);
+  setField(param, 'value', value, context);
 }
 
 /**
@@ -372,7 +372,7 @@ export function prepareMixinCandidateInvocation(
     rules._instanceRoot = instanceRoot;
   }
 
-  patchField(rules, 'options', {
+  setField(rules, 'options', {
     ...rules.options,
     rulesVisibility: {
       ...(rules.options.rulesVisibility ?? {}),
@@ -994,7 +994,7 @@ async function preparePatternOperand(node: Node, context: Context): Promise<Node
  * @removal-target — node-copy-reduction (copy/freeze in param binding)
  * The copy(true, freezeChildren) calls on bound values create full deep
  * copies of every arg value per candidate. With positions, bind through
- * position.patchField instead — no copies needed.
+ * position.setField instead — no copies needed.
  * The params.copy(true) and mixin.clone(false)/mixin.copy() also create
  * objects that positions can eliminate.
  */

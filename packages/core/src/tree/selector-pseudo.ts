@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 export type PseudoSelectorValue = {
   /**
@@ -65,7 +65,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       this.adopt(arg, context);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'arg', arg, context);
+      setField(this, 'arg', arg, context);
     } else {
       this.arg = arg;
     }

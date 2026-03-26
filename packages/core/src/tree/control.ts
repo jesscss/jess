@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalSession } from '../eval-session.js';
-import { getChildren, getField, patchField, setParent } from './util/session-helpers.js';
+import { getChildren, getField, setField, setParent } from './util/session-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -120,7 +120,7 @@ function getControlDeclarationAssignType(node: Node, context: Context): Assignme
 function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
   node.adopt(value, context);
   if (context.session && !context.session.resetEvalState) {
-    patchField(node, 'value', value, context);
+    setField(node, 'value', value, context);
     return;
   }
   node.setData('value', value);

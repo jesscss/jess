@@ -10,7 +10,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorMatch } from './util/selector-match-core.js';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 export interface SelectorList {
   type: 'SelectorList';
@@ -50,7 +50,7 @@ export class SelectorList extends Selector<Selector[]> {
       }
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'value', value, context);
+      setField(this, 'value', value, context);
     } else {
       this.value = value;
     }

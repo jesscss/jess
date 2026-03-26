@@ -17,7 +17,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getField, getParent, patchField } from '../util/session-helpers.js';
+import { getField, getParent, setField } from '../util/session-helpers.js';
 import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { processExtends } from '../util/extend-roots.js';
 
@@ -209,9 +209,9 @@ describe('Rules extend', () => {
         flag: ExtendFlag.Exact
       });
 
-      patchField(node, 'target', el('.other'), context);
-      patchField(node, 'namespace', 'patched', context);
-      patchField(node, 'flag', ExtendFlag.All, context);
+      setField(node, 'target', el('.other'), context);
+      setField(node, 'namespace', 'patched', context);
+      setField(node, 'flag', ExtendFlag.All, context);
 
       const cloned = node.clone(false, undefined, context);
 
@@ -232,7 +232,7 @@ describe('Rules extend', () => {
       context.session = new EvalSession();
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
-      patchField(extension, 'target', el('.other'), context);
+      setField(extension, 'target', el('.other'), context);
 
       await extension.evalNode(context);
 
@@ -251,7 +251,7 @@ describe('Rules extend', () => {
       context.session = new EvalSession();
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
-      patchField(extension, 'namespace', 'patched', context);
+      setField(extension, 'namespace', 'patched', context);
 
       await extension.evalNode(context);
 
@@ -266,7 +266,7 @@ describe('Rules extend', () => {
       });
 
       context.session = new EvalSession();
-      patchField(extension, 'target', el('.other'), context);
+      setField(extension, 'target', el('.other'), context);
 
       expect(extension.valueOf(context)).toBe('$extend .other');
       expect(extension.valueOf()).toBe('$extend .base');
@@ -287,7 +287,7 @@ describe('Rules extend', () => {
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
       context.rulesetFrames.push(frame);
-      patchField(extension, 'selector', el('.patched'), context);
+      setField(extension, 'selector', el('.patched'), context);
 
       await extension.evalNode(context);
 
@@ -859,7 +859,7 @@ describe('Rules extend', () => {
         end
       ]);
 
-      patchField(base, 'rules', patchedBaseRules, context);
+      setField(base, 'rules', patchedBaseRules, context);
 
       const evald = await node.eval(context);
       const css = evald.toString({ context });
@@ -900,7 +900,7 @@ describe('Rules extend', () => {
       });
       const node = rules([base, end]);
 
-      patchField(base, 'selector', sellist([sel([el('.beta')])]), context);
+      setField(base, 'selector', sellist([sel([el('.beta')])]), context);
 
       const evald = await node.eval(context);
       const css = evald.toString({ context });

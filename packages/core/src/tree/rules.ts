@@ -32,7 +32,7 @@ import {
   getField,
   getParent,
   getSourceParent,
-  patchField,
+  setField,
   setChildren,
   setChildAt,
   setIndex,
@@ -181,7 +181,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context?: Context
   ): void {
     if (context?.session && this === this.sourceNode) {
-      patchField(this, 'options', options, context);
+      setField(this, 'options', options, context);
       return;
     }
     this.options = options;
@@ -1651,7 +1651,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 const children = context.position.getField(rules, 'value') as Node[] | undefined
                   ?? [...rules.value];
                 children[idx] = result;
-                context.position.patchField(rules, 'value', children);
+                context.position.setField(rules, 'value', children);
               }
               rules._setChildAt(idx, result, context, false);
               queue[q] = [idx, result];
@@ -1742,7 +1742,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
     const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
       if (useSessionFields && context) {
-        patchField(node, key, value, context);
+        setField(node, key, value, context);
         return;
       }
       node.setData(key, value);

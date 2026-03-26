@@ -1,7 +1,7 @@
 import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getParent, patchField } from '../util/session-helpers.js';
+import { getParent, setField } from '../util/session-helpers.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -25,7 +25,7 @@ describe('Expression', () => {
     const rule = expr(any('foo'));
     context.session = new EvalSession({ resetEvalState: true });
 
-    patchField(rule, 'value', shared, context);
+    setField(rule, 'value', shared, context);
     const preEvald = await rule.preEval(context);
 
     expect(preEvald).not.toBe(rule);

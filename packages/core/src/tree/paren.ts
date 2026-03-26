@@ -6,7 +6,7 @@ import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, patchField, setParent } from './util/session-helpers.js';
+import { getField, setField, setParent } from './util/session-helpers.js';
 
 export type ParenOptions = {
   escaped?: boolean;
@@ -124,7 +124,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         let node = this.maybeClone(context);
         if (node === this && context.session && !context.session.resetEvalState) {
           const prevValue = this._getValue(context);
-          patchField(node, 'value', value, context);
+          setField(node, 'value', value, context);
           if (prevValue instanceof Node && prevValue !== value) {
             setParent(prevValue, undefined, context);
           }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { any, paren, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { patchField } from '../util/session-helpers.js';
+import { setField } from '../util/session-helpers.js';
 
 describe('Paren', () => {
   it('serializes wrapped values on the public render path', () => {
@@ -16,7 +16,7 @@ describe('Paren', () => {
     ctx.session = new EvalSession();
     const node = paren(any('red'));
 
-    patchField(node, 'value', any('blue'), ctx);
+    setField(node, 'value', any('blue'), ctx);
 
     expect(node.toTrimmedString({ context: ctx })).toBe('(blue)');
     expect(node.toTrimmedString()).toBe('(red)');
@@ -27,7 +27,7 @@ describe('Paren', () => {
     ctx.session = new EvalSession();
     const node = paren(any('red'));
 
-    patchField(node, 'options', { escaped: true }, ctx);
+    setField(node, 'options', { escaped: true }, ctx);
 
     expect(node.toTrimmedString({ context: ctx })).toBe('~(red)');
     expect(node.toTrimmedString()).toBe('(red)');
@@ -62,7 +62,7 @@ describe('Paren', () => {
     ctx.root = root;
     ctx.rulesContext = root;
 
-    patchField(node, 'options', { escaped: true }, ctx);
+    setField(node, 'options', { escaped: true }, ctx);
 
     const evald = await node.eval(ctx);
 

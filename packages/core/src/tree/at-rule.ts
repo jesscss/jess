@@ -12,7 +12,7 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
-import { getField, getParent, patchField } from './util/session-helpers.js';
+import { getField, getParent, setField } from './util/session-helpers.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -105,7 +105,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   private _setName(name: Any<'atkeyword'> | Interpolated<'atkeyword'>, context: Context): void {
     this.adopt(name);
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'name', name, context);
+      setField(this, 'name', name, context);
     } else {
       this.name = name;
     }
@@ -123,7 +123,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       this.adopt(prelude);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'prelude', prelude, context);
+      setField(this, 'prelude', prelude, context);
     } else {
       this.prelude = prelude;
     }
@@ -141,7 +141,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       this.adopt(rules);
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'rules', rules, context);
+      setField(this, 'rules', rules, context);
     } else {
       this.rules = rules;
     }
@@ -183,7 +183,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!this._isPreEvaluated(context)) {
       /** @removal-target — node-copy-reduction: maybeClone → return this.
        * preEval writes (hoistToRoot, frames, ownSelector) should go through
-       * position.patchField. sourceNode assignment becomes unnecessary. */
+       * position.setField. sourceNode assignment becomes unnecessary. */
       const node = this.maybeClone(context);
       node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules
@@ -393,7 +393,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (hasRulesetParent) {
         // Mark for hoisting - this will render at root level but in-place
         if (context.position) {
-          context.position.patchField(node, 'hoistToRoot', true);
+          context.position.setField(node, 'hoistToRoot', true);
         } else {
           node.hoistToRoot = true;
         }
@@ -406,7 +406,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {
       if (context.position) {
-        context.position.patchField(node, 'frames', [...context.frames]);
+        context.position.setField(node, 'frames', [...context.frames]);
       } else {
         node.frames = [...context.frames];
       }
@@ -498,7 +498,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (rules) {
           if (context.opts.collapseNesting) {
             if (context.position) {
-              context.position.patchField(node, 'hoistToRoot', true);
+              context.position.setField(node, 'hoistToRoot', true);
             } else {
               node.hoistToRoot = true;
             }

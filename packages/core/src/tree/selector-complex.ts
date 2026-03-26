@@ -14,7 +14,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { getField, patchField } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -66,7 +66,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     }
     if (context.session && this === this.sourceNode) {
-      patchField(this, 'value', value, context);
+      setField(this, 'value', value, context);
     } else {
       this.value = value;
     }
@@ -157,7 +157,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
             : originalOnly;
           only.inherit(selector);
           if (getField<boolean | undefined>(selector, 'hoistToRoot', context)) {
-            patchField(only, 'hoistToRoot', true, context);
+            setField(only, 'hoistToRoot', true, context);
           }
           return only;
         }

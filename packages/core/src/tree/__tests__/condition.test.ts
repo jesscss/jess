@@ -1,7 +1,7 @@
 import { amp, bool, co, condition, dimension, el, num, rules, ruleset, sel, sellist, seq } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { patchField } from '../util/session-helpers.js';
+import { setField } from '../util/session-helpers.js';
 
 let context: Context;
 
@@ -128,10 +128,10 @@ describe('Condition', () => {
         bool(false)
       ]);
 
-      patchField(node, 'left', bool(false), context);
-      patchField(node, 'operator', 'or', context);
-      patchField(node, 'right', bool(true), context);
-      patchField(node, 'negate', true, context);
+      setField(node, 'left', bool(false), context);
+      setField(node, 'operator', 'or', context);
+      setField(node, 'right', bool(true), context);
+      setField(node, 'negate', true, context);
 
       expect(node.toTrimmedString({ context })).toBe('not (false or true)');
       expect(node.toTrimmedString()).toBe('(true = false)');
@@ -149,9 +149,9 @@ describe('Condition', () => {
         bool(false)
       ]);
 
-      patchField(node, 'left', bool(false), context);
-      patchField(node, 'operator', 'or', context);
-      patchField(node, 'right', bool(true), context);
+      setField(node, 'left', bool(false), context);
+      setField(node, 'operator', 'or', context);
+      setField(node, 'right', bool(true), context);
 
       const evald = await node.eval(context);
 
@@ -168,7 +168,7 @@ describe('Condition', () => {
         bool(true)
       ]);
 
-      patchField(node, 'negate', true, context);
+      setField(node, 'negate', true, context);
 
       const evald = await node.eval(context);
 
@@ -219,7 +219,7 @@ describe('Condition', () => {
         right
       ]);
 
-      patchField(parent, 'selector', patched, context);
+      setField(parent, 'selector', patched, context);
 
       const evaldLeft = await left.eval(context);
       const evaldRight = await right.eval(context);
@@ -241,7 +241,7 @@ describe('Condition', () => {
         right
       ]);
 
-      patchField(left, 'value', [num(30), num(40)], context);
+      setField(left, 'value', [num(30), num(40)], context);
 
       expect(left.compare(right)).toBe(-1);
       expect(left.compare(right, context)).toBe(0);
