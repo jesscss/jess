@@ -239,6 +239,13 @@ export class Context {
    * this also enables call-time variable resolution ($~variable).
    */
   rulesContext!: Rules;
+  /**
+   * Internal transient lookup-scope override.
+   *
+   * Used by direct mixin/function invocation so canonical bodies can evaluate
+   * against a prepared outer scope without changing the public node API.
+   */
+  lookupScope?: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;
   /** Set so that we can do ruleset selector lookup for extend */

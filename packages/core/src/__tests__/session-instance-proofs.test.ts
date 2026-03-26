@@ -548,7 +548,7 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(getChildren(scope, ctx)).toEqual(scopeChildren);
   });
 
-  it('characterizes prepareMixinInvocationScope as still needing canonical-body lookup plumbing', async () => {
+  it('withMixinLookupScope lets canonical body eval write resolved values through the session layer without cloning', async () => {
     const fgParam = vardecl({ name: 'fg', value: nil() });
     const bgParam = vardecl({ name: 'bg', value: nil() });
     const bodyRoot = rules([]);
@@ -575,13 +575,14 @@ describe('SI-6: Repeated mixin/function proof', () => {
       ctx
     );
 
-    const evaldBody = await body.eval(ctx);
+    await withMixinLookupScope(paramScope, ctx, () => body.eval(ctx));
 
     expect(paramScope).toBeDefined();
-    expect(String(evaldBody)).toContain('color: $fg;');
-    expect(String(evaldBody)).toContain('background: $bg;');
+    expect(getField<Node>(colorDecl, 'value', ctx).toTrimmedString()).toBe('red');
+    expect(getField<Node>(bgDecl, 'value', ctx).toTrimmedString()).toBe('blue');
     expect(body.parent).toBeUndefined();
     expect(getParent(body, ctx)).toBe(paramScope);
+    expect(ctx.lookupScope).toBeUndefined();
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

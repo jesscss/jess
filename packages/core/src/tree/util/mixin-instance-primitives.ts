@@ -190,17 +190,22 @@ export function withMixinLookupScope<T>(
   fn: () => MaybePromise<T>
 ): MaybePromise<T> {
   const previousRulesContext = context.rulesContext;
+  const previousLookupScope = context.lookupScope;
+  context.lookupScope = scope;
   context.rulesContext = scope;
   try {
     const out = fn();
     if (isThenable(out)) {
       return (out as Promise<T>).finally(() => {
+        context.lookupScope = previousLookupScope;
         context.rulesContext = previousRulesContext;
       });
     }
+    context.lookupScope = previousLookupScope;
     context.rulesContext = previousRulesContext;
     return out;
   } catch (error) {
+    context.lookupScope = previousLookupScope;
     context.rulesContext = previousRulesContext;
     throw error;
   }

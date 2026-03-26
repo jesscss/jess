@@ -1475,7 +1475,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     // Always set root if not set - needed for extends to work with API-created Rules
     context.root ??= rules;
-    context.rulesContext = rules;
+    context.rulesContext = context.lookupScope ?? rules;
   }
 
   /** Assign depth-first document order to every Ruleset under the given Rules (single walk, source order). */
