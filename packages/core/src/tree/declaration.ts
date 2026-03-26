@@ -100,9 +100,9 @@ export interface Declaration {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   static override childKeys = ['name', 'value', 'important'] as const;
 
-  name!: NameValue;
-  value!: Node;
-  important: Any<'flag'> | undefined;
+  readonly name!: NameValue;
+  readonly value!: Node;
+  readonly important: Any<'flag'> | undefined;
 
   constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -163,11 +163,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (name instanceof Node) {
       this.adopt(name, context);
     }
-    if (context.session && this === this.sourceNode) {
-      patchField(this, 'name', name, context);
-      return;
-    }
-    this.name = name;
+    patchField(this, 'name', name, context);
   }
 
   private _getValueNode(context?: Context): Node {
@@ -177,12 +173,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _setValueNode(value: Node, context: Context): void {
-    this.adopt(value, context);
-    if (context.session && this === this.sourceNode) {
-      patchField(this, 'value', value, context);
-      return;
-    }
-    this.value = value;
+    patchField(this, 'value', value, context);
   }
 
   private _getImportant(context?: Context): Any<'flag'> | undefined {
@@ -192,14 +183,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _setImportant(important: Any<'flag'> | undefined, context: Context): void {
-    if (important instanceof Node) {
-      this.adopt(important, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      patchField(this, 'important', important, context);
-      return;
-    }
-    this.important = important;
+    patchField(this, 'important', important, context);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
