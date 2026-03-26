@@ -1,6 +1,8 @@
 import type { Context } from '../../context.js';
-import type { SessionInstanceRoot } from '../../eval-session.js';
+import { EvalSession, type SessionInstanceRoot } from '../../eval-session.js';
 import type { Node } from '../node-base.js';
+import { Bool } from '../bool.js';
+import type { Condition } from '../condition.js';
 import { Rules } from '../rules.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { VarDeclaration as VarDeclarationCtor } from '../declaration-var.js';
@@ -27,6 +29,12 @@ export type PreparedMixinCandidateInvocation = {
   outerRules: Rules | undefined;
   lookupScope: Rules;
   guardScopeChildren: readonly Node[] | undefined;
+};
+
+export type EvaluatedMixinGuard = {
+  passes: boolean;
+  outerRules: Rules | undefined;
+  defaultGroup?: MixinDefaultGroup;
 };
 
 /**
@@ -327,6 +335,77 @@ export function withMixinLookupScope<T>(
     context.rulesContext = previousRulesContext;
     throw error;
   }
+}
+
+/**
+ * Evaluate one mixin guard candidate against the prepared invocation scope.
+ *
+ * This centralizes the reset-session guard probe behavior so the caller loop
+ * only has to deal with the result (`passes`, optional default group, evolved
+ * scope) instead of the probing mechanics.
+ */
+export async function evaluateMixinGuardCandidate(
+  guardNode: Condition | Bool | undefined,
+  outerRules: Rules | undefined,
+  guardParent: Node | undefined,
+  lookupScope: Rules,
+  context: Context,
+  scopeChildren: readonly Node[] | undefined,
+  hasDefault: boolean
+): Promise<EvaluatedMixinGuard> {
+  if (!guardNode) {
+    return { passes: true, outerRules };
+  }
+
+  const evaluateWithDefault = async (
+    isDefaultValue: boolean
+  ): Promise<{ passes: boolean; outerRules: Rules | undefined }> => {
+    const prevSession = context.session;
+    const prevIsDefault = context.isDefault;
+    context.session = new EvalSession({ resetEvalState: true });
+    try {
+      const nextScope = seedMixinGuardScope(
+        outerRules,
+        guardParent,
+        guardNode,
+        context,
+        scopeChildren
+      );
+      context.isDefault = isDefaultValue;
+      const probeResult = await withMixinLookupScope(
+        nextScope ?? lookupScope,
+        context,
+        () => guardNode.eval(context)
+      );
+      return {
+        passes: probeResult instanceof Bool && probeResult.value === true,
+        outerRules: nextScope
+      };
+    } finally {
+      context.isDefault = prevIsDefault;
+      context.session = prevSession;
+    }
+  };
+
+  if (hasDefault) {
+    const passWhenDefaultFalse = await evaluateWithDefault(false);
+    const passWhenDefaultTrue = await evaluateWithDefault(true);
+    const defaultGroup = classifyMixinDefaultGroup(
+      passWhenDefaultFalse.passes,
+      passWhenDefaultTrue.passes
+    );
+    return {
+      passes: defaultGroup !== undefined,
+      outerRules: passWhenDefaultTrue.outerRules ?? passWhenDefaultFalse.outerRules ?? outerRules,
+      defaultGroup
+    };
+  }
+
+  const result = await evaluateWithDefault(false);
+  return {
+    passes: result.passes,
+    outerRules: result.outerRules
+  };
 }
 
 /**

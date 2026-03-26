@@ -52,6 +52,7 @@ import {
   classifyMixinDefaultGroup,
   createMixinParamScope,
   defineMixinArgumentsInScope,
+  evaluateMixinGuardCandidate,
   finalizeMixinInvocationOutput,
   normalizeMixinInvocationParams,
   MixinDefaultGroup,
@@ -63,6 +64,7 @@ import {
   seedMixinGuardScope,
   withMixinLookupScope
 } from '../tree/util/mixin-instance-primitives.js';
+import { DefaultGuard } from '../tree/default-guard.js';
 
 /**
  * Helper: build a canonical "tokens" tree simulating a parsed file.
@@ -729,6 +731,45 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(prepared.params?.value[1]?.type).toBe('VarDeclaration');
     expect((prepared.params?.value[1] as VarDeclaration).getPropertyName(ctx)).toBe('rest');
     expect(getField<any>(body, 'options', ctx).rulesVisibility.VarDeclaration).toBe('public');
+  });
+
+  it('evaluateMixinGuardCandidate runs reset-session probes and returns a default group', async () => {
+    const body = rules([]);
+    const outer = rules([]);
+    const session = new EvalSession({ resetEvalState: true });
+    const instanceRoot = session.createInstanceRoot(body);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.rulesContext = outer;
+
+    const prepared = prepareMixinCandidateInvocation(
+      body,
+      list([vardecl({ name: 'fg', value: any('red') })]),
+      outer,
+      outer,
+      2,
+      [],
+      ctx,
+      instanceRoot
+    );
+    const guard = new DefaultGuard('default()');
+
+    const evaluated = await evaluateMixinGuardCandidate(
+      guard,
+      prepared.outerRules,
+      outer,
+      prepared.lookupScope,
+      ctx,
+      prepared.guardScopeChildren,
+      true
+    );
+
+    expect(evaluated.passes).toBe(true);
+    expect(evaluated.defaultGroup).toBe(MixinDefaultGroup.True);
+    expect(evaluated.outerRules).toBeDefined();
+    expect(guard.parent).toBeUndefined();
+    expect(getParent(guard, ctx)).toBe(evaluated.outerRules);
   });
 
   it('classifyMixinDefaultGroup maps default() probe pairs into stable groups', () => {

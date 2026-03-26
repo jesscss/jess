@@ -47,13 +47,12 @@ import {
   setSourceParent
 } from './util/session-helpers.js';
 import {
-  classifyMixinDefaultGroup,
+  evaluateMixinGuardCandidate,
   finalizeMixinInvocationOutput,
   MixinDefaultGroup,
   prepareMixinCandidateInvocation,
   projectMixinParamScopeIntoOutput,
   resolveWinningMixinDefaultGroups,
-  seedMixinGuardScope,
   withMixinLookupScope
 } from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
@@ -2614,7 +2613,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       instanceRoot?: SessionInstanceRoot;
     };
     const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
-    let hasDefNoneCandidate = false;
     const evaluateCandidateOutput = async (
       candidate: Mixin,
       rules: Rules,
@@ -2782,114 +2780,41 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       const canonicalGuard: Condition | Bool | undefined = (candidate as any).guard;
       let passes = true;
       const lookupScope = prepared.lookupScope;
-      const prevGuardSession = thisContext.session;
       const guardScopeChildren = prepared.guardScopeChildren;
-      try {
-        if (canonicalGuard) {
-          const guardParent = getCandidateParent(candidate as unknown as Node);
-          // Create a fresh session so that adopt() and eval() mutations (parent, evaluated,
-          // preEvaluated) go to the session overlay and never corrupt canonical guard state.
-          thisContext.session = new EvalSession({ resetEvalState: true });
-          outerRules = seedMixinGuardScope(
-            outerRules,
-            guardParent,
-            canonicalGuard,
-            thisContext,
-            guardScopeChildren
-          );
-          /** Allow lookup on the inherited rules */
-          passes = false;
-          let guardPasses = false;
-          if (hasDefault) {
-            const originalIsDefault = thisContext.isDefault;
-            const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const guardNode = (candidate as any).guard as Condition | Bool | undefined;
-              if (!guardNode) {
-                return false;
-              }
-              // Fresh session per probe so each sees clean evaluated/preEvaluated state.
-              const prevSession = thisContext.session;
-              thisContext.session = new EvalSession({ resetEvalState: true });
-              try {
-                outerRules = seedMixinGuardScope(
-                  outerRules,
-                  guardParent,
-                  guardNode,
-                  thisContext,
-                  guardScopeChildren
-                );
-                thisContext.isDefault = isDefaultValue;
-                const probeResult = await withMixinLookupScope(
-                  outerRules ?? lookupScope,
-                  thisContext,
-                  () => guardNode.eval(thisContext)
-                );
-                return probeResult instanceof Bool && probeResult.value === true;
-              } finally {
-                thisContext.session = prevSession;
-              }
-            };
-            const passWhenDefaultFalse = await evalWithDefault(false);
-            const passWhenDefaultTrue = await evalWithDefault(true);
-            thisContext.isDefault = originalIsDefault;
-            const defaultGroup = classifyMixinDefaultGroup(
-              passWhenDefaultFalse,
-              passWhenDefaultTrue
-            );
-            if (defaultGroup !== undefined) {
-              passes = true;
-              if (defaultGroup === MixinDefaultGroup.None) {
-                hasDefNoneCandidate = true;
-              }
-            }
-            guardPasses = passes;
-            if (passes && defaultGroup !== undefined) {
-              pendingDefaultCandidates.push({
-                candidate: candidate as Mixin,
-                rules,
-                outerRules,
-                params,
-                group: defaultGroup,
-                instanceRoot: candidateInstanceRoot
-              });
-            }
-          } else {
-            /** All nodes need context to be evaluated */
-            thisContext.isDefault = false;
-            const evaldGuard = await withMixinLookupScope(
-              outerRules ?? lookupScope,
-              thisContext,
-              () => canonicalGuard.eval(thisContext)
-            );
-            /** Less guards only pass on explicit Bool(true), never JS truthiness. */
-            guardPasses = evaldGuard instanceof Bool && evaldGuard.value === true;
-            if (guardPasses) {
-              passes = true;
-              hasDefNoneCandidate = true;
-            }
-          }
-          // Guard eval done — restore session before candidate output evaluation.
-          thisContext.session = prevGuardSession;
-        }
-        if (!passes) {
-          continue;
-        }
-        if (!canonicalGuard || !hasDefault) {
-          // Non-default candidates are equivalent to Less's defNone group
-          // (match regardless of default() assumption), so they suppress ambiguity.
-          hasDefNoneCandidate = true;
-        }
-        if (canonicalGuard && hasDefault) {
-          continue;
-        }
-        await withMixinLookupScope(
+      if (canonicalGuard) {
+        const evaluatedGuard = await evaluateMixinGuardCandidate(
+          canonicalGuard,
+          outerRules,
+          getCandidateParent(candidate as unknown as Node),
           lookupScope,
           thisContext,
-          () => evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params, candidateInstanceRoot)
+          guardScopeChildren,
+          hasDefault
         );
-      } finally {
-        thisContext.session = prevGuardSession;
+        outerRules = evaluatedGuard.outerRules;
+        passes = evaluatedGuard.passes;
+        if (passes && evaluatedGuard.defaultGroup !== undefined) {
+          pendingDefaultCandidates.push({
+            candidate: candidate as Mixin,
+            rules,
+            outerRules,
+            params,
+            group: evaluatedGuard.defaultGroup,
+            instanceRoot: candidateInstanceRoot
+          });
+        }
       }
+      if (!passes) {
+        continue;
+      }
+      if (canonicalGuard && hasDefault) {
+        continue;
+      }
+      await withMixinLookupScope(
+        lookupScope,
+        thisContext,
+        () => evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params, candidateInstanceRoot)
+      );
     }
 
     if (pendingDefaultCandidates.length > 0) {

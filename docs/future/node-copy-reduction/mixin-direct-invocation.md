@@ -34,6 +34,9 @@ pieces are actually extracted versus still trapped in the monolith.
   - the normal candidate path now has one helper for instance-root wiring,
     visibility patching, parent/source wiring, param normalization, and lookup
     scope construction
+- `evaluateMixinGuardCandidate(...)`
+  - reset-session guard probing and default-group resolution now live outside
+    the candidate loop
 
 ### Remaining
 
