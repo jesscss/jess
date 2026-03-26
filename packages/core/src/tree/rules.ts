@@ -47,8 +47,10 @@ import {
 } from './util/session-helpers.js';
 import {
   assembleMixinInvocationOutput,
+  createMixinCandidateInstanceRoot,
   evaluateRulesetMixinCandidateOutput,
   finalizeMixinInvocationOutput,
+  getRootSourceRules,
   type PendingMixinDefaultCandidate,
   processPreparedMixinCandidate,
   prepareMixinCandidateInvocation,
@@ -2591,19 +2593,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let outputRules: Rules[] = [];
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const getRootSourceRules = (rules: Rules): Rules => {
-      let current = rules;
-      const seen = new Set<Rules>();
-      while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
-        const next = current.sourceNode as Rules;
-        if (next === current || seen.has(next)) {
-          break;
-        }
-        seen.add(current);
-        current = next;
-      }
-      return current;
-    };
 
     const pendingDefaultCandidates: PendingMixinDefaultCandidate<Mixin>[] = [];
     const evaluateCandidateOutput = async (
@@ -2687,17 +2676,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
 
     for (let candidate of evalCandidates) {
-      // Create an instance root for this candidate to track per-call identity.
-      // The instance root is associated with output nodes via _instanceRoot,
-      // enabling reads to resolve through the correct per-call shadow state.
-      const candidateSourceRules = isNode(candidate, N.Ruleset)
-        ? getRootSourceRules((candidate as Ruleset).rules)
-        : (candidate as any).rules
-            ? getRootSourceRules((candidate as any).rules as Rules)
-            : undefined;
-      const candidateInstanceRoot = candidateSourceRules && thisContext.session
-        ? thisContext.session.createInstanceRoot(candidateSourceRules)
-        : undefined;
+      const candidateInstanceRoot = createMixinCandidateInstanceRoot(
+        candidate as unknown as Node,
+        thisContext
+      );
 
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode

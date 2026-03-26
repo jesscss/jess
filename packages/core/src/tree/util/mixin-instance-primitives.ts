@@ -69,6 +69,45 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
 };
 
 /**
+ * Follow a Rules node back to its canonical source root. Mixin/ruleset
+ * candidate setup wants this shared notion of "the source rules subtree" so
+ * that instance roots are always created against the canonical backing body.
+ */
+export function getRootSourceRules(rules: Rules): Rules {
+  let current = rules;
+  const seen = new Set<Rules>();
+  while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
+    const next = current.sourceNode as Rules;
+    if (next === current || seen.has(next)) {
+      break;
+    }
+    seen.add(current);
+    current = next;
+  }
+  return current;
+}
+
+/**
+ * Resolve the canonical source rules for a mixin-like candidate and create a
+ * per-call instance root when a session is active.
+ */
+export function createMixinCandidateInstanceRoot(
+  candidate: Node,
+  context: Context
+): SessionInstanceRoot | undefined {
+  if (!context.session) {
+    return undefined;
+  }
+  const candidateRules = isNode(candidate, N.Ruleset)
+    ? (candidate as any).rules as Rules | undefined
+    : (candidate as any).rules as Rules | undefined;
+  if (!candidateRules) {
+    return undefined;
+  }
+  return context.session.createInstanceRoot(getRootSourceRules(candidateRules));
+}
+
+/**
  * Bind one mixin param through the active instance root instead of mutating the
  * canonical VarDeclaration. This is the smallest useful primitive behind direct
  * mixin invocation.

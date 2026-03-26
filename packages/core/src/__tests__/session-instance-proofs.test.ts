@@ -52,11 +52,13 @@ import {
   assembleMixinInvocationOutput,
   bindMixinParamValue,
   classifyMixinDefaultGroup,
+  createMixinCandidateInstanceRoot,
   createMixinParamScope,
   defineMixinArgumentsInScope,
   evaluateMixinGuardCandidate,
   evaluateRulesetMixinCandidateOutput,
   finalizeMixinInvocationOutput,
+  getRootSourceRules,
   normalizeMixinInvocationParams,
   MixinDefaultGroup,
   processPreparedMixinCandidate,
@@ -978,6 +980,45 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(pending?.outerRules).toBeDefined();
     expect(pending?.group).toBe(MixinDefaultGroup.True);
     expect(pending?.instanceRoot).toBe(instanceRoot);
+  });
+
+  it('getRootSourceRules resolves the canonical backing rules through source chains', () => {
+    const source = rules([]);
+    const derived = rules([]);
+    const nested = rules([]);
+    derived.sourceNode = source;
+    nested.sourceNode = derived;
+
+    expect(getRootSourceRules(nested)).toBe(source);
+    expect(getRootSourceRules(derived)).toBe(source);
+    expect(getRootSourceRules(source)).toBe(source);
+  });
+
+  it('createMixinCandidateInstanceRoot uses the canonical source rules body for ruleset candidates', () => {
+    const sourceBody = rules([]);
+    const derivedBody = rules([]);
+    derivedBody.sourceNode = sourceBody;
+    const candidate = ruleset({
+      selector: sellist([sel([el('.card')])]),
+      rules: derivedBody
+    });
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = new EvalSession();
+
+    const instanceRoot = createMixinCandidateInstanceRoot(candidate, ctx);
+
+    expect(instanceRoot).toBeDefined();
+    expect(instanceRoot?.sourceRoot).toBe(sourceBody);
+  });
+
+  it('createMixinCandidateInstanceRoot returns undefined without an active session', () => {
+    const candidate = mixin({
+      name: any('.x'),
+      rules: rules([])
+    });
+    const ctx = new Context({ leakyRules: true });
+
+    expect(createMixinCandidateInstanceRoot(candidate, ctx)).toBeUndefined();
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

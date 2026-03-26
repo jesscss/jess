@@ -53,6 +53,12 @@ pieces are actually extracted versus still trapped in the monolith.
   - the normal-candidate guard/default orchestration now lives outside the loop,
     so the remaining monolith weight is mostly candidate collection and final
     return plumbing
+- `getRootSourceRules(...)`
+  - canonical source-root discovery for candidate bodies is now explicit and
+    shared
+- `createMixinCandidateInstanceRoot(...)`
+  - per-call instance-root setup for mixin-like candidates no longer lives
+    inline in the loop
 
 ### Remaining
 
