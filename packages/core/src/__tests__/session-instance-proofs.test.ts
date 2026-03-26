@@ -25,6 +25,7 @@ import {
   list,
   rules,
   ruleset,
+  rest,
   sellist,
   sel,
   el,
@@ -52,6 +53,7 @@ import {
   createMixinParamScope,
   defineMixinArgumentsInScope,
   finalizeMixinInvocationOutput,
+  normalizeMixinInvocationParams,
   MixinDefaultGroup,
   populateMixinParamScope,
   prepareMixinInvocationScope,
@@ -663,6 +665,36 @@ describe('SI-6: Repeated mixin/function proof', () => {
       color: red;
     `);
     expect(sourceDecl.parent).toBe(body);
+  });
+
+  it('normalizeMixinInvocationParams converts named rest params into param vars', () => {
+    const ctx = new Context({ leakyRules: true });
+    const params = list([
+      any('a', { role: 'property' }),
+      rest('tail')
+    ]);
+
+    const normalized = normalizeMixinInvocationParams(params, ctx)!;
+    const tail = normalized.value[1] as VarDeclaration;
+
+    expect(tail.type).toBe('VarDeclaration');
+    expect(tail.getPropertyName(ctx)).toBe('tail');
+    expect(tail.options?.paramVar).toBe(true);
+  });
+
+  it('normalizeMixinInvocationParams auto-generates unnamed rest param names', () => {
+    const ctx = new Context({ leakyRules: true });
+    const params = list([
+      rest(undefined),
+      rest(undefined)
+    ]);
+
+    const normalized = normalizeMixinInvocationParams(params, ctx)!;
+    const first = normalized.value[0] as VarDeclaration;
+    const second = normalized.value[1] as VarDeclaration;
+
+    expect(first.getPropertyName(ctx)).toBe('rest');
+    expect(second.getPropertyName(ctx)).toBe('rest2');
   });
 
   it('classifyMixinDefaultGroup maps default() probe pairs into stable groups', () => {

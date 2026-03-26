@@ -188,6 +188,54 @@ export function prepareMixinInvocationScope(
 }
 
 /**
+ * Normalize mixin params for invocation-time lookup registration.
+ *
+ * Rest params must become VarDeclarations before they can participate in the
+ * transient param scope. Keep that conversion here instead of inline inside the
+ * candidate loop.
+ */
+export function normalizeMixinInvocationParams(
+  params: List<Node> | undefined,
+  context: Context
+): List<Node> | undefined {
+  if (!params) {
+    return undefined;
+  }
+
+  let unnamedRestCount = 0;
+  for (let i = 0; i < params.value.length; i++) {
+    const param = params.value[i]!;
+    if (param.type !== 'Rest') {
+      continue;
+    }
+
+    let restName: string;
+    if (typeof (param as any).value === 'string') {
+      restName = (param as any).value;
+    } else {
+      restName = unnamedRestCount === 0 ? 'rest' : `rest${unnamedRestCount + 1}`;
+      unnamedRestCount++;
+    }
+
+    const restValue = isNode((param as any).value)
+      ? (param as any).value as Node
+      : (
+          context.treeContext?.file
+            ? new Sequence([])
+            : new Any(restName, { role: 'property' })
+        );
+    const restVarDecl = new VarDeclarationCtor({
+      name: new Any(restName, { role: 'property' }),
+      value: restValue
+    }, { paramVar: true });
+
+    params.setData(i, restVarDecl);
+  }
+
+  return params;
+}
+
+/**
  * Run an evaluation step with the mixin invocation scope as the active lookup
  * scope, then restore the caller's prior rulesContext.
  */

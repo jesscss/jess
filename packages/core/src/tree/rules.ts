@@ -50,6 +50,7 @@ import {
   classifyMixinDefaultGroup,
   finalizeMixinInvocationOutput,
   MixinDefaultGroup,
+  normalizeMixinInvocationParams,
   prepareMixinInvocationScope,
   projectMixinParamScopeIntoOutput,
   resolveWinningMixinDefaultGroups,
@@ -2787,49 +2788,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let params = thisContext.session
         ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
         : (candidate as any).params as List<Node> | undefined;
+      params = normalizeMixinInvocationParams(params, thisContext);
       if (params) {
-        for (let i = 0; i < params.value.length; i++) {
-          let param = params.value[i]!;
-          if (param.type === 'Rest') {
-            // Rest parameters need to be converted to VarDeclaration for registration
-            // Auto-generate a name if Rest doesn't have one (Less allows unnamed rest params)
-            let restName: string;
-            if (typeof (param as any).value === 'string') {
-              restName = (param as any).value;
-            } else {
-              // Auto-generate name: "rest", "rest1", "rest2", etc. based on position
-              // Check if there are other rest params to avoid conflicts
-              let restCount = 0;
-              for (let j = 0; j < i; j++) {
-                const p = params.value[j]!;
-                if (p.type === 'Rest') {
-                  restCount++;
-                }
-              }
-              restName = restCount === 0 ? 'rest' : `rest${restCount + 1}`;
-            }
-
-            // Convert Rest to VarDeclaration so it can be registered and referenced.
-            // If matching did not populate a node value, default to an empty sequence
-            // (not a literal name/Nil), so @tail... behaves as "no remaining args".
-            const restValue = isNode((param as any).value)
-              ? (param as any).value as Node
-              : (
-                  thisContext.treeContext?.file
-                    ? new Sequence([])
-                    : new Any(restName, { role: 'property' })
-                );
-            const restVarDecl = new VarDeclaration({
-              name: new Any(restName, { role: 'property' }),
-              value: restValue
-            }, { paramVar: true });
-
-            // Replace Rest with VarDeclaration in params
-            params.setData(i, restVarDecl);
-          }
-          // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
-          // If we see one here, it's an error - params should all be VarDeclaration by now
-        }
         outerRules = prepareMixinInvocationScope(
           rules,
           thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node),

@@ -27,6 +27,9 @@ pieces are actually extracted versus still trapped in the monolith.
 - `classifyMixinDefaultGroup(...)`
 - `resolveWinningMixinDefaultGroups(...)`
   - default() disambiguation no longer has to live inline inside the candidate loop
+- `normalizeMixinInvocationParams(...)`
+  - rest-param conversion and auto-generated rest names no longer live inline
+    in the candidate loop
 
 ### Remaining
 
