@@ -80,12 +80,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
 
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
-  frames: (Ruleset | AtRule)[] | undefined;
+  readonly frames: (Ruleset | AtRule)[] | undefined;
 
-  selector!: Selector | Nil;
-  rules!: Rules;
-  guard: Condition | Nil | undefined;
-  selectorBeforeExtend: Selector | Nil | undefined;
+  readonly selector!: Selector | Nil;
+  readonly rules!: Rules;
+  readonly guard: Condition | Nil | undefined;
+  readonly selectorBeforeExtend: Selector | Nil | undefined;
   /** Patched selector from extend — used by serialization instead of canonical selector. */
   _extendedSelector: Selector | Nil | undefined;
 
@@ -216,29 +216,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       : this.hoistToRoot;
   }
 
-  private _setHoistToRoot(value: boolean | undefined, context: Context): void {
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'hoistToRoot', value, context);
-    } else {
-      this.hoistToRoot = value;
-    }
-    this.invalidateSelectorValueCache();
-  }
-
   getCurrentSelector(context?: Context): Selector | Nil {
     return this._getSelector(context);
-  }
-
-  private _setSelector(selector: Selector | Nil, context: Context): void {
-    if (selector instanceof Node) {
-      this.adopt(selector, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'selector', selector, context);
-    } else {
-      this.selector = selector;
-    }
-    this.invalidateSelectorValueCache();
   }
 
   private _getSelectorSourceNode(selector: Selector | Nil | undefined, context?: Context): Node | undefined {
@@ -279,19 +258,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this._getRulesContainer(context);
   }
 
-  private _setRulesContainer(rules: Rules, context: Context): void {
-    if (context.session && this !== this.sourceNode) {
-      this.adopt(rules);
-    } else {
-      this.adopt(rules, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'rules', rules, context);
-    } else {
-      this.rules = rules;
-    }
-  }
-
   private _getGuard(context?: Context): Condition | Nil | undefined {
     return context
       ? getField<Condition | Nil | undefined>(this, 'guard', context)
@@ -300,17 +266,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   getCurrentGuard(context?: Context): Condition | Nil | undefined {
     return this._getGuard(context);
-  }
-
-  private _setGuard(guard: Condition | Nil | undefined, context: Context): void {
-    if (guard instanceof Node) {
-      this.adopt(guard, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'guard', guard, context);
-    } else {
-      this.guard = guard;
-    }
   }
 
   private _getSelectorBeforeExtend(context?: Context): Selector | Nil | undefined {
@@ -323,19 +278,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this._getSelectorBeforeExtend(context);
   }
 
-  setSelectorBeforeExtend(selector: Selector | Nil | undefined, context?: Context): void {
-    if (!context) {
-      this.selectorBeforeExtend = selector;
-      return;
-    }
-    if (selector instanceof Node) {
-      this.adopt(selector, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'selectorBeforeExtend', selector, context);
-    } else {
-      this.selectorBeforeExtend = selector;
-    }
+  setSelectorBeforeExtend(selector: Selector | Nil | undefined, context: Context): void {
+    setField(this, 'selectorBeforeExtend', selector, context);
   }
 
   private _getExtendedSelector(context?: Context): Selector | Nil | undefined {
@@ -906,9 +850,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // their own value before we overwrite value.selector so they keep their selector.
           Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, {} as any);
           // Store the evaluated selector - this is what will be in the frame
-          node._setSelector(sel as Selector | Nil, context);
+          setField(node, 'selector', sel as Selector | Nil, context);
           if (sel.hoistToRoot) {
-            node._setHoistToRoot(true, context);
+            setField(node, 'hoistToRoot', true, context);
           }
           // Register to extend root's registry for extend lookups
           const extendRoot = context.extendRoots.getCurrentExtendRoot();
@@ -931,7 +875,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             if (isThenable(preEvaldRules)) {
               return (preEvaldRules as Promise<Rules>).then((rules) => {
                 context.rulesetFrames.pop();
-                node._setRulesContainer(rules, context);
+                setField(node, 'rules', rules, context);
                 if (extendRoot && rules !== childRules) {
                   context.extendRoots.registerRoot(rules, extendRoot);
                 }
@@ -939,7 +883,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               });
             }
             context.rulesetFrames.pop();
-            node._setRulesContainer(preEvaldRules as Rules, context);
+            setField(node, 'rules', preEvaldRules as Rules, context);
             if (extendRoot && preEvaldRules !== childRules) {
               context.extendRoots.registerRoot(preEvaldRules as Rules, extendRoot);
             }
@@ -1002,7 +946,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     // Store frames snapshot for collapseNesting serialization
     if (collapseNesting) {
-      this.frames = [...context.frames];
+      setField(this, 'frames', [...context.frames], context);
     }
 
     return pipe(
@@ -1031,11 +975,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               }
               if (!guardPasses) {
                 // Guard failed - mark as Nil and return it
-                this._setGuard(new Nil() as Condition | Nil, context);
+                setField(this, 'guard', new Nil() as Condition | Nil, context);
                 return new Nil();
               }
               // Guard passed - clear it and continue with selector evaluation
-              this._setGuard(undefined as Condition | Nil | undefined, context);
+              setField(this, 'guard', undefined as Condition | Nil | undefined, context);
               return undefined;
             }
           );
@@ -1064,11 +1008,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // when debug code traverses the AST
           if (isThenable(evaluatedRules)) {
             return (evaluatedRules as Promise<Rules>).then((rules) => {
-              this._setRulesContainer(rules, context);
+              setField(this, 'rules', rules, context);
               return rules;
             });
           }
-          this._setRulesContainer(evaluatedRules as Rules, context);
+          setField(this, 'rules', evaluatedRules as Rules, context);
           return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
@@ -1109,7 +1053,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
 
-        this._setRulesContainer(evaluatedRules as Rules, context);
+        setField(this, 'rules', evaluatedRules as Rules, context);
         const rules = this._getRulesContainer(context);
         if (rules.visibleRules(context).length === 0) {
           this._removeFlag(F_VISIBLE, context);
