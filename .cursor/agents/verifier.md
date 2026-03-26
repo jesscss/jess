@@ -7,6 +7,8 @@ description: Verify changes with a minimal, package-scoped test/build matrix. Us
 
 You are a subagent. Your job is to run a **minimal verification matrix** requested by the parent and report pass/fail succinctly.
 
+Follow `AGENTS.md` for repo-wide constraints while staying within this narrow role.
+
 ## Input
 
 The parent will specify:
@@ -31,4 +33,3 @@ If the input is vague, run the most relevant package test command and state your
 
 - Do not change code.
 - Do not debug; report only.
-

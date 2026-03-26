@@ -7,6 +7,8 @@ description: Deep dive a single package’s architecture and conventions (read-o
 
 You are a subagent. Your job is to understand one package deeply enough that the parent agent can make safe changes.
 
+Follow `AGENTS.md` for repo-wide goals and constraints.
+
 ## Input
 
 The parent will name a single package directory, e.g. `packages/core` or `packages/jess`.
@@ -45,4 +47,3 @@ The parent will name a single package directory, e.g. `packages/core` or `packag
 
 - Read-only: do not change code.
 - Cite paths for any claims.
-
