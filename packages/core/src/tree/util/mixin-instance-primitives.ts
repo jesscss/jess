@@ -11,6 +11,7 @@ import { F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { getChildren, patchField, setChildren, setParent } from './session-helpers.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**
  * Bind one mixin param through the active instance root instead of mutating the
@@ -177,4 +178,30 @@ export function prepareMixinInvocationScope(
   defineMixinArgumentsInScope(scope, params, nodeArgs, context);
   attachMixinBodyToParamScope(body, scope, context);
   return scope;
+}
+
+/**
+ * Run an evaluation step with the mixin invocation scope as the active lookup
+ * scope, then restore the caller's prior rulesContext.
+ */
+export function withMixinLookupScope<T>(
+  scope: Rules | undefined,
+  context: Context,
+  fn: () => MaybePromise<T>
+): MaybePromise<T> {
+  const previousRulesContext = context.rulesContext;
+  context.rulesContext = scope;
+  try {
+    const out = fn();
+    if (isThenable(out)) {
+      return (out as Promise<T>).finally(() => {
+        context.rulesContext = previousRulesContext;
+      });
+    }
+    context.rulesContext = previousRulesContext;
+    return out;
+  } catch (error) {
+    context.rulesContext = previousRulesContext;
+    throw error;
+  }
 }

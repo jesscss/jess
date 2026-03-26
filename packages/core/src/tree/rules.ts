@@ -48,7 +48,8 @@ import {
 } from './util/session-helpers.js';
 import {
   prepareMixinInvocationScope,
-  seedMixinGuardScope
+  seedMixinGuardScope,
+  withMixinLookupScope
 } from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
@@ -2839,9 +2840,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Now we can evaluate our guards, if any */
       const canonicalGuard: Condition | Bool | undefined = (candidate as any).guard;
       let passes = true;
-      let rulesContext = thisContext.rulesContext;
-      // Call-time resolution is handled by the current context.rulesContext
-      thisContext.rulesContext = outerRules ?? rules;
+      const lookupScope = outerRules ?? rules;
       const prevGuardSession = thisContext.session;
       const guardScopeChildren = outerRules
         ? [...getChildren(outerRules, thisContext)]
@@ -2882,7 +2881,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
                   guardScopeChildren
                 );
                 thisContext.isDefault = isDefaultValue;
-                const probeResult = await guardNode.eval(thisContext);
+                const probeResult = await withMixinLookupScope(
+                  outerRules ?? lookupScope,
+                  thisContext,
+                  () => guardNode.eval(thisContext)
+                );
                 return probeResult instanceof Bool && probeResult.value === true;
               } finally {
                 thisContext.session = prevSession;
@@ -2914,7 +2917,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           } else {
             /** All nodes need context to be evaluated */
             thisContext.isDefault = false;
-            const evaldGuard = await canonicalGuard.eval(thisContext);
+            const evaldGuard = await withMixinLookupScope(
+              outerRules ?? lookupScope,
+              thisContext,
+              () => canonicalGuard.eval(thisContext)
+            );
             /** Less guards only pass on explicit Bool(true), never JS truthiness. */
             guardPasses = evaldGuard instanceof Bool && evaldGuard.value === true;
             if (guardPasses) {
@@ -2936,9 +2943,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         if (canonicalGuard && hasDefault) {
           continue;
         }
-        await evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params, candidateInstanceRoot);
+        await withMixinLookupScope(
+          lookupScope,
+          thisContext,
+          () => evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params, candidateInstanceRoot)
+        );
       } finally {
-        thisContext.rulesContext = rulesContext;
         thisContext.session = prevGuardSession;
       }
     }
@@ -2965,19 +2975,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         if (pending.group !== DEF_NONE && pending.group !== defaultResult) {
           continue;
         }
-        const previousRulesContext = thisContext.rulesContext;
-        thisContext.rulesContext = pending.outerRules ?? pending.rules;
-        try {
-          await evaluateCandidateOutput(
+        await withMixinLookupScope(
+          pending.outerRules ?? pending.rules,
+          thisContext,
+          () => evaluateCandidateOutput(
             pending.candidate,
             pending.rules,
             pending.outerRules,
             pending.params,
             pending.instanceRoot
-          );
-        } finally {
-          thisContext.rulesContext = previousRulesContext;
-        }
+          )
+        );
       }
     }
 

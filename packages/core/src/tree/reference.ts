@@ -692,7 +692,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
           context.searchScope.add(returnVal as Node);
           const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).important;
-          const declValue = (returnVal as Declaration).value;
+          const declValue = getField<Node>(returnVal as Declaration, 'value', context);
           // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
           // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).
           const isMixinRef = isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset';

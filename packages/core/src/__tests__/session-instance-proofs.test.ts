@@ -52,7 +52,8 @@ import {
   defineMixinArgumentsInScope,
   prepareMixinInvocationScope,
   populateMixinParamScope,
-  seedMixinGuardScope
+  seedMixinGuardScope,
+  withMixinLookupScope
 } from '../tree/util/mixin-instance-primitives.js';
 
 /**
@@ -583,7 +584,42 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(getParent(body, ctx)).toBe(paramScope);
   });
 
-  it('characterizes guard evaluation as still needing reset-session lookup plumbing beyond prepareMixinInvocationScope', async () => {
+  it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {
+    const fgParam = vardecl({ name: 'fg', value: nil() });
+    const bgParam = vardecl({ name: 'bg', value: nil() });
+    const bodyRoot = rules([]);
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(bodyRoot);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.root = bodyRoot;
+
+    bindMixinParamValue(fgParam, any('red'), ctx);
+    bindMixinParamValue(bgParam, any('blue'), ctx);
+    const paramScope = prepareMixinInvocationScope(
+      rules([]),
+      bodyRoot,
+      0,
+      list([fgParam, bgParam]),
+      [],
+      ctx
+    )!;
+
+    const fgRef = ref('fg', { type: 'variable' });
+    const bgRef = ref('bg', { type: 'variable' });
+    setParent(fgRef, paramScope, ctx);
+    setParent(bgRef, paramScope, ctx);
+
+    const fgValue = await withMixinLookupScope(paramScope, ctx, () => fgRef.eval(ctx));
+    const bgValue = await withMixinLookupScope(paramScope, ctx, () => bgRef.eval(ctx));
+
+    expect(fgValue.toTrimmedString()).toBe('red');
+    expect(bgValue.toTrimmedString()).toBe('blue');
+    expect(ctx.rulesContext).toBeUndefined();
+  });
+
+  it('withMixinLookupScope resolves guard evaluation through the prepared invocation scope', async () => {
     const fgParam = vardecl({ name: 'fg', value: nil() });
     const body = rules([]);
     const guard = condition([
@@ -616,9 +652,8 @@ describe('SI-6: Repeated mixin/function proof', () => {
     let guardScope: Rules | undefined;
     try {
       guardScope = seedMixinGuardScope(paramScope, body, guard, ctx, [...getChildren(paramScope, ctx)]);
-      ctx.rulesContext = guardScope;
-      const result = await guard.eval(ctx);
-      expect(result.toTrimmedString()).toBe('false');
+      const result = await withMixinLookupScope(guardScope, ctx, () => guard.eval(ctx));
+      expect(result.toTrimmedString()).toBe('true');
     } finally {
       ctx.session = previousSession;
     }
