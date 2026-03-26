@@ -46,6 +46,12 @@ import {
   setParent,
   setSourceParent
 } from './util/session-helpers.js';
+import {
+  createMixinParamScope,
+  defineMixinArgumentsInScope,
+  populateMixinParamScope,
+  seedMixinGuardScope
+} from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
 const { isArray } = Array;
@@ -2780,20 +2786,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
         : (candidate as any).params as List<Node> | undefined;
       if (params) {
-        outerRules = Rules.create([], {
-          rulesVisibility: {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          }
-        });
-        setParent(
-          outerRules,
+        outerRules = createMixinParamScope(
           thisContext.rulesContext ?? getCandidateParent(candidate as unknown as Node),
+          candidate.index,
           thisContext
         );
-        outerRules.index = candidate.index;
 
         for (let i = 0; i < params.value.length; i++) {
           let param = params.value[i]!;
@@ -2833,55 +2830,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
             // Replace Rest with VarDeclaration in params
             params.setData(i, restVarDecl);
-            param = restVarDecl;
-          }
-
-          if (isNode(param, N.VarDeclaration)) {
-            // Assign negative indices so they're conceptually "before" the rules and found first
-            if (param.index === undefined) {
-              // Use negative indices starting from -1, -2, etc. so they sort before regular rules
-              param.index = -(i + 1);
-            }
-            // Mark as parameter var so it can be stripped from mixin output after evaluation.
-            param.options ??= {};
-            param.options.paramVar = true;
-            // Keep parameter vars lookupable but hidden in normal output.
-            // They still render in tests that set Node.fullRender=true.
-            param.removeFlag(F_VISIBLE);
-            outerRules.push(thisContext, param);
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
         }
-        const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
-        if (shouldDefineArguments) {
-          const argumentsArgs: Node[] = [];
-          const argumentsDecl = new VarDeclaration({
-            name: new Any('arguments', { role: 'property' }),
-            value: new Sequence(argumentsArgs)
-          }, { readonly: true, paramVar: true });
-          argumentsDecl.removeFlag(F_VISIBLE);
-          outerRules.push(thisContext, argumentsDecl);
-          const paramValues = params?.value
-            .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
-            .map(p => (p as any).value);
-          const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
-          for (const argNode of argumentNodes) {
-            /** If a Rest param collected args into a Sequence, spread
-             *  its items so @arguments reflects the actual arg count. */
-            if (isNode(argNode, N.Sequence) && (argNode as Sequence).value.length > 1) {
-              for (const item of (argNode as Sequence).value) {
-                const cloned = item.copy(true, freezeChildren);
-                cloned.frozen = true;
-                argumentsArgs.push(cloned);
-              }
-            } else {
-              const cloned = argNode.copy(true, freezeChildren);
-              cloned.frozen = true;
-              argumentsArgs.push(cloned);
-            }
-          }
-        }
+        populateMixinParamScope(outerRules, params, thisContext);
+        defineMixinArgumentsInScope(outerRules, params, nodeArgs, thisContext);
       }
 
       /** Now we can evaluate our guards, if any */
@@ -2897,24 +2851,16 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       try {
         if (canonicalGuard) {
           const guardParent = getCandidateParent(candidate as unknown as Node);
-          const seedGuardScopeSession = (guardNode: Condition | Bool | undefined): void => {
-            outerRules ??= Rules.create([]);
-            setParent(outerRules, guardParent, thisContext);
-            const activeChildren = guardScopeChildren ?? outerRules.value;
-            if (guardScopeChildren) {
-              setChildren(outerRules, activeChildren, thisContext, { markDirty: false });
-            }
-            for (const child of activeChildren) {
-              outerRules.registerNode(child, undefined, thisContext);
-            }
-            if (guardNode) {
-              outerRules.adopt(guardNode, thisContext);
-            }
-          };
           // Create a fresh session so that adopt() and eval() mutations (parent, evaluated,
           // preEvaluated) go to the session overlay and never corrupt canonical guard state.
           thisContext.session = new EvalSession({ resetEvalState: true });
-          seedGuardScopeSession(canonicalGuard);
+          outerRules = seedMixinGuardScope(
+            outerRules,
+            guardParent,
+            canonicalGuard,
+            thisContext,
+            guardScopeChildren
+          );
           /** Allow lookup on the inherited rules */
           passes = false;
           let guardPasses = false;
@@ -2930,7 +2876,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               const prevSession = thisContext.session;
               thisContext.session = new EvalSession({ resetEvalState: true });
               try {
-                seedGuardScopeSession(guardNode);
+                outerRules = seedMixinGuardScope(
+                  outerRules,
+                  guardParent,
+                  guardNode,
+                  thisContext,
+                  guardScopeChildren
+                );
                 thisContext.isDefault = isDefaultValue;
                 const probeResult = await guardNode.eval(thisContext);
                 return probeResult instanceof Bool && probeResult.value === true;

@@ -20,13 +20,16 @@ import {
   Context,
   vardecl,
   any,
+  nil,
   decl,
+  list,
   rules,
   ruleset,
   sellist,
   sel,
   el,
   ref,
+  condition,
   mixin,
   call,
   expr,
@@ -42,6 +45,14 @@ import {
   getChildren,
   appendChildren
 } from '../tree/util/session-helpers.js';
+import {
+  attachMixinBodyToParamScope,
+  bindMixinParamValue,
+  createMixinParamScope,
+  defineMixinArgumentsInScope,
+  populateMixinParamScope,
+  seedMixinGuardScope
+} from '../tree/util/mixin-instance-primitives.js';
 
 /**
  * Helper: build a canonical "tokens" tree simulating a parsed file.
@@ -402,6 +413,200 @@ describe('SI-6: Repeated mixin/function proof', () => {
     // callA sees only 2
     ctx.instanceRoot = callA;
     expect(getChildren(body as Rules, ctx)).toHaveLength(2);
+  });
+
+  it('bindMixinParamValue writes only to instance-root shadow and leaves canonical params untouched', () => {
+    const fgParam = vardecl({ name: 'fg', value: nil() });
+    const bgParam = vardecl({ name: 'bg', value: nil() });
+    const session = new EvalSession();
+    const paramScope = rules([fgParam, bgParam]);
+    const instanceRoot = session.createInstanceRoot(paramScope);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+
+    // Future primitive shape:
+    // bindMixinParamsIntoInstanceRoot(instanceRoot, [fgParam, bgParam], [red, blue])
+    bindMixinParamValue(fgParam, any('red'), ctx);
+    bindMixinParamValue(bgParam, any('blue'), ctx);
+    expect(getField(fgParam, 'value', ctx).toTrimmedString()).toBe('red');
+    expect(getField(bgParam, 'value', ctx).toTrimmedString()).toBe('blue');
+
+    // Canonical params stay unchanged; only the instance root carries the binding.
+    expect(fgParam.value.type).toBe('Nil');
+    expect(bgParam.value.type).toBe('Nil');
+    expect(instanceRoot.shadowCount).toBe(2);
+  });
+
+  it('attachMixinBodyToParamScope writes only to instance-root parent shadow', () => {
+    const fgParam = vardecl({ name: 'fg', value: nil() });
+    const paramScope = rules([fgParam]);
+    const body = rules([
+      decl({ name: any('color'), value: ref('fg', { type: 'variable' }) })
+    ]);
+
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(body);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+
+    attachMixinBodyToParamScope(body, paramScope, ctx);
+
+    expect(body.parent).toBeUndefined();
+    expect(getParent(body, ctx)).toBe(paramScope);
+    expect(instanceRoot.shadowCount).toBe(1);
+  });
+
+  it('createMixinParamScope keeps parentage in the active instance root', () => {
+    const outer = rules([]);
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(outer);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+
+    const scope = createMixinParamScope(outer, 7, ctx);
+
+    expect(scope.parent).toBeUndefined();
+    expect(getParent(scope, ctx)).toBe(outer);
+    expect(scope.index).toBe(7);
+  });
+
+  it('populateMixinParamScope registers hidden param vars in the transient scope', () => {
+    const fgParam = vardecl({ name: 'fg', value: any('red') });
+    const bgParam = vardecl({ name: 'bg', value: any('blue') });
+    const session = new EvalSession();
+    const outer = rules([]);
+    const instanceRoot = session.createInstanceRoot(outer);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+
+    const scope = createMixinParamScope(outer, 1, ctx);
+    const params = list([fgParam, bgParam]);
+    populateMixinParamScope(scope, params, ctx);
+
+    const children = getChildren(scope, ctx);
+    expect(children).toHaveLength(2);
+    expect(children[0]).toBe(fgParam);
+    expect(children[1]).toBe(bgParam);
+    expect(fgParam.options?.paramVar).toBe(true);
+    expect(bgParam.options?.paramVar).toBe(true);
+    expect(getParent(fgParam, ctx)).toBe(scope);
+    expect(getParent(bgParam, ctx)).toBe(scope);
+  });
+
+  it('defineMixinArgumentsInScope creates readonly @arguments from bound params', () => {
+    const session = new EvalSession();
+    const outer = rules([]);
+    const instanceRoot = session.createInstanceRoot(outer);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.treeContext = { file: '/tmp/example.jess' } as any;
+
+    const scope = createMixinParamScope(outer, 1, ctx);
+    const fgParam = vardecl({ name: 'fg', value: any('red') });
+    const restParam = vardecl({
+      name: 'rest',
+      value: any('1px solid')
+    });
+    const params = list([fgParam, restParam]);
+
+    populateMixinParamScope(scope, params, ctx);
+    defineMixinArgumentsInScope(scope, params, [any('unused')], ctx);
+
+    const children = getChildren(scope, ctx);
+    const argumentsDecl = children.at(-1);
+    expect(argumentsDecl?.type).toBe('VarDeclaration');
+    expect((argumentsDecl as any).name.valueOf()).toBe('arguments');
+    expect((argumentsDecl as any).options.readonly).toBe(true);
+    expect((argumentsDecl as any).value.toTrimmedString()).toBe('red 1px solid');
+  });
+
+  it('seedMixinGuardScope restores active scope children and attaches guard only in shadow state', () => {
+    const fgParam = vardecl({ name: 'fg', value: any('red') });
+    const outer = rules([]);
+    const guard = condition([ref('fg', { type: 'variable' }), '=', any('red')]);
+    const session = new EvalSession({ resetEvalState: true });
+    const instanceRoot = session.createInstanceRoot(outer);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+
+    let scope = createMixinParamScope(outer, 1, ctx);
+    populateMixinParamScope(scope, list([fgParam]), ctx);
+    const scopeChildren = [...getChildren(scope, ctx)];
+
+    scope = seedMixinGuardScope(scope, outer, guard, ctx, scopeChildren);
+
+    expect(guard.parent).toBeUndefined();
+    expect(getParent(guard, ctx)).toBe(scope);
+    expect(getChildren(scope, ctx)).toEqual(scopeChildren);
+  });
+
+  it('characterizes direct canonical body evaluation as still needing lookup/registry plumbing beyond param shadow + parent shadow', async () => {
+    const fgParam = vardecl({ name: 'fg', value: nil() });
+    const bgParam = vardecl({ name: 'bg', value: nil() });
+    const paramScope = rules([fgParam, bgParam]);
+    const colorDecl = decl({ name: any('color'), value: ref('fg', { type: 'variable' }) });
+    const bgDecl = decl({ name: any('background'), value: ref('bg', { type: 'variable' }) });
+    const body = rules([colorDecl, bgDecl]);
+
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(body);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.rulesContext = body;
+    ctx.root = paramScope;
+
+    bindMixinParamValue(fgParam, any('red'), ctx);
+    bindMixinParamValue(bgParam, any('blue'), ctx);
+    attachMixinBodyToParamScope(body, paramScope, ctx);
+
+    const evaldColor = await colorDecl.eval(ctx);
+    const evaldBg = await bgDecl.eval(ctx);
+
+    expect(evaldColor.toTrimmedString()).toBe('$fg');
+    expect(evaldBg.toTrimmedString()).toBe('$bg');
+  });
+
+  it('characterizes guard evaluation as still needing reset-session lookup plumbing beyond param shadow', async () => {
+    const fgParam = vardecl({ name: 'fg', value: nil() });
+    const paramScope = rules([fgParam]);
+    const guard = condition([
+      ref('fg', { type: 'variable' }),
+      '=',
+      any('red')
+    ]);
+
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(paramScope);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.root = paramScope;
+    ctx.rulesContext = paramScope;
+
+    // Future primitive shape:
+    // evaluateMixinGuardAgainstInstanceRoot(guard, instanceRoot, ctx)
+    bindMixinParamValue(fgParam, any('red'), ctx);
+    setParent(guard, paramScope, ctx);
+
+    const previousSession = ctx.session;
+    ctx.session = new EvalSession({ resetEvalState: true });
+    try {
+      const result = await guard.eval(ctx);
+      expect(result.toTrimmedString()).toBe('false');
+    } finally {
+      ctx.session = previousSession;
+    }
+
+    expect(fgParam.value.type).toBe('Nil');
+    expect(guard.parent).toBeUndefined();
+    expect(getParent(guard, ctx)).toBe(paramScope);
   });
 });
 
