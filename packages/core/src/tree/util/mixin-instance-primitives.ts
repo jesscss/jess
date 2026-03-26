@@ -15,7 +15,8 @@ import { F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
-import { getChildren, patchField, setChildren, setParent, setSourceParent } from './session-helpers.js';
+import { getChildren, getField, patchField, setChildren, setParent, setSourceParent } from './session-helpers.js';
+import type { Ruleset } from '../ruleset.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export const enum MixinDefaultGroup {
@@ -804,4 +805,151 @@ export async function processPreparedMixinCandidate<TCandidate>(
     () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params, instanceRoot)
   );
   return undefined;
+}
+
+// -- Dispatch orchestration --
+
+export type MixinDispatchContext = {
+  evalCandidates: Array<{ rules: Rules; guard?: any; params?: List<Node>; index: number; name?: any; options?: Record<string, any> } & Record<string, any>>;
+  hasDefault: boolean;
+  nodeArgs: Node[];
+  sourceParent: Node | undefined;
+  caller: Node | undefined;
+  restrictMixinOutputLookup: boolean;
+  outputRules: Rules[];
+  getCandidateParent: (node: Node) => Node;
+  evaluateCandidateOutput: (
+    candidate: any,
+    rules: Rules,
+    outerRules: Rules | undefined,
+    params: List<Node> | undefined,
+    instanceRoot?: SessionInstanceRoot
+  ) => Promise<void>;
+};
+
+/**
+ * Dispatch all mixin eval candidates — the main candidate loop.
+ *
+ * Handles Ruleset candidates, detached rulesets, and normal parameterized
+ * mixins. Includes default guard replay and output assembly.
+ */
+export async function dispatchMixinEvalCandidates(
+  dispatch: MixinDispatchContext,
+  context: Context
+): Promise<Rules> {
+  const {
+    evalCandidates,
+    hasDefault,
+    nodeArgs,
+    sourceParent,
+    caller,
+    restrictMixinOutputLookup,
+    outputRules,
+    getCandidateParent,
+    evaluateCandidateOutput
+  } = dispatch;
+  const pendingDefaultCandidates: PendingMixinDefaultCandidate<any>[] = [];
+
+  const prevMixinSession = context.session;
+  if (!prevMixinSession) {
+    context.session = new EvalSession({ resetEvalState: true });
+  }
+
+  for (const candidate of evalCandidates) {
+    const candidateInstanceRoot = createMixinCandidateInstanceRoot(
+      candidate as unknown as Node,
+      context
+    );
+
+    if (isNode(candidate, N.Ruleset)) {
+      const rulesetGuard = (candidate as any).guard;
+      if (rulesetGuard instanceof Nil) {
+        continue;
+      }
+      const candidateRules = (candidate as any).rules;
+      const sourceRules = getRootSourceRules(candidateRules);
+      const rules = await evaluateRulesetMixinCandidateOutput(
+        sourceRules,
+        getCandidateParent(candidate as unknown as Node),
+        sourceParent,
+        candidate.index,
+        restrictMixinOutputLookup,
+        context,
+        candidateInstanceRoot
+      );
+      outputRules.push(rules);
+      continue;
+    }
+
+    if (!candidate.name && !candidate.params && !candidate.guard) {
+      const sourceRules = getRootSourceRules((candidate as any).rules);
+      const unlocked = unlockDetachedRulesetMixinCandidateOutput(
+        sourceRules,
+        getCandidateParent(candidate as unknown as Node),
+        sourceParent ?? caller,
+        candidate.index,
+        context,
+        candidateInstanceRoot
+      );
+      outputRules.push(unlocked);
+      continue;
+    }
+
+    let rules = (candidate as any).rules as Rules;
+    let params = context.session
+      ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', context)
+      : (candidate as any).params as List<Node> | undefined;
+    const prepared = prepareMixinCandidateInvocation(
+      rules,
+      params,
+      getCandidateParent(candidate as unknown as Node),
+      sourceParent,
+      candidate.index,
+      nodeArgs,
+      context,
+      candidateInstanceRoot
+    );
+    rules = prepared.rules;
+    params = prepared.params;
+    const canonicalGuard = candidate.guard;
+    const pendingDefaultCandidate = await processPreparedMixinCandidate({
+      candidate,
+      rules,
+      params,
+      outerRules: prepared.outerRules,
+      guard: canonicalGuard,
+      parent: getCandidateParent(candidate as unknown as Node),
+      lookupScope: prepared.lookupScope,
+      guardScopeChildren: prepared.guardScopeChildren,
+      hasDefault,
+      context,
+      instanceRoot: candidateInstanceRoot,
+      evaluateCandidateOutput
+    });
+    if (pendingDefaultCandidate) {
+      pendingDefaultCandidates.push(pendingDefaultCandidate);
+    }
+  }
+
+  await replayWinningMixinDefaultCandidates(
+    pendingDefaultCandidates,
+    context,
+    pending => evaluateCandidateOutput(
+      pending.candidate,
+      pending.rules,
+      pending.outerRules,
+      pending.params,
+      pending.instanceRoot
+    )
+  );
+
+  context.session = prevMixinSession;
+
+  const output = assembleMixinInvocationOutput(
+    outputRules,
+    restrictMixinOutputLookup,
+    context
+  );
+
+  return output;
 }

@@ -18,8 +18,6 @@ import { spaced, Sequence } from './sequence.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 import { atIndex, isPlainObject } from './util/collections.js';
-import type { Condition } from './condition.js';
-import { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -46,18 +44,10 @@ import {
   setSourceParent
 } from './util/session-helpers.js';
 import {
-  assembleMixinInvocationOutput,
-  createMixinCandidateInstanceRoot,
-  evaluateRulesetMixinCandidateOutput,
+  dispatchMixinEvalCandidates,
   finalizeMixinInvocationOutput,
   finalizeMixinInvocationReturn,
-  getRootSourceRules,
-  type PendingMixinDefaultCandidate,
-  processPreparedMixinCandidate,
-  prepareMixinCandidateInvocation,
-  projectMixinParamScopeIntoOutput,
-  replayWinningMixinDefaultCandidates,
-  unlockDetachedRulesetMixinCandidateOutput
+  projectMixinParamScopeIntoOutput
 } from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
@@ -2595,7 +2585,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let outputRules: Rules[] = [];
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
 
-    const pendingDefaultCandidates: PendingMixinDefaultCandidate<Mixin>[] = [];
     const evaluateCandidateOutput = async (
       candidate: Mixin,
       rules: Rules,
@@ -2671,119 +2660,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
     };
 
-    const prevMixinSession = thisContext.session;
-    if (!prevMixinSession) {
-      thisContext.session = new EvalSession({ resetEvalState: true });
-    }
-
-    for (let candidate of evalCandidates) {
-      const candidateInstanceRoot = createMixinCandidateInstanceRoot(
-        candidate as unknown as Node,
-        thisContext
-      );
-
-      if (isNode(candidate, N.Ruleset)) {
-        // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
-        // guard === undefined means passed, guard instanceof Nil means failed
-        const rulesetGuard = (candidate as Ruleset).guard;
-        if (rulesetGuard instanceof Nil) {
-          // Guard failed at definition time - skip this ruleset
-          continue;
-        }
-        const candidateRules = (candidate as Ruleset).rules;
-        const sourceRules = getRootSourceRules(candidateRules);
-        const rules = await evaluateRulesetMixinCandidateOutput(
-          sourceRules,
-          getCandidateParent(candidate as unknown as Node),
-          sourceParent,
-          candidate.index,
-          restrictMixinOutputLookup,
-          thisContext,
-          candidateInstanceRoot
-        );
-        outputRules.push(rules);
-        continue;
-      }
-      // Less detached rulesets are represented as anonymous mixins (name is undefined).
-      // Calling `@rulesetVar();` should *unlock* the rules into scope (including mixin definitions),
-      // not eagerly execute/flatten them.
-      if (!(candidate as any).name && !(candidate as any).params && !(candidate as any).guard) {
-        const sourceRules = getRootSourceRules((candidate as any).rules);
-        const unlocked = unlockDetachedRulesetMixinCandidateOutput(
-          sourceRules,
-          getCandidateParent(candidate as unknown as Node),
-          sourceParent ?? caller,
-          candidate.index,
-          thisContext,
-          candidateInstanceRoot
-        );
-        outputRules.push(unlocked);
-        continue;
-      }
-      let rules = (candidate as any).rules as Rules;
-      let params = thisContext.session
-        ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', thisContext)
-        : (candidate as any).params as List<Node> | undefined;
-      const prepared = prepareMixinCandidateInvocation(
-        rules,
-        params,
-        getCandidateParent(candidate as unknown as Node),
-        sourceParent,
-        candidate.index,
-        nodeArgs,
-        thisContext,
-        candidateInstanceRoot
-      );
-      rules = prepared.rules;
-      params = prepared.params;
-      const canonicalGuard: Condition | Bool | undefined = (candidate as any).guard;
-      const pendingDefaultCandidate = await processPreparedMixinCandidate({
-        candidate: candidate as Mixin,
-        rules,
-        params,
-        outerRules: prepared.outerRules,
-        guard: canonicalGuard,
-        parent: getCandidateParent(candidate as unknown as Node),
-        lookupScope: prepared.lookupScope,
-        guardScopeChildren: prepared.guardScopeChildren,
-        hasDefault,
-        context: thisContext,
-        instanceRoot: candidateInstanceRoot,
-        evaluateCandidateOutput
-      });
-      if (pendingDefaultCandidate) {
-        pendingDefaultCandidates.push(pendingDefaultCandidate);
-      }
-    }
-
-    await replayWinningMixinDefaultCandidates(
-      pendingDefaultCandidates,
-      thisContext,
-      pending => evaluateCandidateOutput(
-        pending.candidate,
-        pending.rules,
-        pending.outerRules,
-        pending.params,
-        pending.instanceRoot
-      )
-    );
-
-    thisContext.session = prevMixinSession;
-
-    const output = assembleMixinInvocationOutput(
-      outputRules,
+    const output = await dispatchMixinEvalCandidates({
+      evalCandidates: evalCandidates as any[],
+      hasDefault,
+      nodeArgs,
+      sourceParent,
+      caller,
       restrictMixinOutputLookup,
-      thisContext
-    );
+      outputRules,
+      getCandidateParent,
+      evaluateCandidateOutput
+    }, thisContext);
 
-    /**
-     * IMPORTANT: Do NOT force `output` to be evaluated here.
-     *
-     * Even though candidate rule bodies are usually evaluated during mixin execution, callers
-     * (e.g. `Call.evalNode`) rely on `.eval(context)` to finish evaluation. Marking these flags
-     * true can skip evaluation and leak unevaluated nodes (like `Call`) into serialization.
-     */
-    return finalizeMixinInvocationReturn(output, this);
+    return finalizeMixinInvocationReturn(output, this instanceof Context ? this : thisContext);
   }
 
   return returnFunc;
