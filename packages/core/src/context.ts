@@ -481,11 +481,12 @@ export class Context {
   }
 
   /** Lazy position access — creates root position on first call */
+  /** Lazy position access — creates a root position on first write. */
   ensurePosition(): EvalPosition {
-    if (!this._position && this.root) {
-      this._position = new EvalPosition(this.root);
+    if (!this._position) {
+      this._position = new EvalPosition(this.root!);
     }
-    return this._position!;
+    return this._position;
   }
 
   set position(value: EvalPosition | undefined) {

@@ -7,38 +7,34 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 
 /**
- * Resolve the active instance root for a node.
- * Priority: ctx.instanceRoot → node._instanceRoot → undefined.
+ * @deprecated — Legacy helper, to be removed. Use position directly.
  */
 function resolveInstanceRoot(node: Node, ctx: Context): SessionInstanceRoot | undefined {
   return ctx.instanceRoot ?? node._instanceRoot;
 }
 
 /**
- * Session-aware field read/write helpers.
+ * Position-aware field read/write helpers.
  *
- * These functions provide a uniform interface for reading and writing
- * node fields that respects the active EvalSession on Context. When
- * a session exists, reads check session patches first; writes go to
- * the session overlay instead of mutating the canonical node. When
- * no session exists, they fall through to direct field access — so
- * existing behavior is preserved exactly.
+ * Architecture: two layers only.
+ *   Read:  position.getField(node, key) ?? node[key]
+ *   Write: context.ensurePosition().patchField(node, key, value)
  *
- * Introduced in Stage 7 but not yet wired into any production code
- * path. Stages 8-13 will incrementally replace direct field access
- * with these helpers.
+ * Legacy layers (instanceRoot, session) are preserved temporarily in
+ * getField for backward compatibility during migration but will be
+ * removed. patchField and setParent already route through position only.
  */
 
 /**
  * Read a field from a node.
- * Resolution: position → instanceRoot → session → canonical.
+ * Resolution: position → canonical.
+ * (Legacy: instanceRoot and session fallbacks still present during migration.)
  */
 export function getField<T = unknown>(
   node: Node,
   key: string,
   ctx: Context
 ): T {
-  // Active position (current eval scope)
   const pos = ctx.position;
   if (pos && pos.hasField(node, key)) {
     return pos.getField(node, key) as T;
@@ -48,10 +44,12 @@ export function getField<T = unknown>(
   if (carried && carried.hasField(node, key)) {
     return carried.getField(node, key) as T;
   }
+  // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasField(node, key)) {
     return ir.getField(node, key) as T;
   }
+  // Legacy: session fallback — to be removed
   const session = ctx.session;
   if (session && session.hasField(node, key)) {
     return session.getField(node, key) as T;
@@ -60,8 +58,9 @@ export function getField<T = unknown>(
 }
 
 /**
- * Write a field on a node.
- * Write target: position → instanceRoot → session → canonical.
+ * Write a field on a node. Always routes through position.
+ * `ensurePosition()` lazily creates one if needed.
+ * Never falls through to canonical mutation.
  */
 export function patchField(
   node: Node,
@@ -69,22 +68,7 @@ export function patchField(
   value: unknown,
   ctx: Context
 ): void {
-  const pos = ctx.position;
-  if (pos) {
-    pos.patchField(node, key, value);
-    return;
-  }
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    ir.patchField(node, key, value);
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    session.patchField(node, key, value);
-  } else {
-    (node as unknown as Record<string, unknown>)[key] = value;
-  }
+  ctx.ensurePosition().patchField(node, key, value);
 }
 
 export function getDependency(
@@ -173,6 +157,7 @@ export function getParent(
   if (pos && pos.hasField(node, 'parent')) {
     return pos.getField(node, 'parent') as Node | undefined;
   }
+  // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
@@ -180,6 +165,7 @@ export function getParent(
       return runtime.parent;
     }
   }
+  // Legacy: session fallback — to be removed
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -191,34 +177,14 @@ export function getParent(
 }
 
 /**
- * Set the parent of a node. Write target: instanceRoot → session → canonical.
+ * Set the parent of a node. Always routes through position.
  */
 export function setParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
 ): void {
-  // Route through position when active — per-call parent isolation
-  const pos = ctx.position;
-  if (pos) {
-    pos.patchField(node, 'parent', parent);
-    return;
-  }
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    ir.getRuntime(node).parent = parent;
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    session.getRuntime(node).parent = parent;
-  } else {
-    if (parent) {
-      parent.adopt(node);
-    } else {
-      (node as unknown as Record<string, unknown>).parent = undefined;
-    }
-  }
+  ctx.ensurePosition().patchField(node, 'parent', parent);
 }
 
 /**
@@ -246,24 +212,14 @@ export function isEvaluated(
 }
 
 /**
- * Mark a node as evaluated. Write target: instanceRoot → session → canonical.
+ * Mark a node as evaluated. Always routes through position.
  */
 export function setEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    ir.getRuntime(node).evaluated = value;
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    session.getRuntime(node).evaluated = value;
-  } else {
-    node.evaluated = value;
-  }
+  ctx.ensurePosition().patchField(node, '_evaluated', value);
 }
 
 /**
@@ -291,24 +247,14 @@ export function isPreEvaluated(
 }
 
 /**
- * Mark a node's preEval phase as completed. Write target: instanceRoot → session → canonical.
+ * Mark a node's preEval phase as completed. Always routes through position.
  */
 export function setPreEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    ir.getRuntime(node).preEvaluated = value;
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    session.getRuntime(node).preEvaluated = value;
-  } else {
-    node.preEvaluated = value;
-  }
+  ctx.ensurePosition().patchField(node, '_preEvaluated', value);
 }
 
 /**
@@ -336,24 +282,14 @@ export function getIndex(
 }
 
 /**
- * Set the eval index of a node. Write target: instanceRoot → session → canonical.
+ * Set the eval index of a node. Always routes through position.
  */
 export function setIndex(
   node: Node,
   index: number,
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    ir.getRuntime(node).index = index;
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    session.getRuntime(node).index = index;
-  } else {
-    node.index = index;
-  }
+  ctx.ensurePosition().patchField(node, 'index', index);
 }
 
 /**
@@ -381,120 +317,43 @@ export function getSourceParent(
 }
 
 /**
- * Set the source parent of a node. Write target: instanceRoot → session → canonical.
+ * Set the source parent of a node. Always routes through position.
  */
 export function setSourceParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    ir.getRuntime(node).sourceParent = parent;
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    session.getRuntime(node).sourceParent = parent;
-  } else {
-    node.sourceParent = parent;
-  }
+  ctx.ensurePosition().patchField(node, 'sourceParent', parent);
 }
 
 /**
- * Bulk-set multiple runtime state fields on a node.
- * Write target: instanceRoot → session → canonical.
+ * Bulk-set multiple runtime state fields on a node. Always routes through position.
  */
 export function setRuntimeState(
   node: Node,
   patch: Partial<RuntimeState>,
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    const runtime = ir.getRuntime(node);
-    if (Object.prototype.hasOwnProperty.call(patch, 'parent')) {
-      runtime.parent = patch.parent;
-    }
-    if (patch.index !== undefined) {
-      runtime.index = patch.index;
-    }
-    if (patch.evaluated !== undefined) {
-      runtime.evaluated = patch.evaluated;
-    }
-    if (patch.preEvaluated !== undefined) {
-      runtime.preEvaluated = patch.preEvaluated;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'sourceParent')) {
-      runtime.sourceParent = patch.sourceParent;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'sourceNode')) {
-      runtime.sourceNode = patch.sourceNode;
-    }
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    const runtime = session.getRuntime(node);
-    if (Object.prototype.hasOwnProperty.call(patch, 'parent')) {
-      runtime.parent = patch.parent;
-    }
-    if (patch.index !== undefined) {
-      runtime.index = patch.index;
-    }
-    if (patch.evaluated !== undefined) {
-      runtime.evaluated = patch.evaluated;
-    }
-    if (patch.preEvaluated !== undefined) {
-      runtime.preEvaluated = patch.preEvaluated;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'sourceParent')) {
-      runtime.sourceParent = patch.sourceParent;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'sourceNode')) {
-      runtime.sourceNode = patch.sourceNode;
-    }
-  } else {
-    if (Object.prototype.hasOwnProperty.call(patch, 'parent')) {
-      if (patch.parent) {
-        patch.parent.adopt(node);
-      } else {
-        (node as unknown as Record<string, unknown>).parent = undefined;
-      }
-    }
-    if (patch.index !== undefined) {
-      node.index = patch.index;
-    }
-    if (patch.evaluated !== undefined) {
-      node.evaluated = patch.evaluated;
-    }
-    if (patch.preEvaluated !== undefined) {
-      node.preEvaluated = patch.preEvaluated;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'sourceParent')) {
-      node.sourceParent = patch.sourceParent;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'sourceNode')) {
-      node.sourceNode = patch.sourceNode;
+  const pos = ctx.ensurePosition();
+  for (const [key, value] of Object.entries(patch)) {
+    if (value !== undefined || Object.prototype.hasOwnProperty.call(patch, key)) {
+      pos.patchField(node, key, value);
     }
   }
 }
 
 /**
  * Read the children array of a Rules node.
- * Resolution: instanceRoot → session → canonical (rules.value).
+ * Resolution: position → canonical.
  */
 export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
-  const ir = resolveInstanceRoot(rules, ctx);
-  if (ir) {
-    return ir.getChildren(rules) ?? rules.value;
-  }
-  const session = ctx.session;
-  if (session) {
-    return session.getChildren(rules) ?? rules.value;
+  const pos = ctx.position;
+  if (pos && pos.hasField(rules, 'value')) {
+    return pos.getField(rules, 'value') as Node[];
   }
   return rules.value;
 }
@@ -503,53 +362,24 @@ type SessionChildrenWriteOptions = {
   markDirty?: boolean;
 };
 
+/**
+ * Set the children array of a Rules node. Always routes through position.
+ */
 export function setChildren(
   rules: Rules,
   nodes: readonly Node[],
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
-  const ir = resolveInstanceRoot(rules, ctx);
-  if (ir) {
-    const prevChildren = getChildren(rules, ctx);
-    const nextChildren = [...nodes];
-    const nextSet = new Set(nextChildren);
-    ir.setChildren(rules, nextChildren);
-    for (const child of prevChildren) {
-      if (!nextSet.has(child)) {
-        setParent(child, undefined, ctx);
-      }
-    }
-    for (const child of nextChildren) {
-      setParent(child, rules, ctx);
-    }
-    if (options.markDirty !== false) {
-      markScopeDirty(rules, ctx);
-    }
-    return;
+  ctx.ensurePosition().patchField(rules, 'value', [...nodes]);
+  if (options.markDirty !== false) {
+    markScopeDirty(rules, ctx);
   }
-  const session = ctx.session;
-  if (session) {
-    const prevChildren = getChildren(rules, ctx);
-    const nextChildren = [...nodes];
-    const nextSet = new Set(nextChildren);
-    session.setChildren(rules, nextChildren);
-    for (const child of prevChildren) {
-      if (!nextSet.has(child)) {
-        setParent(child, undefined, ctx);
-      }
-    }
-    for (const child of nextChildren) {
-      setParent(child, rules, ctx);
-    }
-    if (options.markDirty !== false) {
-      markScopeDirty(rules, ctx);
-    }
-    return;
-  }
-  rules.setData([...nodes]);
 }
 
+/**
+ * Set a child at a specific index. Always routes through position.
+ */
 export function setChildAt(
   rules: Rules,
   index: number,
@@ -557,109 +387,51 @@ export function setChildAt(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
-  const ir = resolveInstanceRoot(rules, ctx);
-  if (ir) {
-    const currentChildren = getChildren(rules, ctx);
-    const prev = currentChildren[index];
-    if (prev === node) {
-      return;
-    }
-    const nextChildren = [...currentChildren];
-    nextChildren[index] = node;
-    ir.setChildren(rules, nextChildren);
-    setParent(node, rules, ctx);
-    if (prev) {
-      setParent(prev, undefined, ctx);
-    }
-    if (options.markDirty !== false) {
-      markScopeDirty(rules, ctx);
-    }
+  const pos = ctx.ensurePosition();
+  const currentChildren = pos.hasField(rules, 'value')
+    ? pos.getField(rules, 'value') as Node[]
+    : [...rules.value];
+  const prev = currentChildren[index];
+  if (prev === node) {
     return;
   }
-  const session = ctx.session;
-  if (session) {
-    const currentChildren = getChildren(rules, ctx);
-    const prev = currentChildren[index];
-    if (prev === node) {
-      return;
-    }
-    const nextChildren = [...currentChildren];
-    nextChildren[index] = node;
-    session.setChildren(rules, nextChildren);
-    setParent(node, rules, ctx);
-    if (prev) {
-      setParent(prev, undefined, ctx);
-    }
-    if (options.markDirty !== false) {
-      markScopeDirty(rules, ctx);
-    }
-    return;
+  currentChildren[index] = node;
+  pos.patchField(rules, 'value', currentChildren);
+  if (options.markDirty !== false) {
+    markScopeDirty(rules, ctx);
   }
-  rules.setData(index, node);
 }
 
 /**
- * Append child nodes to a Rules node.
- * Stage 9 will route into session-local children when a session is active.
+ * Append child nodes to a Rules node. Always routes through position.
  */
 export function appendChildren(
   rules: Rules,
   nodes: Node[],
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(rules, ctx);
-  if (ir) {
-    const nextValue = [...getChildren(rules, ctx), ...nodes];
-    ir.setChildren(rules, nextValue);
-    for (const node of nodes) {
-      setParent(node, rules, ctx);
-    }
-    markScopeDirty(rules, ctx);
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    const nextValue = [...getChildren(rules, ctx), ...nodes];
-    session.setChildren(rules, nextValue);
-    for (const node of nodes) {
-      setParent(node, rules, ctx);
-    }
-    markScopeDirty(rules, ctx);
-    return;
-  }
-  rules.push(ctx, ...nodes);
+  const pos = ctx.ensurePosition();
+  const current = pos.hasField(rules, 'value')
+    ? pos.getField(rules, 'value') as Node[]
+    : [...rules.value];
+  pos.patchField(rules, 'value', [...current, ...nodes]);
+  markScopeDirty(rules, ctx);
 }
 
 /**
- * Prepend child nodes to a Rules node.
- * Stage 9 will route into session-local children when a session is active.
+ * Prepend child nodes to a Rules node. Always routes through position.
  */
 export function prependChildren(
   rules: Rules,
   nodes: Node[],
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(rules, ctx);
-  if (ir) {
-    const nextValue = [...nodes, ...getChildren(rules, ctx)];
-    ir.setChildren(rules, nextValue);
-    for (const node of nodes) {
-      setParent(node, rules, ctx);
-    }
-    markScopeDirty(rules, ctx);
-    return;
-  }
-  const session = ctx.session;
-  if (session) {
-    const nextValue = [...nodes, ...getChildren(rules, ctx)];
-    session.setChildren(rules, nextValue);
-    for (const node of nodes) {
-      setParent(node, rules, ctx);
-    }
-    markScopeDirty(rules, ctx);
-    return;
-  }
-  rules.unshift(ctx, ...nodes);
+  const pos = ctx.ensurePosition();
+  const current = pos.hasField(rules, 'value')
+    ? pos.getField(rules, 'value') as Node[]
+    : [...rules.value];
+  pos.patchField(rules, 'value', [...nodes, ...current]);
+  markScopeDirty(rules, ctx);
 }
 
 /**
