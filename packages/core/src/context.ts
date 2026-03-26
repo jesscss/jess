@@ -7,7 +7,7 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
-import { EvalSession, type SessionInstanceRoot, type EvalPosition } from './eval-session.js';
+import { EvalSession, EvalPosition, type SessionInstanceRoot } from './eval-session.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
