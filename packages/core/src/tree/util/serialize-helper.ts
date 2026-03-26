@@ -8,6 +8,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
 import { getField } from './session-helpers.js';
+import type { EvalPosition } from '../../eval-session.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -95,7 +96,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     return w.getSince(mark);
   }
 
-  const rulesToRender = rules.flatRules(true);
+  const positionMap = new WeakMap<Node, EvalPosition>();
+  const rulesToRender = rules.flatRules(true, options.context, positionMap);
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
@@ -174,10 +176,29 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let n = rulesToRender[idx]!;
     const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
+    // Push per-node position from the position map so patched fields resolve
+    const nodePosition = positionMap.get(n);
+    const ctx = options.context;
+    let prevPos: EvalPosition | undefined;
+    if (ctx && nodePosition) {
+      prevPos = ctx.position;
+      ctx.position = nodePosition;
+      if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration)) {
+        const patchedValue = nodePosition.getField(n, 'value');
+        console.log(`[DEBUG] serialize: pushed pos=${nodePosition.id} for ${n.type}, value=${(patchedValue as any)?.valueOf?.()}, type=${(patchedValue as any)?.type}`);
+      }
+    }
+
     if (!n.visible && !n.fullRender) {
+      if (ctx && nodePosition) {
+        ctx.position = prevPos;
+      }
       continue;
     }
     if (inReferenceMode && !renderEnabled && !isContainer) {
+      if (ctx && nodePosition) {
+        ctx.position = prevPos;
+      }
       continue;
     }
     if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(n)) {
@@ -366,6 +387,11 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // else {
     //   n.toString({ ...options, depth: options.depth + 1 });
     // }
+
+    // Restore position after this node's serialization
+    if (ctx && nodePosition) {
+      ctx.position = prevPos;
+    }
   }
   inFrames.pop();
   frameHeaders.pop();

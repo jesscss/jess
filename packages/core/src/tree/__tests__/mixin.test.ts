@@ -264,7 +264,8 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      // Position-backed trees require context for serialization
+      const css = evald.toString({ context });
 
       expect(css).toBeString(`
         .test1 {

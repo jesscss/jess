@@ -518,14 +518,23 @@ export async function evaluateMixinGuardCandidate(
 /**
  * Finalize mixin invocation output.
  *
- * Under the position model, mixin output carries its EvalPosition —
- * no materialization needed. The position's field patches provide
- * isolation between calls.
+ * Creates a thin distinct wrapper per call so each call's output can
+ * carry its own _evalPosition. No deep materialization — the wrapper
+ * shares children with the canonical body. Only the wrapper itself
+ * is a new object (one allocation per call, not N per subtree).
  */
 export function finalizeMixinInvocationOutput(
   rules: Rules,
-  _context: Context
+  context: Context
 ): Rules {
+  if (!context.session) {
+    return rules;
+  }
+  // Each call needs a distinct output node to carry its own _evalPosition.
+  // cloneDetachedShallowWrapper creates a thin shell sharing children.
+  if (rules === rules.sourceNode) {
+    return rules.cloneDetachedShallowWrapper(context);
+  }
   return rules;
 }
 
@@ -1333,7 +1342,6 @@ export async function evaluateCandidateOutput(
       newRules._instanceRoot = instanceRoot;
     }
     // Carry the per-call position on the output node.
-    // TODO: serialization needs to resolve fields through this position.
     if (callPosition) {
       newRules._evalPosition = callPosition;
     }

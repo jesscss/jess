@@ -714,14 +714,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    // Push carried per-call position into context so child nodes
+    // resolve patched fields during serialization.
+    const ctx = options.context;
+    const carried = this._evalPosition;
+    let didPush = false;
+    if (ctx && carried && !ctx.position) {
+      ctx.position = carried;
+      didPush = true;
+    }
     this._emitRulesBody(options);
+    if (didPush) {
+      ctx!.position = undefined;
+    }
     return w.getSince(mark);
   }
 
   /** All rules, with nested rules flattened */
-  flatRules(visibleOnly: boolean = false, context?: Context) {
+  flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, import('../eval-session.js').EvalPosition>) {
     const finalRules: Node[] = [];
-    const iterateRules = (rules: Rules) => {
+    const iterateRules = (rules: Rules, activePosition?: import('../eval-session.js').EvalPosition) => {
+      const carried = rules._evalPosition ?? activePosition;
       for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Rules)) {
           // Preserve reference-mode Rules as containers so the serializer
@@ -729,11 +742,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if ((n.options as RulesOptions)?.referenceMode === true) {
             finalRules.push(n);
           } else {
-            iterateRules(n);
+            iterateRules(n, carried);
           }
           continue;
         }
         if (!visibleOnly || n.visible || n.fullRender) {
+          if (positionMap && carried) {
+            positionMap.set(n, carried);
+          }
           finalRules.push(n);
         }
       }

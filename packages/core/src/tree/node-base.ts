@@ -1,4 +1,5 @@
 import { isPlainObject, NodeTraversalCursor } from './util/collections.js';
+import { getField } from './util/session-helpers.js';
 import {
   type TreeContext,
   type Context
@@ -1124,11 +1125,12 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
+  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, context?: Context) {
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
+      return this._forEachNodeSync(func as (n: Node, idx?: number) => Node, context);
     }
     const entries = this._collectChildEntries();
+    const pos = context?.position;
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -1137,7 +1139,11 @@ export abstract class Node<
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           if (result !== value) {
-            collection[key] = result;
+            if (pos && typeof key === 'string') {
+              pos.patchField(this, key, result);
+            } else {
+              collection[key] = result;
+            }
             if (result instanceof Node) {
               this.adopt(result);
             }
@@ -1146,7 +1152,11 @@ export abstract class Node<
         });
       }
       if (out !== value) {
-        collection[key] = out as Node;
+        if (pos && typeof key === 'string') {
+          pos.patchField(this, key, out);
+        } else {
+          collection[key] = out as Node;
+        }
         this.adopt(out as Node);
         this._invalidateValueOf();
       }
@@ -1172,8 +1182,9 @@ export abstract class Node<
     return entries;
   }
 
-  private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
+  private _forEachNodeSync(func: (n: Node, idx?: number) => Node, context?: Context) {
     const ck = (this.constructor as typeof Node).childKeys;
+    const pos = context?.position;
 
     if (Array.isArray(ck)) {
       let idx = 0;
@@ -1195,7 +1206,11 @@ export abstract class Node<
         } else if (field instanceof Node) {
           const result = func(field, idx++);
           if (result !== field) {
-            (this as any)[key!] = result;
+            if (pos) {
+              pos.patchField(this, key!, result);
+            } else {
+              (this as any)[key!] = result;
+            }
             this.adopt(result);
             this._invalidateValueOf();
           }
@@ -1536,7 +1551,7 @@ export abstract class Node<
       // Other nodes will get indices assigned by their parent Rules
       let out: MaybePromise<void>;
       try {
-        out = node.forEachNode(n => n.preEval(context));
+        out = node.forEachNode(n => n.preEval(context), context);
       } catch (error: unknown) {
         throw error;
       }
@@ -1562,7 +1577,7 @@ export abstract class Node<
     }
     let out = this.forEachNode((n: Node) => {
       return n.eval(context);
-    });
+    }, context);
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         return this;
@@ -1827,9 +1842,13 @@ export abstract class Node<
     const w = options.writer!;
     const mark = w.mark();
     const ck = (this.constructor as typeof Node).childKeys;
+    const ctx = options.context;
     if (ck) {
       for (const key of ck) {
-        const field = (this as any)[key!];
+        // Resolve through position/session when context available
+        const field = ctx
+          ? getField(this as Node, key!, ctx)
+          : (this as any)[key!];
         if (isArray(field)) {
           for (const item of field) {
             if (item instanceof Node) {
