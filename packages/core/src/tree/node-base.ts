@@ -3,7 +3,7 @@ import {
   type TreeContext,
   type Context
 } from '../context.js';
-import { EvalSession, type SessionInstanceRoot } from '../eval-session.js';
+import { EvalSession, type EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
@@ -253,6 +253,13 @@ export abstract class Node<
    * is not set, so the node "remembers" its eval context.
    */
   _instanceRoot: SessionInstanceRoot | undefined;
+
+  /**
+   * Carried EvalPosition from a mixin/function call. When `ctx.position`
+   * is not set, session helpers fall back to this node's carried position
+   * so each call's patches survive on the output.
+   */
+  _evalPosition: EvalPosition | undefined;
 
   get preEvaluated() {
     return (this._metaFlags & M_PRE_EVALUATED) !== 0;

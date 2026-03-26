@@ -38,9 +38,15 @@ export function getField<T = unknown>(
   key: string,
   ctx: Context
 ): T {
+  // Active position (current eval scope)
   const pos = ctx.position;
   if (pos && pos.hasField(node, key)) {
     return pos.getField(node, key) as T;
+  }
+  // Carried position (mixin/function output remembers its call's patches)
+  const carried = node._evalPosition;
+  if (carried && carried.hasField(node, key)) {
+    return carried.getField(node, key) as T;
   }
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasField(node, key)) {

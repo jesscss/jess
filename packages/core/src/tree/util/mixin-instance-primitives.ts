@@ -516,23 +516,17 @@ export async function evaluateMixinGuardCandidate(
  * this boundary materializes only the returned wrapper/result shape.
  */
 /**
- * @removal-target — node-copy-reduction
- * Target: remove materialization entirely. Mixin output should carry its
- * EvalPosition; downstream reads resolve through position patches.
- * No cloneDetachedMaterializedWrapper — that creates a full object tree
- * per call, exactly what the virtual tree architecture eliminates.
+ * Finalize mixin invocation output.
+ *
+ * Under the position model, mixin output carries its EvalPosition —
+ * no materialization needed. The position's field patches provide
+ * isolation between calls.
  */
 export function finalizeMixinInvocationOutput(
   rules: Rules,
-  context: Context
+  _context: Context
 ): Rules {
-  if (!context.session) {
-    return rules;
-  }
-  if (rules !== rules.sourceNode) {
-    return rules;
-  }
-  return rules.cloneDetachedMaterializedWrapper(context);
+  return rules;
 }
 
 /**
@@ -568,7 +562,9 @@ export function projectMixinParamScopeIntoOutput(
       return node.getPropertyName(context) !== 'arguments';
     })
     .map((node) => {
-      const copy = node.materializeEvaluatedCopy(context) as VarDeclaration;
+      // Use a simple copy (no materialization) — the param's bound value
+      // is already on the canonical node via setData in matchMixinCandidates.
+      const copy = node.copy(true) as VarDeclaration;
       copy.addFlag(F_VISIBLE);
       return copy;
     });
@@ -1321,6 +1317,9 @@ export async function evaluateCandidateOutput(
     }
     newRules = finalizeMixinInvocationOutput(newRules, context);
     newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
+    // Save the per-call position on the output so downstream reads
+    // resolve through this call's patches, not the canonical state.
+    const callPosition = context.position;
     context.position = prevPosition;
     setSourceParent(newRules, sourceParent, context);
     setParent(newRules, getParentFn(candidate), context);
@@ -1332,6 +1331,10 @@ export async function evaluateCandidateOutput(
     }
     if (instanceRoot) {
       newRules._instanceRoot = instanceRoot;
+    }
+    // Carry the per-call position on the output node
+    if (callPosition) {
+      newRules._evalPosition = callPosition;
     }
     outputRules.push(newRules);
   } catch (error) {
