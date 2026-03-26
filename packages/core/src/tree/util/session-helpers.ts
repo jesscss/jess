@@ -61,6 +61,10 @@ export function getField<T = unknown>(
  * Write a field on a node. Always routes through position.
  * `ensurePosition()` lazily creates one if needed.
  * Never falls through to canonical mutation.
+ *
+ * Note: this does NOT auto-adopt (set child.parent). Parent
+ * relationships are managed by the eval pipeline (forEachNode,
+ * Rules.evalNode) via setParent, not by individual field writes.
  */
 export function setField(
   node: Node,
