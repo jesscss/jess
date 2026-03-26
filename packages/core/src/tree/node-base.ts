@@ -365,6 +365,8 @@ export abstract class Node<
       return this.clone(true);
     }
 
+    const position = ctx.position;
+    const instanceRoot = ctx.instanceRoot ?? this._instanceRoot;
     const session = ctx.session;
     const Class = this.constructor as Class<this>;
     const ck = (Class as unknown as typeof Node).childKeys;
@@ -377,13 +379,33 @@ export abstract class Node<
       }
       return value;
     };
-    const getFieldFromView = (key: string): unknown => {
-      if (
-        key === 'value'
-        && this.type === 'Rules'
-        && session.hasChildren(this as unknown as Rules)
-      ) {
+    const getRulesChildrenFromView = (): Node[] | undefined => {
+      if (this.type !== 'Rules') {
+        return undefined;
+      }
+      if (position?.hasField(this, 'value')) {
+        return [...position.getField(this, 'value') as Node[]];
+      }
+      if (instanceRoot?.hasChildren(this as unknown as Rules)) {
+        return [...instanceRoot.getChildren(this as unknown as Rules)!];
+      }
+      if (session.hasChildren(this as unknown as Rules)) {
         return [...session.getChildren(this as unknown as Rules)!];
+      }
+      return undefined;
+    };
+    const getFieldFromView = (key: string): unknown => {
+      if (key === 'value') {
+        const rulesChildren = getRulesChildrenFromView();
+        if (rulesChildren) {
+          return rulesChildren;
+        }
+      }
+      if (position?.hasField(this, key)) {
+        return position.getField(this, key);
+      }
+      if (instanceRoot?.hasField(this, key)) {
+        return instanceRoot.getField(this, key);
       }
       if (session.hasField(this, key)) {
         return session.getField(this, key);
@@ -392,14 +414,8 @@ export abstract class Node<
     };
 
     if (ck === null) {
-      const value = materializeValue(
-        session.hasField(this, 'value')
-          ? session.getField(this, 'value')
-          : (this as any).value
-      );
-      const options = session.hasField(this, 'options')
-        ? session.getField(this, 'options')
-        : this._meta?.options;
+      const value = materializeValue(getFieldFromView('value'));
+      const options = getFieldFromView('options') ?? this._meta?.options;
       const newNode = new Class(
         value as any,
         options ? { ...(options as Record<string, unknown>) } : undefined,
@@ -407,8 +423,12 @@ export abstract class Node<
         this.treeContext
       );
       newNode.inherit(this);
-      if (session.hasRuntime(this)) {
-        const runtime = session.getRuntime(this);
+      const runtime = instanceRoot?.hasRuntime(this)
+        ? instanceRoot.getRuntime(this)
+        : session.hasRuntime(this)
+          ? session.getRuntime(this)
+          : undefined;
+      if (runtime) {
         if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
           newNode.sourceNode = runtime.sourceNode;
         }
@@ -429,9 +449,7 @@ export abstract class Node<
       }
     }
 
-    const options = session.hasField(this, 'options')
-      ? session.getField(this, 'options')
-      : this._meta?.options;
+    const options = getFieldFromView('options') ?? this._meta?.options;
     const newNode = new Class(
       cloneData,
       options ? { ...(options as Record<string, unknown>) } : undefined,
@@ -439,8 +457,12 @@ export abstract class Node<
       this.treeContext
     );
     newNode.inherit(this);
-    if (session.hasRuntime(this)) {
-      const runtime = session.getRuntime(this);
+    const runtime = instanceRoot?.hasRuntime(this)
+      ? instanceRoot.getRuntime(this)
+      : session.hasRuntime(this)
+        ? session.getRuntime(this)
+        : undefined;
+    if (runtime) {
       if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
         newNode.sourceNode = runtime.sourceNode;
       }

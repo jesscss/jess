@@ -210,3 +210,69 @@ export function withMixinLookupScope<T>(
     throw error;
   }
 }
+
+/**
+ * Turn a session-evaluated mixin body into a portable returned result tree.
+ *
+ * Direct body eval now writes resolved values through shadow state on the
+ * canonical body. Returned mixin output cannot depend on that transient state
+ * still being active during later serialization or downstream composition, so
+ * this boundary materializes only the returned wrapper/result shape.
+ */
+export function finalizeMixinInvocationOutput(
+  rules: Rules,
+  context: Context
+): Rules {
+  if (!context.session) {
+    return rules;
+  }
+  if (rules !== rules.sourceNode) {
+    return rules;
+  }
+  return rules.cloneDetachedMaterializedWrapper(context);
+}
+
+/**
+ * Project bound mixin params into the returned output shape.
+ *
+ * Older mixin semantics exposed bound param vars at the top of the returned
+ * rules block. Keep that behavior as an explicit output-shaping primitive
+ * instead of leaving it implicit inside `getFunctionFromMixins()`.
+ */
+export function projectMixinParamScopeIntoOutput(
+  output: Rules,
+  scope: Rules | undefined,
+  context: Context
+): Rules {
+  if (!scope) {
+    return output;
+  }
+
+  const projectedParams = getChildren(scope, context)
+    .filter((node): node is VarDeclaration => {
+      if (!isNode(node, N.VarDeclaration)) {
+        return false;
+      }
+      if (!node.options?.paramVar) {
+        return false;
+      }
+      return node.getPropertyName(context) !== 'arguments';
+    })
+    .map((node) => {
+      const copy = node.materializeEvaluatedCopy(context) as VarDeclaration;
+      copy.addFlag(F_VISIBLE);
+      return copy;
+    });
+
+  if (projectedParams.length === 0) {
+    return output;
+  }
+
+  const merged = Rules.create(
+    [...projectedParams, ...getChildren(output, context)],
+    output.options ? { ...output.options } : undefined
+  );
+  merged.inherit(output);
+  merged._instanceRoot = output._instanceRoot;
+  return merged;
+}

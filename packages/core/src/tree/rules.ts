@@ -47,7 +47,9 @@ import {
   setSourceParent
 } from './util/session-helpers.js';
 import {
+  finalizeMixinInvocationOutput,
   prepareMixinInvocationScope,
+  projectMixinParamScopeIntoOutput,
   seedMixinGuardScope,
   withMixinLookupScope
 } from './util/mixin-instance-primitives.js';
@@ -2646,6 +2648,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           setParent(rules, outerRules, thisContext);
           newRules = await rules.eval(thisContext);
         }
+        newRules = finalizeMixinInvocationOutput(newRules, thisContext);
+        newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, thisContext);
         thisContext.position = prevPosition;
         setSourceParent(newRules, sourceParent, thisContext);
         setParent(newRules, getCandidateParent(candidate as unknown as Node), thisContext);

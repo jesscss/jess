@@ -50,8 +50,10 @@ import {
   bindMixinParamValue,
   createMixinParamScope,
   defineMixinArgumentsInScope,
-  prepareMixinInvocationScope,
+  finalizeMixinInvocationOutput,
   populateMixinParamScope,
+  prepareMixinInvocationScope,
+  projectMixinParamScopeIntoOutput,
   seedMixinGuardScope,
   withMixinLookupScope
 } from '../tree/util/mixin-instance-primitives.js';
@@ -583,6 +585,81 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(body.parent).toBeUndefined();
     expect(getParent(body, ctx)).toBe(paramScope);
     expect(ctx.lookupScope).toBeUndefined();
+  });
+
+  it('finalizeMixinInvocationOutput turns a session-evaluated body into a portable returned result', async () => {
+    const fgParam = vardecl({ name: 'fg', value: nil() });
+    const sourceDecl = decl({ name: any('color'), value: ref('fg', { type: 'variable' }) });
+    const bodyRoot = rules([]);
+    const body = rules([sourceDecl]);
+
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(body);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.rulesContext = body;
+    ctx.root = bodyRoot;
+
+    bindMixinParamValue(fgParam, any('red'), ctx);
+    const paramScope = prepareMixinInvocationScope(
+      body,
+      bodyRoot,
+      0,
+      list([fgParam]),
+      [],
+      ctx
+    )!;
+
+    const evaldBody = await withMixinLookupScope(paramScope, ctx, () => body.eval(ctx)) as Rules;
+    const finalized = finalizeMixinInvocationOutput(evaldBody, ctx);
+    const finalizedDecl = finalized.at(0) as Node;
+
+    expect(finalized).not.toBe(body);
+    expect(finalizedDecl).not.toBe(sourceDecl);
+    expect(finalizedDecl.parent).toBe(finalized);
+    expect(sourceDecl.parent).toBe(body);
+    expect(getField<Node>(sourceDecl, 'value', ctx).toTrimmedString()).toBe('red');
+    expect(String(finalized)).toBeString(`
+      color: red;
+    `);
+  });
+
+  it('projectMixinParamScopeIntoOutput prepends visible bound params without re-cloning the canonical body', async () => {
+    const fgParam = vardecl({ name: 'fg', value: nil() });
+    const sourceDecl = decl({ name: any('color'), value: ref('fg', { type: 'variable' }) });
+    const bodyRoot = rules([]);
+    const body = rules([sourceDecl]);
+
+    const session = new EvalSession();
+    const instanceRoot = session.createInstanceRoot(body);
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = session;
+    ctx.instanceRoot = instanceRoot;
+    ctx.rulesContext = body;
+    ctx.root = bodyRoot;
+
+    bindMixinParamValue(fgParam, any('red'), ctx);
+    const paramScope = prepareMixinInvocationScope(
+      body,
+      bodyRoot,
+      0,
+      list([fgParam]),
+      [],
+      ctx
+    )!;
+
+    const evaldBody = await withMixinLookupScope(paramScope, ctx, () => body.eval(ctx)) as Rules;
+    const finalized = finalizeMixinInvocationOutput(evaldBody, ctx);
+    const projected = projectMixinParamScopeIntoOutput(finalized, paramScope, ctx);
+
+    expect(projected.at(0)?.type).toBe('VarDeclaration');
+    expect(projected.at(1)?.type).toBe('Declaration');
+    expect(String(projected)).toBeString(`
+      $fg: red;
+      color: red;
+    `);
+    expect(sourceDecl.parent).toBe(body);
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

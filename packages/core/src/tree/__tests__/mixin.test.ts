@@ -511,6 +511,7 @@ describe('Mixin', () => {
         expect(outerRules.parent).toBeUndefined();
         expect(guardNode.parent).not.toBe(outerRules);
         expect(String(result)).toBeString(`
+          $color: red;
           color: red;
         `);
       } finally {

@@ -1,5 +1,38 @@
 # Mixin Direct Invocation — Next Pass Plan
 
+## Primitive Checklist
+
+These are the production primitives we are using to break `getFunctionFromMixins()`
+into direct, testable seams. This checklist is the source of truth for which
+pieces are actually extracted versus still trapped in the monolith.
+
+### Completed
+
+- `bindMixinParamValue(...)`
+- `attachMixinBodyToParamScope(...)`
+- `createMixinParamScope(...)`
+- `populateMixinParamScope(...)`
+- `defineMixinArgumentsInScope(...)`
+- `seedMixinGuardScope(...)`
+- `prepareMixinInvocationScope(...)`
+- `withMixinLookupScope(...)`
+- `Context.lookupScope`
+  - canonical body eval can resolve through the prepared invocation scope
+- `finalizeMixinInvocationOutput(...)`
+  - returned mixin output can be turned into a portable concrete result without
+    cloning the body first
+- `projectMixinParamScopeIntoOutput(...)`
+  - bound param vars and rest vars are projected into the returned output shape
+    explicitly, instead of being hidden inside the old wrapper/body clone flow
+
+### Remaining
+
+- direct canonical-body evaluation of the full parameterized mixin suite through
+  the extracted primitives
+- lazy nested lookup behavior for returned mixin-defined scopes
+- collapse of the remaining `getFunctionFromMixins()` body into small production
+  helpers, then removal of the monolith itself
+
 ## Why This Matters For Performance
 
 Every mixin call currently deep-clones the body — creating a full copy of the AST subtree per call. For a mixin called 100 times, that's 100 cloned trees. JIT engines (V8, JSC) are most slowed down by object creation: allocation pressure, GC pauses, and cache misses from scattered heap objects.
