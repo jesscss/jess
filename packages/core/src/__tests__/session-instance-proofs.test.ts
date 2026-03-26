@@ -60,6 +60,7 @@ import {
   prepareMixinCandidateInvocation,
   prepareMixinInvocationScope,
   projectMixinParamScopeIntoOutput,
+  replayWinningMixinDefaultCandidates,
   resolveWinningMixinDefaultGroups,
   seedMixinGuardScope,
   withMixinLookupScope
@@ -789,6 +790,32 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(() =>
       resolveWinningMixinDefaultGroups([MixinDefaultGroup.True, MixinDefaultGroup.False])
     ).toThrow(/Ambiguous use of default/);
+  });
+
+  it('replayWinningMixinDefaultCandidates only replays winning groups with the right lookup scope', async () => {
+    const ctx = new Context({ leakyRules: true });
+    const sharedRules = rules([]);
+    const noneScope = rules([]);
+    const falseScope = rules([]);
+    const trueScope = rules([]);
+    const replayed: string[] = [];
+
+    await replayWinningMixinDefaultCandidates(
+      [
+        { candidate: 'none', rules: sharedRules, outerRules: noneScope, group: MixinDefaultGroup.None },
+        { candidate: 'false', rules: sharedRules, outerRules: falseScope, group: MixinDefaultGroup.False },
+        { candidate: 'true', rules: sharedRules, outerRules: trueScope, group: MixinDefaultGroup.True }
+      ],
+      ctx,
+      async (pending) => {
+        replayed.push(`${pending.candidate}:${ctx.rulesContext === pending.outerRules}`);
+        expect(ctx.lookupScope).toBe(pending.outerRules);
+      }
+    );
+
+    expect(replayed).toEqual(['none:true', 'false:true']);
+    expect(ctx.rulesContext).toBeUndefined();
+    expect(ctx.lookupScope).toBeUndefined();
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

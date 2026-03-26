@@ -49,10 +49,10 @@ import {
 import {
   evaluateMixinGuardCandidate,
   finalizeMixinInvocationOutput,
-  MixinDefaultGroup,
+  type PendingMixinDefaultCandidate,
   prepareMixinCandidateInvocation,
   projectMixinParamScopeIntoOutput,
-  resolveWinningMixinDefaultGroups,
+  replayWinningMixinDefaultCandidates,
   withMixinLookupScope
 } from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
@@ -2604,15 +2604,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       return current;
     };
 
-    type DefaultPendingCandidate = {
-      candidate: Mixin;
-      rules: Rules;
-      outerRules?: Rules;
-      params?: List<Node>;
-      group: MixinDefaultGroup;
-      instanceRoot?: SessionInstanceRoot;
-    };
-    const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
+    const pendingDefaultCandidates: PendingMixinDefaultCandidate<Mixin>[] = [];
     const evaluateCandidateOutput = async (
       candidate: Mixin,
       rules: Rules,
@@ -2817,28 +2809,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       );
     }
 
-    if (pendingDefaultCandidates.length > 0) {
-      const winningGroups = resolveWinningMixinDefaultGroups(
-        pendingDefaultCandidates.map(pending => pending.group)
-      );
-
-      for (const pending of pendingDefaultCandidates) {
-        if (!winningGroups.has(pending.group)) {
-          continue;
-        }
-        await withMixinLookupScope(
-          pending.outerRules ?? pending.rules,
-          thisContext,
-          () => evaluateCandidateOutput(
-            pending.candidate,
-            pending.rules,
-            pending.outerRules,
-            pending.params,
-            pending.instanceRoot
-          )
-        );
-      }
-    }
+    await replayWinningMixinDefaultCandidates(
+      pendingDefaultCandidates,
+      thisContext,
+      pending => evaluateCandidateOutput(
+        pending.candidate,
+        pending.rules,
+        pending.outerRules,
+        pending.params,
+        pending.instanceRoot
+      )
+    );
 
     thisContext.session = prevMixinSession;
 

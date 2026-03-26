@@ -37,6 +37,9 @@ pieces are actually extracted versus still trapped in the monolith.
 - `evaluateMixinGuardCandidate(...)`
   - reset-session guard probing and default-group resolution now live outside
     the candidate loop
+- `replayWinningMixinDefaultCandidates(...)`
+  - pending `default()` replay now lives outside the candidate loop too, with
+    the correct lookup scope re-established per winning candidate
 
 ### Remaining
 

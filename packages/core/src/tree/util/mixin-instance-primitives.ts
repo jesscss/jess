@@ -37,6 +37,15 @@ export type EvaluatedMixinGuard = {
   defaultGroup?: MixinDefaultGroup;
 };
 
+export type PendingMixinDefaultCandidate<TCandidate = unknown> = {
+  candidate: TCandidate;
+  rules: Rules;
+  outerRules?: Rules;
+  params?: List<Node>;
+  group: MixinDefaultGroup;
+  instanceRoot?: SessionInstanceRoot;
+};
+
 /**
  * Bind one mixin param through the active instance root instead of mutating the
  * canonical VarDeclaration. This is the smallest useful primitive behind direct
@@ -521,4 +530,35 @@ export function resolveWinningMixinDefaultGroups(
   }
 
   return new Set([MixinDefaultGroup.True]);
+}
+
+/**
+ * Replay only the winning pending default() candidates with the correct lookup
+ * scope active for each candidate.
+ */
+export async function replayWinningMixinDefaultCandidates<TCandidate>(
+  pendingCandidates: readonly PendingMixinDefaultCandidate<TCandidate>[],
+  context: Context,
+  evaluateCandidateOutput: (
+    pending: PendingMixinDefaultCandidate<TCandidate>
+  ) => MaybePromise<void>
+): Promise<void> {
+  if (pendingCandidates.length === 0) {
+    return;
+  }
+
+  const winningGroups = resolveWinningMixinDefaultGroups(
+    pendingCandidates.map(pending => pending.group)
+  );
+
+  for (const pending of pendingCandidates) {
+    if (!winningGroups.has(pending.group)) {
+      continue;
+    }
+    await withMixinLookupScope(
+      pending.outerRules ?? pending.rules,
+      context,
+      () => evaluateCandidateOutput(pending)
+    );
+  }
 }
