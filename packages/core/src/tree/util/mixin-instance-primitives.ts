@@ -1,8 +1,9 @@
-import type { Context } from '../../context.js';
+import { Context } from '../../context.js';
 import { EvalSession, type SessionInstanceRoot } from '../../eval-session.js';
 import type { Node } from '../node-base.js';
 import { Bool } from '../bool.js';
 import type { Condition } from '../condition.js';
+import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { VarDeclaration as VarDeclarationCtor } from '../declaration-var.js';
@@ -105,6 +106,28 @@ export function createMixinCandidateInstanceRoot(
     return undefined;
   }
   return context.session.createInstanceRoot(getRootSourceRules(candidateRules));
+}
+
+/**
+ * Apply the final return policy for mixin invocation output.
+ *
+ * - Context receivers get a live `Rules` result (or `Nil` if empty), with
+ *   `ruleCounter` assigned on first return.
+ * - Non-Context receivers get a plain object view, preserving legacy
+ *   `getFunctionFromMixins()` semantics.
+ */
+export function finalizeMixinInvocationReturn(
+  output: Rules,
+  receiver: Context | Node
+): Rules | Nil | ReturnType<Rules['toObject']> {
+  if (receiver instanceof Context) {
+    output.index ??= receiver.ruleCounter++;
+    if (output.value.length === 0) {
+      return new Nil();
+    }
+    return output;
+  }
+  return output.toObject();
 }
 
 /**

@@ -58,6 +58,7 @@ import {
   evaluateMixinGuardCandidate,
   evaluateRulesetMixinCandidateOutput,
   finalizeMixinInvocationOutput,
+  finalizeMixinInvocationReturn,
   getRootSourceRules,
   normalizeMixinInvocationParams,
   MixinDefaultGroup,
@@ -73,6 +74,7 @@ import {
   withMixinLookupScope
 } from '../tree/util/mixin-instance-primitives.js';
 import { DefaultGuard } from '../tree/default-guard.js';
+import { Nil } from '../tree/nil.js';
 
 /**
  * Helper: build a canonical "tokens" tree simulating a parsed file.
@@ -1019,6 +1021,36 @@ describe('SI-6: Repeated mixin/function proof', () => {
     const ctx = new Context({ leakyRules: true });
 
     expect(createMixinCandidateInstanceRoot(candidate, ctx)).toBeUndefined();
+  });
+
+  it('finalizeMixinInvocationReturn returns live Rules for Context receivers and assigns ruleCounter once', () => {
+    const output = rules([decl({ name: any('color'), value: any('red') })]);
+    const ctx = new Context({ leakyRules: true });
+    ctx.ruleCounter = 11;
+
+    const returned = finalizeMixinInvocationReturn(output, ctx);
+
+    expect(returned).toBe(output);
+    expect(output.index).toBe(11);
+    expect(ctx.ruleCounter).toBe(12);
+  });
+
+  it('finalizeMixinInvocationReturn returns Nil for empty Context output', () => {
+    const output = rules([]);
+    const ctx = new Context({ leakyRules: true });
+
+    const returned = finalizeMixinInvocationReturn(output, ctx);
+
+    expect(returned).toBeInstanceOf(Nil);
+  });
+
+  it('finalizeMixinInvocationReturn preserves legacy object conversion for non-Context receivers', () => {
+    const receiver = rules([]);
+    const output = rules([decl({ name: any('color'), value: any('red') })]);
+
+    const returned = finalizeMixinInvocationReturn(output, receiver);
+
+    expect(returned).toEqual({ color: 'red' });
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

@@ -50,6 +50,7 @@ import {
   createMixinCandidateInstanceRoot,
   evaluateRulesetMixinCandidateOutput,
   finalizeMixinInvocationOutput,
+  finalizeMixinInvocationReturn,
   getRootSourceRules,
   type PendingMixinDefaultCandidate,
   processPreparedMixinCandidate,
@@ -2782,18 +2783,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * (e.g. `Call.evalNode`) rely on `.eval(context)` to finish evaluation. Marking these flags
      * true can skip evaluation and leak unevaluated nodes (like `Call`) into serialization.
      */
-    /** Now push all rules into the rules value */
-    if (this instanceof Context) {
-      output.index ??= this.ruleCounter++;
-      // If the output Rules is empty, return Nil instead
-      if (output.value.length === 0) {
-        return new Nil();
-      }
-      return output;
-    } else {
-      const obj = output.toObject();
-      return obj;
-    }
+    return finalizeMixinInvocationReturn(output, this);
   }
 
   return returnFunc;

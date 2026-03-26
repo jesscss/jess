@@ -59,6 +59,8 @@ pieces are actually extracted versus still trapped in the monolith.
 - `createMixinCandidateInstanceRoot(...)`
   - per-call instance-root setup for mixin-like candidates no longer lives
     inline in the loop
+- `finalizeMixinInvocationReturn(...)`
+  - final `Rules | Nil | object` shaping no longer lives in the wrapper tail
 
 ### Remaining
 
