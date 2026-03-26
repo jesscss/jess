@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment } from '..';
+import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment } from '../index.js';
 import { Context } from '../../context.js';
 import { JessError } from '../../jess-error.js';
 
@@ -100,7 +100,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([fooRuleset, outputRuleset]);
       context.root = root;
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .foo .bar {
           color: red;
@@ -135,7 +135,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([fooRuleset, outputRuleset]);
       context.root = root;
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .foo.bar {
           color: red;
@@ -177,7 +177,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([containerRuleset]);
       context.root = root;
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .container .foo .bar {
           color: blue;
@@ -219,7 +219,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([containerRuleset]);
       context.root = root;
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .container .foo .bar {
           color: blue;
@@ -261,7 +261,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([containerRuleset, outputRuleset]);
       context.root = root;
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .container .foo .bar {
           color: blue;
@@ -465,7 +465,7 @@ describe('Mixin Recursion Detection', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .foo .bar {
@@ -503,7 +503,7 @@ describe('Mixin Recursion Detection', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .foo {
@@ -562,7 +562,7 @@ describe('Mixin Recursion Detection', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       // Each .clearfix ruleset should have called the first .clearfix() mixin
       expect(css).toBeString(``);

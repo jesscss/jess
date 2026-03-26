@@ -20,7 +20,7 @@ describe('Basic Ruleset Rendering', () => {
     ]);
 
     const evald = await node.eval(context);
-    const css = evald.toString();
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .test {
@@ -63,7 +63,7 @@ describe('Basic Ruleset Rendering', () => {
     ]);
 
     const evald = await node.eval(context);
-    const css = evald.toString();
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .test {
@@ -89,7 +89,7 @@ describe('Basic Ruleset Rendering', () => {
     ]);
 
     const evald = await node.eval(context);
-    const css = evald.toString();
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .test {
@@ -119,7 +119,7 @@ describe('Basic Ruleset Rendering', () => {
     ]);
 
     const evald = await node.eval(context);
-    const css = evald.toString();
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .test {
@@ -152,7 +152,7 @@ describe('Basic Ruleset Rendering', () => {
     ]);
 
     const evald = await node.eval(context);
-    const css = evald.toString();
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .test {
@@ -181,7 +181,7 @@ describe('Basic Ruleset Rendering', () => {
     ]);
 
     const evald = await node.eval(context);
-    const css = evald.toString();
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .test {

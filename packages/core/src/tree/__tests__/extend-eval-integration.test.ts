@@ -68,7 +68,7 @@ describe('extend integration (eval -> toString)', () => {
     {
       const context = new Context({ collapseNesting: false });
       const evald = await makeRoot(false).eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         .replace.replace,
         .c.replace + .replace {
@@ -84,7 +84,7 @@ describe('extend integration (eval -> toString)', () => {
     {
       const context = new Context({ collapseNesting: false });
       const evald = await makeRoot(true).eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         :is(.replace, .rep_ace):is(.replace, .rep_ace),
         .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
@@ -148,7 +148,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .header .header-nav,
@@ -189,7 +189,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .attributes {
@@ -299,7 +299,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       :is(.ext1, .all) .ext2 {
@@ -360,7 +360,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css).toBeString(`
       .a {
         color: black;
@@ -420,7 +420,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .a {
@@ -480,7 +480,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .a {
@@ -703,7 +703,7 @@ describe('extend integration (eval -> toString)', () => {
     expect(typeof postEvalSerialized).toBe('string');
     expect(postEvalSerialized).toMatchSnapshot();
 
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     // Large parsed-shape parity test: keep deterministic string checks without regex/snapshot churn.
     expect(css).toContain(`  .ma,
   .mb,
@@ -757,7 +757,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
     const context = new Context({ collapseNesting: true });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css).toBeString(`
       .a {
         color: black;
@@ -816,7 +816,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: true });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .a {
@@ -869,7 +869,7 @@ describe('extend integration (eval -> toString)', () => {
       ]);
       const context = new Context({ collapseNesting: false });
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       // Less: .b:extend(.a) inside @media does NOT copy .a's declarations into .b. Root .a unchanged; .b has only its own decls.
       expect(css).toBeString(`
         .a {
@@ -908,7 +908,7 @@ describe('extend integration (eval -> toString)', () => {
       ]);
       const context = new Context({ collapseNesting: false });
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         @media screen {
           .b,
@@ -947,7 +947,7 @@ describe('extend integration (eval -> toString)', () => {
       ]);
       const context = new Context({ collapseNesting: false });
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         @media screen {
           .b,
@@ -1014,7 +1014,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: true });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .header .header-nav,

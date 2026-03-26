@@ -1308,7 +1308,7 @@ describe('Style import', () => {
         style({ path: quoted(any('once.jess')) }, { type: 'import' })
       ]);
       const evald = await node.eval(context);
-      expect(evald.toString().split('.once').length - 1).toBe(1);
+      expect(evald.render(context).split('.once').length - 1).toBe(1);
     });
 
     it('import-reference-issues: reference imports are optional visibility', async () => {
@@ -1394,7 +1394,7 @@ describe('Style import', () => {
         style({ path: quoted(any('repeat.jess')) }, { type: 'import', importOptions: { once: false } })
       ]);
       const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.repeat')).toBe(2);
+      expect(countSelector(evald.render(context), '.repeat')).toBe(2);
     });
 
     it('plain import followed by reference import renders once', async () => {
@@ -1412,7 +1412,7 @@ describe('Style import', () => {
         )
       ]);
       const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.mix-order')).toBe(1);
+      expect(countSelector(evald.render(context), '.mix-order')).toBe(1);
     });
 
     it('reference import followed by plain import stays suppressed without multiple', async () => {
@@ -1430,7 +1430,7 @@ describe('Style import', () => {
         style({ path: quoted(any('mix-order-rev.jess')) }, { type: 'import' })
       ]);
       const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.mix-order-rev')).toBe(0);
+      expect(countSelector(evald.render(context), '.mix-order-rev')).toBe(0);
     });
 
     it('deduped imports do not corrupt canonical top-level ruleset child parents', async () => {
@@ -1669,7 +1669,7 @@ describe('Style import', () => {
         )
       ]);
       const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.compose-repeat')).toBe(2);
+      expect(countSelector(evald.render(context), '.compose-repeat')).toBe(2);
     });
   });
 
@@ -1690,7 +1690,7 @@ describe('Style import', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       // Should only render `.imported` once (second compose is reference mode by default).
       expect(css.split('.imported').length - 1).toBe(1);
     });

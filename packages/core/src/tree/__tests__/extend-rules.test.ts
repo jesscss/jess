@@ -49,7 +49,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -81,7 +81,7 @@ describe('Rules extend', () => {
       const node = rules([base, child]);
 
       const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toContain('.base,');
       expect(css).toContain('.child {');
@@ -325,7 +325,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child1,
@@ -358,7 +358,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .parent > :is(.base, .parent > .child) {
           color: red;
@@ -391,7 +391,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .btn.primary,
         .btn.secondary {
@@ -423,7 +423,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .btn:hover {
           color: red;
@@ -463,7 +463,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .a,
         .b,
@@ -500,7 +500,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .f,
         .e,
@@ -585,7 +585,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .l,
         .m,
@@ -633,7 +633,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .x,
         .y,
@@ -683,7 +683,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         :is(.g, :is(.i, .k).j).h {
           color: black;
@@ -722,7 +722,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .va,
         .vb,
@@ -759,7 +759,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .w,
         .v.w.v {
@@ -811,7 +811,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .branch1,
@@ -862,7 +862,7 @@ describe('Rules extend', () => {
       setField(base, 'rules', patchedBaseRules, context);
 
       const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toContain(':is(.base, .mid) .leaf,');
       expect(css).toContain('.end {');
@@ -903,7 +903,7 @@ describe('Rules extend', () => {
       setField(base, 'selector', sellist([sel([el('.beta')])]), context);
 
       const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toContain('color: red;');
       expect(context.warnings).toHaveLength(0);

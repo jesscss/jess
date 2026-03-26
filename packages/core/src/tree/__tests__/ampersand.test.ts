@@ -52,7 +52,7 @@ describe('Ampersand', () => {
   /** We need a root node to bubble rules */
     let node = wrapAmp([amp()]);
     let evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(evald.render(context)).toBeString(`
       .one.two {
         chungus: foo bar;
         & {
@@ -62,7 +62,7 @@ describe('Ampersand', () => {
     `);
     node = wrapAmpList([sel([amp()]) as any]);
     evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(evald.render(context)).toBeString(`
       .one,
       .two {
         chungus: foo bar;

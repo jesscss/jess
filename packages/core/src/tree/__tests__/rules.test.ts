@@ -140,7 +140,7 @@ describe('Rules', () => {
         node = await node.eval(context);
         /** This won't have been resolved, so we need to evaluate it. */
         let result = await getVar(node, 'first')!.eval(context);
-        expect(`${result}`).toBe('$first: one');
+        expect(result.render(context)).toBe('$first: one');
       });
 
       // it('will skip normalization', () => {
@@ -697,7 +697,7 @@ describe('Rules', () => {
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
-          expect(`${result}`).toBe('$var: second');
+          expect(result.render(context)).toBe('$var: second');
         }
       });
 
@@ -782,7 +782,7 @@ describe('Rules', () => {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
           // Should find root-second (before start), not optional value
-          expect(`${result}`).toBe('$var: root-second');
+          expect(result.render(context)).toBe('$var: root-second');
         }
       });
 
@@ -1270,7 +1270,7 @@ describe('Rules', () => {
       })
     ]);
     let evald = await node.eval(context);
-    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
+    expect(evald.render(context)).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
   });
 
   describe('registry cache', () => {

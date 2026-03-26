@@ -97,7 +97,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -128,7 +128,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .my-mixin {
@@ -188,7 +188,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -220,7 +220,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -265,7 +265,7 @@ describe('Mixin', () => {
 
       const evald = await root.eval(context);
       // Position-backed trees require context for serialization
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test1 {
@@ -308,7 +308,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -465,7 +465,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test1 {
@@ -914,7 +914,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1043,7 +1043,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test1 {
@@ -1095,7 +1095,7 @@ describe('Mixin', () => {
       setField(arg, 'value', [num(10), num(20)], context);
 
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1172,7 +1172,7 @@ describe('Mixin', () => {
       setField(live.parent, 'selector', live.patched, context);
 
       const evald = await live.root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1210,7 +1210,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1289,7 +1289,7 @@ describe('Mixin', () => {
       ]);
       context.opts.collapseNesting = true;
       let evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
           color: cyan;
@@ -1348,7 +1348,7 @@ describe('Mixin', () => {
         })
       ]);
       let evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .rule {
           background-color: cyan;
@@ -1391,7 +1391,7 @@ describe('Mixin', () => {
         })
       ]);
       let evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toContain('background-color: grey');
     });
 
@@ -1426,7 +1426,7 @@ describe('Mixin', () => {
         })
       ]);
       let evald = await node.eval(collapseContext);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toContain('background-color: grey');
     });
   });
@@ -1460,7 +1460,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1499,7 +1499,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1538,7 +1538,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1578,7 +1578,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1619,7 +1619,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test {
@@ -1682,7 +1682,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .test1 {
@@ -1832,7 +1832,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toContain('gender: "Male";');
       expect(css).not.toContain('gender: "Outer";');

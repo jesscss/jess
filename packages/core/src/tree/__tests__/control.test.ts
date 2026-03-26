@@ -58,12 +58,12 @@ describe('Control Nodes', () => {
     const iterable = expr(list([new Any('a'), new Any('b')]));
     const root = rules([makeLoop(pattern, iterable)]);
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('item: a');
-    expect(`${evald}`).toContain('item: b');
-    expect(`${evald}`).toContain('key: 1');
-    expect(`${evald}`).toContain('key: 2');
-    expect(`${evald}`).toContain('index: 1');
-    expect(`${evald}`).toContain('index: 2');
+    expect(evald.render(context)).toContain('item: a');
+    expect(evald.render(context)).toContain('item: b');
+    expect(evald.render(context)).toContain('key: 1');
+    expect(evald.render(context)).toContain('key: 2');
+    expect(evald.render(context)).toContain('index: 1');
+    expect(evald.render(context)).toContain('index: 2');
   });
 
   it('evaluates $for with call iterable branch', async () => {
@@ -79,10 +79,10 @@ describe('Control Nodes', () => {
     });
     root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall));
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('item: x');
-    expect(`${evald}`).toContain('item: y');
-    expect(`${evald}`).toContain('key: 1');
-    expect(`${evald}`).toContain('key: 2');
+    expect(evald.render(context)).toContain('item: x');
+    expect(evald.render(context)).toContain('item: y');
+    expect(evald.render(context)).toContain('key: 1');
+    expect(evald.render(context)).toContain('key: 2');
   });
 
   it('evaluates $for with rules iterable and skips non-declarations', async () => {
@@ -101,20 +101,20 @@ describe('Control Nodes', () => {
     ]);
     const root = rules([makeLoop(makePattern(['value', 'key'], 'block'), iterableRules, loopRules)]);
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('name: one');
-    expect(`${evald}`).toContain('name: two');
-    expect(`${evald}`).toContain('value: red');
-    expect(`${evald}`).toContain('value: blue');
-    expect(`${evald}`).not.toContain('nope');
+    expect(evald.render(context)).toContain('name: one');
+    expect(evald.render(context)).toContain('name: two');
+    expect(evald.render(context)).toContain('value: red');
+    expect(evald.render(context)).toContain('value: blue');
+    expect(evald.render(context)).not.toContain('nope');
   });
 
   it('evaluates $for with scalar fallback iterable', async () => {
     const context = new Context();
     const root = rules([makeLoop(makePattern(['value', 'key', 'index']), new Any('solo'))]);
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('item: solo');
-    expect(`${evald}`).toContain('key: 1');
-    expect(`${evald}`).toContain('index: 1');
+    expect(evald.render(context)).toContain('item: solo');
+    expect(evald.render(context)).toContain('key: 1');
+    expect(evald.render(context)).toContain('index: 1');
   });
 
   it('evaluates $for with paren-wrapped list iterable', async () => {
@@ -122,10 +122,10 @@ describe('Control Nodes', () => {
     const iterable = new Paren(list([new Any('a'), new Any('b')]));
     const root = rules([makeLoop(makePattern(['value', 'key', 'index']), iterable)]);
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('item: a');
-    expect(`${evald}`).toContain('item: b');
-    expect(`${evald}`).toContain('key: 1');
-    expect(`${evald}`).toContain('key: 2');
+    expect(evald.render(context)).toContain('item: a');
+    expect(evald.render(context)).toContain('item: b');
+    expect(evald.render(context)).toContain('key: 1');
+    expect(evald.render(context)).toContain('key: 2');
   });
 
   it('supports list pattern bindings', async () => {
@@ -136,8 +136,8 @@ describe('Control Nodes', () => {
     ]);
     const root = rules([makeLoop(makePattern(['value', 'key'], 'list'), list([new Any('a')]), loopRules)]);
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('item: a');
-    expect(`${evald}`).toContain('key: 1');
+    expect(evald.render(context)).toContain('item: a');
+    expect(evald.render(context)).toContain('key: 1');
   });
 
   it('supports sequence pattern bindings', async () => {
@@ -148,8 +148,8 @@ describe('Control Nodes', () => {
     ]);
     const root = rules([makeLoop(makePattern(['value', 'key'], 'sequence'), list([new Any('a')]), loopRules)]);
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('item: a');
-    expect(`${evald}`).toContain('key: 1');
+    expect(evald.render(context)).toContain('item: a');
+    expect(evald.render(context)).toContain('key: 1');
   });
 
   it('supports single var pattern binding', async () => {
@@ -159,7 +159,7 @@ describe('Control Nodes', () => {
     ]);
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
     const evald = await root.eval(context);
-    expect(`${evald}`).toContain('item: a');
+    expect(evald.render(context)).toContain('item: a');
   });
 
   it('creates For with single var binding', () => {
@@ -217,7 +217,7 @@ describe('Control Nodes', () => {
 
     const evald = await root.eval(context);
 
-    expect(`${evald}`).toContain('item: patched');
+    expect(evald.render(context)).toContain('item: patched');
     expect(loop.toTrimmedString({ context })).toContain('patched');
     expect(loop.toTrimmedString()).toContain('a');
     expect(loop.iterable.toTrimmedString()).toBe('a');

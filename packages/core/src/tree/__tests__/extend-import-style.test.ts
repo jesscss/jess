@@ -67,7 +67,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -117,7 +117,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -161,7 +161,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -541,7 +541,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .child {
           color: red;

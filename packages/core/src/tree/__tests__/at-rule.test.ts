@@ -38,7 +38,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .body {
@@ -85,7 +85,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .body {
@@ -151,7 +151,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .body {
@@ -217,7 +217,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .body {
@@ -270,7 +270,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @property --accent {
@@ -340,7 +340,7 @@ describe('AtRule', () => {
       const rootRules = rules([mixinDef, callSite]);
       context.root = rootRules;
       const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .a {
@@ -389,7 +389,7 @@ describe('AtRule', () => {
 
       context.root = node;
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media print {
@@ -427,7 +427,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media all and (tv) {
@@ -466,7 +466,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media screen and (min-width: 61px) {
@@ -508,7 +508,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media screen and (color), projection and (color) {
@@ -577,7 +577,7 @@ describe('AtRule', () => {
       const rootRules = rules([navJustifiedMixin, callSite]);
       context.root = rootRules;
       const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .menu {
@@ -1718,7 +1718,7 @@ describe('AtRule', () => {
 
       /** This represents already eval'd nodes */
       const evald = await node.eval(context);
-      const serialized = evald.toString();
+      const serialized = evald.render(context);
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`

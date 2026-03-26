@@ -55,7 +55,7 @@ describe('Condition', () => {
         bool(true)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
 
     it('should evaluate a condition', async () => {
@@ -65,7 +65,7 @@ describe('Condition', () => {
         bool(false)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('false');
+      expect(evald.render(context)).toBe('false');
     });
 
     it('should evaluate a condition', async () => {
@@ -75,7 +75,7 @@ describe('Condition', () => {
         bool(false)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('false');
+      expect(evald.render(context)).toBe('false');
     });
 
     it('should compare dimensions', async () => {
@@ -85,7 +85,7 @@ describe('Condition', () => {
         num(10)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
 
     it('should compare dimensions', async () => {
@@ -95,7 +95,7 @@ describe('Condition', () => {
         num(11)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('false');
+      expect(evald.render(context)).toBe('false');
     });
 
     it('should compare dimensions', async () => {
@@ -105,7 +105,7 @@ describe('Condition', () => {
         dimension([10, 'px'])
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
 
     it('should compare dimensions', async () => {
@@ -115,7 +115,7 @@ describe('Condition', () => {
         dimension([1000, 'ms'])
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
   });
 
@@ -155,7 +155,7 @@ describe('Condition', () => {
 
       const evald = await node.eval(context);
 
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
       expect(`${await node.eval(new Context())}`).toBe('false');
       expect(node.left.toTrimmedString()).toBe('true');
       expect(node.operator).toBe('and');
@@ -172,7 +172,7 @@ describe('Condition', () => {
 
       const evald = await node.eval(context);
 
-      expect(`${evald}`).toBe('false');
+      expect(evald.render(context)).toBe('false');
       expect(`${await node.eval(new Context())}`).toBe('true');
       expect(node.negate).toBe(false);
     });
