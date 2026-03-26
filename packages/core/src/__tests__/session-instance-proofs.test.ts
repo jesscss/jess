@@ -59,6 +59,7 @@ import {
   finalizeMixinInvocationOutput,
   normalizeMixinInvocationParams,
   MixinDefaultGroup,
+  processPreparedMixinCandidate,
   populateMixinParamScope,
   prepareMixinCandidateInvocation,
   prepareMixinInvocationScope,
@@ -914,6 +915,69 @@ describe('SI-6: Repeated mixin/function proof', () => {
     expect(getParent(unlocked, ctx)).toBe(outer);
     expect(getSourceParent(unlocked, ctx)).toBe(outer);
     expect(unlocked._instanceRoot).toBe(instanceRoot);
+  });
+
+  it('processPreparedMixinCandidate dispatches immediate output through the prepared lookup scope', async () => {
+    const ctx = new Context({ leakyRules: true });
+    const body = rules([]);
+    const outerRules = rules([]);
+    const instanceRoot = new EvalSession().createInstanceRoot(body);
+    const seen: string[] = [];
+
+    const pending = await processPreparedMixinCandidate({
+      candidate: 'now',
+      rules: body,
+      params: undefined,
+      outerRules,
+      guard: undefined,
+      parent: outerRules,
+      lookupScope: outerRules,
+      hasDefault: false,
+      context: ctx,
+      instanceRoot,
+      evaluateCandidateOutput: async (candidate, rules, nextOuterRules, _params, nextInstanceRoot) => {
+        seen.push(`${candidate}:${ctx.rulesContext === outerRules}:${rules === body}:${nextOuterRules === outerRules}:${nextInstanceRoot === instanceRoot}`);
+      }
+    });
+
+    expect(pending).toBeUndefined();
+    expect(seen).toEqual(['now:true:true:true:true']);
+    expect(ctx.rulesContext).toBeUndefined();
+    expect(ctx.lookupScope).toBeUndefined();
+  });
+
+  it('processPreparedMixinCandidate returns a pending default replay record instead of dispatching immediately', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.session = new EvalSession({ resetEvalState: true });
+    const body = rules([]);
+    const outer = rules([]);
+    const instanceRoot = ctx.session.createInstanceRoot(body);
+    const guard = new DefaultGuard('default()');
+    const seen: string[] = [];
+
+    const pending = await processPreparedMixinCandidate({
+      candidate: 'later',
+      rules: body,
+      params: undefined,
+      outerRules: outer,
+      guard,
+      parent: outer,
+      lookupScope: outer,
+      guardScopeChildren: getChildren(outer, ctx),
+      hasDefault: true,
+      context: ctx,
+      instanceRoot,
+      evaluateCandidateOutput: async () => {
+        seen.push('dispatched');
+      }
+    });
+
+    expect(seen).toEqual([]);
+    expect(pending?.candidate).toBe('later');
+    expect(pending?.rules).toBe(body);
+    expect(pending?.outerRules).toBeDefined();
+    expect(pending?.group).toBe(MixinDefaultGroup.True);
+    expect(pending?.instanceRoot).toBe(instanceRoot);
   });
 
   it('withMixinLookupScope resolves direct param references through the prepared invocation scope', async () => {

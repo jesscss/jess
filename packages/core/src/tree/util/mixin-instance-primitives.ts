@@ -47,6 +47,27 @@ export type PendingMixinDefaultCandidate<TCandidate = unknown> = {
   instanceRoot?: SessionInstanceRoot;
 };
 
+export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
+  candidate: TCandidate;
+  rules: Rules;
+  params?: List<Node>;
+  outerRules?: Rules;
+  guard?: Condition | Bool;
+  parent: Node | undefined;
+  lookupScope: Rules;
+  guardScopeChildren?: readonly Node[];
+  hasDefault: boolean;
+  context: Context;
+  instanceRoot?: SessionInstanceRoot;
+  evaluateCandidateOutput: (
+    candidate: TCandidate,
+    rules: Rules,
+    outerRules: Rules | undefined,
+    params: List<Node> | undefined,
+    instanceRoot?: SessionInstanceRoot
+  ) => MaybePromise<void>;
+};
+
 /**
  * Bind one mixin param through the active instance root instead of mutating the
  * canonical VarDeclaration. This is the smallest useful primitive behind direct
@@ -663,4 +684,62 @@ export function unlockDetachedRulesetMixinCandidateOutput(
     unlocked._instanceRoot = instanceRoot;
   }
   return unlocked;
+}
+
+/**
+ * Process one prepared normal mixin candidate. This owns the remaining guard /
+ * default orchestration for the standard candidate path: either dispatch the
+ * candidate output immediately or return a pending default() replay record.
+ */
+export async function processPreparedMixinCandidate<TCandidate>(
+  options: ProcessPreparedMixinCandidateOptions<TCandidate>
+): Promise<PendingMixinDefaultCandidate<TCandidate> | undefined> {
+  const {
+    candidate,
+    rules,
+    params,
+    outerRules,
+    guard,
+    parent,
+    lookupScope,
+    guardScopeChildren,
+    hasDefault,
+    context,
+    instanceRoot,
+    evaluateCandidateOutput
+  } = options;
+
+  let nextOuterRules = outerRules;
+  if (guard) {
+    const evaluatedGuard = await evaluateMixinGuardCandidate(
+      guard,
+      nextOuterRules,
+      parent,
+      lookupScope,
+      context,
+      guardScopeChildren,
+      hasDefault
+    );
+    nextOuterRules = evaluatedGuard.outerRules;
+    if (!evaluatedGuard.passes) {
+      return undefined;
+    }
+    if (hasDefault) {
+      return {
+        candidate,
+        rules,
+        outerRules: nextOuterRules,
+        params,
+        group: evaluatedGuard.defaultGroup!,
+        instanceRoot
+      };
+    }
+  }
+
+  await withMixinLookupScope(
+    lookupScope,
+    context,
+    () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params, instanceRoot)
+  );
+  return undefined;
 }

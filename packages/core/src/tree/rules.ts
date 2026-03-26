@@ -47,15 +47,14 @@ import {
 } from './util/session-helpers.js';
 import {
   assembleMixinInvocationOutput,
-  evaluateMixinGuardCandidate,
   evaluateRulesetMixinCandidateOutput,
   finalizeMixinInvocationOutput,
   type PendingMixinDefaultCandidate,
+  processPreparedMixinCandidate,
   prepareMixinCandidateInvocation,
   projectMixinParamScopeIntoOutput,
   replayWinningMixinDefaultCandidates,
-  unlockDetachedRulesetMixinCandidateOutput,
-  withMixinLookupScope
+  unlockDetachedRulesetMixinCandidateOutput
 } from './util/mixin-instance-primitives.js';
 import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
@@ -2754,47 +2753,24 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       );
       rules = prepared.rules;
       params = prepared.params;
-      let outerRules = prepared.outerRules;
-
-      /** Now we can evaluate our guards, if any */
       const canonicalGuard: Condition | Bool | undefined = (candidate as any).guard;
-      let passes = true;
-      const lookupScope = prepared.lookupScope;
-      const guardScopeChildren = prepared.guardScopeChildren;
-      if (canonicalGuard) {
-        const evaluatedGuard = await evaluateMixinGuardCandidate(
-          canonicalGuard,
-          outerRules,
-          getCandidateParent(candidate as unknown as Node),
-          lookupScope,
-          thisContext,
-          guardScopeChildren,
-          hasDefault
-        );
-        outerRules = evaluatedGuard.outerRules;
-        passes = evaluatedGuard.passes;
-        if (passes && evaluatedGuard.defaultGroup !== undefined) {
-          pendingDefaultCandidates.push({
-            candidate: candidate as Mixin,
-            rules,
-            outerRules,
-            params,
-            group: evaluatedGuard.defaultGroup,
-            instanceRoot: candidateInstanceRoot
-          });
-        }
+      const pendingDefaultCandidate = await processPreparedMixinCandidate({
+        candidate: candidate as Mixin,
+        rules,
+        params,
+        outerRules: prepared.outerRules,
+        guard: canonicalGuard,
+        parent: getCandidateParent(candidate as unknown as Node),
+        lookupScope: prepared.lookupScope,
+        guardScopeChildren: prepared.guardScopeChildren,
+        hasDefault,
+        context: thisContext,
+        instanceRoot: candidateInstanceRoot,
+        evaluateCandidateOutput
+      });
+      if (pendingDefaultCandidate) {
+        pendingDefaultCandidates.push(pendingDefaultCandidate);
       }
-      if (!passes) {
-        continue;
-      }
-      if (canonicalGuard && hasDefault) {
-        continue;
-      }
-      await withMixinLookupScope(
-        lookupScope,
-        thisContext,
-        () => evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params, candidateInstanceRoot)
-      );
     }
 
     await replayWinningMixinDefaultCandidates(

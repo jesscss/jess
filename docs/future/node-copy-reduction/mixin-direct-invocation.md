@@ -49,6 +49,10 @@ pieces are actually extracted versus still trapped in the monolith.
 - `unlockDetachedRulesetMixinCandidateOutput(...)`
   - detached-ruleset unlock shaping is now a direct helper instead of a special
     case embedded in the dispatch loop
+- `processPreparedMixinCandidate(...)`
+  - the normal-candidate guard/default orchestration now lives outside the loop,
+    so the remaining monolith weight is mostly candidate collection and final
+    return plumbing
 
 ### Remaining
 
