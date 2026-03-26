@@ -36,20 +36,18 @@ import {
   setChildren,
   setChildAt,
   setIndex,
-  setParent,
-  setSourceParent
+  setParent
 } from './util/session-helpers.js';
 import {
   dispatchMixinEvalCandidates,
+  evaluateCandidateOutput,
   evaluateMixinArgs,
   filterAndSortMixinEvalCandidates,
-  finalizeMixinInvocationOutput,
   finalizeMixinInvocationReturn,
   getCandidateParent,
   matchMixinCandidates,
-  projectMixinParamScopeIntoOutput
+  type EvaluateCandidateOutputOptions
 } from './util/mixin-instance-primitives.js';
-import { EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
 const { isArray } = Array;
 
@@ -2200,95 +2198,25 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     const mixinCandidates = await matchMixinCandidates(mixinArr, nodeArgs, caller, sourceParent, thisContext);
     const { evalCandidates, hasDefault } = filterAndSortMixinEvalCandidates(mixinCandidates, thisContext);
 
-    let outputRules: Rules[] = [];
-    const boundGetCandidateParent = (node: Node): Node => getCandidateParent(node, thisContext);
-    const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-
-    const evaluateCandidateOutput = async (
-      candidate: Mixin,
-      rules: Rules,
-      outerRules: Rules | undefined,
-      params: List<Node> | undefined,
-      instanceRoot?: SessionInstanceRoot
-    ): Promise<void> => {
-      const currentCall = thisContext.callStack.at(-1);
-      // to prevent infinite loops (e.g., .recursion { .recursion(); })
-      if (currentCall && thisContext.callMap.add(currentCall, params)) {
-        // Recursive call detected - skip this candidate (don't add to outputRules)
-        // This allows other candidates to still match
-        return;
-      }
-
-      try {
-        let newRules: Rules;
-        // Create a position for this mixin call in the virtual evaluated tree.
-        const prevPosition = thisContext.position;
-        if (thisContext.session) {
-          thisContext.position = new EvalPosition(rules);
-        }
-        if (!outerRules) {
-          setParent(rules, boundGetCandidateParent(candidate as unknown as Node), thisContext);
-          newRules = await rules.eval(thisContext);
-        } else {
-          // Patch body's parent to outerRules so param lookups walk:
-          // body → outerRules (has params) → parent scope.
-          // No clone needed — position carries the parent patch.
-          setParent(rules, outerRules, thisContext);
-          newRules = await rules.eval(thisContext);
-        }
-        newRules = finalizeMixinInvocationOutput(newRules, thisContext);
-        newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, thisContext);
-        thisContext.position = prevPosition;
-        setSourceParent(newRules, sourceParent, thisContext);
-        setParent(newRules, boundGetCandidateParent(candidate as unknown as Node), thisContext);
-        newRules.index = candidate.index;
-        newRules.options.isMixinOutput = restrictMixinOutputLookup;
-        if (thisContext.treeContext?.file) {
-          /**
-           * NOTE (debug policy):
-           * `hasParamVar` / `hasNestedMixin` visibility branching was removed and
-           * should NOT be reintroduced.
-           *
-           * If this causes regressions, fix lookup/parenting behavior instead:
-           * - declaration/mixin registry traversal semantics
-           * - sourceParent/rulesParent/sourceRulesParent propagation
-           *
-           * Do not solve those regressions by adding new visibility heuristics based on
-           * "contains param vars" or "contains nested mixins".
-           */
-          newRules.options.rulesVisibility ??= {};
-          newRules.options.rulesVisibility.VarDeclaration = 'private';
-        }
-        if (instanceRoot) {
-          newRules._instanceRoot = instanceRoot;
-        }
-        outputRules.push(newRules);
-      } catch (error) {
-        // If recursion was detected (ReferenceError), skip this candidate
-        // This allows other candidates to still match
-        if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
-          // Skip this candidate - recursion detected
-          return;
-        }
-        // Re-throw other errors
-        throw error;
-      } finally {
-        if (currentCall) {
-          thisContext.callMap.delete(currentCall);
-        }
-      }
+    const outputRules: Rules[] = [];
+    const candidateOutputOpts: EvaluateCandidateOutputOptions = {
+      sourceParent,
+      restrictMixinOutputLookup: thisContext.leakyRules !== true,
+      outputRules,
+      getCandidateParent: node => getCandidateParent(node, thisContext)
     };
 
     const output = await dispatchMixinEvalCandidates({
-      evalCandidates: evalCandidates as any[],
+      evalCandidates,
       hasDefault,
       nodeArgs,
       sourceParent,
       caller,
-      restrictMixinOutputLookup,
+      restrictMixinOutputLookup: candidateOutputOpts.restrictMixinOutputLookup,
       outputRules,
-      getCandidateParent: boundGetCandidateParent,
-      evaluateCandidateOutput
+      getCandidateParent: candidateOutputOpts.getCandidateParent,
+      evaluateCandidateOutput: (candidate, rules, outerRules, params, instanceRoot) =>
+        evaluateCandidateOutput(candidate, rules, outerRules, params, thisContext, candidateOutputOpts, instanceRoot)
     }, thisContext);
 
     return finalizeMixinInvocationReturn(output, this instanceof Context ? this : thisContext);

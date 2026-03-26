@@ -1,5 +1,5 @@
 import { Context } from '../../context.js';
-import { EvalSession, type SessionInstanceRoot } from '../../eval-session.js';
+import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../../eval-session.js';
 import { Node } from '../node-base.js';
 import { Bool } from '../bool.js';
 import type { Condition } from '../condition.js';
@@ -17,7 +17,6 @@ import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
 import { getChildren, getDependency, getField, getParent, getSourceParent, mergeDependencies, patchField, setChildren, setDependency, setParent, setSourceParent } from './session-helpers.js';
 import type { Mixin } from '../mixin.js';
-import type { Ruleset } from '../ruleset.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { cast } from './cast.js';
 import { isPlainObject } from './collections.js';
@@ -1251,6 +1250,77 @@ export function filterAndSortMixinEvalCandidates(
   }
 
   return { evalCandidates, hasDefault };
+}
+
+// -- Candidate output evaluation --
+
+export type EvaluateCandidateOutputOptions = {
+  sourceParent: Node | undefined;
+  restrictMixinOutputLookup: boolean;
+  outputRules: Rules[];
+  getCandidateParent: (node: Node<any, any>) => Node;
+};
+
+/**
+ * Evaluate a single mixin candidate's body and push the result to outputRules.
+ *
+ * Handles recursion detection, position creation, body eval, output
+ * finalization, param scope projection, and instance root association.
+ */
+export async function evaluateCandidateOutput(
+  candidate: MixinEntry,
+  rules: Rules,
+  outerRules: Rules | undefined,
+  params: List<Node> | undefined,
+  context: Context,
+  opts: EvaluateCandidateOutputOptions,
+  instanceRoot?: SessionInstanceRoot
+): Promise<void> {
+  const { sourceParent, restrictMixinOutputLookup, outputRules, getCandidateParent: getParentFn } = opts;
+  const currentCall = context.callStack.at(-1);
+  if (currentCall && context.callMap.add(currentCall, params)) {
+    return;
+  }
+
+  const prevPosition = context.position;
+  try {
+    let newRules: Rules;
+    if (context.session) {
+      context.position = new EvalPosition(rules);
+    }
+    if (!outerRules) {
+      setParent(rules, getParentFn(candidate), context);
+      newRules = await rules.eval(context);
+    } else {
+      setParent(rules, outerRules, context);
+      newRules = await rules.eval(context);
+    }
+    newRules = finalizeMixinInvocationOutput(newRules, context);
+    newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
+    context.position = prevPosition;
+    setSourceParent(newRules, sourceParent, context);
+    setParent(newRules, getParentFn(candidate), context);
+    newRules.index = candidate.index;
+    newRules.options.isMixinOutput = restrictMixinOutputLookup;
+    if (context.treeContext?.file) {
+      newRules.options.rulesVisibility ??= {};
+      newRules.options.rulesVisibility.VarDeclaration = 'private';
+    }
+    if (instanceRoot) {
+      newRules._instanceRoot = instanceRoot;
+    }
+    outputRules.push(newRules);
+  } catch (error) {
+    context.position = prevPosition;
+    if (error instanceof ReferenceError && error.message?.includes('Recursive mixin call')) {
+      return;
+    }
+    throw error;
+  } finally {
+    if (currentCall) {
+      context.callMap.delete(currentCall);
+    }
+  }
 }
 
 // -- Dispatch orchestration --
