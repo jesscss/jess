@@ -101,3 +101,23 @@ context.position = prevPosition;
 ```
 
 Lazy via `context.ensurePosition()` — zero cost if eval doesn't need one.
+
+## What Gets Removed
+
+The legacy codebase had four layers: position → instanceRoot → session → canonical.
+The target has two: **position → canonical**.
+
+Already removed (session-helpers simplification):
+- IR/session/canonical fallback branches in all write helpers (patchField, setParent, etc.)
+- IR/session/canonical fallback branches in _isEvaluated/_setEvaluated/_isPreEvaluated/_setPreEvaluated
+- `resetEvalState` session check (positions provide per-call isolation natively)
+- Canonical mutation as a write fallback (ensurePosition() guarantees a position)
+
+Still to remove:
+- `EvalSession` class (rename or eliminate — "session" is confusing terminology)
+- `SessionInstanceRoot` / `ShadowEntry` / instance root resolution
+- `resolveInstanceRoot()` helper
+- `node._instanceRoot` / `node._evalPosition` carried fields
+- IR/session fallback branches remaining in read helpers (getField, getParent, getChildren)
+- `maybeClone()` method (should become `return this`)
+- `clonedEval()` method (should be replaced with eval-in-position)
