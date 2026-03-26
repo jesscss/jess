@@ -19,7 +19,7 @@ export interface ExtendList extends Node<Extend[]> {
 export class ExtendList extends Node<Extend[]> {
   static override childKeys = ['value'] as const;
 
-  value!: Extend[];
+  readonly value!: Extend[];
 
   private _getValue(context?: Context): Extend[] {
     return context

@@ -36,8 +36,8 @@ export interface JsImport {
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
   static override childKeys = ['path', 'imports'] as const;
 
-  path!: Quoted;
-  imports: JsImportSpecifier[] | undefined;
+  readonly path!: Quoted;
+  readonly imports: JsImportSpecifier[] | undefined;
 
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);

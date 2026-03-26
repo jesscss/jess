@@ -21,7 +21,7 @@ export interface SelectorList {
 export class SelectorList extends Selector<Selector[]> {
   static override childKeys = ['value'] as const;
 
-  value!: Selector[];
+  readonly value!: Selector[];
 
   constructor(value: Selector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -41,20 +41,6 @@ export class SelectorList extends Selector<Selector[]> {
     return context
       ? getField<Selector[]>(this, 'value', context)
       : this.value;
-  }
-
-  private _setValue(value: Selector[], context: Context): void {
-    for (const child of value) {
-      if (child instanceof Selector) {
-        this.adopt(child, context);
-      }
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'value', value, context);
-    } else {
-      this.value = value;
-    }
-    this.invalidateCache();
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -167,11 +153,11 @@ export class SelectorList extends Selector<Selector[]> {
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
-            list._setValue(value, context);
+            setField(list, 'value', value, context);
             return list;
           });
         }
-        list._setValue(value, context);
+        setField(list, 'value', value, context);
         return list;
       },
       (list) => {
@@ -210,7 +196,7 @@ export class SelectorList extends Selector<Selector[]> {
           flattened.push(item);
         }
         if (flattened.length !== value.length) {
-          list._setValue(flattened, context);
+          setField(list, 'value', flattened, context);
         }
         if (flattened.length === 1) {
           return flattened[0]!;

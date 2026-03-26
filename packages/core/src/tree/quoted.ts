@@ -24,9 +24,9 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   static override childKeys = ['value'] as const;
 
-  value!: string | Any | Interpolated;
-  quote: '"' | '\'' | undefined;
-  escaped: boolean;
+  readonly value!: string | Any | Interpolated;
+  readonly quote: '"' | '\'' | undefined;
+  readonly escaped: boolean;
 
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -47,20 +47,6 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return context
       ? getField<string | Any | Interpolated>(this, 'value', context)
       : this.value;
-  }
-
-  private _setValue(
-    value: string | Any | Interpolated | Node,
-    context?: Context
-  ): void {
-    if (value instanceof Node) {
-      this.adopt(value, context);
-    }
-    if (context?.session && this.sourceNode === this) {
-      setField(this, 'value', value as string | Any | Interpolated, context);
-      return;
-    }
-    this.value = value as string | Any | Interpolated;
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -120,7 +106,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
         return new Any(value as string);
       }
       let quoted = this.maybeClone(context);
-      quoted._setValue(value, context);
+      setField(quoted, 'value', value as string | Any | Interpolated, context);
       return quoted;
     };
     if (value instanceof Node) {

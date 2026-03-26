@@ -221,8 +221,7 @@ export class Interpolated<
 
   createGeneric(context?: Context) {
     const trimmedString = this.toTrimmedString(context ? { context } : undefined);
-    let any = new Any<Role>(trimmedString).inherit(this);
-    any.role = this.options.role;
+    let any = new Any<Role>(trimmedString, { role: this.options.role }).inherit(this);
     return any;
   }
 

@@ -29,10 +29,10 @@ export interface Condition extends Node<ConditionValue, ConditionOptions> {
 export class Condition extends Node<ConditionValue, ConditionOptions> {
   static override childKeys = ['left', 'right'] as const;
 
-  left!: Node;
-  operator: ConditionOperator | undefined;
-  right: Node | undefined;
-  negate: boolean;
+  readonly left!: Node;
+  readonly operator: ConditionOperator | undefined;
+  readonly right: Node | undefined;
+  readonly negate: boolean;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const left = this._getLeft(ctx);

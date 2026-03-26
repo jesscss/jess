@@ -21,7 +21,7 @@ export interface Block extends Node<Node, BlockOptions> {
 export class Block extends Node<Node, BlockOptions> {
   static override childKeys = ['value'] as const;
 
-  value!: Node;
+  readonly value!: Node;
 
   constructor(value: Node, options?: BlockOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);

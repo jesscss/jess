@@ -36,8 +36,8 @@ export interface PseudoSelector {
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   static override childKeys = ['name', 'arg'] as const;
 
-  name!: string;
-  arg: Node | undefined;
+  readonly name!: string;
+  readonly arg: Node | undefined;
 
   constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -58,17 +58,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return context
       ? getField<Node | undefined>(this, 'arg', context)
       : this.arg;
-  }
-
-  private _setArg(arg: Node | undefined, context: Context): void {
-    if (arg instanceof Node) {
-      this.adopt(arg, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'arg', arg, context);
-    } else {
-      this.arg = arg;
-    }
   }
 
   override computeKeySets(): void {
@@ -175,7 +164,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        node._setArg(evaluatedArg, context);
+        setField(node, 'arg', evaluatedArg, context);
         return node;
       }
     );

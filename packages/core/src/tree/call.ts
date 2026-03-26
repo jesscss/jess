@@ -82,7 +82,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   readonly name!: string | Node;
   readonly args: List<Node> | undefined;
-  contentNode: Node | undefined;
+  readonly contentNode: Node | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const name = this._getName(ctx);

@@ -51,10 +51,10 @@ export interface Extend extends Node<ExtendValue> {
 export class Extend extends Node<ExtendValue> {
   static override childKeys = ['selector', 'target'] as const;
 
-  selector: ExtendValue['selector'];
-  target!: Selector;
-  namespace: string | undefined;
-  flag: ExtendFlag | undefined;
+  readonly selector: ExtendValue['selector'];
+  readonly target!: Selector;
+  readonly namespace: string | undefined;
+  readonly flag: ExtendFlag | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const selector = this._getSelector(ctx);

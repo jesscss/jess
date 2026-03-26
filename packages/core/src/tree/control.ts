@@ -201,9 +201,9 @@ export interface If extends Node<IfValue> {
 export class If extends Node<IfValue> {
   static override childKeys = ['conditions', 'bodies', 'elseBranch'] as const;
 
-  conditions!: Node[];
-  bodies!: Rules[];
-  elseBranch: Rules | undefined;
+  readonly conditions!: Node[];
+  readonly bodies!: Rules[];
+  readonly elseBranch: Rules | undefined;
 
   constructor(value: IfValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -285,9 +285,9 @@ export interface For extends Node<ForValue> {
 export class For extends Node<ForValue> {
   static override childKeys = ['vars', 'iterable', 'rules'] as const;
 
-  vars!: VarDeclaration | VarDeclaration[];
-  iterable!: Node;
-  rules!: Rules;
+  readonly vars!: VarDeclaration | VarDeclaration[];
+  readonly iterable!: Node;
+  readonly rules!: Rules;
 
   constructor(value: ForValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -525,8 +525,8 @@ export interface Each extends Node<LegacyLoopValue> {
 export class Each extends Node<LegacyLoopValue> {
   static override childKeys = ['header', 'rules'] as const;
 
-  header!: Sequence;
-  rules!: Rules;
+  readonly header!: Sequence;
+  readonly rules!: Rules;
 
   constructor(value: LegacyLoopValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -579,8 +579,8 @@ export interface While {
 export class While extends Node<WhileValue> {
   static override childKeys = ['condition', 'rules'] as const;
 
-  condition!: Node;
-  rules!: Rules;
+  readonly condition!: Node;
+  readonly rules!: Rules;
 
   constructor(value: WhileValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);

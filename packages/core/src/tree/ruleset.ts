@@ -233,17 +233,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return selector.sourceNode;
   }
 
-  private _setSelectorSourceNode(selector: Selector | Nil | undefined, sourceNode: Node, context: Context): void {
-    if (!(selector instanceof Node)) {
-      return;
-    }
-    if (context.session) {
-      context.session.getRuntime(selector).sourceNode = sourceNode;
-    } else {
-      selector.sourceNode = sourceNode;
-    }
-  }
-
   private _getRulesContainer(context?: Context): Rules {
     const rules = context
       ? getField<Rules>(this, 'rules', context)
@@ -811,7 +800,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         && parentRuleset
       ) {
         selector = getImplicitSelectorUtil(selector as Selector, parentRuleset as Ruleset, false);
-        this._setSelectorSourceNode(selector, node === this ? selector.clone(true) : selector, context);
+        {
+          const selectorSourceNode = node === this ? selector.clone(true) : selector;
+          if (selector instanceof Node) {
+            if (context.session) {
+              context.session.getRuntime(selector).sourceNode = selectorSourceNode;
+            } else {
+              selector.sourceNode = selectorSourceNode;
+            }
+          }
+        }
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
@@ -1020,7 +1018,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         this._setSelector(selector as Selector | Nil, context);
         // Restore the sourceNode on the new selector so it's available when copying
         if (preservedSourceNode && this._getSelector(context)) {
-          this._setSelectorSourceNode(this._getSelector(context), preservedSourceNode, context);
+          {
+            const selectorForSourceNode = this._getSelector(context);
+            if (selectorForSourceNode instanceof Node && preservedSourceNode) {
+              if (context.session) {
+                context.session.getRuntime(selectorForSourceNode).sourceNode = preservedSourceNode;
+              } else {
+                selectorForSourceNode.sourceNode = preservedSourceNode;
+              }
+            }
+          }
         }
         if (context.opts.collapseNesting) {
           this._setHoistToRoot(true, context);

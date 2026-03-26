@@ -144,8 +144,8 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   static override childKeys = ['path', 'withNode'] as const;
 
-  path!: Quoted | Url;
-  withNode: Reference | Collection | undefined;
+  readonly path!: Quoted | Url;
+  readonly withNode: Reference | Collection | undefined;
   withType: 'with' | 'set' | undefined;
 
   override clone(deep?: boolean): this {

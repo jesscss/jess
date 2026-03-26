@@ -41,8 +41,8 @@ export interface Dimension extends Node<DimensionValue> {
 export class Dimension extends Node<DimensionValue> {
   static override childKeys = null as null;
 
-  number!: number;
-  unit: string | undefined;
+  readonly number!: number;
+  readonly unit: string | undefined;
 
   constructor(
     value: DimensionValue,

@@ -18,7 +18,7 @@ export interface SelectorCapture extends Node<Selector> {
 export class SelectorCapture extends Node<Selector> {
   static override childKeys = ['value'] as const;
 
-  value!: Selector;
+  readonly value!: Selector;
 
   constructor(value: Selector, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -32,16 +32,6 @@ export class SelectorCapture extends Node<Selector> {
     return context
       ? getField<Selector>(this, 'value', context)
       : this.value;
-  }
-
-  private _setValue(value: Selector, context?: Context): void {
-    if (context?.session && this.sourceNode === this) {
-      this.adopt(value, context);
-      setField(this, 'value', value, context);
-      return;
-    }
-    this.value = value;
-    this.adopt(value, context);
   }
 
   override valueOf(): string {
@@ -68,7 +58,7 @@ export class SelectorCapture extends Node<Selector> {
     const value = this._getValue(context);
     const applyValue = (preEvald: Selector): this => {
       if (node._getValue(context) !== preEvald) {
-        node._setValue(preEvald, context);
+        setField(node, 'value', preEvald, context);
       }
       return node;
     };

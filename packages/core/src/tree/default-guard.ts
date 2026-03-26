@@ -12,7 +12,7 @@ export interface DefaultGuard extends Node<string> {
 export class DefaultGuard extends Node<string> {
   static override childKeys = null as null;
 
-  value!: string;
+  readonly value!: string;
 
   constructor(value: string, options?: any, location?: any, treeContext?: any) {
     super(value as any, options, location, treeContext);

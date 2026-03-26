@@ -19,7 +19,7 @@ export interface Url {
 export class Url extends Node<Quoted | Any> {
   static override childKeys = ['value'] as const;
 
-  value!: Quoted | Any;
+  readonly value!: Quoted | Any;
 
   constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -33,17 +33,6 @@ export class Url extends Node<Quoted | Any> {
     return context
       ? getField<Quoted | Any>(this, 'value', context)
       : this.value;
-  }
-
-  private _setValue(value: Quoted | Any, context: Context): void {
-    if (value instanceof Node) {
-      this.adopt(value, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'value', value, context);
-    } else {
-      this.value = value;
-    }
   }
 
   /**
@@ -76,7 +65,7 @@ export class Url extends Node<Quoted | Any> {
     const value = this._getValue(context);
     const finish = (nextValue: Quoted | Any): Url => {
       if (nextValue !== value) {
-        this._setValue(nextValue, context);
+        setField(this, 'value', nextValue, context);
       }
       return this;
     };

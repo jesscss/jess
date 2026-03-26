@@ -26,7 +26,7 @@ export interface CompoundSelector {
 export class CompoundSelector extends Selector<SimpleSelector[]> {
   static override childKeys = ['value'] as const;
 
-  value!: SimpleSelector[];
+  readonly value!: SimpleSelector[];
 
   constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -46,18 +46,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return context
       ? getField<SimpleSelector[]>(this, 'value', context)
       : this.value;
-  }
-
-  private _setValue(value: SimpleSelector[], context: Context): void {
-    for (const child of value) {
-      this.adopt(child, context);
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'value', value, context);
-    } else {
-      this.value = value;
-    }
-    this.invalidateCache();
   }
 
   override valueOf() {
@@ -129,11 +117,11 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
-            sel._setValue(value, context);
+            setField(sel, 'value', value, context);
             return sel;
           });
         }
-        sel._setValue(value, context);
+        setField(sel, 'value', value, context);
         return sel;
       },
       (sel) => {
@@ -152,7 +140,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         if (data.length === 1) {
           return data[0]!.inherit(this) as Selector;
         }
-        sel._setValue([...data], context);
+        setField(sel, 'value', [...data], context);
         return sel;
       }
     );

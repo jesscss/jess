@@ -35,9 +35,9 @@ export interface Operation {
 export class Operation extends Node<OperationValue> {
   static override childKeys = ['left', 'right'] as const;
 
-  left!: Node;
-  operator!: Operator;
-  right!: Node;
+  readonly left!: Node;
+  readonly operator!: Operator;
+  readonly right!: Node;
 
   override clone(deep?: boolean): this {
     const options = (this as any)._meta?.options;
@@ -77,28 +77,10 @@ export class Operation extends Node<OperationValue> {
       : this.left;
   }
 
-  private _setLeft(left: Node, context: Context): void {
-    this.adopt(left);
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'left', left, context);
-    } else {
-      this.left = left;
-    }
-  }
-
   private _getRight(context?: Context): Node {
     return context
       ? getField<Node>(this, 'right', context)
       : this.right;
-  }
-
-  private _setRight(right: Node, context: Context): void {
-    this.adopt(right);
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'right', right, context);
-    } else {
-      this.right = right;
-    }
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -141,8 +123,8 @@ export class Operation extends Node<OperationValue> {
           const outOperation = context.session
             ? n.clone(false) as Operation
             : n;
-          outOperation._setLeft(l, context);
-          outOperation._setRight(r, context);
+          setField(outOperation, 'left', l, context);
+          setField(outOperation, 'right', r, context);
           return applyMergedDependency(outOperation, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -162,8 +144,8 @@ export class Operation extends Node<OperationValue> {
               const calcOperation = context.session
                 ? n.clone(false) as Operation
                 : n;
-              calcOperation._setLeft(l, context);
-              calcOperation._setRight(r, context);
+              setField(calcOperation, 'left', l, context);
+              setField(calcOperation, 'right', r, context);
               setEvaluated(calcOperation, true, context);
               setEvaluated(l, true, context);
               setEvaluated(r, true, context);
@@ -187,8 +169,8 @@ export class Operation extends Node<OperationValue> {
         out.post = right.post;
         return applyMergedDependency(out, l, r);
       }
-      n._setLeft(l, context);
-      n._setRight(r, context);
+      setField(n, 'left', l, context);
+      setField(n, 'right', r, context);
       return applyMergedDependency(n, l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {

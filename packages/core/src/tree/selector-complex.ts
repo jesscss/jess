@@ -37,7 +37,7 @@ export interface ComplexSelector {
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
   static override childKeys = ['value'] as const;
 
-  value!: ComplexSelectorValue;
+  readonly value!: ComplexSelectorValue;
 
   constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -57,20 +57,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return context
       ? getField<ComplexSelectorValue>(this, 'value', context)
       : this.value;
-  }
-
-  private _setValue(value: ComplexSelectorValue, context: Context): void {
-    for (const child of value) {
-      if (child instanceof Selector) {
-        this.adopt(child, context);
-      }
-    }
-    if (context.session && this === this.sourceNode) {
-      setField(this, 'value', value, context);
-    } else {
-      this.value = value;
-    }
-    this.invalidateCache();
   }
 
   /**
@@ -141,11 +127,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
-            selector._setValue(value, context);
+            setField(selector, 'value', value, context);
             return selector;
           });
         }
-        selector._setValue(value, context);
+        setField(selector, 'value', value, context);
         return selector;
       },
       (selector) => {

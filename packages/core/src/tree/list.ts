@@ -5,7 +5,7 @@ import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { getField, setField, setParent } from './util/session-helpers.js';
+import { getField, setField } from './util/session-helpers.js';
 
 export type ListOptions = {
   /**
@@ -33,7 +33,7 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   static override childKeys = ['value'] as const;
 
-  value!: T[];
+  readonly value!: T[];
 
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -64,23 +64,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return context
       ? getField<T[]>(this, 'value', context)
       : this.value;
-  }
-
-  private _setValue(value: T[], context: Context): void {
-    if (context.session) {
-      for (const child of value) {
-        setParent(child, this, context);
-      }
-      if (this === this.sourceNode) {
-        setField(this, 'value', value, context);
-        return;
-      }
-    } else {
-      for (const child of value) {
-        this.adopt(child);
-      }
-    }
-    this.value = value;
   }
 
   // NOTE: `valueOf()` intentionally remains canonical for now.
@@ -144,7 +127,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const ownItems = this._getValue(context);
     const nextItems = b instanceof List ? b._getValue(context) : [b as T];
     let newList = this.maybeClone(context);
-    newList._setValue([...ownItems, ...nextItems], context);
+    setField(newList, 'value', [...ownItems, ...nextItems], context);
     return newList;
   }
 
@@ -169,7 +152,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
         }
       }
       if (changed) {
-        node._setValue(nextValue, context);
+        setField(node, 'value', nextValue, context);
       }
       return node;
     }
@@ -193,13 +176,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          node._setValue(nextValue, context);
+          setField(node, 'value', nextValue, context);
         }
         return node;
       });
     }
     if (changed) {
-      node._setValue(nextValue, context);
+      setField(node, 'value', nextValue, context);
     }
     return node;
   }
@@ -219,7 +202,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
         }
       }
       if (changed) {
-        this._setValue(nextValue, context);
+        setField(this, 'value', nextValue, context);
       }
       return this;
     }
@@ -243,13 +226,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          this._setValue(nextValue, context);
+          setField(this, 'value', nextValue, context);
         }
         return this;
       });
     }
     if (changed) {
-      this._setValue(nextValue, context);
+      setField(this, 'value', nextValue, context);
     }
     return this;
   }

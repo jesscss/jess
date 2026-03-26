@@ -678,8 +678,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             throw new ReferenceError(`'${valueKeyStr2}' is not defined`);
           }
           if (fallbackValue === true) {
-            const any = new Any(`${valueKey}`);
-            any.role = this.options.role;
+            const any = new Any(`${valueKey}`, { role: this.options.role });
             return any;
           }
           // Evaluate the fallbackValue if it's a Node
