@@ -476,21 +476,19 @@ export class Context {
    * Mixin calls replace this with a child position for their body.
    */
   private _position: EvalPosition | undefined;
-  get position(): EvalPosition | undefined {
-    return this._position;
-  }
 
-  /** Lazy position access — creates root position on first call */
-  /** Lazy position access — creates a root position on first write. */
-  ensurePosition(): EvalPosition {
-    if (!this._position) {
-      this._position = new EvalPosition(this.root!);
-    }
-    return this._position;
+  /** Lazy — creates a root position on first access. */
+  get position(): EvalPosition {
+    return (this._position ??= new EvalPosition(this.root!));
   }
 
   set position(value: EvalPosition | undefined) {
     this._position = value;
+  }
+
+  /** Check if a position has been created without triggering lazy creation. */
+  get hasPosition(): boolean {
+    return this._position !== undefined;
   }
 
   /** Create and attach a new EvalSession to this context. */

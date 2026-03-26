@@ -18,7 +18,7 @@ function resolveInstanceRoot(node: Node, ctx: Context): SessionInstanceRoot | un
  *
  * Architecture: two layers only.
  *   Read:  position.getField(node, key) ?? node[key]
- *   Write: context.ensurePosition().setField(node, key, value)
+ *   Write: context.position.setField(node, key, value)
  *
  * Legacy layers (instanceRoot, session) are preserved temporarily in
  * getField for backward compatibility during migration but will be
@@ -35,9 +35,11 @@ export function getField<T = unknown>(
   key: string,
   ctx: Context
 ): T {
-  const pos = ctx.position;
-  if (pos && pos.hasField(node, key)) {
-    return pos.getField(node, key) as T;
+  if (ctx.hasPosition) {
+    const pos = ctx.position;
+    if (pos.hasField(node, key)) {
+      return pos.getField(node, key) as T;
+    }
   }
   // Carried position (mixin/function output remembers its call's patches)
   const carried = node._evalPosition;
@@ -59,7 +61,7 @@ export function getField<T = unknown>(
 
 /**
  * Write a field on a node. Always routes through position.
- * `ensurePosition()` lazily creates one if needed.
+ * The position getter lazily creates one if needed.
  * Never falls through to canonical mutation.
  *
  * Note: this does NOT auto-adopt (set child.parent). Parent
@@ -72,7 +74,7 @@ export function setField(
   value: unknown,
   ctx: Context
 ): void {
-  ctx.ensurePosition().setField(node, key, value);
+  ctx.position.setField(node, key, value);
 }
 
 export function getDependency(
@@ -157,9 +159,11 @@ export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const pos = ctx.position;
-  if (pos && pos.hasField(node, 'parent')) {
-    return pos.getField(node, 'parent') as Node | undefined;
+  if (ctx.hasPosition) {
+    const pos = ctx.position;
+    if (pos.hasField(node, 'parent')) {
+      return pos.getField(node, 'parent') as Node | undefined;
+    }
   }
   // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
@@ -188,7 +192,7 @@ export function setParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  ctx.ensurePosition().setField(node, 'parent', parent);
+  ctx.position.setField(node, 'parent', parent);
 }
 
 /**
@@ -223,7 +227,7 @@ export function setEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  ctx.ensurePosition().setField(node, '_evaluated', value);
+  ctx.position.setField(node, '_evaluated', value);
 }
 
 /**
@@ -258,7 +262,7 @@ export function setPreEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  ctx.ensurePosition().setField(node, '_preEvaluated', value);
+  ctx.position.setField(node, '_preEvaluated', value);
 }
 
 /**
@@ -293,7 +297,7 @@ export function setIndex(
   index: number,
   ctx: Context
 ): void {
-  ctx.ensurePosition().setField(node, 'index', index);
+  ctx.position.setField(node, 'index', index);
 }
 
 /**
@@ -328,7 +332,7 @@ export function setSourceParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  ctx.ensurePosition().setField(node, 'sourceParent', parent);
+  ctx.position.setField(node, 'sourceParent', parent);
 }
 
 /**
@@ -339,7 +343,7 @@ export function setRuntimeState(
   patch: Partial<RuntimeState>,
   ctx: Context
 ): void {
-  const pos = ctx.ensurePosition();
+  const pos = ctx.position;
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined || Object.prototype.hasOwnProperty.call(patch, key)) {
       pos.setField(node, key, value);
@@ -355,6 +359,9 @@ export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
+  if (!ctx.hasPosition) {
+    return rules.value;
+  }
   const pos = ctx.position;
   if (pos && pos.hasField(rules, 'value')) {
     return pos.getField(rules, 'value') as Node[];
@@ -375,7 +382,7 @@ export function setChildren(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
-  ctx.ensurePosition().setField(rules, 'value', [...nodes]);
+  ctx.position.setField(rules, 'value', [...nodes]);
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);
   }
@@ -391,7 +398,7 @@ export function setChildAt(
   ctx: Context,
   options: SessionChildrenWriteOptions = {}
 ): void {
-  const pos = ctx.ensurePosition();
+  const pos = ctx.position;
   const currentChildren = pos.hasField(rules, 'value')
     ? pos.getField(rules, 'value') as Node[]
     : [...rules.value];
@@ -414,7 +421,7 @@ export function appendChildren(
   nodes: Node[],
   ctx: Context
 ): void {
-  const pos = ctx.ensurePosition();
+  const pos = ctx.position;
   const current = pos.hasField(rules, 'value')
     ? pos.getField(rules, 'value') as Node[]
     : [...rules.value];
@@ -430,7 +437,7 @@ export function prependChildren(
   nodes: Node[],
   ctx: Context
 ): void {
-  const pos = ctx.ensurePosition();
+  const pos = ctx.position;
   const current = pos.hasField(rules, 'value')
     ? pos.getField(rules, 'value') as Node[]
     : [...rules.value];

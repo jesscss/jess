@@ -888,27 +888,31 @@ export abstract class Node<
   // ------------------------------------------------------------------
 
   protected _isPreEvaluated(context: Context): boolean {
-    const pos = context.position;
-    if (pos && pos.hasField(this, '_preEvaluated')) {
-      return pos.getField(this, '_preEvaluated') as boolean;
+    if (context.hasPosition) {
+      const pos = context.position;
+      if (pos.hasField(this, '_preEvaluated')) {
+        return pos.getField(this, '_preEvaluated') as boolean;
+      }
     }
     return this.preEvaluated;
   }
 
   protected _setPreEvaluated(value: boolean, context: Context): void {
-    context.ensurePosition().setField(this, '_preEvaluated', value);
+    context.position.setField(this, '_preEvaluated', value);
   }
 
   protected _isEvaluated(context: Context): boolean {
-    const pos = context.position;
-    if (pos && pos.hasField(this, '_evaluated')) {
-      return pos.getField(this, '_evaluated') as boolean;
+    if (context.hasPosition) {
+      const pos = context.position;
+      if (pos.hasField(this, '_evaluated')) {
+        return pos.getField(this, '_evaluated') as boolean;
+      }
     }
     return this.evaluated;
   }
 
   protected _setEvaluated(value: boolean, context: Context): void {
-    context.ensurePosition().setField(this, '_evaluated', value);
+    context.position.setField(this, '_evaluated', value);
   }
 
   /**
