@@ -198,6 +198,12 @@ export function setParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
+  // Route through position when active — per-call parent isolation
+  const pos = ctx.position;
+  if (pos) {
+    pos.patchField(node, 'parent', parent);
+    return;
+  }
   const ir = resolveInstanceRoot(node, ctx);
   if (ir) {
     ir.getRuntime(node).parent = parent;
