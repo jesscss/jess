@@ -1,6 +1,6 @@
 import { Context } from '../../context.js';
 import { EvalSession, type SessionInstanceRoot } from '../../eval-session.js';
-import type { Node } from '../node-base.js';
+import { Node } from '../node-base.js';
 import { Bool } from '../bool.js';
 import type { Condition } from '../condition.js';
 import { Nil } from '../nil.js';
@@ -15,9 +15,13 @@ import { F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
-import { getChildren, getField, patchField, setChildren, setParent, setSourceParent } from './session-helpers.js';
+import { getChildren, getDependency, getField, getParent, getSourceParent, mergeDependencies, patchField, setChildren, setDependency, setParent, setSourceParent } from './session-helpers.js';
+import type { Mixin } from '../mixin.js';
 import type { Ruleset } from '../ruleset.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { cast } from './cast.js';
+import { isPlainObject } from './collections.js';
+import type { MixinEntry } from '../rules.js';
 
 export const enum MixinDefaultGroup {
   FalseEither = -1,
@@ -94,15 +98,17 @@ export function getRootSourceRules(rules: Rules): Rules {
  * per-call instance root when a session is active.
  */
 export function createMixinCandidateInstanceRoot(
-  candidate: Node,
+  candidate: MixinEntry,
   context: Context
 ): SessionInstanceRoot | undefined {
   if (!context.session) {
     return undefined;
   }
-  const candidateRules = isNode(candidate, N.Ruleset)
-    ? (candidate as any).rules as Rules | undefined
-    : (candidate as any).rules as Rules | undefined;
+  const candidateRules: Rules | undefined = isNode(candidate, N.Ruleset)
+    ? candidate.rules
+    : isNode(candidate, N.Mixin)
+      ? candidate.rules
+      : undefined;
   if (!candidateRules) {
     return undefined;
   }
@@ -807,19 +813,459 @@ export async function processPreparedMixinCandidate<TCandidate>(
   return undefined;
 }
 
+// -- Scope ancestry helpers --
+
+/**
+ * Walk the parent chain (via session helpers) to find the nearest Rules ancestor.
+ */
+export function findRulesAncestor(node: Node | undefined, context: Context): Rules | undefined {
+  let current = node ? getParent(node, context) : undefined;
+  while (current && current.type !== 'Rules') {
+    current = getParent(current, context);
+  }
+  return current as Rules | undefined;
+}
+
+/**
+ * Walk sourceParent chain then parent chain to find the nearest source Rules ancestor.
+ */
+export function findSourceRulesAncestor(node: Node | undefined, context: Context): Rules | undefined {
+  let current = node;
+  let sp = current ? getSourceParent(current, context) : undefined;
+  while (current && !sp) {
+    current = getParent(current, context);
+    sp = current ? getSourceParent(current, context) : undefined;
+  }
+  return sp ? findRulesAncestor(sp, context) : undefined;
+}
+
+/**
+ * Resolve the candidate's parent, throwing if absent.
+ *
+ * Accepts `Node<any, any>` so callers don't need `as unknown as Node` casts
+ * for typed subclasses like Mixin or Ruleset.
+ */
+export function getCandidateParent(node: Node<any, any>, context: Context): Node {
+  const parent = getParent(node as Node, context);
+  if (!parent) {
+    throw new ReferenceError(`${node.type} candidate must have a parent during mixin evaluation`);
+  }
+  return parent;
+}
+
+// -- Arg evaluation --
+
+/**
+ * Normalize leading whitespace in bound List/Sequence values.
+ */
+function normalizeBoundLeadingItemWhitespace(node: Node): void {
+  if (!isNode(node, N.List | N.Sequence)) {
+    return;
+  }
+  const items = (node as unknown as { value: Node[] }).value;
+  if (items.length > 0) {
+    items[0]!.pre = 0;
+  }
+  for (const item of items) {
+    if (isNode(item, N.List | N.Sequence)) {
+      normalizeBoundLeadingItemWhitespace(item as Node);
+    }
+  }
+}
+
+/**
+ * Copy dependency tracking from source to target node.
+ */
+function copyDependency(source: Node, target: Node, context: Context): void {
+  const dependency = getDependency(source, context);
+  if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+    setDependency(target, {
+      dependsOn: new Set(dependency.dependsOn),
+      sourceExpr: dependency.sourceExpr
+    }, context);
+  }
+}
+
+/**
+ * Evaluate raw call args into a flat array of frozen Node values.
+ *
+ * This replaces the clone/freeze/spread cycle that lived inline in returnFunc.
+ * Named args (VarDeclaration) have their values evaluated but are not themselves
+ * registered in scope. Rest args are expanded.
+ */
+export async function evaluateMixinArgs(
+  args: any[],
+  caller: Node | undefined,
+  context: Context
+): Promise<Node[]> {
+  const nodeArgs: Node[] = [];
+  const callerSourceNode = (caller as any)?.name instanceof Node
+    ? (caller as any).name
+    : caller;
+  const savedRulesContext = context.rulesContext;
+  const argEvalRulesContext = findRulesAncestor(caller, context)
+    ?? findSourceRulesAncestor(callerSourceNode, context)
+    ?? savedRulesContext;
+  context.rulesContext = argEvalRulesContext;
+  try {
+    for (const arg of args) {
+      if (isNode(arg)) {
+        if (isNode(arg, N.VarDeclaration)) {
+          const cloned = arg.copy(true, freezeChildren);
+          const clonedValue = (cloned as VarDeclaration).value;
+          if (clonedValue instanceof Node) {
+            const evaldValue = await clonedValue.clonedEval(context);
+            evaldValue.frozen = true;
+            (cloned as VarDeclaration).setData('value', evaldValue);
+          }
+          cloned.frozen = true;
+          nodeArgs.push(cloned);
+          continue;
+        }
+        const evald = await arg.clonedEval(context);
+        if (evald.type === 'Rest') {
+          let restValue = (evald as unknown as { value: unknown }).value;
+          if (isNode(restValue as Node) && !isNode(restValue as Node, N.Sequence | N.List)) {
+            restValue = await (restValue as Node).eval(context);
+          }
+          if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
+            for (const restArg of (restValue as unknown as { value: Node[] }).value) {
+              const frozenRestArg = restArg.copy(true, freezeChildren);
+              frozenRestArg.frozen = true;
+              nodeArgs.push(frozenRestArg);
+            }
+            continue;
+          }
+        }
+        evald.frozen = true;
+        nodeArgs.push(evald);
+      } else {
+        nodeArgs.push(cast(arg));
+      }
+    }
+  } finally {
+    context.rulesContext = savedRulesContext;
+  }
+  return nodeArgs;
+}
+
+// -- Candidate matching --
+
+/**
+ * Evaluate a pattern-match operand in a fresh session scope.
+ */
+async function preparePatternOperand(node: Node, context: Context): Promise<Node> {
+  const prevSession = context.session;
+  if (!prevSession || prevSession.resetEvalState) {
+    context.session = new EvalSession();
+  }
+  const result = await node.eval(context);
+  context.session = prevSession;
+  return result;
+}
+
+/**
+ * Match the mixin array against evaluated args. Returns the candidates whose
+ * param signatures match (with params bound).
+ *
+ * This replaces the inline candidate matching loop in returnFunc.
+ */
+export async function matchMixinCandidates(
+  mixinArr: MixinEntry[],
+  nodeArgs: Node[],
+  caller: Node | undefined,
+  sourceParent: Node | undefined,
+  context: Context
+): Promise<MixinEntry[]> {
+  const mixinCandidates: MixinEntry[] = [];
+  const bindingSourceParent = caller ?? sourceParent;
+
+  for (let i = 0; i < mixinArr.length; i++) {
+    let mixin = mixinArr[i]!;
+    const isPlainRule = isNode(mixin, N.Rules);
+    const paramLength = isPlainRule ? 0 : ((mixin as any).params?.length ?? 0);
+
+    if (!paramLength) {
+      if (nodeArgs.length) {
+        continue;
+      }
+      mixinCandidates.push(mixin);
+    } else {
+      const params = ((mixin as any).params as List<Node>).copy(true);
+      const hasRestParamOriginal = ((mixin as any).params as List<Node>).value.some(
+        (p: Node) => p.type === 'Rest'
+      );
+      const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : params.length;
+      const positions = params.length;
+      let requiredPositions = 0;
+      for (const param of params.value) {
+        if (isNode(param, N.VarDeclaration)) {
+          if ((param as VarDeclaration).value instanceof Nil) {
+            requiredPositions++;
+          }
+        } else if (isNode(param, N.Any) && param.role === 'property') {
+          requiredPositions++;
+        } else if (param.type !== 'Rest') {
+          requiredPositions++;
+        }
+      }
+
+      let argPos = 0;
+      let match = true;
+      for (let pi = 0; pi < positions; pi++) {
+        const arg = nodeArgs[argPos];
+        if (!arg) {
+          continue;
+        }
+        let param: Node | undefined;
+        let argValue: Node;
+
+        if (isNode(arg, N.VarDeclaration)) {
+          param = params.value.find((p: Node) => {
+            if (isNode(p, N.VarDeclaration)) {
+              return (p as VarDeclaration).name.valueOf() === (arg as VarDeclaration).name.valueOf();
+            }
+            if (isNode(p, N.Any) && p.role === 'property') {
+              return p.valueOf() === (arg as VarDeclaration).name.valueOf();
+            }
+            return false;
+          });
+          if (param) {
+            argValue = (arg as VarDeclaration).value as Node;
+          } else {
+            match = false;
+            break;
+          }
+        } else {
+          param = params.value[pi];
+          if (!param) {
+            match = false;
+            break;
+          }
+          argValue = arg;
+        }
+
+        if (!param) {
+          match = false;
+          break;
+        }
+
+        if (isNode(param, N.VarDeclaration)) {
+          const boundValue = argValue.copy(true, freezeChildren);
+          boundValue.frozen = true;
+          if (bindingSourceParent) {
+            setSourceParent(boundValue, bindingSourceParent, context);
+          }
+          normalizeBoundLeadingItemWhitespace(boundValue);
+          copyDependency(argValue, boundValue, context);
+          param.setData('value', boundValue);
+        } else if (isNode(param, N.Any) && param.role === 'property') {
+          const boundValue = argValue.copy(true, freezeChildren);
+          boundValue.frozen = true;
+          if (bindingSourceParent) {
+            setSourceParent(boundValue, bindingSourceParent, context);
+          }
+          normalizeBoundLeadingItemWhitespace(boundValue);
+          copyDependency(argValue, boundValue, context);
+          const varDecl = new VarDeclarationCtor({
+            name: param as Any<'property'>,
+            value: boundValue
+          }, { paramVar: true });
+          params.setData(pi, varDecl);
+        } else if (param.type === 'Rest') {
+          const rest = nodeArgs.slice(argPos).map((restArg) => {
+            const cloned = restArg.copy(true, freezeChildren);
+            cloned.frozen = true;
+            copyDependency(restArg, cloned, context);
+            return cloned;
+          });
+          const restValue = new Sequence(rest);
+          const dependency = mergeDependencies(rest, context);
+          if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+            setDependency(restValue, {
+              dependsOn: new Set(dependency.dependsOn),
+              sourceExpr: dependency.sourceExpr
+            }, context);
+          }
+          const restVarDecl = new VarDeclarationCtor({
+            name: new Any(
+              (param as unknown as { value: string | undefined }).value
+                ? `${(param as unknown as { value: string }).value}`
+                : `rest${pi}`,
+              { role: 'property' }
+            ) as Any<'property'>,
+            value: restValue
+          });
+          params.setData(pi, restVarDecl);
+        } else {
+          const originalPatternParam = !isNode(arg, N.VarDeclaration)
+            ? ((mixin as any).params as List<Node> | undefined)?.value[pi]
+            : undefined;
+          const preparedParam = isNode(originalPatternParam as Node | undefined, N.Selector)
+            ? await preparePatternOperand(originalPatternParam as Node, context)
+            : isNode(param, N.Selector)
+              ? await preparePatternOperand(param, context)
+              : param;
+          if (preparedParam.compare(argValue, context) !== 0) {
+            match = false;
+            break;
+          }
+        }
+        argPos++;
+      }
+
+      const positionalArgCount = nodeArgs.filter(argNode => !isNode(argNode, N.VarDeclaration)).length;
+      if (positionalArgCount > maxPositionalArgs) {
+        continue;
+      }
+      if (argPos < requiredPositions) {
+        continue;
+      }
+      if (nodeArgs.length > 1 && params.value.length === 1 && requiredPositions === 1) {
+        continue;
+      }
+      if (match) {
+        const originalMixin = mixin;
+        mixin = context.session
+          ? mixin.clone(false, undefined, context)
+          : mixin.copy();
+        getCandidateParent(originalMixin, context).adopt(mixin);
+        (mixin as any).setData('params', params);
+        mixinCandidates.push(mixin);
+      }
+    }
+  }
+
+  return mixinCandidates;
+}
+
+// -- Candidate filtering and sorting --
+
+/**
+ * Walk a node tree looking for `default()` / `DefaultGuard` / `??` calls.
+ */
+function guardContainsDefault(node: Node | undefined): boolean {
+  if (!node) {
+    return false;
+  }
+  if (node.type === 'DefaultGuard') {
+    return true;
+  }
+  if (node.type === 'Call') {
+    const callName = String((node as unknown as { name?: { valueOf?: () => string } }).name?.valueOf?.()
+      ?? (node as unknown as { name?: string }).name ?? '');
+    if (callName === 'default' || callName === '??') {
+      return true;
+    }
+  }
+  const value = (node as unknown as { value: unknown }).value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (isNode(item) && guardContainsDefault(item)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (isPlainObject(value)) {
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      if (isNode(item as Node) && guardContainsDefault(item as Node)) {
+        return true;
+      }
+      if (Array.isArray(item)) {
+        for (const child of item) {
+          if (isNode(child) && guardContainsDefault(child)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Check whether a node has a failed-guard ancestor (Ruleset with Nil guard).
+ */
+function hasFailedGuardAncestor(node: Node<any, any>, context: Context): boolean {
+  let current: Node | undefined = getParent(node as Node, context);
+  while (current) {
+    if (isNode(current, N.Ruleset)) {
+      const guardNode = (current as unknown as { guard: unknown }).guard;
+      if (guardNode instanceof Nil) {
+        return true;
+      }
+    }
+    current = getParent(current, context);
+  }
+  return false;
+}
+
+/**
+ * Filter matched candidates by eval-stack guard and sort default-guard
+ * candidates to the end.
+ *
+ * Returns `{ evalCandidates, hasDefault }`.
+ */
+export function filterAndSortMixinEvalCandidates(
+  mixinCandidates: MixinEntry[],
+  context: Context
+): { evalCandidates: MixinEntry[]; hasDefault: boolean } {
+  let hasDefault = false;
+  let evalCandidates = mixinCandidates
+    .filter((candidate) => {
+      const inStack = context.rulesEvalStack.includes((candidate as Mixin).rules.sourceNode as Rules);
+      const blockedByFailedGuard = hasFailedGuardAncestor(candidate, context);
+      return !inStack && !blockedByFailedGuard;
+    })
+    .map<MixinEntry>((candidate) => {
+      const hasDefaultGuard = Boolean(candidate.options?.hasDefault)
+        || guardContainsDefault((candidate as Mixin).guard as Node | undefined);
+      if (hasDefaultGuard) {
+        candidate.options ??= {};
+        candidate.options.hasDefault = true;
+        hasDefault = true;
+      }
+      return candidate;
+    });
+
+  if (hasDefault) {
+    evalCandidates = evalCandidates.slice(0).sort((a, b) => {
+      const aDefault = a.options?.hasDefault;
+      const bDefault = b.options?.hasDefault;
+      if (!aDefault && !bDefault) {
+        return 0;
+      }
+      if (!aDefault) {
+        return -1;
+      }
+      if (!bDefault) {
+        return 1;
+      }
+      return 0;
+    });
+  }
+
+  if (evalCandidates.length === 0) {
+    throw new ReferenceError('No matching mixins found.');
+  }
+
+  return { evalCandidates, hasDefault };
+}
+
 // -- Dispatch orchestration --
 
 export type MixinDispatchContext = {
-  evalCandidates: Array<{ rules: Rules; guard?: any; params?: List<Node>; index: number; name?: any; options?: Record<string, any> } & Record<string, any>>;
+  evalCandidates: MixinEntry[];
   hasDefault: boolean;
   nodeArgs: Node[];
   sourceParent: Node | undefined;
   caller: Node | undefined;
   restrictMixinOutputLookup: boolean;
   outputRules: Rules[];
-  getCandidateParent: (node: Node) => Node;
+  getCandidateParent: (node: Node<any, any>) => Node;
   evaluateCandidateOutput: (
-    candidate: any,
+    candidate: MixinEntry,
     rules: Rules,
     outerRules: Rules | undefined,
     params: List<Node> | undefined,
@@ -857,20 +1303,19 @@ export async function dispatchMixinEvalCandidates(
 
   for (const candidate of evalCandidates) {
     const candidateInstanceRoot = createMixinCandidateInstanceRoot(
-      candidate as unknown as Node,
+      candidate,
       context
     );
 
     if (isNode(candidate, N.Ruleset)) {
-      const rulesetGuard = (candidate as any).guard;
-      if (rulesetGuard instanceof Nil) {
+      if (candidate.guard instanceof Nil) {
         continue;
       }
-      const candidateRules = (candidate as any).rules;
+      const candidateRules = candidate.rules;
       const sourceRules = getRootSourceRules(candidateRules);
       const rules = await evaluateRulesetMixinCandidateOutput(
         sourceRules,
-        getCandidateParent(candidate as unknown as Node),
+        getCandidateParent(candidate),
         sourceParent,
         candidate.index,
         restrictMixinOutputLookup,
@@ -881,11 +1326,15 @@ export async function dispatchMixinEvalCandidates(
       continue;
     }
 
+    // After the Ruleset branch above, candidate must be a Mixin
+    if (!isNode(candidate, N.Mixin)) {
+      continue;
+    }
     if (!candidate.name && !candidate.params && !candidate.guard) {
-      const sourceRules = getRootSourceRules((candidate as any).rules);
+      const sourceRules = getRootSourceRules(candidate.rules);
       const unlocked = unlockDetachedRulesetMixinCandidateOutput(
         sourceRules,
-        getCandidateParent(candidate as unknown as Node),
+        getCandidateParent(candidate),
         sourceParent ?? caller,
         candidate.index,
         context,
@@ -895,14 +1344,14 @@ export async function dispatchMixinEvalCandidates(
       continue;
     }
 
-    let rules = (candidate as any).rules as Rules;
+    let rules = candidate.rules;
     let params = context.session
-      ? getField<List<Node> | undefined>(candidate as unknown as Node, 'params', context)
-      : (candidate as any).params as List<Node> | undefined;
+      ? getField<List<Node> | undefined>(candidate as Node, 'params', context)
+      : candidate.params;
     const prepared = prepareMixinCandidateInvocation(
       rules,
       params,
-      getCandidateParent(candidate as unknown as Node),
+      getCandidateParent(candidate),
       sourceParent,
       candidate.index,
       nodeArgs,
@@ -918,7 +1367,7 @@ export async function dispatchMixinEvalCandidates(
       params,
       outerRules: prepared.outerRules,
       guard: canonicalGuard,
-      parent: getCandidateParent(candidate as unknown as Node),
+      parent: getCandidateParent(candidate),
       lookupScope: prepared.lookupScope,
       guardScopeChildren: prepared.guardScopeChildren,
       hasDefault,

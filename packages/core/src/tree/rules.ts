@@ -10,14 +10,13 @@ import {
 import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { cast } from './util/cast.js';
 import { type Ruleset } from './ruleset.js';
 import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
-import { atIndex, isPlainObject } from './util/collections.js';
+import { atIndex } from './util/collections.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -30,26 +29,27 @@ import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import {
   getChildren,
-  getDependency,
   getField,
   getParent,
   getSourceParent,
-  mergeDependencies,
   patchField,
   setChildren,
   setChildAt,
-  setDependency,
   setIndex,
   setParent,
   setSourceParent
 } from './util/session-helpers.js';
 import {
   dispatchMixinEvalCandidates,
+  evaluateMixinArgs,
+  filterAndSortMixinEvalCandidates,
   finalizeMixinInvocationOutput,
   finalizeMixinInvocationReturn,
+  getCandidateParent,
+  matchMixinCandidates,
   projectMixinParamScopeIntoOutput
 } from './util/mixin-instance-primitives.js';
-import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
+import { EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
 import type { Func } from './function.js';
 const { isArray } = Array;
 
@@ -2176,9 +2176,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
   async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>;
   async function returnFunc(this: Context, ...args: any[]): Promise<Rules>;
   async function returnFunc(this: Context | unknown, ...args: any[]) {
-    const mixinLength = mixinArr.length;
-    let mixinCandidates: MixinEntry[] = [];
-    let evalCandidates: MixinEntry[];
     // When called via callWithContext, 'this' is functionThis, not Context
     // We need to extract the context from functionThis or use a fallback
     let thisContext: Context;
@@ -2192,397 +2189,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       thisContext = new Context();
     }
     let caller = thisContext.caller;
-    const getSessionRulesParent = (node: Node | undefined): Rules | undefined => {
-      let possibleRules = node ? getParent(node, thisContext) : undefined;
-      while (possibleRules && possibleRules.type !== 'Rules') {
-        possibleRules = getParent(possibleRules, thisContext);
-      }
-      return possibleRules as Rules | undefined;
-    };
-    const getSessionSourceRulesParent = (node: Node | undefined): Rules | undefined => {
-      let current = node;
-      let sourceParent = current ? getSourceParent(current, thisContext) : undefined;
-      while (current && !sourceParent) {
-        current = getParent(current, thisContext);
-        sourceParent = current ? getSourceParent(current, thisContext) : undefined;
-      }
-      return sourceParent ? getSessionRulesParent(sourceParent) : undefined;
-    };
     const callerSourceNode = (caller as any)?.name instanceof Node
       ? (caller as any).name
       : caller;
     let sourceParent = callerSourceNode
       ? getSourceParent(callerSourceNode, thisContext)
       : undefined;
-    const getCandidateParent = (node: Node): Node => {
-      const parent = getParent(node, thisContext);
-      if (!parent) {
-        throw new ReferenceError(`${node.type} candidate must have a parent during mixin evaluation`);
-      }
-      return parent;
-    };
-    let nodeArgs: Node[] = [];
-    const savedRulesContext = thisContext.rulesContext;
-    const argEvalRulesContext = getSessionRulesParent(caller) ?? getSessionSourceRulesParent(callerSourceNode) ?? savedRulesContext;
-    thisContext.rulesContext = argEvalRulesContext;
-    try {
-      for (let arg of args) {
-        /**
-         * I think they should always be nodes?
-         * But leaving this for future expansion.
-         */
-        if (isNode(arg)) {
-          // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
-          // Evaluating them can register/override variables in the current scope.
-          // They should only be used for parameter binding.
-          if (isNode(arg, N.VarDeclaration)) {
-            const cloned = arg.copy(true, freezeChildren);
-            const clonedValue = (cloned as VarDeclaration).value;
-            if (clonedValue instanceof Node) {
-              const evaldValue = await clonedValue.clonedEval(thisContext);
-              evaldValue.frozen = true;
-              (cloned as VarDeclaration).setData('value', evaldValue);
-            }
-            cloned.frozen = true;
-            nodeArgs.push(cloned);
-            continue;
-          }
-          try {
-            const evald = await arg.clonedEval(thisContext);
-            if (evald.type === 'Rest') {
-              let restValue = (evald as any).value;
-              // Rest's sync evalNode may not resolve an async inner Reference.
-              // Explicitly evaluate the inner node if it's still a Reference.
-              if (isNode(restValue as Node) && !isNode(restValue as Node, N.Sequence | N.List)) {
-                restValue = await (restValue as Node).eval(thisContext);
-              }
-              if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
-                for (const restArg of (restValue as any).value) {
-                  const frozenRestArg = restArg.copy(true, freezeChildren);
-                  frozenRestArg.frozen = true;
-                  nodeArgs.push(frozenRestArg);
-                }
-                continue;
-              }
-            }
-            evald.frozen = true;
-            nodeArgs.push(evald);
-          } catch (error: any) {
-            throw error;
-          }
-        } else {
-          nodeArgs.push(cast(arg));
-        }
-      }
-    } finally {
-      thisContext.rulesContext = savedRulesContext;
-    }
-    /**
-     * Check named and positional arguments
-     * against mixins, to see which ones match.
-     * (Any mixin with a mis-match of
-     * arguments fails.)
-     */
-    const normalizeBoundLeadingItemWhitespace = (node: Node): void => {
-      if (!isNode(node, N.List | N.Sequence)) {
-        return;
-      }
-      const items = (node as any).value as Node[];
-      if (items.length > 0) {
-        items[0]!.pre = 0;
-      }
-      for (const item of items) {
-        if (isNode(item, N.List | N.Sequence)) {
-          normalizeBoundLeadingItemWhitespace(item as Node);
-        }
-      }
-    };
-    const copyDependency = (source: Node, target: Node): void => {
-      const dependency = getDependency(source, thisContext);
-      if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-        setDependency(target, {
-          dependsOn: new Set(dependency.dependsOn),
-          sourceExpr: dependency.sourceExpr
-        }, thisContext);
-      }
-    };
-    const bindingSourceParent = caller ?? sourceParent;
-    const preparePatternOperand = async (node: Node): Promise<Node> => {
-      const prevSession = thisContext.session;
-      if (!prevSession || prevSession.resetEvalState) {
-        thisContext.session = new EvalSession();
-      }
-      try {
-        return await node.eval(thisContext);
-      } finally {
-        thisContext.session = prevSession;
-      }
-    };
-    for (let i = 0; i < mixinLength; i++) {
-      let mixin = mixinArr[i]!;
-      let isPlainRule = isNode(mixin, N.Rules);
-      let paramLength = isPlainRule ? 0 : (mixin as Mixin).params?.length ?? 0;
-      if (!paramLength) {
-        /** Exit early if args were passed in, but no args are possible */
-        if (args.length) {
-          continue;
-        }
-        mixinCandidates.push(mixin);
-      } else {
-        /** The mixin has parameters, so let's check args to see if there's a match */
-        let params = (mixin as Mixin).params!.copy(true);
-        const hasRestParamOriginal = (mixin as Mixin).params!.value.some(p => p.type === 'Rest');
-        const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : params.length;
-        let positions = params.length;
-        let requiredPositions = 0;
-        for (let param of params.value) {
-          if (isNode(param, N.VarDeclaration)) {
-            if ((param as any).value instanceof Nil) {
-              requiredPositions++;
-            }
-          } else if (isNode(param, N.Any) && param.role === 'property') {
-            // Any with role: 'property' is a parameter without default (consistent with variable names)
-            requiredPositions++;
-          } else if (param.type !== 'Rest') {
-            requiredPositions++;
-          }
-        }
-        let argPos = 0;
-        let match = true;
-        for (let i = 0; i < positions; i++) {
-          let arg = nodeArgs[argPos];
-          if (!arg) {
-            continue;
-          }
-          let param: Node | undefined;
-          let argValue: Node;
-          if (isNode(arg, N.VarDeclaration)) {
-            param = params.value.find(
-              (p) => {
-                if (isNode(p, N.VarDeclaration)) {
-                  return (p as any).name.valueOf() === (arg as any).name.valueOf();
-                }
-                if (isNode(p, N.Any) && p.role === 'property') {
-                  return p.valueOf() === (arg as any).name.valueOf();
-                }
-                return false;
-              }
-            );
-            if (param) {
-              argValue = (arg as any).value;
-            } else {
-              match = false;
-              break;
-            }
-          } else {
-            param = params.value[i];
-            if (!param) {
-              match = false;
-              break;
-            }
-            argValue = arg;
-          }
-          if (!param) {
-            match = false;
-            break;
-          }
-          if (isNode(param, N.VarDeclaration)) {
-            const boundValue = argValue.copy(true, freezeChildren);
-            boundValue.frozen = true;
-            if (bindingSourceParent) {
-              setSourceParent(boundValue, bindingSourceParent, thisContext);
-            }
-            normalizeBoundLeadingItemWhitespace(boundValue);
-            copyDependency(argValue, boundValue);
-            param.setData('value', boundValue);
-          } else if (isNode(param, N.Any) && param.role === 'property') {
-            // Convert Any with role: 'property' to VarDeclaration for registration
-            const boundValue = argValue.copy(true, freezeChildren);
-            boundValue.frozen = true;
-            if (bindingSourceParent) {
-              setSourceParent(boundValue, bindingSourceParent, thisContext);
-            }
-            normalizeBoundLeadingItemWhitespace(boundValue);
-            copyDependency(argValue, boundValue);
-            const varDecl = new VarDeclaration({
-              name: param as Any<'property'>,
-              value: boundValue
-            }, { paramVar: true });
-            params.setData(i, varDecl);
-          } else if (param.type === 'Rest') {
-            /** We assume that the rest args are values */
-            const rest = nodeArgs.slice(argPos).map((restArg) => {
-              const cloned = restArg.copy(true, freezeChildren);
-              cloned.frozen = true;
-              copyDependency(restArg, cloned);
-              return cloned;
-            });
-            const restValue = new Sequence(rest);
-            const dependency = mergeDependencies(rest, thisContext);
-            if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-              setDependency(restValue, {
-                dependsOn: new Set(dependency.dependsOn),
-                sourceExpr: dependency.sourceExpr
-              }, thisContext);
-            }
-            /** Create a new variable with the rest name */
-            const restVarDecl = new VarDeclaration({
-              name: new Any((param as any).value ? `${(param as any).value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
-              value: restValue
-            });
-            params.setData(i, restVarDecl);
-            /** Check a pattern-matching node */
-          } else {
-            const originalPatternParam = !isNode(arg, N.VarDeclaration)
-              ? (mixin as Mixin).params?.value[i]
-              : undefined;
-            const preparedParam = isNode(originalPatternParam as Node | undefined, N.Selector)
-              ? await preparePatternOperand(originalPatternParam as Node)
-              : isNode(param, N.Selector)
-                ? await preparePatternOperand(param)
-                : param;
-            if (preparedParam.compare(argValue, thisContext) !== 0) {
-              /** This mixin is not a match */
-              match = false;
-              break;
-            }
-          }
-          argPos++;
-        }
-        const positionalArgCount = nodeArgs.filter(argNode => !isNode(argNode, N.VarDeclaration)).length;
-        if (positionalArgCount > maxPositionalArgs) {
-          continue;
-        }
-        /**
-         * Now we can check remaining positional matches
-         * against the remaining parameters.
-         */
-        if (argPos < requiredPositions) {
-          /** This mixin is not a match */
-          continue;
-        }
-        if (nodeArgs.length > 1 && params.value.length === 1 && requiredPositions === 1) {
-          // Less should not match single required-parameter overloads against extra positional args.
-          continue;
-        }
-        if (match) {
-          /** Make a shallow copy to attach our resolved params (w/ args) */
-          let originalMixin = mixin;
-          mixin = thisContext.session
-            ? mixin.clone(false, undefined, thisContext)
-            : mixin.copy();
-          getCandidateParent(originalMixin as unknown as Node).adopt(mixin);
-          (mixin as Mixin).setData('params', params);
-          mixinCandidates.push(mixin);
-        }
-      }
-    }
-    /**
-     * Alright, we have mixin candidates (mixins that match
-     * by arity, pattern, and/or named arguments), now what?
-     *
-     * First, let's make an evaluation order that evaluates
-     * default guards last.
-     */
-    let hasDefault = false;
-    const guardContainsDefault = (node: Node | undefined): boolean => {
-      if (!node) {
-        return false;
-      }
-      if (node.type === 'DefaultGuard') {
-        return true;
-      }
-      if (node.type === 'Call') {
-        const callName = String((node as any).name?.valueOf?.() ?? (node as any).name ?? '');
-        if (callName === 'default' || callName === '??') {
-          return true;
-        }
-      }
-      const value = (node as any).value;
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          if (isNode(item) && guardContainsDefault(item)) {
-            return true;
-          }
-        }
-        return false;
-      }
-      if (isPlainObject(value)) {
-        for (const item of Object.values(value)) {
-          if (isNode(item) && guardContainsDefault(item)) {
-            return true;
-          }
-          if (Array.isArray(item)) {
-            for (const child of item) {
-              if (isNode(child) && guardContainsDefault(child)) {
-                return true;
-              }
-            }
-          }
-        }
-      }
-      return false;
-    };
-    const hasFailedGuardAncestor = (node: Node): boolean => {
-      let current: Node | undefined = getParent(node, thisContext);
-      while (current) {
-        if (isNode(current, N.Ruleset)) {
-          const guardNode = (current as Ruleset).guard;
-          if (guardNode instanceof Nil) {
-            return true;
-          }
-        }
-        current = getParent(current, thisContext);
-      }
-      return false;
-    };
-    evalCandidates = mixinCandidates
-      .filter((candidate) => {
-        const inStack = thisContext.rulesEvalStack.includes((candidate as any).rules.sourceNode as Rules);
-        const blockedByFailedGuardAncestor = hasFailedGuardAncestor(candidate as unknown as Node);
-        return !inStack && !blockedByFailedGuardAncestor;
-      })
-      .map<MixinEntry>(
-        (candidate) => {
-          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault((candidate as any).guard as unknown as Node | undefined);
-          if (hasDefaultGuard) {
-            candidate.options ??= {};
-            candidate.options.hasDefault = true;
-            hasDefault = true;
-          }
-          return candidate;
-        });
 
-    if (hasDefault) {
-      /** There is a default guard, so sort candidates */
-      evalCandidates = evalCandidates.slice(0).sort((a, b) => {
-        let aDefault = a.options?.hasDefault;
-        let bDefault = b.options?.hasDefault;
-        /** No guard (or is just a plain ruleset) */
-        if (!aDefault && !bDefault) {
-          return 0;
-        }
+    const nodeArgs = await evaluateMixinArgs(args, caller, thisContext);
+    const mixinCandidates = await matchMixinCandidates(mixinArr, nodeArgs, caller, sourceParent, thisContext);
+    const { evalCandidates, hasDefault } = filterAndSortMixinEvalCandidates(mixinCandidates, thisContext);
 
-        if (!aDefault) {
-          return -1;
-        }
-        if (!bDefault) {
-          return 1;
-        }
-        return 0;
-      });
-    }
-
-    if (evalCandidates.length === 0) {
-      throw new ReferenceError('No matching mixins found.');
-    }
-
-    /**
-     * Now we have a set of mixins that can return rulesets,
-     * but first we need to create a new scope for each mixin,
-     * and create variable declarations for each parameter.
-     */
     let outputRules: Rules[] = [];
+    const boundGetCandidateParent = (node: Node): Node => getCandidateParent(node, thisContext);
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
 
     const evaluateCandidateOutput = async (
@@ -2608,7 +2227,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           thisContext.position = new EvalPosition(rules);
         }
         if (!outerRules) {
-          setParent(rules, getCandidateParent(candidate as unknown as Node), thisContext);
+          setParent(rules, boundGetCandidateParent(candidate as unknown as Node), thisContext);
           newRules = await rules.eval(thisContext);
         } else {
           // Patch body's parent to outerRules so param lookups walk:
@@ -2621,7 +2240,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, thisContext);
         thisContext.position = prevPosition;
         setSourceParent(newRules, sourceParent, thisContext);
-        setParent(newRules, getCandidateParent(candidate as unknown as Node), thisContext);
+        setParent(newRules, boundGetCandidateParent(candidate as unknown as Node), thisContext);
         newRules.index = candidate.index;
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         if (thisContext.treeContext?.file) {
@@ -2668,7 +2287,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       caller,
       restrictMixinOutputLookup,
       outputRules,
-      getCandidateParent,
+      getCandidateParent: boundGetCandidateParent,
       evaluateCandidateOutput
     }, thisContext);
 
