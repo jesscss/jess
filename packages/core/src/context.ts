@@ -7,7 +7,7 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
-import { EvalSession, EvalPosition, type SessionInstanceRoot } from './eval-session.js';
+import { EvalState } from './eval-state.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -446,55 +446,27 @@ export class Context {
   isDefault: boolean | undefined;
 
   /**
-   * Optional evaluation session for mutation isolation.
-   *
-   * When set, field reads/writes should go through session-aware
-   * helpers instead of mutating canonical nodes directly. When
-   * undefined (the default), all behavior is unchanged — nodes
-   * are the source of truth and mutation works as before.
-   *
-   * @see EvalSession
-   */
-  session: EvalSession | undefined;
-
-  /**
-   * The active instance root for the current eval scope.
-   *
-   * When set, field reads/writes should check the instance root's
-   * sparse shadow state before falling back to the session or
-   * canonical node. This enables multiple placements of the same
-   * canonical subtree (e.g., repeated imports, repeated mixin calls)
-   * to carry independent local state.
-   *
-   * @see SessionInstanceRoot
-   */
-  instanceRoot: SessionInstanceRoot | undefined;
-
-  /**
-   * The active position in the virtual evaluated tree.
+   * Sparse overlay on the canonical AST. Holds node replacements,
+   * field patches, and eval flags for this evaluation pass.
    * Lazy — allocated on first access, zero cost if never used.
-   * Mixin calls replace this with a child position for their body.
    */
-  private _position: EvalPosition | undefined;
+  private _evalState: EvalState | undefined;
 
-  /** Lazy — creates a root position on first access. */
-  get position(): EvalPosition {
-    return (this._position ??= new EvalPosition(this.root!));
+  get evalState(): EvalState {
+    return (this._evalState ??= new EvalState());
   }
 
-  set position(value: EvalPosition | undefined) {
-    this._position = value;
+  set evalState(value: EvalState | undefined) {
+    this._evalState = value;
   }
 
-  /** Check if a position has been created without triggering lazy creation. */
-  get hasPosition(): boolean {
-    return this._position !== undefined;
-  }
+  /** Stack of active subtree states for mixin/import reuse. */
+  evalStateStack: EvalState[] = [];
 
-  /** Create and attach a new EvalSession to this context. */
-  createSession(): EvalSession {
-    this.session = new EvalSession({ resetEvalState: true });
-    return this.session;
+  /** The currently active eval state (innermost subtree, or root). */
+  get activeState(): EvalState {
+    const len = this.evalStateStack.length;
+    return len > 0 ? this.evalStateStack[len - 1]! : this.evalState;
   }
 
   _leakyRules: boolean | undefined;
