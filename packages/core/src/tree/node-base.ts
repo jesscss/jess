@@ -4,7 +4,7 @@ import {
   type TreeContext,
   type Context
 } from '../context.js';
-import { EvalSession, type EvalPosition, type SessionInstanceRoot } from '../eval-session.js';
+import { EvalState } from '../eval-state.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
@@ -247,18 +247,11 @@ export abstract class Node<
 
   /**
    * The instance root this node belongs to. Set when a node is produced
-   * by an instance-root-backed eval (e.g., mixin call output).
-   * Session helpers check this as an implicit fallback when `ctx.instanceRoot`
-   * is not set, so the node "remembers" its eval context.
+   * @deprecated — legacy carried state, to be removed.
+   * EvalState subtree stack replaces this.
    */
-  _instanceRoot: SessionInstanceRoot | undefined;
-
-  /**
-   * Carried EvalPosition from a mixin/function call. When `ctx.position`
-   * is not set, session helpers fall back to this node's carried position
-   * so each call's patches survive on the output.
-   */
-  _evalPosition: EvalPosition | undefined;
+  _instanceRoot: unknown;
+  _evalPosition: unknown;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -350,13 +343,10 @@ export abstract class Node<
    * All internal consumers should read through position/session helpers.
    */
   materializeEvaluatedCopy(ctx?: Context): this {
-    if (!ctx?.session) {
+    if (!ctx) {
       return this.clone(true);
     }
-
-    const position = ctx.position;
-    const instanceRoot = ctx.instanceRoot ?? this._instanceRoot;
-    const session = ctx.session;
+    const state = ctx.activeState;
     const Class = this.constructor as Class<this>;
     const ck = (Class as unknown as typeof Node).childKeys;
     const materializeValue = (value: unknown): unknown => {
@@ -368,36 +358,10 @@ export abstract class Node<
       }
       return value;
     };
-    const getRulesChildrenFromView = (): Node[] | undefined => {
-      if (this.type !== 'Rules') {
-        return undefined;
-      }
-      if (position?.hasField(this, 'value')) {
-        return [...position.getField(this, 'value') as Node[]];
-      }
-      if (instanceRoot?.hasChildren(this as unknown as Rules)) {
-        return [...instanceRoot.getChildren(this as unknown as Rules)!];
-      }
-      if (session.hasChildren(this as unknown as Rules)) {
-        return [...session.getChildren(this as unknown as Rules)!];
-      }
-      return undefined;
-    };
     const getFieldFromView = (key: string): unknown => {
-      if (key === 'value') {
-        const rulesChildren = getRulesChildrenFromView();
-        if (rulesChildren) {
-          return rulesChildren;
-        }
-      }
-      if (position?.hasField(this, key)) {
-        return position.getField(this, key);
-      }
-      if (instanceRoot?.hasField(this, key)) {
-        return instanceRoot.getField(this, key);
-      }
-      if (session.hasField(this, key)) {
-        return session.getField(this, key);
+      const patched = state.peek(this)?._fields?.get(key);
+      if (patched !== undefined) {
+        return patched;
       }
       return (this as any)[key];
     };
@@ -412,17 +376,15 @@ export abstract class Node<
         this.treeContext
       );
       newNode.inherit(this);
-      const runtime = instanceRoot?.hasRuntime(this)
-        ? instanceRoot.getRuntime(this)
-        : session.hasRuntime(this)
-          ? session.getRuntime(this)
-          : undefined;
-      if (runtime) {
-        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
-          newNode.sourceNode = runtime.sourceNode;
+      const ns = state.peek(this);
+      if (ns) {
+        const sourceNode = ns._fields?.get('sourceNode') as Node | undefined;
+        if (sourceNode) {
+          newNode.sourceNode = sourceNode;
         }
-        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
-          newNode.sourceParent = runtime.sourceParent;
+        const sourceParent = ns._fields?.get('sourceParent') as Node | undefined;
+        if (sourceParent !== undefined) {
+          newNode.sourceParent = sourceParent;
         }
       }
       return newNode;
@@ -446,17 +408,15 @@ export abstract class Node<
       this.treeContext
     );
     newNode.inherit(this);
-    const runtime = instanceRoot?.hasRuntime(this)
-      ? instanceRoot.getRuntime(this)
-      : session.hasRuntime(this)
-        ? session.getRuntime(this)
-        : undefined;
-    if (runtime) {
-      if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
-        newNode.sourceNode = runtime.sourceNode;
+    const ns = state.peek(this);
+    if (ns) {
+      const sourceNode = ns._fields?.get('sourceNode') as Node | undefined;
+      if (sourceNode) {
+        newNode.sourceNode = sourceNode;
       }
-      if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
-        newNode.sourceParent = runtime.sourceParent;
+      const sourceParent = ns._fields?.get('sourceParent') as Node | undefined;
+      if (sourceParent !== undefined) {
+        newNode.sourceParent = sourceParent;
       }
     }
     return newNode;
@@ -476,7 +436,7 @@ export abstract class Node<
     const sharedChildren: Array<{
       child: Node;
       canonicalParent: Node | undefined;
-      sessionParent: Node | undefined;
+      stateParent: Node | undefined;
     }> = [];
 
     if (Array.isArray(ck)) {
@@ -486,7 +446,7 @@ export abstract class Node<
           sharedChildren.push({
             child: field,
             canonicalParent: field.parent,
-            sessionParent: ctx?.session?.hasRuntime(field) ? ctx.session.getRuntime(field).parent : undefined
+            stateParent: ctx?.activeState.peek(field)?._fields?.get('parent') as Node | undefined
           });
         } else if (isArray(field)) {
           for (const item of field as unknown[]) {
@@ -494,7 +454,7 @@ export abstract class Node<
               sharedChildren.push({
                 child: item,
                 canonicalParent: item.parent,
-                sessionParent: ctx?.session?.hasRuntime(item) ? ctx.session.getRuntime(item).parent : undefined
+                stateParent: ctx?.activeState.peek(item)?._fields?.get('parent') as Node | undefined
               });
             }
           }
@@ -504,14 +464,16 @@ export abstract class Node<
 
     const wrapper = this.clone(false, undefined, ctx);
 
-    for (const { child, canonicalParent, sessionParent } of sharedChildren) {
+    for (const { child, canonicalParent, stateParent } of sharedChildren) {
       (child as any).parent = canonicalParent;
-      if (ctx?.session?.hasRuntime(child)) {
-        const runtime = ctx.session.getRuntime(child);
-        if (sessionParent !== undefined) {
-          runtime.parent = sessionParent;
-        } else if (runtime.parent === wrapper) {
-          delete runtime.parent;
+      if (ctx) {
+        const ns = ctx.activeState.peek(child);
+        if (ns?._fields?.has('parent')) {
+          if (stateParent !== undefined) {
+            ns._fields!.set('parent', stateParent);
+          } else if (ns._fields!.get('parent') === wrapper) {
+            ns._fields!.delete('parent');
+          }
         }
       }
     }
@@ -521,11 +483,7 @@ export abstract class Node<
 
   /**
    * Create a shallow wrapper node that shares this node's immediate children
-   * while making the wrapper their active session parent.
-   *
-   * This is for lookup-scope wrappers that need shared top-level children to
-   * resolve through the new wrapper during active evaluation, but must not
-   * permanently reparent those children canonically.
+   * while making the wrapper their active parent in the eval state.
    */
   cloneLookupSafeShallowWrapper(ctx: Context): this {
     const ck = (this.constructor as typeof Node).childKeys;
@@ -558,9 +516,7 @@ export abstract class Node<
     const wrapper = this.clone(false, undefined, ctx);
 
     for (const { child, canonicalParent } of sharedChildren) {
-      if (ctx.session) {
-        ctx.session.getRuntime(child).parent = wrapper;
-      }
+      ctx.activeState.get(child).fields.set('parent', wrapper);
       (child as any).parent = canonicalParent;
     }
 
@@ -870,31 +826,19 @@ export abstract class Node<
   // ------------------------------------------------------------------
 
   protected _isPreEvaluated(context: Context): boolean {
-    if (context.hasPosition) {
-      const pos = context.position;
-      if (pos.hasField(this, '_preEvaluated')) {
-        return pos.getField(this, '_preEvaluated') as boolean;
-      }
-    }
-    return false;
+    return context.activeState.peek(this)?.preEvaluated ?? false;
   }
 
   protected _setPreEvaluated(value: boolean, context: Context): void {
-    context.position.setField(this, '_preEvaluated', value);
+    context.activeState.get(this).preEvaluated = value;
   }
 
   protected _isEvaluated(context: Context): boolean {
-    if (context.hasPosition) {
-      const pos = context.position;
-      if (pos.hasField(this, '_evaluated')) {
-        return pos.getField(this, '_evaluated') as boolean;
-      }
-    }
-    return false;
+    return context.activeState.peek(this)?.evaluated ?? false;
   }
 
   protected _setEvaluated(value: boolean, context: Context): void {
-    context.position.setField(this, '_evaluated', value);
+    context.activeState.get(this).evaluated = value;
   }
 
   /**
@@ -903,54 +847,42 @@ export abstract class Node<
    * the canonical flags.
    */
   _hasFlag(flag: number, context: Context): boolean {
-    if (context.session?.hasRuntime(this)) {
-      const runtime = context.session.getRuntime(this);
+    const ns = context.activeState.peek(this);
+    if (ns?._fields) {
       let flags = this.state;
-      if (runtime.flagsRemove) {
-        flags &= ~runtime.flagsRemove;
+      const flagsRemove = ns._fields.get('flagsRemove') as number | undefined;
+      const flagsAdd = ns._fields.get('flagsAdd') as number | undefined;
+      if (flagsRemove) {
+        flags &= ~flagsRemove;
       }
-      if (runtime.flagsAdd) {
-        flags |= runtime.flagsAdd;
+      if (flagsAdd) {
+        flags |= flagsAdd;
       }
       return (flags & flag) !== 0;
     }
     return this.hasFlag(flag);
   }
 
-  /**
-   * Session-aware flag add. Routes through session overlay if active.
-   */
   _addFlag(flag: number, context: Context): void {
-    if (context.session) {
-      const runtime = context.session.getRuntime(this);
-      runtime.flagsAdd = (runtime.flagsAdd ?? 0) | flag;
-      runtime.flagsRemove = (runtime.flagsRemove ?? 0) & ~flag;
-    } else {
-      this.addFlag(flag);
-    }
+    const s = context.activeState.get(this);
+    const cur = (s._fields?.get('flagsAdd') as number | undefined) ?? 0;
+    s.fields.set('flagsAdd', cur | flag);
+    const curRemove = (s._fields?.get('flagsRemove') as number | undefined) ?? 0;
+    s.fields.set('flagsRemove', curRemove & ~flag);
   }
 
-  /**
-   * Session-aware flag remove. Routes through session overlay if active.
-   */
   _removeFlag(flag: number, context: Context): void {
-    if (context.session) {
-      const runtime = context.session.getRuntime(this);
-      runtime.flagsRemove = (runtime.flagsRemove ?? 0) | flag;
-      runtime.flagsAdd = (runtime.flagsAdd ?? 0) & ~flag;
-    } else {
-      this.removeFlag(flag);
-    }
+    const s = context.activeState.get(this);
+    const cur = (s._fields?.get('flagsRemove') as number | undefined) ?? 0;
+    s.fields.set('flagsRemove', cur | flag);
+    const curAdd = (s._fields?.get('flagsAdd') as number | undefined) ?? 0;
+    s.fields.set('flagsAdd', curAdd & ~flag);
   }
 
   adopt(node: Node, ctx?: Context) {
-    /** The only place we should do this */
     if (!node.frozen) {
-      const ir = ctx?.instanceRoot ?? node._instanceRoot;
-      if (ir) {
-        ir.getRuntime(node).parent = this;
-      } else if (ctx?.session) {
-        ctx.session.getRuntime(node).parent = this;
+      if (ctx) {
+        ctx.activeState.get(node).fields.set('parent', this);
       } else {
         (node as any).parent = this;
       }
@@ -1049,7 +981,7 @@ export abstract class Node<
       return this._forEachNodeSync(func as (n: Node, idx?: number) => Node, context);
     }
     const entries = this._collectChildEntries();
-    const pos = context?.position;
+    const state = context?.activeState;
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -1058,8 +990,8 @@ export abstract class Node<
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           if (result !== value) {
-            if (pos && typeof key === 'string') {
-              pos.setField(this, key, result);
+            if (state && typeof key === 'string') {
+              state.get(this).fields.set(key, result);
             } else {
               collection[key] = result;
             }
@@ -1071,8 +1003,8 @@ export abstract class Node<
         });
       }
       if (out !== value) {
-        if (pos && typeof key === 'string') {
-          pos.setField(this, key, out);
+        if (state && typeof key === 'string') {
+          state.get(this).fields.set(key, out);
         } else {
           collection[key] = out as Node;
         }
@@ -1103,7 +1035,7 @@ export abstract class Node<
 
   private _forEachNodeSync(func: (n: Node, idx?: number) => Node, context?: Context) {
     const ck = (this.constructor as typeof Node).childKeys;
-    const pos = context?.position;
+    const state = context?.activeState;
 
     if (Array.isArray(ck)) {
       let idx = 0;
@@ -1125,8 +1057,8 @@ export abstract class Node<
         } else if (field instanceof Node) {
           const result = func(field, idx++);
           if (result !== field) {
-            if (pos) {
-              pos.setField(this, key!, result);
+            if (state) {
+              state.get(this).fields.set(key!, result);
             } else {
               (this as any)[key!] = result;
             }
@@ -1251,15 +1183,8 @@ export abstract class Node<
    * create a position yet. Once every eval path ensures a position,
    * this entire method becomes `return this`.
    */
-  maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    if (context.session?.resetEvalState) {
-      // Position provides isolation — no clone needed.
-      // Eval state and field changes go to position patches.
-      if (context.position) {
-        return this;
-      }
-      return this.clone(deep, cloneFn, context);
-    }
+  maybeClone(_context: Context, _deep?: boolean, _cloneFn?: (n: Node) => Node): this {
+    // EvalState provides isolation — no clone needed.
     return this;
   }
 
@@ -1271,19 +1196,8 @@ export abstract class Node<
    * thin `ensureSession` helper if needed, but the clone is the problem.
    */
   clonedEval(context: Context): MaybePromise<Node> {
-    const prevSession = context.session;
-    if (!prevSession) {
-      context.session = new EvalSession({ resetEvalState: true });
-    }
-    let out = this.eval(context);
-    if (isThenable(out)) {
-      return (out as Promise<Node>).then((result) => {
-        context.session = prevSession;
-        return result;
-      });
-    }
-    context.session = prevSession;
-    return out;
+    // EvalState provides isolation — no clone/session push needed.
+    return this.eval(context);
   }
 
   /**
@@ -1352,7 +1266,7 @@ export abstract class Node<
     // Save the pre-construction parent values so we can restore them after, routing the
     // new parent assignment through the session overlay instead.
     let priorChildParents: [Node, Node | undefined][] | undefined;
-    if (!deep && ctx?.session) {
+    if (!deep && ctx) {
       priorChildParents = [];
       if (isArray(cloneData)) {
         for (const item of cloneData as unknown[]) {
@@ -1381,12 +1295,10 @@ export abstract class Node<
     const options = this._meta?.options;
     const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
 
-    // Route the constructor's direct parent writes through the session overlay and
-    // restore canonical parent pointers so shared nodes are not permanently mutated.
+    // Route parent writes through eval state and restore canonical pointers.
     if (priorChildParents) {
-      const session = ctx!.session!;
       for (const [child, priorParent] of priorChildParents) {
-        session.getRuntime(child).parent = newNode;
+        ctx!.activeState.get(child).fields.set('parent', newNode);
         (child as any).parent = priorParent;
       }
     }
