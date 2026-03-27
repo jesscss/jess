@@ -157,7 +157,7 @@ describe('Declaration', () => {
     setField(merged, 'name', any('color', { role: 'property' }), context);
 
     const evald = await node.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toContain('color: red, blue;');
     expect(css).not.toContain('background:');

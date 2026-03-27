@@ -1717,38 +1717,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This handles both in-scope merges and merges that span call-produced Rules blocks.
    */
   private _coalesceMergedDeclarations(rules: Rules, context?: Context): void {
-    const useSessionFields = Boolean(context?.session && !context.session.resetEvalState);
     const getDeclValue = (node: Node): Node => (
-      useSessionFields && context
-        ? getField<Node>(node, 'value', context)
-        : (node as any).value
+      context ? getField<Node>(node, 'value', context) : (node as any).value
     );
     const getDeclImportant = (node: Node): Node | undefined => (
-      useSessionFields && context
-        ? getField<Node | undefined>(node, 'important', context)
-        : (node as any).important
+      context ? getField<Node | undefined>(node, 'important', context) : (node as any).important
     );
     const getDeclName = (node: Node): string => {
-      const name = useSessionFields && context
-        ? getField<Node>(node, 'name', context)
-        : (node as any).name;
+      const name = context ? getField<Node>(node, 'name', context) : (node as any).name;
       return String((name as any)?.valueOf?.() ?? name);
     };
     const getDeclAssign = (node: Node): string => {
-      const options = useSessionFields && context
+      const options = context
         ? getField<Record<string, unknown> | undefined>(node, 'options', context)
         : node.options;
       return String(options?.normalizedFromAssign ?? '');
     };
     const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
-      if (useSessionFields && context) {
+      if (context) {
         setField(node, key, value, context);
         return;
       }
       node.setData(key, value);
     };
     const removeVisibleFlag = (node: Node): void => {
-      if (useSessionFields && context) {
+      if (context) {
         node._removeFlag(F_VISIBLE, context);
         return;
       }
@@ -1855,7 +1848,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         prior
         && prior !== node
         && (
-          useSessionFields && context
+          context
             ? getParent(prior, context) !== getParent(node, context)
             : prior.parent !== node.parent
         )
