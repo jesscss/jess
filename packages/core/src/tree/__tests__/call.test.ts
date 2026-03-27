@@ -46,7 +46,7 @@ describe('Call', () => {
 
     const evald = await node.eval(context);
 
-    expect(evald.toTrimmedString()).toBe('blur(4px)');
+    expect(evald.toTrimmedString({ context })).toBe('blur(4px)');
   });
 
   it('materializes fallback-call args without mutating canonical nested sequence spacing in a session', async () => {
