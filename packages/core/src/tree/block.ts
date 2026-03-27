@@ -41,11 +41,7 @@ export class Block extends Node<Node, BlockOptions> {
     const value = this._getValue(context);
     const finish = (nextValue: Node): Block => {
       if (nextValue !== value) {
-        if (context.session) {
-          setField(this, 'value', nextValue, context);
-        } else {
-          this.setData('value', nextValue);
-        }
+        setField(this, 'value', nextValue, context);
       }
       return this;
     };

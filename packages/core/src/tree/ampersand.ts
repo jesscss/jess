@@ -285,12 +285,8 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     this.keySetLibrary = context.selectorBits;
-    const template = context.hasPosition
-      ? getField<string | Nil | undefined>(this, 'template', context) ?? this.template
-      : this.template;
-    const hoistToRoot = context.hasPosition
-      ? getField<boolean | undefined>(this, 'hoistToRoot', context) ?? this.hoistToRoot
-      : this.hoistToRoot;
+    const template = getField<string | Nil | undefined>(this, 'template', context) ?? this.template;
+    const hoistToRoot = getField<boolean | undefined>(this, 'hoistToRoot', context) ?? this.hoistToRoot;
     const selectorContainer = this._selectorContainer;
     const storedSelector = getSelectorFromContainer(selectorContainer, context);
     // Check if template is defined (including empty string), or if hoistToRoot/collapseNesting is set

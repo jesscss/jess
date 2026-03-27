@@ -27,14 +27,14 @@ export class Expression extends Node<Node> {
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const clonedValue = deep ? cloneChild(value) : value;
     const options = (this as any)._meta?.options;
-    const priorParent = !deep && ctx?.session ? clonedValue.parent : undefined;
+    const priorParent = !deep && ctx ? clonedValue.parent : undefined;
     const newNode = new (this.constructor as any)(
       clonedValue,
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
     );
-    if (!deep && ctx?.session) {
+    if (!deep && ctx) {
       setParent(clonedValue, newNode, ctx);
       (clonedValue as unknown as { parent?: Node }).parent = priorParent;
     }

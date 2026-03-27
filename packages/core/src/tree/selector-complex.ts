@@ -138,9 +138,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         const value = selector._getValue(context);
         if (value.length === 1) {
           const originalOnly = value[0]!;
-          const only = context.session
-            ? originalOnly.clone(false, undefined, context)
-            : originalOnly;
+          const only = originalOnly.clone(false, undefined, context);
           only.inherit(selector);
           if (getField<boolean | undefined>(selector, 'hoistToRoot', context)) {
             setField(only, 'hoistToRoot', true, context);

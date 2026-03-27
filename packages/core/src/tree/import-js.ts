@@ -66,7 +66,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     const finish = (nextPath: Quoted): JsImport => {
       const out = this.maybeClone(context) as JsImport;
       if (nextPath !== path) {
-        if (context.session && out === this) {
+        if (out === this) {
           setField(this, 'path', nextPath, context);
         } else {
           out.setData('path', nextPath);

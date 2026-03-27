@@ -270,19 +270,11 @@ export class Interpolated<
     });
     if (isThenable(maybe)) {
       return maybe.then(() => {
-        if (context.session) {
-          setField(node, 'replacements', replacements, context);
-        } else {
-          node.setData('replacements', replacements);
-        }
+        setField(node, 'replacements', replacements, context);
         return node;
       });
     }
-    if (context.session) {
-      setField(node, 'replacements', replacements, context);
-    } else {
-      node.setData('replacements', replacements);
-    }
+    setField(node, 'replacements', replacements, context);
     return node;
   }
 }

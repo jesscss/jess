@@ -120,9 +120,7 @@ export class Operation extends Node<OperationValue> {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          const outOperation = context.session
-            ? n.clone(false) as Operation
-            : n;
+          const outOperation = n.clone(false) as Operation;
           setField(outOperation, 'left', l, context);
           setField(outOperation, 'right', r, context);
           return applyMergedDependency(outOperation, l, r);
@@ -141,9 +139,7 @@ export class Operation extends Node<OperationValue> {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
               // Preserve canonical operation state by materializing an isolated wrapper when needed.
-              const calcOperation = context.session
-                ? n.clone(false) as Operation
-                : n;
+              const calcOperation = n.clone(false) as Operation;
               setField(calcOperation, 'left', l, context);
               setField(calcOperation, 'right', r, context);
               setEvaluated(calcOperation, true, context);
