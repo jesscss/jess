@@ -94,15 +94,17 @@ describe('EvalSession', () => {
     });
 
     it('runtime state is isolated between sessions', () => {
-      const session1 = new EvalSession();
-      const session2 = new EvalSession();
+      const ctx1 = new Context();
+      const ctx2 = new Context();
+      ctx1.createSession();
+      ctx2.createSession();
       const node = new Keyword('red');
 
-      session1.getRuntime(node).evaluated = true;
-      session2.getRuntime(node).evaluated = false;
+      setEvaluated(node, true, ctx1);
+      setEvaluated(node, false, ctx2);
 
-      expect(session1.getRuntime(node).evaluated).toBe(true);
-      expect(session2.getRuntime(node).evaluated).toBe(false);
+      expect(isEvaluated(node, ctx1)).toBe(true);
+      expect(isEvaluated(node, ctx2)).toBe(false);
     });
 
     it('each session gets a unique id', () => {
@@ -1120,7 +1122,6 @@ describe('session-aware helpers', () => {
 
       expect(result.toTrimmedString({ context: ctx })).toBe('.button');
       expect(node.replacements[0]).toBe(original);
-      expect(original.evaluated).toBe(false);
     });
 
     it('JsImport rendering reads patched path and imports from the active session', () => {
@@ -1320,70 +1321,54 @@ describe('session-aware helpers', () => {
   });
 
   describe('isEvaluated / setEvaluated', () => {
-    it('returns node.evaluated when no session', () => {
+    it('returns false when no position state', () => {
       const ctx = new Context();
       const node = new Keyword('red');
-      node.evaluated = true;
 
-      expect(isEvaluated(node, ctx)).toBe(true);
+      expect(isEvaluated(node, ctx)).toBe(false);
     });
 
-    it('returns session evaluated state when set', () => {
+    it('returns position evaluated state when set', () => {
       const ctx = new Context();
       ctx.createSession();
       const node = new Keyword('red');
-      node.evaluated = false;
 
       setEvaluated(node, true, ctx);
       expect(isEvaluated(node, ctx)).toBe(true);
-      expect(node.evaluated).toBe(false);
     });
 
-    it('falls through to node when session has no evaluated state', () => {
+    it('returns false when position has no evaluated state', () => {
       const ctx = new Context();
       ctx.createSession();
       const node = new Keyword('red');
-      node.evaluated = true;
 
-      expect(isEvaluated(node, ctx)).toBe(true);
+      expect(isEvaluated(node, ctx)).toBe(false);
     });
   });
 
   describe('isPreEvaluated / setPreEvaluated', () => {
-    it('returns node.preEvaluated when no session', () => {
+    it('returns false when no position state', () => {
       const ctx = new Context();
       const node = new Keyword('red');
-      node.preEvaluated = true;
 
-      expect(isPreEvaluated(node, ctx)).toBe(true);
+      expect(isPreEvaluated(node, ctx)).toBe(false);
     });
 
-    it('returns session preEvaluated state when set', () => {
+    it('returns position preEvaluated state when set', () => {
       const ctx = new Context();
       ctx.createSession();
       const node = new Keyword('red');
-      node.preEvaluated = false;
 
       setPreEvaluated(node, true, ctx);
       expect(isPreEvaluated(node, ctx)).toBe(true);
-      expect(node.preEvaluated).toBe(false);
     });
 
-    it('falls through to node when session has no preEvaluated state', () => {
+    it('returns false when position has no preEvaluated state', () => {
       const ctx = new Context();
       ctx.createSession();
       const node = new Keyword('red');
-      node.preEvaluated = true;
 
-      expect(isPreEvaluated(node, ctx)).toBe(true);
-    });
-
-    it('writes directly to node when no session', () => {
-      const ctx = new Context();
-      const node = new Keyword('red');
-
-      setPreEvaluated(node, true, ctx);
-      expect(node.preEvaluated).toBe(true);
+      expect(isPreEvaluated(node, ctx)).toBe(false);
     });
 
     it('preEvaluated state is isolated between sessions', () => {
@@ -1398,7 +1383,6 @@ describe('session-aware helpers', () => {
 
       expect(isPreEvaluated(node, ctx1)).toBe(true);
       expect(isPreEvaluated(node, ctx2)).toBe(false);
-      expect(node.preEvaluated).toBe(false);
     });
   });
 
@@ -1476,8 +1460,6 @@ describe('session-aware helpers', () => {
       expect(isEvaluated(node, ctx)).toBe(true);
       expect(isPreEvaluated(node, ctx)).toBe(true);
       expect(node.index).toBeUndefined();
-      expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
     });
 
     it('applies directly when no session', () => {
@@ -1487,7 +1469,7 @@ describe('session-aware helpers', () => {
       setRuntimeState(node, { index: 2, evaluated: true }, ctx);
 
       expect(node.index).toBe(2);
-      expect(node.evaluated).toBe(true);
+      expect(isEvaluated(node, ctx)).toBe(true);
     });
   });
 
@@ -1545,9 +1527,6 @@ describe('session-aware helpers', () => {
       const result = await operation.eval(ctx);
 
       expect(String(result)).toContain('calc');
-      expect(operation.evaluated).toBe(false);
-      expect(left.evaluated).toBe(false);
-      expect(right.evaluated).toBe(false);
     });
 
     it('Operation eval does not overwrite canonical left and right nodes in a session', async () => {

@@ -153,13 +153,11 @@ export const F_EXTEND_TARGET = 0b10000000;
 export const F_DEFAULT = F_VISIBLE;
 
 /** Secondary metadata flags. Keeps a pile of booleans off the instance shape. */
-const M_PRE_EVALUATED = 1 << 0;
-const M_EVALUATED = 1 << 1;
-const M_ALLOW_ROOT = 1 << 2;
-const M_ALLOW_RULE_ROOT = 1 << 3;
-const M_GENERATED = 1 << 4;
-const M_REQUIRED_SEMI = 1 << 5;
-const M_FROZEN = 1 << 6;
+const M_ALLOW_ROOT = 1 << 0;
+const M_ALLOW_RULE_ROOT = 1 << 1;
+const M_GENERATED = 1 << 2;
+const M_REQUIRED_SEMI = 1 << 3;
+const M_FROZEN = 1 << 4;
 
 // Future flags can be added here
 // export const CACHED = 0b1000000;
@@ -261,22 +259,6 @@ export abstract class Node<
    * so each call's patches survive on the output.
    */
   _evalPosition: EvalPosition | undefined;
-
-  get preEvaluated() {
-    return (this._metaFlags & M_PRE_EVALUATED) !== 0;
-  }
-
-  set preEvaluated(value: boolean) {
-    this._metaFlags = value ? (this._metaFlags | M_PRE_EVALUATED) : (this._metaFlags & ~M_PRE_EVALUATED);
-  }
-
-  get evaluated() {
-    return (this._metaFlags & M_EVALUATED) !== 0;
-  }
-
-  set evaluated(value: boolean) {
-    this._metaFlags = value ? (this._metaFlags | M_EVALUATED) : (this._metaFlags & ~M_EVALUATED);
-  }
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -894,7 +876,7 @@ export abstract class Node<
         return pos.getField(this, '_preEvaluated') as boolean;
       }
     }
-    return this.preEvaluated;
+    return false;
   }
 
   protected _setPreEvaluated(value: boolean, context: Context): void {
@@ -908,7 +890,7 @@ export abstract class Node<
         return pos.getField(this, '_evaluated') as boolean;
       }
     }
-    return this.evaluated;
+    return false;
   }
 
   protected _setEvaluated(value: boolean, context: Context): void {

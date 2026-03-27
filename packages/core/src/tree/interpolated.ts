@@ -182,7 +182,7 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (!(context ? isEvaluated(replacement, context) : replacement.evaluated)) {
+      if (context && !isEvaluated(replacement, context)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
@@ -192,7 +192,7 @@ export class Interpolated<
     }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
-      if (!(context ? isEvaluated(replacement, context) : replacement.evaluated)) {
+      if (context && !isEvaluated(replacement, context)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       let part = replacement.toTrimmedString();

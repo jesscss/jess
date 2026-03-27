@@ -12,7 +12,7 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
-import { getField, getParent, setField } from './util/field-helpers.js';
+import { getField, getParent, setField, isPreEvaluated } from './util/field-helpers.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -224,7 +224,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
     // Depth-first: preEval child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
-    if (rules && !rules.preEvaluated) {
+    if (rules && !isPreEvaluated(rules, context)) {
       // For nestable at-rules we do NOT push the original here. The body's Rules.preEval
       // pushes the clone (the Rules that ends up in the tree) so rulesets register to it.
       // Pushing the original would leave the clone's registry empty (extend + collapseNesting bug).

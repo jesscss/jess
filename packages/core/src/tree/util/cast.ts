@@ -84,9 +84,6 @@ export function cast(value: any): Node {
    * If converting from a primitive, then
    * the value should be considered evaluated.
    */
-  if (!isNode(value)) {
-    node.evaluated = true;
-    node.preEvaluated = true;
-  }
+  // Cast from primitive — F_STATIC on Any/Num/etc prevents re-eval.
   return node;
 }

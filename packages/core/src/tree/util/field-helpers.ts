@@ -201,7 +201,7 @@ export function setParent(
 }
 
 /**
- * Check whether a node has been evaluated. Resolution: position → legacy → canonical.
+ * Check whether a node has been evaluated in the current position.
  */
 export function isEvaluated(
   node: Node,
@@ -229,7 +229,7 @@ export function isEvaluated(
       return runtime.evaluated;
     }
   }
-  return node.evaluated;
+  return false;
 }
 
 /**
@@ -244,7 +244,7 @@ export function setEvaluated(
 }
 
 /**
- * Check whether a node's preEval phase has completed. Resolution: position → legacy → canonical.
+ * Check whether a node's preEval phase has completed in the current position.
  */
 export function isPreEvaluated(
   node: Node,
@@ -272,7 +272,7 @@ export function isPreEvaluated(
       return runtime.preEvaluated;
     }
   }
-  return node.preEvaluated;
+  return false;
 }
 
 /**

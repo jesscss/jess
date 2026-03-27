@@ -36,7 +36,9 @@ import {
   setChildren,
   setChildAt,
   setIndex,
-  setParent
+  setParent,
+  isPreEvaluated,
+  isEvaluated
 } from './util/field-helpers.js';
 import {
   dispatchMixinEvalCandidates,
@@ -1228,7 +1230,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.ComplexSelector | N.SelectorList | N.Nil)) {
         return true;
       }
-      if (node.preEvaluated) {
+      if (context && isPreEvaluated(node, context)) {
         return true;
       }
       return selector.hasFlag(F_STATIC);
@@ -1926,7 +1928,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       context.extendRoots.pushExtendRoot(rules);
     }
-    if (rules.evaluated) {
+    if (isEvaluated(rules, context)) {
       return { rules, rulesToHoist: false };
     }
     if (rules === context.root) {

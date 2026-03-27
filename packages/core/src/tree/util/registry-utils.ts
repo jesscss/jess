@@ -15,7 +15,7 @@ import type { SessionRegistryDelta } from '../../eval-session.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { getChildren, getDependency, getParent } from './field-helpers.js';
+import { getChildren, getDependency, getParent, isPreEvaluated } from './field-helpers.js';
 
 const { isArray } = Array;
 
@@ -1108,7 +1108,7 @@ export class MixinRegistry extends Registry<
               let subRules = value.rules;
               // Mixin rules aren't preEvaluated during registration — register
               // child rulesets/mixins now so namespace lookup can descend.
-              if (!subRules.preEvaluated) {
+              if (!(context && isPreEvaluated(subRules, context))) {
                 this._ensureChildrenRegistered(subRules, context?.selectorBits);
               }
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
@@ -1153,7 +1153,7 @@ export class MixinRegistry extends Registry<
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.rules;
-              if (!subRules.preEvaluated) {
+              if (!(context && isPreEvaluated(subRules, context))) {
                 this._ensureChildrenRegistered(subRules, context?.selectorBits);
               }
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);

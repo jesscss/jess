@@ -26,7 +26,6 @@ describe('Interpolated', () => {
 
     expect(result.toTrimmedString()).toBe('--red');
     expect(node.replacements[0]).toBe(original);
-    expect(original.evaluated).toBe(false);
   });
 
   it('evaluates to a selector in a non-reset session without overwriting canonical replacements', async () => {
@@ -42,6 +41,5 @@ describe('Interpolated', () => {
 
     expect(selector.toTrimmedString()).toBe('.button');
     expect(node.replacements[0]).toBe(original);
-    expect(original.evaluated).toBe(false);
   });
 });

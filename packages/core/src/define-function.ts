@@ -7,6 +7,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Sequence, Operation, Num, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
+import { isEvaluated } from './tree/util/field-helpers.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 export type Lazy<T> = () => MaybePromise<T>;
@@ -703,7 +704,7 @@ async function buildCallWithContextPositionalArgs(
         positionalArgs.push(...arr.map(item => createThunk(item, def, context)));
       } else {
         for (const item of arr) {
-          let processedItem: any = (isNode(item) && !item.evaluated) ? (item as any).eval(context) : item;
+          let processedItem: any = (isNode(item) && !isEvaluated(item, context)) ? (item as any).eval(context) : item;
           if (isThenable(processedItem)) {
             processedItem = await processedItem;
           }
@@ -729,7 +730,7 @@ async function buildCallWithContextPositionalArgs(
           positionalArgs.push(createThunk(v, def, context));
         }
       } else {
-        let processedValue: any = (isNode(v) && !v.evaluated) ? (v as any).eval(context) : v;
+        let processedValue: any = (isNode(v) && !isEvaluated(v, context)) ? (v as any).eval(context) : v;
 
         // Handle async evaluation without truncating remaining parameters.
         if (isThenable(processedValue)) {
@@ -827,7 +828,7 @@ function createThunk(val: any, paramDef: any, context?: Context): () => MaybePro
   }
   return async (): Promise<any> => {
     let result;
-    if (context && isNode(val) && !val.evaluated) {
+    if (context && isNode(val) && !isEvaluated(val, context)) {
       result = await (val as any).eval(context);
     } else if (typeof val === 'function') {
       // If val is a function (lazy parameter), call it
