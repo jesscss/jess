@@ -78,7 +78,7 @@ describe('Ampersand', () => {
     let node = wrapAmp([amp()]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     // Generated :is(.one.two) is unwrapped to .one.two; same selector as outer so one block
     expect(css).toBeString(`
       .one.two {
@@ -95,7 +95,7 @@ describe('Ampersand', () => {
 
     let evald = await node.eval(context);
 
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     // Bare & with SelectorList parent: no :is() wrapping needed.
     // Output has two blocks (same selector) — semantically identical to merged.
     expect(css).toBeString(`
@@ -114,7 +114,7 @@ describe('Ampersand', () => {
     let node = wrapAmp([amp(), el('h2')]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -129,7 +129,7 @@ describe('Ampersand', () => {
     let node = wrapAmp([amp('')]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     // Generated :is(.one.two) unwraps to .one.two; same selector so one block
     expect(css).toBeString(`
       .one.two {
@@ -143,7 +143,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp('')]) as any]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     // Empty template with SelectorList parent: no :is() wrapping needed.
     expect(css).toBeString(`
       .one,
@@ -174,7 +174,7 @@ describe('Ampersand', () => {
     const node = wrapAmp([amp({ template: nil() }) as any, el('.three')]);
     context = new Context({ collapseNesting: true });
     const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -189,7 +189,7 @@ describe('Ampersand', () => {
     let node = wrapAmp([amp('-1')]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -204,7 +204,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp('-1')]) as any]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     expect(css).toBeString(`
       .one,
       .two {
@@ -238,7 +238,7 @@ describe('Ampersand', () => {
     ]);
     context = new Context({ collapseNesting: true });
     const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     expect(css).toContain('.fruit-quoted-apple');
     expect(css).toContain('.fruit-quoted-satsuma');
     expect(css).toContain('.fruit-quoted-banana');
@@ -268,7 +268,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp()]) as any, sel([el('.three')]) as any]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     // First item is generated :is(.one,.two) and unwraps to .one,.two; second stays :is(.one,.two) .three
     expect(css).toBeString(`
       .one,
@@ -283,7 +283,7 @@ describe('Ampersand', () => {
     );
     node = wrapAmpList([compound([amp(), el('.three')])]);
     evald = await node.eval(context);
-    const css2 = evald.toString({ collapseNesting: true });
+    const css2 = evald.render(context, { collapseNesting: true });
     expect(css2).toBeString(`
       .one,
       .two {
@@ -316,7 +316,7 @@ describe('Ampersand', () => {
     ]);
     context = new Context({ collapseNesting: true });
     const evald = await node.eval(context);
-    const css = evald.toString({ context, collapseNesting: true });
+    const css = evald.render(context, { collapseNesting: true });
     expect(css).toContain('* b[e]');
     expect(css).not.toContain(':is(* b)[e]');
   });

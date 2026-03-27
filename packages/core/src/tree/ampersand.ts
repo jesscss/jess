@@ -12,6 +12,7 @@ import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './util/ampersand-template.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
+import { getField } from './util/session-helpers.js';
 
 const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
 const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
@@ -284,11 +285,16 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     this.keySetLibrary = context.selectorBits;
-    const { template } = this;
+    const template = context.hasPosition
+      ? getField<string | Nil | undefined>(this, 'template', context) ?? this.template
+      : this.template;
+    const hoistToRoot = context.hasPosition
+      ? getField<boolean | undefined>(this, 'hoistToRoot', context) ?? this.hoistToRoot
+      : this.hoistToRoot;
     const selectorContainer = this._selectorContainer;
     const storedSelector = getSelectorFromContainer(selectorContainer, context);
     // Check if template is defined (including empty string), or if hoistToRoot/collapseNesting is set
-    if (template !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
+    if (template !== undefined || hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
       let selector = storedSelector ?? frame?.getEffectiveSelector?.(false, context) ?? frame?.selector;
@@ -422,7 +428,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
       }
 
       let result: Selector | Nil;
-      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (this.hoistToRoot || template !== undefined);
+      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (hoistToRoot || template !== undefined);
       const shouldWrapComplexSelector = isNode(selector, N.ComplexSelector);
 
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
@@ -432,10 +438,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
         result = selector;
       }
 
-      if (template !== undefined) {
-        result.hoistToRoot = true;
-      }
-      if (shouldWrapSelectorList || shouldWrapComplexSelector || this.hoistToRoot) {
+      if (template !== undefined || shouldWrapSelectorList || shouldWrapComplexSelector || hoistToRoot) {
         result.hoistToRoot = true;
       }
       return result;
