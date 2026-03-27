@@ -354,10 +354,9 @@ export class For extends Node<ForValue> {
       try {
         const evaluatedIterable = await iterable.eval(context);
         for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-          /** @removal-target — node-copy-reduction: clone per loop iteration.
-           * Each iteration should get a new EvalPosition over the canonical
-           * loopTemplate body, binding loop vars via position patches. */
-          const loopRules = loopTemplate.clone(false, undefined, context);
+          // Deep clone per iteration — each iteration gets its own children
+          // so field patches don't conflict between iterations.
+          const loopRules = loopTemplate.clone(true, undefined, context);
           // Preserve definition-scope parent chain so nested calls/lookups
           // inside loop bodies resolve the same way as the original rules.
           loopRules.inherit(loopTemplate);
