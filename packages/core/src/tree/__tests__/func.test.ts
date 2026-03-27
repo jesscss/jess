@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Context } from '../../context.js';
 import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
-import { setField, setParent } from '../util/session-helpers.js';
+import { setField, setParent } from '../util/field-helpers.js';
 import * as rulesModule from '../rules.js';
 
 afterEach(() => {

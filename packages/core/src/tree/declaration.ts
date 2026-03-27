@@ -26,7 +26,7 @@ import {
   mergeDependencies,
   setField,
   setDependency
-} from './util/session-helpers.js';
+} from './util/field-helpers.js';
 
 export const enum AssignmentType {
   Default = ':',

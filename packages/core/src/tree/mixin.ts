@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/session-helpers.js';
+import { getField, setField } from './util/field-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -198,6 +198,17 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       keySet = this._keySet = new Set([name.valueOf()]);
     }
     return keySet;
+  }
+
+  getKeySet(context?: Context): Set<string> {
+    if (!context) {
+      return this.keySet;
+    }
+    const name = this._getName(context);
+    if (!name) {
+      return new Set();
+    }
+    return new Set([name.valueOf()]);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

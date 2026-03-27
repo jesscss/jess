@@ -1,7 +1,7 @@
 import { any, expr, sel, compound, el, co, pseudo, sellist, amp, rules, ruleset } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getField, setField } from '../util/session-helpers.js';
+import { getField, setField } from '../util/field-helpers.js';
 
 let context: Context;
 

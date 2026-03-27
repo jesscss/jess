@@ -7,7 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setField, setParent } from './util/session-helpers.js';
+import { getField, setField, setParent } from './util/field-helpers.js';
 
 export type SequenceOptions = {
   /**

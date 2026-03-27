@@ -7,7 +7,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
-import { getField } from './session-helpers.js';
+import { getField } from './field-helpers.js';
 import type { EvalPosition } from '../../eval-session.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -183,10 +183,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (ctx && nodePosition) {
       prevPos = ctx.position;
       ctx.position = nodePosition;
-      if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration)) {
-        const patchedValue = nodePosition.getField(n, 'value');
-        console.log(`[DEBUG] serialize: pushed pos=${nodePosition.id} for ${n.type}, value=${(patchedValue as any)?.valueOf?.()}, type=${(patchedValue as any)?.type}`);
-      }
     }
 
     if (!n.visible && !n.fullRender) {

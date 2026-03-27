@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { any, quoted, url } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getField } from '../util/session-helpers.js';
+import { getField } from '../util/field-helpers.js';
 
 describe('Url', () => {
   it('eval stores an evaluated child in the session overlay without mutating the canonical value', async () => {

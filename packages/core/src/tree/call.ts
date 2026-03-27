@@ -11,7 +11,7 @@ import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { getField, getParent, mergeDependencies, setField, setDependency } from './util/session-helpers.js';
+import { getField, getParent, mergeDependencies, setField, setDependency } from './util/field-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -490,10 +490,6 @@ export class Call extends Node<CallValue, CallOptions> {
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return adoptCallWhitespace(evald);
           }
           if (markImportant && isNode(evald, N.Rules)) {
             this.makeImportant(evald);

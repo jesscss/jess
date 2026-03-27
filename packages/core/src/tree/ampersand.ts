@@ -12,7 +12,7 @@ import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './util/ampersand-template.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
 const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);

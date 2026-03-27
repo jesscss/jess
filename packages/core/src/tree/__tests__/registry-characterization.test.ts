@@ -19,7 +19,7 @@ import {
 import { Context } from '../../context.js';
 import { createTestContext } from './import-style-test-helpers.js';
 import { peekRegistryData } from '../util/registry-utils.js';
-import { getParent } from '../util/session-helpers.js';
+import { getParent } from '../util/field-helpers.js';
 
 describe('registry characterization', () => {
   it('reuses the same canonical registry slot across cached compose imports', async () => {

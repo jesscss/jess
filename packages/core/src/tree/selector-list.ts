@@ -10,7 +10,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorMatch } from './util/selector-match-core.js';
-import { getField, setField } from './util/session-helpers.js';
+import { getField, setField } from './util/field-helpers.js';
 
 export interface SelectorList {
   type: 'SelectorList';

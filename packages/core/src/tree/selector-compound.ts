@@ -9,7 +9,7 @@ import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { N } from './node-type.js';
-import { getField, setField } from './util/session-helpers.js';
+import { getField, setField } from './util/field-helpers.js';
 
 /**
  * @example

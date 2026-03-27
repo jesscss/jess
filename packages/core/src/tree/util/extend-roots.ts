@@ -17,7 +17,7 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
-import { getField, setField } from './session-helpers.js';
+import { getField, setField } from './field-helpers.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:

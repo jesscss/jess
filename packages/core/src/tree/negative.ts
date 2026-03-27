@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 /**
  * The negative sign before a node

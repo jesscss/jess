@@ -1,6 +1,6 @@
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 import { ExtendList } from '../extend-list.js';
 import { Extend, ExtendFlag } from '../extend.js';
 import { BasicSelector } from '../selector-basic.js';

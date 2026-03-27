@@ -5,7 +5,7 @@ import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Context } from '../context.js';
-import { getField, setField } from './util/session-helpers.js';
+import { getField, setField } from './util/field-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**

@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/session-helpers.js';
+import { getField, setField } from './util/field-helpers.js';
 
 export type PseudoSelectorValue = {
   /**

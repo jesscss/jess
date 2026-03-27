@@ -1,7 +1,7 @@
 import { amp, bool, co, condition, dimension, el, num, rules, ruleset, sel, sellist, seq } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 

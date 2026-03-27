@@ -26,7 +26,7 @@ import {
   replaceNode,
   setSourceParent,
   setRuntimeState
-} from '../tree/util/session-helpers.js';
+} from '../tree/util/field-helpers.js';
 
 describe('EvalSession', () => {
   describe('field patches', () => {

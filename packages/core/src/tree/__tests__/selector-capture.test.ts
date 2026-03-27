@@ -3,7 +3,7 @@ import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { Selector } from '../selector.js';
 import { el, selcap, sellist } from '../index.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 class PreEvalReplacingSelector extends Selector<string> {
   static override childKeys = [] as const;

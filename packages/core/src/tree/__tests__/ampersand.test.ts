@@ -6,7 +6,7 @@ import {
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Ampersand', () => {

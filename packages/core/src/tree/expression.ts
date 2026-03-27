@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getDependency, getField, setDependency, setParent } from './util/session-helpers.js';
+import { getDependency, getField, setDependency, setParent } from './util/field-helpers.js';
 
 /**
  * An expression is a node that returns a value.

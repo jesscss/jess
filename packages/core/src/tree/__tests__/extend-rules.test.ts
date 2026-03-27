@@ -17,7 +17,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getField, getParent, setField } from '../util/session-helpers.js';
+import { getField, getParent, setField } from '../util/field-helpers.js';
 import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { processExtends } from '../util/extend-roots.js';
 

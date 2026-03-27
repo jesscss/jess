@@ -2,7 +2,7 @@ import { coll, decl, rules, ruleset, el, color, any } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { AssignmentType } from '../declaration.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Declaration', () => {

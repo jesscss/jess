@@ -15,7 +15,7 @@ import type { SessionRegistryDelta } from '../../eval-session.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { getChildren, getDependency, getParent } from './session-helpers.js';
+import { getChildren, getDependency, getParent } from './field-helpers.js';
 
 const { isArray } = Array;
 
@@ -192,7 +192,8 @@ export function syncRegistryCache(rules: Rules, context?: Context): void {
 export function registerCanonicalNode(
   rules: Rules,
   type: 'ruleset' | 'declaration' | 'mixin',
-  node: Node
+  node: Node,
+  context?: Context
 ): void {
   const data = peekRegistryData(rules.value);
   if (!data) {
@@ -204,7 +205,7 @@ export function registerCanonicalNode(
   } else if (type === 'declaration') {
     new DeclarationRegistry(rules).add(node as Declaration);
   } else {
-    new MixinRegistry(rules).add(node as Mixin | Ruleset);
+    new MixinRegistry(rules, context).add(node as Mixin | Ruleset);
   }
 
   if (!indexingRegistryValues.has(rules.value) && data.indexedLength === rules.value.length - 1) {
@@ -250,7 +251,7 @@ export function registerSessionNode(
       () => new Map<string, MixinRegistryEntry[]>()
     );
     if (index) {
-      addMixinToIndex(index, rules, node as Mixin | Ruleset);
+      addMixinToIndex(index, rules, node as Mixin | Ruleset, context);
     }
   }
 
@@ -301,7 +302,8 @@ function addRulesetToIndex(
 function addMixinToIndex(
   index: Map<string, MixinRegistryEntry[]>,
   rules: Rules,
-  mixin: Mixin | Ruleset
+  mixin: Mixin | Ruleset,
+  context?: Context
 ): void {
   if (isNode(mixin, N.Ruleset)) {
     let selector = mixin.selector;
@@ -393,7 +395,8 @@ function addMixinToIndex(
     return;
   }
 
-  indexMixinSelectorStart(index, mixin, mixin.keySet);
+  const keys = isNode(mixin, N.Mixin) && context ? mixin.getKeySet(context) : mixin.keySet;
+  indexMixinSelectorStart(index, mixin, keys);
 }
 
 function addDeclarationToIndex(
@@ -866,7 +869,7 @@ export class MixinRegistry extends Registry<
   }
 
   override add(mixin: Mixin | Ruleset) {
-    addMixinToIndex(this.index, this.rules, mixin);
+    addMixinToIndex(this.index, this.rules, mixin, this.context);
   }
 
   override indexPendingItems() {

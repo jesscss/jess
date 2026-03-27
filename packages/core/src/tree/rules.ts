@@ -37,7 +37,7 @@ import {
   setChildAt,
   setIndex,
   setParent
-} from './util/session-helpers.js';
+} from './util/field-helpers.js';
 import {
   dispatchMixinEvalCandidates,
   evaluateCandidateOutput,
@@ -292,7 +292,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
 
-    return Registries.registerCanonicalNode(this, type, node);
+    return Registries.registerCanonicalNode(this, type, node, context);
   }
 
   getRegistry(type: 'ruleset', context?: Context): Registries.RulesetRegistry;
@@ -719,7 +719,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const ctx = options.context;
     const carried = this._evalPosition;
     let didPush = false;
-    if (ctx && carried && !ctx.position) {
+    if (ctx && carried && !ctx.hasPosition) {
       ctx.position = carried;
       didPush = true;
     }
@@ -1133,7 +1133,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         setIndex(node, index, context);
         return;
       }
-      if (this._hasStaticName(node)) {
+      if (this._hasStaticName(node, context)) {
         // Pre-evaluate nodes with static names before registration
         // This ensures selectors are evaluated and keySets are available for rulesets
         const preEvald = node.preEval(context);
@@ -1143,7 +1143,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             rules.adopt(preEvaldNode, context);
             setIndex(preEvaldNode as Node, index, context);
             // After async preEval, check if it still has a static name
-            if (this._hasStaticName(preEvaldNode)) {
+            if (this._hasStaticName(preEvaldNode, context)) {
               staticNodes.push(preEvaldNode);
               this._registerNodeIfEligible(rules, preEvaldNode, context);
             } else {
@@ -1209,41 +1209,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Check if a node has a static name that can be registered immediately
    */
-  private _hasStaticName(node: Node): boolean {
+  private _hasStaticName(node: Node, context?: Context): boolean {
     if (isNode(node, N.VarDeclaration)) {
-      const name = (node as any).name;
-      return this._isStatic(name);
+      return this._isStatic(node.name);
     }
     if (isNode(node, N.Mixin)) {
-      const name = (node as any).name;
+      // Check position-patched name: preEval may have resolved an interpolated name
+      const name = context ? getField(node, 'name', context) : node.name;
       return this._isStatic(name);
     }
     if (isNode(node, N.Declaration)) {
-      const name = (node as any).name;
-      return this._isStatic(name);
+      return this._isStatic(node.name);
     }
     if (node.type === 'StyleImport') {
-      const path = (node as any).path;
-      return this._isStatic(path);
+      return this._isStatic((node as Node & { path: unknown }).path);
     }
     if (isNode(node, N.Ruleset)) {
-      const selector = (node as any).selector;
-      // BasicSelector, CompoundSelector, ComplexSelector etc. are always static
-      // Only Interpolated selectors need resolution
-      if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.ComplexSelector | N.SelectorList)) {
+      const selector: Node = node.selector;
+      if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.ComplexSelector | N.SelectorList | N.Nil)) {
         return true;
       }
-      // After preEval, the selector should be resolved to static identifiers
       if (node.preEvaluated) {
         return true;
       }
-      // Check F_STATIC flag for other selector types
-      if (selector && 'hasFlag' in (selector as Node) && typeof (selector as Node).hasFlag === 'function') {
-        return (selector as Node).hasFlag(F_STATIC);
-      }
-      return false;
+      return selector.hasFlag(F_STATIC);
     }
-    // For other registerable node types, check the F_STATIC flag
     return node.hasFlag(F_STATIC);
   }
 
@@ -1277,7 +1267,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (resolvedNode.type === 'Ruleset') {
         rules.registerNode(resolvedNode, undefined, context);
       }
-      if (isNode(resolvedNode, N.Nil) || this._hasStaticName(resolvedNode)) {
+      if (isNode(resolvedNode, N.Nil) || this._hasStaticName(resolvedNode, context)) {
         resolvedNodes.push(resolvedNode);
         this._registerNodeIfEligible(rules, resolvedNode, context);
         return true; // made progress

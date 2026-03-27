@@ -11,7 +11,7 @@ import {
 } from '../../../index.js';
 import { Context } from '../../../context.js';
 import { EvalSession } from '../../../eval-session.js';
-import { setField } from '../session-helpers.js';
+import { setField } from '../field-helpers.js';
 import {
   selectorMatch
 } from '../selector-match-core.js';

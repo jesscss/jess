@@ -25,7 +25,7 @@ import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
-import { setField, replaceNode } from '../util/session-helpers.js';
+import { setField, replaceNode } from '../util/field-helpers.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 

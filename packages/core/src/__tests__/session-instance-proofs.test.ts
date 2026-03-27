@@ -46,7 +46,7 @@ import {
   isEvaluated,
   getChildren,
   appendChildren
-} from '../tree/util/session-helpers.js';
+} from '../tree/util/field-helpers.js';
 import {
   attachMixinBodyToParamScope,
   assembleMixinInvocationOutput,

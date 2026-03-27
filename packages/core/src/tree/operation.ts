@@ -13,7 +13,7 @@ import {
   setField,
   setDependency,
   setEvaluated
-} from './util/session-helpers.js';
+} from './util/field-helpers.js';
 
 export type { Operator };
 /** Operation is always a tuple */

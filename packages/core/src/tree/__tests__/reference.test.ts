@@ -3,7 +3,7 @@ import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getSourceParent, setParent } from '../util/session-helpers.js';
+import { getSourceParent, setParent } from '../util/field-helpers.js';
 
 let context: Context;
 

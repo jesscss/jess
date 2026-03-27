@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/session-helpers.js';
+import { getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/field-helpers.js';
 
 let context: Context;
 

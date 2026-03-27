@@ -15,7 +15,7 @@ import { F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
-import { getChildren, getDependency, getField, getParent, getSourceParent, mergeDependencies, setField, setChildren, setDependency, setParent, setSourceParent } from './session-helpers.js';
+import { getChildren, getDependency, getField, getParent, getSourceParent, mergeDependencies, setField, setChildren, setDependency, setParent, setSourceParent } from './field-helpers.js';
 import type { Mixin } from '../mixin.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { cast } from './cast.js';
@@ -1314,9 +1314,7 @@ export async function evaluateCandidateOutput(
   const prevPosition = context.position;
   try {
     let newRules: Rules;
-    if (context.session) {
-      context.position = new EvalPosition(rules);
-    }
+    context.position = new EvalPosition(rules);
     if (!outerRules) {
       setParent(rules, getParentFn(candidate), context);
       newRules = await rules.eval(context);

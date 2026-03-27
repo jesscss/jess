@@ -6,7 +6,7 @@ import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setField, setParent } from './util/session-helpers.js';
+import { getField, setField, setParent } from './util/field-helpers.js';
 
 export type ParenOptions = {
   escaped?: boolean;

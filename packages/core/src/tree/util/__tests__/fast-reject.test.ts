@@ -2,7 +2,7 @@ import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../
 import { Context } from '../../../context.js';
 import { EvalSession } from '../../../eval-session.js';
 import { selectorMatch } from '../selector-match-core.js';
-import { setField } from '../session-helpers.js';
+import { setField } from '../field-helpers.js';
 
 describe('BitSets and selectors', () => {
   let context: Context;

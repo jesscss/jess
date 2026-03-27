@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { any, range } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 describe('Range', () => {
   it('serializes inclusive and exclusive bounds', () => {

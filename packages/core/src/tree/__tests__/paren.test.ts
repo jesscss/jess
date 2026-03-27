@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { any, paren, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 describe('Paren', () => {
   it('serializes wrapped values on the public render path', () => {

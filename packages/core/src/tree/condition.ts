@@ -3,7 +3,7 @@ import { F_NON_STATIC, F_VISIBLE, Node, defineType, type OptionalLocation, type 
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';

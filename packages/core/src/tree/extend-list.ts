@@ -2,7 +2,7 @@ import { Node, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 /**
  * An extend statement list with no rules

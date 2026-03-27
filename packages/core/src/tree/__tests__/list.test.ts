@@ -1,7 +1,7 @@
 import { TreeContext, list, spaced, num, any, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { setField } from '../util/session-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 describe('List compare', () => {
   it('treats separator differences as equal in strict mode', () => {

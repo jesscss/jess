@@ -1,7 +1,7 @@
 import { defineType } from './node.js';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getChildren } from './util/session-helpers.js';
+import { getChildren } from './util/field-helpers.js';
 
 /**
  * A rules container that emits its content verbatim inside braces,

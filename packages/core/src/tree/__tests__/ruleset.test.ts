@@ -2,7 +2,7 @@ import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '../ind
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
 import { getPrintOptions } from '../util/print.js';
-import { getParent, setField } from '../util/session-helpers.js';
+import { getParent, setField } from '../util/field-helpers.js';
 import { F_VISIBLE } from '../node.js';
 
 let context: Context;

@@ -11,7 +11,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */

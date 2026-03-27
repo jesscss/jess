@@ -6,7 +6,7 @@ import type { BitSetLibrary } from './util/bitset.js';
 import { Interpolated } from './interpolated.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 const { isArray } = Array;
 

@@ -30,7 +30,7 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
-import { getField, getParent, setField } from './util/session-helpers.js';
+import { getField, getParent, setField } from './util/field-helpers.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;

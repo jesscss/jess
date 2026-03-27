@@ -1,5 +1,5 @@
 import { isPlainObject, NodeTraversalCursor } from './util/collections.js';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 import {
   type TreeContext,
   type Context
@@ -881,10 +881,10 @@ export abstract class Node<
 
   // ------------------------------------------------------------------
   // Session-aware eval lifecycle helpers (Stage 8).
-  // Defined here (not in session-helpers.ts) to avoid a circular import:
-  // session-helpers.ts imports Node from this file, so this file cannot
-  // import from session-helpers.ts.  These mirror the public helpers in
-  // session-helpers.ts; both sets delegate to context.session when active.
+  // Defined here (not in field-helpers.ts) to avoid a circular import:
+  // field-helpers.ts imports Node from this file, so this file cannot
+  // import from field-helpers.ts.  These mirror the public helpers in
+  // field-helpers.ts; both sets delegate to context.session when active.
   // ------------------------------------------------------------------
 
   protected _isPreEvaluated(context: Context): boolean {

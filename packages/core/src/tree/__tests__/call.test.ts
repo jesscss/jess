@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getParent, setField } from '../util/session-helpers.js';
+import { getParent, setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Call', () => {

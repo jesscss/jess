@@ -1,7 +1,7 @@
 import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
 import { EvalSession } from '../../eval-session.js';
-import { getParent, setField } from '../util/session-helpers.js';
+import { getParent, setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Expression', () => {

@@ -1,7 +1,7 @@
 import type { Context } from '../context.js';
 import { Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField } from './util/session-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 export type RangeValue = {
   start: Node;
