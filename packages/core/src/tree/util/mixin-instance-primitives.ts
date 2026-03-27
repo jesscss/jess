@@ -528,9 +528,6 @@ export function finalizeMixinInvocationOutput(
   rules: Rules,
   context: Context
 ): Rules {
-  if (!context.session) {
-    return rules;
-  }
   // Each call needs a distinct output node to carry its own _evalPosition.
   // cloneDetachedShallowWrapper creates a thin shell sharing children.
   if (rules === rules.sourceNode) {

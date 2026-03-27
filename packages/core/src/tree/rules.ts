@@ -2231,22 +2231,59 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 }
 
 /**
- * Direct mixin invocation — bypasses the JS function wrapper.
+ * Direct mixin invocation — calls dispatch primitives without the
+ * getFunctionFromMixins → callWithContext → returnFunc indirection.
  *
- * Called from Call.evalNode when the resolved name is a Mixin/Ruleset/array.
- * This avoids the getFunctionFromMixins → callWithContext → returnFunc
- * roundtrip and invokes the mixin matching/binding/evaluation directly.
+ * The result is already fully evaluated (each candidate's body was
+ * evaluated under its own per-call EvalPosition). Callers must NOT
+ * re-evaluate the result.
  */
 export async function evalMixinDirect(
   context: Context,
   mixins: MixinEntry | MixinEntry[],
   args: List<Node> | undefined
 ): Promise<Rules | Nil> {
-  const fn = getFunctionFromMixins(mixins);
-  const argNodes = args ? [...args.value] : [];
-  const result = await fn.call(context, ...argNodes);
-  if (result instanceof Node) {
-    return result as Rules;
-  }
-  return new Nil();
+  const mixinArr = isArray(mixins) ? mixins : [mixins];
+  const caller = context.caller;
+  const callerSourceNode = caller && 'name' in caller && caller.name instanceof Node
+    ? caller.name
+    : caller;
+  const sourceParent = callerSourceNode
+    ? getSourceParent(callerSourceNode as Node, context)
+    : undefined;
+
+  const nodeArgs = await evaluateMixinArgs(
+    args ? [...args.value] : [],
+    caller,
+    context
+  );
+  const mixinCandidates = await matchMixinCandidates(
+    mixinArr, nodeArgs, caller, sourceParent, context
+  );
+  const { evalCandidates, hasDefault } = filterAndSortMixinEvalCandidates(
+    mixinCandidates, context
+  );
+
+  const outputRules: Rules[] = [];
+  const candidateOutputOpts: EvaluateCandidateOutputOptions = {
+    sourceParent,
+    restrictMixinOutputLookup: context.leakyRules !== true,
+    outputRules,
+    getCandidateParent: node => getCandidateParent(node, context)
+  };
+
+  const output = await dispatchMixinEvalCandidates({
+    evalCandidates,
+    hasDefault,
+    nodeArgs,
+    sourceParent,
+    caller,
+    restrictMixinOutputLookup: candidateOutputOpts.restrictMixinOutputLookup,
+    outputRules,
+    getCandidateParent: candidateOutputOpts.getCandidateParent,
+    evaluateCandidateOutput: (candidate, rules, outerRules, params, instanceRoot) =>
+      evaluateCandidateOutput(candidate, rules, outerRules, params, context, candidateOutputOpts, instanceRoot)
+  }, context);
+
+  return finalizeMixinInvocationReturn(output, context) as Rules | Nil;
 }

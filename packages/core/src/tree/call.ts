@@ -391,14 +391,9 @@ export class Call extends Node<CallValue, CallOptions> {
       context.caller = this;
       try {
         const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
-        if (isNode(result)) {
-          let evald = await result.eval(context);
-          if (markImportant && isNode(evald, N.Rules)) {
-            this.makeImportant(evald as Rules);
-          }
-          context.callStack.pop();
-          context.parenFrames.pop();
-          return adoptCallWhitespace(evald);
+        // Result is already fully evaluated by the dispatch primitives — no re-eval.
+        if (markImportant && isNode(result, N.Rules)) {
+          this.makeImportant(result);
         }
         context.callStack.pop();
         context.parenFrames.pop();
