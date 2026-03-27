@@ -763,6 +763,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return cast(undefined);
             }
           }
+          // When the parent is a Call, single match, and a simple mixin lookup
+          // (not namespace/mixin-ruleset), return the entry directly so
+          // Call.evalNode uses evalMixinDirect without the function wrapper.
+          if (
+            returnVal.length === 1
+            && type === 'mixin'
+            && isNode(getParent(this, context), N.Call)
+          ) {
+            context.popReference();
+            return returnVal[0] as Node;
+          }
+          // Multi-match, namespace, or non-Call consumer: use legacy function wrapper.
           const func = getFunctionFromMixins(returnVal as MixinEntry[]);
           context.popReference();
           return cast(func);
