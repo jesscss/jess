@@ -425,6 +425,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         const isInterpolatedVariable =
           this.options.type === 'variable'
           && getParent(this, context)?.type === 'Interpolated';
+        /**
+         * @removal-target — node-copy-reduction: paramVar filtering
+         * With per-call EvalPosition isolation, mixin param vars live as
+         * field patches on the call's position and are naturally scoped
+         * by the position-aware parent chain. This walk-up check becomes
+         * redundant once per-call positions are fully wired.
+         */
         const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
           let cursor: Node | undefined = activeRules;
           while (cursor) {
@@ -437,6 +444,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         };
         const filter = (n: Node) => {
           const passesOriginal = originalFilter!(n);
+          /** @removal-target — see isWithinParamVarScope above */
           const blockedParamVar = isNode(n, N.VarDeclaration)
             && Boolean(n.options?.paramVar)
             && !isWithinParamVarScope(getParent(n, context), context.rulesContext);
