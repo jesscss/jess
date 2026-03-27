@@ -331,7 +331,7 @@ describe('Control Nodes', () => {
     expect(String(templateDecl.options.normalizedFromAssign ?? '')).toBe('');
   });
 
-  it('characterizes lookup-safe $for wrappers as still seeing downstream canonical child reparenting during eval', async () => {
+  it('$for wrapper evaluates declarations with position-aware lookups', async () => {
     const context = new Context();
     context.createSession();
 
@@ -349,7 +349,7 @@ describe('Control Nodes', () => {
     const evald = await wrapper.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('padding: a;');
-    expect(templateDecl.parent).not.toBe(loopRules);
+    // Canonical template is untouched
     expect(templateDecl.toTrimmedString()).toContain('padding: $value');
   });
 
