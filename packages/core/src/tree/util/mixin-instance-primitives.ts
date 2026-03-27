@@ -271,6 +271,7 @@ export function seedMixinGuardScope(
     setChildren(nextScope, activeChildren, context, { markDirty: false });
   }
   for (const child of activeChildren) {
+    setParent(child, nextScope, context);
     nextScope.registerNode(child, undefined, context);
   }
   if (guardNode) {
