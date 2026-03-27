@@ -1323,6 +1323,12 @@ export async function evaluateCandidateOutput(
   try {
     let newRules: Rules;
     context.position = new EvalPosition(rules);
+    // The outerRules (param scope) parent was set in the previous position.
+    // Copy it into the per-call position so lookups during body eval can
+    // walk through the param scope to the caller's scope chain.
+    if (outerRules && prevPosition.hasField(outerRules, 'parent')) {
+      setParent(outerRules, prevPosition.getField(outerRules, 'parent') as Node, context);
+    }
     if (!outerRules) {
       setParent(rules, getParentFn(candidate), context);
       newRules = await rules.eval(context);

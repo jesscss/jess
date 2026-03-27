@@ -165,6 +165,11 @@ export function getParent(
       return pos.getField(node, 'parent') as Node | undefined;
     }
   }
+  // Carried position (mixin/function output remembers its call's patches)
+  const carried = node._evalPosition;
+  if (carried && carried.hasField(node, 'parent')) {
+    return carried.getField(node, 'parent') as Node | undefined;
+  }
   // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
