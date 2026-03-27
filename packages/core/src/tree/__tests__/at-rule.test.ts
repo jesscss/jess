@@ -2019,7 +2019,7 @@ describe('AtRule', () => {
 
       const evald = await node.eval(context);
 
-      expect(evald.toTrimmedString()).toBe('@media screen {\n  color: blue;\n}\n');
+      expect(evald.render(context)).toBe('@media screen {\n  color: blue;\n}\n');
     });
   });
 });

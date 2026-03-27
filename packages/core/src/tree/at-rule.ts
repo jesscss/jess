@@ -133,8 +133,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return ROOT_ONLY_AT_RULES.includes(this._getName(context).valueOf() as (typeof ROOT_ONLY_AT_RULES)[number]);
   }
 
-  isHoisted(opts: { collapseNesting?: boolean }) {
-    return this.hoistToRoot ?? opts.collapseNesting ?? false;
+  isHoisted(opts: { collapseNesting?: boolean; context?: Context }) {
+    const hoistToRoot = opts.context?.hasPosition
+      ? getField<boolean | undefined>(this, 'hoistToRoot', opts.context) ?? this.hoistToRoot
+      : this.hoistToRoot;
+    return hoistToRoot ?? opts.collapseNesting ?? false;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -367,7 +370,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
 
     // Store frames snapshot for hoisting serialization
-    if (context.opts.collapseNesting || node.hoistToRoot) {
+    const nodeHoistToRoot = context.hasPosition
+      ? getField<boolean | undefined>(node, 'hoistToRoot', context) ?? node.hoistToRoot
+      : node.hoistToRoot;
+    if (context.opts.collapseNesting || nodeHoistToRoot) {
       setField(node, 'frames', [...context.frames], context);
     }
 
