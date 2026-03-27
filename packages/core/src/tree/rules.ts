@@ -27,7 +27,6 @@ import type { Declaration } from './declaration.js';
 import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
-import { freezeChildren } from './util/cloning.js';
 import {
   getChildren,
   getField,
@@ -1749,11 +1748,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return;
       }
-      /** @removal-target — node-copy-reduction: copy(true) for merge values.
-       * Merged values should be composed via position patches on the
-       * canonical declaration, not by copying and reassembling values. */
-      const priorValue = getDeclValue(prior).copy(true, freezeChildren);
-      const nextValue = getDeclValue(decl).copy(true, freezeChildren);
+      const priorValue = getDeclValue(prior);
+      const nextValue = getDeclValue(decl);
       setDeclField(decl, 'value', assign === '&_:'
         ? spaced([priorValue, nextValue])
         : new List([priorValue, nextValue]));
@@ -1792,10 +1788,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       if (rest.length === 1) {
-        setDeclField(node, 'value', rest[0]!.copy(true, freezeChildren));
+        setDeclField(node, 'value', rest[0]!);
         return;
       }
-      setDeclField(node, 'value', new List(rest.map(item => item.copy(true, freezeChildren))));
+      setDeclField(node, 'value', new List(rest));
     };
 
     const lastVisibleByName = new Map<string, Node>();
