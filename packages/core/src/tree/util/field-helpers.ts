@@ -1,72 +1,41 @@
 import type { Node } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
-import type { EvalDependency, RuntimeState, SessionInstanceRoot } from '../../eval-session.js';
-import type { VarDeclaration } from '../declaration-var.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 
 /**
- * @deprecated — Legacy helper, to be removed. Use position directly.
- */
-function resolveInstanceRoot(node: Node, ctx: Context): SessionInstanceRoot | undefined {
-  return ctx.instanceRoot ?? node._instanceRoot;
-}
-
-/**
- * Position-aware field read/write helpers.
+ * EvalState-based field read/write helpers.
  *
- * Architecture: two layers only.
- *   Read:  position.getField(node, key) ?? node[key]
- *   Write: context.position.setField(node, key, value)
+ * Architecture: single EvalState on context, with a stack for subtrees.
+ *   Read:  activeState.peek(node)?.field ?? node.field
+ *   Write: activeState.get(node).field = value
  *
- * Legacy layers (instanceRoot, session) are preserved temporarily in
- * getField for backward compatibility during migration but will be
- * removed. setField and setParent already route through position only.
+ * No legacy fallbacks. No session. No instanceRoot.
  */
 
 /**
  * Read a field from a node.
- * Resolution: position → canonical.
- * (Legacy: instanceRoot and session fallbacks still present during migration.)
+ * Resolution: activeState → canonical.
  */
 export function getField<T = unknown>(
   node: Node,
   key: string,
   ctx: Context
 ): T {
-  if (ctx.hasPosition) {
-    const pos = ctx.position;
-    if (pos.hasField(node, key)) {
-      return pos.getField(node, key) as T;
+  const s = ctx.activeState.peek(node);
+  if (s) {
+    // Check fields map
+    const val = s._fields?.get(key);
+    if (val !== undefined) {
+      return val as T;
     }
-  }
-  // Carried position (mixin/function output remembers its call's patches)
-  const carried = node._evalPosition;
-  if (carried && carried.hasField(node, key)) {
-    return carried.getField(node, key) as T;
-  }
-  // Legacy: instanceRoot fallback — to be removed
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir && ir.hasField(node, key)) {
-    return ir.getField(node, key) as T;
-  }
-  // Legacy: session fallback — to be removed
-  const session = ctx.session;
-  if (session && session.hasField(node, key)) {
-    return session.getField(node, key) as T;
   }
   return (node as unknown as Record<string, unknown>)[key] as T;
 }
 
 /**
- * Write a field on a node. Always routes through position.
- * The position getter lazily creates one if needed.
- * Never falls through to canonical mutation.
- *
- * Note: this does NOT auto-adopt (set child.parent). Parent
- * relationships are managed by the eval pipeline (forEachNode,
- * Rules.evalNode) via setParent, not by individual field writes.
+ * Write a field on a node. Routes through activeState.
  */
 export function setField(
   node: Node,
@@ -74,417 +43,231 @@ export function setField(
   value: unknown,
   ctx: Context
 ): void {
-  ctx.position.setField(node, key, value);
-}
-
-export function getDependency(
-  node: Node,
-  ctx: Context
-): EvalDependency | null {
-  const session = ctx.session;
-  if (!session || !session.hasDependency(node)) {
-    return null;
-  }
-  return session.getDependency(node) ?? null;
-}
-
-export function setDependency(
-  node: Node,
-  dependency: EvalDependency,
-  ctx: Context
-): void {
-  const session = ctx.session;
-  if (!session) {
-    return;
-  }
-  session.setDependency(node, dependency);
-}
-
-export function isStatic(
-  node: Node,
-  ctx: Context
-): boolean {
-  const dependency = getDependency(node, ctx);
-  return !dependency?.dependsOn || dependency.dependsOn.size === 0;
-}
-
-export function mergeDependencies(
-  nodes: readonly (Node | undefined)[],
-  ctx: Context
-): EvalDependency | null {
-  if (!ctx.session) {
-    return null;
-  }
-
-  let dependsOn: Set<VarDeclaration> | null = null;
-  let sourceExpr: Node | undefined;
-
-  for (const node of nodes) {
-    if (!node) {
-      continue;
-    }
-    const dependency = getDependency(node, ctx);
-    if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
-      continue;
-    }
-    dependsOn ??= new Set<VarDeclaration>();
-    for (const varDecl of dependency.dependsOn) {
-      dependsOn.add(varDecl);
-    }
-    sourceExpr ??= dependency.sourceExpr;
-  }
-
-  if (!dependsOn || dependsOn.size === 0) {
-    return null;
-  }
-
-  return { dependsOn, sourceExpr };
-}
-
-export function isTopLevelVarDeclaration(
-  node: Node,
-  ctx: Context
-): node is VarDeclaration {
-  if (!isNode(node, N.VarDeclaration)) {
-    return false;
-  }
-  const parent = getParent(node, ctx);
-  return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
+  ctx.activeState.get(node).fields.set(key, value);
 }
 
 /**
- * Get the parent of a node. Resolution: position → instanceRoot → session → canonical.
+ * Get the parent of a node.
  */
 export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  if (ctx.hasPosition) {
-    const pos = ctx.position;
-    if (pos.hasField(node, 'parent')) {
-      return pos.getField(node, 'parent') as Node | undefined;
-    }
-  }
-  // Carried position (mixin/function output remembers its call's patches)
-  const carried = node._evalPosition;
-  if (carried && carried.hasField(node, 'parent')) {
-    return carried.getField(node, 'parent') as Node | undefined;
-  }
-  // Legacy: instanceRoot fallback — to be removed
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir && ir.hasRuntime(node)) {
-    const runtime = ir.getShadow(node)!.runtime!;
-    if (Object.prototype.hasOwnProperty.call(runtime, 'parent')) {
-      return runtime.parent;
-    }
-  }
-  // Legacy: session fallback — to be removed
-  const session = ctx.session;
-  if (session && session.hasRuntime(node)) {
-    const runtime = session.getRuntime(node);
-    if (Object.prototype.hasOwnProperty.call(runtime, 'parent')) {
-      return runtime.parent;
-    }
+  const parent = ctx.activeState.peek(node)?._fields?.get('parent');
+  if (parent !== undefined) {
+    return parent as Node | undefined;
   }
   return node.parent;
 }
 
 /**
- * Set the parent of a node. Always routes through position.
+ * Set the parent of a node.
  */
 export function setParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
 ): void {
-  ctx.position.setField(node, 'parent', parent);
+  ctx.activeState.get(node).fields.set('parent', parent);
 }
 
 /**
- * Check whether a node has been evaluated in the current position.
+ * Check whether a node has been evaluated.
  */
 export function isEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
-  if (ctx.hasPosition) {
-    const pos = ctx.position;
-    if (pos.hasField(node, '_evaluated')) {
-      return pos.getField(node, '_evaluated') as boolean;
-    }
-  }
-  // Legacy: instanceRoot fallback — to be removed
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir && ir.hasRuntime(node)) {
-    const runtime = ir.getShadow(node)!.runtime!;
-    if (runtime.evaluated !== undefined) {
-      return runtime.evaluated;
-    }
-  }
-  // Legacy: session fallback — to be removed
-  const session = ctx.session;
-  if (session && session.hasRuntime(node)) {
-    const runtime = session.getRuntime(node);
-    if (runtime.evaluated !== undefined) {
-      return runtime.evaluated;
-    }
-  }
-  return false;
+  return ctx.activeState.peek(node)?.evaluated ?? false;
 }
 
 /**
- * Mark a node as evaluated. Always routes through position.
+ * Mark a node as evaluated.
  */
 export function setEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
 ): void {
-  ctx.position.setField(node, '_evaluated', value);
+  ctx.activeState.get(node).evaluated = value;
 }
 
 /**
- * Check whether a node's preEval phase has completed in the current position.
+ * Check whether a node's preEval phase has completed.
  */
 export function isPreEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
-  if (ctx.hasPosition) {
-    const pos = ctx.position;
-    if (pos.hasField(node, '_preEvaluated')) {
-      return pos.getField(node, '_preEvaluated') as boolean;
-    }
-  }
-  // Legacy: instanceRoot fallback — to be removed
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir && ir.hasRuntime(node)) {
-    const runtime = ir.getShadow(node)!.runtime!;
-    if (runtime.preEvaluated !== undefined) {
-      return runtime.preEvaluated;
-    }
-  }
-  // Legacy: session fallback — to be removed
-  const session = ctx.session;
-  if (session && session.hasRuntime(node)) {
-    const runtime = session.getRuntime(node);
-    if (runtime.preEvaluated !== undefined) {
-      return runtime.preEvaluated;
-    }
-  }
-  return false;
+  return ctx.activeState.peek(node)?.preEvaluated ?? false;
 }
 
 /**
- * Mark a node's preEval phase as completed. Always routes through position.
+ * Mark a node's preEval phase as completed.
  */
 export function setPreEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
 ): void {
-  ctx.position.setField(node, '_preEvaluated', value);
+  ctx.activeState.get(node).preEvaluated = value;
 }
 
 /**
- * Get the eval index of a node. Resolution: position → legacy → canonical.
+ * Get the eval index of a node.
  */
 export function getIndex(
   node: Node,
   ctx: Context
 ): number {
-  if (ctx.hasPosition) {
-    const pos = ctx.position;
-    if (pos.hasField(node, 'index')) {
-      return pos.getField(node, 'index') as number;
-    }
-  }
-  // Legacy: instanceRoot fallback — to be removed
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir && ir.hasRuntime(node)) {
-    const runtime = ir.getShadow(node)!.runtime!;
-    if (runtime.index !== undefined) {
-      return runtime.index;
-    }
-  }
-  // Legacy: session fallback — to be removed
-  const session = ctx.session;
-  if (session && session.hasRuntime(node)) {
-    const runtime = session.getRuntime(node);
-    if (runtime.index !== undefined) {
-      return runtime.index;
-    }
+  const idx = ctx.activeState.peek(node)?._fields?.get('index');
+  if (idx !== undefined) {
+    return idx as number;
   }
   return node.index;
 }
 
 /**
- * Set the eval index of a node. Always routes through position.
+ * Set the eval index of a node.
  */
 export function setIndex(
   node: Node,
   index: number,
   ctx: Context
 ): void {
-  ctx.position.setField(node, 'index', index);
+  ctx.activeState.get(node).fields.set('index', index);
 }
 
 /**
- * Get the source parent of a node. Resolution: position → legacy → canonical.
+ * Get the source parent of a node.
  */
 export function getSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  if (ctx.hasPosition) {
-    const pos = ctx.position;
-    if (pos.hasField(node, 'sourceParent')) {
-      return pos.getField(node, 'sourceParent') as Node | undefined;
-    }
-  }
-  // Legacy: instanceRoot fallback — to be removed
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir && ir.hasRuntime(node)) {
-    const runtime = ir.getShadow(node)!.runtime!;
-    if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
-      return runtime.sourceParent;
-    }
-  }
-  // Legacy: session fallback — to be removed
-  const session = ctx.session;
-  if (session && session.hasRuntime(node)) {
-    const runtime = session.getRuntime(node);
-    if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
-      return runtime.sourceParent;
-    }
+  const sp = ctx.activeState.peek(node)?._fields?.get('sourceParent');
+  if (sp !== undefined) {
+    return sp as Node | undefined;
   }
   return node.sourceParent;
 }
 
 /**
- * Set the source parent of a node. Always routes through position.
+ * Set the source parent of a node.
  */
 export function setSourceParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
 ): void {
-  ctx.position.setField(node, 'sourceParent', parent);
+  ctx.activeState.get(node).fields.set('sourceParent', parent);
 }
 
 /**
- * Bulk-set multiple runtime state fields on a node. Always routes through position.
+ * Bulk-set multiple runtime state fields on a node.
  */
 export function setRuntimeState(
   node: Node,
-  patch: Partial<RuntimeState>,
+  patch: Record<string, unknown>,
   ctx: Context
 ): void {
-  const pos = ctx.position;
+  const s = ctx.activeState.get(node);
   for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined || Object.prototype.hasOwnProperty.call(patch, key)) {
-      pos.setField(node, key, value);
+    if (key === 'evaluated') {
+      s.evaluated = value as boolean;
+    } else if (key === 'preEvaluated') {
+      s.preEvaluated = value as boolean;
+    } else if (value !== undefined) {
+      s.fields.set(key, value);
     }
   }
 }
 
 /**
  * Read the children array of a Rules node.
- * Resolution: position → canonical.
  */
 export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
-  if (!ctx.hasPosition) {
-    return rules.value;
-  }
-  const pos = ctx.position;
-  if (pos && pos.hasField(rules, 'value')) {
-    return pos.getField(rules, 'value') as Node[];
+  const children = ctx.activeState.peek(rules)?._fields?.get('value');
+  if (children !== undefined) {
+    return children as Node[];
   }
   return rules.value;
 }
 
-type SessionChildrenWriteOptions = {
-  markDirty?: boolean;
-};
-
 /**
- * Set the children array of a Rules node. Always routes through position.
+ * Set the children array of a Rules node.
  */
 export function setChildren(
   rules: Rules,
   nodes: readonly Node[],
   ctx: Context,
-  options: SessionChildrenWriteOptions = {}
+  options: { markDirty?: boolean } = {}
 ): void {
-  ctx.position.setField(rules, 'value', [...nodes]);
+  ctx.activeState.get(rules).fields.set('value', [...nodes]);
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);
   }
 }
 
 /**
- * Set a child at a specific index. Always routes through position.
+ * Set a child at a specific index.
  */
 export function setChildAt(
   rules: Rules,
   index: number,
   node: Node,
   ctx: Context,
-  options: SessionChildrenWriteOptions = {}
+  options: { markDirty?: boolean } = {}
 ): void {
-  const pos = ctx.position;
-  const currentChildren = pos.hasField(rules, 'value')
-    ? pos.getField(rules, 'value') as Node[]
-    : [...rules.value];
+  const s = ctx.activeState.get(rules);
+  const currentChildren = s._fields?.get('value') as Node[] | undefined
+    ?? [...rules.value];
   const prev = currentChildren[index];
   if (prev === node) {
     return;
   }
   currentChildren[index] = node;
-  pos.setField(rules, 'value', currentChildren);
+  s.fields.set('value', currentChildren);
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);
   }
 }
 
 /**
- * Append child nodes to a Rules node. Always routes through position.
+ * Append child nodes to a Rules node.
  */
 export function appendChildren(
   rules: Rules,
   nodes: Node[],
   ctx: Context
 ): void {
-  const pos = ctx.position;
-  const current = pos.hasField(rules, 'value')
-    ? pos.getField(rules, 'value') as Node[]
-    : [...rules.value];
-  pos.setField(rules, 'value', [...current, ...nodes]);
+  const s = ctx.activeState.get(rules);
+  const current = s._fields?.get('value') as Node[] | undefined
+    ?? [...rules.value];
+  s.fields.set('value', [...current, ...nodes]);
   markScopeDirty(rules, ctx);
 }
 
 /**
- * Prepend child nodes to a Rules node. Always routes through position.
+ * Prepend child nodes to a Rules node.
  */
 export function prependChildren(
   rules: Rules,
   nodes: Node[],
   ctx: Context
 ): void {
-  const pos = ctx.position;
-  const current = pos.hasField(rules, 'value')
-    ? pos.getField(rules, 'value') as Node[]
-    : [...rules.value];
-  pos.setField(rules, 'value', [...nodes, ...current]);
+  const s = ctx.activeState.get(rules);
+  const current = s._fields?.get('value') as Node[] | undefined
+    ?? [...rules.value];
+  s.fields.set('value', [...nodes, ...current]);
   markScopeDirty(rules, ctx);
 }
 
 /**
  * Remove a child node from a Rules node.
- * Stage 9 will route into session-local children when a session is active.
  */
 export function removeChild(
   rules: Rules,
@@ -494,89 +277,84 @@ export function removeChild(
   const currentChildren = getChildren(rules, ctx);
   const idx = currentChildren.indexOf(child);
   if (idx >= 0) {
-    const ir = resolveInstanceRoot(rules, ctx);
-    if (ir) {
-      const nextValue = [...currentChildren];
-      nextValue.splice(idx, 1);
-      ir.setChildren(rules, nextValue);
-      setParent(child, undefined, ctx);
-      markScopeDirty(rules, ctx);
-      return;
-    }
-    if (ctx.session) {
-      const nextValue = [...currentChildren];
-      nextValue.splice(idx, 1);
-      ctx.session.setChildren(rules, nextValue);
-      setParent(child, undefined, ctx);
-      markScopeDirty(rules, ctx);
-      return;
-    }
-    rules.splice(ctx, idx, 1);
+    const nextValue = [...currentChildren];
+    nextValue.splice(idx, 1);
+    ctx.activeState.get(rules).fields.set('value', nextValue);
+    setParent(child, undefined, ctx);
+    markScopeDirty(rules, ctx);
   }
 }
 
 /**
- * Replace a node with a replacement in its parent Rules.
- * Write target: instanceRoot → session → canonical.
+ * Replace a node with a replacement. Uses node patching on the activeState.
  */
 export function replaceNode(
   node: Node,
   replacement: Node,
   ctx: Context
 ): void {
-  const ir = resolveInstanceRoot(node, ctx);
-  if (ir) {
-    const parent = getParent(node, ctx);
-    if (parent && isNode(parent, N.Rules)) {
-      const currentChildren = getChildren(parent, ctx);
-      const idx = currentChildren.indexOf(node);
-      if (idx >= 0) {
-        const nextValue = [...currentChildren];
-        nextValue[idx] = replacement;
-        ir.setChildren(parent, nextValue);
-        setParent(replacement, parent, ctx);
-        setParent(node, undefined, ctx);
-        markScopeDirty(parent, ctx);
-        return;
-      }
-    }
-  }
-  if (ctx.session) {
-    const parent = getParent(node, ctx);
-    if (parent && isNode(parent, N.Rules)) {
-      const currentChildren = getChildren(parent, ctx);
-      const idx = currentChildren.indexOf(node);
-      if (idx >= 0) {
-        const nextValue = [...currentChildren];
-        nextValue[idx] = replacement;
-        ctx.session.setChildren(parent, nextValue);
-        setParent(replacement, parent, ctx);
-        setParent(node, undefined, ctx);
-        markScopeDirty(parent, ctx);
-        return;
-      }
-    }
-  }
-  const parent = node.parent;
-  if (parent) {
-    const arr = (parent as unknown as { value?: Node[] }).value;
-    if (Array.isArray(arr)) {
-      const idx = arr.indexOf(node);
-      if (idx >= 0) {
-        arr[idx] = replacement;
-        parent.adopt(replacement);
-      }
-    }
-  }
+  ctx.activeState.get(node).replacement = replacement;
 }
 
 /**
  * Invalidate a Rules node's scope registry so the next lookup rebuilds it.
- * Stage 9 will make this session-local when session-local children are active.
  */
 export function markScopeDirty(
-  rules: Rules,
-  ctx: Context
+  _rules: Rules,
+  _ctx: Context
 ): void {
-  ctx.session?.clearRegistryDelta(rules);
+  // Registry delta tracking removed with EvalSession.
+  // Registry rebuilds from children on next access.
+}
+
+// --- Dependency tracking stubs ---
+// These were tied to EvalSession. For now they're no-ops.
+// Dependency tracking may be re-added on EvalState if needed.
+
+export interface EvalDependency {
+  dependsOn: Set<import('../declaration-var.js').VarDeclaration> | null;
+  sourceExpr?: Node;
+}
+
+export function getDependency(
+  _node: Node,
+  _ctx: Context
+): EvalDependency | null {
+  return null;
+}
+
+export function setDependency(
+  _node: Node,
+  _dependency: EvalDependency,
+  _ctx: Context
+): void {
+  // no-op
+}
+
+export function isStatic(
+  _node: Node,
+  _ctx: Context
+): boolean {
+  return true;
+}
+
+export function mergeDependencies(
+  _nodes: readonly (Node | undefined)[],
+  _ctx: Context
+): EvalDependency | null {
+  return null;
+}
+
+/**
+ * Check if a node is a top-level variable declaration.
+ */
+export function isTopLevelVarDeclaration(
+  node: Node,
+  ctx: Context
+): node is import('../declaration-var.js').VarDeclaration {
+  if (!isNode(node, N.VarDeclaration)) {
+    return false;
+  }
+  const parent = getParent(node, ctx);
+  return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
 }
