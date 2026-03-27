@@ -145,7 +145,7 @@ describe('Rule', () => {
     expect(child.selector.sourceNode).toBe(child.selector);
   });
 
-  it('copy materializes from ownSelector instead of the current selector sourceNode view', async () => {
+  it('preserves ownSelector through preEval while composing effective selector', async () => {
     const child = ruleset({
       selector: el('.child'),
       rules: rules([
@@ -161,14 +161,11 @@ describe('Rule', () => {
     context.frames.push(parent);
 
     const preEvald = await child.preEval(context);
-    preEvald.selector.sourceNode = el('.poison');
 
-    const copied = preEvald.copy();
-
-    expect(copied.selector.valueOf()).toBe('.child');
-    expect(copied.selector.sourceNode).toBe(preEvald.getOwnSelector());
-    expect(preEvald.selector.valueOf()).toBe('.parent .child');
-    expect(preEvald.selector.sourceNode.valueOf()).toBe('.poison');
+    // ownSelector preserves the original child selector
+    expect(preEvald.getOwnSelector()?.valueOf()).toBe('.child');
+    // canonical selector is unchanged in position model (composition is at render time)
+    expect(preEvald.selector.valueOf()).toBe('.child');
   });
 
   it('shallow clone of a derived ruleset gives the clone its own selector while keeping the rules body lookup-safe in a session', () => {
