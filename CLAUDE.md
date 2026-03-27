@@ -51,8 +51,9 @@ Do not keep branch-stage snapshots, pass counts, or transient failure notes here
 
 For the node-copy-reduction work:
 
-- treat `docs/future/node-copy-reduction/README.md` and `docs/future/node-copy-reduction/session-instance-architecture.md` as the canonical architecture docs
-- treat `docs/future/node-copy-reduction/HANDOFF.md`, `docs/future/node-copy-reduction/STAGES.md`, and `docs/future/node-copy-reduction/dependency-graph.md` as the canonical execution/status docs
+- treat `docs/future/node-copy-reduction/eval-state-sketch.md` as the canonical architecture doc
+- treat `docs/future/node-copy-reduction/README.md` and `docs/future/node-copy-reduction/HANDOFF.md` as the entry points
+- treat `docs/future/node-copy-reduction/STAGES.md` as the execution/status doc
 - use `.cursor/PROJECT_STATE.md` for transient debugging state and latest baseline notes
 
 Keep this file stable by pointing to canonical sources instead of duplicating fast-changing project status.

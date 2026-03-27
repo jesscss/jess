@@ -2,170 +2,71 @@
 
 ## Purpose
 
-This file is the short starter doc for the next agent.
-
-Its job is to help an agent drive this branch from the current bridge state to near-merge completion without getting lost in old scaffolding.
-
-Keep this file short. Put detail elsewhere.
+Short starter doc for the next agent. Helps drive the branch to completion
+without getting lost in old scaffolding.
 
 ## Read Order
 
-1. [STAGES.md](./STAGES.md) — the single stage tracking document (what's done, what's active, what's next)
-2. [session-instance-architecture.md](./session-instance-architecture.md) — target architecture + registry rewrite
-3. [node-session-status.md](./node-session-status.md) — per-node completion status
-4. [mixin-direct-invocation.md](./mixin-direct-invocation.md) — mixin clone elimination plan
-5. [subsystems.md](./subsystems.md) — target node model and field reference
+1. [eval-state-sketch.md](./eval-state-sketch.md) — canonical architecture
+2. [README.md](./README.md) — overview + hard rules
+3. [STAGES.md](./STAGES.md) — current execution status
+4. [node-update-status.md](./node-update-status.md) — per-node migration status
+5. [CLEANUP.md](./CLEANUP.md) — tracked cleanup items
 
-Historical docs (context only, not actively maintained):
-- `dependency-graph.md` — superseded by STAGES.md
-- `migration.md` — superseded by STAGES.md
-- `PROGRESS.md` — superseded by STAGES.md
+## Architecture (Summary)
 
-## Branch Goal
+`EvalState extends Map<Node, NodeState>` — one per evaluation pass.
+`NodeState` has `replacement` (node patch), `evaluated`/`preEvaluated` (flags),
+`fields` (lazy Map for other overrides), `subtree` (lazy recursive EvalState).
 
-Drive the branch to the point where:
-
-- the session-instance model is real enough to satisfy the repeated-import and repeated-mixin/function proofs
-- every node row in [node-session-status.md](./node-session-status.md) is no longer blocking that model
-- the rest of `packages/core` still behaves compatibly against that model
-- progress docs and status docs are current
-- every clean boundary is committed and pushed
-
-Important:
-
-- do not merge back to `dev` yet
-- stop at a pushed, documented, merge-candidate state
-
-## Target Architecture
+Context holds `evalState` (root), `evalStateStack` (subtree stack),
+`activeState` (innermost or root).
 
 Two operations:
-1. **Replace a node** at a position in the tree (field patch on the parent)
-2. **Replace a field** on a node (field patch on the node)
+1. **Replace a node**: `ctx.activeState.get(node).replacement = newNode`
+2. **Override a field**: `ctx.activeState.get(node).fields.set('key', value)`
 
-Both are map lookups from `EvalPosition`. No cloning. No special cases.
-See [session-instance-architecture.md](./session-instance-architecture.md).
-
-Do not regress into:
-- cloning as an isolation mechanism
-- broad wrapper/helper growth
-- internal materialization as a normal eval strategy
-
-## Guiding Star: Performance Through Reduced Object Creation
-
-JIT engines are most slowed down by object creation — allocation pressure, GC pauses, cache misses. Deep cloning an AST subtree per mixin call or import creates thousands of short-lived objects.
-
-The instance-root model eliminates this: 1 canonical tree + N thin shadow maps instead of N cloned trees. Every design decision should be evaluated against: **”does this reduce object creation during eval?”**
+No cloning. No sessions. No instance roots. No EvalPosition.
 
 ## Hard Rules
 
 - no explicit instance parameters in ordinary node APIs
-- no new helper family unless it clearly maps to the instance model
-- no internal materialization except at an explicit downstream boundary
-- do not call a local bridge-green slice “done” if it does not move the real model forward
-- do not silently change Jess behavior just to make the refactor easier
+- no internal materialization except at explicit downstream boundaries
+- no cloning as an isolation mechanism
+- every design decision should reduce object creation during eval
+- do not silently change Jess behavior to make the refactor easier
 - do not merge to `dev` from this handoff
-- every approach must be reasoned about in terms of object creation cost
 
 ## The Work Loop
 
-Repeat this until the branch reaches the stage gate in [PROGRESS.md](./PROGRESS.md):
-
-1. Pick the highest-value next slice from [dependency-graph.md](./dependency-graph.md) and [node-session-status.md](./node-session-status.md).
-2. Implement the smallest real step toward the session-instance model.
-3. Add or update the narrowest proof tests.
-4. Run the focused tests for that slice.
-5. Update:
-   - [node-session-status.md](./node-session-status.md)
-   - [PROGRESS.md](./PROGRESS.md)
-   - this file only if the operational instructions changed
-6. Commit the clean boundary.
-7. Push it.
-8. Re-rank the next owner and repeat.
-
-At major checkpoints, also run broader `packages/core` verification so the branch stays compatible beyond the local proof surface.
-
-## What To Update
-
-### Update `node-session-status.md` when:
-
-- a node stops being a proof-case
-- a node becomes bridge-stable
-- a node becomes relevant again because the architecture changed under it
-
-### Update `PROGRESS.md` when:
-
-- the active stage changes
-- the acceptance proofs get sharper
-- merge-readiness meaning changes
-
-### Update `dependency-graph.md` when:
-
-- the next stages need to be re-chunked
-- a proof case moves to a different architectural owner
-
-### Update this file when:
-
-- the execution loop changes
-- the hard rules change
-- the branch goal changes
+1. Pick the next node or subsystem from [node-update-status.md](./node-update-status.md).
+2. Implement using EvalState (node patches + field patches + subtrees).
+3. Run focused tests for that node.
+4. Update status docs.
+5. Commit and push.
 
 ## What Full Completion Looks Like
 
-The branch is near merge-ready when all of these are true:
-
-- the repeated-import proof is real
-- the repeated-mixin/function proof is real
-- instance roots and lazy node views exist as the active runtime model
-- sparse dependency-guided shadow state is real enough to carry those proofs
-- bridge helpers are no longer the architectural center of the branch
-- the statuses in [node-session-status.md](./node-session-status.md) reflect that reality
-- the broader `packages/core` behavior is still compatible:
-  - parser-driven paths still evaluate correctly
-  - function/mixin/import behavior still matches intended semantics
-  - integration tests are green or at the accepted baseline
+- repeated-import proof: same file imported 3x, each with its own subtree EvalState
+- repeated-mixin proof: same mixin called 3x, different subtrees
+- all node classes use EvalState API (no legacy session/position code)
+- test suite passes at baseline
 - docs are current
-- every meaningful boundary is committed and pushed
+- branch is pushed and documented as merge-candidate
 
-## Compatibility Gate
+## Legacy Code Still Present
 
-The agent should treat compatibility as part of completion, not as optional cleanup after.
+These are migration artifacts to be removed:
 
-That means:
+- `_instanceRoot` / `_evalPosition` on Node — used by mixin-instance-primitives
+- `positionMap` in serialize-helper — bridges `_evalPosition` into stack
+- `materializeEvaluatedCopy` / `cloneDetached*` methods — dead or nearly dead
+- `eval-session.ts` — thin re-export shim, delete when all test imports updated
+- `session-instance-proofs.test.ts` — entire file tests deleted concepts
 
-- keep public Jess behavior the same unless there is an intentional, documented change
-- if tests need updates because APIs changed internally, keep the same behavioral expectations whenever possible
-- do not “fix” the suite by weakening expected Jess semantics
-- use local proof tests for development speed, but use broader `packages/core` tests to confirm parser, lookup, function, mixin, import, and selector behavior still compose correctly
+## Good Test Surfaces
 
-If the architecture is cleaner but the broader core behavior regressed, the branch is not done.
-
-Again:
-
-- do not actually merge to `dev` from this handoff
-- stop when the branch is pushed and documented as merge-candidate quality
-
-## Good Example Surfaces
-
-Use these as concrete proof surfaces when you need examples:
-
-- [import-style.test.ts](/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/__tests__/import-style.test.ts)
-- [mixin.test.ts](/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/__tests__/mixin.test.ts)
-- [call.test.ts](/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/__tests__/call.test.ts)
-- [rules.test.ts](/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/__tests__/rules.test.ts)
-
-Use those tests to prove repeated reuse, sparse divergence, and ownership shifts.
-
-## Next Major Refactor: Mixin Direct Invocation
-
-The next pass should combine two changes:
-
-1. **Remove the function wrapper**: `Call` should invoke mixins directly without going through `getFunctionFromMixins()` → `callWithContext()` → `returnFunc()`
-2. **Replace body cloning with instance root shadowing**: use instance roots instead of `rules.clone(true)` per call
-
-These target the same code and should be done together. See [mixin-direct-invocation.md](./mixin-direct-invocation.md) for the full plan, current flow mapping, target flow, and implementation entry points.
-
-## Working Tree Notes
-
-- ignore unrelated dirty files under `packages/docs-content/...` unless explicitly asked to work there
-- challenge any change that only makes the bridge more elaborate without moving toward instance roots/views
-- `dev` branch has been merged into `jess-dev` (parser fixes included)
+- `import-style.test.ts` — import reuse
+- `mixin.test.ts` — mixin calls
+- `call.test.ts` — function/mixin call mechanics
+- `rules.test.ts` — rules container eval

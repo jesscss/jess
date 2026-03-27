@@ -1,136 +1,75 @@
 # Node Copy Reduction
 
-## What This Refactor Is Now
+## Architecture
 
-This refactor is no longer mainly about deleting `clone()` calls.
+One immutable canonical/source tree. One `EvalState` overlay per evaluation pass.
+Sparse node patches and field patches only where behavior diverges.
+Recursive subtree states for mixin/import reuse with different bindings.
 
-It is about moving Jess to this runtime model:
-
-- one immutable canonical/source tree
-- many lazy session-local instances over that tree
-- sparse shadow state only where behavior diverges
-- dependency reach deciding which paths need shadow state
-
-The current node-keyed session-overlay work was a useful bridge. It is not the final design.
+See [eval-state-sketch.md](./eval-state-sketch.md) for the full design.
 
 ## Read Order
 
-1. [session-instance-architecture.md](./session-instance-architecture.md)
-2. [dependency-graph.md](./dependency-graph.md)
-3. [PROGRESS.md](./PROGRESS.md)
-4. [node-session-status.md](./node-session-status.md)
-5. [HANDOFF.md](./HANDOFF.md)
+1. [eval-state-sketch.md](./eval-state-sketch.md) — canonical architecture
+2. [STAGES.md](./STAGES.md) — current execution status
+3. [HANDOFF.md](./HANDOFF.md) — starter guide for next agent
+4. [node-update-status.md](./node-update-status.md) — per-node migration status
+5. [CLEANUP.md](./CLEANUP.md) — tracked cleanup items
 
-## Current Verdict
+## Core Classes
 
-What the branch already proved:
+```ts
+class EvalState extends Map<Node, NodeState> {
+  get(node): NodeState     // auto-creates
+  peek(node): NodeState?   // read-only, no allocation
+}
 
-- immutable source nodes are the right base
-- a lot of canonical eval-time mutation can be removed
-- the hard remaining cases are all pointing at the same missing abstraction
+class NodeState {
+  replacement: Node | undefined  // node patch
+  evaluated: boolean             // eval flag
+  preEvaluated: boolean          // preEval flag
+  fields: Map<string, unknown>   // lazy field overrides
+  subtree: EvalState             // lazy recursive state
+}
+```
 
-What the branch has not proved yet:
+## Context Integration
 
-- multiple live instances of the same canonical subtree inside one eval session
-- sparse shadowing across broad trees without broad wrapper/materialization pressure
-- repeated imports and repeated mixin/function reuse on top of that model
-
-So the branch is still not merge-ready.
-
-## The Target Architecture
-
-The target model is:
-
-- `EvalSession`
-  - one evaluation run
-- `SessionInstanceRoot`
-  - one import/call/reuse placement of a canonical subtree
-- lazy node views
-  - node-shaped runtime objects backed by a canonical source node plus one instance root
-- sparse shadow state
-  - only touched or dependency-affected nodes get local state
-
-The API must stay elegant:
-
-- `node.value`
-- `node.parent`
-- `node.eval(context)`
-
-Not:
-
-- `getField(node, context, instance)`
-- `getParent(node, context, instance)`
+```ts
+class Context {
+  evalState: EvalState           // root state (lazy)
+  evalStateStack: EvalState[]    // subtree stack
+  activeState: EvalState         // innermost subtree or root
+}
+```
 
 ## Hard Rules
 
 ### Runtime rule
 
-Internal evaluation should operate on:
-
-- canonical source nodes
-- lazy instance-local views
-- sparse shadow state
-
-Not on fresh materialized trees.
+Internal evaluation operates on canonical source nodes + EvalState patches.
+Not on materialized/cloned trees.
 
 ### Materialization rule
 
-Materialization is only allowed at an explicit downstream boundary where Jess must hand off a standalone evaluated object graph that may outlive the session.
-
-If an internal eval path still needs materialization to work, that path is not done.
+Materialization is only allowed at an explicit downstream boundary where
+Jess must hand off a standalone object graph. If an internal eval path
+still needs materialization, that path is not done.
 
 ### API rule
 
-Do not make node usage uglier.
-
-- no explicit instance parameter on ordinary node access
-- no second-class helper API for simple node work
-- no bridge-helper growth without mapping it to the final instance model
+Do not make node usage uglier. The EvalState is internal plumbing.
+`node.eval(context)` is the public API.
 
 ## What Counts As Success
 
-Two proofs matter more than local helper cleanup.
-
 ### Repeated import proof
 
-Import the same file 3 times as `multiple`.
+Import the same file 3 times. Each import gets its own subtree EvalState.
+Only divergent nodes get entries. Untouched nodes stay canonical.
 
-- import 1: no override
-- import 2: one variable override
-- import 3: one variable override
+### Repeated mixin proof
 
-We need to prove:
-
-- 3 instance roots over one canonical imported tree
-- only thin local shadow state for imports 2 and 3
-- untouched nodes stay source-backed
-
-### Repeated mixin/function proof
-
-Call the same mixin or stylesheet function 3 times.
-
-- only one input changes on call 3
-- only one declaration path is affected
-
-We need to prove:
-
-- 3 instance roots over one canonical body
-- only the affected path gets local shadow state
-- the rest of the tree stays source-backed
-
-## What To Avoid
-
-- treating the current `EvalSession` maps as the final runtime model
-- treating local green slices as architectural completion
-- adding more wrapper/helper categories instead of defining the instance model
-- solving reuse pressure with broad shallow wrappers and calling it done
-
-## Short Version
-
-The old bridge work matters because it exposed the real problem.
-
-The real problem is not “how do we remove one more clone.”
-
-It is:
-
-- “how do we represent many lazy session-local instances over one immutable source tree, with sparse dependency-driven shadow state, while keeping the node API unchanged?”
+Call the same mixin 3 times with different args. Each call gets its own
+subtree EvalState. Only the affected path gets patches. The rest of the
+canonical body is shared.
