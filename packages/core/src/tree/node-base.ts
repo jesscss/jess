@@ -822,7 +822,7 @@ export abstract class Node<
   // Defined here (not in field-helpers.ts) to avoid a circular import:
   // field-helpers.ts imports Node from this file, so this file cannot
   // import from field-helpers.ts.  These mirror the public helpers in
-  // field-helpers.ts; both sets delegate to context.session when active.
+  // field-helpers.ts; both sets delegate to context.activeState.
   // ------------------------------------------------------------------
 
   protected _isPreEvaluated(context: Context): boolean {
