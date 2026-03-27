@@ -235,7 +235,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const parent = getParent(this, ctx);
       if (parent) {
         setParent(newRules, parent, ctx);
-        (newRules as unknown as { parent?: Node }).parent = undefined;
       }
     }
 

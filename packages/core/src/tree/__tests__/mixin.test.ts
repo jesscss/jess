@@ -557,7 +557,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('keeps mixin output Rules sourceParent only in the session layer', async () => {
+    it('mixin output has position-aware parent and sourceParent', async () => {
       context.createSession();
 
       const mixinDef = mixin({
@@ -574,17 +574,15 @@ describe('Mixin', () => {
         args: list([])
       });
 
-      setSourceParent((caller as any).name, sourceAnchor, context);
+      setSourceParent((caller as Node).name as Node, sourceAnchor, context);
       context.caller = caller;
 
       const fn = getFunctionFromMixins(mixinDef);
       const result = await fn.call(context);
 
       expect(getParent(result as Node, context)).toBe(mixinRoot);
-      expect((result as Node).parent).toBeUndefined();
       expect(getSourceParent(result as Node, context)).toBe(sourceAnchor);
-      expect((result as Node).sourceParent).toBeUndefined();
-      expect(String(result)).toBeString(`
+      expect((result as Node).render(context)).toBeString(`
         color: red;
       `);
     });
@@ -765,9 +763,7 @@ describe('Mixin', () => {
       expect(secondOutputRules).toBeDefined();
       expect(getParent(firstOutputRules, context)).toBe(output);
       expect(getParent(secondOutputRules, context)).toBe(output);
-      expect(firstOutputRules.parent).toBeUndefined();
-      expect(secondOutputRules.parent).toBeUndefined();
-      expect(String(result)).toBeString(`
+      expect((result as Node).render(context)).toBeString(`
         color: red;
         background: blue;
       `);
