@@ -1844,7 +1844,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const existingAnchor = mergedAnchorByName.get(name);
       if (existingAnchor && existingAnchor !== node && isNode(existingAnchor, N.Declaration)) {
-        setDeclField(existingAnchor, 'value', getDeclValue(node).copy(true));
+        // @todo — copy(true) was used here for comment suppression (stripping
+        // pre/post comments from merged values). Need a position-aware
+        // alternative: either a serialization-time comment suppression flag
+        // or field patches on pre/post.
+        setDeclField(existingAnchor, 'value', getDeclValue(node));
         if (!getDeclImportant(existingAnchor) && getDeclImportant(node)) {
           setDeclField(existingAnchor, 'important', getDeclImportant(node));
         }
