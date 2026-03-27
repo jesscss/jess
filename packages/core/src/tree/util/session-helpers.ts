@@ -196,12 +196,19 @@ export function setParent(
 }
 
 /**
- * Check whether a node has been evaluated. Resolution: instanceRoot → session → canonical.
+ * Check whether a node has been evaluated. Resolution: position → legacy → canonical.
  */
 export function isEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
+  if (ctx.hasPosition) {
+    const pos = ctx.position;
+    if (pos.hasField(node, '_evaluated')) {
+      return pos.getField(node, '_evaluated') as boolean;
+    }
+  }
+  // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
@@ -209,6 +216,7 @@ export function isEvaluated(
       return runtime.evaluated;
     }
   }
+  // Legacy: session fallback — to be removed
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -231,12 +239,19 @@ export function setEvaluated(
 }
 
 /**
- * Check whether a node's preEval phase has completed. Resolution: instanceRoot → session → canonical.
+ * Check whether a node's preEval phase has completed. Resolution: position → legacy → canonical.
  */
 export function isPreEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
+  if (ctx.hasPosition) {
+    const pos = ctx.position;
+    if (pos.hasField(node, '_preEvaluated')) {
+      return pos.getField(node, '_preEvaluated') as boolean;
+    }
+  }
+  // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
@@ -244,6 +259,7 @@ export function isPreEvaluated(
       return runtime.preEvaluated;
     }
   }
+  // Legacy: session fallback — to be removed
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -266,12 +282,19 @@ export function setPreEvaluated(
 }
 
 /**
- * Get the eval index of a node. Resolution: instanceRoot → session → canonical.
+ * Get the eval index of a node. Resolution: position → legacy → canonical.
  */
 export function getIndex(
   node: Node,
   ctx: Context
 ): number {
+  if (ctx.hasPosition) {
+    const pos = ctx.position;
+    if (pos.hasField(node, 'index')) {
+      return pos.getField(node, 'index') as number;
+    }
+  }
+  // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
@@ -279,6 +302,7 @@ export function getIndex(
       return runtime.index;
     }
   }
+  // Legacy: session fallback — to be removed
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
@@ -301,12 +325,19 @@ export function setIndex(
 }
 
 /**
- * Get the source parent of a node. Resolution: instanceRoot → session → canonical.
+ * Get the source parent of a node. Resolution: position → legacy → canonical.
  */
 export function getSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
+  if (ctx.hasPosition) {
+    const pos = ctx.position;
+    if (pos.hasField(node, 'sourceParent')) {
+      return pos.getField(node, 'sourceParent') as Node | undefined;
+    }
+  }
+  // Legacy: instanceRoot fallback — to be removed
   const ir = resolveInstanceRoot(node, ctx);
   if (ir && ir.hasRuntime(node)) {
     const runtime = ir.getShadow(node)!.runtime!;
@@ -314,6 +345,7 @@ export function getSourceParent(
       return runtime.sourceParent;
     }
   }
+  // Legacy: session fallback — to be removed
   const session = ctx.session;
   if (session && session.hasRuntime(node)) {
     const runtime = session.getRuntime(node);
