@@ -720,8 +720,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               context.searchScope.delete(returnVal as Node);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
-              let out = evald.copy(true, freezeChildren).inherit(evald);
-              out.frozen = true;
+              let out = evald;
               out.pre = this.pre;
               out.post = this.post;
               setSourceParent(out, this, context);
