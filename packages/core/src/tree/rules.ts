@@ -8,6 +8,7 @@ import {
   F_VISIBLE
 } from './node.js';
 import { Context } from '../context.js';
+import type { EvalPosition } from '../eval-session.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type Ruleset } from './ruleset.js';
@@ -718,22 +719,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // resolve patched fields during serialization.
     const ctx = options.context;
     const carried = this._evalPosition;
-    let didPush = false;
-    if (ctx && carried && !ctx.hasPosition) {
+    let prevPos: EvalPosition | undefined;
+    if (ctx && carried) {
+      prevPos = ctx.hasPosition ? ctx.position : undefined;
       ctx.position = carried;
-      didPush = true;
     }
     this._emitRulesBody(options);
-    if (didPush) {
-      ctx!.position = undefined;
+    if (ctx && carried) {
+      ctx.position = prevPos;
     }
     return w.getSince(mark);
   }
 
   /** All rules, with nested rules flattened */
-  flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, import('../eval-session.js').EvalPosition>) {
+  flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, EvalPosition>) {
     const finalRules: Node[] = [];
-    const iterateRules = (rules: Rules, activePosition?: import('../eval-session.js').EvalPosition) => {
+    const iterateRules = (rules: Rules, activePosition?: EvalPosition) => {
       const carried = rules._evalPosition ?? activePosition;
       for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Rules)) {

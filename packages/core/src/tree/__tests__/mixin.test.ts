@@ -572,7 +572,8 @@ describe('Mixin', () => {
       const fn = getFunctionFromMixins(mixinDef);
       const result = await fn.call(context, ref({ key: 'theme' }, { type: 'variable' }));
 
-      expect(String(result)).toBeString(`
+      expect(result.render(context)).toBeString(`
+        $color: blue;
         color: blue;
       `);
     });
