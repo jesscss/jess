@@ -119,11 +119,7 @@ function getControlDeclarationAssignType(node: Node, context: Context): Assignme
 
 function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
   node.adopt(value, context);
-  if (context.session && !context.session.resetEvalState) {
-    setField(node, 'value', value, context);
-    return;
-  }
-  node.setData('value', value);
+  setField(node, 'value', value, context);
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
