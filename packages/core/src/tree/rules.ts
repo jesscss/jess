@@ -8,7 +8,7 @@ import {
   F_VISIBLE
 } from './node.js';
 import { Context } from '../context.js';
-import type { EvalPosition } from '../eval-session.js';
+import type { EvalState } from '../eval-state.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type Ruleset } from './ruleset.js';
@@ -182,7 +182,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     },
     context?: Context
   ): void {
-    if (context?.session && this === this.sourceNode) {
+    if (context && this === this.sourceNode) {
       setField(this, 'options', options, context);
       return;
     }
@@ -221,7 +221,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.value,
         options ? { ...options } : undefined,
         location,
-        ctx?.instanceRoot ? ctx : this.treeContext
+        this.treeContext
       ) as this;
 
     if (deep && options) {
@@ -232,7 +232,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       newRules.inherit(this);
     }
 
-    if (ctx?.session?.resetEvalState) {
+    if (ctx) {
       const parent = getParent(this, ctx);
       if (parent) {
         setParent(newRules, parent, ctx);
@@ -493,7 +493,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     wrapper._setValueArray([...this.value]);
     wrapper.inherit(this);
     // Set session parent for each child to the wrapper
-    if (ctx?.session || ctx?.instanceRoot) {
+    if (ctx) {
       for (const child of wrapper.value) {
         if (child instanceof Node) {
           wrapper.adopt(child, ctx);
@@ -552,17 +552,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _setChildren(value: readonly Node[], context?: Context, markDirty: boolean = true): void {
-    const ir = context?.instanceRoot;
-    if (ir) {
-      ir.setChildren(this, [...value]);
-      for (const child of value) {
-        if (child instanceof Node) {
-          ir.getRuntime(child).parent = this;
-        }
-      }
-      return;
-    }
-    if (context?.session && !context.session.resetEvalState) {
+    if (context) {
       setChildren(this, value, context, { markDirty });
       return;
     }
@@ -570,16 +560,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _setChildAt(index: number, node: Node, context?: Context, markDirty: boolean = true): void {
-    const ir = context?.instanceRoot;
-    if (ir) {
-      const currentChildren = ir.getChildren(this) ?? this.value;
-      const nextChildren = [...currentChildren];
-      nextChildren[index] = node;
-      ir.setChildren(this, nextChildren);
-      ir.getRuntime(node).parent = this;
-      return;
-    }
-    if (context?.session && !context.session.resetEvalState) {
+    if (context) {
       setChildAt(this, index, node, context, { markDirty });
       return;
     }
@@ -718,24 +699,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Push carried per-call position into context so child nodes
     // resolve patched fields during serialization.
     const ctx = options.context;
-    const carried = this._evalPosition;
-    let prevPos: EvalPosition | undefined;
+    const carried = this._evalPosition as EvalState | undefined;
     if (ctx && carried) {
-      prevPos = ctx.hasPosition ? ctx.position : undefined;
-      ctx.position = carried;
+      ctx.evalStateStack.push(carried);
     }
     this._emitRulesBody(options);
     if (ctx && carried) {
-      ctx.position = prevPos;
+      ctx.evalStateStack.pop();
     }
     return w.getSince(mark);
   }
 
   /** All rules, with nested rules flattened */
-  flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, EvalPosition>) {
+  flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, EvalState>) {
     const finalRules: Node[] = [];
-    const iterateRules = (rules: Rules, activePosition?: EvalPosition) => {
-      const carried = rules._evalPosition ?? activePosition;
+    const iterateRules = (rules: Rules, activePosition?: EvalState) => {
+      const carried = (rules._evalPosition as EvalState | undefined) ?? activePosition;
       for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Rules)) {
           // Preserve reference-mode Rules as containers so the serializer
@@ -921,8 +900,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args.length > 0 && args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const nodes = (hasCtx ? args.slice(1) : args) as Node[];
-    // IR or non-reset session: route through _getChildren/_setChildren overlay
-    if (ctx?.instanceRoot || (ctx?.session && !ctx.session.resetEvalState)) {
+    // Route through _getChildren/_setChildren overlay when context is active
+    if (ctx) {
       const nextValue = [...this._getChildren(ctx)];
       for (const node of nodes) {
         this.adopt(node, ctx);
@@ -948,8 +927,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const [start, deleteCount, ...items] = (hasCtx ? args.slice(1) : args) as [number, number, ...Node[]];
-    // IR or non-reset session: route through overlay
-    if (ctx?.instanceRoot || (ctx?.session && !ctx.session.resetEvalState)) {
+    // Route through overlay when context is active
+    if (ctx) {
       const nextValue = [...this._getChildren(ctx)];
       const removed = nextValue.splice(start, deleteCount, ...items);
       for (const item of items) {
@@ -985,8 +964,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const hasCtx = args.length > 0 && args[0] instanceof Context;
     const ctx = hasCtx ? args[0] as Context : undefined;
     const items = (hasCtx ? args.slice(1) : args) as Node[];
-    // IR or non-reset session: route through overlay
-    if (ctx?.instanceRoot || (ctx?.session && !ctx.session.resetEvalState)) {
+    // Route through overlay when context is active
+    if (ctx) {
       for (const item of items) {
         if (item instanceof Node) {
           this.adopt(item, ctx);
@@ -1638,11 +1617,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             // Apply the result
             if (result !== rule) {
               // Store in eval position: patch the parent's value array.
-              if (context.position) {
-                const children = context.position.getField(rules, 'value') as Node[] | undefined
+              {
+                const children = (context.activeState.peek(rules)?._fields?.get('value') as Node[] | undefined)
                   ?? [...rules.value];
                 children[idx] = result;
-                context.position.setField(rules, 'value', children);
+                context.activeState.get(rules).fields.set('value', children);
               }
               rules._setChildAt(idx, result, context, false);
               queue[q] = [idx, result];

@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
+import { getField, setField, setParent } from './util/field-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -102,7 +102,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     };
 
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
-    if (!deep && ctx?.session) {
+    if (!deep && ctx) {
       priorChildParents = [];
       if (cloneData.name instanceof Node) {
         priorChildParents.push([cloneData.name, cloneData.name.parent]);
@@ -127,9 +127,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     );
 
     if (priorChildParents) {
-      const session = ctx!.session!;
       for (const [child, priorParent] of priorChildParents) {
-        session.getRuntime(child).parent = newNode;
+        setParent(child, newNode, ctx!);
         (child as unknown as { parent?: Node }).parent = priorParent;
       }
     }
@@ -256,7 +255,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
     const name = node._getName(context);
     let rules = node._getRulesContainer(context);
-    if (context.session) {
+    {
       const isolatedRules = rules.cloneDetachedUnlockWrapper(context);
       isolatedRules.options = {
         ...isolatedRules.options,

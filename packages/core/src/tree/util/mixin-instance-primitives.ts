@@ -1,6 +1,9 @@
 import { Context } from '../../context.js';
-import { EvalSession, EvalPosition, type SessionInstanceRoot } from '../../eval-session.js';
+import { EvalState } from '../../eval-state.js';
 import { Node } from '../node-base.js';
+
+/** @deprecated — dead concept. Kept as type alias for migration. */
+type SessionInstanceRoot = unknown;
 import { Bool } from '../bool.js';
 import type { Condition } from '../condition.js';
 import { Nil } from '../nil.js';
@@ -97,21 +100,11 @@ export function getRootSourceRules(rules: Rules): Rules {
  * per-call instance root when a session is active.
  */
 export function createMixinCandidateInstanceRoot(
-  candidate: MixinEntry,
-  context: Context
+  _candidate: MixinEntry,
+  _context: Context
 ): SessionInstanceRoot | undefined {
-  if (!context.session) {
-    return undefined;
-  }
-  const candidateRules: Rules | undefined = isNode(candidate, N.Ruleset)
-    ? candidate.rules
-    : isNode(candidate, N.Mixin)
-      ? candidate.rules
-      : undefined;
-  if (!candidateRules) {
-    return undefined;
-  }
-  return context.session.createInstanceRoot(getRootSourceRules(candidateRules));
+  // Instance roots are a dead concept. Always return undefined.
+  return undefined;
 }
 
 /**
@@ -460,9 +453,8 @@ export async function evaluateMixinGuardCandidate(
   const evaluateWithDefault = async (
     isDefaultValue: boolean
   ): Promise<{ passes: boolean; outerRules: Rules | undefined }> => {
-    const prevSession = context.session;
     const prevIsDefault = context.isDefault;
-    context.session = new EvalSession({ resetEvalState: true });
+    context.evalStateStack.push(new EvalState());
     try {
       const nextScope = seedMixinGuardScope(
         outerRules,
@@ -483,7 +475,7 @@ export async function evaluateMixinGuardCandidate(
       };
     } finally {
       context.isDefault = prevIsDefault;
-      context.session = prevSession;
+      context.evalStateStack.pop();
     }
   };
 
@@ -535,10 +527,11 @@ export function finalizeMixinInvocationOutput(
     // The per-call position has patches keyed by the original `rules` node
     // (e.g. the 'value' array). Copy those patches to the wrapper so
     // getField(wrapper, ...) finds them.
-    if (context.hasPosition) {
-      const pos = context.position;
-      if (pos.hasField(rules, 'value')) {
-        pos.setField(wrapper, 'value', pos.getField(rules, 'value'));
+    {
+      const rulesState = context.activeState.peek(rules);
+      const patchedValue = rulesState?._fields?.get('value');
+      if (patchedValue !== undefined) {
+        context.activeState.get(wrapper).fields.set('value', patchedValue);
       }
     }
     return wrapper;
@@ -710,12 +703,8 @@ export function assembleMixinInvocationOutput(
     const rule = outputRules[i]!;
     rule.frozen = true;
     rule.index = i;
-    if (context.session) {
-      setParent(rule, output, context);
-      output.push(context, rule);
-    } else {
-      output.push(rule);
-    }
+    setParent(rule, output, context);
+    output.push(context, rule);
   }
 
   return output;
@@ -986,13 +975,12 @@ export async function evaluateMixinArgs(
  * Evaluate a pattern-match operand in a fresh session scope.
  */
 async function preparePatternOperand(node: Node, context: Context): Promise<Node> {
-  const prevSession = context.session;
-  if (!prevSession || prevSession.resetEvalState) {
-    context.session = new EvalSession();
+  context.evalStateStack.push(new EvalState());
+  try {
+    return await node.eval(context);
+  } finally {
+    context.evalStateStack.pop();
   }
-  const result = await node.eval(context);
-  context.session = prevSession;
-  return result;
 }
 
 /**
@@ -1162,9 +1150,7 @@ export async function matchMixinCandidates(
       }
       if (match) {
         const originalMixin = mixin;
-        mixin = context.session
-          ? mixin.clone(false, undefined, context)
-          : mixin.copy();
+        mixin = mixin.clone(false, undefined, context);
         getCandidateParent(originalMixin, context).adopt(mixin);
         (mixin as any).setData('params', params);
         mixinCandidates.push(mixin);
@@ -1319,15 +1305,25 @@ export async function evaluateCandidateOutput(
     return;
   }
 
-  const prevPosition = context.position;
+  // Push a per-call EvalState so this mixin body evaluates in its own overlay.
+  const callState = new EvalState();
+  context.evalStateStack.push(callState);
   try {
     let newRules: Rules;
-    context.position = new EvalPosition(rules);
-    // The outerRules (param scope) parent was set in the previous position.
-    // Copy it into the per-call position so lookups during body eval can
+    // The outerRules (param scope) parent was set in the previous state.
+    // Copy it into the per-call state so lookups during body eval can
     // walk through the param scope to the caller's scope chain.
-    if (outerRules && prevPosition.hasField(outerRules, 'parent')) {
-      setParent(outerRules, prevPosition.getField(outerRules, 'parent') as Node, context);
+    if (outerRules) {
+      // Check the parent in the state stack below us (the caller's state)
+      const prevStack = context.evalStateStack;
+      const callerStateIdx = prevStack.length - 2;
+      if (callerStateIdx >= 0) {
+        const callerState = prevStack[callerStateIdx]!;
+        const outerParent = callerState.peek(outerRules)?._fields?.get('parent');
+        if (outerParent !== undefined) {
+          setParent(outerRules, outerParent as Node, context);
+        }
+      }
     }
     if (!outerRules) {
       setParent(rules, getParentFn(candidate), context);
@@ -1338,10 +1334,8 @@ export async function evaluateCandidateOutput(
     }
     newRules = finalizeMixinInvocationOutput(newRules, context);
     newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
-    // Save the per-call position on the output so downstream reads
-    // resolve through this call's patches, not the canonical state.
-    const callPosition = context.position;
-    context.position = prevPosition;
+    // Pop the per-call state before we write to the caller's state.
+    context.evalStateStack.pop();
     setSourceParent(newRules, sourceParent, context);
     setParent(newRules, getParentFn(candidate), context);
     newRules.index = candidate.index;
@@ -1353,13 +1347,14 @@ export async function evaluateCandidateOutput(
     if (instanceRoot) {
       newRules._instanceRoot = instanceRoot;
     }
-    // Carry the per-call position on the output node.
-    if (callPosition) {
-      newRules._evalPosition = callPosition;
+    // Carry the per-call state on the output node so downstream reads
+    // resolve through this call's patches, not the canonical state.
+    if (callState.size > 0) {
+      newRules._evalPosition = callState;
     }
     outputRules.push(newRules);
   } catch (error) {
-    context.position = prevPosition;
+    context.evalStateStack.pop();
     if (error instanceof ReferenceError && error.message?.includes('Recursive mixin call')) {
       return;
     }
@@ -1414,10 +1409,7 @@ export async function dispatchMixinEvalCandidates(
   } = dispatch;
   const pendingDefaultCandidates: PendingMixinDefaultCandidate<any>[] = [];
 
-  const prevMixinSession = context.session;
-  if (!prevMixinSession) {
-    context.session = new EvalSession({ resetEvalState: true });
-  }
+  context.evalStateStack.push(new EvalState());
 
   for (const candidate of evalCandidates) {
     const candidateInstanceRoot = createMixinCandidateInstanceRoot(
@@ -1463,9 +1455,7 @@ export async function dispatchMixinEvalCandidates(
     }
 
     let rules = candidate.rules;
-    let params = context.session
-      ? getField<List<Node> | undefined>(candidate as Node, 'params', context)
-      : candidate.params;
+    let params = getField<List<Node> | undefined>(candidate as Node, 'params', context);
     const prepared = prepareMixinCandidateInvocation(
       rules,
       params,
@@ -1510,7 +1500,7 @@ export async function dispatchMixinEvalCandidates(
     )
   );
 
-  context.session = prevMixinSession;
+  context.evalStateStack.pop();
 
   const output = assembleMixinInvocationOutput(
     outputRules,

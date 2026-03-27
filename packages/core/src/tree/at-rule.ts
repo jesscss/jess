@@ -134,7 +134,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean; context?: Context }) {
-    const hoistToRoot = opts.context?.hasPosition
+    const hoistToRoot = opts.context
       ? getField<boolean | undefined>(this, 'hoistToRoot', opts.context) ?? this.hoistToRoot
       : this.hoistToRoot;
     return hoistToRoot ?? opts.collapseNesting ?? false;
@@ -370,9 +370,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
 
     // Store frames snapshot for hoisting serialization
-    const nodeHoistToRoot = context.hasPosition
-      ? getField<boolean | undefined>(node, 'hoistToRoot', context) ?? node.hoistToRoot
-      : node.hoistToRoot;
+    const nodeHoistToRoot = getField<boolean | undefined>(node, 'hoistToRoot', context) ?? node.hoistToRoot;
     if (context.opts.collapseNesting || nodeHoistToRoot) {
       setField(node, 'frames', [...context.frames], context);
     }

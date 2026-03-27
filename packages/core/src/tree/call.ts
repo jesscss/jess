@@ -11,7 +11,7 @@ import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { getField, getParent, mergeDependencies, setField, setDependency } from './util/field-helpers.js';
+import { getField, getParent, mergeDependencies, setField, setDependency, setParent } from './util/field-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -96,7 +96,7 @@ export class Call extends Node<CallValue, CallOptions> {
     };
 
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
-    if (!deep && ctx?.session) {
+    if (!deep && ctx) {
       priorChildParents = [];
       if (cloneData.name instanceof Node) {
         priorChildParents.push([cloneData.name, cloneData.name.parent]);
@@ -117,10 +117,9 @@ export class Call extends Node<CallValue, CallOptions> {
       this.treeContext
     );
 
-    if (priorChildParents) {
-      const session = ctx!.session!;
+    if (priorChildParents && ctx) {
       for (const [child, priorParent] of priorChildParents) {
-        session.getRuntime(child).parent = newNode;
+        setParent(child, newNode, ctx);
         (child as unknown as { parent?: Node }).parent = priorParent;
       }
     }
@@ -318,13 +317,14 @@ export class Call extends Node<CallValue, CallOptions> {
      * Position isolates; downstream reads resolve through session helpers. */
     const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
       const clone = node.clone(false, undefined, context) as T;
-      if (context.session.hasRuntime(node)) {
-        const runtime = context.session.getRuntime(node);
-        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
-          clone.sourceNode = runtime.sourceNode;
+      const nodeState = context.activeState.peek(node);
+      if (nodeState?._fields) {
+        const sn = nodeState._fields.get('sourceNode');
+        if (sn) {
+          clone.sourceNode = sn as Node;
         }
-        if (Object.prototype.hasOwnProperty.call(runtime, 'sourceParent')) {
-          clone.sourceParent = runtime.sourceParent;
+        if (nodeState._fields.has('sourceParent')) {
+          clone.sourceParent = nodeState._fields.get('sourceParent') as Node | undefined;
         }
       }
       return clone;
@@ -332,7 +332,7 @@ export class Call extends Node<CallValue, CallOptions> {
     /** @removal-target — node-copy-reduction: remove entirely.
      * No internal materialization; position patches provide isolation. */
     const materializeDownstreamResult = <T extends Node>(node: T): T => {
-      if (context.session && node === node.sourceNode) {
+      if (node === node.sourceNode) {
         const childKeys = (node.constructor as typeof Node).childKeys;
         if (childKeys === null) {
           return cloneLeafDownstreamResult(node);
@@ -345,7 +345,7 @@ export class Call extends Node<CallValue, CallOptions> {
      * Output shaping (pre/post/sourceParent/makeImportant) should go through
      * position.setField on the result node. No materialization boundary. */
     const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
-      if (context.session && node === node.sourceNode && isNode(node, N.Rules)) {
+      if (node === node.sourceNode && isNode(node, N.Rules)) {
         return node.cloneDetachedMaterializedWrapper(context) as T;
       }
       return materializeDownstreamResult(node);
@@ -513,9 +513,7 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         /** @removal-target — node-copy-reduction: clone for silentFail fallback.
          * Options/name/args changes should go through position patches. */
-        let newCall = (context.session
-          ? this.clone(false, undefined, context)
-          : this.clone()).inherit(this);
+        let newCall = this.clone(false, undefined, context).inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
         setField(newCall, 'name', isNode(name, N.Reference) && name.options.fallbackValue === true
@@ -543,12 +541,10 @@ export class Call extends Node<CallValue, CallOptions> {
       context.callStack.pop();
       /** @removal-target — node-copy-reduction: clone for non-mixin call eval.
        * All field mutations (name, args, options) should go through position. */
-      const needsMaterializedClone = Boolean(context.session && callOptions.silentFail);
+      const needsMaterializedClone = Boolean(callOptions.silentFail);
       const node = needsMaterializedClone
         ? this.clone(false, undefined, context)
-        : context.session
-          ? this.maybeClone(context)
-          : this.clone();
+        : this.maybeClone(context);
       node.options.silentFail = false;
       if (
         n === 'calc' && evaluatedArgs

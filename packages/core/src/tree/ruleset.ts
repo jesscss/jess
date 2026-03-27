@@ -30,7 +30,7 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
-import { getField, getParent, setField } from './util/field-helpers.js';
+import { getField, getParent, setField, setParent } from './util/field-helpers.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -197,7 +197,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       ...this._getRulesetOptions(context),
       ownSelector: selector
     };
-    if (context.session && this === this.sourceNode) {
+    if (this === this.sourceNode) {
       setField(this, 'options', nextOptions, context);
     } else {
       this.options = nextOptions;
@@ -224,10 +224,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!(selector instanceof Node)) {
       return undefined;
     }
-    if (context?.session && context.session.hasRuntime(selector)) {
-      const runtime = context.session.getRuntime(selector);
-      if (Object.prototype.hasOwnProperty.call(runtime, 'sourceNode') && runtime.sourceNode) {
-        return runtime.sourceNode;
+    if (context) {
+      const sn = context.activeState.peek(selector)?._fields?.get('sourceNode');
+      if (sn) {
+        return sn as Node;
       }
     }
     return selector.sourceNode;
@@ -237,7 +237,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const rules = context
       ? getField<Rules>(this, 'rules', context)
       : this.rules;
-    if (context?.session && getParent(rules, context) !== this) {
+    if (context && getParent(rules, context) !== this) {
       this.adopt(rules, context);
     }
     return rules;
@@ -290,7 +290,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector instanceof Node) {
       this.adopt(selector, context);
     }
-    if (context.session && this === this.sourceNode) {
+    if (this === this.sourceNode) {
       setField(this, '_extendedSelector', selector, context);
     } else {
       this._extendedSelector = selector;
@@ -803,11 +803,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         {
           const selectorSourceNode = node === this ? selector.clone(true) : selector;
           if (selector instanceof Node) {
-            if (context.session) {
-              context.session.getRuntime(selector).sourceNode = selectorSourceNode;
-            } else {
-              selector.sourceNode = selectorSourceNode;
-            }
+            context.activeState.get(selector).fields.set('sourceNode', selectorSourceNode);
           }
         }
       }
@@ -909,7 +905,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const cloned = super.clone(deep, cloneFn, ctx) as this;
-    if (!deep && ctx?.session) {
+    if (!deep && ctx) {
       const selector = cloned._getSelector(ctx);
       if (selector instanceof Node) {
         cloned.setData(
@@ -918,7 +914,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         );
       }
     }
-    if (!deep && ctx?.session && this !== this.sourceNode) {
+    if (!deep && ctx && this !== this.sourceNode) {
       const rules = cloned._getRulesContainer(ctx);
       cloned.setData('rules', rules.cloneLookupSafeShallowWrapper(ctx));
     }
@@ -1021,11 +1017,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           {
             const selectorForSourceNode = this._getSelector(context);
             if (selectorForSourceNode instanceof Node && preservedSourceNode) {
-              if (context.session) {
-                context.session.getRuntime(selectorForSourceNode).sourceNode = preservedSourceNode;
-              } else {
-                selectorForSourceNode.sourceNode = preservedSourceNode;
-              }
+              context.activeState.get(selectorForSourceNode).fields.set('sourceNode', preservedSourceNode);
             }
           }
         }

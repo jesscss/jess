@@ -11,7 +11,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
-import { getField } from './util/field-helpers.js';
+import { getField, setParent } from './util/field-helpers.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -64,7 +64,7 @@ export class Extend extends Node<ExtendValue> {
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const options = (this as any)._meta?.options;
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
-    if (!deep && ctx?.session) {
+    if (!deep && ctx) {
       priorChildParents = [];
       if (selector instanceof Node) {
         priorChildParents.push([selector, selector.parent]);
@@ -84,10 +84,9 @@ export class Extend extends Node<ExtendValue> {
       this.location,
       this.treeContext
     );
-    if (priorChildParents) {
-      const session = ctx.session;
+    if (priorChildParents && ctx) {
       for (const [child, priorParent] of priorChildParents) {
-        session.getRuntime(child).parent = newNode;
+        setParent(child, newNode, ctx);
         (child as unknown as { parent?: Node }).parent = priorParent;
       }
     }

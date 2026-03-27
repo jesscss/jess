@@ -5,11 +5,11 @@ import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { EvalSession } from '../eval-session.js';
+import { EvalState } from '../eval-state.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { getField, getParent } from './util/field-helpers.js';
+import { getField, getParent, markChangedVar } from './util/field-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
@@ -491,8 +491,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           );
         }
 
-        // Declare here so the finally block can restore it regardless of which branch ran.
-        let prevSession: typeof context.session;
+        // Track whether we pushed an isolated EvalState so the finally block can pop it.
+        let pushedIsolatedState = false;
         if (withValues) {
           // Once configured, cannot be configured again (handled above for compose+cache).
           if (withValues.type === 'set' && evaldRules) {
@@ -552,17 +552,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
           }
 
-          // Capture the outer session BEFORE creating a new one, so it can be
-          // restored in the finally block even if there was a pre-existing session.
-          prevSession = context.session;
-          // Create a session NOW — before finalRules construction — so that the
-          // adopt() calls inside Rules.push() route parent writes into the session
-          // overlay instead of permanently mutating canonical library nodes.
-          context.createSession();
+          // Push an isolated EvalState so that adopt() calls inside Rules.push()
+          // route parent writes into the overlay instead of permanently mutating
+          // canonical library nodes.
+          context.evalStateStack.push(new EvalState());
+          pushedIsolatedState = true;
           for (const index of replacementAt.keys()) {
             const candidate = rules.value[index];
             if (isNode(candidate, N.VarDeclaration)) {
-              context.session?.markChangedVar(candidate as VarDeclaration);
+              markChangedVar(context, candidate as VarDeclaration);
             }
           }
 
@@ -608,8 +606,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {
           if (!withValues) {
-            prevSession = context.session;
-            context.session = new EvalSession({ resetEvalState: true });
+            context.evalStateStack.push(new EvalState());
+            pushedIsolatedState = true;
           }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
@@ -654,7 +652,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            context.session = prevSession;
+            if (pushedIsolatedState) {
+              context.evalStateStack.pop();
+              pushedIsolatedState = false;
+            }
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
@@ -677,12 +678,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
         } else {
         // Shallow-clone the cached rules BEFORE evaluation so registries are populated
-        // on the clone, not on the cached evaldRules. Session ensures canonical children's
-        // parent pointers are protected; preEval creates fresh clones via maybeClone.
-          const prevReEvalSession = context.session;
-          if (!prevReEvalSession) {
-            context.session = new EvalSession({ resetEvalState: true });
-          }
+        // on the clone, not on the cached evaldRules. EvalState isolation ensures canonical
+        // children's parent pointers are protected; preEval creates fresh clones via maybeClone.
+          context.evalStateStack.push(new EvalState());
           rules = rules.cloneLookupSafeShallowWrapper(context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
@@ -693,7 +691,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            context.session = prevReEvalSession;
+            context.evalStateStack.pop();
             if (shouldIsolateSelectorFrames) {
               context.rulesetFrames = prevRulesetFrames!;
               context.frames = prevFrames!;

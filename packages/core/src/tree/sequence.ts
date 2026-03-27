@@ -58,7 +58,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       this.treeContext
     );
     newNode.value = clonedValue;
-    if (ctx?.session) {
+    if (ctx) {
       for (const child of clonedValue) {
         setParent(child, newNode, ctx);
       }
@@ -93,18 +93,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // `value` to different lengths at the same time.
 
   protected _setValue(value: Node[], context: Context): void {
-    if (context.session) {
-      for (const child of value) {
-        setParent(child, this, context);
-      }
-      if (this === this.sourceNode) {
-        setField(this, 'value', value, context);
-        return;
-      }
-    } else {
-      for (const child of value) {
-        this.adopt(child);
-      }
+    for (const child of value) {
+      setParent(child, this, context);
+    }
+    if (this === this.sourceNode) {
+      setField(this, 'value', value, context);
+      return;
     }
     this.value = value;
   }

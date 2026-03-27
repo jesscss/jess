@@ -669,7 +669,7 @@ function getRulesetHoistToRoot(ruleset: Ruleset, context?: Context): boolean | u
 }
 
 function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, context?: Context): void {
-  if (context?.session) {
+  if (context) {
     setField(ruleset, 'hoistToRoot', value, context);
     return;
   }

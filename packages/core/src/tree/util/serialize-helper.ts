@@ -8,7 +8,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
 import { getField } from './field-helpers.js';
-import type { EvalPosition } from '../../eval-session.js';
+import type { EvalState } from '../../eval-state.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -96,7 +96,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     return w.getSince(mark);
   }
 
-  const positionMap = new WeakMap<Node, EvalPosition>();
+  const positionMap = new WeakMap<Node, EvalState>();
   const rulesToRender = rules.flatRules(true, options.context, positionMap);
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
@@ -135,17 +135,15 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // Push per-node position so patched fields are visible during dedup
     const dedupPos = positionMap.get(node);
     const dedupCtx = options.context;
-    let dedupPrevPos: EvalPosition | undefined;
     if (dedupCtx && dedupPos) {
-      dedupPrevPos = dedupCtx.position;
-      dedupCtx.position = dedupPos;
+      dedupCtx.evalStateStack.push(dedupPos);
     }
     const declWriter = new OutputWriter();
     const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
     if (dedupCtx && dedupPos) {
-      dedupCtx.position = dedupPrevPos;
+      dedupCtx.evalStateStack.pop();
     }
     const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
     const declProp = (node as Declaration).getPropertyName(options.context);
@@ -190,21 +188,19 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // Push per-node position from the position map so patched fields resolve
     const nodePosition = positionMap.get(n);
     const ctx = options.context;
-    let prevPos: EvalPosition | undefined;
     if (ctx && nodePosition) {
-      prevPos = ctx.position;
-      ctx.position = nodePosition;
+      ctx.evalStateStack.push(nodePosition);
     }
 
     if (!n.visible && !n.fullRender) {
       if (ctx && nodePosition) {
-        ctx.position = prevPos;
+        ctx.evalStateStack.pop();
       }
       continue;
     }
     if (inReferenceMode && !renderEnabled && !isContainer) {
       if (ctx && nodePosition) {
-        ctx.position = prevPos;
+        ctx.evalStateStack.pop();
       }
       continue;
     }
@@ -397,7 +393,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     // Restore position after this node's serialization
     if (ctx && nodePosition) {
-      ctx.position = prevPos;
+      ctx.evalStateStack.pop();
     }
   }
   inFrames.pop();

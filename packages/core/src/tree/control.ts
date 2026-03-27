@@ -13,7 +13,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
-import { EvalSession } from '../eval-session.js';
+import { EvalState } from '../eval-state.js';
 import { getChildren, getField, setField, setParent } from './util/field-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
@@ -85,16 +85,17 @@ function getControlField<T>(node: Node, key: string, context: Context | undefine
   if (!context) {
     return fallback;
   }
-  const session = context.session;
-  if (!session) {
-    return getField<T>(node, key, context);
-  }
-  if (session.hasField(node, key)) {
-    return session.getField(node, key) as T;
+  const state = context.activeState;
+  const nodeState = state.peek(node);
+  if (nodeState?._fields?.has(key)) {
+    return nodeState._fields.get(key) as T;
   }
   const sourceNode = node.sourceNode;
-  if (sourceNode !== node && session.hasField(sourceNode, key)) {
-    return session.getField(sourceNode, key) as T;
+  if (sourceNode !== node) {
+    const srcState = state.peek(sourceNode);
+    if (srcState?._fields?.has(key)) {
+      return srcState._fields.get(key) as T;
+    }
   }
   return getField<T>(node, key, context);
 }
@@ -343,10 +344,8 @@ export class For extends Node<ForValue> {
     const run = async (): Promise<Node> => {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
-      const prevSession = context.session;
-      if (!prevSession) {
-        context.session = new EvalSession({ resetEvalState: true });
-      }
+      const isolatedState = new EvalState();
+      context.evalStateStack.push(isolatedState);
       try {
         const evaluatedIterable = await iterable.eval(context);
         for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
@@ -486,7 +485,7 @@ export class For extends Node<ForValue> {
           }
         }
       } finally {
-        context.session = prevSession;
+        context.evalStateStack.pop();
       }
       return new Rules(accumulatedNodes);
     };

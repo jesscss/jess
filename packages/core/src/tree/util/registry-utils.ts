@@ -11,13 +11,25 @@ import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import type { Context } from '../../context.js';
-import type { SessionRegistryDelta } from '../../eval-session.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { getChildren, getDependency, getParent, isPreEvaluated } from './field-helpers.js';
+import { getChildren, getDependency, getParent, isPreEvaluated, hasChangedVars, getChangedVars } from './field-helpers.js';
 
 const { isArray } = Array;
+
+/**
+ * Per-Rules registry overlay stored in the EvalState's fields map.
+ * Replaces the old SessionRegistryDelta from EvalSession.
+ */
+export interface SessionRegistryDelta {
+  rulesetIndex?: Map<string, Set<Ruleset>>;
+  mixinIndex?: Map<string, Array<{
+    value: Mixin | Ruleset;
+    match: string[];
+  }>>;
+  declarationIndex?: Map<string, Set<Declaration>>;
+}
 
 type SelectorKeySet = Set<string> | BitSet<string>;
 type SelectorKeySource = SelectorKeySet | string[];
@@ -132,7 +144,10 @@ function getSessionRegistryDelta(
   rules: Rules,
   context?: Context
 ): SessionRegistryDelta | undefined {
-  return context?.session?.getRegistryDelta(rules);
+  if (!context) {
+    return undefined;
+  }
+  return context.activeState.peek(rules)?._fields?.get('_registryDelta') as SessionRegistryDelta | undefined;
 }
 
 function ensureSessionRegistryIndex<K extends RegistryIndexKey>(
@@ -141,11 +156,15 @@ function ensureSessionRegistryIndex<K extends RegistryIndexKey>(
   context: Context | undefined,
   create: () => NonNullable<SessionRegistryDelta[K]>
 ): NonNullable<SessionRegistryDelta[K]> | undefined {
-  const session = context?.session;
-  if (!session) {
+  if (!context) {
     return undefined;
   }
-  const delta = session.ensureRegistryDelta(rules);
+  const state = context.activeState.get(rules);
+  let delta = state._fields?.get('_registryDelta') as SessionRegistryDelta | undefined;
+  if (!delta) {
+    delta = {};
+    state.fields.set('_registryDelta', delta);
+  }
   return (delta[key] ??= create()) as NonNullable<SessionRegistryDelta[K]>;
 }
 
@@ -164,12 +183,7 @@ export function isRegistryIndexing(rules: Rules | readonly Node[]): boolean {
 }
 
 export function syncRegistryCache(rules: Rules, context?: Context): void {
-  // When an instance root has a children overlay for this Rules,
-  // use the IR children for registry sync instead of canonical .value.
-  // This ensures lookups during IR-backed eval see the correct children.
-  const ir = context?.instanceRoot;
-  const irChildren = ir?.getChildren(rules);
-  const value = irChildren ?? rules.value;
+  const value = rules.value;
   if (getSessionRegistryDelta(rules, context)) {
     return;
   }
@@ -219,7 +233,7 @@ export function registerSessionNode(
   node: Node,
   context?: Context
 ): boolean {
-  if (!context?.session) {
+  if (!context) {
     return false;
   }
 
@@ -1544,8 +1558,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
       local = false,
       start
     } = options ?? {};
-    const changedVars = this.context?.session?.hasChangedVars()
-      ? this.context.session.getChangedVars()
+    const changedVars = this.context && hasChangedVars(this.context)
+      ? getChangedVars(this.context)
       : undefined;
     const dependsOnChangedVar = (declaration: Declaration): boolean => {
       if (!changedVars || changedVars.size === 0) {

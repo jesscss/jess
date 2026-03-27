@@ -358,3 +358,38 @@ export function isTopLevelVarDeclaration(
   const parent = getParent(node, ctx);
   return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
 }
+
+// -- Changed variable tracking --
+// Stored per-EvalState using a module-level WeakMap, so each push of an
+// isolated state starts with an empty changed-vars set.
+
+import type { EvalState } from '../../eval-state.js';
+
+const changedVarsMap = new WeakMap<EvalState, Set<Node>>();
+
+/**
+ * Mark a VarDeclaration as changed in the current eval state.
+ */
+export function markChangedVar(ctx: Context, node: Node): void {
+  const state = ctx.activeState;
+  let set = changedVarsMap.get(state);
+  if (!set) {
+    set = new Set();
+    changedVarsMap.set(state, set);
+  }
+  set.add(node);
+}
+
+/**
+ * Check whether any vars have been marked as changed.
+ */
+export function hasChangedVars(ctx: Context): boolean {
+  return (changedVarsMap.get(ctx.activeState)?.size ?? 0) > 0;
+}
+
+/**
+ * Get the set of changed vars for the current eval state.
+ */
+export function getChangedVars(ctx: Context): Set<Node> | undefined {
+  return changedVarsMap.get(ctx.activeState);
+}
