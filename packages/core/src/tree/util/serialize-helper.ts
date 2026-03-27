@@ -132,10 +132,21 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
       continue;
     }
+    // Push per-node position so patched fields are visible during dedup
+    const dedupPos = positionMap.get(node);
+    const dedupCtx = options.context;
+    let dedupPrevPos: EvalPosition | undefined;
+    if (dedupCtx && dedupPos) {
+      dedupPrevPos = dedupCtx.position;
+      dedupCtx.position = dedupPos;
+    }
     const declWriter = new OutputWriter();
     const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
+    if (dedupCtx && dedupPos) {
+      dedupCtx.position = dedupPrevPos;
+    }
     const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
     const declProp = (node as Declaration).getPropertyName(options.context);
     let seenValues = seenDeclarationsByProp.get(declProp);
