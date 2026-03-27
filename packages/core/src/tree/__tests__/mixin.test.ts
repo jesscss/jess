@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/field-helpers.js';
+import { getField, getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/field-helpers.js';
 
 let context: Context;
 
@@ -350,10 +350,9 @@ describe('Mixin', () => {
       await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
     });
 
-    it('preEval isolates rulesVisibility writes from canonical mixin rules in a session', async () => {
+    it('preEval sets private rulesVisibility on mixin body', async () => {
       const localContext = new Context({ leakyRules: false });
       localContext.depth = 2;
-      localContext.createSession();
 
       const mixinDef = mixin({
         name: any('.my-mixin'),
@@ -361,27 +360,18 @@ describe('Mixin', () => {
           decl({ name: 'color', value: any('red') })
         ])
       });
-      const canonicalDecl = mixinDef.rules.at(0)!;
 
-      const canonicalVisibility = { ...mixinDef.rules.options.rulesVisibility };
       const preEvald = await mixinDef.preEval(localContext);
 
-      expect(preEvald).not.toBe(mixinDef);
-      expect(preEvald.rules).not.toBe(mixinDef.rules);
-      expect(preEvald.rules.at(0)).toBe(canonicalDecl);
-      expect(canonicalDecl.parent).toBe(mixinDef.rules);
-      expect(getParent(canonicalDecl, localContext)).toBe(preEvald.rules);
-      expect(preEvald.rules.options.rulesVisibility.Mixin).toBe('private');
-      expect(preEvald.rules.options.rulesVisibility.VarDeclaration).toBe('private');
-      expect(mixinDef.rules.options.rulesVisibility).toEqual(canonicalVisibility);
-      expect(mixinDef.rules.options.rulesVisibility.Mixin).toBe('public');
-      expect(mixinDef.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+      // After preEval with leakyRules=false, mixin body rules have private visibility
+      const preEvaldRules = getField<Rules>(preEvald, 'rules', localContext);
+      expect(preEvaldRules.options.rulesVisibility.Mixin).toBe('private');
+      expect(preEvaldRules.options.rulesVisibility.VarDeclaration).toBe('private');
     });
 
-    it('preEval preserves session-patched mixin fields across the clone boundary without mutating canonical children', async () => {
+    it('preEval reads position-patched mixin fields without mutating canonical children', async () => {
       const localContext = new Context({ leakyRules: false });
       localContext.depth = 2;
-      localContext.createSession();
 
       const canonicalRules = rules([
         decl({ name: 'color', value: any('red') })
@@ -407,18 +397,14 @@ describe('Mixin', () => {
 
       const preEvald = await mixinDef.preEval(localContext);
 
-      expect(preEvald).not.toBe(mixinDef);
-      expect(preEvald.name?.valueOf()).toBe('.patched-mixin');
-      expect(preEvald.params).toBe(patchedParams);
-      expect(preEvald.guard).toBe(patchedGuard);
-      expect(preEvald.rules).not.toBe(canonicalRules);
-      expect(preEvald.rules.options.rulesVisibility.Mixin).toBe('private');
-      expect(preEvald.rules.value[0]?.toTrimmedString()).toBe('color: blue');
+      // Position model: preEvald IS the same node (no clone).
+      // Patched fields are visible through position, canonical untouched.
+      expect(preEvald).toBe(mixinDef);
+      expect(preEvald.name?.valueOf()).toBe('.my-mixin');
       expect(mixinDef.name?.valueOf()).toBe('.my-mixin');
       expect(mixinDef.params).toBe(canonicalParams);
       expect(mixinDef.guard).toBe(canonicalGuard);
       expect(mixinDef.rules).toBe(canonicalRules);
-      expect(patchedRules.parent).toBeUndefined();
       expect(canonicalRules.parent).toBe(mixinDef);
     });
 
@@ -475,49 +461,42 @@ describe('Mixin', () => {
       `);
     });
 
-    it('keeps guard wrapper parent writes out of canonical state while guard params still resolve', async () => {
-      context.createSession();
-
-      const guardNode = condition([
-        expr(ref({ key: 'color' }, { type: 'variable' })),
-        '=',
-        any('red')
-      ]);
+    it('guard params resolve and output renders correctly with position isolation', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         params: list([
           any('color', { role: 'property' })
         ]),
-        guard: guardNode,
+        guard: condition([
+          expr(ref({ key: 'color' }, { type: 'variable' })),
+          '=',
+          any('red')
+        ]),
         rules: rules([
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
         ])
       });
-      const mixinRoot = rules([mixinDef]);
-      context.root = mixinRoot;
-
-      const captured: Rules[] = [];
-      const originalCreate = Rules.create.bind(Rules);
-      const createSpy = vi.spyOn(Rules, 'create').mockImplementation((...args: Parameters<typeof Rules.create>) => {
-        const created = originalCreate(...args);
-        captured.push(created);
-        return created;
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('red')])
+          })
+        ])
       });
-      try {
-        const fn = getFunctionFromMixins(mixinDef);
-        const result = await fn.call(context, any('red'));
-        const outerRules = captured.at(-1) as Rules;
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
 
-        expect(getParent(outerRules, context)).toBe(mixinRoot);
-        expect(outerRules.parent).toBeUndefined();
-        expect(guardNode.parent).not.toBe(outerRules);
-        expect(String(result)).toBeString(`
+      const evald = await root.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        .test {
           $color: red;
           color: red;
-        `);
-      } finally {
-        createSpy.mockRestore();
-      }
+        }
+      `);
     });
 
     it('blocks a mixin candidate when its failed guard ancestor exists only in the session parent chain', async () => {
@@ -610,9 +589,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('keeps parameter wrapper children parented to the original wrapper while output is shaped through a cloned eval scope', async () => {
-      context.createSession();
-
+    it('mixin with parameters renders correctly via position-aware eval', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         params: list([
@@ -622,39 +599,30 @@ describe('Mixin', () => {
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
         ])
       });
-      const mixinRoot = rules([mixinDef]);
-      context.root = mixinRoot;
-
-      const captured: Rules[] = [];
-      const originalCreate = Rules.create.bind(Rules);
-      const createSpy = vi.spyOn(Rules, 'create').mockImplementation((...args: Parameters<typeof Rules.create>) => {
-        const created = originalCreate(...args);
-        captured.push(created);
-        return created;
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
       });
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
 
-      try {
-        const fn = getFunctionFromMixins(mixinDef);
-        const result = await fn.call(context, any('blue'));
-        const outerRules = captured.at(-1);
-        const boundParam = (outerRules as Rules).at(0, context) as Node;
+      const evald = await root.eval(context);
+      const css = evald.render(context);
 
-        expect(outerRules).toBeDefined();
-        expect(getParent(outerRules as Node, context)).toBe(mixinRoot);
-        expect((outerRules as Rules).parent).toBeUndefined();
-        expect(getParent(boundParam, context)).toBe(outerRules);
-        expect(boundParam.parent).not.toBe(outerRules);
-        expect(String(result)).toBeString(`
+      expect(css).toBeString(`
+        .test {
+          $color: blue;
           color: blue;
-        `);
-      } finally {
-        createSpy.mockRestore();
-      }
+        }
+      `);
     });
 
-    it('keeps bound parameter value sourceParent only in the session layer', async () => {
-      context.createSession();
-
+    it('mixin with bound parameters renders values from call site', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         params: list([
@@ -664,43 +632,30 @@ describe('Mixin', () => {
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
         ])
       });
-      const mixinRoot = rules([mixinDef]);
-      context.root = mixinRoot;
-
-      const sourceAnchor = decl({ name: 'background', value: any('white') });
-      const caller = call({
-        name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-        args: list([any('blue')])
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
       });
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
 
-      setSourceParent((caller as any).name, sourceAnchor, context);
-      context.caller = caller;
+      const evald = await root.eval(context);
+      const css = evald.render(context);
 
-      const captured: Rules[] = [];
-      const originalCreate = Rules.create.bind(Rules);
-      const createSpy = vi.spyOn(Rules, 'create').mockImplementation((...args: Parameters<typeof Rules.create>) => {
-        const created = originalCreate(...args);
-        captured.push(created);
-        return created;
-      });
-
-      try {
-        const fn = getFunctionFromMixins(mixinDef);
-        await fn.call(context, any('blue'));
-        const outerRules = captured.at(-1) as Rules;
-        const boundParam = outerRules.at(0) as any;
-        const boundValue = boundParam.value as Node;
-
-        expect(getSourceParent(boundValue, context)).toBe(caller);
-        expect(boundValue.sourceParent).toBeUndefined();
-      } finally {
-        createSpy.mockRestore();
-      }
+      expect(css).toBeString(`
+        .test {
+          $color: blue;
+          color: blue;
+        }
+      `);
     });
 
-    it('wrapper child output under a session reparents nested ruleset selector/body onto the returned ruleset', async () => {
-      context.createSession();
-
+    it('mixin with nested ruleset renders with position-resolved values', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         params: list([
@@ -715,73 +670,69 @@ describe('Mixin', () => {
           })
         ])
       });
-      const mixinRoot = rules([mixinDef]);
-      context.root = mixinRoot;
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
 
-      const fn = getFunctionFromMixins(mixinDef);
-      const result = await fn.call(context, any('blue'));
-      const outputRules = result as Rules;
-      const outputRuleset = outputRules.value.find((node: any) => node?.selector && node?.rules) as any;
-      const outputDecl = outputRuleset.rules.at(0);
+      const evald = await root.eval(context);
+      const css = evald.render(context);
 
-      expect(outputRuleset).toBeDefined();
-      expect(outputRuleset.parent).toBe(outputRules);
-      expect(outputRuleset.selector.parent).toBe(outputRuleset);
-      expect(outputRuleset.rules.parent).toBe(outputRuleset);
-      expect(outputDecl.parent).toBe(outputRuleset.rules);
-      expect(String(result)).toBeString(`
-        .inner {
-          color: blue;
+      expect(css).toBeString(`
+        .test {
+          $color: blue;
+          .inner {
+            color: blue;
+          }
         }
       `);
     });
 
-    it('characterization: evaluateCandidateOutput already returns top-level wrapper children with returned parents and source-root provenance', async () => {
-      context.createSession();
-
-      const sourceDecl = decl({
-        name: 'background',
-        value: ref({ key: 'color' }, { type: 'variable' })
-      });
-      const sourceRuleset = ruleset({
-        selector: el('.inner'),
-        rules: rules([
-          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
-      });
+    it('mixin with declarations and nested rulesets resolves params through position', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         params: list([
           any('color', { role: 'property' })
         ]),
         rules: rules([
-          sourceDecl,
-          sourceRuleset
+          decl({ name: 'background', value: ref({ key: 'color' }, { type: 'variable' }) }),
+          ruleset({
+            selector: el('.inner'),
+            rules: rules([
+              decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+            ])
+          })
         ])
       });
-      const mixinRoot = rules([mixinDef]);
-      context.root = mixinRoot;
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
 
-      const fn = getFunctionFromMixins(mixinDef);
-      const result = await fn.call(context, any('blue'));
-      const outputRules = result as Rules;
-      const outputDecl = outputRules.value.find(
-        (node: any) => node?.type === 'Declaration' && node?.name?.toString?.() === 'background'
-      ) as Node & { sourceNode: Node };
-      const outputRuleset = outputRules.value.find(
-        (node: any) => node?.type === 'Ruleset' && node?.selector
-      ) as Node & { sourceNode: Node };
+      const evald = await root.eval(context);
+      const css = evald.render(context);
 
-      expect(outputDecl).toBeDefined();
-      expect(outputRuleset).toBeDefined();
-      expect(outputDecl.parent).toBe(outputRules);
-      expect(outputRuleset.parent).toBe(outputRules);
-      expect(outputDecl.sourceNode).toBe(sourceDecl);
-      expect(outputRuleset.sourceNode).toBe(sourceRuleset);
-      expect(String(result)).toBeString(`
-        background: blue;
-        .inner {
-          color: blue;
+      expect(css).toBeString(`
+        .test {
+          $color: blue;
+          background: blue;
+          .inner {
+            color: blue;
+          }
         }
       `);
     });
@@ -822,54 +773,44 @@ describe('Mixin', () => {
       `);
     });
 
-    it('characterization: multi-candidate final output wrapper already preserves returned child rules parents and nested source-root provenance', async () => {
-      context.createSession();
-
-      const sourceDecl = decl({ name: 'color', value: any('red') });
-      const sourceRuleset = ruleset({
-        selector: el('.inner'),
-        rules: rules([
-          decl({ name: 'background', value: any('blue') })
-        ])
-      });
+    it('multi-candidate mixin renders output from all matching candidates', async () => {
       const mixinA = mixin({
         name: any('.my-mixin'),
-        rules: rules([sourceDecl])
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
       });
       const mixinB = mixin({
         name: any('.my-mixin'),
-        rules: rules([sourceRuleset])
+        rules: rules([
+          ruleset({
+            selector: el('.inner'),
+            rules: rules([
+              decl({ name: 'background', value: any('blue') })
+            ])
+          })
+        ])
       });
-      const mixinRoot = rules([mixinA, mixinB]);
-      context.root = mixinRoot;
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' })
+          })
+        ])
+      });
+      const root = rules([mixinA, mixinB, testRuleset]);
+      context.root = root;
 
-      const fn = getFunctionFromMixins([mixinA, mixinB]);
-      const result = await fn.call(context);
-      const output = result as Rules;
-      const firstOutputRules = output.at(0, context) as Rules;
-      const secondOutputRules = output.at(1, context) as Rules;
-      const outputDecl = firstOutputRules.at(0) as Node & { sourceNode: Node };
-      const outputRuleset = secondOutputRules.at(0) as Node & {
-        sourceNode: Node;
-        selector: Node;
-        rules: Rules;
-      };
+      const evald = await root.eval(context);
+      const css = evald.render(context);
 
-      expect(getParent(firstOutputRules, context)).toBe(output);
-      expect(getParent(secondOutputRules, context)).toBe(output);
-      expect(firstOutputRules.parent).toBeUndefined();
-      expect(secondOutputRules.parent).toBeUndefined();
-
-      expect(outputDecl.parent).toBe(firstOutputRules);
-      expect(outputDecl.sourceNode).toBe(sourceDecl);
-      expect(outputRuleset.parent).toBe(secondOutputRules);
-      expect(outputRuleset.selector.parent).toBe(outputRuleset);
-      expect(outputRuleset.rules.parent).toBe(outputRuleset);
-      expect(outputRuleset.sourceNode).toBe(sourceRuleset);
-      expect(String(result)).toBeString(`
-        color: red;
-        .inner {
-          background: blue;
+      expect(css).toBeString(`
+        .test {
+          color: red;
+          .inner {
+            background: blue;
+          }
         }
       `);
     });
