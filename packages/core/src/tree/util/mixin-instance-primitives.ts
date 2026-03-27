@@ -531,7 +531,17 @@ export function finalizeMixinInvocationOutput(
   // Each call needs a distinct output node to carry its own _evalPosition.
   // cloneDetachedShallowWrapper creates a thin shell sharing children.
   if (rules === rules.sourceNode) {
-    return rules.cloneDetachedShallowWrapper(context);
+    const wrapper = rules.cloneDetachedShallowWrapper(context);
+    // The per-call position has patches keyed by the original `rules` node
+    // (e.g. the 'value' array). Copy those patches to the wrapper so
+    // getField(wrapper, ...) finds them.
+    if (context.hasPosition) {
+      const pos = context.position;
+      if (pos.hasField(rules, 'value')) {
+        pos.setField(wrapper, 'value', pos.getField(rules, 'value'));
+      }
+    }
+    return wrapper;
   }
   return rules;
 }
