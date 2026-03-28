@@ -220,7 +220,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return w.getSince(mark);
   }
 
-
   /** @removal-target — node-copy-reduction: clone(true) on prelude nodes.
    * Prelude should be read from canonical + position patches. */
   private materializePostludePrelude(current: Node): {
@@ -593,7 +592,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         const prevRulesetFrames = shouldIsolateSelectorFrames ? context.rulesetFrames : undefined;
         const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {
-          if (!withValues) {
+          if (!withValues && type !== 'import') {
             context.pushState(new EvalState());
             pushedIsolatedState = true;
           }

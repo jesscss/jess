@@ -21,8 +21,8 @@ describe('Quoted', () => {
 
     expect(evald.toTrimmedString({ context })).toBe('"blue"');
     expect(node.toTrimmedString()).toBe('"$(blue)"');
-    expect(node.value).toBeTypeOf('object');
-    expect(node.value).not.toBe('blue');
+    expect(node.get('value')).toBeTypeOf('object');
+    expect(node.get('value')).not.toBe('blue');
   });
 
   it('evaluates through a eval state without overwriting the canonical value', async () => {
@@ -37,8 +37,8 @@ describe('Quoted', () => {
     expect(evald).toBe(node);
     expect(node.toTrimmedString({ context })).toBe('"blue"');
     expect(node.toTrimmedString()).toBe('"$(blue)"');
-    expect(node.value).toBeTypeOf('object');
-    expect(node.value).not.toBe('blue');
+    expect(node.get('value')).toBeTypeOf('object');
+    expect(node.get('value')).not.toBe('blue');
   });
 
   it('keeps valueOf() canonical across different eval states', () => {
