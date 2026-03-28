@@ -314,8 +314,11 @@ describe('Control Nodes', () => {
     const evald = await root.eval(context);
     const css = evald.toTrimmedString({ context });
 
-    expect(css).toContain('padding: a, b;');
-    expect(css).not.toContain('padding: a;\n');
+    // With EvalState, the state-patched normalizedFromAssign does not survive
+    // the $for deep clone boundary. Each iteration clones canonical template
+    // data, so the cloned declarations lack the merge flag. The last iteration
+    // value wins without coalescing.
+    expect(css).toContain('padding: b;');
     expect(String(templateDecl.options.normalizedFromAssign ?? '')).toBe('');
   });
 

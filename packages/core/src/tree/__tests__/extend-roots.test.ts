@@ -91,7 +91,11 @@ describe('Extend Roots Registry', () => {
 
       await node.eval(context);
 
-      expect(targetRuleset.valueOf()).toBe('.base,.ext');
+      // With EvalState, the extended selector is stored in eval state.
+      // valueOf(context) reads the state-patched selector.
+      expect(targetRuleset.valueOf(context)).toBe('.base,.ext');
+      // Canonical valueOf() still returns the original selector.
+      expect(targetRuleset.valueOf()).toBe('.base');
     });
   });
 

@@ -158,8 +158,10 @@ describe('Rule', () => {
 
     const preEvald = await child.preEval(context);
 
-    // ownSelector preserves the original child selector
-    expect(preEvald.getOwnSelector()?.valueOf()).toBe('.child');
+    // ownSelector is stored in eval state, so context is needed to read it
+    expect(preEvald.getOwnSelector(context)?.valueOf()).toBe('.child');
+    // canonical options have no ownSelector (it lives in eval state only)
+    expect(preEvald.getOwnSelector()).toBeUndefined();
     // canonical selector is unchanged in position model (composition is at render time)
     expect(preEvald.selector.valueOf()).toBe('.child');
   });

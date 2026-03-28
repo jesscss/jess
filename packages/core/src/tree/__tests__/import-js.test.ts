@@ -12,7 +12,7 @@ describe('JsImport', () => {
 
     const evald = await node.eval(context);
 
-    expect(evald.toTrimmedString()).toBe('@-from "module.js" import ( foo );');
+    expect(evald.toTrimmedString({ context })).toBe('@-from "module.js" import ( foo );');
   });
 
   it('does not overwrite the canonical path', async () => {

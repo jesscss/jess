@@ -1323,7 +1323,7 @@ describe('Rules', () => {
     });
   });
 
-  describe('eval state registry delta', () => {
+  describe.skip('eval state registry delta — registry deltas removed with EvalSession', () => {
     it('prefers state-only declaration entries over the canonical cache', () => {
       const root = rules([
         vardecl({ name: 'foo', value: any('bar') })

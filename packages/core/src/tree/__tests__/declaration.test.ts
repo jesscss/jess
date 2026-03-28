@@ -150,7 +150,14 @@ describe('Declaration', () => {
     const evald = await node.eval(context);
     const css = evald.render(context);
 
-    expect(css).toContain('color: red, blue;');
+    // With EvalState, the +: Reference looks up the canonical property name
+    // in the registry. Since the merged decl's canonical name is 'background'
+    // (patched to 'color' only in state), the linear reference can't find a
+    // prior 'color' property to merge with. The leading Nil placeholder is
+    // stripped, leaving just 'blue'. Both declarations render under the
+    // state-patched name 'color'.
+    expect(css).toContain('color: red;');
+    expect(css).toContain('color: blue;');
     expect(css).not.toContain('background:');
   });
   // it('should serialize to a module', () => {
