@@ -184,9 +184,8 @@ export function isRegistryIndexing(rules: Rules | readonly Node[]): boolean {
 
 export function syncRegistryCache(rules: Rules, context?: Context): void {
   const value = rules.value;
-  if (getRegistryDelta(rules, context)) {
-    return;
-  }
+  // Registry delta is additive — don't skip canonical indexing when a delta exists.
+  // The delta adds state-specific entries on top of the canonical registry.
   const data = ensureRegistryData(value);
   if (data.indexedLength < value.length && !indexingRegistryValues.has(value)) {
     indexingRegistryValues.add(value);
@@ -1133,9 +1132,10 @@ export class MixinRegistry extends Registry<
               let subRules = value.rules;
               // Mixin rules aren't preEvaluated during registration — register
               // child rulesets/mixins now so namespace lookup can descend.
-              if (!(context && isPreEvaluated(subRules, context))) {
-                this._ensureChildrenRegistered(subRules, context?.selectorBits);
-              }
+              // Always ensure children are registered for namespace descent —
+              // preEvaluated children still need keySetLibrary on their selectors
+              // for the mixin registry to index them.
+              this._ensureChildrenRegistered(subRules, context?.selectorBits);
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
               subMixinRegistry.indexPendingItems();
               // With the new indexing, nested rulesets are indexed by their local visible keys
@@ -1178,9 +1178,7 @@ export class MixinRegistry extends Registry<
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = value.rules;
-              if (!(context && isPreEvaluated(subRules, context))) {
-                this._ensureChildrenRegistered(subRules, context?.selectorBits);
-              }
+              this._ensureChildrenRegistered(subRules, context?.selectorBits);
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
               subMixinRegistry.indexPendingItems();
               subMixinRegistry.find(searchKeys, filterType, {
