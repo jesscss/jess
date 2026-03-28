@@ -47,7 +47,7 @@ describe('basic selectors', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.keySetLibrary = contextA.selectorBits;
+    parent.get('selector').keySetLibrary = contextA.selectorBits;
 
     const beta = el('.beta');
     beta.keySetLibrary = contextA.selectorBits;
@@ -74,7 +74,7 @@ describe('basic selectors', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.keySetLibrary = contextA.selectorBits;
+    parent.get('selector').keySetLibrary = contextA.selectorBits;
 
     const beta = el('.beta');
     beta.keySetLibrary = contextA.selectorBits;

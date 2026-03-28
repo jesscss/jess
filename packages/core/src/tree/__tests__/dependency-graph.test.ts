@@ -39,7 +39,7 @@ function collectDeclarations(node: Node): Declaration[] {
 }
 
 function getDeclarations(node: Ruleset): Declaration[] {
-  return collectDeclarations(node.rules);
+  return collectDeclarations(node.get('rules'));
 }
 
 describe('dependency graph propagation', () => {

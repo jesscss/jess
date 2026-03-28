@@ -857,7 +857,7 @@ describe('Rules extend', () => {
       expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toBe(':is(.base,.mid) :is(.leaf),.end');
       expect(nestedLeaf.valueOf(context)).toBe(':is(.base,.mid) :is(.leaf),.end');
       expect(patchedBaseRules.parent).toBeUndefined();
-      expect(base.rules?.value).toHaveLength(0);
+      expect(base.get('rules')?.value).toHaveLength(0);
     });
 
     it('extends a nested ampersand selector through a state-patched parent selector', async () => {
@@ -890,7 +890,7 @@ describe('Rules extend', () => {
       expect(context.warnings).toHaveLength(0);
       expect(base.getEffectiveSelector(false, context).valueOf()).toBe('.beta');
       expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toContain('.end');
-      expect(base.selector.valueOf()).toBe('.alpha');
+      expect(base.get('selector').valueOf()).toBe('.alpha');
     });
 
     it('limits downstream extend matching to roots inside the recorded namespace', () => {

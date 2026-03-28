@@ -493,7 +493,7 @@ function getCachedTargetInfo(
 
 function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset): void {
   cache.delete(ruleset);
-  const rules = ruleset.rules;
+  const rules = ruleset.get('rules');
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }

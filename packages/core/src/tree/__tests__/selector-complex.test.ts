@@ -155,7 +155,7 @@ describe('Complex selector', () => {
         selector: el('.alpha'),
         rules: rules([])
       });
-      parent.selector.keySetLibrary = context.selectorBits;
+      parent.get('selector').keySetLibrary = context.selectorBits;
 
       const node = sel([
         amp({ selectorContainer: parent as any }),

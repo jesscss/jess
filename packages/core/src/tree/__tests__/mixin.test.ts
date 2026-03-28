@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
 import { getField, getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/field-helpers.js';
@@ -909,7 +909,7 @@ describe('Mixin', () => {
           selector: el('.alpha'),
           rules: rules([])
         });
-        parent.selector.keySetLibrary = ctx.selectorBits;
+        parent.get('selector').keySetLibrary = ctx.selectorBits;
 
         const patched = el('.beta');
         patched.keySetLibrary = ctx.selectorBits;
@@ -976,7 +976,7 @@ describe('Mixin', () => {
           color: red;
         }
       `);
-      expect(live.parent.selector.valueOf()).toBe('.alpha');
+      expect((live.parent as Ruleset).get('selector').valueOf()).toBe('.alpha');
     });
 
     it('should call a mixin with rest parameters', async () => {

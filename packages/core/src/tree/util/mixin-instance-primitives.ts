@@ -6,6 +6,7 @@ import { Bool } from '../bool.js';
 import type { Condition } from '../condition.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
+import type { Ruleset } from '../ruleset.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { VarDeclaration as VarDeclarationCtor } from '../declaration-var.js';
 import type { List } from '../list.js';
@@ -1370,10 +1371,10 @@ export async function dispatchMixinEvalCandidates(
 
   for (const candidate of evalCandidates) {
     if (isNode(candidate, N.Ruleset)) {
-      if (candidate.guard instanceof Nil) {
+      if ((candidate as Ruleset).get('guard') instanceof Nil) {
         continue;
       }
-      const candidateRules = candidate.rules;
+      const candidateRules = (candidate as Ruleset).get('rules');
       const sourceRules = getRootSourceRules(candidateRules);
       const rules = await evaluateRulesetMixinCandidateOutput(
         sourceRules,

@@ -293,7 +293,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
     if (template !== undefined || hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
-      let selector = storedSelector ?? frame?.getEffectiveSelector?.(false, context) ?? frame?.selector;
+      let selector = storedSelector ?? frame?.getEffectiveSelector?.(false, context) ?? frame?.get('selector');
       if (isNode(template as Node | undefined, N.Nil)) {
         const result = new Nil(undefined, undefined, undefined, this.treeContext);
         result.hoistToRoot = true;
@@ -448,8 +448,8 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
      * If the ampersand already has a stored selector (from getImplicitSelector),
      * preserve it instead of overwriting with the frame selector.
      */
-    if (!amp._selectorContainer && frame && frame.selector) {
-      amp._selectorContainer = frame;
+    if (!amp._selectorContainer && frame && frame.get('selector')) {
+      amp._selectorContainer = frame as unknown as SelectorContainer;
     }
     return amp;
   }

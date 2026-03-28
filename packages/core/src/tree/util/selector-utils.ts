@@ -540,7 +540,7 @@ export function getImplicitSelector(
   }
 
   const parentSelector = isNode(parent, N.Ruleset)
-    ? (parent as Ruleset).selector
+    ? (parent as Ruleset).get('selector')
     : parent as Selector;
   if (!parentSelector || isNode(parentSelector, N.Nil)) {
     return selector.copy(true) as Selector;

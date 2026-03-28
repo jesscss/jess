@@ -354,18 +354,18 @@ describe('Ampersand', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.pre = 1;
-    parent.selector.post = 1;
+    parent.get('selector').pre = 1;
+    parent.get('selector').post = 1;
 
     context.rulesetFrames.push(parent);
 
     const result = amp().eval(context) as Selector;
 
-    expect(result).not.toBe(parent.selector);
+    expect(result).not.toBe(parent.get('selector'));
     expect(result.valueOf()).toBe('.alpha');
-    expect(parent.selector.pre).toBe(1);
-    expect(parent.selector.post).toBe(1);
-    expect(parent.selector.hoistToRoot).toBeUndefined();
+    expect(parent.get('selector').pre).toBe(1);
+    expect(parent.get('selector').post).toBe(1);
+    expect(parent.get('selector').hoistToRoot).toBeUndefined();
   });
 
   it('valueOf(context) and getResolvedSelector(context) read a state-patched parent selector', () => {
@@ -383,7 +383,7 @@ describe('Ampersand', () => {
     expect(node.valueOf()).toBe('.alpha');
     expect(node.getResolvedSelector(context)?.valueOf()).toBe('.beta');
     expect(node.getResolvedSelector()?.valueOf()).toBe('.alpha');
-    expect(parent.selector.valueOf()).toBe('.alpha');
+    expect(parent.get('selector').valueOf()).toBe('.alpha');
   });
 
   it('keeps keySet canonical when only the parent selector is state-patched', () => {
@@ -392,7 +392,7 @@ describe('Ampersand', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.keySetLibrary = context.selectorBits;
+    parent.get('selector').keySetLibrary = context.selectorBits;
 
     const patched = el('.beta');
     patched.keySetLibrary = context.selectorBits;
@@ -414,7 +414,7 @@ describe('Ampersand', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.keySetLibrary = contextA.selectorBits;
+    parent.get('selector').keySetLibrary = contextA.selectorBits;
 
     const beta = el('.beta');
     beta.keySetLibrary = contextA.selectorBits;
@@ -441,7 +441,7 @@ describe('Ampersand', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.keySetLibrary = contextA.selectorBits;
+    parent.get('selector').keySetLibrary = contextA.selectorBits;
 
     const beta = el('.beta');
     beta.keySetLibrary = contextA.selectorBits;

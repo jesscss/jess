@@ -50,7 +50,7 @@ describe('Flag isolation', () => {
         })
       ]);
       const rs = tree.value[0]! as Ruleset;
-      const inner = rs.rules;
+      const inner = rs.get('rules');
       const d1 = inner.value[0]! as Declaration;
       const d2 = inner.value[1]! as Declaration;
       expectFlags(d1, false, true); // mayAsync
@@ -68,7 +68,7 @@ describe('Flag isolation', () => {
         })
       ]);
       const rs = tree.value[0]! as Ruleset;
-      const inner = rs.rules;
+      const inner = rs.get('rules');
       const d1 = inner.value[0]! as Declaration;
       const d2 = inner.value[1]! as Declaration;
       expectFlags(d1, false, true); // mayAsync
@@ -86,7 +86,7 @@ describe('Flag isolation', () => {
         })
       ]);
       const rs = tree.value[0]! as Ruleset;
-      const inner = rs.rules;
+      const inner = rs.get('rules');
       const d1 = inner.value[0]! as Declaration;
       const d2 = inner.value[1]! as Declaration;
       expectFlags(d1, false, true); // mayAsync
@@ -104,7 +104,7 @@ describe('Flag isolation', () => {
         })
       ]);
       const rs = tree.value[0]! as Ruleset;
-      const inner = rs.rules;
+      const inner = rs.get('rules');
       const d1 = inner.value[0]! as Declaration;
       const d2 = inner.value[1]! as Declaration;
       expectFlags(d1, false, true); // mayAsync
@@ -122,7 +122,7 @@ describe('Flag isolation', () => {
         })
       ]);
       const rs = tree.value[0]! as Ruleset;
-      const inner = rs.rules;
+      const inner = rs.get('rules');
       const d1 = inner.value[0]! as Declaration;
       const d2 = inner.value[1]! as Declaration;
       expectFlags(d1, false, true); // mayAsync
@@ -217,8 +217,8 @@ describe('Flag isolation', () => {
       ]);
 
       const container = tree.value[0]! as Ruleset;
-      const staticRule = container.rules.value[0]! as Ruleset;
-      const dynamicRule = container.rules.value[1]! as Ruleset;
+      const staticRule = container.get('rules').value[0]! as Ruleset;
+      const dynamicRule = container.get('rules').value[1]! as Ruleset;
 
       // Container should have mayAsync (from dynamic child)
       expectFlags(container, false, true);
@@ -243,9 +243,9 @@ describe('Flag isolation', () => {
       ]);
 
       const container = tree.value[0]! as Ruleset;
-      const staticDecl1 = container.rules.value[0]! as Declaration;
-      const dynamicDecl = container.rules.value[1]! as Declaration;
-      const staticDecl2 = container.rules.value[2]! as Declaration;
+      const staticDecl1 = container.get('rules').value[0]! as Declaration;
+      const dynamicDecl = container.get('rules').value[1]! as Declaration;
+      const staticDecl2 = container.get('rules').value[2]! as Declaration;
 
       // Container should have mayAsync (from dynamic child)
       expectFlags(container, false, true);
@@ -284,8 +284,8 @@ describe('Flag isolation', () => {
       ]);
 
       const level1 = tree.value[0]! as Ruleset;
-      const level2 = level1.rules.value[1]! as Ruleset;
-      const level3 = level2.rules.value[1]! as Ruleset;
+      const level2 = level1.get('rules').value[1]! as Ruleset;
+      const level3 = level2.get('rules').value[1]! as Ruleset;
 
       // Level 1 should have mayAsync (from nested dynamic content)
       expectFlags(level1, false, true);

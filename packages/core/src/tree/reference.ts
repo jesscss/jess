@@ -401,14 +401,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
          * We accumulate the new key and use registry lookup to verify the compound match
          */
         if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
-          const mixinResult = (resolvedTarget as Ruleset).rules.eval(context);
+          const mixinResult = (resolvedTarget as Ruleset).get('rules').eval(context);
           if (isThenable(mixinResult)) {
             return (mixinResult as Promise<Rules>).then((rules) => {
-              rules.inherit((resolvedTarget as Ruleset).rules);
+              rules.inherit((resolvedTarget as Ruleset).get('rules'));
               return [rules, valueKey] as [Node, string | string[]];
             });
           } else {
-            mixinResult.inherit((resolvedTarget as Ruleset).rules);
+            mixinResult.inherit((resolvedTarget as Ruleset).get('rules'));
             resolvedTarget = mixinResult as Rules;
             return [resolvedTarget, valueKey] as [Node, string | string[]];
           }
@@ -645,7 +645,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
         const lookupTarget = isNode(resolvedTarget, N.Ruleset)
-          ? resolvedTarget.rules
+          ? (resolvedTarget as Ruleset).get('rules')
           : resolvedTarget;
         let returnVal: any;
         if (isNode(lookupTarget, N.Rules)) {

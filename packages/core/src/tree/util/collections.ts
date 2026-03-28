@@ -120,7 +120,7 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       }
       rules = [...(collection as Mixin).get('rules').value];
     } else if ((collection as Node).type === 'Ruleset') {
-      rules = [...(collection as Ruleset).rules.value];
+      rules = [...(collection as Ruleset).get('rules').value];
     } else if ((collection as Node).type === 'Rules') {
       rules = [...(collection as Rules).value];
     }

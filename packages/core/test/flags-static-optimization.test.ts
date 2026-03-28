@@ -50,7 +50,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the first declaration (color: red)
-    const declaration = rulesetNode.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     expect(declaration).toBeDefined();
     expect(declaration.type).toBe('Declaration');
 
@@ -75,7 +75,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the first declaration (color: @var)
-    const declaration = rulesetNode.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     expect(declaration).toBeDefined();
     expect(declaration.type).toBe('Declaration');
 
@@ -99,7 +99,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the declaration with the operation
-    const declaration = rulesetNode.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     const operation = findNodeByType(declaration, 'Operation');
     expect(operation).toBeDefined();
     expect(operation!.type).toBe('Operation');
@@ -124,7 +124,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the declaration with the function call
-    const declaration = rulesetNode.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     const callNode = findNodeByType(declaration, 'Call');
     expect(callNode).toBeDefined();
     expect(callNode!.type).toBe('Call');
@@ -149,7 +149,7 @@ describe('Static optimization', () => {
     const rulesetNode = tree.value[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
-    const declarations = rulesetNode.rules.value;
+    const declarations = rulesetNode.get('rules').value;
 
     // Get the List node (shadow: 1px, 2px)
     const listDeclaration = declarations[0]! as Declaration;
@@ -177,7 +177,7 @@ describe('Static optimization', () => {
     const rulesetNode = tree.value[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
-    const declarations = rulesetNode.rules.value;
+    const declarations = rulesetNode.get('rules').value;
 
     // Get the List node (shadow: 1px, @var, 3px)
     const listDeclaration = declarations[0]! as Declaration;
@@ -210,7 +210,7 @@ describe('Static optimization', () => {
     // The ruleset should have mayAsync flags due to dynamic content
     expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC
 
-    const declarations = rulesetNode.rules.value;
+    const declarations = rulesetNode.get('rules').value;
 
     // Static declarations should remain static
     expectFlags(declarations[0]!, true, false); // color: red

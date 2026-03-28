@@ -123,7 +123,7 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.keySetLibrary = context.selectorBits;
+    parent.get('selector').keySetLibrary = context.selectorBits;
 
     const patched = el('.beta');
     patched.keySetLibrary = context.selectorBits;
@@ -168,7 +168,7 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.selector.keySetLibrary = contextA.selectorBits;
+    parent.get('selector').keySetLibrary = contextA.selectorBits;
 
     const patched = el('.beta');
     patched.keySetLibrary = contextA.selectorBits;

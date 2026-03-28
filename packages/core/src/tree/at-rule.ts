@@ -32,7 +32,7 @@ function registerInnerExtendRootIfHoisted(
   if (!isNode(first, N.Ruleset)) {
     return;
   }
-  const innerRules = first.rules;
+  const innerRules = first.get('rules');
   if (!innerRules || !isNode(innerRules, N.Rules)) {
     return;
   }
@@ -468,20 +468,21 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           // e.g. ".parent { font-size: 14px; }" inside @media.
           if (node.isNestable(context) && !node.isRootOnly(context) && node.isHoisted(context.opts)) {
             const parentRuleset = context.rulesetFrames.at(-1);
+            const parentSel = parentRuleset?.get('selector');
             const isCallWrapped = context.callStack.length > 0
-              && parentRuleset?.selector
-              && !isNode(parentRuleset.selector, N.Nil);
+              && parentSel
+              && !isNode(parentSel, N.Nil);
             let existingRules = rules;
             rules = Rules.create([
               Ruleset.create({
                 selector: isCallWrapped
-                  ? (parentRuleset!.selector.copy(true) as Selector)
+                  ? (parentSel!.copy(true) as Selector)
                   : Ampersand.create(undefined),
                 rules: existingRules
               }, isCallWrapped
                 ? {
                     generated: true,
-                    ownSelector: parentRuleset!.selector.copy(true) as Selector,
+                    ownSelector: parentSel!.copy(true) as Selector,
                     resolvedHoistWrapper: true
                   }
                 : { generated: true })

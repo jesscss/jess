@@ -178,7 +178,7 @@ describe('Condition', () => {
         selector: el('.alpha'),
         rules: rules([])
       });
-      parent.selector.keySetLibrary = context.selectorBits;
+      parent.get('selector').keySetLibrary = context.selectorBits;
 
       const patched = el('.beta');
       patched.keySetLibrary = context.selectorBits;
@@ -221,7 +221,7 @@ describe('Condition', () => {
       expect((evaldLeft as any).compare(evaldRight as any, context)).toBe(0);
       expect(`${await node.eval(context)}`).toBe('true');
       expect(`${await node.eval(new Context())}`).toBe('false');
-      expect(parent.selector.valueOf()).toBe('.alpha');
+      expect(parent.get('selector').valueOf()).toBe('.alpha');
     });
 
     it('uses compare(context) for sequence guard comparisons when an eval state is active', async () => {

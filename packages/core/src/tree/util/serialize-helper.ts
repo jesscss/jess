@@ -79,9 +79,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       return '';
     }
   }
-  const rules = options.context
-    ? getField<typeof node.rules | undefined>(node, 'rules', options.context)
-    : node.rules;
+  const rules = isNode(node, N.Ruleset)
+    ? (node as Ruleset).get('rules', options.context)
+    : (node as AtRule).get('rules', options.context);
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {
       options.referenceMode = previousReferenceMode;

@@ -19,19 +19,6 @@ import { getChildren, getDependency, getParent, isPreEvaluated, hasChangedVars, 
 
 const { isArray } = Array;
 
-/**
- * Per-Rules registry overlay stored in the EvalState's fields map.
- * Replaces the old RegistryDelta from EvalSession.
- */
-export interface RegistryDelta {
-  rulesetIndex?: Map<string, Set<Ruleset>>;
-  mixinIndex?: Map<string, Array<{
-    value: Mixin | Ruleset;
-    match: string[];
-  }>>;
-  declarationIndex?: Map<string, Set<Declaration>>;
-}
-
 type SelectorKeySet = Set<string> | BitSet<string>;
 type SelectorKeySource = SelectorKeySet | string[];
 
@@ -113,186 +100,20 @@ export type MixinRegistryEntry = {
   match: string[];
 };
 
-export interface RegistryData {
-  rulesetIndex?: Map<string, Set<Ruleset>>;
-  mixinIndex?: Map<string, MixinRegistryEntry[]>;
-  declarationIndex?: Map<string, Set<Declaration>>;
-  indexedLength: number;
-}
-
-type RegistryIndexKey = keyof Pick<
-  RegistryData,
-  'rulesetIndex' | 'mixinIndex' | 'declarationIndex'
->;
-
-export const globalRegistryCache = new WeakMap<readonly Node[], RegistryData>();
-const indexingRegistryValues = new WeakSet<readonly Node[]>();
-
-export function peekRegistryData(value: readonly Node[]): RegistryData | undefined {
-  return globalRegistryCache.get(value);
-}
-
-export function ensureRegistryData(value: readonly Node[]): RegistryData {
-  let data = globalRegistryCache.get(value);
-  if (!data) {
-    data = { indexedLength: 0 };
-    globalRegistryCache.set(value, data);
-  }
-  return data;
-}
-
-function getRegistryDelta(
-  rules: Rules,
-  context?: Context
-): RegistryDelta | undefined {
-  if (!context) {
-    return undefined;
-  }
-  return context.activeState.peek(rules)?._fields?.get('_registryDelta') as RegistryDelta | undefined;
-}
-
-function ensureSessionRegistryIndex<K extends RegistryIndexKey>(
-  rules: Rules,
-  key: K,
-  context: Context | undefined,
-  create: () => NonNullable<RegistryDelta[K]>
-): NonNullable<RegistryDelta[K]> | undefined {
-  if (!context) {
-    return undefined;
-  }
-  const state = context.activeState.get(rules);
-  let delta = state._fields?.get('_registryDelta') as RegistryDelta | undefined;
-  if (!delta) {
-    delta = {};
-    state.fields.set('_registryDelta', delta);
-  }
-  return (delta[key] ??= create()) as NonNullable<RegistryDelta[K]>;
-}
-
-function getRegistryIndex<K extends RegistryIndexKey>(
-  rules: Rules,
-  key: K,
-  context?: Context
-): NonNullable<RegistryDelta[K]> | undefined {
-  const delta = getRegistryDelta(rules, context);
-  return delta?.[key] as NonNullable<RegistryDelta[K]> | undefined;
-}
-
-export function isRegistryIndexing(rules: Rules | readonly Node[]): boolean {
-  const value = rules instanceof Node ? rules.value : rules;
-  return indexingRegistryValues.has(value);
-}
-
-export function syncRegistryCache(rules: Rules, context?: Context): void {
-  const value = rules.value;
-  // Registry delta is additive — don't skip canonical indexing when a delta exists.
-  // The delta adds state-specific entries on top of the canonical registry.
-  const data = ensureRegistryData(value);
-  if (data.indexedLength < value.length && !indexingRegistryValues.has(value)) {
-    indexingRegistryValues.add(value);
-    try {
-      for (let i = data.indexedLength; i < value.length; i++) {
-        rules.registerNode(value[i]!);
-      }
-      data.indexedLength = value.length;
-    } finally {
-      indexingRegistryValues.delete(value);
-    }
-  }
-
-  // If context has state-overlaid children, index any nodes not in the
-  // canonical array so the registry can find state-injected params/decls.
-  if (context) {
-    const stateChildren = context.activeState.peek(rules)?._fields?.get('value') as readonly Node[] | undefined;
-    if (stateChildren && stateChildren !== value) {
-      for (const child of stateChildren) {
-        if (!value.includes(child)) {
-          rules.registerNode(child, undefined, context);
-        }
-      }
-    }
-  }
-}
-
-export function registerCanonicalNode(
-  rules: Rules,
-  type: 'ruleset' | 'declaration' | 'mixin',
-  node: Node,
-  context?: Context
-): void {
-  const data = peekRegistryData(rules.value);
-  if (!data) {
-    return;
-  }
-
-  if (type === 'ruleset') {
-    new RulesetRegistry(rules).add(node as Ruleset);
-  } else if (type === 'declaration') {
-    new DeclarationRegistry(rules).add(node as Declaration);
-  } else {
-    new MixinRegistry(rules, context).add(node as Mixin | Ruleset);
-  }
-
-  if (!indexingRegistryValues.has(rules.value) && data.indexedLength === rules.value.length - 1) {
-    data.indexedLength = rules.value.length;
-  }
-}
-
-export function registerSessionNode(
-  rules: Rules,
-  type: 'ruleset' | 'declaration' | 'mixin',
-  node: Node,
-  context?: Context
-): boolean {
-  if (!context) {
-    return false;
-  }
-
-  if (type === 'ruleset') {
-    const index = ensureSessionRegistryIndex(
-      rules,
-      'rulesetIndex',
-      context,
-      () => new Map<string, Set<Ruleset>>()
-    );
-    if (index) {
-      addRulesetToIndex(index, rules, node as Ruleset);
-    }
-  } else if (type === 'declaration') {
-    const index = ensureSessionRegistryIndex(
-      rules,
-      'declarationIndex',
-      context,
-      () => new Map<string, Set<Declaration>>()
-    );
-    if (index) {
-      addDeclarationToIndex(index, node as Declaration);
-    }
-  } else {
-    const index = ensureSessionRegistryIndex(
-      rules,
-      'mixinIndex',
-      context,
-      () => new Map<string, MixinRegistryEntry[]>()
-    );
-    if (index) {
-      addMixinToIndex(index, rules, node as Mixin | Ruleset, context);
-    }
-  }
-
-  return true;
-}
+// [DELETED: RegistryData, globalRegistryCache, peekRegistryData, ensureRegistryData,
+//  getRegistryDelta, ensureSessionRegistryIndex, getRegistryIndex, isRegistryIndexing,
+//  syncRegistryCache, registerCanonicalNode, registerSessionNode — see registry-state-plan.md]
 
 function addRulesetToIndex(
   index: Map<string, Set<Ruleset>>,
   rules: Rules,
   ruleset: Ruleset
 ): void {
-  if (!isNode(ruleset.selector, N.Selector)) {
+  if (!isNode(ruleset.get('selector'), N.Selector)) {
     return;
   }
 
-  const selector = ruleset.selector;
+  const selector = ruleset.get('selector') as Selector;
   const selectorBits = (rules.treeContext as { selectorBits?: BitSetLibrary<string>; opts?: { selectorBits?: BitSetLibrary<string> } } | undefined)?.selectorBits
     ?? rules.treeContext?.opts?.selectorBits;
   if (selectorBits && !selector.keySetLibrary) {
@@ -331,11 +152,11 @@ function addMixinToIndex(
   context?: Context
 ): void {
   if (isNode(mixin, N.Ruleset)) {
-    let selector = mixin.selector;
+    let selector = (mixin as Ruleset).get('selector');
     if (isNode(selector, N.Nil)) {
       return;
     }
-    const ownSelector = mixin.options.ownSelector;
+    const ownSelector = (mixin as Ruleset).options.ownSelector;
     const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
     if (isNode(callableSelector, N.Ampersand)) {
       return;
@@ -373,7 +194,7 @@ function addMixinToIndex(
       }
       const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
       const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
-        ? (mixin.parent.parent as Ruleset).selector
+        ? (mixin.parent.parent as Ruleset).get('selector')
         : undefined;
       const parentKeys = (
         parentSelector && !isNode(parentSelector, N.Nil)
@@ -723,8 +544,9 @@ export abstract class Registry<
  * Registry for fast selector-based ruleset lookups
  */
 export class RulesetRegistry extends Registry<Ruleset> {
+  private _index = new Map<string, Set<Ruleset>>();
   get index(): Map<string, Set<Ruleset>> {
-    return (ensureRegistryData(this.rules.value).rulesetIndex ??= new Map<string, Set<Ruleset>>());
+    return this._index;
   }
 
   /**
@@ -755,10 +577,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
     let rulesets: Ruleset[] | undefined;
 
     /** Just get based on first key */
-    const indices = [
-      getRegistryIndex(this.rules, 'rulesetIndex', this.context),
-      this.index
-    ].filter(Boolean) as Array<Map<string, Set<Ruleset>>>;
+    const indices = [this.index];
     for (const key of keys) {
       for (const index of indices) {
         const set = index.get(key);
@@ -780,7 +599,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
     let searchKeySet = keys instanceof Set ? keys : new Set(keys);
     let searchBitSet: BitSet<string> | undefined;
     for (const c of candidates) {
-      let sel = c.selector;
+      let sel = c.get('selector');
       if (!sel || isNode(sel, N.Nil)) {
         continue;
       }
@@ -825,8 +644,9 @@ export class MixinRegistry extends Registry<
   Mixin | Ruleset,
   MixinRegistryEntry[]
 > {
+  private _index = new Map<string, MixinRegistryEntry[]>();
   get index(): Map<string, MixinRegistryEntry[]> {
-    return (ensureRegistryData(this.rules.value).mixinIndex ??= new Map<string, MixinRegistryEntry[]>());
+    return this._index;
   }
 
   // private getSimpleKeyList(selector: Selector | Nil | undefined): string[] | undefined {
@@ -881,7 +701,7 @@ export class MixinRegistry extends Registry<
   private _ensureChildrenRegistered(rules: Rules, selectorBits?: BitSetLibrary<string>) {
     for (const child of rules.value) {
       if (isNode(child, N.Ruleset)) {
-        const sel = (child as Ruleset).selector;
+        const sel = (child as Ruleset).get('selector');
         if (sel && selectorBits && !isNode(sel, N.Nil) && !(sel as Selector).keySetLibrary) {
           (sel as Selector).keySetLibrary = selectorBits;
           const selValue = (sel as unknown as { value?: unknown }).value;
@@ -928,7 +748,7 @@ export class MixinRegistry extends Registry<
     // Get the selector's keySet and extract indexable keys (same as _indexSelectorStart)
     let indexableKeys: string[] = [];
     if (isNode(value, N.Ruleset)) {
-      const selector = value.selector;
+      const selector = (value as Ruleset).get('selector');
       if (isNode(selector, N.Nil)) {
         return false;
       }
@@ -1057,10 +877,7 @@ export class MixinRegistry extends Registry<
       let [startKey, ...search] = keyList;
       let registry = rules.getRegistry('mixin', this.context);
       registry.indexPendingItems();
-      const mixinIndices = [
-        getRegistryIndex(rules, 'mixinIndex', this.context),
-        registry.index
-      ].filter(Boolean) as Array<Map<string, MixinRegistryEntry[]>>;
+      const mixinIndices = [registry.index];
       const existing: MixinRegistryEntry[] = [];
       for (const index of mixinIndices) {
         const entries = index.get(startKey!);
@@ -1137,7 +954,7 @@ export class MixinRegistry extends Registry<
               (isNode(value, N.Ruleset))
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
-              let subRules = value.rules;
+              let subRules = isNode(value, N.Ruleset) ? (value as Ruleset).get('rules') : (value as Mixin).get('rules');
               // Mixin rules aren't preEvaluated during registration — register
               // child rulesets/mixins now so namespace lookup can descend.
               // Always ensure children are registered for namespace descent —
@@ -1185,7 +1002,7 @@ export class MixinRegistry extends Registry<
               (isNode(value, N.Ruleset))
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
-              let subRules = value.rules;
+              let subRules = isNode(value, N.Ruleset) ? (value as Ruleset).get('rules') : (value as Mixin).get('rules');
               this._ensureChildrenRegistered(subRules, context?.selectorBits);
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
               subMixinRegistry.indexPendingItems();
@@ -1248,11 +1065,11 @@ export class MixinRegistry extends Registry<
             // For rulesets discovered via child-search, key-set membership is the reliable signal.
             const candidateKey = isMixin
               ? (candidateNode as Mixin).get('name')?.valueOf?.()
-              : (isRuleset ? (candidateNode as Ruleset).selector.valueOf?.() : '');
+              : (isRuleset ? (candidateNode as Ruleset).get('selector').valueOf?.() : '');
             const matchesStartKey = isRuleset
               ? (
-                  (!isNode((candidateNode as Ruleset).selector, N.Nil) && hasSelectorKey(((candidateNode as Ruleset).selector as Selector).visibleKeySet, startKey!))
-                  || (!isNode((candidateNode as Ruleset).selector, N.Nil) && hasSelectorKey(((candidateNode as Ruleset).selector as Selector).keySet, startKey!))
+                  (!isNode((candidateNode as Ruleset).get('selector'), N.Nil) && hasSelectorKey(((candidateNode as Ruleset).get('selector') as Selector).visibleKeySet, startKey!))
+                  || (!isNode((candidateNode as Ruleset).get('selector'), N.Nil) && hasSelectorKey(((candidateNode as Ruleset).get('selector') as Selector).keySet, startKey!))
                 )
               : candidateKey === startKey;
 
@@ -1264,7 +1081,7 @@ export class MixinRegistry extends Registry<
 
             // Search inside the candidate if it matches startKey and we have remaining search keys
             if (matchesStartKey && search.length > 0 && (isRuleset || hasNoParams)) {
-              let subRules = (candidateNode as Ruleset | Mixin).rules;
+              let subRules = isRuleset ? (candidateNode as Ruleset).get('rules') : (candidateNode as Mixin).get('rules');
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
               subMixinRegistry.indexPendingItems();
               subMixinRegistry.find(search, filterType, {

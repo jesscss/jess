@@ -158,7 +158,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     const rules: readonly Node[] = isNode(input, N.Rules)
       ? getControlField(input, 'value', context, input.get('value', context) as Node[])
       : isNode(input, N.Ruleset)
-        ? (input.rules ? getControlField(input.rules, 'value', context, input.rules.value) : [])
+        ? (input.get('rules') ? getControlField(input.get('rules'), 'value', context, input.get('rules').value) : [])
         : ((input as Mixin).get('rules') ? getControlField((input as Mixin).get('rules'), 'value', context, (input as Mixin).get('rules').value) : []);
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {

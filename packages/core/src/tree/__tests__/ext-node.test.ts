@@ -26,6 +26,6 @@ describe.skip('Extend', () => {
     ]);
     let evald = await rule.eval(context);
     let firstRuleset = evald.value[0]! as Ruleset;
-    expect(`${firstRuleset.selector}`).toBe('.a,\n.b');
+    expect(`${firstRuleset.get('selector')}`).toBe('.a,\n.b');
   });
 });

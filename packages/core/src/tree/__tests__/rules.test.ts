@@ -258,9 +258,9 @@ describe('Rules', () => {
         expect(clonedRuleset).toBe(nested);
         expect(getParent(clonedRuleset, ctx)).toBe(cloned);
         expect(clonedRuleset.parent).toBe(cloned);
-        expect(clonedRuleset.rules).toBe(nestedBody);
-        expect(clonedRuleset.rules.parent).toBe(clonedRuleset);
-        expect(clonedRuleset.rules.at(0, context)).toBe(nestedBody.at(0, context));
+        expect(clonedRuleset.get('rules')).toBe(nestedBody);
+        expect(clonedRuleset.get('rules').parent).toBe(clonedRuleset);
+        expect(clonedRuleset.get('rules').at(0, context)).toBe(nestedBody.at(0, context));
       });
 
       it('cloneDetachedShallowWrapper carries wrapper metadata without reparenting shared top-level children', () => {
@@ -284,8 +284,8 @@ describe('Rules', () => {
         expect(node.options.local).toBeUndefined();
         expect(wrappedRuleset.parent).toBe(node);
         expect(getParent(wrappedRuleset, ctx)).toBe(node);
-        expect(wrappedRuleset.rules).toBe(nestedBody);
-        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
+        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
       it('cloneLookupSafeShallowWrapper keeps canonical parentage while giving shared top-level children an eval state wrapper parent', () => {
@@ -306,8 +306,8 @@ describe('Rules', () => {
         expect(wrappedRuleset).toBe(nested);
         expect(wrappedRuleset.parent).toBe(node);
         expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
-        expect(wrappedRuleset.rules).toBe(nestedBody);
-        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
+        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
       it('cloneDetachedUnlockWrapper keeps canonical parentage while giving shared top-level children an unlock-wrapper state parent', () => {
@@ -328,8 +328,8 @@ describe('Rules', () => {
         expect(wrappedRuleset).toBe(nested);
         expect(wrappedRuleset.parent).toBe(node);
         expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
-        expect(wrappedRuleset.rules).toBe(nestedBody);
-        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
+        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
       it('cloneVisibilityIsolationWrapper isolates rulesVisibility writes while keeping shared top-level children canonically parented', () => {
@@ -355,8 +355,8 @@ describe('Rules', () => {
         expect(node.options.rulesVisibility.VarDeclaration).toBe('optional');
         expect(wrappedRuleset.parent).toBe(node);
         expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
-        expect(wrappedRuleset.rules).toBe(nestedBody);
-        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
+        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
       it('characterizes evaluateCandidateOutput non-Rules child shaping as exposing source-ruleset clone semantics plus wrapper parent assignment', () => {
@@ -374,18 +374,18 @@ describe('Rules', () => {
         const scopedChild = sourceRuleset.clone(false, undefined, ctx);
         evalScope.push(ctx, scopedChild);
 
-        expect(directClone.selector).not.toBe(sourceRuleset.selector);
-        expect(directClone.rules).toBe(sourceRuleset.rules);
-        expect(directClone.selector.parent).toBe(directClone);
+        expect(directClone.get('selector')).not.toBe(sourceRuleset.get('selector'));
+        expect(directClone.get('rules')).toBe(sourceRuleset.get('rules'));
+        expect(directClone.get('selector').parent).toBe(directClone);
         expect(scopedChild).not.toBe(sourceRuleset);
         expect(scopedChild.parent).toBeUndefined();
         expect(getParent(scopedChild, ctx)).toBe(evalScope);
-        expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
-        expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
-        expect(scopedChild.selector).not.toBe(sourceRuleset.selector);
-        expect(scopedChild.rules).toBe(sourceRuleset.rules);
-        expect(scopedChild.selector.valueOf()).toBe(sourceRuleset.selector.valueOf());
-        expect(scopedChild.rules.toTrimmedString()).toBe(sourceRuleset.rules.toTrimmedString());
+        expect(sourceRuleset.get('selector').parent).toBe(sourceRuleset);
+        expect(sourceRuleset.get('rules').parent).toBe(sourceRuleset);
+        expect(scopedChild.get('selector')).not.toBe(sourceRuleset.get('selector'));
+        expect(scopedChild.get('rules')).toBe(sourceRuleset.get('rules'));
+        expect(scopedChild.get('selector').valueOf()).toBe(sourceRuleset.get('selector').valueOf());
+        expect(scopedChild.get('rules').toTrimmedString()).toBe(sourceRuleset.get('rules').toTrimmedString());
       });
 
       it('characterizes evaluateCandidateOutput non-Rules child shaping as downstream of the source-ruleset clone contract, not another rules.ts cleanup', () => {
@@ -400,17 +400,17 @@ describe('Rules', () => {
         const sourceScopedChild = sourceRuleset.clone(false, undefined, ctx);
         const derivedScopedChild = derivedRuleset.clone(false, undefined, ctx);
 
-        expect(sourceScopedChild.selector).not.toBe(sourceRuleset.selector);
-        expect(sourceScopedChild.rules).toBe(sourceRuleset.rules);
-        expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
-        expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
-        expect(sourceScopedChild.selector.parent).toBe(sourceScopedChild);
-        expect(getParent(sourceScopedChild.rules, ctx)).toBe(sourceScopedChild);
+        expect(sourceScopedChild.get('selector')).not.toBe(sourceRuleset.get('selector'));
+        expect(sourceScopedChild.get('rules')).toBe(sourceRuleset.get('rules'));
+        expect(sourceRuleset.get('selector').parent).toBe(sourceRuleset);
+        expect(sourceRuleset.get('rules').parent).toBe(sourceRuleset);
+        expect(sourceScopedChild.get('selector').parent).toBe(sourceScopedChild);
+        expect(getParent(sourceScopedChild.get('rules'), ctx)).toBe(sourceScopedChild);
 
-        expect(derivedScopedChild.selector).not.toBe(derivedRuleset.selector);
-        expect(derivedScopedChild.rules).not.toBe(derivedRuleset.rules);
-        expect(derivedScopedChild.selector.parent).toBe(derivedScopedChild);
-        expect(derivedScopedChild.rules.parent).toBe(derivedScopedChild);
+        expect(derivedScopedChild.get('selector')).not.toBe(derivedRuleset.get('selector'));
+        expect(derivedScopedChild.get('rules')).not.toBe(derivedRuleset.get('rules'));
+        expect(derivedScopedChild.get('selector').parent).toBe(derivedScopedChild);
+        expect(derivedScopedChild.get('rules').parent).toBe(derivedScopedChild);
       });
 
       it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active eval state view', () => {
@@ -442,15 +442,15 @@ describe('Rules', () => {
         expect(node.options.local).toBeUndefined();
 
         expect(wrappedRuleset).not.toBe(nested);
-        expect(wrappedRuleset.selector.valueOf()).toBe('.patched');
+        expect(wrappedRuleset.get('selector').valueOf()).toBe('.patched');
         expect(wrappedRuleset.parent).toBe(wrapper);
-        expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
+        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
 
         expect(wrappedSibling).not.toBe(sibling);
-        expect(wrappedSibling.selector.valueOf()).toBe('.sibling');
+        expect(wrappedSibling.get('selector').valueOf()).toBe('.sibling');
         expect(wrappedSibling.parent).toBe(wrapper);
 
-        expect(nested.selector.valueOf()).toBe('.item');
+        expect(nested.get('selector').valueOf()).toBe('.item');
         expect(nested.parent).toBe(node);
         expect(sibling.parent).toBe(node);
       });
@@ -491,12 +491,12 @@ describe('Rules', () => {
         const materializedRuleset = materialized.at(0, context) as typeof replacement;
 
         expect(materializedRuleset).not.toBe(replacement);
-        expect(materializedRuleset.selector.valueOf()).toBe('.other');
-        expect(materializedRuleset.rules.toTrimmedString()).toBe('color: blue;');
+        expect(materializedRuleset.get('selector').valueOf()).toBe('.other');
+        expect(materializedRuleset.get('rules').toTrimmedString()).toBe('color: blue;');
         expect(materializedRuleset.parent).toBe(materialized);
         expect(root.at(0, context)).toBe(nested);
-        expect((root.at(0, context) as typeof nested).selector.valueOf()).toBe('.item');
-        expect((root.at(0, context) as typeof nested).rules.toTrimmedString()).toBe('color: red;');
+        expect((root.at(0, context) as typeof nested).get('selector').valueOf()).toBe('.item');
+        expect((root.at(0, context) as typeof nested).get('rules').toTrimmedString()).toBe('color: red;');
       });
 
       it('characterizes returned param-mixin nested bodies as correctly parented and already source-rooted in provenance', async () => {
@@ -981,7 +981,7 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
         // After evaluation, rulesets are still Rulesets, access via .value.rules
-        let boxRules = boxRuleset.rules;
+        let boxRules = boxRuleset.get('rules');
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
@@ -1015,7 +1015,7 @@ describe('Rules', () => {
         if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.rules;
+        let box3Rules = box3Ruleset.get('rules');
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }

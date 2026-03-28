@@ -18,7 +18,8 @@ import {
   Interpolated,
   INTERPOLATION_PLACEHOLDER,
   type Rules,
-  Node
+  Node,
+  Ruleset
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -1435,8 +1436,8 @@ describe('Style import', () => {
       const sourceRules = rules([importedRuleset]);
       context.sourceTrees.set('dedupe-parents.jess', sourceRules);
 
-      expect(importedRuleset.rules.parent).toBe(importedRuleset);
-      expect(importedRuleset.selector.parent).toBe(importedRuleset);
+      expect(importedRuleset.get('rules').parent).toBe(importedRuleset);
+      expect(importedRuleset.get('selector').parent).toBe(importedRuleset);
 
       const node = rules([
         style({ path: quoted(any('dedupe-parents.jess')) }, { type: 'import' }),
@@ -1445,8 +1446,8 @@ describe('Style import', () => {
 
       await node.eval(context);
 
-      expect(importedRuleset.rules.parent).toBe(importedRuleset);
-      expect(importedRuleset.selector.parent).toBe(importedRuleset);
+      expect(importedRuleset.get('rules').parent).toBe(importedRuleset);
+      expect(importedRuleset.get('selector').parent).toBe(importedRuleset);
     });
 
     it('deduped imports materialize top-level declaration parents in returned trees without corrupting canonical source parents', async () => {
@@ -1541,8 +1542,8 @@ describe('Style import', () => {
         rules: rules([decl({ name: any('color'), value: any('red') })])
       });
 
-      const canonicalSelector = canonicalRuleset.selector;
-      const canonicalBody = canonicalRuleset.rules;
+      const canonicalSelector = canonicalRuleset.get('selector');
+      const canonicalBody = canonicalRuleset.get('rules');
 
       expect(canonicalSelector.parent).toBe(canonicalRuleset);
       expect(canonicalBody.parent).toBe(canonicalRuleset);
@@ -1550,8 +1551,8 @@ describe('Style import', () => {
       const shallowClone = canonicalRuleset.clone(false);
 
       expect(shallowClone).not.toBe(canonicalRuleset);
-      expect(shallowClone.selector).toBe(canonicalSelector);
-      expect(shallowClone.rules).toBe(canonicalBody);
+      expect(shallowClone.get('selector')).toBe(canonicalSelector);
+      expect(shallowClone.get('rules')).toBe(canonicalBody);
       expect(canonicalSelector.parent).toBe(shallowClone);
       expect(canonicalBody.parent).toBe(shallowClone);
       expect(shallowClone.toTrimmedString({ context })).toContain('color: red');
@@ -1581,7 +1582,7 @@ describe('Style import', () => {
           decl({ name: any('color'), value: ref('libColor', { type: 'variable' }) })
         ])
       });
-      const sourceDecl = sourceRuleset.rules.at(0, context) as Node;
+      const sourceDecl = sourceRuleset.get('rules').at(0, context) as Node;
 
       const evaluatedRuleset = ruleset({
         selector: sellist([sel([el('.dedupe-contract')])]),
@@ -1589,24 +1590,24 @@ describe('Style import', () => {
           decl({ name: any('color'), value: any('red') })
         ])
       });
-      const evaluatedDecl = evaluatedRuleset.rules.at(0, context) as Node;
+      const evaluatedDecl = evaluatedRuleset.get('rules').at(0, context) as Node;
       evaluatedRuleset.sourceNode = sourceRuleset;
       evaluatedDecl.sourceNode = sourceDecl;
 
       const sourceMaterialized = evaluatedRuleset.materializeCopy(true);
       const materialized = evaluatedRuleset.materializeEvaluatedCopy();
-      const materializedDecl = materialized.rules.at(0, context) as Node;
+      const materializedDecl = materialized.get('rules').at(0, context) as Node;
 
       expect(materialized.toTrimmedString({ context })).toContain('color: red');
       expect(sourceMaterialized.toTrimmedString({ context })).toContain('$libColor');
       expect(materialized.sourceNode).toBe(sourceRuleset);
       expect(materializedDecl.sourceNode).toBe(sourceDecl);
-      expect(materialized.selector.parent).toBe(materialized);
-      expect(materialized.rules.parent).toBe(materialized);
-      expect(materializedDecl.parent).toBe(materialized.rules);
-      expect(evaluatedRuleset.selector.parent).toBe(evaluatedRuleset);
-      expect(evaluatedRuleset.rules.parent).toBe(evaluatedRuleset);
-      expect(evaluatedDecl.parent).toBe(evaluatedRuleset.rules);
+      expect(materialized.get('selector').parent).toBe(materialized);
+      expect(materialized.get('rules').parent).toBe(materialized);
+      expect(materializedDecl.parent).toBe(materialized.get('rules'));
+      expect(evaluatedRuleset.get('selector').parent).toBe(evaluatedRuleset);
+      expect(evaluatedRuleset.get('rules').parent).toBe(evaluatedRuleset);
+      expect(evaluatedDecl.parent).toBe(evaluatedRuleset.get('rules'));
     });
 
     it('deduped import wrappers keep cached evaluated parent pointers stable with detached wrapper finalization', async () => {

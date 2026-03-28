@@ -275,42 +275,72 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Lazily create registries for types as needed.
    */
+  private static _registryKey(type: string): '_rulesetRegistry' | '_mixinRegistry' | '_declarationRegistry' | '_functionRegistry' {
+    return `_${type}Registry` as any;
+  }
+
+  private static _registryClass(type: string) {
+    return Registries[`${type.charAt(0).toUpperCase()}${type.slice(1)}Registry` as 'RulesetRegistry' | 'MixinRegistry' | 'DeclarationRegistry' | 'FunctionRegistry'];
+  }
+
+  /**
+   * Register a child node into the appropriate registry.
+   * Creates the registry lazily on first registration.
+   * With context: writes to the state-scoped registry on NodeState.
+   * Without context: writes to the instance property (canonical).
+   */
   register(
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
     node: Node,
     context?: Context
   ) {
-    if (type === 'function') {
-      let registry = this.functionRegistry;
+    const key = Rules._registryKey(type);
+    if (context) {
+      const ns = context.activeState.get(this);
+      let registry = ns[key];
       if (!registry) {
-        registry = new Registries.FunctionRegistry(this);
-        this.functionRegistry = registry;
+        registry = new (Rules._registryClass(type))(this, context) as any;
+        ns[key] = registry as any;
       }
-      return registry.add(node as any);
+      return (registry as any).add(node);
     }
-
-    if (Registries.registerSessionNode(this, type, node, context)) {
-      return;
+    let registry = (this as any)[key];
+    if (!registry) {
+      registry = new (Rules._registryClass(type))(this);
+      (this as any)[key] = registry;
     }
-
-    return Registries.registerCanonicalNode(this, type, node, context);
+    return registry.add(node);
   }
 
+  /**
+   * Get a registry for lookups. Read-only — returns undefined if no
+   * registry was ever created (meaning nothing was registered).
+   */
   getRegistry(type: 'ruleset', context?: Context): Registries.RulesetRegistry;
   getRegistry(type: 'declaration', context?: Context): Registries.DeclarationRegistry;
   getRegistry(type: 'mixin', context?: Context): Registries.MixinRegistry;
   getRegistry(type: 'function', context?: Context): Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context) {
-    if (type === 'function') {
-      this.functionRegistry ??= new Registries.FunctionRegistry(this);
-      return this.functionRegistry;
+    const key = Rules._registryKey(type);
+    if (context) {
+      let state: EvalState | undefined = context.activeState;
+      while (state) {
+        const registry = state.peek(this)?.[key];
+        if (registry) {
+          return registry;
+        }
+        state = state.parent;
+      }
     }
-
-    Registries.syncRegistryCache(this, context);
-    let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
-    let RegistryClass = Registries[`${className}Registry`];
-    return new RegistryClass(this, context);
+    // Fall back to instance property, or create an empty one.
+    // Creating on read is fine — it's empty, no indexing cost.
+    let registry = (this as any)[key];
+    if (!registry) {
+      registry = new (Rules._registryClass(type))(this, context);
+      (this as any)[key] = registry;
+    }
+    return registry;
   }
 
   /**
@@ -1023,7 +1053,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         isNestableAtRuleBody
         && children.length === 1
         && isNode(first, N.Ruleset)
-        && isNode((first as Ruleset).selector, N.Ampersand);
+        && isNode((first as Ruleset).get('selector'), N.Ampersand);
       if (isWrapper) {
         rules = this;
       }
@@ -1209,7 +1239,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._isStatic((node as Node & { path: unknown }).path);
     }
     if (isNode(node, N.Ruleset)) {
-      const selector: Node = node.selector;
+      const selector: Node = (node as Ruleset).get('selector');
       if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.ComplexSelector | N.SelectorList | N.Nil)) {
         return true;
       }

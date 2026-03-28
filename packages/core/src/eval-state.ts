@@ -1,4 +1,6 @@
 import type { Node } from './tree/node-base.js';
+import type { RulesetRegistry, MixinRegistry, DeclarationRegistry, FunctionRegistry } from './tree/util/registry-utils.js';
+import type { EvalDependency } from './tree/util/field-helpers.js';
 
 /**
  * Per-node state within an EvalState.
@@ -22,7 +24,13 @@ export class NodeState {
   }
 
   /** Dependency tracking — stays off instance until first access */
-  declare _dependency: import('./tree/util/field-helpers.js').EvalDependency | undefined;
+  declare _dependency: EvalDependency | undefined;
+
+  /** Per-type registries — created lazily on first register(), never on find() */
+  declare _rulesetRegistry: RulesetRegistry | undefined;
+  declare _mixinRegistry: MixinRegistry | undefined;
+  declare _declarationRegistry: DeclarationRegistry | undefined;
+  declare _functionRegistry: FunctionRegistry | undefined;
 
   /** Recursive subtree state — stays off instance until first access */
   declare _subtree: EvalState | undefined;

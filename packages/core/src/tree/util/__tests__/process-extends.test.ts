@@ -139,7 +139,7 @@ describe('processExtends function (eval flow)', () => {
       const context = new Context();
       const evald = await root.eval(context);
       const outerRuleset = evald.at(0, context) as Ruleset | undefined;
-      const nestedRuleset = outerRuleset?.rules?.value?.[0];
+      const nestedRuleset = outerRuleset?.get('rules')?.value?.[0];
       const expected = tryExtendSelector(
         targetSelector.copy(true),
         el('.replace'),
