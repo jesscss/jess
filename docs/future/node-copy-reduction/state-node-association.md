@@ -776,25 +776,32 @@ patched.
 
 ## Recommendation
 
-### Incremental path (eliminate _carriedState with minimal change)
+### Chosen approach: _carriedState + subtreeMap (Approach 1+5)
 
-**Combine Approach 1 + Approach 5:**
+**Status: IMPLEMENTED.**
 
-1. After `popState()` in `evaluateCandidateOutput`, store the subtree in
-   **both** places:
-   ```ts
-   ctx.activeState.get(outputNode)._subtree = callState;
-   ctx.subtreeMap.set(outputNode, callState);
-   ```
+Both mechanisms are in place:
 
-2. `toTrimmedString` checks `ctx.activeState.peek(this)?._subtree` (already
-   the fallback path — just remove the `_carriedState` check).
+1. `_carriedState` on output nodes carries the per-call EvalState.
+   Set in `evaluateCandidateOutput`, `$for` loop, import eval.
 
-3. `flatRules` checks the same, propagates via `activeSubtree` parameter
-   as today.
+2. `ctx.subtreeMap` WeakMap on Context maps output nodes → EvalState.
+   Set alongside `_carriedState` in the same locations.
 
-4. For parent walks or any code that doesn't have the right activeState,
-   fall back to `ctx.subtreeMap.get(node)`.
+3. `toTrimmedString` checks `_carriedState` first, then `_subtree`,
+   then `subtreeMap`. Pushes the subtree for serialization.
+
+4. `flatRules` propagates via `activeSubtree` parameter from the
+   same sources.
+
+5. `getField`/`getParent` walk the `EvalState.parent` chain for
+   cross-boundary reads (no activeState switching needed for reads).
+
+**What was tried and rejected**: Switching `activeState` during registry
+parent walks caused 46 new regressions. The save/restore conflicts with
+nested searches. Chain walking handles reads correctly; the only gap is
+`syncRegistryCache` which checks `activeState` directly for
+state-overlaid children.
 
 5. Remove `_carriedState` property from Node.
 

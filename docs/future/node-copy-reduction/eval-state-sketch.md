@@ -109,22 +109,31 @@ s.fields.get('parent')
 
 ```ts
 class Context {
-  /** The root eval state for this evaluation pass */
+  /** The root eval state for this evaluation pass (lazy) */
   private _evalState?: EvalState;
-
   get evalState(): EvalState {
     return (this._evalState ??= new EvalState());
   }
 
-  /**
-   * Stack of active subtree states.
-   * Pushed when entering a replacement's subtree, popped on exit.
-   * Lookups walk the stack top-down.
-   */
-  /** Stack of active subtree states. Push when entering a replacement's
-   *  subtree, pop on exit. Top of stack is the active state for lookups. */
-  evalStateStack: EvalState[] = [];
+  /** Current active state — settable cursor, save/restore pattern.
+   *  pushState/popState use EvalState.parent chain. */
+  activeState: EvalState;
+
+  /** Maps output nodes → their call-site EvalState (global O(1) lookup) */
+  readonly subtreeMap: WeakMap<Node, EvalState>;
+
+  pushState(state: EvalState): void {
+    state.parent = this.activeState;
+    this._activeState = state;
+  }
+
+  popState(): EvalState | undefined {
+    const popped = this._activeState;
+    this._activeState = popped?.parent;
+    return popped;
+  }
 }
+```
 ```
 
 ### Use cases
