@@ -267,132 +267,116 @@ function getFieldAt(node: Node, field: string, ctx: Context): unknown {
 }
 ```
 
-### Tree walks: serialization (top-down) and references (bottom-up)
+### Tree walks
 
-The hard question: when walking the tree, how do you know which EvalState
-to look in for a given node?
+The evaluated tree is the canonical tree with replacements grafted in.
+Some branches are canonical, some are replacements with their own subtrees.
+Both serialization (top-down) and reference lookup (bottom-up) walk this
+mixed tree.
 
-#### The setup
-
-```
-Root EvalState (S0):
-  Call → { replacement: mixinBody, subtree: S1 }
-
-Subtree EvalState (S1):
-  body → { fields: { parent: outerScope } }
-  paramVarDecl → { fields: { value: blue } }
-
-Canonical tree:
-  Root Rules
-    ├── Mixin .m(@color) { color: @color; }
-    │        └── body Rules ← this is the canonical body
-    │              └── Decl color: @color
-    └── Ruleset .test
-         └── Call .m(blue) ← replaced by body in S0
-```
-
-#### Serialization (top-down walk)
-
-Walk canonical children. At each node, check the CURRENT active state
-for a replacement or subtree.
+#### The evaluated tree
 
 ```
-1. Start at Root Rules. Active state = S0.
-2. Walk children: Mixin (skip, not visible), Ruleset .test.
-3. Enter Ruleset .test. Walk its Rules children.
-4. Hit Call. S0 has: replacement=body, subtree=S1.
-5. PUSH S1 onto stack. Render body instead of Call.
-6.   Inside body (active state = S1):
-7.   Walk children: Decl color: @color.
-8.   Render Decl. Value is a Reference. Reference was evaluated
-     during eval — its replacement (Keyword "blue") is in S1.
-9.   Output: color: blue;
-10. POP S1.
-11. Continue with remaining children of .test.
+Canonical:                    Evaluated (canonical + state):
+  Root Rules                    Root Rules
+    Mixin .m(@color)              Mixin .m (skip, not visible)
+      body Rules                  Ruleset .test
+        Decl color: @color          [Call .m(blue) → body Rules]  ← replacement
+    Ruleset .test                     Decl color: blue            ← resolved
+      Call .m(blue)
 ```
 
-Key insight: the subtree push/pop is driven by the PARENT state's entry
-for the node. You check S0 for Call, find the subtree, push it, then
-everything inside renders under S1.
-
-#### References (bottom-up walk)
-
-A Reference walks up the parent chain to find the scope that has the
-variable. This walk crosses subtree boundaries.
-
+State structure:
 ```
-1. Reference @color is inside Decl, inside body Rules.
-2. getParent(Decl) → body Rules (canonical parent, or from S1)
-3. Search body's registry for @color. Not found.
-4. getParent(body) → outerScope (from S1: body → outerScope)
-5. Search outerScope's registry for @color. FOUND. Read its value.
-6. The value "blue" was bound during matchMixinCandidates (canonical
-   mutation on the ephemeral scope's VarDeclaration). No state lookup
-   needed — the VarDeclaration's canonical value IS blue.
+S0 (root):  Call → { replacement: body, subtree: S1 }
+S1 (call):  @color VarDecl → { fields: { value: Keyword(blue) } }
 ```
 
-Where does getParent look? Always in the CURRENT active state. During
-eval, the per-call state is active (it was pushed). The body's parent
-was set in that same state. The outerScope's parent was ALSO set in
-that state (or should be — it's part of the call setup).
+#### One rule for both directions
 
-PROBLEM: the outerScope's parent was set in the CALLER's state (S0),
-not in the per-call state (S1). The call setup happens before S1 is
-pushed.
+Every node lives in exactly one state. When you encounter a node:
 
-FIX OPTIONS:
+1. Check the **active state** for that node's patches/replacement.
+2. If there's a **subtree**, push it before descending into the replacement.
+3. If there's no entry, the node is **canonical** — use its properties directly.
 
-A) Set outerScope's parent in S1 (after push), not S0.
-   → Simple. prepareMixinCandidateInvocation must happen AFTER
-     the per-call state push, not before.
+```ts
+function renderNode(node: Node, ctx: Context): string {
+  const ns = ctx.activeState.peek(node);
+  const actual = ns?.replacement ?? node;
+  if (ns?._subtree) ctx.pushState(ns._subtree);
+  const result = actual.toCSS(ctx);
+  if (ns?._subtree) ctx.popState();
+  return result;
+}
+```
 
-B) Make getParent walk the state chain (S1 → S0).
-   → Works but violates the "one state per node" principle.
+That's it. Serialization calls this recursively. Each child checks the
+currently active state. Inside a subtree, that state is the subtree.
+Outside, it's the parent state. The push/pop handles the boundary.
 
-C) Copy outerScope's parent entry from S0 into S1 at push time.
-   → Explicit but fragile.
+#### Reference lookup (bottom-up)
 
-D) Have a single flat "global" state for all non-subtree fields,
-   with subtrees only for replacement-internal fields.
-   → Cleanest but biggest change.
+References walk up the parent chain. The parent chain is a mix of
+canonical parents and state-patched parents. The rule is the same:
+check the active state first, fall through to canonical.
 
-Option A is simplest. The outerScope is ephemeral (created per call).
-Its parent should be set in the per-call state alongside the body's
-parent. Move the setup into evaluateCandidateOutput, after pushState.
+```ts
+function getParent(node: Node, ctx: Context): Node | undefined {
+  return ctx.activeState.peek(node)?._fields?.get('parent')
+    ?? node.parent;
+}
+```
+
+During eval, the per-call state IS the active state (it was pushed).
+ALL nodes touched during that call have their fields set in that state.
+The parent chain for body → outerScope → caller is fully within the
+per-call state.
+
+```
+Reference @color inside body:
+  1. getParent(Decl) → body       (canonical parent)
+  2. Search body registry → not found
+  3. getParent(body) → outerScope (set in S1 during call setup)
+  4. Search outerScope registry → found @color, value = blue
+```
+
+No state boundary crossing needed. Everything the reference needs is
+either in the active state or canonical.
+
+**Key constraint**: all field patches for a call MUST be written to that
+call's state. If outerScope's parent was set in the caller's state
+instead of the call's state, the reference walk breaks. The fix is to
+move all call setup (parent wiring, param binding) to AFTER pushState.
 
 #### Nested calls
 
-When .wrapper-mixin calls .base-mixin inside its body:
-
 ```
-S0 (root):
-  Call.wrapper → { replacement: wrapperBody, subtree: S1 }
-
-S1 (wrapper call):
-  wrapperBody → { fields: { parent: wrapperOuterScope } }
-  Call.base → { replacement: baseBody, subtree: S2 }
-
-S2 (base call):
-  baseBody → { fields: { parent: baseOuterScope } }
+S0: Call.wrapper → { replacement: wrapperBody, subtree: S1 }
+S1: Call.base   → { replacement: baseBody,    subtree: S2 }
+S2: @color      → { fields: { value: blue } }
 ```
 
-Serialization:
-1. S0 active. Hit Call.wrapper → push S1, render wrapperBody.
-2. S1 active. Hit Call.base → push S2, render baseBody.
-3. S2 active. Reference @color resolves through baseOuterScope.
-4. Pop S2. Pop S1.
+Serialization: push S1, enter wrapperBody, push S2, enter baseBody,
+render @color=blue, pop S2, pop S1.
 
-Each subtree is self-contained. No cross-state field scatter.
+Reference inside baseBody: walks up within S2. Everything it needs is
+in S2 or canonical. No cross-state lookups.
 
-#### The rule
+#### During eval vs during serialization
 
-Each per-call EvalState (subtree) must contain ALL field patches for
-ALL nodes that are evaluated within that call. The parent chain for the
-body, the outerScope, and any inner nodes — all set in S1, not S0.
+During **eval**, the subtree IS the activeState (it was pushed onto
+the stack). Writes go to it. Reads check it first, fall through to
+canonical. The eval pipeline naturally pushes/pops states as it enters
+and exits calls.
 
-If you need to read a field and it's not in the active state, either:
-- It's canonical (fall through to node property) — correct.
-- It was set in a different state — BUG. Fix the write site.
+During **serialization**, the subtrees are stored on NodeState entries
+(via `_subtree`). The serializer pushes/pops them as it descends into
+replacements. Same push/pop pattern, but driven by the tree structure
+instead of the eval pipeline.
+
+Both use the same `getField`/`getParent` — one implementation, works
+for both directions, no special cases.
 
 ### What gets killed
 
