@@ -115,10 +115,10 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
   } else if (isNode(collection, N.Mixin | N.Ruleset | N.Rules)) {
     let rules: Node[];
     if ((collection as Node).type === 'Mixin') {
-      if ((collection as Mixin).params?.length) {
+      if ((collection as Mixin).get('params')?.length) {
         throw new Error('We can\'t iterate over a mixin with parameters');
       }
-      rules = [...(collection as Mixin).rules.value];
+      rules = [...(collection as Mixin).get('rules').value];
     } else if ((collection as Node).type === 'Ruleset') {
       rules = [...(collection as Ruleset).rules.value];
     } else if ((collection as Node).type === 'Rules') {

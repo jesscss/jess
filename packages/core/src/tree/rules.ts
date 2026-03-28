@@ -1199,7 +1199,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     if (isNode(node, N.Mixin)) {
       // Check position-patched name: preEval may have resolved an interpolated name
-      const name = context ? getField(node, 'name', context) : node.name;
+      const name = node.get('name', context);
       return this._isStatic(name);
     }
     if (isNode(node, N.Declaration)) {

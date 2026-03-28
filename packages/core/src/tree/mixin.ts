@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, setField, setParent } from './util/field-helpers.js';
+import { setField, setParent } from './util/field-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -75,24 +75,31 @@ export type MixinOptions = {
  *
  * @todo - Even though we allow a selector as a name.
  */
+export type MixinChildData = {
+  name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  rules: Rules;
+  params: List<Node> | undefined;
+  guard: Condition | undefined;
+};
+
 export interface Mixin {
   type: 'Mixin';
   shortType: 'mixin';
 }
 
-export class Mixin extends Node<MixinValue, MixinOptions> {
+export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   static override childKeys = ['name', 'rules', 'params', 'guard'] as const;
 
-  readonly name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
-  readonly rules!: Rules;
-  readonly params: List<Node> | undefined;
-  readonly guard: Condition | undefined;
+  private name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  private rules!: Rules;
+  private params: List<Node> | undefined;
+  private guard: Condition | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const name = this._getName(ctx);
-    const rules = this._getRulesContainer(ctx);
-    const params = this._getParams(ctx);
-    const guard = this._getGuard(ctx);
+    const name = this.get('name', ctx);
+    const rules = this.get('rules', ctx);
+    const params = this.get('params', ctx);
+    const guard = this.get('guard', ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const cloneData: MixinValue = {
       name: deep && name instanceof Node ? cloneChild(name) as Any<AnyRole> | Interpolated<AnyRole> : name,
@@ -163,30 +170,6 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   /** Return a selector-like keySet */
   private _keySet: Set<string> | undefined;
 
-  private _getName(context?: Context): Any<AnyRole> | Interpolated<AnyRole> | undefined {
-    return context
-      ? getField<Any<AnyRole> | Interpolated<AnyRole> | undefined>(this, 'name', context)
-      : this.name;
-  }
-
-  private _getRulesContainer(context?: Context): Rules {
-    return context
-      ? getField<Rules>(this, 'rules', context)
-      : this.rules;
-  }
-
-  private _getParams(context?: Context): List<Node> | undefined {
-    return context
-      ? getField<List<Node> | undefined>(this, 'params', context)
-      : this.params;
-  }
-
-  private _getGuard(context?: Context): Condition | undefined {
-    return context
-      ? getField<Condition | undefined>(this, 'guard', context)
-      : this.guard;
-  }
-
   get keySet() {
     let keySet = this._keySet;
     if (!keySet) {
@@ -203,7 +186,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (!context) {
       return this.keySet;
     }
-    const name = this._getName(context);
+    const name = this.get('name', context);
     if (!name) {
       return new Set();
     }
@@ -214,10 +197,10 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const context = options.context;
-    const name = this._getName(context);
-    const rules = this._getRulesContainer(context);
-    const params = this._getParams(context);
-    const guard = this._getGuard(context);
+    const name = this.get('name', context);
+    const rules = this.get('rules', context);
+    const params = this.get('params', context);
+    const guard = this.get('guard', context);
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -253,8 +236,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     node._setPreEvaluated(true, context);
     node.sourceNode ??= this;
 
-    const name = node._getName(context);
-    let rules = node._getRulesContainer(context);
+    const name = node.get('name', context);
+    let rules = node.get('rules', context);
     {
       const isolatedRules = rules.cloneDetachedUnlockWrapper(context);
       isolatedRules.options = {

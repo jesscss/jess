@@ -1193,13 +1193,13 @@ export function filterAndSortMixinEvalCandidates(
   let hasDefault = false;
   let evalCandidates = mixinCandidates
     .filter((candidate) => {
-      const inStack = context.rulesEvalStack.includes((candidate as Mixin).rules.sourceNode as Rules);
+      const inStack = context.rulesEvalStack.includes((candidate as Mixin).get('rules').sourceNode as Rules);
       const blockedByFailedGuard = hasFailedGuardAncestor(candidate, context);
       return !inStack && !blockedByFailedGuard;
     })
     .map<MixinEntry>((candidate) => {
       const hasDefaultGuard = Boolean(candidate.options?.hasDefault)
-        || guardContainsDefault((candidate as Mixin).guard as Node | undefined);
+        || guardContainsDefault((candidate as Mixin).get('guard') as Node | undefined);
       if (hasDefaultGuard) {
         candidate.options ??= {};
         candidate.options.hasDefault = true;
@@ -1391,8 +1391,8 @@ export async function dispatchMixinEvalCandidates(
     if (!isNode(candidate, N.Mixin)) {
       continue;
     }
-    if (!candidate.name && !candidate.params && !candidate.guard) {
-      const sourceRules = getRootSourceRules(candidate.rules);
+    if (!candidate.get('name') && !candidate.get('params') && !candidate.get('guard')) {
+      const sourceRules = getRootSourceRules(candidate.get('rules'));
       const unlocked = unlockDetachedRulesetMixinCandidateOutput(
         sourceRules,
         getCandidateParent(candidate),
@@ -1404,7 +1404,7 @@ export async function dispatchMixinEvalCandidates(
       continue;
     }
 
-    let rules = candidate.rules;
+    let rules = candidate.get('rules');
     let params = getField<List<Node> | undefined>(candidate as Node, 'params', context);
     const prepared = prepareMixinCandidateInvocation(
       rules,
@@ -1417,7 +1417,7 @@ export async function dispatchMixinEvalCandidates(
     );
     rules = prepared.rules;
     params = prepared.params;
-    const canonicalGuard = candidate.guard;
+    const canonicalGuard = candidate.get('guard');
     const pendingDefaultCandidate = await processPreparedMixinCandidate({
       candidate,
       rules,

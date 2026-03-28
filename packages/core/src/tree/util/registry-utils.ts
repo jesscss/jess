@@ -1023,7 +1023,7 @@ export class MixinRegistry extends Registry<
       hasTarget = false
     } = options ?? {};
     const mixinHasNoRequiredParams = (mixinNode: Mixin): boolean => {
-      const params = mixinNode.params;
+      const params = mixinNode.get('params');
       if (!params || params.length === 0) {
         return true;
       }
@@ -1247,7 +1247,7 @@ export class MixinRegistry extends Registry<
             // Check if this candidate matches the startKey.
             // For rulesets discovered via child-search, key-set membership is the reliable signal.
             const candidateKey = isMixin
-              ? (candidateNode as Mixin).name?.valueOf?.()
+              ? (candidateNode as Mixin).get('name')?.valueOf?.()
               : (isRuleset ? (candidateNode as Ruleset).selector.valueOf?.() : '');
             const matchesStartKey = isRuleset
               ? (

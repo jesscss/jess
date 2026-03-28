@@ -76,7 +76,7 @@ export function* iterateItems(input: Node): Generator<[Node, EntryKey]> {
       ? input.value
       : input instanceof Ruleset
         ? input.rules?.value ?? []
-        : input.rules?.value ?? [];
+        : input.get('rules')?.value ?? [];
     for (const rule of rules) {
       if (!rule || rule instanceof Comment) {
         continue;

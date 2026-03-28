@@ -352,11 +352,11 @@ describe('Mixin', () => {
       // Position model: preEvald IS the same node (no clone).
       // Patched fields are visible through position, canonical untouched.
       expect(preEvald).toBe(mixinDef);
-      expect(preEvald.name?.valueOf()).toBe('.my-mixin');
-      expect(mixinDef.name?.valueOf()).toBe('.my-mixin');
-      expect(mixinDef.params).toBe(canonicalParams);
-      expect(mixinDef.guard).toBe(canonicalGuard);
-      expect(mixinDef.rules).toBe(canonicalRules);
+      expect(preEvald.get('name')?.valueOf()).toBe('.my-mixin');
+      expect(mixinDef.get('name')?.valueOf()).toBe('.my-mixin');
+      expect(mixinDef.get('params')).toBe(canonicalParams);
+      expect(mixinDef.get('guard')).toBe(canonicalGuard);
+      expect(mixinDef.get('rules')).toBe(canonicalRules);
       expect(canonicalRules.parent).toBe(mixinDef);
     });
 

@@ -261,8 +261,8 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
       } else if (isNode(rule, N.AtRule | N.Ruleset)) {
-        if ((rule as AtRule).rules) {
-          this.makeImportant((rule as AtRule).rules!);
+        if ((rule as AtRule).get('rules')) {
+          this.makeImportant((rule as AtRule).get('rules')!);
         }
       }
     }
