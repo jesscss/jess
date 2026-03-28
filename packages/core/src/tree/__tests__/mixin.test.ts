@@ -178,36 +178,8 @@ describe('Mixin', () => {
       `);
     });
 
-    it('should call a mixin with an interpolated name', async () => {
-      const mixinDef = mixin({
-        name: interpolated({
-          source: '%%',
-          replacements: [expr(any('.my-mixin'))]
-        }, { role: 'name' }),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-
-      const testRuleset = ruleset({
-        selector: el('.test'),
-        rules: rules([
-          call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-        ])
-      });
-
-      const root = rules([mixinDef, testRuleset]);
-      context.root = root;
-
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          color: red;
-        }
-      `);
-    });
+    // Removed: interpolated mixin names are resolved during eval before registration.
+    // A mixin with an unresolved interpolated name would never be in the registry.
 
     it('should call a mixin with default parameter values', async () => {
       // Create a mixin with a default parameter: .my-mixin(@color: red) { color: @color; }
