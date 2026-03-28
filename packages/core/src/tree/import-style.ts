@@ -229,7 +229,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (isNode(current, N.Call)) {
       const callName = String(current.name).toLowerCase();
       if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-        const args = current.args?.value ?? [];
+        const args = current.args?.get('value') ?? [];
         const prelude = args.length <= 1 ? args[0] : current.args;
         if (prelude) {
           return {
@@ -551,9 +551,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
           }
 
-          // Build finalRules canonically: it's a fresh node, so canonical writes
-          // are safe. Like mixin params, injected variables live on a new ephemeral
-          // scope node so the canonical registry can index them directly.
+          // Build finalRules like mixin params: injected variables are pushed
+          // canonically (they're new nodes), library children keep their canonical
+          // parents untouched. We directly set the value array to avoid adopt()
+          // mutating canonical library node parents.
           const finalChildren: Node[] = [];
           for (const newNode of newVariables) {
             finalChildren.push(newNode);
@@ -561,7 +562,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           for (let i = 0; i < rules.value.length; i++) {
             finalChildren.push(replacementAt.get(i) ?? rules.value[i]!);
           }
-          rules = Rules.create(finalChildren);
+          const finalRules = Rules.create([]);
+          // Directly assign value array (skip adopt to preserve library parents)
+          (finalRules as unknown as { value: Node[] }).value = finalChildren;
+          // Only adopt injected/replacement nodes (new per-import, safe to reparent)
+          for (const newNode of newVariables) {
+            finalRules.adopt(newNode);
+          }
+          for (const replacement of replacementAt.values()) {
+            finalRules.adopt(replacement);
+          }
+          rules = finalRules;
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root
