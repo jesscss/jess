@@ -87,7 +87,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       : this.options;
   }
 
-  // NOTE: `length` intentionally remains canonical for now. A session-aware
+  // NOTE: `length` intentionally remains canonical for now. A state-aware
   // getter would need an explicit Context channel; otherwise the same node
   // instance would have ambiguous answers when different sessions patch
   // `value` to different lengths at the same time.

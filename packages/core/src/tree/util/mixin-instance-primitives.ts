@@ -2,8 +2,6 @@ import { Context } from '../../context.js';
 import { EvalState } from '../../eval-state.js';
 import { Node } from '../node-base.js';
 
-/** @deprecated — dead concept. Kept as type alias for migration. */
-type SessionInstanceRoot = unknown;
 import { Bool } from '../bool.js';
 import type { Condition } from '../condition.js';
 import { Nil } from '../nil.js';
@@ -52,7 +50,6 @@ export type PendingMixinDefaultCandidate<TCandidate = unknown> = {
   outerRules?: Rules;
   params?: List<Node>;
   group: MixinDefaultGroup;
-  instanceRoot?: SessionInstanceRoot;
 };
 
 export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
@@ -66,20 +63,18 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
   guardScopeChildren?: readonly Node[];
   hasDefault: boolean;
   context: Context;
-  instanceRoot?: SessionInstanceRoot;
   evaluateCandidateOutput: (
     candidate: TCandidate,
     rules: Rules,
     outerRules: Rules | undefined,
     params: List<Node> | undefined,
-    instanceRoot?: SessionInstanceRoot
   ) => MaybePromise<void>;
 };
 
 /**
  * Follow a Rules node back to its canonical source root. Mixin/ruleset
  * candidate setup wants this shared notion of "the source rules subtree" so
- * that instance roots are always created against the canonical backing body.
+ * that eval state subtrees are always created against the canonical backing body.
  */
 export function getRootSourceRules(rules: Rules): Rules {
   let current = rules;
@@ -97,13 +92,12 @@ export function getRootSourceRules(rules: Rules): Rules {
 
 /**
  * Resolve the canonical source rules for a mixin-like candidate and create a
- * per-call instance root when a session is active.
+ * per-call eval state subtree when a session is active.
  */
 export function createMixinCandidateInstanceRoot(
   _candidate: MixinEntry,
   _context: Context
-): SessionInstanceRoot | undefined {
-  // Instance roots are a dead concept. Always return undefined.
+): undefined {
   return undefined;
 }
 
@@ -130,7 +124,7 @@ export function finalizeMixinInvocationReturn(
 }
 
 /**
- * Bind one mixin param through the active instance root instead of mutating the
+ * Bind one mixin param through the active eval state subtree instead of mutating the
  * canonical VarDeclaration. This is the smallest useful primitive behind direct
  * mixin invocation.
  */
@@ -144,7 +138,7 @@ export function bindMixinParamValue(
 
 /**
  * Attach a canonical mixin body to its transient param scope through the active
- * instance root. This keeps the canonical body parent-free while allowing
+ * eval state subtree. This keeps the canonical body parent-free while allowing
  * lookups to walk body -> paramScope -> outer scope.
  */
 export function attachMixinBodyToParamScope(
@@ -277,7 +271,7 @@ export function seedMixinGuardScope(
  * Prepare the transient scope used by a single mixin invocation. This is the
  * smallest complete lookup-ready scope primitive for direct canonical-body eval:
  * the caller gets a param scope with registered params / @arguments and the
- * canonical body attached through session parent shadow only.
+ * canonical body attached through state parent shadow only.
  */
 export function prepareMixinInvocationScope(
   body: Rules,
@@ -360,12 +354,7 @@ export function prepareMixinCandidateInvocation(
   index: number,
   nodeArgs: readonly Node[],
   context: Context,
-  instanceRoot?: SessionInstanceRoot
 ): PreparedMixinCandidateInvocation {
-  if (instanceRoot) {
-    rules._instanceRoot = instanceRoot;
-  }
-
   setField(rules, 'options', {
     ...rules.options,
     rulesVisibility: {
@@ -512,7 +501,7 @@ export async function evaluateMixinGuardCandidate(
  * Finalize mixin invocation output.
  *
  * Creates a thin distinct wrapper per call so each call's output can
- * carry its own _evalPosition. No deep materialization — the wrapper
+ * carry its own _carriedState. No deep materialization — the wrapper
  * shares children with the canonical body. Only the wrapper itself
  * is a new object (one allocation per call, not N per subtree).
  */
@@ -520,7 +509,7 @@ export function finalizeMixinInvocationOutput(
   rules: Rules,
   context: Context
 ): Rules {
-  // Each call needs a distinct output node to carry its own _evalPosition.
+  // Each call needs a distinct output node to carry its own _carriedState.
   // cloneDetachedShallowWrapper creates a thin shell sharing children.
   if (rules === rules.sourceNode) {
     const wrapper = rules.cloneDetachedShallowWrapper(context);
@@ -588,7 +577,6 @@ export function projectMixinParamScopeIntoOutput(
     output.options ? { ...output.options } : undefined
   );
   merged.inherit(output);
-  merged._instanceRoot = output._instanceRoot;
   return merged;
 }
 
@@ -712,10 +700,10 @@ export function assembleMixinInvocationOutput(
 
 /**
  * Evaluate a ruleset candidate whose guard already passed during Ruleset
- * evaluation, preserving mixin-output semantics and instance-root association.
+ * evaluation, preserving mixin-output semantics and eval-state-subtree association.
  *
  * @removal-target — node-copy-reduction: clone(true) on sourceRules.
- * Replace with new EvalPosition(sourceRules) — eval the canonical body
+ * Replace with new EvalState(sourceRules) — eval the canonical body
  * with position patches instead of deep cloning it.
  */
 export async function evaluateRulesetMixinCandidateOutput(
@@ -725,12 +713,8 @@ export async function evaluateRulesetMixinCandidateOutput(
   candidateIndex: number,
   restrictMixinOutputLookup: boolean,
   context: Context,
-  instanceRoot?: SessionInstanceRoot
 ): Promise<Rules> {
   let rules = sourceRules.clone(true, undefined, context);
-  if (instanceRoot) {
-    rules._instanceRoot = instanceRoot;
-  }
   setParent(rules, parent, context);
   setSourceParent(rules, sourceParent, context);
   const previousRulesContext = context.rulesContext;
@@ -744,9 +728,6 @@ export async function evaluateRulesetMixinCandidateOutput(
   setParent(rules, parent, context);
   rules.index = candidateIndex;
   rules.options.isMixinOutput = restrictMixinOutputLookup;
-  if (instanceRoot) {
-    rules._instanceRoot = instanceRoot;
-  }
   return rules;
 }
 
@@ -760,16 +741,12 @@ export function unlockDetachedRulesetMixinCandidateOutput(
   sourceParent: Node | undefined,
   candidateIndex: number,
   context: Context,
-  instanceRoot?: SessionInstanceRoot
 ): Rules {
   const unlocked = sourceRules.cloneDetachedUnlockWrapper(context);
   setParent(unlocked, parent, context);
   setSourceParent(unlocked, sourceParent, context);
   unlocked.options.isMixinOutput = false;
   unlocked.index = candidateIndex;
-  if (instanceRoot) {
-    unlocked._instanceRoot = instanceRoot;
-  }
   return unlocked;
 }
 
@@ -792,7 +769,6 @@ export async function processPreparedMixinCandidate<TCandidate>(
     guardScopeChildren,
     hasDefault,
     context,
-    instanceRoot,
     evaluateCandidateOutput
   } = options;
 
@@ -817,8 +793,7 @@ export async function processPreparedMixinCandidate<TCandidate>(
         rules,
         outerRules: nextOuterRules,
         params,
-        group: evaluatedGuard.defaultGroup!,
-        instanceRoot
+        group: evaluatedGuard.defaultGroup!
       };
     }
   }
@@ -826,7 +801,7 @@ export async function processPreparedMixinCandidate<TCandidate>(
   await withMixinLookupScope(
     lookupScope,
     context,
-    () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params, instanceRoot)
+    () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params)
   );
   return undefined;
 }
@@ -834,7 +809,7 @@ export async function processPreparedMixinCandidate<TCandidate>(
 // -- Scope ancestry helpers --
 
 /**
- * Walk the parent chain (via session helpers) to find the nearest Rules ancestor.
+ * Walk the parent chain (via eval state helpers) to find the nearest Rules ancestor.
  */
 export function findRulesAncestor(node: Node | undefined, context: Context): Rules | undefined {
   let current = node ? getParent(node, context) : undefined;
@@ -1288,7 +1263,7 @@ export type EvaluateCandidateOutputOptions = {
  * Evaluate a single mixin candidate's body and push the result to outputRules.
  *
  * Handles recursion detection, position creation, body eval, output
- * finalization, param scope projection, and instance root association.
+ * finalization, param scope projection, and eval state subtree association.
  */
 export async function evaluateCandidateOutput(
   candidate: MixinEntry,
@@ -1297,7 +1272,6 @@ export async function evaluateCandidateOutput(
   params: List<Node> | undefined,
   context: Context,
   opts: EvaluateCandidateOutputOptions,
-  instanceRoot?: SessionInstanceRoot
 ): Promise<void> {
   const { sourceParent, restrictMixinOutputLookup, outputRules, getCandidateParent: getParentFn } = opts;
   const currentCall = context.callStack.at(-1);
@@ -1344,13 +1318,10 @@ export async function evaluateCandidateOutput(
       newRules.options.rulesVisibility ??= {};
       newRules.options.rulesVisibility.VarDeclaration = 'private';
     }
-    if (instanceRoot) {
-      newRules._instanceRoot = instanceRoot;
-    }
     // Carry the per-call state on the output node so downstream reads
     // resolve through this call's patches, not the canonical state.
     if (callState.size > 0) {
-      newRules._evalPosition = callState;
+      newRules._carriedState = callState;
     }
     outputRules.push(newRules);
   } catch (error) {
@@ -1382,7 +1353,6 @@ export type MixinDispatchContext = {
     rules: Rules,
     outerRules: Rules | undefined,
     params: List<Node> | undefined,
-    instanceRoot?: SessionInstanceRoot
   ) => Promise<void>;
 };
 
@@ -1412,11 +1382,6 @@ export async function dispatchMixinEvalCandidates(
   context.evalStateStack.push(new EvalState());
 
   for (const candidate of evalCandidates) {
-    const candidateInstanceRoot = createMixinCandidateInstanceRoot(
-      candidate,
-      context
-    );
-
     if (isNode(candidate, N.Ruleset)) {
       if (candidate.guard instanceof Nil) {
         continue;
@@ -1429,8 +1394,7 @@ export async function dispatchMixinEvalCandidates(
         sourceParent,
         candidate.index,
         restrictMixinOutputLookup,
-        context,
-        candidateInstanceRoot
+        context
       );
       outputRules.push(rules);
       continue;
@@ -1447,8 +1411,7 @@ export async function dispatchMixinEvalCandidates(
         getCandidateParent(candidate),
         sourceParent ?? caller,
         candidate.index,
-        context,
-        candidateInstanceRoot
+        context
       );
       outputRules.push(unlocked);
       continue;
@@ -1463,8 +1426,7 @@ export async function dispatchMixinEvalCandidates(
       sourceParent,
       candidate.index,
       nodeArgs,
-      context,
-      candidateInstanceRoot
+      context
     );
     rules = prepared.rules;
     params = prepared.params;
@@ -1480,7 +1442,6 @@ export async function dispatchMixinEvalCandidates(
       guardScopeChildren: prepared.guardScopeChildren,
       hasDefault,
       context,
-      instanceRoot: candidateInstanceRoot,
       evaluateCandidateOutput
     });
     if (pendingDefaultCandidate) {
@@ -1495,8 +1456,7 @@ export async function dispatchMixinEvalCandidates(
       pending.candidate,
       pending.rules,
       pending.outerRules,
-      pending.params,
-      pending.instanceRoot
+      pending.params
     )
   );
 

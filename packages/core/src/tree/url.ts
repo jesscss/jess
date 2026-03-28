@@ -39,7 +39,7 @@ export class Url extends Node<Quoted | Any> {
    * @todo - enable URL rewriting
    */
   // NOTE: `valueOf()` intentionally remains canonical for now. Import-path
-  // consumers currently call it without a Context channel, so a session-aware
+  // consumers currently call it without a Context channel, so a state-aware
   // answer would require either plumbing Context into that observer or changing
   // the eval contract to return a materialized Url value for those callers.
   override valueOf(): string {

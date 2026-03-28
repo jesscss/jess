@@ -314,7 +314,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return node;
     };
     /** @removal-target — node-copy-reduction: clone(false) + runtime copy.
-     * Position isolates; downstream reads resolve through session helpers. */
+     * Position isolates; downstream reads resolve through eval state helpers. */
     const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
       const clone = node.clone(false, undefined, context) as T;
       const nodeState = context.activeState.peek(node);

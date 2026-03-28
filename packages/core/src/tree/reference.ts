@@ -427,7 +427,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           && getParent(this, context)?.type === 'Interpolated';
         /**
          * @removal-target — node-copy-reduction: paramVar filtering
-         * With per-call EvalPosition isolation, mixin param vars live as
+         * With per-call EvalState isolation, mixin param vars live as
          * field patches on the call's position and are naturally scoped
          * by the position-aware parent chain. This walk-up check becomes
          * redundant once per-call positions are fully wired.

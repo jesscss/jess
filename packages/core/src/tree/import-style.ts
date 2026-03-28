@@ -310,7 +310,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // child Ruleset isolation so implicit-reference extends don't contaminate
     // shared selector state.
     /** @removal-target — node-copy-reduction: materialize/clone wrappers.
-     * Import/compose results should carry their EvalPosition. No wrapper
+     * Import/compose results should carry their EvalState. No wrapper
      * cloning needed — position patches provide isolation per import. */
     const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
     const needsDetachedMaterializedWrapper = Boolean(
@@ -566,7 +566,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
           // Build finalRules: new injected variables first (for linear lookup precedence),
           // then canonical nodes with injected nodes substituted at matched positions.
-          // Pass context so that adopt() routes parent writes into the session overlay
+          // Pass context so that adopt() routes parent writes into the eval state
           // instead of mutating canonical library nodes directly.
           const finalRules = Rules.create([]);
           for (const newNode of newVariables) {

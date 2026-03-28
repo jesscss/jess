@@ -492,7 +492,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // so adopt() is NOT called on canonical children.
     wrapper._setValueArray([...this.value]);
     wrapper.inherit(this);
-    // Set session parent for each child to the wrapper
+    // Set state parent for each child to the wrapper
     if (ctx) {
       for (const child of wrapper.value) {
         if (child instanceof Node) {
@@ -699,7 +699,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Push carried per-call position into context so child nodes
     // resolve patched fields during serialization.
     const ctx = options.context;
-    const carried = this._evalPosition as EvalState | undefined;
+    const carried = this._carriedState as EvalState | undefined;
     if (ctx && carried) {
       ctx.evalStateStack.push(carried);
     }
@@ -714,7 +714,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, EvalState>) {
     const finalRules: Node[] = [];
     const iterateRules = (rules: Rules, activePosition?: EvalState) => {
-      const carried = (rules._evalPosition as EvalState | undefined) ?? activePosition;
+      const carried = (rules._carriedState as EvalState | undefined) ?? activePosition;
       for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Rules)) {
           // Preserve reference-mode Rules as containers so the serializer
@@ -2201,8 +2201,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       restrictMixinOutputLookup: candidateOutputOpts.restrictMixinOutputLookup,
       outputRules,
       getCandidateParent: candidateOutputOpts.getCandidateParent,
-      evaluateCandidateOutput: (candidate, rules, outerRules, params, instanceRoot) =>
-        evaluateCandidateOutput(candidate, rules, outerRules, params, thisContext, candidateOutputOpts, instanceRoot)
+      evaluateCandidateOutput: (candidate, rules, outerRules, params) =>
+        evaluateCandidateOutput(candidate, rules, outerRules, params, thisContext, candidateOutputOpts)
     }, thisContext);
 
     return finalizeMixinInvocationReturn(output, this instanceof Context ? this : thisContext);
@@ -2216,7 +2216,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
  * getFunctionFromMixins → callWithContext → returnFunc indirection.
  *
  * The result is already fully evaluated (each candidate's body was
- * evaluated under its own per-call EvalPosition). Callers must NOT
+ * evaluated under its own per-call EvalState). Callers must NOT
  * re-evaluate the result.
  */
 export async function evalMixinDirect(
@@ -2262,8 +2262,8 @@ export async function evalMixinDirect(
     restrictMixinOutputLookup: candidateOutputOpts.restrictMixinOutputLookup,
     outputRules,
     getCandidateParent: candidateOutputOpts.getCandidateParent,
-    evaluateCandidateOutput: (candidate, rules, outerRules, params, instanceRoot) =>
-      evaluateCandidateOutput(candidate, rules, outerRules, params, context, candidateOutputOpts, instanceRoot)
+    evaluateCandidateOutput: (candidate, rules, outerRules, params) =>
+      evaluateCandidateOutput(candidate, rules, outerRules, params, context, candidateOutputOpts)
   }, context);
 
   return finalizeMixinInvocationReturn(output, context) as Rules | Nil;

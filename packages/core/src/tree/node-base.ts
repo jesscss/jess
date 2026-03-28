@@ -246,12 +246,11 @@ export abstract class Node<
   state = F_DEFAULT;
 
   /**
-   * The instance root this node belongs to. Set when a node is produced
-   * @deprecated — legacy carried state, to be removed.
-   * EvalState subtree stack replaces this.
+   * Carried EvalState from a mixin/function call. Used during serialization
+   * so child nodes resolve patched fields from their call-site state.
+   * Target: replace with subtree stack management during eval.
    */
-  _instanceRoot: unknown;
-  _evalPosition: unknown;
+  _carriedState: unknown;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -329,7 +328,7 @@ export abstract class Node<
   /**
    * @removal-target — node-copy-reduction
    * Target: remove entirely. Materialization from sourceNode is a clone.
-   * Callers should read through session helpers on the canonical node instead.
+   * Callers should read through eval state helpers on the canonical node instead.
    */
   materializeCopy(deep?: boolean): this {
     return this.sourceNode.copy(deep) as this;
@@ -340,7 +339,7 @@ export abstract class Node<
    * Target: remove entirely. Internal eval paths should never materialize.
    * Materialization is only allowed at the final CSS output boundary where
    * Jess serializes the evaluated tree to a standalone object graph.
-   * All internal consumers should read through position/session helpers.
+   * All internal consumers should read through eval state helpers.
    */
   materializeEvaluatedCopy(ctx?: Context): this {
     if (!ctx) {
@@ -525,22 +524,22 @@ export abstract class Node<
 
   /**
    * Create a detached shallow wrapper, then materialize its immediate children
-   * from the active session view.
+   * from the active eval state.
    *
    * This fills the gap between:
    * - `cloneDetachedShallowWrapper()`, which preserves child identity but keeps
-   *   session-backed child state on the canonical child objects, and
+   *   state-backed child state on the canonical child objects, and
    * - `materializeEvaluatedCopy()`, which materializes the whole node tree.
    *
    * The wrapper metadata remains local to the new node, canonical child parent
    * links stay intact, and the returned wrapper owns persistent child nodes that
-   * reflect the current session view without requiring an active session later.
+   * reflect the current eval state without requiring eval state later.
    */
   /**
    * @removal-target — node-copy-reduction
    * Target: remove entirely. This deep-materializes mixin output from the
-   * session state, creating a full object tree per call. Replace with
-   * carrying the EvalPosition on the output node — downstream reads
+   * eval state, creating a full object tree per call. Replace with
+   * carrying the EvalState on the output node — downstream reads
    * resolve through position patches, no materialization needed.
    */
   cloneDetachedMaterializedWrapper(ctx: Context): this {
@@ -728,7 +727,7 @@ export abstract class Node<
   }
 
   /** Push items onto an array-valued node.
-   * Pass a Context as the first argument to route parent adoption through the session overlay. */
+   * Pass a Context as the first argument to route parent adoption through the eval state. */
   push(ctx: Context, ...items: Node[]): void;
   push(...items: Node[]): void;
   push(ctxOrFirst: Context | Node, ...rest: Node[]): void {
@@ -818,7 +817,7 @@ export abstract class Node<
   }
 
   // ------------------------------------------------------------------
-  // Session-aware eval lifecycle helpers (Stage 8).
+  // EvalState-aware eval lifecycle helpers (Stage 8).
   // Defined here (not in field-helpers.ts) to avoid a circular import:
   // field-helpers.ts imports Node from this file, so this file cannot
   // import from field-helpers.ts.  These mirror the public helpers in
@@ -842,7 +841,7 @@ export abstract class Node<
   }
 
   /**
-   * Session-aware flag check. If a session is active, applies
+   * EvalState-aware flag check. If eval state patches exist, applies
    * flagsAdd/flagsRemove from the runtime overlay on top of
    * the canonical flags.
    */
@@ -1178,7 +1177,7 @@ export abstract class Node<
   /**
    * @removal-target — node-copy-reduction
    * Target: `return this` unconditionally. Position provides isolation;
-   * eval state and field changes go to EvalPosition patches.
+   * eval state and field changes go to EvalState patches.
    * The clone(deep) fallback exists only because not all eval paths
    * create a position yet. Once every eval path ensures a position,
    * this entire method becomes `return this`.
@@ -1191,19 +1190,19 @@ export abstract class Node<
   /**
    * @removal-target — node-copy-reduction
    * Target: remove entirely. Replace call sites with `node.eval(context)`
-   * inside an EvalPosition. The "cloned" part was to isolate eval side effects;
-   * positions do that without cloning. The session push/pop can remain as a
-   * thin `ensureSession` helper if needed, but the clone is the problem.
+   * inside an EvalState. The "cloned" part was to isolate eval side effects;
+   * positions do that without cloning. The state push/pop can remain as a
+   * thin `ensure eval state` helper if needed, but the clone is the problem.
    */
   clonedEval(context: Context): MaybePromise<Node> {
-    // EvalState provides isolation — no clone/session push needed.
+    // EvalState provides isolation — no clone needed.
     return this.eval(context);
   }
 
   /**
    * @removal-target — node-copy-reduction (eval-path callers)
    * Eval-path callers (maybeClone, mixin body clone, evalNode clone)
-   * should be replaced with EvalPosition field patches. The clone
+   * should be replaced with EvalState field patches. The clone
    * method itself survives for non-eval uses (selector composition,
    * extend application, output serialization boundary) but should
    * never be called in the eval hot path.
@@ -1261,10 +1260,10 @@ export abstract class Node<
       }
     }
 
-    // When a session is active and this is a shallow clone, the constructor will call
+    // When eval state is active and this is a shallow clone, the constructor will call
     // adopt() for all child nodes without ctx, which directly mutates their parent fields.
     // Save the pre-construction parent values so we can restore them after, routing the
-    // new parent assignment through the session overlay instead.
+    // new parent assignment through the eval state instead.
     let priorChildParents: [Node, Node | undefined][] | undefined;
     if (!deep && ctx) {
       priorChildParents = [];
@@ -1687,7 +1686,7 @@ export abstract class Node<
     const ctx = options.context;
     if (ck) {
       for (const key of ck) {
-        // Resolve through position/session when context available
+        // Resolve through eval state when context available
         const field = ctx
           ? getField(this as Node, key!, ctx)
           : (this as any)[key!];

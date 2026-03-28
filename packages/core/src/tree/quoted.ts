@@ -71,7 +71,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   override valueOf(): string {
     // NOTE: `valueOf()` intentionally remains canonical for now.
-    // It has no Context parameter, so making it session-aware here would make
+    // It has no Context parameter, so making it state-aware here would make
     // a single Quoted instance report different observer values across
     // concurrent sessions with different patched `value`s.
     const value = this.value;
@@ -80,7 +80,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
     // NOTE: `compare()` intentionally remains canonical for now.
-    // It has no Context parameter, so a session-aware comparison here would
+    // It has no Context parameter, so a state-aware comparison here would
     // require hidden ambient session state or a broader API change. Keep it
     // anchored to the canonical node values until compare gains an explicit
     // context-aware surface.
