@@ -63,21 +63,25 @@ class Url extends Node<{ value: Quoted | Any }> {
   }
 }
 
-// Multi-child node
+// Multi-child node (all fields in ChildData, including non-patched ones)
+class Operation extends Node<
+  OperationValue, NodeOptions,
+  { left: Node; operator: Operator; right: Node }
+> {
+  static childKeys = ['left', 'right'] as const;
+  private left!: Node;
+  private operator!: Operator;  // never patched, but still in ChildData
+  private right!: Node;
+}
+
 class Declaration extends Node<
+  DeclarationValue, DeclarationOptions,
   { name: NameValue; value: Node; important: Any<'flag'> | undefined }
 > {
   static childKeys = ['name', 'value', 'important'] as const;
   private name!: NameValue;
   private value!: Node;
   private important: Any<'flag'> | undefined;
-
-  constructor(data: DeclarationValue, ...) {
-    super(data as any, ...);
-    this.name = data.name;
-    this.value = data.value;
-    this.important = data.important;
-  }
 }
 
 // Leaf node (immutable, no child data)
@@ -104,6 +108,11 @@ decl.get('value', ctx)      // Node
 decl.get('important')       // Any<'flag'> | undefined
 decl.get('selector')        // TS ERROR: 'selector' not in keyof { name, value, important }
 
+// ALL fields in ChildData — including non-patched ones
+op.get('operator')          // Operator (never patched, but consistent API)
+op.get('left', ctx)         // Node     (may be patched)
+op.operator                 // TS ERROR: 'operator' is private
+
 // Internal code (within the class) — direct access for canonical
 class Url extends Node<{ value: Quoted | Any }> {
   override evalNode(context: Context): MaybePromise<Url> {
@@ -122,6 +131,15 @@ class Url extends Node<{ value: Quoted | Any }> {
   }
 }
 ```
+
+**Convention:** All node data fields go in `ChildData` and are private —
+even fields that are never state-patched (like `operator`). External
+consumers always use `get()`. Whether a field is patched or not is an
+implementation detail. The API is consistent: `node.get('field')` for
+canonical, `node.get('field', ctx)` for eval-aware.
+
+Internal class code uses direct `this.field` for canonical reads (perf
+path) and `this.get('field', ctx)` when eval-aware access is needed.
 
 ### Tests
 

@@ -8,7 +8,6 @@ import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 import {
-  getField,
   mergeDependencies,
   setField,
   setDependency,
@@ -23,6 +22,8 @@ export type OperationValue = [
   right: Node
 ];
 
+export type OperationChildData = { left: Node; operator: Operator; right: Node };
+
 export interface Operation {
   type: 'Operation';
   shortType: 'op';
@@ -32,12 +33,12 @@ export interface Operation {
  * in syntax about which is which, so we just classify `value / value`
  * as an operation.
  */
-export class Operation extends Node<OperationValue> {
+export class Operation extends Node<OperationValue, NodeOptions, OperationChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  readonly left!: Node;
-  readonly operator!: Operator;
-  readonly right!: Node;
+  private left!: Node;
+  private operator!: Operator;
+  private right!: Node;
 
   override clone(deep?: boolean): this {
     const options = (this as any)._meta?.options;
@@ -71,26 +72,14 @@ export class Operation extends Node<OperationValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  private _getLeft(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'left', context)
-      : this.left;
-  }
-
-  private _getRight(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'right', context)
-      : this.right;
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
-    const left = this._getLeft(context);
+    const left = this.get('left', context);
     const op = this.operator;
-    const right = this._getRight(context);
+    const right = this.get('right', context);
     let leftStr = w.capture(() => left.toString(options));
     let rightStr = w.capture(() => right.toString(options));
     w.add(leftStr.trimEnd(), left);
@@ -101,9 +90,9 @@ export class Operation extends Node<OperationValue> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     let n = this;
-    const left = n._getLeft(context);
+    const left = n.get('left', context);
     const op = n.operator;
-    const right = n._getRight(context);
+    const right = n.get('right', context);
     const maybeLeft = left.eval(context);
     const applyMergedDependency = (result: Node, l: Node, r: Node): Node => {
       const dependency = mergeDependencies([l, r], context);

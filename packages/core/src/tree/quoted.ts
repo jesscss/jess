@@ -4,27 +4,29 @@ import { Node, F_STATIC, F_NON_STATIC, defineType, type OptionalLocation, type T
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
+import { setField } from './util/field-helpers.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
   escaped?: boolean;
 };
 
-export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+export type QuotedChildData = { value: string | Any | Interpolated };
+
+export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions, QuotedChildData> {
   type: 'Quoted';
   shortType: 'quoted';
-  eval(context: Context): Promise<Quoted | Any | Interpolated>;
+  eval(context: Context): MaybePromise<Quoted | Any | Interpolated>;
 }
 
 /**
  * A quoted string value. Called a `String` in CSS, but calling it Quoted
  * to avoid conflict with the built-in `String` class.
  */
-export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, QuotedChildData> {
   static override childKeys = ['value'] as const;
 
-  readonly value!: string | Any | Interpolated;
+  private value!: string | Any | Interpolated;
   readonly quote: '"' | '\'' | undefined;
   readonly escaped: boolean;
 
@@ -43,17 +45,11 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     }
   }
 
-  private _getValue(context?: Context): string | Any | Interpolated {
-    return context
-      ? getField<string | Any | Interpolated>(this, 'value', context)
-      : this.value;
-  }
-
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this._getValue(options.context);
+    const value = this.get('value', options.context);
     let { quote = '"', escaped } = this;
     let escapeChar = escaped ? '~' : '';
     if (escapeChar) {
@@ -96,7 +92,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    let value: string | Any | Interpolated | Node = this._getValue(context);
+    let value: string | Any | Interpolated | Node = this.get('value', context);
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
       value = v as any;
       if (this.escaped) {
