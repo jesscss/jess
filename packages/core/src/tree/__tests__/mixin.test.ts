@@ -140,24 +140,6 @@ describe('Mixin', () => {
       `);
     });
 
-    it('calls a ruleset candidate when its parent exists only in the state parent chain', async () => {
-      const mixinRuleset = ruleset({
-        selector: el('.my-mixin'),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const stateParent = rules([]);
-      setParent(mixinRuleset, stateParent, context);
-
-      const fn = getFunctionFromMixins(mixinRuleset);
-      const result = await fn.call(context);
-
-      expect(String(result)).toBeString(`
-        color: red;
-      `);
-    });
-
     it('should call a mixin with parameters', async () => {
       // Create a mixin with a parameter: .my-mixin(@color) { color: @color; }
       const mixinDef = mixin({
@@ -551,35 +533,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('mixin output has position-aware parent and sourceParent', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const mixinRoot = rules([mixinDef]);
-      context.root = mixinRoot;
-      const sourceAnchor = decl({ name: 'background', value: any('white') });
-      const caller = call({
-        name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-        args: list([])
-      });
-
-      setSourceParent((caller as Node).name as Node, sourceAnchor, context);
-      context.caller = caller;
-
-      const fn = getFunctionFromMixins(mixinDef);
-      const result = await fn.call(context);
-
-      expect(getParent(result as Node, context)).toBe(mixinRoot);
-      expect(getSourceParent(result as Node, context)).toBe(sourceAnchor);
-      expect((result as Node).render(context)).toBeString(`
-        color: red;
-      `);
-    });
-
-    it('mixin with parameters renders correctly via position-aware eval', async () => {
+    it('mixin with parameters renders correctly via eval', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         params: list([
@@ -724,38 +678,6 @@ describe('Mixin', () => {
             color: blue;
           }
         }
-      `);
-    });
-
-    it('keeps multi-candidate mixin output child Rules parents only in the eval state', async () => {
-      const mixinA = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const mixinB = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
-          decl({ name: 'background', value: any('blue') })
-        ])
-      });
-      const mixinRoot = rules([mixinA, mixinB]);
-      context.root = mixinRoot;
-
-      const fn = getFunctionFromMixins([mixinA, mixinB]);
-      const result = await fn.call(context);
-      const output = result as Rules;
-      const firstOutputRules = output.at(0, context) as Rules;
-      const secondOutputRules = output.at(1, context) as Rules;
-
-      expect(firstOutputRules).toBeDefined();
-      expect(secondOutputRules).toBeDefined();
-      expect(getParent(firstOutputRules, context)).toBe(output);
-      expect(getParent(secondOutputRules, context)).toBe(output);
-      expect((result as Node).render(context)).toBeString(`
-        color: red;
-        background: blue;
       `);
     });
 

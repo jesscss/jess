@@ -909,18 +909,19 @@ export async function evaluateMixinArgs(
     for (const arg of args) {
       if (isNode(arg)) {
         if (isNode(arg, N.VarDeclaration)) {
-          const cloned = arg.copy(true, freezeChildren);
-          const clonedValue = (cloned as VarDeclaration).value;
-          if (clonedValue instanceof Node) {
-            const evaldValue = await clonedValue.clonedEval(context);
-            evaldValue.frozen = true;
-            (cloned as VarDeclaration).setData('value', evaldValue);
+          // Evaluate the value, keep the VarDeclaration structure
+          const value = (arg as VarDeclaration).value;
+          if (value instanceof Node) {
+            const evaldValue = await value.eval(context);
+            const bound = arg.clone(false);
+            (bound as VarDeclaration).setData('value', evaldValue);
+            nodeArgs.push(bound);
+          } else {
+            nodeArgs.push(arg);
           }
-          cloned.frozen = true;
-          nodeArgs.push(cloned);
           continue;
         }
-        const evald = await arg.clonedEval(context);
+        const evald = await arg.eval(context);
         if (evald.type === 'Rest') {
           let restValue = (evald as unknown as { value: unknown }).value;
           if (isNode(restValue as Node) && !isNode(restValue as Node, N.Sequence | N.List)) {
@@ -928,14 +929,11 @@ export async function evaluateMixinArgs(
           }
           if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
             for (const restArg of (restValue as unknown as { value: Node[] }).value) {
-              const frozenRestArg = restArg.copy(true, freezeChildren);
-              frozenRestArg.frozen = true;
-              nodeArgs.push(frozenRestArg);
+              nodeArgs.push(restArg);
             }
             continue;
           }
         }
-        evald.frozen = true;
         nodeArgs.push(evald);
       } else {
         nodeArgs.push(cast(arg));

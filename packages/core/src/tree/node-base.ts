@@ -1187,17 +1187,7 @@ export abstract class Node<
     return this;
   }
 
-  /**
-   * @removal-target — node-copy-reduction
-   * Target: remove entirely. Replace call sites with `node.eval(context)`
-   * inside an EvalState. The "cloned" part was to isolate eval side effects;
-   * positions do that without cloning. The state push/pop can remain as a
-   * thin `ensure eval state` helper if needed, but the clone is the problem.
-   */
-  clonedEval(context: Context): MaybePromise<Node> {
-    // EvalState provides isolation — no clone needed.
-    return this.eval(context);
-  }
+
 
   /**
    * @removal-target — node-copy-reduction (eval-path callers)
