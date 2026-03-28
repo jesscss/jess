@@ -555,6 +555,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (const child of normalized) {
       if (child instanceof Node) {
         this.adopt(child, ctx);
+        // Register into canonical instance registries so pre-eval lookups work.
+        // State-scoped registries are populated during eval.
+        this.registerNode(child);
       }
     }
     this.allowRoot = true;
