@@ -346,8 +346,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       isNode(currentValue, N.Collection)
       || (
         isNode(currentValue, N.Sequence)
-        && (currentValue as Sequence).value.length > 0
-        && isNode((currentValue as Sequence).value[(currentValue as Sequence).value.length - 1]!, N.Collection)
+        && (currentValue as Sequence).get('value').length > 0
+        && isNode((currentValue as Sequence).get('value')[(currentValue as Sequence).get('value').length - 1]!, N.Collection)
       );
     if (this.hasFlag(F_STATIC) && !staticNestedCollection) {
       this._setEvaluated(true, context);
@@ -377,7 +377,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (!isNode(valueNode, N.Sequence)) {
             return undefined;
           }
-          const items = [...(valueNode as Sequence).value];
+          const items = [...(valueNode as Sequence).get('value')];
           if (items.length === 0) {
             return undefined;
           }

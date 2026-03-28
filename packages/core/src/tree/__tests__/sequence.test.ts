@@ -30,7 +30,7 @@ describe('Sequence', () => {
 
     expect(rule.toTrimmedString({ context })).toBe('30 40');
     expect(rule.toTrimmedString()).toBe('10 20');
-    expect(rule.value.map(node => node.toTrimmedString())).toEqual(['10', '20']);
+    expect(rule.get('value').map(node => node.toTrimmedString())).toEqual(['10', '20']);
   });
 
   it('preserves a state-patched value across the pre-eval clone boundary', async () => {
@@ -43,7 +43,7 @@ describe('Sequence', () => {
 
     expect(evald.toTrimmedString({ context })).toBe('30 40');
     expect(rule.toTrimmedString()).toBe('10 20');
-    expect(rule.value.map(node => node.toTrimmedString())).toEqual(['10', '20']);
+    expect(rule.get('value').map(node => node.toTrimmedString())).toEqual(['10', '20']);
   });
 
   it('keeps eval-time value writes state-local in patching', async () => {
@@ -53,9 +53,9 @@ describe('Sequence', () => {
     const evald = await rule.eval(context);
 
     expect(evald.toTrimmedString({ context })).toBe('10 20');
-    expect(rule.value).toHaveLength(3);
-    expect(rule.value[1]?.type).toBe('Nil');
-    expect(rule.value.map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
+    expect(rule.get('value')).toHaveLength(3);
+    expect(rule.get('value')[1]?.type).toBe('Nil');
+    expect(rule.get('value').map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
   });
 
   it('eval respects a state-patched preserveWhitespace option without mutating canonical collapse behavior', async () => {

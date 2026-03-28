@@ -25,7 +25,7 @@ describe('Node mutation methods', () => {
       const b = any('b');
       const s = seq([a]);
       s.setData(0, b);
-      expect(s.value[0]).toBe(b);
+      expect(s.get('value')[0]).toBe(b);
     });
   });
 
@@ -47,8 +47,8 @@ describe('Node mutation methods', () => {
       const s = seq([a]);
       s.push(b);
       expect(b.parent).toBe(s);
-      expect(s.value.length).toBe(2);
-      expect(s.value[1]).toBe(b);
+      expect(s.get('value').length).toBe(2);
+      expect(s.get('value')[1]).toBe(b);
     });
 
     it('sets parent on multiple pushed nodes', () => {
@@ -70,8 +70,8 @@ describe('Node mutation methods', () => {
       const s = seq([b]);
       (s as any).unshift(a);
       expect(a.parent).toBe(s);
-      expect(s.value[0]).toBe(a);
-      expect(s.value[1]).toBe(b);
+      expect(s.get('value')[0]).toBe(a);
+      expect(s.get('value')[1]).toBe(b);
     });
   });
 
@@ -83,7 +83,7 @@ describe('Node mutation methods', () => {
       const s = seq([a, c]);
       (s as any).splice(1, 0, b);
       expect(b.parent).toBe(s);
-      expect(s.value[1]).toBe(b);
+      expect(s.get('value')[1]).toBe(b);
     });
 
     it('returns removed nodes', () => {
@@ -92,7 +92,7 @@ describe('Node mutation methods', () => {
       const s = seq([a, b]);
       const removed = (s as any).splice(0, 1);
       expect(removed).toEqual([a]);
-      expect(s.value.length).toBe(1);
+      expect(s.get('value').length).toBe(1);
     });
   });
 

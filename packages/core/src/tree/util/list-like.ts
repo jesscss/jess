@@ -15,8 +15,8 @@ function unwrapDirectListContainer(node: Node): List | Sequence | undefined {
   if (node instanceof List || node instanceof Sequence) {
     return node;
   }
-  if (node instanceof Paren && node.value instanceof Node) {
-    const inner = node.value;
+  if (node instanceof Paren && node.get('value') instanceof Node) {
+    const inner = node.get('value');
     if (inner instanceof List || inner instanceof Sequence) {
       return inner;
     }
@@ -30,7 +30,7 @@ export function isListContainer(node: Node): boolean {
 
 export function getListItems(node: Node): ListItems | undefined {
   const container = unwrapDirectListContainer(node);
-  return container?.value;
+  return container?.get('value');
 }
 
 export function isBracketedList(node: Node): boolean {
@@ -39,7 +39,7 @@ export function isBracketedList(node: Node): boolean {
   }
   const parent = node.parent;
   return parent instanceof Paren
-    && parent.value === node
+    && parent.get('value') === node
     && (parent.options?.delimiter ?? 'paren') === 'square'
     && unwrapDirectListContainer(parent) !== undefined;
 }
@@ -54,7 +54,7 @@ export function getListSeparator(node: Node): ',' | ';' | '/' | ' ' {
 
 export function coerceListItems(node: Node): ListItems {
   if (node instanceof List && node.length === 1 && node.get('value')[0] instanceof Sequence) {
-    return node.get('value')[0].value;
+    return node.get('value')[0].get('value');
   }
   return getListItems(node) ?? [node];
 }

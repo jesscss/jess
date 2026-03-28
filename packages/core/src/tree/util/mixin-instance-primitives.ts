@@ -226,8 +226,8 @@ export function defineMixinArgumentsInScope(
     .map(p => (p as any).value);
   const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
   for (const argNode of argumentNodes) {
-    if (isNode(argNode, N.Sequence) && (argNode as Sequence).value.length > 1) {
-      for (const item of (argNode as Sequence).value) {
+    if (isNode(argNode, N.Sequence) && (argNode as Sequence).get('value').length > 1) {
+      for (const item of (argNode as Sequence).get('value')) {
         const cloned = item.copy(true, freezeChildren);
         cloned.frozen = true;
         argumentsArgs.push(cloned);

@@ -173,7 +173,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private _normalizeFallbackArgSpacing(node: Node): void {
     if (isNode(node, N.Sequence)) {
-      node.value.forEach((child, childIndex) => {
+      node.get('value').forEach((child, childIndex) => {
         child.pre = childIndex === 0 ? 0 : 1;
       });
       return;

@@ -436,10 +436,10 @@ export class For extends Node<ForValue> {
                         );
                       } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
                         const prevItems = isNode(prevValue, N.Sequence)
-                          ? prevValue.value
+                          ? prevValue.get('value')
                           : [prevValue];
                         const nextItems = isNode(nextValue, N.Sequence)
-                          ? nextValue.value
+                          ? nextValue.get('value')
                           : [nextValue];
                         const nextAlreadyIncludesPrev =
                           nextItems.length >= prevItems.length

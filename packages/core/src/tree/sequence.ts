@@ -25,14 +25,16 @@ export type SequenceOptions = {
  * an expression will yield a value, and a CSS value can
  * actually be a sequence of values (like for shorthand)
  */
-export interface Sequence {
+export interface Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   type: 'Sequence' | 'QueryCondition';
   shortType: 'seq' | 'query';
 }
-export class Sequence extends Node<Node[], SequenceOptions> {
+export type SequenceChildData = { value: Node[] };
+
+export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   static override childKeys = ['value'] as const;
 
-  value!: Node[];
+  private value!: Node[];
 
   constructor(value: Node[], options?: SequenceOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -45,7 +47,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const value = this._getValue(ctx);
+    const value = this.get('value', ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const clonedValue = deep
       ? value.map(child => cloneChild(child))
@@ -75,13 +77,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return this.value.length;
   }
 
-  protected _getValue(context?: Context): Node[] {
-    return context
-      ? getField<Node[]>(this, 'value', context)
-      : this.value;
-  }
-
-  protected _getOptions(context?: Context): SequenceOptions | undefined {
+  private _getOptions(context?: Context): SequenceOptions | undefined {
     return context
       ? getField<SequenceOptions | undefined>(this, 'options', context)
       : this.options;
@@ -92,28 +88,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // instance would have ambiguous answers when different sessions patch
   // `value` to different lengths at the same time.
 
-  protected _setValue(value: Node[], context: Context): void {
-    for (const child of value) {
-      setParent(child, this, context);
-    }
-    if (this === this.sourceNode) {
-      setField(this, 'value', value, context);
-      return;
-    }
-    this.value = value;
-  }
-
-  protected _setValueAt(index: number, value: Node, context: Context): void {
-    const next = [...this._getValue(context)];
-    next[index] = value;
-    setField(this, 'value', next, context);
-  }
-
   override compare(other: Node, context?: Context) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const left = [...this._getValue(context)];
-      const right = [...other._getValue(context)];
+      const left = this.get('value', context);
+      const right = other.get('value', context);
       const result = !context
         ? compareNodeArray(left, right, equalityMode)
         : compareSequenceItems(left, right, equalityMode, context);
@@ -135,7 +114,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const value = this._getValue(options.context);
+    const value = this.get('value', options.context);
     const length = value.length;
 
     if (length === 0) {
@@ -194,15 +173,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return new List([newSequence, ...b.get('value')]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b._getValue(context).map(v => v.maybeClone(context));
+      const values = b.get('value', context).map(v => v.maybeClone(context));
       if (values.length) {
         values[0]!.pre = 1;
       }
-      setField(newSequence, 'value', [...newSequence._getValue(context), ...values], context);
+      setField(newSequence, 'value', [...newSequence.get('value', context), ...values], context);
     } else {
       b = b.maybeClone(context);
       b.pre = 1;
-      setField(newSequence, 'value', [...newSequence._getValue(context), b], context);
+      setField(newSequence, 'value', [...newSequence.get('value', context), b], context);
     }
     return newSequence;
   }
@@ -227,22 +206,38 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return pipe(
       () => {
         const node = this;
-        const maybe = serialForEach(node._getValue(context).map((n, i) => [n, i] as const), ([n, i]) => {
+        const nextValue = [...node.get('value', context)];
+        let changed = false;
+        const maybe = serialForEach(nextValue.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
-              node._setValueAt(i, res, context);
+              if (res !== n) {
+                nextValue[i] = res;
+                changed = true;
+              }
             });
           }
-          node._setValueAt(i, out as Node, context);
+          if ((out as Node) !== n) {
+            nextValue[i] = out as Node;
+            changed = true;
+          }
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => node);
+          return (maybe as Promise<void>).then(() => {
+            if (changed) {
+              setField(node, 'value', nextValue, context);
+            }
+            return node;
+          });
+        }
+        if (changed) {
+          setField(node, 'value', nextValue, context);
         }
         return node;
       },
       (node) => {
-        const value = node._getValue(context).filter(n => n && !(n instanceof Nil));
+        const value = node.get('value', context).filter(n => n && !(n instanceof Nil));
         setField(node, 'value', value, context);
         if (value.length === 1 && !node._getOptions(context)?.preserveWhitespace) {
           return value[0]!;
