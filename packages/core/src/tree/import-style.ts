@@ -551,18 +551,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
           }
 
-          // Build finalRules: new injected variables first (for linear lookup precedence),
-          // then canonical nodes with injected nodes substituted at matched positions.
-          // Pass context so that adopt() routes parent writes into the eval state
-          // instead of mutating canonical library nodes directly.
-          const finalRules = Rules.create([]);
+          // Build finalRules canonically: it's a fresh node, so canonical writes
+          // are safe. Like mixin params, injected variables live on a new ephemeral
+          // scope node so the canonical registry can index them directly.
+          const finalChildren: Node[] = [];
           for (const newNode of newVariables) {
-            finalRules.push(context, newNode);
+            finalChildren.push(newNode);
           }
           for (let i = 0; i < rules.value.length; i++) {
-            finalRules.push(context, replacementAt.get(i) ?? rules.value[i]!);
+            finalChildren.push(replacementAt.get(i) ?? rules.value[i]!);
           }
-          rules = finalRules;
+          rules = Rules.create(finalChildren);
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root
