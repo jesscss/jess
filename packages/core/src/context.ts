@@ -469,15 +469,23 @@ export class Context {
     return len > 0 ? this.evalStateStack[len - 1]! : this.evalState;
   }
 
-  /** Push a new eval state onto the stack, wiring its parent chain. */
+  /** Push a new eval state onto the stack. */
   pushState(state: EvalState): void {
-    state.parent = this.activeState;
     this.evalStateStack.push(state);
   }
 
   /** Pop the top eval state from the stack. */
   popState(): EvalState | undefined {
     return this.evalStateStack.pop();
+  }
+
+  /** Resolve a field on a node by walking the stack from top to root. */
+  resolveField(node: Node, field: string): unknown {
+    for (let i = this.evalStateStack.length - 1; i >= 0; i--) {
+      const val = this.evalStateStack[i]!.peek(node)?._fields?.get(field);
+      if (val !== undefined) return val;
+    }
+    return this._evalState?.peek(node)?._fields?.get(field);
   }
 
   _leakyRules: boolean | undefined;
