@@ -179,8 +179,9 @@ export function populateMixinParamScope(
   params: List<Node>,
   context: Context
 ): void {
-  for (let i = 0; i < params.value.length; i++) {
-    const param = params.value[i]!;
+  const paramItems = params.get('value');
+  for (let i = 0; i < paramItems.length; i++) {
+    const param = paramItems[i]!;
     if (!isNode(param, N.VarDeclaration)) {
       continue;
     }
@@ -220,7 +221,7 @@ export function defineMixinArgumentsInScope(
   argumentsDecl.removeFlag(F_VISIBLE);
   scope.push(argumentsDecl);
 
-  const paramValues = params?.value
+  const paramValues = params?.get('value')
     .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
     .map(p => (p as any).value);
   const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
@@ -307,8 +308,9 @@ export function normalizeMixinInvocationParams(
   }
 
   let unnamedRestCount = 0;
-  for (let i = 0; i < params.value.length; i++) {
-    const param = params.value[i]!;
+  const paramItems = params.get('value');
+  for (let i = 0; i < paramItems.length; i++) {
+    const param = paramItems[i]!;
     if (param.type !== 'Rest') {
       continue;
     }
@@ -974,13 +976,13 @@ export async function matchMixinCandidates(
       mixinCandidates.push(mixin);
     } else {
       const params = ((mixin as any).params as List<Node>).copy(true);
-      const hasRestParamOriginal = ((mixin as any).params as List<Node>).value.some(
+      const hasRestParamOriginal = ((mixin as any).params as List<Node>).get('value').some(
         (p: Node) => p.type === 'Rest'
       );
       const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : params.length;
       const positions = params.length;
       let requiredPositions = 0;
-      for (const param of params.value) {
+      for (const param of params.get('value')) {
         if (isNode(param, N.VarDeclaration)) {
           if ((param as VarDeclaration).value instanceof Nil) {
             requiredPositions++;
@@ -1003,7 +1005,7 @@ export async function matchMixinCandidates(
         let argValue: Node;
 
         if (isNode(arg, N.VarDeclaration)) {
-          param = params.value.find((p: Node) => {
+          param = params.get('value').find((p: Node) => {
             if (isNode(p, N.VarDeclaration)) {
               return (p as VarDeclaration).name.valueOf() === (arg as VarDeclaration).name.valueOf();
             }
@@ -1019,7 +1021,7 @@ export async function matchMixinCandidates(
             break;
           }
         } else {
-          param = params.value[pi];
+          param = params.get('value')[pi];
           if (!param) {
             match = false;
             break;
@@ -1081,7 +1083,7 @@ export async function matchMixinCandidates(
           params.setData(pi, restVarDecl);
         } else {
           const originalPatternParam = !isNode(arg, N.VarDeclaration)
-            ? ((mixin as any).params as List<Node> | undefined)?.value[pi]
+            ? ((mixin as any).params as List<Node> | undefined)?.get('value')[pi]
             : undefined;
           const preparedParam = isNode(originalPatternParam as Node | undefined, N.Selector)
             ? await preparePatternOperand(originalPatternParam as Node, context)
@@ -1103,7 +1105,7 @@ export async function matchMixinCandidates(
       if (argPos < requiredPositions) {
         continue;
       }
-      if (nodeArgs.length > 1 && params.value.length === 1 && requiredPositions === 1) {
+      if (nodeArgs.length > 1 && params.get('value').length === 1 && requiredPositions === 1) {
         continue;
       }
       if (match) {

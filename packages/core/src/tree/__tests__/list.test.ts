@@ -72,7 +72,7 @@ describe('List', () => {
     expect(result).toBe(left);
     expect(left.toTrimmedString({ context })).toBe('red, blue, black');
     expect(left.toTrimmedString()).toBe('red');
-    expect(left.value.map(child => child.toTrimmedString())).toEqual(['red']);
+    expect(left.get('value').map(child => child.toTrimmedString())).toEqual(['red']);
   });
 
   it('eval() does not overwrite the canonical list array', async () => {
@@ -91,7 +91,7 @@ describe('List', () => {
     expect(result).toBe(node);
     expect(node.toTrimmedString({ context })).toBe('red');
     expect(node.toTrimmedString()).toBe('$foo');
-    expect(node.value[0]?.type).toBe('Reference');
+    expect(node.get('value')[0]?.type).toBe('Reference');
   });
 
   it('length and iteration remain canonical without a Context channel', () => {

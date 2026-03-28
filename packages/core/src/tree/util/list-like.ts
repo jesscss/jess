@@ -53,8 +53,8 @@ export function getListSeparator(node: Node): ',' | ';' | '/' | ' ' {
 }
 
 export function coerceListItems(node: Node): ListItems {
-  if (node instanceof List && node.length === 1 && node.value[0] instanceof Sequence) {
-    return node.value[0].value;
+  if (node instanceof List && node.length === 1 && node.get('value')[0] instanceof Sequence) {
+    return node.get('value')[0].value;
   }
   return getListItems(node) ?? [node];
 }

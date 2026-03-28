@@ -1169,7 +1169,7 @@ describe('Style import', () => {
       ], { sep: ' ' as any });
 
       expect(layerArg.parent).toBe(layerArgs);
-      expect(supportsArgs.parent).toBe(postlude.value[1]);
+      expect(supportsArgs.parent).toBe(postlude.get('value')[1]);
       expect(mediaQuery.parent).toBe(postlude);
 
       await rules([
@@ -1180,7 +1180,7 @@ describe('Style import', () => {
       ]).eval(context);
 
       expect(layerArg.parent).toBe(layerArgs);
-      expect(supportsArgs.parent).toBe(postlude.value[1]);
+      expect(supportsArgs.parent).toBe(postlude.get('value')[1]);
       expect(mediaQuery.parent).toBe(postlude);
     });
 

@@ -179,9 +179,9 @@ export class Call extends Node<CallValue, CallOptions> {
       return;
     }
     if (isNode(node, N.List)) {
-      node.value.forEach((child) => {
+      node.get('value').forEach((child) => {
         if (isNode(child, N.Sequence)) {
-          child.value.forEach((nested, nestedIndex) => {
+          child.get('value').forEach((nested, nestedIndex) => {
             nested.pre = nestedIndex === 0 ? 0 : 1;
           });
         }
@@ -199,10 +199,10 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     const clonedArgs = list(
-      args.value.map(arg => arg.clone(true)),
+      args.get('value').map(arg => arg.clone(true)),
       args.options ? { ...args.options } : undefined
     );
-    clonedArgs.value.forEach((arg, argIndex) => {
+    clonedArgs.get('value').forEach((arg, argIndex) => {
       // Normalize fallback-call arg spacing to Less-style call serialization.
       arg.pre = argIndex === 0 ? 0 : 1;
       this._normalizeFallbackArgSpacing(arg);
@@ -217,7 +217,7 @@ export class Call extends Node<CallValue, CallOptions> {
    */
   private _materializeFunctionArgs(args: List<Node>, context: Context): List<Node> {
     return list(
-      args.value.map((arg) => {
+      args.get('value').map((arg) => {
         const cloned = arg.clone(true, undefined, context);
         cloned.frozen = true;
         return cloned;
@@ -245,7 +245,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const normalizedArgs = args.value.filter(Boolean);
+      const normalizedArgs = args.get('value', context).filter(Boolean);
       const last = normalizedArgs.length - 1;
       for (let i = 0; i <= last; i++) {
         const arg = normalizedArgs[i]!;
@@ -355,7 +355,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return undefined;
       }
       const out: Node[] = [];
-      for (const node of nodes.value) {
+      for (const node of nodes.get('value')) {
         out.push(await node.eval(context) as Node);
       }
       return list(out, nodes.options);
@@ -409,13 +409,13 @@ export class Call extends Node<CallValue, CallOptions> {
       context.parenFrames.pop();
       return applyDependencyToResult(
         adoptCallWhitespace(materializeStylesheetFunctionRulesBoundary(result)),
-        argNodes.value
+        argNodes.get('value')
       );
     } else if (isNode(n, N.Collection)) {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.value.length > 0) {
+      if (args && args.get('value').length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
@@ -453,7 +453,7 @@ export class Call extends Node<CallValue, CallOptions> {
         /** Freeze args */
         if (args) {
           const copiedArgs = this._materializeFunctionArgs(args, context);
-          for (const copied of copiedArgs.value) {
+          for (const copied of copiedArgs.get('value')) {
             // Anchor copied references to this Call so nested property refs
             // (e.g. $list-1) can walk back to call-site Rules.
             // Also anchor copied Mixin callback args to call-site source scope
@@ -474,7 +474,7 @@ export class Call extends Node<CallValue, CallOptions> {
             ? (
                 shouldPassListArgs
                   ? callWithContext(context, fnCallable, args)
-                  : callWithContext(context, fnCallable, ...[...args.value])
+                  : callWithContext(context, fnCallable, ...[...args.get('value')])
               )
             : callWithContext(context, fnCallable)
         );
@@ -520,7 +520,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ? String(name.key)
           : String(n.valueOf()), context);
         setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
-        return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.value);
+        return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));
       } finally {
         context.caller = originalCaller;
         context.parenFrames.pop();
@@ -549,15 +549,16 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
-          return applyDependencyToResult(evaluatedArgs.value[0]!, evaluatedArgs.value);
+        const evalArgItems = evaluatedArgs.get('value');
+        if (isNode(evalArgItems[0], N.Dimension)) {
+          return applyDependencyToResult(evalArgItems[0]!, evalArgItems);
         } else if (context.calcFrames !== 0) {
-          return applyDependencyToResult(new Paren(evaluatedArgs.value[0]!), evaluatedArgs.value);
+          return applyDependencyToResult(new Paren(evalArgItems[0]!), evalArgItems);
         }
       }
       setField(node, 'name', n, context);
       setField(node, 'args', evaluatedArgs, context);
-      return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.value);
+      return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.get('value'));
     };
   }
 }

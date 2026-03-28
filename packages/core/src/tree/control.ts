@@ -418,10 +418,10 @@ export class For extends Node<ForValue> {
                         || normalizedFromAssign === AssignmentType.MergeList
                       ) {
                         const prevItems = isNode(prevValue, N.List)
-                          ? prevValue.value
+                          ? prevValue.get('value')
                           : [prevValue];
                         const nextItems = isNode(nextValue, N.List)
-                          ? nextValue.value
+                          ? nextValue.get('value')
                           : [nextValue];
                         const nextAlreadyIncludesPrev =
                           nextItems.length >= prevItems.length

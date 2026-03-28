@@ -1750,10 +1750,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       const current = getDeclValue(node);
-      if (!isNode(current, N.List) || current.value.length === 0) {
+      if (!isNode(current, N.List) || current.get('value').length === 0) {
         return;
       }
-      const [first, ...rest] = current.value;
+      const [first, ...rest] = current.get('value');
       let firstIsEmptyString = false;
       try {
         firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
@@ -1764,7 +1764,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         first
         && (
           isNode(first, N.Nil)
-          || (isNode(first, N.List) && first.value.length === 0)
+          || (isNode(first, N.List) && first.get('value').length === 0)
           || firstIsEmptyString
         )
       );
@@ -2241,7 +2241,7 @@ export async function evalMixinDirect(
     : undefined;
 
   const nodeArgs = await evaluateMixinArgs(
-    args ? [...args.value] : [],
+    args ? [...args.get('value', context)] : [],
     caller,
     context
   );

@@ -5,7 +5,7 @@ import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
+import { setField } from './util/field-helpers.js';
 
 export type ListOptions = {
   /**
@@ -17,7 +17,9 @@ export type ListOptions = {
   sep?: ',' | ';' | '/';
 };
 
-export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+export type ListChildData<T extends Node = Node> = { value: T[] };
+
+export interface List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   type: 'List';
   shortType: 'list';
   eval(context: Context): Promise<this>;
@@ -30,10 +32,10 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or .sel, #id.class, [attr]
  * or one / two / three
  */
-export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   static override childKeys = ['value'] as const;
 
-  readonly value!: T[];
+  private value!: T[];
 
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -60,12 +62,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   private _valueOf: string | undefined;
 
-  private _getValue(context?: Context): T[] {
-    return context
-      ? getField<T[]>(this, 'value', context)
-      : this.value;
-  }
-
   // NOTE: `valueOf()` intentionally remains canonical for now.
   // It is a cached observer on the canonical list instance, and it has no
   // Context parameter. Making it state-aware here would make the cache
@@ -78,7 +74,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let value = this._getValue(options.context);
+    let value = this.get('value', options.context);
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
@@ -104,8 +100,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override compare(other: Node) {
     // NOTE: `compare()` intentionally remains canonical for now.
-    // It has no Context parameter, so a state-aware comparison would require
-    // a broader API design change rather than a local node-only migration.
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
       const result = compareNodeArray([...this.value], [...other.value], equalityMode);
@@ -124,8 +118,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    const ownItems = this._getValue(context);
-    const nextItems = b instanceof List ? b._getValue(context) : [b as T];
+    const ownItems = this.get('value', context);
+    const nextItems = b instanceof List ? b.get('value', context) : [b as T];
     let newList = this.maybeClone(context);
     setField(newList, 'value', [...ownItems, ...nextItems], context);
     return newList;
@@ -138,7 +132,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
     const node = this.maybeClone(context);
     node._setPreEvaluated(true, context);
-    const value = node._getValue(context);
+    const value = node.get('value', context);
     const nextValue = value.slice();
 
     if (!node.hasFlag(F_MAY_ASYNC)) {
@@ -188,7 +182,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   protected override evalNode(context: Context): MaybePromise<Node> {
-    const value = this._getValue(context);
+    const value = this.get('value', context);
     const nextValue = value.slice();
 
     if (!this.hasFlag(F_MAY_ASYNC)) {
@@ -236,52 +230,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     return this;
   }
-
-  /** @todo? Lists should collapse nested lists? */
-  // override async evalNode(context: Context): Promise<List<T>>
-
-  /** @todo move to ToCssVisitor */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add('', this.location)
-  //   const length = this.data.length - 1
-  //   const pre = context.pre
-  //   const cast = context.cast
-  //   this.data.forEach((node, i) => {
-  //     const val = cast(node)
-  //     val.toCSS(context, out)
-
-  //     if (i < length) {
-  //       if (context.inSelector) {
-  //         out.add(`,\n${pre}`)
-  //       } else {
-  //         out.add(', ')
-  //       }
-  //     }
-  //   })
-  // }
-
-  /** @todo move to ToModuleVisitor */
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.list([\n', this.location)
-  //   context.indent++
-  //   let pre = context.pre
-  //   const length = this.data.length - 1
-  //   this.data.forEach((node, i) => {
-  //     out.add(pre)
-  //     if (node instanceof Node) {
-  //       node.toModule(context, out)
-  //     } else {
-  //       out.add(JSON.stringify(node))
-  //     }
-  //     if (i < length) {
-  //       out.add(',\n')
-  //     }
-  //   })
-  //   context.indent--
-  //   pre = context.pre
-  //   out.add(`\n${pre}])`)
-  //   return out
-  // }
 }
 
 type Params = ConstructorParameters<typeof List>;

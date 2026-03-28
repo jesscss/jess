@@ -489,14 +489,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (!isListMergedAssign || !isNode(nodeValue, N.List)) {
             return;
           }
-          const listValue = nodeValue.value;
+          const listValue = nodeValue.get('value', context);
           if (listValue.length === 0) {
             return;
           }
           const first = listValue[0]!;
           const isEmptyPlaceholder = (
             isNode(first, N.Nil)
-            || (isNode(first, N.List) && first.value.length === 0)
+            || (isNode(first, N.List) && first.get('value').length === 0)
             || String(first.valueOf?.() ?? '') === ''
           );
           if (!isEmptyPlaceholder) {

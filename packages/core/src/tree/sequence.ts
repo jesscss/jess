@@ -191,7 +191,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     let newSequence = this.maybeClone(context);
     if (b instanceof List) {
-      return new List([newSequence, ...b.value]).inherit(this);
+      return new List([newSequence, ...b.get('value')]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
       const values = b._getValue(context).map(v => v.maybeClone(context));

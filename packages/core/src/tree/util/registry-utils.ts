@@ -1020,7 +1020,7 @@ export class MixinRegistry extends Registry<
       if (!params || params.length === 0) {
         return true;
       }
-      for (const param of params.value) {
+      for (const param of params.get('value')) {
         if (param.type === 'Rest') {
           continue;
         }

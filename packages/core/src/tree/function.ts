@@ -155,7 +155,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
 
     const fn = getFunctionFromMixins(mixinLike);
-    const evaluated = await fn.call(context, ...args.value.map(a => cast(a)));
+    const evaluated = await fn.call(context, ...args.get('value', context).map(a => cast(a)));
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must evaluate to rules`);
