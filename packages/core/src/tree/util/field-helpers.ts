@@ -23,7 +23,7 @@ export function getField<T = unknown>(
   key: string,
   ctx: Context
 ): T {
-  const val = ctx.activeState.peek(node)?._fields?.get(key);
+  const val = ctx.resolveField(node, key);
   if (val !== undefined) {
     return val as T;
   }
@@ -49,7 +49,7 @@ export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const parent = ctx.activeState.peek(node)?._fields?.get('parent');
+  const parent = ctx.resolveField(node, 'parent');
   if (parent !== undefined) {
     return parent as Node | undefined;
   }

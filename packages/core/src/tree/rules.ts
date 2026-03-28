@@ -696,15 +696,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    // Push carried per-call position into context so child nodes
-    // resolve patched fields during serialization.
+    // Push this node's subtree (if any) so child nodes resolve
+    // patched fields during serialization.
     const ctx = options.context;
-    const carried = this._carriedState as EvalState | undefined;
-    if (ctx && carried) {
-      ctx.pushState(carried);
+    const subtree = ctx?.activeState.peek(this)?._subtree;
+    if (ctx && subtree) {
+      ctx.pushState(subtree);
     }
     this._emitRulesBody(options);
-    if (ctx && carried) {
+    if (ctx && subtree) {
       ctx.popState();
     }
     return w.getSince(mark);
@@ -713,22 +713,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** All rules, with nested rules flattened */
   flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, EvalState>) {
     const finalRules: Node[] = [];
-    const iterateRules = (rules: Rules, activePosition?: EvalState) => {
-      const carried = (rules._carriedState as EvalState | undefined) ?? activePosition;
+    const iterateRules = (rules: Rules, activeSubtree?: EvalState) => {
+      // Check for a subtree on this Rules node in the active state
+      const subtree = context?.activeState.peek(rules)?._subtree ?? activeSubtree;
       for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Rules)) {
-          // Preserve reference-mode Rules as containers so the serializer
-          // can detect the referenceMode flag and suppress output.
           if ((n.options as RulesOptions)?.referenceMode === true) {
             finalRules.push(n);
           } else {
-            iterateRules(n, carried);
+            iterateRules(n, subtree);
           }
           continue;
         }
         if (!visibleOnly || n.visible || n.fullRender) {
-          if (positionMap && carried) {
-            positionMap.set(n, carried);
+          if (positionMap && subtree) {
+            positionMap.set(n, subtree);
           }
           finalRules.push(n);
         }

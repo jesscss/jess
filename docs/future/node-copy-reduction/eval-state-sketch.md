@@ -267,6 +267,133 @@ function getFieldAt(node: Node, field: string, ctx: Context): unknown {
 }
 ```
 
+### Tree walks: serialization (top-down) and references (bottom-up)
+
+The hard question: when walking the tree, how do you know which EvalState
+to look in for a given node?
+
+#### The setup
+
+```
+Root EvalState (S0):
+  Call → { replacement: mixinBody, subtree: S1 }
+
+Subtree EvalState (S1):
+  body → { fields: { parent: outerScope } }
+  paramVarDecl → { fields: { value: blue } }
+
+Canonical tree:
+  Root Rules
+    ├── Mixin .m(@color) { color: @color; }
+    │        └── body Rules ← this is the canonical body
+    │              └── Decl color: @color
+    └── Ruleset .test
+         └── Call .m(blue) ← replaced by body in S0
+```
+
+#### Serialization (top-down walk)
+
+Walk canonical children. At each node, check the CURRENT active state
+for a replacement or subtree.
+
+```
+1. Start at Root Rules. Active state = S0.
+2. Walk children: Mixin (skip, not visible), Ruleset .test.
+3. Enter Ruleset .test. Walk its Rules children.
+4. Hit Call. S0 has: replacement=body, subtree=S1.
+5. PUSH S1 onto stack. Render body instead of Call.
+6.   Inside body (active state = S1):
+7.   Walk children: Decl color: @color.
+8.   Render Decl. Value is a Reference. Reference was evaluated
+     during eval — its replacement (Keyword "blue") is in S1.
+9.   Output: color: blue;
+10. POP S1.
+11. Continue with remaining children of .test.
+```
+
+Key insight: the subtree push/pop is driven by the PARENT state's entry
+for the node. You check S0 for Call, find the subtree, push it, then
+everything inside renders under S1.
+
+#### References (bottom-up walk)
+
+A Reference walks up the parent chain to find the scope that has the
+variable. This walk crosses subtree boundaries.
+
+```
+1. Reference @color is inside Decl, inside body Rules.
+2. getParent(Decl) → body Rules (canonical parent, or from S1)
+3. Search body's registry for @color. Not found.
+4. getParent(body) → outerScope (from S1: body → outerScope)
+5. Search outerScope's registry for @color. FOUND. Read its value.
+6. The value "blue" was bound during matchMixinCandidates (canonical
+   mutation on the ephemeral scope's VarDeclaration). No state lookup
+   needed — the VarDeclaration's canonical value IS blue.
+```
+
+Where does getParent look? Always in the CURRENT active state. During
+eval, the per-call state is active (it was pushed). The body's parent
+was set in that same state. The outerScope's parent was ALSO set in
+that state (or should be — it's part of the call setup).
+
+PROBLEM: the outerScope's parent was set in the CALLER's state (S0),
+not in the per-call state (S1). The call setup happens before S1 is
+pushed.
+
+FIX OPTIONS:
+
+A) Set outerScope's parent in S1 (after push), not S0.
+   → Simple. prepareMixinCandidateInvocation must happen AFTER
+     the per-call state push, not before.
+
+B) Make getParent walk the state chain (S1 → S0).
+   → Works but violates the "one state per node" principle.
+
+C) Copy outerScope's parent entry from S0 into S1 at push time.
+   → Explicit but fragile.
+
+D) Have a single flat "global" state for all non-subtree fields,
+   with subtrees only for replacement-internal fields.
+   → Cleanest but biggest change.
+
+Option A is simplest. The outerScope is ephemeral (created per call).
+Its parent should be set in the per-call state alongside the body's
+parent. Move the setup into evaluateCandidateOutput, after pushState.
+
+#### Nested calls
+
+When .wrapper-mixin calls .base-mixin inside its body:
+
+```
+S0 (root):
+  Call.wrapper → { replacement: wrapperBody, subtree: S1 }
+
+S1 (wrapper call):
+  wrapperBody → { fields: { parent: wrapperOuterScope } }
+  Call.base → { replacement: baseBody, subtree: S2 }
+
+S2 (base call):
+  baseBody → { fields: { parent: baseOuterScope } }
+```
+
+Serialization:
+1. S0 active. Hit Call.wrapper → push S1, render wrapperBody.
+2. S1 active. Hit Call.base → push S2, render baseBody.
+3. S2 active. Reference @color resolves through baseOuterScope.
+4. Pop S2. Pop S1.
+
+Each subtree is self-contained. No cross-state field scatter.
+
+#### The rule
+
+Each per-call EvalState (subtree) must contain ALL field patches for
+ALL nodes that are evaluated within that call. The parent chain for the
+body, the outerScope, and any inner nodes — all set in S1, not S0.
+
+If you need to read a field and it's not in the active state, either:
+- It's canonical (fall through to node property) — correct.
+- It was set in a different state — BUG. Fix the write site.
+
 ### What gets killed
 
 | Current                        | Proposed                   |

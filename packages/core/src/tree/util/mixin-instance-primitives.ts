@@ -1286,9 +1286,6 @@ export async function evaluateCandidateOutput(
   try {
     let newRules: Rules;
     if (outerRules) {
-      // Wire: body → outerRules (param scope).
-      // outerRules → caller scope is already in the caller's state
-      // and resolve() will find it via the parent chain.
       setParent(rules, outerRules, context);
       newRules = await rules.eval(context);
     } else {
@@ -1297,8 +1294,15 @@ export async function evaluateCandidateOutput(
     }
     newRules = finalizeMixinInvocationOutput(newRules, context);
     newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
-    // Pop the per-call state before we write to the caller's state.
+    // Pop the per-call state.
     context.popState();
+    // Store the per-call state as a subtree on the output node in the
+    // caller's state. Serialization will push this subtree when rendering
+    // the output, so all eval-time patches are visible.
+    if (callState.size > 0) {
+      const callerNs = context.activeState.get(newRules);
+      callerNs._subtree = callState;
+    }
     setSourceParent(newRules, sourceParent, context);
     setParent(newRules, getParentFn(candidate), context);
     newRules.index = candidate.index;
@@ -1306,11 +1310,6 @@ export async function evaluateCandidateOutput(
     if (context.treeContext?.file) {
       newRules.options.rulesVisibility ??= {};
       newRules.options.rulesVisibility.VarDeclaration = 'private';
-    }
-    // Carry the per-call state on the output node so downstream reads
-    // resolve through this call's patches, not the canonical state.
-    if (callState.size > 0) {
-      newRules._carriedState = callState;
     }
     outputRules.push(newRules);
   } catch (error) {

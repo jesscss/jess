@@ -155,4 +155,68 @@ describe('Registry state awareness', () => {
       expect(css).toContain('color: green');
     });
   });
+
+  describe('Subtree boundary crossing', () => {
+    it('getParent walks from subtree state into parent state', () => {
+      const { getParent, setParent } = require('../util/field-helpers.js');
+      const { EvalState } = require('../../eval-state.js');
+      const ctx = new Context({ leakyRules: true });
+
+      const root = rules([]);
+      const outerScope = rules([]);
+      const body = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      ctx.root = root;
+
+      // Root state: outerScope's parent is root
+      setParent(outerScope, root, ctx);
+
+      // Push subtree: body's parent is outerScope
+      const subtree = new EvalState();
+      ctx.pushState(subtree);
+      setParent(body, outerScope, ctx);
+
+      // From inside the subtree, getParent(body) should find outerScope
+      expect(getParent(body, ctx)).toBe(outerScope);
+
+      // getParent(outerScope) should find root — THIS CROSSES THE BOUNDARY
+      expect(getParent(outerScope, ctx)).toBe(root);
+
+      ctx.popState();
+    });
+
+    it('variable lookup crosses subtree boundary to find param in parent scope', async () => {
+      const { setParent } = require('../util/field-helpers.js');
+      const { EvalState } = require('../../eval-state.js');
+      const ctx = new Context({ leakyRules: true });
+      ctx.depth = 2;
+
+      const paramVar = vardecl({ name: 'color', value: any('blue') });
+      const paramScope = rules([paramVar]);
+      const body = rules([
+        decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ]);
+      const root = rules([]);
+      ctx.root = root;
+
+      // Root state: paramScope parent is root
+      setParent(paramScope, root, ctx);
+
+      // Push subtree
+      const callSubtree = new EvalState();
+      ctx.pushState(callSubtree);
+
+      // In subtree: body parent is paramScope
+      setParent(body, paramScope, ctx);
+      ctx.rulesContext = paramScope;
+
+      const evald = await body.eval(ctx);
+      const css = evald.render(ctx);
+
+      ctx.popState();
+
+      expect(css).toContain('color: blue');
+    });
+  });
 });
