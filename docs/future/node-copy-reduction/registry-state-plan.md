@@ -179,9 +179,26 @@ Audit all `find` methods in all 4 Registry classes — ensure parent walks use
 Audit all call sites where `find` is called on a Rules that might not be eval'd.
 The fix is always: eval the Rules first, not add re-indexing.
 
-## Key Principle
+## Key Principles
 
-**If the Rules was properly eval'd, its registry has the right entries.**
+### Registration happens during eval. Period.
+
+Registration is a side effect of evaluating a Rules node. Specifically, it happens
+during `preEval` — the phase that evaluates registerable names (selectors, mixin
+names, variable names) and populates the index.
+
+There is **no scenario** where:
+- Things are registered, and then later new rules are added post-eval that also
+  need registering
+- Canonical entries are registered first, and then later a NodeState replacement
+  is registered on top
+- A registry needs to be "re-synced" or "re-indexed" after initial population
+
+If any of these appear to be happening, there is a deeper bug — either an eval
+step was skipped, or something is being registered at the wrong time. The fix is
+to fix the eval flow, not to add re-indexing or delta-overlay machinery.
+
+### If the Rules was properly eval'd, its registry has the right entries.
 
 Eval auto-registers children to the correct registry. If a lookup fails and the
 target Rules clearly has the node in its `value` (or state-overlaid value), the
