@@ -59,8 +59,6 @@ describe('Func', () => {
 
   it('does not re-parent canonical body or params when evalCall builds a temporary mixin wrapper', async () => {
     const ctx = new Context({ leakyRules: true });
-    ctx.createSession();
-
     const params = list([
       vardecl({ name: 'a', value: nil() }),
       vardecl({ name: 'b', value: nil() })
@@ -86,10 +84,8 @@ describe('Func', () => {
     expect(body.parent).toBe(node);
   });
 
-  it('evalCall reads a session-patched return declaration value', async () => {
+  it('evalCall reads a state-patched return declaration value', async () => {
     const ctx = new Context({ leakyRules: true });
-    ctx.createSession();
-
     const node = fn({
       name: any('add'),
       body: rules([
@@ -108,10 +104,8 @@ describe('Func', () => {
     expect(returnDecl.value.toTrimmedString()).toBe('ok');
   });
 
-  it('evalCall no longer calls parent.adopt() for the temporary mixin wrapper in a session', async () => {
+  it('evalCall no longer calls parent.adopt() for the temporary mixin wrapper', async () => {
     const ctx = new Context({ leakyRules: true });
-    ctx.createSession();
-
     const node = fn({
       name: any('add'),
       body: rules([
@@ -133,10 +127,8 @@ describe('Func', () => {
     expect(mixinWrapperAdopts).toHaveLength(0);
   });
 
-  it('Reference(type=function) honors a session-patched function name on the active lookup path', async () => {
+  it('Reference(type=function) honors a state-patched function name on the active lookup path', async () => {
     const ctx = new Context({ leakyRules: true });
-    ctx.createSession();
-
     const tree = rules([
       fn({
         name: any('add'),
@@ -158,10 +150,8 @@ describe('Func', () => {
     expect(functionNode.toTrimmedString()).toContain('$function add()');
   });
 
-  it('Reference(type=function) uses the session parent chain when the caller Rules is only session-parented', async () => {
+  it('Reference(type=function) uses the state parent chain when the caller Rules is only state-parented', async () => {
     const ctx = new Context({ leakyRules: true });
-    ctx.createSession();
-
     const outer = rules([
       fn({
         name: any('add'),

@@ -1,14 +1,12 @@
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { setField } from '../util/field-helpers.js';
 import { ExtendList } from '../extend-list.js';
 import { Extend, ExtendFlag } from '../extend.js';
 import { BasicSelector } from '../selector-basic.js';
 
 describe('ExtendList', () => {
-  it('renders a session-patched extend array without mutating the canonical list', () => {
+  it('renders a state-patched extend array without mutating the canonical list', () => {
     const context = new Context();
-    context.session = new EvalSession();
     const node = new ExtendList([
       new Extend({
         target: new BasicSelector('.base'),

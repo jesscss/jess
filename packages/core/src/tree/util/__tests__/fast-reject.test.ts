@@ -1,6 +1,5 @@
 import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../../index.js';
 import { Context } from '../../../context.js';
-import { EvalSession } from '../../../eval-session.js';
 import { selectorMatch } from '../selector-match-core.js';
 import { setField } from '../field-helpers.js';
 
@@ -120,8 +119,6 @@ describe('Fast-reject in selectorMatch', () => {
   });
 
   test('evalContext-aware matcher can drive selector compare consumers when context is provided', () => {
-    context.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])
@@ -166,10 +163,7 @@ describe('Fast-reject in selectorMatch', () => {
 
   test('evalContext-aware compare does not throw when find and target use different selector-bit libraries', () => {
     const contextA = new Context();
-    contextA.session = new EvalSession();
     const contextB = new Context();
-    contextB.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])

@@ -129,7 +129,7 @@ function isInsideSelectorCapture(node: Node | undefined, context?: Context): boo
   return false;
 }
 
-function getSessionRulesParent(node: Node, context: Context): Rules | undefined {
+function getStateRulesParent(node: Node, context: Context): Rules | undefined {
   let possibleRules: Node | undefined = getParent(node, context);
   while (possibleRules && possibleRules.type !== 'Rules') {
     possibleRules = getParent(possibleRules, context);
@@ -137,14 +137,14 @@ function getSessionRulesParent(node: Node, context: Context): Rules | undefined 
   return possibleRules as Rules | undefined;
 }
 
-function getSessionSourceRulesParent(node: Node, context: Context): Rules | undefined {
+function getStateSourceRulesParent(node: Node, context: Context): Rules | undefined {
   let current: Node | undefined = node;
   let sourceParent = getSourceParent(node, context);
   while (current && !sourceParent) {
     current = getParent(current, context);
     sourceParent = current ? getSourceParent(current, context) : undefined;
   }
-  return sourceParent ? getSessionRulesParent(sourceParent, context) : undefined;
+  return sourceParent ? getStateRulesParent(sourceParent, context) : undefined;
 }
 
 /**
@@ -312,8 +312,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     // Prefer the *current* evaluation rules context (mixin call-time scope) over the lexical rulesParent.
     // This is critical for mixin parameters (e.g. `@fallback`) which are registered onto the call-time
     // wrapper `Rules` and should be visible inside nested at-rule preludes.
-    const activeRulesParent = getSessionRulesParent(this, context);
-    const activeSourceRulesParent = getSessionSourceRulesParent(this, context);
+    const activeRulesParent = getStateRulesParent(this, context);
+    const activeSourceRulesParent = getStateSourceRulesParent(this, context);
     let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? activeRulesParent;
     const result = pipe(
       () => {
@@ -576,7 +576,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 const inCall = isNode(getParent(this, context), N.Call);
                 const findFunction = () =>
                   targetRules.find('function', `${keyStr}`, undefined, opts)
-                  ?? targetRules.findSessionPatchedFunction(`${keyStr}`, opts);
+                  ?? targetRules.findStatePatchedFunction(`${keyStr}`, opts);
                 // When called (e.g. `ns.func(...)`), prefer function lookup first, then fall back to a declaration.
                 // When not called, parsers should generally use `index`/`variable` references for `ns.func` so
                 // declarations win; but if we are here, keep behavior predictable.

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { any, paren, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { setField } from '../util/field-helpers.js';
 
 describe('Paren', () => {
@@ -11,9 +10,8 @@ describe('Paren', () => {
     expect(node.toTrimmedString()).toBe('(red)');
   });
 
-  it('reads a session-patched value without changing canonical render output', () => {
+  it('reads a state-patched value without changing canonical render output', () => {
     const ctx = new Context();
-    ctx.session = new EvalSession();
     const node = paren(any('red'));
 
     setField(node, 'value', any('blue'), ctx);
@@ -22,9 +20,8 @@ describe('Paren', () => {
     expect(node.toTrimmedString()).toBe('(red)');
   });
 
-  it('reads a session-patched escaped option without changing canonical render output', () => {
+  it('reads a state-patched escaped option without changing canonical render output', () => {
     const ctx = new Context();
-    ctx.session = new EvalSession();
     const node = paren(any('red'));
 
     setField(node, 'options', { escaped: true }, ctx);
@@ -33,9 +30,8 @@ describe('Paren', () => {
     expect(node.toTrimmedString()).toBe('(red)');
   });
 
-  it('evals in a non-reset session without overwriting the canonical child when the wrapper is preserved', async () => {
+  it('evals without overwriting the canonical child when the wrapper is preserved', async () => {
     const ctx = new Context();
-    ctx.session = new EvalSession();
     const original = ref({ key: 'color' }, { type: 'variable' });
     const root = rules([
       vardecl({ name: 'color', value: any('red') })
@@ -51,9 +47,8 @@ describe('Paren', () => {
     expect(node.toTrimmedString()).toBe('($color)');
   });
 
-  it('eval uses a session-patched escaped option without mutating canonical wrapper behavior', async () => {
+  it('eval uses a state-patched escaped option without mutating canonical wrapper behavior', async () => {
     const ctx = new Context();
-    ctx.session = new EvalSession();
     const original = ref({ key: 'color' }, { type: 'variable' });
     const root = rules([
       vardecl({ name: 'color', value: any('red') })

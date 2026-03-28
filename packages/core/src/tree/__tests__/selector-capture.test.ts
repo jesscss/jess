@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { Selector } from '../selector.js';
 import { el, selcap, sellist } from '../index.js';
 import { setField } from '../util/field-helpers.js';
@@ -37,9 +36,8 @@ class PreEvalReplacingSelector extends Selector<string> {
 }
 
 describe('SelectorCapture', () => {
-  it('renders session-patched selector values without mutating the canonical node', () => {
+  it('renders state-patched selector values without mutating the canonical node', () => {
     const context = new Context();
-    context.createSession();
     const node = selcap(el('.a'));
 
     setField(node, 'value', sellist([el('.x'), el('.y')]), context);
@@ -48,9 +46,8 @@ describe('SelectorCapture', () => {
     expect(node.toTrimmedString()).toBe('*[.a]');
   });
 
-  it('keeps valueOf canonical while render reads a session-patched selector value', () => {
+  it('keeps valueOf canonical while render reads a state-patched selector value', () => {
     const context = new Context();
-    context.createSession();
     const node = selcap(el('.a'));
 
     setField(node, 'value', sellist([el('.x'), el('.y')]), context);
@@ -60,9 +57,8 @@ describe('SelectorCapture', () => {
     expect(node.toTrimmedString()).toBe('*[.a]');
   });
 
-  it('evals the session-patched selector value', async () => {
+  it('evals the state-patched selector value', async () => {
     const context = new Context();
-    context.createSession();
     const node = selcap(el('.a'));
 
     setField(node, 'value', sellist([el('.x'), el('.y')]), context);
@@ -72,9 +68,8 @@ describe('SelectorCapture', () => {
     expect(node.toTrimmedString()).toBe('*[.a]');
   });
 
-  it('preEvals without overwriting the canonical selector on the non-reset session path', async () => {
+  it('preEvals without overwriting the canonical selector', async () => {
     const context = new Context();
-    context.session = new EvalSession();
     const node = selcap(new PreEvalReplacingSelector('orig'));
 
     const result = await node.preEval(context);

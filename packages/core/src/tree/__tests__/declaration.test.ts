@@ -1,6 +1,5 @@
 import { coll, decl, rules, ruleset, el, color, any } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { AssignmentType } from '../declaration.js';
 import { setField } from '../util/field-helpers.js';
 
@@ -14,13 +13,11 @@ describe('Declaration', () => {
     expect(`${rule}`).toBe('color: #eee');
   });
 
-  it('preEval normalizes assignment options in a non-reset session without overwriting canonical options', async () => {
+  it('preEval normalizes assignment options without overwriting canonical options', async () => {
     const rule = decl(
       { name: 'color', value: any('red') },
       { assign: AssignmentType.Add }
     );
-    context.session = new EvalSession();
-
     const preEvald = await rule.preEval(context);
 
     expect(preEvald.toTrimmedString({ context })).toContain('color:');
@@ -42,21 +39,20 @@ describe('Declaration', () => {
     expect(rules([rule]).toString()).not.toContain('};');
   });
 
-  it('root rules serialization omits the trailing semicolon when a session patches the value to a collection', () => {
+  it('root rules serialization omits the trailing semicolon when eval state patches the value to a collection', () => {
     const rule = decl({ name: 'color', value: any('red') });
     const patchedValue = coll([
       decl({ name: 'nested', value: any('blue') })
     ]);
 
-    context.session = new EvalSession();
-    context.session.setField(rule, 'value', patchedValue);
+    setField(rule, 'value', patchedValue, context);
 
     expect(rule.toTrimmedString({ context })).toContain('{');
     expect(rule.requiredSemi).toBe(true);
     expect(rules([rule]).toString({ context })).not.toContain('};');
   });
 
-  it('root rules serialization adds the trailing semicolon when a session patches a collection value back to a scalar', () => {
+  it('root rules serialization adds the trailing semicolon when eval state patches a collection value back to a scalar', () => {
     const rule = decl({
       name: 'color',
       value: coll([
@@ -64,15 +60,14 @@ describe('Declaration', () => {
       ])
     });
 
-    context.session = new EvalSession();
-    context.session.setField(rule, 'value', any('blue'));
+    setField(rule, 'value', any('blue'), context);
 
     expect(rule.toTrimmedString({ context })).toBe('color: blue');
     expect(rule.requiredSemi).toBe(false);
     expect(rules([rule]).toString({ context })).toContain('blue;');
   });
 
-  it('serialize-helper omits the trailing semicolon for a session-patched collection value inside a ruleset', () => {
+  it('serialize-helper omits the trailing semicolon for a state-patched collection value inside a ruleset', () => {
     const rule = decl({ name: 'color', value: any('red') });
     const node = rules([
       ruleset({
@@ -84,8 +79,7 @@ describe('Declaration', () => {
       decl({ name: 'nested', value: any('blue') })
     ]);
 
-    context.session = new EvalSession();
-    context.session.setField(rule, 'value', patchedValue);
+    setField(rule, 'value', patchedValue, context);
 
     expect(node.toString({ context })).toBeString(`
       .x {
@@ -96,7 +90,7 @@ describe('Declaration', () => {
     `);
   });
 
-  it('serialize-helper adds the trailing semicolon for a session-patched scalar value inside a ruleset', () => {
+  it('serialize-helper adds the trailing semicolon for a state-patched scalar value inside a ruleset', () => {
     const rule = decl({
       name: 'color',
       value: coll([
@@ -110,8 +104,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    context.session = new EvalSession();
-    context.session.setField(rule, 'value', any('blue'));
+    setField(rule, 'value', any('blue'), context);
 
     expect(node.toString({ context })).toBeString(`
       .x {
@@ -120,7 +113,7 @@ describe('Declaration', () => {
     `);
   });
 
-  it('serialize-helper de-dupes declarations by a session-patched property name', () => {
+  it('serialize-helper de-dupes declarations by a state-patched property name', () => {
     const first = decl({ name: 'color', value: any('red') });
     const second = decl({ name: 'background', value: any('red') });
     const node = rules([
@@ -130,7 +123,6 @@ describe('Declaration', () => {
       })
     ]);
 
-    context.session = new EvalSession();
     setField(first, 'name', any('background', { role: 'property' }), context);
 
     expect(node.toString({ context })).toBeString(`
@@ -140,7 +132,7 @@ describe('Declaration', () => {
     `);
   });
 
-  it('rules coalescing uses a session-patched property name for merged declarations', async () => {
+  it('rules coalescing uses a state-patched property name for merged declarations', async () => {
     const base = decl({ name: 'color', value: any('red') });
     const merged = decl(
       { name: 'background', value: any('blue') },
@@ -153,7 +145,6 @@ describe('Declaration', () => {
       })
     ]);
 
-    context.session = new EvalSession();
     setField(merged, 'name', any('color', { role: 'property' }), context);
 
     const evald = await node.eval(context);

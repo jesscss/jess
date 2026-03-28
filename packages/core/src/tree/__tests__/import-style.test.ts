@@ -23,7 +23,6 @@ import {
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { setField, replaceNode } from '../util/field-helpers.js';
 import { resolve } from 'node:path';
@@ -425,8 +424,7 @@ describe('Style import', () => {
       }).rejects.toThrowError('"composedVar" is readonly');
     });
 
-    it('compose readonly checks see session-only declaration replacements', async () => {
-      context.session = new EvalSession();
+    it('compose readonly checks see state-only declaration replacements', async () => {
       const composedPath = resolve(process.cwd(), 'composed.jess');
       context.sourceTrees.set(composedPath, rules([
         vardecl({ name: 'composedVar', value: any('initial') })
@@ -771,8 +769,7 @@ describe('Style import', () => {
       expect(`${derivedColorValue}`).toBe('green');
     });
 
-    it('uses session-patched withNode and withType on the same StyleImport node', async () => {
-      context.session = new EvalSession();
+    it('uses state-patched withNode and withType on the same StyleImport node', async () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),
@@ -959,7 +956,7 @@ describe('Style import', () => {
       const val1 = await (found1 as any).value.eval(context);
       expect(`${val1}`).toBe('blue');
 
-      // After session teardown, canonical node's parent must be restored to sourceRules
+      // After eval, canonical node's parent must be restored to sourceRules
       // (not corrupted to point to a transient finalRules clone from the with-import)
       expect(anotherColorVar.parent).toBe(sourceRules);
 
@@ -982,7 +979,7 @@ describe('Style import', () => {
       const val2 = await (found2 as any).value.eval(context2);
       expect(`${val2}`).toBe('green');
 
-      // After second session: canonical node again points to sourceRules (not stale)
+      // After second eval: canonical node again points to sourceRules (not stale)
       expect(anotherColorVar.parent).toBe(sourceRules);
     });
 
@@ -1215,15 +1212,14 @@ describe('Style import', () => {
       expect(`${resolvedFromInterpolatedImport}`).toBe('$interpolationResolved: ok');
     });
 
-    it('import path resolution uses a session-evaluated Url path value', async () => {
-      context.session = new EvalSession();
-      const resolvedImportPath = resolve(process.cwd(), 'import/url-session-path.jess');
+    it('import path resolution uses a state-evaluated Url path value', async () => {
+      const resolvedImportPath = resolve(process.cwd(), 'import/url-state-path.jess');
       context.sourceTrees.set(resolvedImportPath, rules([
         vardecl({ name: 'resolvedFromUrl', value: any('ok') })
       ]));
 
       const originalPath = quoted('wrong-path.jess');
-      const replacementPath = quoted('import/url-session-path.jess');
+      const replacementPath = quoted('import/url-state-path.jess');
       vi.spyOn(originalPath, 'eval').mockReturnValue(replacementPath);
 
       const node = rules([
@@ -1237,15 +1233,14 @@ describe('Style import', () => {
       expect(`${resolvedFromUrl}`).toBe('$resolvedFromUrl: ok');
     });
 
-    it('import path resolution uses a session-patched Quoted path value on the same node', async () => {
-      context.session = new EvalSession();
-      const resolvedImportPath = resolve(process.cwd(), 'import/quoted-session-path.jess');
+    it('import path resolution uses a state-patched Quoted path value on the same node', async () => {
+      const resolvedImportPath = resolve(process.cwd(), 'import/quoted-state-path.jess');
       context.sourceTrees.set(resolvedImportPath, rules([
         vardecl({ name: 'resolvedFromQuoted', value: any('ok') })
       ]));
 
       const originalPath = quoted(any('wrong-path.jess'));
-      const replacementValue = any('import/quoted-session-path.jess');
+      const replacementValue = any('import/quoted-state-path.jess');
       vi.spyOn(originalPath, 'eval').mockImplementation((ctx) => {
         setField(originalPath, 'value', replacementValue, ctx as Context);
         return originalPath;
@@ -1262,15 +1257,14 @@ describe('Style import', () => {
       expect(`${resolvedFromQuoted}`).toBe('$resolvedFromQuoted: ok');
     });
 
-    it('import path resolution uses a session-patched path field on the same StyleImport node', async () => {
-      context.session = new EvalSession();
-      const resolvedImportPath = resolve(process.cwd(), 'import/node-session-path.jess');
+    it('import path resolution uses a state-patched path field on the same StyleImport node', async () => {
+      const resolvedImportPath = resolve(process.cwd(), 'import/node-state-path.jess');
       context.sourceTrees.set(resolvedImportPath, rules([
         vardecl({ name: 'resolvedFromImportNode', value: any('ok') })
       ]));
 
       const originalPath = quoted(any('wrong-path.jess'));
-      const replacementPath = quoted(any('import/node-session-path.jess'));
+      const replacementPath = quoted(any('import/node-state-path.jess'));
       const importNode = style({ path: originalPath }, { type: 'import' });
       setField(importNode, 'path', replacementPath, context);
 

@@ -140,17 +140,15 @@ describe('Mixin', () => {
       `);
     });
 
-    it('calls a ruleset candidate when its parent exists only in the session parent chain', async () => {
-      context.createSession();
-
+    it('calls a ruleset candidate when its parent exists only in the state parent chain', async () => {
       const mixinRuleset = ruleset({
         selector: el('.my-mixin'),
         rules: rules([
           decl({ name: 'color', value: any('red') })
         ])
       });
-      const sessionParent = rules([]);
-      setParent(mixinRuleset, sessionParent, context);
+      const stateParent = rules([]);
+      setParent(mixinRuleset, stateParent, context);
 
       const fn = getFunctionFromMixins(mixinRuleset);
       const result = await fn.call(context);
@@ -499,9 +497,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('blocks a mixin candidate when its failed guard ancestor exists only in the session parent chain', async () => {
-      context.createSession();
-
+    it('blocks a mixin candidate when its failed guard ancestor exists only in the state parent chain', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         rules: rules([
@@ -520,9 +516,7 @@ describe('Mixin', () => {
       await expectRejects(fn.call(context), ReferenceError, /No matching mixins found/);
     });
 
-    it('evaluates mixin args against a caller source scope that exists only in the session chain', async () => {
-      context.createSession();
-
+    it('evaluates mixin args against a caller source scope that exists only in the state chain', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         params: list([
@@ -558,8 +552,6 @@ describe('Mixin', () => {
     });
 
     it('mixin output has position-aware parent and sourceParent', async () => {
-      context.createSession();
-
       const mixinDef = mixin({
         name: any('.my-mixin'),
         rules: rules([
@@ -735,9 +727,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('keeps multi-candidate mixin output child Rules parents only in the session layer', async () => {
-      context.createSession();
-
+    it('keeps multi-candidate mixin output child Rules parents only in the eval state', async () => {
       const mixinA = mixin({
         name: any('.my-mixin'),
         rules: rules([
@@ -971,9 +961,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it('matches a sequence pattern parameter against a session-patched argument value', async () => {
-      context.createSession();
-
+    it('matches a sequence pattern parameter against a state-patched argument value', async () => {
       const buildRoot = () => {
         const mixinDef = mixin({
           name: any('.mixin'),
@@ -1082,7 +1070,6 @@ describe('Mixin', () => {
         };
       };
 
-      context.createSession();
       const live = buildRoot(context);
       context.root = live.root;
       setField(live.parent, 'selector', live.patched, context);

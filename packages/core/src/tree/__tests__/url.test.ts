@@ -1,14 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { any, quoted, url } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { getField } from '../util/field-helpers.js';
 
 describe('Url', () => {
-  it('eval stores an evaluated child in the session overlay without mutating the canonical value', async () => {
+  it('eval stores an evaluated child in the eval state without mutating the canonical value', async () => {
     const ctx = new Context();
-    ctx.session = new EvalSession();
-
     const original = quoted('a.png');
     const replacement = quoted('b.png');
     vi.spyOn(original, 'eval').mockReturnValue(replacement);
@@ -23,10 +20,8 @@ describe('Url', () => {
     expect(node.toTrimmedString()).toBe('url("a.png")');
   });
 
-  it('keeps valueOf canonical after a session-only eval replacement', async () => {
+  it('keeps valueOf canonical after a state-only eval replacement', async () => {
     const ctx = new Context();
-    ctx.session = new EvalSession();
-
     const original = quoted('a.png');
     const replacement = quoted('b.png');
     vi.spyOn(original, 'eval').mockReturnValue(replacement);
@@ -43,7 +38,7 @@ describe('Url', () => {
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
   });
 
-  it('eval still replaces the child directly when no session is active', async () => {
+  it('eval still replaces the child directly', async () => {
     const ctx = new Context();
 
     const original = any('a.png');

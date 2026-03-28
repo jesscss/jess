@@ -54,8 +54,6 @@ describe('dependency graph propagation', () => {
     ]);
     const ctx = new Context();
     ctx.root = root;
-    ctx.createSession();
-
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
 
@@ -75,8 +73,6 @@ describe('dependency graph propagation', () => {
     ]);
     const ctx = new Context();
     ctx.root = root;
-    ctx.createSession();
-
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
     const dependency = getDependency(declaration.value, ctx);
@@ -106,8 +102,6 @@ describe('dependency graph propagation', () => {
     ]);
     const ctx = new Context();
     ctx.root = root;
-    ctx.createSession();
-
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
     const dependency = getDependency(declaration.value, ctx);
@@ -138,8 +132,6 @@ describe('dependency graph propagation', () => {
     ]);
     const ctx = new Context();
     ctx.root = root;
-    ctx.createSession();
-
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
 
@@ -170,8 +162,6 @@ describe('dependency graph propagation', () => {
     ]);
     const ctx = new Context();
     ctx.root = root;
-    ctx.createSession();
-
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
     const dependency = getDependency(declaration.value, ctx);

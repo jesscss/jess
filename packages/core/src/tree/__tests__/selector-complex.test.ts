@@ -1,6 +1,5 @@
 import { any, expr, sel, compound, el, co, pseudo, sellist, amp, rules, ruleset } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { getField, setField } from '../util/field-helpers.js';
 
 let context: Context;
@@ -97,8 +96,7 @@ describe('Complex selector', () => {
       expect(evald.toTrimmedString()).toBe(':not(blue) > .target');
     });
 
-    it('propagates a session-only hoist flag when a complex selector collapses to one child', async () => {
-      context.session = new EvalSession();
+    it('propagates a state-only hoist flag when a complex selector collapses to one child', async () => {
       const child = el('.target');
       const node = sel([child]);
 
@@ -111,8 +109,7 @@ describe('Complex selector', () => {
       expect(node.hoistToRoot).toBeUndefined();
     });
 
-    it('does not re-parent the canonical child when a complex selector collapses to one child in a patch-only session', async () => {
-      context.session = new EvalSession();
+    it('does not re-parent the canonical child when a complex selector collapses to one child with patching', async () => {
       const child = el('.target');
       const node = sel([child]);
 
@@ -125,8 +122,7 @@ describe('Complex selector', () => {
       expect(child.parent).toBe(node);
     });
 
-    it('keeps valueOf canonical while render reads a session-patched value array', () => {
-      context.session = new EvalSession();
+    it('keeps valueOf canonical while render reads a state-patched value array', () => {
       const node = sel([
         el('.one'),
         co('>'),
@@ -154,9 +150,7 @@ describe('Complex selector', () => {
       expect(node.value.valueOf()).toBe('.solo');
     });
 
-    it('derives a session-specific complex keySet through an ampersand child', () => {
-      context.session = new EvalSession();
-
+    it('derives a state-specific complex keySet through an ampersand child', () => {
       const parent = ruleset({
         selector: el('.alpha'),
         rules: rules([])

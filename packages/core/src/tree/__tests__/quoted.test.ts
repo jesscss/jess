@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { any, expr, interpolated, quoted } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { setField } from '../util/field-helpers.js';
 
 describe('Quoted', () => {
@@ -11,9 +10,8 @@ describe('Quoted', () => {
     expect(node.toTrimmedString()).toBe('"red"');
   });
 
-  it('evaluates to a materialized quoted node without mutating the canonical node in a session', async () => {
+  it('evaluates to a materialized quoted node without mutating the canonical node', async () => {
     const context = new Context();
-    context.createSession();
     const node = quoted(interpolated({
       source: '%%',
       replacements: [expr(any('blue'))]
@@ -27,9 +25,8 @@ describe('Quoted', () => {
     expect(node.value).not.toBe('blue');
   });
 
-  it('evaluates through a non-reset session without overwriting the canonical value', async () => {
+  it('evaluates through a eval state without overwriting the canonical value', async () => {
     const context = new Context();
-    context.session = new EvalSession();
     const node = quoted(interpolated({
       source: '%%',
       replacements: [expr(any('blue'))]
@@ -44,36 +41,30 @@ describe('Quoted', () => {
     expect(node.value).not.toBe('blue');
   });
 
-  it('keeps valueOf() canonical across different session overlays', () => {
+  it('keeps valueOf() canonical across different eval states', () => {
     const node = quoted('red');
-    const firstSession = new Context();
-    const secondSession = new Context();
+    const ctx1 = new Context();
+    const ctx2 = new Context();
 
-    firstSession.createSession();
-    secondSession.createSession();
+    setField(node, 'value', 'cyan', ctx1);
+    setField(node, 'value', 'magenta', ctx2);
 
-    setField(node, 'value', 'cyan', firstSession);
-    setField(node, 'value', 'magenta', secondSession);
-
-    expect(node.toTrimmedString({ context: firstSession })).toBe('"cyan"');
-    expect(node.toTrimmedString({ context: secondSession })).toBe('"magenta"');
+    expect(node.toTrimmedString({ context: ctx1 })).toBe('"cyan"');
+    expect(node.toTrimmedString({ context: ctx2 })).toBe('"magenta"');
     expect(node.valueOf()).toBe('red');
   });
 
-  it('keeps compare() canonical across different session overlays', () => {
+  it('keeps compare() canonical across different eval states', () => {
     const left = quoted('red');
     const right = quoted('red');
-    const firstSession = new Context();
-    const secondSession = new Context();
+    const ctx1 = new Context();
+    const ctx2 = new Context();
 
-    firstSession.createSession();
-    secondSession.createSession();
+    setField(left, 'value', 'cyan', ctx1);
+    setField(left, 'value', 'magenta', ctx2);
 
-    setField(left, 'value', 'cyan', firstSession);
-    setField(left, 'value', 'magenta', secondSession);
-
-    expect(left.toTrimmedString({ context: firstSession })).toBe('"cyan"');
-    expect(left.toTrimmedString({ context: secondSession })).toBe('"magenta"');
+    expect(left.toTrimmedString({ context: ctx1 })).toBe('"cyan"');
+    expect(left.toTrimmedString({ context: ctx2 })).toBe('"magenta"');
     expect(left.compare(right)).toBe(0);
   });
 });

@@ -16,7 +16,6 @@ import {
   ExtendFlag
 } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { getField, getParent, setField } from '../util/field-helpers.js';
 import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { processExtends } from '../util/extend-roots.js';
@@ -61,9 +60,7 @@ describe('Rules extend', () => {
       `);
     });
 
-    it('keeps canonical ruleset extended flags unset during session-only extend processing', async () => {
-      context.session = new EvalSession();
-
+    it('keeps canonical ruleset extended flags unset during state-only extend processing', async () => {
       const base = ruleset({
         selector: sellist([sel([el('.base')])]),
         rules: rules([
@@ -89,9 +86,7 @@ describe('Rules extend', () => {
       expect(base._hasFlag(F_EXTENDED, context)).toBe(true);
     });
 
-    it('keeps hoistToRoot session-local when extend hoists across an implicit ampersand boundary', async () => {
-      context.session = new EvalSession();
-
+    it('keeps hoistToRoot state-local when extend hoists across an implicit ampersand boundary', async () => {
       const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
       (implicitAmp as unknown as { generated?: boolean }).generated = true;
       implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);
@@ -125,9 +120,7 @@ describe('Rules extend', () => {
       expect(headerNav.hoistToRoot).toBeUndefined();
     });
 
-    it('clears a stale session-local hoistToRoot when a later extend pass no longer matches', async () => {
-      context.session = new EvalSession();
-
+    it('clears a stale state-local hoistToRoot when a later extend pass no longer matches', async () => {
       const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
       (implicitAmp as unknown as { generated?: boolean }).generated = true;
       implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);
@@ -178,9 +171,7 @@ describe('Rules extend', () => {
       expect(getField(headerNav, 'hoistToRoot', context)).toBeUndefined();
     });
 
-    it('does not re-parent canonical selector or target during a shallow clone in a session', () => {
-      context.createSession();
-
+    it('does not re-parent canonical selector or target during a shallow clone', () => {
       const target = el('.base');
       const selector = el('.child');
       const node = extend({
@@ -196,13 +187,11 @@ describe('Rules extend', () => {
       expect(cloned).not.toBe(node);
       expect(selector.parent).toBe(node);
       expect(target.parent).toBe(node);
-      expect(context.session?.getRuntime(selector).parent).toBe(cloned);
-      expect(context.session?.getRuntime(target).parent).toBe(cloned);
+      expect(getParent(selector, context)).toBe(cloned);
+      expect(getParent(target, context)).toBe(cloned);
     });
 
-    it('preserves session-patched extend fields during clone without mutating the canonical node', () => {
-      context.session = new EvalSession();
-
+    it('preserves state-patched extend fields during clone without mutating the canonical node', () => {
       const node = extend({
         target: el('.base'),
         namespace: 'base',
@@ -223,13 +212,12 @@ describe('Rules extend', () => {
       expect(node.flag).toBe(ExtendFlag.Exact);
     });
 
-    it('registers a session-patched extend target without mutating the canonical extend node', async () => {
+    it('registers a state-patched extend target without mutating the canonical extend node', async () => {
       const extension = extend({
         target: el('.base')
       });
       const rootRules = rules([]);
 
-      context.session = new EvalSession();
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
       setField(extension, 'target', el('.other'), context);
@@ -241,14 +229,13 @@ describe('Rules extend', () => {
       expect(extension.target.valueOf()).toBe('.base');
     });
 
-    it('records a session-patched extend namespace in the instruction tuple without mutating the canonical node', async () => {
+    it('records a state-patched extend namespace in the instruction tuple without mutating the canonical node', async () => {
       const extension = extend({
         target: el('.base'),
         namespace: 'base'
       });
       const rootRules = rules([]);
 
-      context.session = new EvalSession();
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
       setField(extension, 'namespace', 'patched', context);
@@ -260,12 +247,11 @@ describe('Rules extend', () => {
       expect(extension.namespace).toBe('base');
     });
 
-    it('valueOf(context) reflects a session-patched target without mutating the canonical node', () => {
+    it('valueOf(context) reflects a state-patched target without mutating the canonical node', () => {
       const extension = extend({
         target: el('.base')
       });
 
-      context.session = new EvalSession();
       setField(extension, 'target', el('.other'), context);
 
       expect(extension.valueOf(context)).toBe('$extend .other');
@@ -273,7 +259,7 @@ describe('Rules extend', () => {
       expect(extension.target.valueOf()).toBe('.base');
     });
 
-    it('treats a session-patched selector as explicit during extend registration', async () => {
+    it('treats a state-patched selector as explicit during extend registration', async () => {
       const extension = extend({
         target: el('.base')
       });
@@ -283,7 +269,6 @@ describe('Rules extend', () => {
         rules: rules([extension])
       });
 
-      context.session = new EvalSession();
       context.extendRoots.registerRoot(rootRules);
       context.extendRoots.pushExtendRoot(rootRules);
       context.rulesetFrames.push(frame);
@@ -823,9 +808,7 @@ describe('Rules extend', () => {
       `);
     });
 
-    it('extends through session-patched nested rules with the active parent context', async () => {
-      context.session = new EvalSession();
-
+    it('extends through state-patched nested rules with the active parent context', async () => {
       const nestedLeaf = ruleset({
         selector: sellist([sel([el('.leaf')])]),
         rules: rules([
@@ -877,9 +860,7 @@ describe('Rules extend', () => {
       expect(base.rules?.value).toHaveLength(0);
     });
 
-    it('extends a nested ampersand selector through a session-patched parent selector', async () => {
-      context.session = new EvalSession();
-
+    it('extends a nested ampersand selector through a state-patched parent selector', async () => {
       const nestedLeaf = ruleset({
         selector: sellist([sel([amp(), co(' '), el('.leaf')])]),
         rules: rules([

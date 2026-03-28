@@ -203,10 +203,8 @@ describe('Control Nodes', () => {
     expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
   });
 
-  it('evaluates and renders $for with a session-patched iterable without mutating the canonical node', async () => {
+  it('evaluates and renders $for with a state-patched iterable without mutating the canonical node', async () => {
     const context = new Context();
-    context.createSession();
-
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]));
@@ -223,10 +221,8 @@ describe('Control Nodes', () => {
     expect(loop.iterable.toTrimmedString()).toBe('a');
   });
 
-  it('renders $if with session-patched conditions and bodies without mutating the canonical node', () => {
+  it('renders $if with state-patched conditions and bodies without mutating the canonical node', () => {
     const context = new Context();
-    context.createSession();
-
     const ifNode = new If({
       conditions: [new Any('true', { role: 'any' })],
       bodies: [rules([decl({ name: 'color', value: new Any('red') })])]
@@ -244,10 +240,8 @@ describe('Control Nodes', () => {
     expect(ifNode.bodies[0]!.toTrimmedString()).toContain('color: red;');
   });
 
-  it('renders $while with session-patched condition and rules without mutating the canonical node', () => {
+  it('renders $while with state-patched condition and rules without mutating the canonical node', () => {
     const context = new Context();
-    context.createSession();
-
     const whileNode = new While({
       condition: new Any('true', { role: 'any' }),
       rules: rules([decl({ name: 'color', value: new Any('red') })])
@@ -265,10 +259,8 @@ describe('Control Nodes', () => {
     expect(whileNode.rules.toTrimmedString()).toContain('color: red;');
   });
 
-  it('renders $each with session-patched header and rules without mutating the canonical node', () => {
+  it('renders $each with state-patched header and rules without mutating the canonical node', () => {
     const context = new Context();
-    context.createSession();
-
     const eachNode = new Each({
       header: expr(list([new Any('a')])),
       rules: rules([decl({ name: 'color', value: new Any('red') })])
@@ -287,10 +279,8 @@ describe('Control Nodes', () => {
     expect(eachNode.rules.toTrimmedString()).toContain('color: red;');
   });
 
-  it('keeps merged $for declaration values session-local during coalescing', async () => {
+  it('keeps merged $for declaration values state-local during coalescing', async () => {
     const context = new Context();
-    context.createSession();
-
     const loopRules = rules([
       decl(
         { name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) },
@@ -307,10 +297,8 @@ describe('Control Nodes', () => {
     expect(templateDecl.toTrimmedString()).toContain('padding: $value');
   });
 
-  it('reads a session-patched normalizedFromAssign during $for coalescing without mutating the canonical declaration', async () => {
+  it('reads a state-patched normalizedFromAssign during $for coalescing without mutating the canonical declaration', async () => {
     const context = new Context();
-    context.createSession();
-
     const loopRules = rules([
       decl({ name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
@@ -333,8 +321,6 @@ describe('Control Nodes', () => {
 
   it('$for wrapper evaluates declarations with position-aware lookups', async () => {
     const context = new Context();
-    context.createSession();
-
     const loopRules = rules([
       decl(
         { name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) },
@@ -355,8 +341,6 @@ describe('Control Nodes', () => {
 
   it('characterizes loop-body rulesVisibility as surviving the $for clone boundary while nested lookup still resolves', async () => {
     const context = new Context();
-    context.createSession();
-
     const loopRules = rules([
       ruleset({
         selector: sel([el('.item')]) as any,
@@ -387,10 +371,8 @@ describe('Control Nodes', () => {
     expect(loop.rules.options.rulesVisibility.VarDeclaration).toBe('public');
   });
 
-  it('reads rules-iterable declaration names and values through the session layer', async () => {
+  it('reads rules-iterable declaration names and values through the eval state', async () => {
     const context = new Context();
-    context.createSession();
-
     const iterableRules = rules([
       decl({ name: 'one', value: new Any('red') })
     ]);
@@ -411,10 +393,8 @@ describe('Control Nodes', () => {
     expect(iterDecl.toTrimmedString()).toContain('one: red');
   });
 
-  it('reads session-replaced loop body children after $for evaluation', async () => {
+  it('reads state-replaced loop body children after $for evaluation', async () => {
     const context = new Context();
-    context.createSession();
-
     const root = rules([
       makeLoop(makePattern(['value'], 'single'), list([new Any('x')]), rules([
         new Call({ name: ref({ key: 'makeDecl' }, { type: 'function' }), args: list([]) })
@@ -436,8 +416,6 @@ describe('Control Nodes', () => {
 
   it('materializes call-produced Rules from a $for body without mutating canonical loop children', async () => {
     const context = new Context();
-    context.createSession();
-
     const root = rules([
       makeLoop(makePattern(['value'], 'single'), list([new Any('x')]), rules([
         new Call({ name: ref({ key: 'makeRules' }, { type: 'function' }), args: list([]) })

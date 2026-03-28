@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { any, expr, js, quoted } from '../index.js';
 
 describe('JsImport', () => {
@@ -16,9 +15,8 @@ describe('JsImport', () => {
     expect(evald.toTrimmedString()).toBe('@-from "module.js" import ( foo );');
   });
 
-  it('does not overwrite the canonical path in a non-reset session', async () => {
+  it('does not overwrite the canonical path', async () => {
     const context = new Context();
-    context.session = new EvalSession();
     const originalPath = quoted(expr(any('module.js')));
     const node = js({
       path: originalPath,

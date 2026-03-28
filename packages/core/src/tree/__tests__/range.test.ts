@@ -13,9 +13,8 @@ describe('Range', () => {
     expect(node.toTrimmedString()).toBe('1> to <3 step 2');
   });
 
-  it('reads patched bounds from the active session without mutating the canonical node', () => {
+  it('reads patched bounds from the active eval state without mutating the canonical node', () => {
     const context = new Context();
-    context.createSession();
     const node = range(
       { start: any('1'), end: any('3'), step: any('2') },
       { includeEnd: false }
@@ -32,9 +31,8 @@ describe('Range', () => {
     expect(node.step?.toTrimmedString()).toBe('2');
   });
 
-  it('does not materialize session-patched bounds during eval', async () => {
+  it('does not materialize state-patched bounds during eval', async () => {
     const context = new Context();
-    context.createSession();
     const node = range(
       { start: any('1'), end: any('3') },
       { includeEnd: false }

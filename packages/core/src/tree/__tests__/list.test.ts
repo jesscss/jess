@@ -1,6 +1,5 @@
 import { TreeContext, list, spaced, num, any, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { setField } from '../util/field-helpers.js';
 
 describe('List compare', () => {
@@ -31,8 +30,7 @@ describe('List', () => {
     expect(`${rule}`).toBe('1 2 3, four');
   });
 
-  it('renders session-patched items without mutating the canonical list', () => {
-    context.createSession();
+  it('renders state-patched items without mutating the canonical list', () => {
     const node = list([any('red'), any('blue')]);
 
     setField(node, 'value', [any('cyan'), any('magenta')], context);
@@ -41,8 +39,7 @@ describe('List', () => {
     expect(node.toTrimmedString()).toBe('red, blue');
   });
 
-  it('operate() uses session-patched left-hand items when cloning in a session', () => {
-    context.createSession();
+  it('operate() uses state-patched left-hand items when cloning', () => {
     const left = list([any('red')]);
 
     setField(left, 'value', [any('cyan'), any('magenta')], context);
@@ -53,8 +50,7 @@ describe('List', () => {
     expect(left.toTrimmedString()).toBe('red');
   });
 
-  it('operate() uses session-patched right-hand list items when appending in a session', () => {
-    context.createSession();
+  it('operate() uses state-patched right-hand list items when appending', () => {
     const left = list([any('red')]);
     const right = list([any('blue')]);
 
@@ -67,8 +63,7 @@ describe('List', () => {
     expect(right.toTrimmedString()).toBe('blue');
   });
 
-  it('operate() does not overwrite the canonical left-hand list on the non-reset session path', () => {
-    context.session = new EvalSession();
+  it('operate() does not overwrite the canonical left-hand list', () => {
     const left = list([any('red')]);
     const right = list([any('blue'), any('black')]);
 
@@ -80,8 +75,7 @@ describe('List', () => {
     expect(left.value.map(child => child.toTrimmedString())).toEqual(['red']);
   });
 
-  it('eval() does not overwrite the canonical list array on the non-reset session path', async () => {
-    context.session = new EvalSession();
+  it('eval() does not overwrite the canonical list array', async () => {
     const node = list([ref({ key: 'foo' }, { type: 'variable' })]);
     const scope = rules([
       vardecl({
@@ -101,7 +95,6 @@ describe('List', () => {
   });
 
   it('length and iteration remain canonical without a Context channel', () => {
-    context.createSession();
     const node = list([any('red'), any('blue')]);
 
     setField(node, 'value', [any('cyan'), any('magenta'), any('black')], context);
@@ -111,26 +104,22 @@ describe('List', () => {
     expect([...node].map(([, child]) => child.toTrimmedString())).toEqual(['red', 'blue']);
   });
 
-  it('valueOf() remains canonical and cache-stable across different session overlays', () => {
+  it('valueOf() remains canonical and cache-stable across different eval states', () => {
     const node = list([any('red'), any('blue')]);
-    const firstSession = new Context();
-    const secondSession = new Context();
-
-    firstSession.createSession();
-    secondSession.createSession();
+    const ctx1 = new Context();
+    const ctx2 = new Context();
 
     expect(node.valueOf()).toBe('red;blue');
 
-    setField(node, 'value', [any('cyan'), any('magenta')], firstSession);
-    setField(node, 'value', [any('black'), any('white')], secondSession);
+    setField(node, 'value', [any('cyan'), any('magenta')], ctx1);
+    setField(node, 'value', [any('black'), any('white')], ctx2);
 
-    expect(node.toTrimmedString({ context: firstSession })).toBe('cyan, magenta');
-    expect(node.toTrimmedString({ context: secondSession })).toBe('black, white');
+    expect(node.toTrimmedString({ context: ctx1 })).toBe('cyan, magenta');
+    expect(node.toTrimmedString({ context: ctx2 })).toBe('black, white');
     expect(node.valueOf()).toBe('red;blue');
   });
 
   it('compare() remains canonical without a Context channel', () => {
-    context.createSession();
     const left = list([any('red'), any('blue')]);
     const right = list([any('red'), any('blue')]);
 

@@ -1,9 +1,9 @@
 import { rules, sellist, sel, el, decl, ruleset, spaced, any, amp } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { getPrintOptions } from '../util/print.js';
-import { getParent, setField } from '../util/field-helpers.js';
+import { getField, getParent, setField } from '../util/field-helpers.js';
 import { F_VISIBLE } from '../node.js';
+import type { Node } from '../node-base.js';
 
 let context: Context;
 
@@ -58,7 +58,7 @@ describe('Rule', () => {
     `);
   });
 
-  it('valueOf(context) reads a session-patched selector without mutating the canonical cached value', () => {
+  it('valueOf(context) reads a state-patched selector without mutating the canonical cached value', () => {
     const node = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -66,15 +66,14 @@ describe('Rule', () => {
       ])
     });
 
-    context.session = new EvalSession();
-    context.session.setField(node, 'selector', el('.beta'));
+    setField(node, 'selector', el('.beta'), context);
 
     expect(node.valueOf(context)).toBe('.beta');
     expect(node.valueOf()).toBe('.alpha');
     expect(node.selector.valueOf()).toBe('.alpha');
   });
 
-  it('getHeaderString hoist fallback respects session-patched selector state', () => {
+  it('getHeaderString hoist fallback respects state-patched selector state', () => {
     const node = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -82,13 +81,12 @@ describe('Rule', () => {
       ])
     });
 
-    context.session = new EvalSession();
-    context.session.setField(node, 'selector', amp());
-    context.session.setField(node, 'hoistToRoot', true);
-    context.session.setField(node, 'options', {
+    setField(node, 'selector', amp(), context);
+    setField(node, 'hoistToRoot', true, context);
+    setField(node, 'options', {
       ...node.options,
       ownSelector: amp()
-    });
+    }, context);
 
     const header = node.getHeaderString(getPrintOptions({ context }));
 
@@ -97,7 +95,7 @@ describe('Rule', () => {
     expect(node.options.ownSelector).toBeUndefined();
   });
 
-  it('preEval uses a session-patched ownSelector instead of the canonical selector', async () => {
+  it('preEval uses a state-patched ownSelector instead of the canonical selector', async () => {
     const node = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -105,11 +103,10 @@ describe('Rule', () => {
       ])
     });
 
-    context.session = new EvalSession();
-    context.session.setField(node, 'options', {
+    setField(node, 'options', {
       ...node.options,
       ownSelector: el('.beta')
-    });
+    }, context);
 
     const preEvald = await node.preEval(context);
 
@@ -119,7 +116,7 @@ describe('Rule', () => {
     expect(node.selector.valueOf()).toBe('.alpha');
   });
 
-  it('preEval stores composed selector sourceNode in session runtime without mutating canonical selector state', async () => {
+  it('preEval stores composed selector sourceNode in eval state without mutating canonical selector state', async () => {
     const child = ruleset({
       selector: el('.child'),
       rules: rules([
@@ -131,13 +128,12 @@ describe('Rule', () => {
       rules: rules([child])
     });
 
-    context.session = new EvalSession();
     context.rulesetFrames.push(parent);
     context.frames.push(parent);
 
     const preEvald = await child.preEval(context);
     const currentSelector = preEvald.getCurrentSelector(context);
-    const runtimeSourceNode = context.session.getRuntime(currentSelector).sourceNode;
+    const runtimeSourceNode = getField<Node | undefined>(currentSelector, 'sourceNode', context) ?? currentSelector.sourceNode;
 
     expect(currentSelector.valueOf()).toBe('.parent .child');
     expect(runtimeSourceNode?.valueOf?.()).toBe('.parent .child');
@@ -168,7 +164,7 @@ describe('Rule', () => {
     expect(preEvald.selector.valueOf()).toBe('.child');
   });
 
-  it('shallow clone of a derived ruleset gives the clone its own selector while keeping the rules body lookup-safe in a session', () => {
+  it('shallow clone of a derived ruleset gives the clone its own selector while keeping the rules body lookup-safe', () => {
     const canonical = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -176,8 +172,6 @@ describe('Rule', () => {
       ])
     });
     const derived = canonical.clone(true);
-
-    context.session = new EvalSession();
 
     const cloned = derived.clone(false, undefined, context);
     const clonedDecl = cloned.rules.at(0);
@@ -194,7 +188,7 @@ describe('Rule', () => {
     expect(canonical.rules.parent).toBe(canonical);
   });
 
-  it('keeps a derived ruleset shallow clone as a live session view over the shared rules body', () => {
+  it('keeps a derived ruleset shallow clone as a live eval state view over the shared rules body', () => {
     const canonical = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -203,8 +197,6 @@ describe('Rule', () => {
     });
     const derived = canonical.clone(true);
     const derivedDecl = derived.rules.at(0)!;
-
-    context.session = new EvalSession();
 
     const cloned = derived.clone(false, undefined, context);
     setField(derivedDecl, 'value', any('blue'), context);
@@ -222,8 +214,6 @@ describe('Rule', () => {
       ])
     });
 
-    context.session = new EvalSession();
-
     const cloned = source.clone(false, undefined, context);
 
     expect(cloned).not.toBe(source);
@@ -236,7 +226,7 @@ describe('Rule', () => {
     expect(getParent(cloned.rules, context)).toBe(cloned);
   });
 
-  it('keeps a source ruleset shallow clone as a live session view over shared nested children', () => {
+  it('keeps a source ruleset shallow clone as a live eval state view over shared nested children', () => {
     const source = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -244,8 +234,6 @@ describe('Rule', () => {
       ])
     });
     const sourceDecl = source.rules.at(0)!;
-
-    context.session = new EvalSession();
 
     const cloned = source.clone(false, undefined, context);
     setField(sourceDecl, 'value', any('blue'), context);
@@ -255,15 +243,13 @@ describe('Rule', () => {
     expect(source.rules.toTrimmedString()).toBe('color: red;');
   });
 
-  it('preEval keeps child rules visibility in the session without mutating canonical rules options', async () => {
+  it('preEval keeps child rules visibility in eval state without mutating canonical rules options', async () => {
     const node = ruleset({
       selector: el('.alpha'),
       rules: rules([
         decl({ name: 'color', value: any('red') })
       ])
     });
-
-    context.session = new EvalSession();
 
     expect(node.rules.options.rulesVisibility.Mixin).toBe('public');
     expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('public');
@@ -278,7 +264,7 @@ describe('Rule', () => {
     expect(node.rules.options.rulesVisibility.VarDeclaration).toBe('public');
   });
 
-  it('preEval composes and registers a session-patched nested ruleset under the active extend root', async () => {
+  it('preEval composes and registers a state-patched nested ruleset under the active extend root', async () => {
     const nested = ruleset({
       selector: el('.leaf'),
       rules: rules([
@@ -292,8 +278,7 @@ describe('Rule', () => {
     });
     const root = rules([base]);
 
-    context.session = new EvalSession();
-    context.session.setField(base, 'rules', patchedRules);
+    setField(base, 'rules', patchedRules, context);
     context.extendRoots.registerRoot(root);
     context.extendRoots.pushExtendRoot(root);
 
@@ -313,7 +298,7 @@ describe('Rule', () => {
     expect(base.rules.value).toHaveLength(0);
   });
 
-  it('evalNode removes ruleset visibility when the rules container is emptied only in the session', async () => {
+  it('evalNode removes ruleset visibility when the rules container is emptied only in eval state', async () => {
     const node = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -322,8 +307,7 @@ describe('Rule', () => {
     });
     const emptyRules = rules([]);
 
-    context.session = new EvalSession();
-    context.session.setField(node, 'rules', emptyRules);
+    setField(node, 'rules', emptyRules, context);
 
     const evald = await node.eval(context);
 
@@ -333,7 +317,7 @@ describe('Rule', () => {
     expect(node.rules.value).toHaveLength(1);
   });
 
-  it('setOwnSelector preserves other session-patched option fields', () => {
+  it('setOwnSelector preserves other state-patched option fields', () => {
     const node = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -341,17 +325,16 @@ describe('Rule', () => {
       ])
     });
 
-    context.session = new EvalSession();
-    context.session.setField(node, 'options', {
+    setField(node, 'options', {
       ...node.options,
       resolvedHoistWrapper: true
-    });
+    }, context);
 
     node.setOwnSelector(el('.beta'), context);
 
     expect(node.getOwnSelector(context)?.valueOf()).toBe('.beta');
     expect(node.options.ownSelector).toBeUndefined();
-    expect(context.session.getField(node, 'options')?.resolvedHoistWrapper).toBe(true);
+    expect(getField(node, 'options', context)?.resolvedHoistWrapper).toBe(true);
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

@@ -1,7 +1,6 @@
 import { vi } from 'vitest';
 import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { getParent, setField } from '../util/field-helpers.js';
 
 let context: Context;
@@ -49,8 +48,7 @@ describe('Call', () => {
     expect(evald.toTrimmedString({ context })).toBe('blur(4px)');
   });
 
-  it('materializes fallback-call args without mutating canonical nested sequence spacing in a session', async () => {
-    context.session = new EvalSession();
+  it('materializes fallback-call args without mutating canonical nested sequence spacing', async () => {
     const second = num(2);
     second.pre = 0;
     const arg = seq([num(1), second]);
@@ -76,8 +74,7 @@ describe('Call', () => {
     expect(arg.toTrimmedString()).toBe('12');
   });
 
-  it('uses session-patched args when materializing a fallback call without mutating the patched source args', async () => {
-    context.session = new EvalSession();
+  it('uses state-patched args when materializing a fallback call without mutating the patched source args', async () => {
     const originalSecond = num(2);
     originalSecond.pre = 0;
     const originalArg = seq([num(1), originalSecond]);
@@ -110,8 +107,7 @@ describe('Call', () => {
     expect(patchedArg.toTrimmedString()).toBe('34');
   });
 
-  it('preserves a session-patched content node across fallback-call materialization without mutating the canonical call', async () => {
-    context.session = new EvalSession();
+  it('preserves a state-patched content node across fallback-call materialization without mutating the canonical call', async () => {
     const failingFn = () => {
       throw new Error('boom');
     };
@@ -136,8 +132,7 @@ describe('Call', () => {
     expect(node.toTrimmedString()).toBe('$fn??(1)');
   });
 
-  it('passes session-patched nested args into JS function calls without mutating the canonical arg nodes', async () => {
-    context.session = new EvalSession();
+  it('passes state-patched nested args into JS function calls without mutating the canonical arg nodes', async () => {
     const second = num(2);
     second.pre = 0;
     const arg = seq([num(1), second]);
@@ -163,8 +158,7 @@ describe('Call', () => {
     expect(second.pre).toBe(0);
   });
 
-  it('does not clear canonical silentFail in the non-function branch during patch-only session eval', async () => {
-    context.session = new EvalSession();
+  it('does not clear canonical silentFail in the non-function branch during patch-only eval', async () => {
     const node = call({
       name: 'rgb',
       args: list([num(1)])
@@ -177,8 +171,7 @@ describe('Call', () => {
     expect(node.options.silentFail).toBe(true);
   });
 
-  it('reads a session-patched silentFail option during serialization without mutating canonical output', () => {
-    context.session = new EvalSession();
+  it('reads a state-patched silentFail option during serialization without mutating canonical output', () => {
     const node = call({
       name: 'rgb',
       args: list([num(1)])
@@ -191,8 +184,7 @@ describe('Call', () => {
     expect(node.options.silentFail).toBeUndefined();
   });
 
-  it('reads a session-patched silentFail option during non-function eval without mutating canonical options', async () => {
-    context.session = new EvalSession();
+  it('reads a state-patched silentFail option during non-function eval without mutating canonical options', async () => {
     const node = call({
       name: 'rgb',
       args: list([num(1)])
@@ -208,8 +200,7 @@ describe('Call', () => {
     expect(node.options.silentFail).toBeUndefined();
   });
 
-  it('keeps canonical child parents intact on shallow session clones while exposing the wrapper through the session parent chain', () => {
-    context.session = new EvalSession();
+  it('keeps canonical child parents intact on shallow clones while exposing the wrapper through the state parent chain', () => {
     const name = ref('rgb', { type: 'function' });
     const args = list([num(1)]);
     const node = call({ name, args });
@@ -223,7 +214,6 @@ describe('Call', () => {
   });
 
   it('uses the call-local shallow clone in the silent-fail non-function branch without canonically reparenting children', async () => {
-    context.session = new EvalSession();
     const args = list([num(1)]);
     const node = call({
       name: 'rgb',
@@ -237,8 +227,7 @@ describe('Call', () => {
     expect(node.toTrimmedString()).toBe('rgb?(1)');
   });
 
-  it('materializes stylesheet-function return nodes in a session before applying call result provenance', async () => {
-    context.session = new EvalSession();
+  it('materializes stylesheet-function return nodes before applying call result provenance', async () => {
     const returnValue = any('ok');
     returnValue.pre = 0;
     const functionNode = fn({
@@ -266,8 +255,7 @@ describe('Call', () => {
     expect(returnValue.sourceParent).toBeUndefined();
   });
 
-  it('materializes stylesheet-function rules results in a session without reusing canonical child identity', async () => {
-    context.session = new EvalSession();
+  it('materializes stylesheet-function rules results without reusing canonical child identity', async () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const returnValue = rules([childDecl]);
     const functionNode = fn({
@@ -294,8 +282,7 @@ describe('Call', () => {
     expect(result.sourceParent).toBe(node);
   });
 
-  it('materializes nested-call results in a session before applying outer call provenance', async () => {
-    context.session = new EvalSession();
+  it('materializes nested-call results before applying outer call provenance', async () => {
     const returnValue = any('ok');
     returnValue.pre = 0;
     const functionNode = fn({
@@ -329,7 +316,6 @@ describe('Call', () => {
   });
 
   it('keeps nested-call composite Rules results out of the remaining same-source owner branch', async () => {
-    context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
     const returnValue = rules([childDecl]);
     const functionNode = fn({
@@ -363,7 +349,6 @@ describe('Call', () => {
   });
 
   it('materializes collection results without mutating canonical collection children', async () => {
-    context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
     const collectionNode = coll([childDecl]);
     const node = call({
@@ -380,7 +365,6 @@ describe('Call', () => {
   });
 
   it('characterizes composite same-source Rules results as still needing a returned-tree boundary, not a shallow clone', () => {
-    context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
     const returnValue = rules([childDecl]);
     const node = call({
@@ -400,7 +384,6 @@ describe('Call', () => {
   });
 
   it('characterizes composite same-source Rules results as still needing a child-identity-breaking returned-tree boundary, not a lookup-safe wrapper', () => {
-    context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
     const returnValue = rules([childDecl]);
     const node = call({
@@ -420,7 +403,6 @@ describe('Call', () => {
   });
 
   it('characterizes the exact lower helper contract for stylesheet-function same-source Rules results', () => {
-    context.session = new EvalSession();
     const childDecl = decl({ name: 'color', value: any('red') });
     const returnValue = rules([childDecl]);
     const node = call({
@@ -446,8 +428,7 @@ describe('Call', () => {
     expect(childDecl.important).toBeUndefined();
   });
 
-  it('reads a session-patched markImportant option for collection results without mutating canonical options', async () => {
-    context.session = new EvalSession();
+  it('reads a state-patched markImportant option for collection results without mutating canonical options', async () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const collectionNode = coll([childDecl]);
     const node = call({

@@ -1,6 +1,5 @@
 import { amp, bool, co, condition, dimension, el, num, rules, ruleset, sel, sellist, seq } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { setField } from '../util/field-helpers.js';
 
 let context: Context;
@@ -119,9 +118,8 @@ describe('Condition', () => {
     });
   });
 
-  describe('session', () => {
-    it('renders patched operands and negate from the active session without mutating the canonical node', () => {
-      context.createSession();
+  describe('eval state', () => {
+    it('renders patched operands and negate from the active eval state without mutating the canonical node', () => {
       const node = condition([
         bool(true),
         '=',
@@ -141,8 +139,7 @@ describe('Condition', () => {
       expect(node.negate).toBe(false);
     });
 
-    it('evaluates patched operands and operator from the active session without mutating the canonical node', async () => {
-      context.createSession();
+    it('evaluates patched operands and operator from the active eval state without mutating the canonical node', async () => {
       const node = condition([
         bool(true),
         'and',
@@ -162,8 +159,7 @@ describe('Condition', () => {
       expect(node.right?.toTrimmedString()).toBe('false');
     });
 
-    it('evaluates patched negate from the active session without mutating the canonical node', async () => {
-      context.createSession();
+    it('evaluates patched negate from the active eval state without mutating the canonical node', async () => {
       const node = condition([
         bool(true)
       ]);
@@ -177,9 +173,7 @@ describe('Condition', () => {
       expect(node.negate).toBe(false);
     });
 
-    it('uses compare(context) for selector guard comparisons when a session is active', async () => {
-      context.session = new EvalSession();
-
+    it('uses compare(context) for selector guard comparisons when an eval state is active', async () => {
       const parent = ruleset({
         selector: el('.alpha'),
         rules: rules([])
@@ -230,9 +224,7 @@ describe('Condition', () => {
       expect(parent.selector.valueOf()).toBe('.alpha');
     });
 
-    it('uses compare(context) for sequence guard comparisons when a session is active', async () => {
-      context.session = new EvalSession();
-
+    it('uses compare(context) for sequence guard comparisons when an eval state is active', async () => {
       const left = seq([num(10), num(20)]);
       const right = seq([num(30), num(40)]);
       const node = condition([

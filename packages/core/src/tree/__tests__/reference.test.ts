@@ -1,9 +1,8 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getSourceParent, setParent } from '../util/field-helpers.js';
+import { getSourceParent, setField, setParent } from '../util/field-helpers.js';
 
 let context: Context;
 
@@ -167,7 +166,7 @@ describe('reference', () => {
       `);
     });
 
-    it('evaluates with a session-patched variable key', async () => {
+    it('evaluates with a state-patched variable key', async () => {
       const lookup = ref({ key: 'foo' }, { type: 'variable' });
       const scope = rules([
         vardecl({
@@ -184,8 +183,7 @@ describe('reference', () => {
         })
       ]);
 
-      context.session = new EvalSession();
-      context.session.setField(lookup, 'key', 'bar');
+      setField(lookup, 'key', 'bar', context);
       const preEvald = await scope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
@@ -195,7 +193,7 @@ describe('reference', () => {
       expect(lookup.key).toBe('foo');
     });
 
-    it('evaluates with a session-patched target reference', async () => {
+    it('evaluates with a state-patched target reference', async () => {
       const target = ref({ key: '.theme-a' }, { type: 'mixin-ruleset' });
       const lookup = ref({ target, key: 'primary' }, { type: 'property' });
       const scope = rules([
@@ -217,12 +215,11 @@ describe('reference', () => {
         })
       ]);
 
-      context.session = new EvalSession();
-      context.session.setField(
+      setField(
         lookup,
         'target',
         ref({ key: '.theme-b' }, { type: 'mixin-ruleset' })
-      );
+      , context);
       const preEvald = await scope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
@@ -253,7 +250,7 @@ describe('reference', () => {
       `);
     });
 
-    it('uses the session parent chain to anchor linear variable resolution', async () => {
+    it('uses the state parent chain to anchor linear variable resolution', async () => {
       const scope = rules([
         vardecl({
           name: any('foo'),
@@ -273,7 +270,6 @@ describe('reference', () => {
         })
       ]);
 
-      context.session = new EvalSession();
       scope.value.forEach((child, index) => {
         child.index = index;
       });
@@ -293,7 +289,7 @@ describe('reference', () => {
       expect(evald.render(context)).toBe('red');
     });
 
-    it('uses the session parent chain to anchor default variable resolution without rulesContext', async () => {
+    it('uses the state parent chain to anchor default variable resolution without rulesContext', async () => {
       const scope = rules([
         vardecl({
           name: any('foo'),
@@ -305,7 +301,6 @@ describe('reference', () => {
         })
       ]);
 
-      context.session = new EvalSession();
       context.root = scope;
 
       const hostDecl = scope.at(1);
@@ -321,7 +316,7 @@ describe('reference', () => {
       expect(evald.render(context)).toBe('red');
     });
 
-    it('uses the session parent chain for mixin lookup without an explicit target', async () => {
+    it('uses the state parent chain for mixin lookup without an explicit target', async () => {
       const outer = rules([
         mixin({
           name: any('feature'),
@@ -334,7 +329,6 @@ describe('reference', () => {
         call({ name: ref({ key: 'feature' }, { type: 'mixin' }) })
       ]);
 
-      context.session = new EvalSession();
       context.root = outer;
       context.rulesContext = inner;
       setParent(inner, outer, context);
@@ -358,7 +352,7 @@ describe('reference', () => {
   });
 
   describe('nested references for mixin-ruleset lookups', () => {
-    it('keeps resolved ruleset sourceParent session-local', async () => {
+    it('keeps resolved ruleset sourceParent state-local', async () => {
       const colors = mixin({
         name: any('.colors'),
         rules: rules([
@@ -376,7 +370,6 @@ describe('reference', () => {
         key: '.colors'
       }, { type: 'mixin-ruleset' });
 
-      context.session = new EvalSession();
       const preEvald = await node.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;

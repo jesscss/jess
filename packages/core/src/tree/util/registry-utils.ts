@@ -20,9 +20,9 @@ const { isArray } = Array;
 
 /**
  * Per-Rules registry overlay stored in the EvalState's fields map.
- * Replaces the old SessionRegistryDelta from EvalSession.
+ * Replaces the old RegistryDelta from EvalSession.
  */
-export interface SessionRegistryDelta {
+export interface RegistryDelta {
   rulesetIndex?: Map<string, Set<Ruleset>>;
   mixinIndex?: Map<string, Array<{
     value: Mixin | Ruleset;
@@ -140,41 +140,41 @@ export function ensureRegistryData(value: readonly Node[]): RegistryData {
   return data;
 }
 
-function getSessionRegistryDelta(
+function getRegistryDelta(
   rules: Rules,
   context?: Context
-): SessionRegistryDelta | undefined {
+): RegistryDelta | undefined {
   if (!context) {
     return undefined;
   }
-  return context.activeState.peek(rules)?._fields?.get('_registryDelta') as SessionRegistryDelta | undefined;
+  return context.activeState.peek(rules)?._fields?.get('_registryDelta') as RegistryDelta | undefined;
 }
 
 function ensureSessionRegistryIndex<K extends RegistryIndexKey>(
   rules: Rules,
   key: K,
   context: Context | undefined,
-  create: () => NonNullable<SessionRegistryDelta[K]>
-): NonNullable<SessionRegistryDelta[K]> | undefined {
+  create: () => NonNullable<RegistryDelta[K]>
+): NonNullable<RegistryDelta[K]> | undefined {
   if (!context) {
     return undefined;
   }
   const state = context.activeState.get(rules);
-  let delta = state._fields?.get('_registryDelta') as SessionRegistryDelta | undefined;
+  let delta = state._fields?.get('_registryDelta') as RegistryDelta | undefined;
   if (!delta) {
     delta = {};
     state.fields.set('_registryDelta', delta);
   }
-  return (delta[key] ??= create()) as NonNullable<SessionRegistryDelta[K]>;
+  return (delta[key] ??= create()) as NonNullable<RegistryDelta[K]>;
 }
 
-function getSessionRegistryIndex<K extends RegistryIndexKey>(
+function getRegistryIndex<K extends RegistryIndexKey>(
   rules: Rules,
   key: K,
   context?: Context
-): NonNullable<SessionRegistryDelta[K]> | undefined {
-  const delta = getSessionRegistryDelta(rules, context);
-  return delta?.[key] as NonNullable<SessionRegistryDelta[K]> | undefined;
+): NonNullable<RegistryDelta[K]> | undefined {
+  const delta = getRegistryDelta(rules, context);
+  return delta?.[key] as NonNullable<RegistryDelta[K]> | undefined;
 }
 
 export function isRegistryIndexing(rules: Rules | readonly Node[]): boolean {
@@ -184,7 +184,7 @@ export function isRegistryIndexing(rules: Rules | readonly Node[]): boolean {
 
 export function syncRegistryCache(rules: Rules, context?: Context): void {
   const value = rules.value;
-  if (getSessionRegistryDelta(rules, context)) {
+  if (getRegistryDelta(rules, context)) {
     return;
   }
   const data = ensureRegistryData(value);
@@ -738,7 +738,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
 
     /** Just get based on first key */
     const indices = [
-      getSessionRegistryIndex(this.rules, 'rulesetIndex', this.context),
+      getRegistryIndex(this.rules, 'rulesetIndex', this.context),
       this.index
     ].filter(Boolean) as Array<Map<string, Set<Ruleset>>>;
     for (const key of keys) {
@@ -1040,7 +1040,7 @@ export class MixinRegistry extends Registry<
       let registry = rules.getRegistry('mixin', this.context);
       registry.indexPendingItems();
       const mixinIndices = [
-        getSessionRegistryIndex(rules, 'mixinIndex', this.context),
+        getRegistryIndex(rules, 'mixinIndex', this.context),
         registry.index
       ].filter(Boolean) as Array<Map<string, MixinRegistryEntry[]>>;
       const existing: MixinRegistryEntry[] = [];
@@ -1591,7 +1591,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       newReadonly = currentReadonly;
       let registry = rules.getRegistry('declaration', this.context);
       registry.indexPendingItems();
-      const sessionDeclarationIndex = getSessionRegistryIndex(rules, 'declarationIndex', this.context);
+      const sessionDeclarationIndex = getRegistryIndex(rules, 'declarationIndex', this.context);
       const canonicalDeclarationIndex = registry.index;
       // Build filtered list without intermediate spread — iterate Set directly
       let list: Declaration[] | undefined;

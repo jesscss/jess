@@ -10,7 +10,6 @@ import {
   el, sel, sellist, compound, is, co, pseudo, amp, rules, ruleset
 } from '../../../index.js';
 import { Context } from '../../../context.js';
-import { EvalSession } from '../../../eval-session.js';
 import { setField } from '../field-helpers.js';
 import {
   selectorMatch
@@ -43,10 +42,7 @@ describe('basic selectors', () => {
 
   it('keeps canonical matching when no eval context is provided', () => {
     const contextA = new Context();
-    contextA.session = new EvalSession();
     const contextB = new Context();
-    contextB.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])
@@ -71,12 +67,9 @@ describe('basic selectors', () => {
     expect(selectorMatch(gamma, target).fullMatch).toBe(false);
   });
 
-  it('matches against session-aware key sets when an eval context is provided', () => {
+  it('matches against state-aware key sets when an eval context is provided', () => {
     const contextA = new Context();
-    contextA.session = new EvalSession();
     const contextB = new Context();
-    contextB.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])

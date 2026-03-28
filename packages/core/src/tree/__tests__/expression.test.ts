@@ -1,6 +1,5 @@
 import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { getParent, setField } from '../util/field-helpers.js';
 
 let context: Context;
@@ -19,12 +18,10 @@ describe('Expression', () => {
     expect(`${rule}`).toBe('$(foo)');
   });
 
-  it('preEval preserves a session-patched value across the clone boundary without mutating the canonical child parent', async () => {
+  it('preEval preserves a state-patched value across the clone boundary without mutating the canonical child parent', async () => {
     const shared = any('bar');
     const source = expr(shared);
     const rule = expr(any('foo'));
-    context.session = new EvalSession({ resetEvalState: true });
-
     setField(rule, 'value', shared, context);
     const preEvald = await rule.preEval(context);
 

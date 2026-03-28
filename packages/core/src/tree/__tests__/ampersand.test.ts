@@ -4,7 +4,6 @@ import {
   type SimpleSelector, type Combinator, type Selector
 } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { setField } from '../util/field-helpers.js';
 
@@ -351,8 +350,6 @@ describe('Ampersand', () => {
 
   it('does not mutate the canonical simple parent selector in the collapse/hoist path', () => {
     context = new Context({ collapseNesting: true });
-    context.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])
@@ -371,10 +368,8 @@ describe('Ampersand', () => {
     expect(parent.selector.hoistToRoot).toBeUndefined();
   });
 
-  it('valueOf(context) and getResolvedSelector(context) read a session-patched parent selector', () => {
+  it('valueOf(context) and getResolvedSelector(context) read a state-patched parent selector', () => {
     context = new Context();
-    context.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])
@@ -391,10 +386,8 @@ describe('Ampersand', () => {
     expect(parent.selector.valueOf()).toBe('.alpha');
   });
 
-  it('keeps keySet canonical when only the parent selector is session-patched', () => {
+  it('keeps keySet canonical when only the parent selector is state-patched', () => {
     context = new Context();
-    context.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])
@@ -414,12 +407,9 @@ describe('Ampersand', () => {
     expect(node.keySet.equals(context.selectorBits.getBitset(['.beta']))).toBe(false);
   });
 
-  it('cannot derive a session-specific keySet when two sessions patch the same parent selector differently', () => {
+  it('cannot derive a state-specific keySet when two eval states patch the same parent selector differently', () => {
     const contextA = new Context();
-    contextA.session = new EvalSession();
     const contextB = new Context();
-    contextB.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])
@@ -444,12 +434,9 @@ describe('Ampersand', () => {
     expect(node.keySet.equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(false);
   });
 
-  it('can derive a session-specific keySet through getKeySet(context) without changing canonical keySet', () => {
+  it('can derive a state-specific keySet through getKeySet(context) without changing canonical keySet', () => {
     const contextA = new Context();
-    contextA.session = new EvalSession();
     const contextB = new Context();
-    contextB.session = new EvalSession();
-
     const parent = ruleset({
       selector: el('.alpha'),
       rules: rules([])

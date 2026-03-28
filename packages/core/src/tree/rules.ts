@@ -332,7 +332,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (registry as any).find(keys, filterType, options);
   }
 
-  findSessionPatchedFunction(
+  findStatePatchedFunction(
     name: string,
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.FunctionRegistry['find']> | undefined {

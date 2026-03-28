@@ -1,6 +1,5 @@
 import { any, nil, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import { setField } from '../util/field-helpers.js';
 
 /**
@@ -23,9 +22,8 @@ describe('Sequence', () => {
     expect(`${rule}`).toBe('1020 30');
   });
 
-  it('renders a session-patched value without mutating the canonical array', () => {
+  it('renders a state-patched value without mutating the canonical array', () => {
     const context = new Context();
-    context.session = new EvalSession();
     const rule = seq([num(10), num(20)]);
 
     setField(rule, 'value', [num(30), num(40)], context);
@@ -35,9 +33,8 @@ describe('Sequence', () => {
     expect(rule.value.map(node => node.toTrimmedString())).toEqual(['10', '20']);
   });
 
-  it('preserves a session-patched value across the pre-eval clone boundary', async () => {
+  it('preserves a state-patched value across the pre-eval clone boundary', async () => {
     const context = new Context();
-    context.createSession();
     const rule = seq([num(10), num(20)]);
 
     setField(rule, 'value', [num(30), num(40)], context);
@@ -49,9 +46,8 @@ describe('Sequence', () => {
     expect(rule.value.map(node => node.toTrimmedString())).toEqual(['10', '20']);
   });
 
-  it('keeps eval-time value writes session-local in patch-only sessions', async () => {
+  it('keeps eval-time value writes state-local in patching', async () => {
     const context = new Context();
-    context.session = new EvalSession();
     const rule = seq([num(10), nil(), num(20)]);
 
     const evald = await rule.eval(context);
@@ -62,9 +58,8 @@ describe('Sequence', () => {
     expect(rule.value.map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
   });
 
-  it('eval respects a session-patched preserveWhitespace option without mutating canonical collapse behavior', async () => {
+  it('eval respects a state-patched preserveWhitespace option without mutating canonical collapse behavior', async () => {
     const context = new Context();
-    context.session = new EvalSession();
     const node = seq([ref({ key: 'value' }, { type: 'variable' })]);
     const root = rules([
       vardecl({ name: 'value', value: any('10') })
@@ -86,9 +81,8 @@ describe('Sequence', () => {
     expect(canonicalEvald.type).toBe('Any');
   });
 
-  it('compares against session-patched values when called with context', () => {
+  it('compares against state-patched values when called with context', () => {
     const context = new Context();
-    context.session = new EvalSession();
     const left = seq([num(10), num(20)]);
     const right = seq([num(30), num(40)]);
 
@@ -97,9 +91,8 @@ describe('Sequence', () => {
     expect(left.compare(right, context)).toBe(0);
   });
 
-  it('keeps contextless compare canonical when session patches exist', () => {
+  it('keeps contextless compare canonical when state patches exist', () => {
     const context = new Context();
-    context.session = new EvalSession();
     const left = seq([num(10), num(20)]);
     const right = seq([num(30), num(40)]);
 
@@ -111,7 +104,6 @@ describe('Sequence', () => {
 
   it('passes context through nested sequence comparisons', () => {
     const context = new Context();
-    context.session = new EvalSession();
     const innerLeft = seq([num(10), num(20)]);
     const innerRight = seq([num(30), num(40)]);
     const left = seq([innerLeft]);
@@ -123,9 +115,8 @@ describe('Sequence', () => {
     expect(left.compare(right, context)).toBe(0);
   });
 
-  it('keeps length canonical when session patches exist', () => {
+  it('keeps length canonical when state patches exist', () => {
     const context = new Context();
-    context.session = new EvalSession();
     const node = seq([num(10), num(20)]);
 
     setField(node, 'value', [num(30)], context);
@@ -134,13 +125,10 @@ describe('Sequence', () => {
     expect(node.toTrimmedString({ context })).toBe('30');
   });
 
-  it('keeps length canonical across competing session overlays on the same node', () => {
+  it('keeps length canonical across competing eval states on the same node', () => {
     const node = seq([num(10), num(20)]);
     const leftContext = new Context();
     const rightContext = new Context();
-    leftContext.session = new EvalSession();
-    rightContext.session = new EvalSession();
-
     setField(node, 'value', [num(30)], leftContext);
     setField(node, 'value', [num(40), num(50), num(60)], rightContext);
 
@@ -149,9 +137,8 @@ describe('Sequence', () => {
     expect(node.toTrimmedString({ context: rightContext })).toBe('40 50 60');
   });
 
-  it('keeps inherited contextless valueOf canonical when session patches exist', () => {
+  it('keeps inherited contextless valueOf canonical when state patches exist', () => {
     const context = new Context();
-    context.session = new EvalSession();
     const node = seq([num(10), num(20)]);
 
     setField(node, 'value', [num(30)], context);

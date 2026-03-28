@@ -18,7 +18,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { createTestContext } from './import-style-test-helpers.js';
-import { peekRegistryData } from '../util/registry-utils.js';
+import { peekRegistryData, type RegistryDelta } from '../util/registry-utils.js';
 import { getParent } from '../util/field-helpers.js';
 
 describe('registry characterization', () => {
@@ -59,7 +59,7 @@ describe('registry characterization', () => {
     expect(registryData2).toBe(registryData1);
   });
 
-  it('keeps session-only declaration registrations out of the canonical cache', () => {
+  it('keeps state-only declaration registrations out of the canonical cache', () => {
     const root = rules([
       vardecl({ name: 'foo', value: any('bar') })
     ]);
@@ -69,25 +69,23 @@ describe('registry characterization', () => {
     expect(canonicalData?.declarationIndex?.has('bar')).toBe(false);
 
     const context = new Context();
-    context.createSession();
     const injected = vardecl({ name: 'bar', value: any('baz') });
 
     root.register('declaration', injected, context);
 
-    const delta = context.session?.getRegistryDelta(root);
-    const sessionEntries = delta?.declarationIndex?.get('bar');
+    const delta = context.activeState.peek(root)?._fields?.get('_registryDelta') as RegistryDelta | undefined;
+    const stateEntries = delta?.declarationIndex?.get('bar');
 
-    expect(sessionEntries?.has(injected)).toBe(true);
+    expect(stateEntries?.has(injected)).toBe(true);
     expect(canonicalData?.declarationIndex?.has('bar')).toBe(false);
   });
 
-  it('keeps session registry deltas when a clone swaps to a new child array', () => {
+  it('keeps state registry deltas when a clone swaps to a new child array', () => {
     const root = rules([
       vardecl({ name: 'foo', value: any('bar') })
     ]);
     const clone = root.clone(false) as Rules;
     const context = new Context();
-    context.createSession();
     const injected = vardecl({ name: 'bar', value: any('baz') });
 
     clone.getRegistry('declaration');
@@ -98,7 +96,7 @@ describe('registry characterization', () => {
       context,
       searchParents: false
     })).toBe(injected);
-    expect(context.session?.getRegistryDelta(clone)?.declarationIndex?.get('bar')?.has(injected)).toBe(true);
+    expect((context.activeState.peek(clone)?._fields?.get('_registryDelta') as RegistryDelta | undefined)?.declarationIndex?.get('bar')?.has(injected)).toBe(true);
   });
 
   it('reuses the evaluated import root during finalization for plain imports', () => {
@@ -122,7 +120,7 @@ describe('registry characterization', () => {
     expect(finalRules.value).toBe(importedRules.value);
   });
 
-  it('detaches the shared child array before cloning _dedupe rulesets in a session-backed finalization path', () => {
+  it('detaches the shared child array before cloning _dedupe rulesets in a state-backed finalization path', () => {
     const importedRules = rules([
       ruleset({
         selector: sellist([sel([el('.dedupe-import')])]),
@@ -138,8 +136,6 @@ describe('registry characterization', () => {
       { type: 'import', importOptions: { _dedupe: true } }
     );
     const context = new Context();
-    context.createSession();
-
     const finalRules = node.getFinalRules(evaluatedRules, context);
 
     expect(finalRules).not.toBe(evaluatedRules);
@@ -159,8 +155,6 @@ describe('registry characterization', () => {
     canonicalRules.getRegistry('ruleset');
     const canonicalRegistry = peekRegistryData(canonicalRules.value);
     const context = new Context();
-    context.createSession();
-
     const materializedWrapper = canonicalRules.cloneDetachedMaterializedWrapper(context) as Rules;
     materializedWrapper.getRegistry('ruleset');
     const wrapperRegistry = peekRegistryData(materializedWrapper.value);
@@ -185,8 +179,6 @@ describe('registry characterization', () => {
     canonicalRules.getRegistry('ruleset');
     const canonicalRegistry = peekRegistryData(canonicalRules.value);
     const context = new Context();
-    context.createSession();
-
     const detachedWrapper = canonicalRules.cloneDetachedShallowWrapper(context) as Rules;
     expect(detachedWrapper.at(0)).toBe(canonicalRuleset);
     expect(detachedWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
@@ -354,13 +346,11 @@ describe('registry characterization', () => {
     }
   });
 
-  it('keeps mixin expansion parameter vars in the active session delta', async () => {
+  it('keeps mixin expansion parameter vars in the active eval state delta', async () => {
     const context = new Context({
       leakyRules: true
     });
     context.depth = 2;
-    context.createSession();
-
     const root = rules([
       mixin({
         name: any('.my-mixin'),
@@ -380,11 +370,11 @@ describe('registry characterization', () => {
 
     const evald = await root.eval(context);
     const mixinOutput = evald.at(1) as Rules;
-    const sessionDelta = context.session?.getRegistryDelta(mixinOutput);
+    const stateDelta = context.activeState.peek(mixinOutput)?._fields?.get('_registryDelta') as RegistryDelta | undefined;
     const canonicalData = peekRegistryData(mixinOutput.value);
 
     expect(mixinOutput.type).toBe('Rules');
-    expect(sessionDelta?.declarationIndex?.get('shade')?.size).toBe(1);
+    expect(stateDelta?.declarationIndex?.get('shade')?.size).toBe(1);
     expect(canonicalData?.declarationIndex?.has('shade')).toBe(false);
   });
 });

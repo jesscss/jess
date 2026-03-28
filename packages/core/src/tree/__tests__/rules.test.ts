@@ -29,10 +29,9 @@ import {
 import { getFunctionFromMixins } from '../rules.js';
 import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
-import { EvalSession } from '../../eval-session.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getChildren, getIndex, getParent, getSourceParent, markScopeDirty, setField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/field-helpers.js';
+import { getChildren, getIndex, getParent, getSourceParent, markChangedVar, markScopeDirty, setField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/field-helpers.js';
 import { N } from '../node-type.js';
 
 let context: Context;
@@ -225,7 +224,7 @@ describe('Rules', () => {
         expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
       });
 
-      it('finds parent functions through the session parent chain', () => {
+      it('finds parent functions through the state parent chain', () => {
         const feature = fn({
           name: any('feature'),
           body: rules([
@@ -235,20 +234,16 @@ describe('Rules', () => {
         const inherited = rules([]);
         const node = rules([feature]);
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         setParent(inherited, node, ctx);
 
-        expect(inherited.findSessionPatchedFunction('feature', {
+        expect(inherited.findStatePatchedFunction('feature', {
           context: ctx,
           searchParents: true
         })).toBe(feature);
       });
 
-      it('characterizes session shallow Rules clones as still canonically reparenting shared top-level children while nested ruleset bodies stay shared', () => {
+      it('characterizes shallow Rules clones as still canonically reparenting shared top-level children while nested ruleset bodies stay shared', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
         ]);
@@ -271,8 +266,6 @@ describe('Rules', () => {
 
       it('cloneDetachedShallowWrapper carries wrapper metadata without reparenting shared top-level children', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
         ]);
@@ -296,10 +289,8 @@ describe('Rules', () => {
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
 
-      it('cloneLookupSafeShallowWrapper keeps canonical parentage while giving shared top-level children a session wrapper parent', () => {
+      it('cloneLookupSafeShallowWrapper keeps canonical parentage while giving shared top-level children an eval state wrapper parent', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
         ]);
@@ -320,10 +311,8 @@ describe('Rules', () => {
         expect(wrappedRuleset.rules.parent).toBe(wrappedRuleset);
       });
 
-      it('cloneDetachedUnlockWrapper keeps canonical parentage while giving shared top-level children an unlock-wrapper session parent', () => {
+      it('cloneDetachedUnlockWrapper keeps canonical parentage while giving shared top-level children an unlock-wrapper state parent', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
         ]);
@@ -346,8 +335,6 @@ describe('Rules', () => {
 
       it('cloneVisibilityIsolationWrapper isolates rulesVisibility writes while keeping shared top-level children canonically parented', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
         ]);
@@ -375,8 +362,6 @@ describe('Rules', () => {
 
       it('characterizes evaluateCandidateOutput non-Rules child shaping as exposing source-ruleset clone semantics plus wrapper parent assignment', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const sourceBody = rules([
           decl({ name: 'color', value: any('red') })
         ]);
@@ -406,8 +391,6 @@ describe('Rules', () => {
 
       it('characterizes evaluateCandidateOutput non-Rules child shaping as downstream of the source-ruleset clone contract, not another rules.ts cleanup', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const sourceRuleset = ruleset({
           selector: sel([el('.item')]) as any,
           rules: rules([
@@ -431,10 +414,8 @@ describe('Rules', () => {
         expect(derivedScopedChild.rules.parent).toBe(derivedScopedChild);
       });
 
-      it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active session view', () => {
+      it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active eval state view', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const nested = ruleset({
           selector: sel([el('.item')]) as any,
           rules: rules([
@@ -488,10 +469,8 @@ describe('Rules', () => {
         expect(materialized.sourceNode).not.toBe(derivedBody);
       });
 
-      it('materializeEvaluatedCopy can materialize the active session view without mutating canonical children', () => {
+      it('materializeEvaluatedCopy can materialize the active eval state view without mutating canonical children', () => {
         const ctx = new Context();
-        ctx.session = new EvalSession();
-
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
         ]);
@@ -582,8 +561,6 @@ describe('Rules', () => {
         const mixinRoot = rules([mixinDef]);
         const ctx = new Context();
         ctx.root = mixinRoot;
-        ctx.createSession();
-
         const fn = getFunctionFromMixins(mixinDef);
         const result = await fn.call(ctx, any('blue'));
         const outputRules = result as Rules;
@@ -1314,8 +1291,6 @@ describe('Rules', () => {
 
     it('shared-child wrapper helpers still inherit shallow-clone cache semantics, while cloneDetachedMaterializedWrapper is the explicit top-level child opt-out', () => {
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       const root = rules([
         vardecl({ name: 'foo', value: any('bar') })
       ]);
@@ -1348,13 +1323,12 @@ describe('Rules', () => {
     });
   });
 
-  describe('session registry delta', () => {
-    it('prefers session-only declaration entries over the canonical cache', () => {
+  describe('eval state registry delta', () => {
+    it('prefers state-only declaration entries over the canonical cache', () => {
       const root = rules([
         vardecl({ name: 'foo', value: any('bar') })
       ]);
       const ctx = new Context();
-      ctx.createSession();
       const injected = vardecl({ name: 'bar', value: any('baz') });
 
       root.getRegistry('declaration');
@@ -1369,12 +1343,11 @@ describe('Rules', () => {
       })).toBeUndefined();
     });
 
-    it('clears session-only registry entries when the scope is marked dirty', () => {
+    it('clears state-only registry entries when the scope is marked dirty', () => {
       const root = rules([
         vardecl({ name: 'foo', value: any('bar') })
       ]);
       const ctx = new Context();
-      ctx.createSession();
       const injected = vardecl({ name: 'bar', value: any('baz') });
 
       root.getRegistry('declaration');
@@ -1387,39 +1360,33 @@ describe('Rules', () => {
       })).toBeUndefined();
     });
 
-    it('keeps canonical parent pointers intact when unshifting shared nodes in a session', () => {
+    it('keeps canonical parent pointers intact when unshifting shared nodes', () => {
       const shared = vardecl({ name: 'foo', value: any('bar') });
       const source = rules([shared]);
       const target = rules([]);
       const ctx = new Context();
-      ctx.createSession();
-
       target.unshift(ctx, shared);
 
       expect(shared.parent).toBe(source);
       expect(getParent(shared, ctx)).toBe(target);
     });
 
-    it('keeps canonical parent pointers intact when splicing shared nodes in a session', () => {
+    it('keeps canonical parent pointers intact when splicing shared nodes', () => {
       const shared = vardecl({ name: 'foo', value: any('bar') });
       const source = rules([shared]);
       const target = rules([]);
       const ctx = new Context();
-      ctx.createSession();
-
       target.splice(ctx, 0, 0, shared);
 
       expect(shared.parent).toBe(source);
       expect(getParent(shared, ctx)).toBe(target);
     });
 
-    it('keeps canonical children intact when unshifting in a non-reset session', () => {
+    it('keeps canonical children intact when unshifting', () => {
       const original = vardecl({ name: 'foo', value: any('bar') });
       const inserted = vardecl({ name: 'bar', value: any('baz') });
       const target = rules([original]);
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       target.unshift(ctx, inserted);
 
       expect(target.value).toHaveLength(1);
@@ -1430,13 +1397,11 @@ describe('Rules', () => {
       expect(getParent(inserted, ctx)).toBe(target);
     });
 
-    it('keeps canonical children intact when splicing in a non-reset session', () => {
+    it('keeps canonical children intact when splicing', () => {
       const original = vardecl({ name: 'foo', value: any('bar') });
       const replacement = vardecl({ name: 'bar', value: any('baz') });
       const target = rules([original]);
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       const removed = target.splice(ctx, 0, 1, replacement);
 
       expect(removed).toEqual([original]);
@@ -1447,7 +1412,7 @@ describe('Rules', () => {
       expect(getParent(replacement, ctx)).toBe(target);
     });
 
-    it('falls through to canonical declarations when a session overlay does not depend on changed vars', () => {
+    it('falls through to canonical declarations when a eval state does not depend on changed vars', () => {
       const changed = vardecl({ name: 'theme', value: any('red') });
       const derived = vardecl({ name: 'derived', value: any('pink') });
       const plain = vardecl({ name: 'plain', value: any('blue') });
@@ -1455,8 +1420,7 @@ describe('Rules', () => {
       const ctx = new Context();
 
       root.getRegistry('declaration');
-      ctx.createSession();
-      ctx.session?.markChangedVar(changed as VarDeclaration);
+      markChangedVar(ctx, changed as VarDeclaration);
 
       const derivedOverlay = vardecl({ name: 'derived', value: any('crimson') });
       const plainOverlay = vardecl({ name: 'plain', value: any('cyan') });
@@ -1479,13 +1443,11 @@ describe('Rules', () => {
       })).toBe(plain);
     });
 
-    it('preEval reads declaration replacements from the session child overlay without mutating canonical children', async () => {
+    it('preEval reads declaration replacements from the state child overlay without mutating canonical children', async () => {
       const original = vardecl({ name: 'foo', value: any('bar') });
       const replacement = vardecl({ name: 'bar', value: any('baz') });
       const root = rules([original]);
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       replaceNode(original, replacement, ctx);
       const preEvald = await root.preEval(ctx);
 
@@ -1496,12 +1458,10 @@ describe('Rules', () => {
       expect(root.value[0]).toBe(original);
     });
 
-    it('preEval keeps charset replacement parented only in the session layer', async () => {
+    it('preEval keeps charset replacement parented only in the eval state', async () => {
       const charset = any('@charset "utf-8"', { role: 'charset' });
       const root = rules([charset]);
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       const preEvald = await root.preEval(ctx);
       const replaced = preEvald.at(0, ctx);
 
@@ -1513,32 +1473,30 @@ describe('Rules', () => {
       expect(ctx.currentCharset).toBe(charset);
     });
 
-    it('setDefined inserts into the session parent scope without needing a canonical parent', async () => {
+    it('setDefined inserts into the state parent scope without needing a canonical parent', async () => {
       const placeholder = vardecl({ name: 'one', value: any('stale') });
       const existing = vardecl({ name: 'one', value: any('one') });
       const setter = vardecl({ name: 'one', value: any('three') }, { setDefined: true });
       const root = rules([placeholder, setter]);
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       replaceNode(placeholder, existing, ctx);
       await root.eval(ctx);
 
-      const sessionChildren = getChildren(root, ctx);
-      const inserted = sessionChildren.find(child => `${child}` === '$one: three');
+      const stateChildren = getChildren(root, ctx);
+      const inserted = stateChildren.find(child => `${child}` === '$one: three');
       expect(isNode(inserted, N.VarDeclaration)).toBe(true);
       expect(getParent(inserted as VarDeclaration, ctx)).toBe(root);
-      expect(sessionChildren.map(child => `${child}`)).toEqual(expect.arrayContaining([
+      expect(stateChildren.map(child => `${child}`)).toEqual(expect.arrayContaining([
         '$one: one',
         '$one: three',
         '$one := three'
       ]));
-      expect(sessionChildren).toContain(existing);
+      expect(stateChildren).toContain(existing);
       expect(root.at(0)).toBe(placeholder);
       expect(root.value).toHaveLength(2);
     });
 
-    it('coalesces merged declarations using session-parent scope boundaries', async () => {
+    it('coalesces merged declarations using state-parent scope boundaries', async () => {
       const base = decl({ name: 'color', value: any('red') });
       const merged = decl(
         { name: 'color', value: any('blue') },
@@ -1547,8 +1505,6 @@ describe('Rules', () => {
       const root = rules([base, merged]);
       const foreignScope = rules([]);
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       const preEvald = await root.preEval(ctx);
       const mergedPreEvald = preEvald.at(1, ctx);
       if (!mergedPreEvald) {
@@ -1563,14 +1519,12 @@ describe('Rules', () => {
       expect(merged.toTrimmedString()).toContain('+:');
     });
 
-    it('preEval keeps cloned Rules parents in the session layer on reset sessions', async () => {
+    it('preEval keeps cloned Rules parents in the eval state on eval reset', async () => {
       const child = rules([
         decl({ name: 'color', value: any('red') })
       ]);
       const root = rules([child]);
       const ctx = new Context();
-      ctx.session = new EvalSession({ resetEvalState: true });
-
       const preEvald = await child.preEval(ctx);
 
       expect(preEvald).not.toBe(child);
@@ -1578,7 +1532,7 @@ describe('Rules', () => {
       expect((preEvald as Rules).parent).toBeUndefined();
     });
 
-    it('preEval detects nestable at-rule wrappers through the session parent chain', async () => {
+    it('preEval detects nestable at-rule wrappers through the state parent chain', async () => {
       const wrapper = rules([
         ruleset({
           selector: amp(),
@@ -1592,8 +1546,6 @@ describe('Rules', () => {
         prelude: any('screen')
       });
       const ctx = new Context();
-      ctx.session = new EvalSession({ resetEvalState: true });
-
       setParent(wrapper, media, ctx);
       const preEvald = await wrapper.preEval(ctx);
 
@@ -1602,7 +1554,7 @@ describe('Rules', () => {
       expect(wrapper.parent).toBeUndefined();
     });
 
-    it('eval queue reads session-local child replacements without mutating canonical children', async () => {
+    it('eval queue reads state-local child replacements without mutating canonical children', async () => {
       const mixinDef = mixin({
         name: any('.my-mixin'),
         rules: rules([
@@ -1616,7 +1568,6 @@ describe('Rules', () => {
       const targetRules = rules([original]);
       const root = rules([mixinDef, targetRules]);
       const ctx = new Context();
-      ctx.session = new EvalSession();
       ctx.root = root;
 
       replaceNode(original, replacement, ctx);
@@ -1628,7 +1579,7 @@ describe('Rules', () => {
       expect(targetRules.at(0)).toBe(original);
     });
 
-    it('reorders call-produced declaration-only Rules using the session sourceParent without mutating canonical children', () => {
+    it('reorders call-produced declaration-only Rules using the state sourceParent without mutating canonical children', () => {
       const nested = ruleset({
         selector: sellist([sel([el('.nested')])]),
         rules: rules([
@@ -1641,8 +1592,6 @@ describe('Rules', () => {
       const root = rules([nested, callProduced]);
       const caller = call({ name: any('each') });
       const ctx = new Context();
-      ctx.session = new EvalSession();
-
       setSourceParent(callProduced, caller, ctx);
       (root as any)._normalizeCallDeclarationRulesOrder(root, ctx);
 
