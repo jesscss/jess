@@ -9,7 +9,7 @@ import { EvalState } from '../eval-state.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { getField, getParent, markChangedVar } from './util/field-helpers.js';
+import { getField, getParent, getChildren, markChangedVar, setIndex } from './util/field-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
@@ -220,16 +220,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return w.getSince(mark);
   }
 
-  /** @removal-target — node-copy-reduction: parent chain fixup after clone.
-   * Unnecessary when position carries parent patches. */
-  private materializeCloneParentLinks(node: Node): void {
-    for (const child of node.children()) {
-      if (child !== child.sourceNode) {
-        (child as unknown as { parent?: Node }).parent = node;
-      }
-      this.materializeCloneParentLinks(child);
-    }
-  }
 
   /** @removal-target — node-copy-reduction: clone(true) on prelude nodes.
    * Prelude should be read from canonical + position patches. */
@@ -257,7 +247,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
   }
 
-  getFinalRules(evaluatedRules: Rules, context?: Context) {
+  getFinalRules(evaluatedRules: Rules, context: Context) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
     const isForward = importOptions!.forward === true;
@@ -313,17 +303,20 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * Import/compose results should carry their EvalState. No wrapper
      * cloning needed — position patches provide isolation per import. */
     const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
-    const needsDetachedMaterializedWrapper = Boolean(
-      context && (materializeConfiguredComposeChildren || (type === 'import' && importOptions!._dedupe === true))
-    );
-    let out = type === 'import' && !shouldCloneImportWrapper
-      ? evaluatedRules
-      : needsDetachedMaterializedWrapper
-        ? evaluatedRules.cloneDetachedMaterializedWrapper(context!) as Rules
-        : evaluatedRules.cloneDetachedShallowWrapper(context) as Rules;
+    // Create a lightweight output per import — canonical children, no materialization.
+    // Same pattern as mixin output (finalizeMixinInvocationOutput).
+    let out: Rules;
+    if (type === 'import' && !shouldCloneImportWrapper) {
+      out = evaluatedRules;
+    } else {
+      const children = [...getChildren(evaluatedRules, context)];
+      out = Rules.create(children, { ...evaluatedRules.options });
+      out.inherit(evaluatedRules);
+    }
     if (materializeConfiguredComposeChildren) {
-      for (let i = 0; i < out.value.length; i++) {
-        out.value[i]!.index = i;
+      const children = getChildren(out, context);
+      for (let i = 0; i < children.length; i++) {
+        setIndex(children[i]!, i, context);
       }
     }
     // Import type: variables are visible and re-exported (not local)
@@ -344,12 +337,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
-    this.adopt(out);
-    for (const child of out.children()) {
-      if (child.parent === out) {
-        this.materializeCloneParentLinks(child);
-      }
-    }
+    this.adopt(out, context);
     return out;
   }
 
@@ -708,11 +696,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (importOptions!.postlude && !isInlineImport) {
           finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
         }
-        if (configuredWithCanonicalParents) {
-          for (const [canonicalNode, originalParent] of configuredWithCanonicalParents) {
-            (canonicalNode as unknown as { parent?: Node }).parent = originalParent;
-          }
-        }
+        // configuredWithCanonicalParents restore removed — adopt() routes through
+        // EvalState, canonical parents are not mutated.
 
         // For import type, register the final Rules as a child root of the parent
         // so extends from the parent can find rulesets in the imported Rules
@@ -751,14 +736,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
         return finalRules;
       } finally {
-        if (dedupedCachedRules && dedupedCanonicalChildren) {
-          dedupedCachedRules.setData([...dedupedCanonicalChildren]);
-        }
-        if (dedupedCanonicalParents) {
-          for (const [canonicalNode, originalParent] of dedupedCanonicalParents) {
-            (canonicalNode as unknown as { parent?: Node }).parent = originalParent;
-          }
-        }
+        // dedupedCachedRules/dedupedCanonicalParents restore removed —
+        // eval writes go through EvalState, canonical tree is not mutated.
         context.treeContext = previousTreeContext;
         if (pushedImportScope) {
           context.popImportScope();
