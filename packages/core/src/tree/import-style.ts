@@ -641,7 +641,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             rules = await rules.eval(context);
           } finally {
             if (pushedIsolatedState) {
-              context.popState();
+              const poppedState = context.popState();
+              // Carry the eval state on the output so serialization can push it
+              if (poppedState && poppedState.size > 0) {
+                rules._carriedState = poppedState;
+              }
               pushedIsolatedState = false;
             }
             if (pushedImplicitReferenceEvalScope) {
@@ -679,7 +683,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            context.popState();
+            const poppedState = context.popState();
+            if (poppedState && poppedState.size > 0) {
+              rules._carriedState = poppedState;
+            }
             if (shouldIsolateSelectorFrames) {
               context.rulesetFrames = prevRulesetFrames!;
               context.frames = prevFrames!;
