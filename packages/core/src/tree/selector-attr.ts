@@ -1,10 +1,10 @@
-import { defineType, type OptionalLocation, Node } from './node.js';
+import { defineType, type OptionalLocation, Node, type NodeOptions } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
+import { setField } from './util/field-helpers.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -17,6 +17,13 @@ export type AttributeSelectorValue = {
   mod?: string;
 };
 
+export type AttributeSelectorChildData = {
+  name: string | Node;
+  op: string | undefined;
+  value: Node | undefined;
+  mod: string | undefined;
+};
+
 /**
  * An attribute selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
@@ -27,13 +34,13 @@ export interface AttributeSelector {
   shortType: 'attr';
 }
 
-export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
+export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, NodeOptions, AttributeSelectorChildData> {
   static override childKeys = ['name', 'value'] as const;
 
-  name!: string | Node;
-  op: string | undefined;
-  value: Node | undefined;
-  mod: string | undefined;
+  private name!: string | Node;
+  private op: string | undefined;
+  private value: Node | undefined;
+  private mod: string | undefined;
 
   override clone(deep?: boolean): this {
     const newNode = new (this.constructor as any)(
@@ -65,21 +72,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     }
   }
 
-  private _getName(context?: Context): string | Node {
-    return context
-      ? getField<string | Node>(this, 'name', context)
-      : this.name;
-  }
-
-  private _getValue(context?: Context): Node | undefined {
-    return context
-      ? getField<Node | undefined>(this, 'value', context)
-      : this.value;
-  }
-
   override evalNode(context: Context): MaybePromise<this> {
-    const currentName = this._getName(context);
-    const currentValue = this._getValue(context);
+    const currentName = this.get('name', context);
+    const currentValue = this.get('value', context);
     const maybeName = typeof currentName === 'string'
       ? currentName
       : currentName.eval(context);
@@ -112,9 +107,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
-    const name = this._getName(context);
-    const value = this._getValue(context);
-    const { op, mod } = this;
+    const name = this.get('name', context);
+    const value = this.get('value', context);
+    const op = this.get('op');
+    const mod = this.get('mod');
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);
@@ -138,7 +134,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   override valueOf() {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, op, value, mod } = this;
+      let name = this.name;
+      let op = this.op;
+      let value = this.value;
+      let mod = this.mod;
       let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
       if (!op) {
         return `[${keyStr}]`;

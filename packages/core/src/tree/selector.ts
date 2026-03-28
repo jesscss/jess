@@ -14,13 +14,13 @@ const { isArray } = Array;
  *       private = `\\_foo`
  */
 
-export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
+export interface Selector<T = any, O extends NodeOptions = NodeOptions, CD extends Record<string, unknown> = Record<string, unknown>> extends Node<IfAny<T, NodeValue, T>, O, CD> {
   valueOf(): string;
   getKeySet(context?: Context): BitSet<string>;
   eval(context: Context): MaybePromise<Selector<T>> | MaybePromise<Nil>;
 }
 
-export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
+export abstract class Selector<T = any, O extends NodeOptions = NodeOptions, CD extends Record<string, unknown> = Record<string, unknown>> extends Node<IfAny<T, NodeValue, T>, O, CD> {
   isSelector = true;
 
   protected _valueOf: string | undefined;
