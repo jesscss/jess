@@ -5,8 +5,10 @@ import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Context } from '../context.js';
-import { getField, setField } from './util/field-helpers.js';
+import { setField } from './util/field-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+
+export type UrlChildData = { value: Quoted | Any };
 
 /**
  * e.g. url('foo.png')
@@ -16,10 +18,10 @@ export interface Url {
   shortType: 'url';
 }
 
-export class Url extends Node<Quoted | Any> {
+export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   static override childKeys = ['value'] as const;
 
-  readonly value!: Quoted | Any;
+  private value!: Quoted | Any;
 
   constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -27,12 +29,6 @@ export class Url extends Node<Quoted | Any> {
     if (value instanceof Node) {
       this.adopt(value);
     }
-  }
-
-  private _getValue(context?: Context): Quoted | Any {
-    return context
-      ? getField<Quoted | Any>(this, 'value', context)
-      : this.value;
   }
 
   /**
@@ -49,7 +45,7 @@ export class Url extends Node<Quoted | Any> {
   pathValue(context?: Context): string {
     let value: Node | string = this.value;
     if (context) {
-      value = this._getValue(context);
+      value = this.get('value', context);
     }
     if (isNode(value, N.Quoted)) {
       value = (value as any).value as Node | string;
@@ -62,7 +58,7 @@ export class Url extends Node<Quoted | Any> {
   }
 
   override evalNode(context: Context): MaybePromise<Url> {
-    const value = this._getValue(context);
+    const value = this.get('value', context);
     const finish = (nextValue: Quoted | Any): Url => {
       if (nextValue !== value) {
         setField(this, 'value', nextValue, context);
@@ -80,7 +76,7 @@ export class Url extends Node<Quoted | Any> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this._getValue(options.context);
+    const value = this.get('value', options.context);
     w.add('url(');
     value.toString(options);
     w.add(')');

@@ -845,7 +845,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, {} as any);
           // Store the evaluated selector - this is what will be in the frame
           setField(node, 'selector', sel as Selector | Nil, context);
-          if (sel.hoistToRoot) {
+          if (sel.hoistToRoot || getField<boolean | undefined>(sel, 'hoistToRoot', context)) {
             setField(node, 'hoistToRoot', true, context);
           }
           // Register to extend root's registry for extend lookups

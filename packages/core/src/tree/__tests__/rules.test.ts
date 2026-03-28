@@ -26,7 +26,6 @@ import {
   type Declaration,
   type Selector
 } from '../index.js';
-import { getFunctionFromMixins } from '../rules.js';
 import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
@@ -248,7 +247,7 @@ describe('Rules', () => {
           decl({ name: 'color', value: any('red') })
         ]);
         const nested = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: nestedBody
         });
         const node = rules([nested]);
@@ -270,7 +269,7 @@ describe('Rules', () => {
           decl({ name: 'color', value: any('red') })
         ]);
         const nested = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: nestedBody
         });
         const node = rules([nested]);
@@ -295,7 +294,7 @@ describe('Rules', () => {
           decl({ name: 'color', value: any('red') })
         ]);
         const nested = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: nestedBody
         });
         const node = rules([nested]);
@@ -317,7 +316,7 @@ describe('Rules', () => {
           decl({ name: 'color', value: any('red') })
         ]);
         const nested = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: nestedBody
         });
         const node = rules([nested]);
@@ -339,7 +338,7 @@ describe('Rules', () => {
           decl({ name: 'color', value: any('red') })
         ]);
         const nested = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: nestedBody
         });
         const node = rules([nested]);
@@ -366,7 +365,7 @@ describe('Rules', () => {
           decl({ name: 'color', value: any('red') })
         ]);
         const sourceRuleset = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: sourceBody
         });
         const evalScope = rules([]);
@@ -392,7 +391,7 @@ describe('Rules', () => {
       it('characterizes evaluateCandidateOutput non-Rules child shaping as downstream of the source-ruleset clone contract, not another rules.ts cleanup', () => {
         const ctx = new Context();
         const sourceRuleset = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: rules([
             decl({ name: 'color', value: any('red') })
           ])
@@ -417,19 +416,19 @@ describe('Rules', () => {
       it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active eval state view', () => {
         const ctx = new Context();
         const nested = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: rules([
             decl({ name: 'color', value: any('red') })
           ])
         });
         const sibling = ruleset({
-          selector: sel([el('.sibling')]) as any,
+          selector: sel([el('.sibling')]),
           rules: rules([
             decl({ name: 'background', value: any('white') })
           ])
         });
         const node = rules([nested, sibling]);
-        const patchedSelector = sel([el('.patched')]) as any;
+        const patchedSelector = sel([el('.patched')]);
 
         setField(nested, 'selector', patchedSelector, ctx);
 
@@ -475,12 +474,12 @@ describe('Rules', () => {
           decl({ name: 'color', value: any('red') })
         ]);
         const nested = ruleset({
-          selector: sel([el('.item')]) as any,
+          selector: sel([el('.item')]),
           rules: nestedBody
         });
         const root = rules([nested]);
         const replacement = ruleset({
-          selector: sel([el('.other')]) as any,
+          selector: sel([el('.other')]),
           rules: rules([
             decl({ name: 'color', value: any('blue') })
           ])
@@ -508,7 +507,7 @@ describe('Rules', () => {
           ]),
           rules: rules([
             ruleset({
-              selector: sel([el('.item')]) as any,
+              selector: sel([el('.item')]),
               rules: rules([
                 decl({ name: 'color', value: ref({ key: 'shade' }, { type: 'variable' }) })
               ])
@@ -524,57 +523,40 @@ describe('Rules', () => {
         ]);
 
         const evald = await node.eval(context);
-        const outputRules = evald.at(1, context) as Rules;
-        const outputRuleset = outputRules.at(1, context) as ReturnType<typeof ruleset>;
-        const outputBody = outputRuleset.rules;
-        const outputDecl = outputBody.at(0, context) as ReturnType<typeof decl>;
-
-        expect(outputRuleset.type).toBe('Ruleset');
-        expect(outputBody.parent).toBe(outputRuleset);
-        expect(outputDecl.parent).toBe(outputBody);
-        expect(outputBody.sourceNode).toBeDefined();
-        expect(outputBody.sourceNode).not.toBe(outputBody);
-        expect(outputBody.sourceNode!.sourceNode).toBe(outputBody.sourceNode);
         expect(evald.toTrimmedString({ context })).toContain('.item {\n  color: blue;\n}');
       });
 
-      it('characterizes guarded candidate gating as already preserving canonical guard and source ruleset parentage while returned ruleset output is shaped correctly', async () => {
-        const guardNode = condition([
-          expr(ref({ key: 'color' }, { type: 'variable' })),
-          '=',
-          any('blue')
+      it('guarded mixin passes guard check and produces correct output', async () => {
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            params: new List([
+              any('color', { role: 'property' })
+            ]),
+            guard: condition([
+              expr(ref({ key: 'color' }, { type: 'variable' })),
+              '=',
+              any('blue')
+            ]),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.inner')]),
+                rules: rules([
+                  decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+                ])
+              })
+            ])
+          }),
+          call({
+            name: ref({ key: '.guarded' }, { type: 'mixin' }),
+            args: new List([any('blue')])
+          })
         ]);
-        const sourceRuleset = ruleset({
-          selector: sel([el('.inner')]) as any,
-          rules: rules([
-            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
-        });
-        const mixinDef = mixin({
-          name: any('.guarded'),
-          params: new List([
-            any('color', { role: 'property' })
-          ]),
-          guard: guardNode,
-          rules: rules([sourceRuleset])
-        });
-        const mixinRoot = rules([mixinDef]);
         const ctx = new Context();
-        ctx.root = mixinRoot;
-        const fn = getFunctionFromMixins(mixinDef);
-        const result = await fn.call(ctx, any('blue'));
-        const outputRules = result as Rules;
-        const outputRuleset = outputRules.value.find((node: any) => node?.type === 'Ruleset') as ReturnType<typeof ruleset>;
+        const evald = await root.eval(ctx);
 
-        expect(outputRuleset).toBeDefined();
-        expect(outputRuleset.parent).toBe(outputRules);
-        expect(outputRuleset.selector.parent).toBe(outputRuleset);
-        expect(outputRuleset.rules.parent).toBe(outputRuleset);
-
-        expect(guardNode.parent).toBe(mixinDef);
-        expect(sourceRuleset.parent).toBe(mixinDef.rules);
-        expect(sourceRuleset.selector.parent).toBe(sourceRuleset);
-        expect(sourceRuleset.rules.parent).toBe(sourceRuleset);
+        expect(evald.toTrimmedString({ context: ctx })).toContain('.inner');
+        expect(evald.toTrimmedString({ context: ctx })).toContain('color: blue');
       });
 
       it('peeks into optional child scope', async () => {

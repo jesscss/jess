@@ -1494,7 +1494,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _buildEvalQueue(rules: Rules, context: Context): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
     for (const item of rules._getChildren(context).entries()) {
-      let [, rule] = item;
+      let [idx, rule] = item;
+      if (rule.index === undefined) {
+        rule.index = idx;
+      }
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
       // Less variable-calls `@foo();` are parsed as Expression(Call(variable-ref)).
       // We *selectively* boost only those calls that "unlock mixins" (i.e. calling a variable whose

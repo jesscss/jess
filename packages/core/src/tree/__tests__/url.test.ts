@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { any, quoted, url } from '../index.js';
+import { any, quoted, url, Url } from '../index.js';
 import { Context } from '../../context.js';
-import { getField } from '../util/field-helpers.js';
 
 describe('Url', () => {
   it('eval stores an evaluated child in the eval state without mutating the canonical value', async () => {
@@ -14,8 +13,8 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(getField(node, 'value', ctx)).toBe(replacement);
-    expect(node.value).toBe(original);
+    expect(node.get('value', ctx)).toBe(replacement);
+    expect(node.get('value')).toBe(original);
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
     expect(node.toTrimmedString()).toBe('url("a.png")');
   });
@@ -30,11 +29,11 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(getField(node, 'value', ctx)).toBe(replacement);
+    expect(node.get('value', ctx)).toBe(replacement);
     expect(node.valueOf()).toBe('a.png');
     expect(evald.valueOf()).toBe('a.png');
     expect(node.pathValue(ctx)).toBe('b.png');
-    expect(evald.pathValue(ctx)).toBe('b.png');
+    expect((evald as Url).pathValue(ctx)).toBe('b.png');
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
   });
 
@@ -49,7 +48,7 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(getField(node, 'value', ctx)).toBe(replacement);
+    expect(node.get('value', ctx)).toBe(replacement);
     expect(node.toTrimmedString({ context: ctx })).toBe('url(b.png)');
   });
 });

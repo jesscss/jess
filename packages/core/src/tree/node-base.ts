@@ -184,7 +184,8 @@ type NodeMeta<O extends NodeOptions = NodeOptions> = {
  */
 export abstract class Node<
   Data = NodeValue,
-  O extends NodeOptions = NodeOptions
+  O extends NodeOptions = NodeOptions,
+  ChildData extends Record<string, unknown> = Record<string, unknown>
 > {
   _location: OptionalLocation;
   get location(): LocationInfoOrEmpty {
@@ -925,6 +926,30 @@ export abstract class Node<
   }
 
   /**
+   * Type-safe access to child data fields.
+   * Without context: returns canonical (parse-time) value.
+   * With context: returns eval-state-patched value if one exists.
+   *
+   * @example
+   *   url.get('value')        // canonical, typed
+   *   url.get('value', ctx)   // eval-aware, typed
+   *   url.get('name')         // TS error if 'name' not in ChildData
+   */
+  get<K extends keyof ChildData & string>(key: K, ctx?: Context): ChildData[K] {
+    if (ctx) {
+      let state: EvalState | undefined = ctx.activeState;
+      while (state) {
+        const val = state.peek(this)?._fields?.get(key);
+        if (val !== undefined) {
+          return val as ChildData[K];
+        }
+        state = state.parent;
+      }
+    }
+    return (this as unknown as Record<string, unknown>)[key] as ChildData[K];
+  }
+
+  /**
    * Static factory method to create a generated node.
    * Has the exact same signature as the constructor but automatically marks the node as generated.
    *
@@ -1199,8 +1224,6 @@ export abstract class Node<
     // EvalState provides isolation — no clone needed.
     return this;
   }
-
-
 
   /**
    * @removal-target — node-copy-reduction (eval-path callers)
@@ -1540,6 +1563,9 @@ export abstract class Node<
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.sourceParent ??= node.sourceParent;
+    if (node.hoistToRoot) {
+      this.hoistToRoot = true;
+    }
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)

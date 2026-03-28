@@ -86,7 +86,6 @@ describe('AtRule', () => {
 
       const evald = await node.eval(context);
       const css = evald.render(context);
-
       expect(css).toBeString(`
         .body {
           @media print {

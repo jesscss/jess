@@ -11,7 +11,8 @@ import {
   sel,
   co,
   pseudo,
-  ExtendFlag
+  ExtendFlag,
+  type Ruleset
 } from '../../index.js';
 
 /**
@@ -31,8 +32,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.at(0, context) as any;
-      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo,.bar');
+      const firstRuleset = evald.at(0, context) as Ruleset | undefined;
+      expect(firstRuleset?.getEffectiveSelector?.(false, context).valueOf()).toBe('.foo,.bar');
     });
 
     it('should handle multiple extends on same target', async () => {
@@ -49,8 +50,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.at(0, context) as any;
-      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo,.bar,.baz');
+      const firstRuleset = evald.at(0, context) as Ruleset | undefined;
+      expect(firstRuleset?.getEffectiveSelector?.(false, context).valueOf()).toBe('.foo,.bar,.baz');
     });
 
     it('should skip self-referencing extends', async () => {
@@ -62,8 +63,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.at(0, context) as any;
-      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo');
+      const firstRuleset = evald.at(0, context) as Ruleset | undefined;
+      expect(firstRuleset?.getEffectiveSelector?.(false, context).valueOf()).toBe('.foo');
     });
   });
 
@@ -82,8 +83,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.at(0, context) as any;
-      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo,.bar,.baz');
+      const firstRuleset = evald.at(0, context) as Ruleset | undefined;
+      expect(firstRuleset?.getEffectiveSelector?.(false, context).valueOf()).toBe('.foo,.bar,.baz');
     });
   });
 
@@ -103,14 +104,14 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.at(0, context) as any;
+      const firstRuleset = evald.at(0, context) as Ruleset | undefined;
       const expected = tryExtendSelector(
         targetSelector.copy(true),
         el('.b'),
         extendSelector.copy(true),
         true
       );
-      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe(expected.value.valueOf());
+      expect(firstRuleset?.getEffectiveSelector?.(false, context).valueOf()).toBe(expected.value.valueOf());
     });
 
     it('should apply partial extends to the outer ruleset selector when partial is true (Less `all`)', async () => {
@@ -137,7 +138,7 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const outerRuleset = evald.at(0, context) as any;
+      const outerRuleset = evald.at(0, context) as Ruleset | undefined;
       const nestedRuleset = outerRuleset?.rules?.value?.[0];
       const expected = tryExtendSelector(
         targetSelector.copy(true),
@@ -145,7 +146,7 @@ describe('processExtends function (eval flow)', () => {
         extendSelector.copy(true),
         true
       );
-      expect(outerRuleset?.getEffectiveSelector?.().valueOf()).toBe(expected.value.valueOf());
+      expect(outerRuleset?.getEffectiveSelector?.(false, context).valueOf()).toBe(expected.value.valueOf());
       // Nested selectors stay defined and keep their existing structure.
       const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
       expect(nestedSel).toContain('.replace');
@@ -166,7 +167,7 @@ describe('processExtends function (eval flow)', () => {
           rules: rules([])
         }),
         ruleset({
-          selector: firstExtend as any,
+          selector: firstExtend,
           rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
         }),
         ruleset({
@@ -176,8 +177,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.at(0, context) as any;
-      const output = firstRuleset?.getEffectiveSelector?.().valueOf() ?? '';
+      const firstRuleset = evald.at(0, context) as Ruleset | undefined;
+      const output = firstRuleset?.getEffectiveSelector?.(false, context).valueOf() ?? '';
       expect(output).toContain('.ext1 .ext2');
       expect(output).toContain('.ext3,.ext4');
       expect(output).toContain('.bar');
@@ -196,8 +197,8 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.at(0, context) as any;
-      expect(firstRuleset?.getEffectiveSelector?.().valueOf()).toBe('.foo');
+      const firstRuleset = evald.at(0, context) as Ruleset | undefined;
+      expect(firstRuleset?.getEffectiveSelector?.(false, context).valueOf()).toBe('.foo');
     });
   });
 
@@ -216,10 +217,10 @@ describe('processExtends function (eval flow)', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const fooRuleset = evald.at(0, context) as any;
-      const barRuleset = evald.at(1, context) as any;
-      expect(fooRuleset?.getEffectiveSelector?.().valueOf()).toContain('.bar');
-      expect(barRuleset?.getEffectiveSelector?.().valueOf()).toContain('.baz');
+      const fooRuleset = evald.at(0, context) as Ruleset | undefined;
+      const barRuleset = evald.at(1, context) as Ruleset | undefined;
+      expect(fooRuleset?.getEffectiveSelector?.(false, context).valueOf()).toContain('.bar');
+      expect(barRuleset?.getEffectiveSelector?.(false, context).valueOf()).toContain('.baz');
     });
   });
 });
