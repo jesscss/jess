@@ -490,6 +490,7 @@ export class For extends Node<ForValue> {
       const output = new Rules(accumulatedNodes);
       if (isolatedState.size > 0) {
         output._carriedState = isolatedState;
+        context.subtreeMap.set(output, isolatedState);
       }
       return output;
     };

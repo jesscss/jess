@@ -645,6 +645,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               // Carry the eval state on the output so serialization can push it
               if (poppedState && poppedState.size > 0) {
                 rules._carriedState = poppedState;
+                context.subtreeMap.set(rules, poppedState);
               }
               pushedIsolatedState = false;
             }
@@ -686,6 +687,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             const poppedState = context.popState();
             if (poppedState && poppedState.size > 0) {
               rules._carriedState = poppedState;
+              context.subtreeMap.set(rules, poppedState);
             }
             if (shouldIsolateSelectorFrames) {
               context.rulesetFrames = prevRulesetFrames!;

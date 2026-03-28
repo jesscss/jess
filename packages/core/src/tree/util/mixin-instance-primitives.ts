@@ -1294,6 +1294,7 @@ export async function evaluateCandidateOutput(
     // Serialization checks this property to push the subtree.
     if (callState.size > 0) {
       newRules._carriedState = callState;
+      context.subtreeMap.set(newRules, callState);
     }
     setSourceParent(newRules, sourceParent, context);
     setParent(newRules, callerParent, context);

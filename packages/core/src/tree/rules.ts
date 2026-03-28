@@ -700,7 +700,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // patched fields during serialization.
     const ctx = options.context;
     const subtree = this._carriedState as EvalState | undefined
-      ?? ctx?.activeState.peek(this)?._subtree;
+      ?? ctx?.activeState.peek(this)?._subtree
+      ?? ctx?.subtreeMap.get(this);
     if (ctx && subtree) {
       ctx.pushState(subtree);
     }
@@ -717,6 +718,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const iterateRules = (rules: Rules, activeSubtree?: EvalState) => {
       const subtree = (rules._carriedState as EvalState | undefined)
         ?? context?.activeState.peek(rules)?._subtree
+        ?? context?.subtreeMap.get(rules)
         ?? activeSubtree;
 
       for (let n of rules._getChildren(context)) {

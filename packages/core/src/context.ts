@@ -483,6 +483,10 @@ export class Context {
     return popped;
   }
 
+  /** Maps output nodes (mixin/import/loop results) to their call-site EvalState.
+   *  Global lookup — works from any context, any direction. */
+  readonly subtreeMap = new WeakMap<Node, EvalState>();
+
   /** @deprecated — use activeState directly */
   resolveField(node: Node, field: string): unknown {
     return this.activeState.peek(node)?._fields?.get(field);
