@@ -404,8 +404,62 @@ function getParent(node: Node, ctx: Context): Node | undefined {
 }
 ```
 
-Only the registry parent-walk and serialization use the (node, state)
-pair pattern. Everything else uses `activeState` directly.
+#### Implementation: activeState as a save/restore cursor
+
+Rather than a separate (node, state) pair, the walk just saves/restores
+`ctx.activeState` — same pattern as `rulesContext`, `rulesetFrames`, etc:
+
+```ts
+// Registry parent walk
+while (rules) {
+  search(rules);  // uses ctx.activeState internally
+  const [parent, parentState] = getParentInState(rules, ctx.activeState);
+  if (parent && parentState !== ctx.activeState) {
+    ctx.activeState = parentState;  // swap cursor
+  }
+  rules = parent;
+}
+ctx.activeState = savedState;  // restore
+```
+
+All internal methods (`_getChildren`, `syncRegistryCache`, `getField`,
+`getParent`) use `ctx.activeState` — no changes needed. The walk just
+swaps the pointer when it crosses a boundary.
+
+Serialization does the same:
+
+```ts
+function renderChildren(rules: Rules, ctx: Context) {
+  for (const child of rules._getChildren(ctx)) {
+    const ns = ctx.activeState.peek(child);
+    const actual = ns?.replacement ?? child;
+    if (ns?._subtree) {
+      const prev = ctx.activeState;
+      ctx.activeState = ns._subtree;
+      actual.render(ctx);
+      ctx.activeState = prev;
+    } else {
+      actual.render(ctx);
+    }
+  }
+}
+```
+
+No push/pop. No stack mutation. Just a pointer swap.
+
+The eval pipeline still uses `pushState`/`popState` for nested calls,
+which sets `activeState` via the stack. The walk/serialize cursor is
+orthogonal — it temporarily overrides `activeState` and restores it.
+
+`activeState` becomes a plain settable property:
+```ts
+class Context {
+  activeState: EvalState;  // current cursor — eval pipeline or walk
+}
+```
+
+`pushState` saves the previous value and sets the new one.
+`popState` restores it. Same as every other context cursor.
 
 **Key constraint** (unchanged): all field patches for a call MUST be
 written to that call's state. Move all call setup to AFTER pushState.
