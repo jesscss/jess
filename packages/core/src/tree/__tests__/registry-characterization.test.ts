@@ -130,7 +130,7 @@ describe('registry characterization', () => {
       })
     ]);
     const evaluatedRules = importedRules.clone(false) as Rules;
-    const originalRuleset = importedRules.at(0);
+    const originalRuleset = importedRules.at(0, context);
     const node = style(
       { path: quoted(any('dedupe-import.jess')) },
       { type: 'import', importOptions: { _dedupe: true } }
@@ -140,8 +140,8 @@ describe('registry characterization', () => {
 
     expect(finalRules).not.toBe(evaluatedRules);
     expect(finalRules.value).not.toBe(importedRules.value);
-    expect(finalRules.at(0)).not.toBe(originalRuleset);
-    expect(importedRules.at(0)).toBe(originalRuleset);
+    expect(finalRules.at(0, context)).not.toBe(originalRuleset);
+    expect(importedRules.at(0, context)).toBe(originalRuleset);
   });
 
   it('gives detached materialized wrappers their own registry slot while preserving canonical top-level parents', () => {
@@ -161,11 +161,11 @@ describe('registry characterization', () => {
 
     expect(materializedWrapper).not.toBe(canonicalRules);
     expect(materializedWrapper.value).not.toBe(canonicalRules.value);
-    expect(materializedWrapper.at(0)).not.toBe(canonicalRuleset);
+    expect(materializedWrapper.at(0, context)).not.toBe(canonicalRuleset);
     expect(wrapperRegistry).toBeDefined();
     expect(wrapperRegistry).not.toBe(canonicalRegistry);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
-    expect(materializedWrapper.at(0)?.parent).toBe(materializedWrapper);
+    expect(materializedWrapper.at(0, context)?.parent).toBe(materializedWrapper);
   });
 
   it('keeps detached and lookup-safe shallow wrappers on the canonical registry slot while cloneDetachedMaterializedWrapper is the explicit fork', () => {
@@ -180,20 +180,20 @@ describe('registry characterization', () => {
     const canonicalRegistry = peekRegistryData(canonicalRules.value);
     const context = new Context();
     const detachedWrapper = canonicalRules.cloneDetachedShallowWrapper(context) as Rules;
-    expect(detachedWrapper.at(0)).toBe(canonicalRuleset);
-    expect(detachedWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
+    expect(detachedWrapper.at(0, context)).toBe(canonicalRuleset);
+    expect(detachedWrapper.at(0, context)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
     expect(getParent(canonicalRuleset, context)).toBe(canonicalRules);
 
     const lookupWrapper = canonicalRules.cloneLookupSafeShallowWrapper(context) as Rules;
-    expect(lookupWrapper.at(0)).toBe(canonicalRuleset);
-    expect(lookupWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
+    expect(lookupWrapper.at(0, context)).toBe(canonicalRuleset);
+    expect(lookupWrapper.at(0, context)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
     expect(getParent(canonicalRuleset, context)).toBe(lookupWrapper);
 
     const materializedWrapper = canonicalRules.cloneDetachedMaterializedWrapper(context) as Rules;
-    expect(materializedWrapper.at(0)).not.toBe(canonicalRuleset);
-    expect(materializedWrapper.at(0)?.sourceNode).toBe(canonicalRuleset);
+    expect(materializedWrapper.at(0, context)).not.toBe(canonicalRuleset);
+    expect(materializedWrapper.at(0, context)?.sourceNode).toBe(canonicalRuleset);
     expect(canonicalRuleset.parent).toBe(canonicalRules);
     expect(getParent(canonicalRuleset, context)).toBe(lookupWrapper);
 
@@ -271,8 +271,8 @@ describe('registry characterization', () => {
     ]);
 
     const evald = await root.eval(context);
-    const firstWrapper = evald.at(0) as Rules;
-    const secondWrapper = evald.at(1) as Rules;
+    const firstWrapper = evald.at(0, context) as Rules;
+    const secondWrapper = evald.at(1, context) as Rules;
     const cachedEvaldRules = context.evaldTrees.get(libraryPath) as Rules;
 
     firstWrapper.getRegistry('ruleset');
@@ -285,8 +285,8 @@ describe('registry characterization', () => {
 
     expect(firstWrapper).not.toBe(cachedEvaldRules);
     expect(secondWrapper).not.toBe(cachedEvaldRules);
-    expect(firstWrapper.at(0)).toBe(cachedEvaldRules.at(0));
-    expect(secondWrapper.at(0)).toBe(cachedEvaldRules.at(0));
+    expect(firstWrapper.at(0, context)).toBe(cachedEvaldRules.at(0, context));
+    expect(secondWrapper.at(0, context)).toBe(cachedEvaldRules.at(0, context));
     expect(firstWrapper.value).toBe(cachedEvaldRules.value);
     expect(secondWrapper.value).toBe(cachedEvaldRules.value);
     expect(firstRegistry).toBe(cachedRegistry);
@@ -317,8 +317,8 @@ describe('registry characterization', () => {
     ]);
 
     const evald = await root.eval(context);
-    const wrapper = evald.at(0) as Rules;
-    const sharedRuleset = wrapper.at(0)!;
+    const wrapper = evald.at(0, context) as Rules;
+    const sharedRuleset = wrapper.at(0, context)!;
     const originalParent = sharedRuleset.parent;
     const forkedWrapper = wrapper.clone(false) as Rules;
 
@@ -335,7 +335,7 @@ describe('registry characterization', () => {
 
     try {
       expect(forkedWrapper.value).not.toBe(wrapper.value);
-      expect(forkedWrapper.at(0)).toBe(sharedRuleset);
+      expect(forkedWrapper.at(0, context)).toBe(sharedRuleset);
       expect(forkedRegistry).toBeDefined();
       expect(forkedRegistry).not.toBe(wrapperRegistry);
       expect(wrapperContainsSharedRuleset).toBe(false);
@@ -369,7 +369,7 @@ describe('registry characterization', () => {
     context.root = root;
 
     const evald = await root.eval(context);
-    const mixinOutput = evald.at(1) as Rules;
+    const mixinOutput = evald.at(1, context) as Rules;
     const stateDelta = context.activeState.peek(mixinOutput)?._fields?.get('_registryDelta') as RegistryDelta | undefined;
     const canonicalData = peekRegistryData(mixinOutput.value);
 

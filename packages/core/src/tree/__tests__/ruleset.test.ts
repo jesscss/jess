@@ -174,7 +174,7 @@ describe('Rule', () => {
     const derived = canonical.clone(true);
 
     const cloned = derived.clone(false, undefined, context);
-    const clonedDecl = cloned.rules.at(0);
+    const clonedDecl = cloned.rules.at(0, context);
 
     expect(cloned.selector).not.toBe(derived.selector);
     expect(cloned.rules).not.toBe(derived.rules);
@@ -196,12 +196,12 @@ describe('Rule', () => {
       ])
     });
     const derived = canonical.clone(true);
-    const derivedDecl = derived.rules.at(0)!;
+    const derivedDecl = derived.rules.at(0, context)!;
 
     const cloned = derived.clone(false, undefined, context);
     setField(derivedDecl, 'value', any('blue'), context);
 
-    expect(cloned.rules.at(0)).toBe(derivedDecl);
+    expect(cloned.rules.at(0, context)).toBe(derivedDecl);
     expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
     expect(derived.rules.toTrimmedString()).toBe('color: red;');
   });
@@ -233,12 +233,12 @@ describe('Rule', () => {
         decl({ name: 'color', value: any('red') })
       ])
     });
-    const sourceDecl = source.rules.at(0)!;
+    const sourceDecl = source.rules.at(0, context)!;
 
     const cloned = source.clone(false, undefined, context);
     setField(sourceDecl, 'value', any('blue'), context);
 
-    expect(cloned.rules.at(0)).toBe(sourceDecl);
+    expect(cloned.rules.at(0, context)).toBe(sourceDecl);
     expect(cloned.rules.toTrimmedString({ context })).toBe('color: blue;');
     expect(source.rules.toTrimmedString()).toBe('color: red;');
   });

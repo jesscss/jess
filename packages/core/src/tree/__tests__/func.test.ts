@@ -138,8 +138,8 @@ describe('Func', () => {
       }),
       call({ name: ref('renamed', { type: 'function' }), args: list([]) })
     ]);
-    const functionNode = tree.at(0) as ReturnType<typeof fn>;
-    const callNode = tree.at(1) as ReturnType<typeof call>;
+    const functionNode = tree.at(0, context) as ReturnType<typeof fn>;
+    const callNode = tree.at(1, context) as ReturnType<typeof call>;
 
     setField(functionNode, 'name', any('renamed'), ctx);
 
@@ -168,7 +168,7 @@ describe('Func', () => {
     ctx.rulesContext = inner;
     setParent(inner, outer, ctx);
 
-    const result = await inner.at(0)!.eval(ctx);
+    const result = await inner.at(0, context)!.eval(ctx);
 
     expect(result.toTrimmedString()).toBe('ok');
   });

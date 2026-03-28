@@ -276,7 +276,7 @@ describe('reference', () => {
       context.root = scope;
       context.rulesContext = scope;
 
-      const hostDecl = scope.at(2);
+      const hostDecl = scope.at(2, context);
       if (!hostDecl || !isNode(hostDecl)) {
         throw new Error('Expected host declaration at index 2');
       }
@@ -303,7 +303,7 @@ describe('reference', () => {
 
       context.root = scope;
 
-      const hostDecl = scope.at(1);
+      const hostDecl = scope.at(1, context);
       if (!hostDecl || !isNode(hostDecl)) {
         throw new Error('Expected host declaration at index 1');
       }
@@ -333,7 +333,7 @@ describe('reference', () => {
       context.rulesContext = inner;
       setParent(inner, outer, context);
 
-      const evald = await inner.at(0)!.eval(context);
+      const evald = await inner.at(0, context)!.eval(context);
 
       expect(evald.render(context)).toContainString('color: red');
     });

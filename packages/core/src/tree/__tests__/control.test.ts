@@ -288,7 +288,7 @@ describe('Control Nodes', () => {
       )
     ]);
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
-    const templateDecl = loop.rules.at(0) as ReturnType<typeof decl>;
+    const templateDecl = loop.rules.at(0, context) as ReturnType<typeof decl>;
     const root = rules([loop]);
 
     const evald = await root.eval(context);
@@ -303,7 +303,7 @@ describe('Control Nodes', () => {
       decl({ name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
-    const templateDecl = loop.rules.at(0) as ReturnType<typeof decl>;
+    const templateDecl = loop.rules.at(0, context) as ReturnType<typeof decl>;
     const root = rules([loop]);
 
     setField(templateDecl, 'options', {
@@ -327,7 +327,7 @@ describe('Control Nodes', () => {
         { normalizedFromAssign: AssignmentType.Add }
       )
     ]);
-    const templateDecl = loopRules.at(0) as ReturnType<typeof decl>;
+    const templateDecl = loopRules.at(0, context) as ReturnType<typeof decl>;
     const wrapper = loopRules.cloneLookupSafeShallowWrapper(context);
     wrapper.inherit(loopRules);
     wrapper.unshift(context, vardecl({ name: 'value', value: new Any('a') }));
@@ -376,7 +376,7 @@ describe('Control Nodes', () => {
     const iterableRules = rules([
       decl({ name: 'one', value: new Any('red') })
     ]);
-    const iterDecl = iterableRules.at(0) as ReturnType<typeof decl>;
+    const iterDecl = iterableRules.at(0, context) as ReturnType<typeof decl>;
     const loopRules = rules([
       decl({ name: 'name', value: ref({ key: 'key' }, { type: 'variable' }) }),
       decl({ name: 'value', value: ref({ key: 'value' }, { type: 'variable' }) })
@@ -404,13 +404,13 @@ describe('Control Nodes', () => {
       name: 'makeDecl',
       fn: () => decl({ name: 'item', value: new Any('ok') })
     }));
-    const loopRules = (root.at(0) as For).rules;
-    const originalLoopChild = loopRules.at(0);
+    const loopRules = (root.at(0, context) as For).rules;
+    const originalLoopChild = loopRules.at(0, context);
 
     const evald = await root.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('item: ok;');
-    expect(loopRules.at(0)).toBe(originalLoopChild);
+    expect(loopRules.at(0, context)).toBe(originalLoopChild);
     expect(loopRules.toTrimmedString()).toBe('();');
   });
 
@@ -434,8 +434,8 @@ describe('Control Nodes', () => {
       ])
     }));
 
-    const loopRules = (root.at(0) as For).rules;
-    const originalLoopChild = loopRules.at(0);
+    const loopRules = (root.at(0, context) as For).rules;
+    const originalLoopChild = loopRules.at(0, context);
 
     const evald = await root.eval(context);
     const css = evald.toTrimmedString({ context });
@@ -443,7 +443,7 @@ describe('Control Nodes', () => {
     expect(css).toContain('margin: 0;');
     expect(css).toContain('.item {\n  color: red;');
     expect(css.indexOf('margin: 0;')).toBeLessThan(css.indexOf('.item {'));
-    expect(loopRules.at(0)).toBe(originalLoopChild);
+    expect(loopRules.at(0, context)).toBe(originalLoopChild);
     expect(loopRules.toTrimmedString()).toBe('();');
   });
 
@@ -461,8 +461,8 @@ describe('Control Nodes', () => {
     const root = rules([loop]);
 
     const evald = await root.eval(context);
-    const firstOutputContainer = evald.at(0) as ReturnType<typeof rules>;
-    const firstOutputRuleset = firstOutputContainer.at(1) as ReturnType<typeof ruleset>;
+    const firstOutputContainer = evald.at(0, context) as ReturnType<typeof rules>;
+    const firstOutputRuleset = firstOutputContainer.at(1, context) as ReturnType<typeof ruleset>;
 
     expect(firstOutputContainer.type).toBe('Rules');
     expect(firstOutputRuleset.type).toBe('Ruleset');
