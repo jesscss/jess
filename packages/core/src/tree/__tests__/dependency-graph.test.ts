@@ -61,7 +61,7 @@ describe('dependency graph propagation', () => {
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
 
-    expect(getDependency(declaration.value, ctx)).toBeNull();
+    expect(getDependency(declaration.get('value'), ctx)).toBeNull();
   });
 
   it.skip('tracks direct top-level variable references', async () => {
@@ -79,11 +79,11 @@ describe('dependency graph propagation', () => {
     ctx.root = root;
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
-    const dependency = getDependency(declaration.value, ctx);
+    const dependency = getDependency(declaration.get('value'), ctx);
 
     expect(dependency).not.toBeNull();
     expect(dependency?.dependsOn?.size).toBe(1);
-    expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
+    expect([...dependency!.dependsOn!].map(dep => dep.get('name').valueOf())).toEqual(['base']);
   });
 
   it.skip('propagates dependencies through operations', async () => {
@@ -108,10 +108,10 @@ describe('dependency graph propagation', () => {
     ctx.root = root;
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
-    const dependency = getDependency(declaration.value, ctx);
+    const dependency = getDependency(declaration.get('value'), ctx);
 
     expect(dependency).not.toBeNull();
-    expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
+    expect([...dependency!.dependsOn!].map(dep => dep.get('name').valueOf())).toEqual(['base']);
   });
 
   it.skip('treats mixin params with static inputs as static', async () => {
@@ -139,7 +139,7 @@ describe('dependency graph propagation', () => {
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
 
-    expect(getDependency(declaration.value, ctx)).toBeNull();
+    expect(getDependency(declaration.get('value'), ctx)).toBeNull();
   });
 
   it.skip('tracks top-level vars through mixin parameter binding', async () => {
@@ -168,10 +168,10 @@ describe('dependency graph propagation', () => {
     ctx.root = root;
     const evald = await root.eval(ctx);
     const declaration = getDeclarations(getFirstRuleset(evald))[0]!;
-    const dependency = getDependency(declaration.value, ctx);
+    const dependency = getDependency(declaration.get('value'), ctx);
 
     expect(dependency).not.toBeNull();
     expect(dependency?.dependsOn?.size).toBe(1);
-    expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
+    expect([...dependency!.dependsOn!].map(dep => dep.get('name').valueOf())).toEqual(['base']);
   });
 });

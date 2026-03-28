@@ -510,7 +510,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           for (let i = 0; i < rules.value.length; i++) {
             const n = rules.value[i]!;
             if (isNode(n, N.VarDeclaration)) {
-              const varName = String((n as VarDeclaration).name?.valueOf() ?? '');
+              const varName = String((n as VarDeclaration).get('name')?.valueOf() ?? '');
               if (varName && !topLevelVarIndex.has(varName)) {
                 topLevelVarIndex.set(varName, i);
               }
@@ -523,7 +523,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
           for (const injectedNode of withRules.value) {
             if (isNode(injectedNode, N.VarDeclaration)) {
-              const varName = String((injectedNode as VarDeclaration).name?.valueOf() ?? '');
+              const varName = String((injectedNode as VarDeclaration).get('name')?.valueOf() ?? '');
               if (varName) {
                 const existingIdx = topLevelVarIndex.get(varName);
                 if (existingIdx !== undefined) {

@@ -380,7 +380,7 @@ describe('Call', () => {
 
     node.makeImportant(shallow);
 
-    expect(childDecl.important?.toTrimmedString()).toBe('!important');
+    expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
   });
 
   it('characterizes composite same-source Rules results as still needing a child-identity-breaking returned-tree boundary, not a lookup-safe wrapper', () => {
@@ -399,7 +399,7 @@ describe('Call', () => {
 
     node.makeImportant(wrapper);
 
-    expect(childDecl.important?.toTrimmedString()).toBe('!important');
+    expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
   });
 
   it('characterizes the exact lower helper contract for stylesheet-function same-source Rules results', () => {
@@ -425,7 +425,7 @@ describe('Call', () => {
     expect(returned.pre).toBe(2);
     expect(returned.post).toBe(1);
     expect(returned.sourceParent).toBe(node);
-    expect(childDecl.important).toBeUndefined();
+    expect(childDecl.get('important')).toBeUndefined();
   });
 
   it('reads a state-patched markImportant option for collection results without mutating canonical options', async () => {

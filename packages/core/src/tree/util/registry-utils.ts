@@ -435,7 +435,7 @@ function addDeclarationToIndex(
   index: Map<string, Set<Declaration>>,
   item: Declaration
 ): void {
-  const key = item.name.valueOf();
+  const key = item.get('name').valueOf();
   const set = index.get(key);
   if (set) {
     set.add(item);
@@ -1032,7 +1032,7 @@ export class MixinRegistry extends Registry<
           continue;
         }
         if (isNode(param, N.VarDeclaration)) {
-          if (param.value instanceof Nil) {
+          if (param.get('value') instanceof Nil) {
             return false;
           }
           continue;
@@ -1085,7 +1085,7 @@ export class MixinRegistry extends Registry<
               filter: options?.filter
             } as FindOptions);
             if (isNode(maybeVar, N.VarDeclaration)) {
-              const resolvedValue = String(maybeVar.value.valueOf?.() ?? maybeVar.value ?? '');
+              const resolvedValue = String(maybeVar.get('value').valueOf?.() ?? maybeVar.get('value') ?? '');
               if (resolvedValue === startKey) {
                 resolvedInterpolatedStartEntries.push(...indexedEntries);
               }
@@ -1582,7 +1582,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       if (!changedVars || changedVars.size === 0) {
         return true;
       }
-      const dependency = getDependency(declaration.value, this.context!);
+      const dependency = getDependency(declaration.get('value'), this.context!);
       if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
         return false;
       }

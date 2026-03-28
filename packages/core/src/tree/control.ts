@@ -43,9 +43,9 @@ export type ForValue = {
 
 function getBindingNames(vars: VarDeclaration | VarDeclaration[]): string[] {
   if (Array.isArray(vars)) {
-    return vars.map(v => v.name.valueOf());
+    return vars.map(v => v.get('name').valueOf());
   }
-  return [vars.name.valueOf()];
+  return [vars.get('name').valueOf()];
 }
 
 function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
@@ -70,7 +70,7 @@ function shouldReuseInPriorScope(node: Node): boolean {
     normalizedFromAssign !== AssignmentType.Add
     && normalizedFromAssign !== AssignmentType.MergeList
     && normalizedFromAssign !== AssignmentType.MergeSequence
-    && String(node.name) !== 'padding'
+    && String(node.get('name')) !== 'padding'
   );
 }
 
@@ -162,8 +162,8 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
         continue;
       }
       yield [
-        getControlField(rule, 'value', context, rule.value),
-        getControlField(rule, 'name', context, rule.name)
+        getControlField(rule, 'value', context, rule.get('value')),
+        getControlField(rule, 'name', context, rule.get('name'))
       ];
     }
     return;

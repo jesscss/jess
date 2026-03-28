@@ -29,6 +29,7 @@ import {
   setSourceParent,
   setDependency
 } from './util/field-helpers.js';
+
 /**
  * The type is determined by syntax
  * and location.
@@ -211,7 +212,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(String(k), this);
       } else if (k instanceof Node) {
         k.toString(options);
-      } else if (Array.isArray(k)) {
+      } else if (isArray(k)) {
         w.add(k.map(k => String(k)).join(''));
       } else {
         w.add(String(k));
@@ -283,6 +284,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(target ? ' > ' : '|');
         emitKey(key);
         break;
+
+      /** @todo - remove? This should be a selector capture node I think */
       case 'ruleset':
         w.add('*(');
         emitKey(key);
@@ -337,7 +340,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return [resolvedTarget, keyArray] as [any, string[]];
             }
             // If k is already an array, preserve it
-            if (Array.isArray(k)) {
+            if (isArray(k)) {
               return [resolvedTarget, k] as [any, string[]];
             }
             return [resolvedTarget, k.valueOf()] as [any, string];
@@ -349,7 +352,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           return [resolvedTarget, keyArray] as [any, string[]];
         }
         // If key is already an array, preserve it
-        if (Array.isArray(out)) {
+        if (isArray(out)) {
           return [resolvedTarget, out] as [any, string[]];
         }
         const normalizedKey = isNode(out) ? out.valueOf() : out;
@@ -538,7 +541,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   return atIndex((targetRules as any).value, valueKey);
                 }
               } else {
-                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 if (isNode(targetRules, N.Rules)) {
                   // If the key was a Keyword, look up as a variable first
                   if (key instanceof Keyword) {
@@ -562,7 +565,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'variable':
               if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                const keyStr = isArray(valueKey) ? valueKey[0] : valueKey;
                 const found = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
                 if (found !== undefined) {
                   return found;
@@ -572,7 +575,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'function':
               if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                const keyStr = isArray(valueKey) ? valueKey[0] : valueKey;
                 const inCall = isNode(getParent(this, context), N.Call);
                 const findFunction = () =>
                   targetRules.find('function', `${keyStr}`, undefined, opts)
@@ -595,14 +598,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'property':
               if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 const declaration = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
                 if (declaration !== undefined) {
                   return declaration;
                 }
                 return undefined;
               } else if (isNode(targetRules, N.JsObject)) {
-                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 return (targetRules as any).value[keyStr];
               }
               break;
@@ -616,7 +619,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 // Some Less built-ins are invoked in mixin-like call positions.
                 // If a mixin lookup misses during a Call, allow function fallback.
                 if (isNode(getParent(this, context), N.Call)) {
-                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                  const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                   return targetRules.find('function', `${keyStr}`, undefined, opts);
                 }
                 return undefined;
@@ -624,7 +627,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'ruleset':
               if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                const keyStr = isArray(valueKey) ? valueKey[0] : valueKey;
                 return targetRules.find('mixin', `${keyStr}`, 'Ruleset', opts);
               }
               break;
@@ -635,7 +638,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   return mixinOrRuleset;
                 }
                 if (isNode(getParent(this, context), N.Call)) {
-                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                  const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                   return targetRules.find('function', `${keyStr}`, undefined, opts);
                 }
                 return undefined;
@@ -666,7 +669,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
-        const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+        const valueKeyStr2 = isArray(valueKey) ? valueKey.join('') : String(valueKey);
         if (returnVal === undefined) {
           if (!fallbackValue) {
             if (
@@ -698,7 +701,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
           context.searchScope.add(returnVal as Node);
-          const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).important;
+          const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).get('important');
           const declValue = getField<Node>(returnVal as Declaration, 'value', context);
           // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
           // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).

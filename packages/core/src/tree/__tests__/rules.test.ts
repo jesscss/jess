@@ -652,7 +652,7 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.get('name').valueOf() === 'var' && n.get('value').valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -736,7 +736,7 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'root-third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.get('name').valueOf() === 'var' && n.get('value').valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -1407,9 +1407,9 @@ describe('Rules', () => {
       const derivedOverlay = vardecl({ name: 'derived', value: any('crimson') });
       const plainOverlay = vardecl({ name: 'plain', value: any('cyan') });
 
-      setDependency(derivedOverlay.value, {
+      setDependency(derivedOverlay.get('value'), {
         dependsOn: new Set([changed as VarDeclaration]),
-        sourceExpr: derivedOverlay.value
+        sourceExpr: derivedOverlay.get('value')
       }, ctx);
 
       root.register('declaration', derivedOverlay, ctx);

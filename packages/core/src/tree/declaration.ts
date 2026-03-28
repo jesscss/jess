@@ -92,17 +92,19 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
+export type DeclarationChildData = { name: NameValue; value: Node; important: Any<'flag'> | undefined };
+
 export interface Declaration {
   type: 'Declaration' | 'VarDeclaration';
   shortType: 'decl' | 'vardecl';
 }
 
-export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts, DeclarationChildData> {
   static override childKeys = ['name', 'value', 'important'] as const;
 
-  readonly name!: NameValue;
-  readonly value!: Node;
-  readonly important: Any<'flag'> | undefined;
+  private name!: NameValue;
+  private value!: Node;
+  private important: Any<'flag'> | undefined;
 
   constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -127,22 +129,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   requiresSemi(context?: Context): boolean {
-    const value = this._getValueNode(context);
+    const value = this.get('value', context);
     return !isNode(value, N.Collection) && !isNode(value, N.Mixin);
   }
 
-  private _getName(context?: Context): NameValue {
-    return context
-      ? getField<NameValue>(this, 'name', context)
-      : this.name;
-  }
-
-  getPropertyName(context?: Context): string {
-    return this._getName(context).valueOf();
-  }
-
   isCustomProperty(context?: Context): boolean {
-    return this.getPropertyName(context).startsWith('--');
+    return this.get('name', context).valueOf().startsWith('--');
   }
 
   private _getOptions(context?: Context): Opts | undefined {
@@ -151,25 +143,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : this.options;
   }
 
-  private _getValueNode(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'value', context)
-      : this.value;
-  }
-
-  private _getImportant(context?: Context): Any<'flag'> | undefined {
-    return context
-      ? getField<Any<'flag'> | undefined>(this, 'important', context)
-      : this.important;
-  }
-
   protected declTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const context = options.context;
-    const name = this._getName(context);
-    const value = this._getValueNode(context);
-    const important = this._getImportant(context);
+    const name = this.get('name', context);
+    const value = this.get('value', context);
+    const important = this.get('important', context);
     const declarationOptions = this._getOptions(context);
     const { assign = ':', setDefined } = declarationOptions ?? {};
     const mark = w.mark();
@@ -233,8 +213,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
-    let name = node._getName(context);
-    let value = node._getValueNode(context);
+    let name = node.get('name', context);
+    let value = node.get('value', context);
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
@@ -314,7 +294,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         nextOptions.assign = AssignmentType.Default;
         setField(node, 'options', nextOptions, context);
       }
-      const out = node._getValueNode(context).preEval(context);
+      const out = node.get('value', context).preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
           setField(node, 'value', value, context);
@@ -341,7 +321,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
-    const currentValue = this._getValueNode(context);
+    const currentValue = this.get('value', context);
     const staticNestedCollection =
       isNode(currentValue, N.Collection)
       || (
@@ -485,7 +465,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          const nodeValue = node._getValueNode(context);
+          const nodeValue = node.get('value', context);
           if (!isListMergedAssign || !isNode(nodeValue, N.List)) {
             return;
           }
@@ -515,7 +495,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           setField(node, 'value', new List(clonedRest), context);
           const dependency = mergeDependencies(clonedRest, context);
           if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-            setDependency(node._getValueNode(context), {
+            setDependency(node.get('value', context), {
               dependsOn: new Set(dependency.dependsOn),
               sourceExpr: dependency.sourceExpr
             }, context);
@@ -525,8 +505,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (node.type === 'VarDeclaration') {
           return node;
         }
-        const name = node._getName(context);
-        const value = node._getValueNode(context);
+        const name = node.get('name', context);
+        const value = node.get('value', context);
         if (value instanceof Node) {
           const isCustomProperty = node.isCustomProperty(context);
           if (isCustomProperty) {
@@ -547,7 +527,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               }
               setField(node, 'value', newValue, context);
               normalizeMergedLeadingPlaceholder();
-              copyDependency(newValue, node._getValueNode(context));
+              copyDependency(newValue, node.get('value', context));
               // Merge !important from referenced declarations
               if (context.hasImportantSource && !node._getImportant(context)) {
                 setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
@@ -565,7 +545,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           setField(node, 'value', maybeNewValue as Node, context);
           normalizeMergedLeadingPlaceholder();
-          copyDependency(maybeNewValue as Node, node._getValueNode(context));
+          copyDependency(maybeNewValue as Node, node.get('value', context));
           const expanded = expandNestedPropertyDeclaration(node);
           if (isThenable(expanded)) {
             return (expanded as Promise<Declaration | Rules | Nil>).then((resolvedExpanded) => {

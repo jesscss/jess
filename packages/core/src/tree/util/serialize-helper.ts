@@ -146,7 +146,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       dedupCtx.popState();
     }
     const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
-    const declProp = (node as Declaration).getPropertyName(options.context);
+    const declProp = (node as Declaration).get('name', options.context).valueOf();
     let seenValues = seenDeclarationsByProp.get(declProp);
     if (!seenValues) {
       seenValues = new Set<string>();

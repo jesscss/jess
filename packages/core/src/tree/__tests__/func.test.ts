@@ -101,7 +101,7 @@ describe('Func', () => {
     const result = await node.evalCall(ctx, list([]));
 
     expect(result.toTrimmedString()).toBe('patched');
-    expect(returnDecl.value.toTrimmedString()).toBe('ok');
+    expect(returnDecl.get('value').toTrimmedString()).toBe('ok');
   });
 
   it('evalCall no longer calls parent.adopt() for the temporary mixin wrapper', async () => {

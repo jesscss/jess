@@ -56,10 +56,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     //
     // Special-case parameter vars (used in mixin signatures) that have no default value:
     // print `$name` (no `: <value>`).
-    if (this.options?.paramVar && this.value instanceof Nil) {
+    if (this.options?.paramVar && this.get('value') instanceof Nil) {
       w.add('$', this);
-      const normalizedName = String(this.name).replace(/\s+$/, '');
-      w.add(normalizedName, this.name);
+      const normalizedName = String(this.get('name')).replace(/\s+$/, '');
+      w.add(normalizedName, this.get('name'));
       return w.getSince(mark);
     }
 

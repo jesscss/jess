@@ -545,7 +545,7 @@ export function projectMixinParamScopeIntoOutput(
       if (!node.options?.paramVar) {
         return false;
       }
-      return node.getPropertyName(context) !== 'arguments';
+      return node.get('name', context).valueOf() !== 'arguments';
     })
     .map((node) => {
       // Use a simple copy (no materialization) — the param's bound value
@@ -891,7 +891,7 @@ export async function evaluateMixinArgs(
       if (isNode(arg)) {
         if (isNode(arg, N.VarDeclaration)) {
           // Evaluate the value, keep the VarDeclaration structure
-          const value = (arg as VarDeclaration).value;
+          const value = (arg as VarDeclaration).get('value');
           if (value instanceof Node) {
             const evaldValue = await value.eval(context);
             const bound = arg.clone(false);
@@ -981,7 +981,7 @@ export async function matchMixinCandidates(
       let requiredPositions = 0;
       for (const param of params.get('value')) {
         if (isNode(param, N.VarDeclaration)) {
-          if ((param as VarDeclaration).value instanceof Nil) {
+          if ((param as VarDeclaration).get('value') instanceof Nil) {
             requiredPositions++;
           }
         } else if (isNode(param, N.Any) && param.role === 'property') {
@@ -1004,15 +1004,15 @@ export async function matchMixinCandidates(
         if (isNode(arg, N.VarDeclaration)) {
           param = params.get('value').find((p: Node) => {
             if (isNode(p, N.VarDeclaration)) {
-              return (p as VarDeclaration).name.valueOf() === (arg as VarDeclaration).name.valueOf();
+              return (p as VarDeclaration).get('name').valueOf() === (arg as VarDeclaration).get('name').valueOf();
             }
             if (isNode(p, N.Any) && p.role === 'property') {
-              return p.valueOf() === (arg as VarDeclaration).name.valueOf();
+              return p.valueOf() === (arg as VarDeclaration).get('name').valueOf();
             }
             return false;
           });
           if (param) {
-            argValue = (arg as VarDeclaration).value as Node;
+            argValue = (arg as VarDeclaration).get('value') as Node;
           } else {
             match = false;
             break;

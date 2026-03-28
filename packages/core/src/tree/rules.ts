@@ -1195,7 +1195,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _hasStaticName(node: Node, context?: Context): boolean {
     if (isNode(node, N.VarDeclaration)) {
-      return this._isStatic(node.name);
+      return this._isStatic(node.get('name'));
     }
     if (isNode(node, N.Mixin)) {
       // Check position-patched name: preEval may have resolved an interpolated name
@@ -1203,7 +1203,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._isStatic(name);
     }
     if (isNode(node, N.Declaration)) {
-      return this._isStatic(node.name);
+      return this._isStatic(node.get('name'));
     }
     if (node.type === 'StyleImport') {
       return this._isStatic((node as Node & { path: unknown }).path);
@@ -2004,7 +2004,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   .getDirectDeclarationsByKey(entry.node, undefined, context)
                   .filter((decl): decl is VarDeclaration => isNode(decl, N.VarDeclaration));
                 for (const decl of importedVars) {
-                  const key = decl.name.toString();
+                  const key = decl.get('name').toString();
                   const currentDeclarations = Registries.getDirectDeclarationsByKey(rules, key, context);
                   for (const currentDecl of currentDeclarations) {
                     if (isNode(currentDecl, N.VarDeclaration) && !currentDecl.options?.setDefined) {

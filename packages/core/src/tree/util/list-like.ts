@@ -84,7 +84,7 @@ export function* iterateItems(input: Node): Generator<[Node, EntryKey]> {
       if (!(rule instanceof Declaration)) {
         continue;
       }
-      yield [rule.value, rule.name];
+      yield [rule.get('value'), rule.get('name')];
     }
     return;
   }
