@@ -1,589 +1,310 @@
 # State-Aware Node Access: DX Proposal
 
-## The Real Question
+## The Fundamental Constraint
 
-Can `node.value` return the eval'd value without cloning the node?
+One object can't have two values for the same property at the same time.
 
-Today, EvalState stores field patches in an untyped `Map<string, unknown>`.
-Reading them requires `getField(node, 'value', ctx)` — which loses typing,
-requires context everywhere, and leaks internal plumbing into tests and
-external consumers. The test code `expect(getField(node, 'value', ctx))`
-is a code smell.
+A canonical Declaration `color: @color` is shared across `.mixin(red)` and
+`.mixin(blue)`. For `decl.value` to return `Keyword(red)` in one call and
+`Keyword(blue)` in another, you must either:
 
-The goal: **zero-clone DX** where `node.value` on an "evaluated node"
-returns the eval'd value with full TypeScript types, but the canonical
-tree is still recoverable.
+1. **Create separate objects** — that's cloning, regardless of mechanism
+2. **Use indirection** — one shared object, context-dependent lookup
+3. **Ambient context** — make property getters implicitly context-aware
 
----
-
-## How Node Data Actually Works
-
-Every node has typed `readonly` instance fields set in the constructor:
-
-```ts
-class Declaration extends Node<DeclarationValue> {
-  static childKeys = ['name', 'value', 'important'] as const;
-
-  readonly name!: NameValue;       // typed instance field
-  readonly value!: Node;           // typed instance field
-  readonly important: Any | undefined;
-
-  constructor(data: DeclarationValue, ...) {
-    this.name = data.name;
-    this.value = data.value;
-    this.important = data.important;
-  }
-}
-
-class Url extends Node<Quoted | Any> {
-  static childKeys = ['value'] as const;
-  readonly value!: Quoted | Any;   // typed instance field
-
-  constructor(value: Quoted | Any, ...) {
-    this.value = value;
-  }
-}
-```
-
-`childKeys` declares which instance fields hold child nodes. This drives
-cloning, adoption, serialization, and the `setData` API.
-
-Leaf nodes (`childKeys = null`) like Dimension and Color are immutable —
-they're created with their final value and never patched. They're always
-handled via whole-node **replacement** in EvalState, never field patches.
-
-Container/composite nodes (Declaration, Url, Ruleset, etc.) are where
-field patches happen: the node keeps its identity but a child changes
-(e.g., Url's `value` evaluates to a different Quoted).
+There is no option 4. This is why the EvalState system exists — it chose
+option 2 (indirection via state overlay). The DX cost: field reads require
+context and lose TypeScript typing.
 
 ---
 
-## What Gets Field-Patched vs Replaced
+## Audit: What Gets Field-Patched
 
-| Category | Examples | Eval Strategy | DX Impact |
-|---|---|---|---|
-| Immutable leaves | Dimension, Color, Keyword | **Replacement** (new node) | None — consumer sees replacement |
-| Expressions | Operation, Sequence | **Replacement** (computed result) | None |
-| Containers w/ eval'd children | Url, Declaration, Quoted | **Field patch** on canonical | **Broken** — `node.value` is stale |
-| Tree structure | Rules (children), Ruleset (selector) | **Field patch** | **Broken** |
-| Metadata | parent, index, options | **Field patch** | Internal-only, doesn't matter |
+**119 `setField` calls** in production code:
 
-The DX problem is specifically containers with eval'd children — maybe
-15 node classes total. And even within those, only the `childKeys` fields
-need the eval'd view. Metadata fields (parent, index) are internal.
+### childKey patches (user-visible data): ~95 calls
 
----
+These are the DX problem. External consumers reading these typed fields
+get stale canonical values without context.
 
-## Approach: Lightweight Eval'd Node (Object.create + field overlay)
+| Field | Calls | Node Types |
+|-------|-------|------------|
+| `value` | ~70 | Declaration (13), List (7), Sequence (5), Url (1), Quoted (1), Paren (1), Block (1), SelectorList (3), SelectorCapture (1), CompoundSelector (3), ComplexSelector (2), Interpolated (2), Control (1), VarDeclaration (1), Rules (via setChildren ~8) |
+| `name` | ~7 | Declaration (2), Mixin (2), AtRule (2), Call (1) |
+| `rules` | ~9 | Ruleset (5), AtRule (3), Mixin (1) |
+| `selector` | ~3 | Ruleset (3) |
+| `prelude` | ~5 | AtRule (5) |
+| `left`/`right` | ~6 | Operation (6) |
+| `guard` | ~2 | Ruleset (2) |
+| `args` | ~2 | Call (2) |
+| `arg` | ~1 | PseudoSelector (1) |
+| `important` | ~3 | Declaration (3) |
+| `selectorBeforeExtend` | ~1 | Ruleset (1) |
+| `path` | ~1 | JsImport (1) |
+| `replacements` | ~2 | Interpolated (2) |
 
-When eval patches fields on a node, instead of (or in addition to) writing
-to the untyped `NodeState._fields` Map, produce a **lightweight eval'd
-node** that shares the canonical node's prototype and most properties but
-has the patched fields as real, typed instance properties.
+### Internal metadata patches: ~24 calls + ~26 direct .fields.set()
 
-```ts
-// Inside Url.evalNode:
-evalNode(context: Context): MaybePromise<Url> {
-  const value = this.value;
-  const finish = (nextValue: Quoted | Any): Url => {
-    if (nextValue === value) return this;
-    // Create lightweight eval'd node — shares prototype, overrides value
-    return this.withChildUpdates({ value: nextValue }, context);
-  };
-  return pipe(value.eval(context), finish);
-}
-```
+These are fine as untyped state. External consumers don't read them.
 
-`withChildUpdates` creates a node that:
-1. Shares the canonical node's prototype (same methods, same type)
-2. Has the updated fields as real typed instance properties
-3. Links back to the canonical node (for recovery)
-4. Costs one `Object.create` + property assignments (no constructor call)
+| Field | Notes |
+|-------|-------|
+| `parent` | ~8 sites |
+| `index` | ~2 sites |
+| `options` | ~4 sites |
+| `hoistToRoot` | ~4 sites |
+| `frames` | ~2 sites |
+| `_extendedSelector` | ~1 site |
+| `_registryDelta` | ~2 sites |
+| `sourceNode`, `sourceParent` | ~4 sites |
+| `flagsAdd`/`flagsRemove` | ~4 sites |
 
-```ts
-// On Node base class:
-withChildUpdates<T extends Node>(
-  this: T,
-  updates: Partial<Record<string, Node | Node[]>>,
-  context?: Context
-): T {
-  const ck = (this.constructor as typeof Node).childKeys;
-  if (!ck) return this; // leaf node — shouldn't happen
+### Finding
 
-  // Create new object with same prototype (inherits all methods + type)
-  const evalNode = Object.create(Object.getPrototypeOf(this)) as T;
-
-  // Copy ALL own properties from canonical (state, flags, location, etc.)
-  // This is cheap — instance fields are few and flat.
-  const keys = Object.keys(this);
-  for (const key of keys) {
-    (evalNode as any)[key] = (this as any)[key];
-  }
-
-  // Override with eval'd children (typed — updates matches the fields)
-  for (const [key, value] of Object.entries(updates)) {
-    (evalNode as any)[key] = value;
-  }
-
-  // Link back to canonical
-  evalNode._canonical = this;
-
-  // Adopt new children
-  if (context) {
-    for (const value of Object.values(updates)) {
-      if (value instanceof Node) {
-        value.parent = evalNode;  // or via setParent
-      }
-    }
-  }
-
-  return evalNode;
-}
-```
-
-### What this gives us
-
-```ts
-const urlNode = url(quoted('a.png'));        // canonical
-const evald = await urlNode.eval(ctx);       // lightweight eval'd node
-
-evald.value           // quoted('b.png') — TYPED, real property
-urlNode.value         // quoted('a.png') — canonical untouched
-evald._canonical      // urlNode — can recover canonical
-
-evald instanceof Url  // true (shares prototype)
-evald.type            // 'Url' (from prototype)
-evald.toTrimmedString // same method (from prototype)
-```
-
-Tests become:
-```ts
-const evald = await node.eval(ctx);
-expect(evald.value).toBe(replacement);  // typed, natural
-expect(node.value).toBe(original);      // canonical preserved
-```
-
-External consumers (visitors, functions) receive `evald` — a real typed
-node with real typed properties. No `getField`, no context required.
-
-### Cost analysis
-
-**Per field-patched eval:**
-- One `Object.create` (allocates empty object with prototype link)
-- One property copy loop (typically 5-10 own properties)
-- One or two property overrides (the changed fields)
-
-**Compare to:**
-- Full clone (`node.clone(true)`): constructor call + deep copy of all
-  children + adoption + parent wiring = much heavier
-- Field patch (`setField`): zero allocation, but loses typing and
-  requires context for every read
-
-**In a Bootstrap compile:**
-- ~hundreds of Declarations, Urls, Rulesets get field-patched
-- Each gets one lightweight eval'd node
-- Total: hundreds of `Object.create` calls — trivial vs. the old model
-  which deep-cloned entire subtrees
+**~95 of 119 setField calls patch childKey data.** The untyped field
+access problem is the dominant use case, not an edge case.
 
 ---
 
-## How This Interacts with EvalState
+## Why "Lightweight Wrappers" / "Structural Sharing" Don't Work
 
-### Option 1: Replace NodeState._fields entirely
+The mixin reuse case:
 
-Eval'd nodes replace the field patch mechanism. Instead of:
-```ts
-setField(this, 'value', nextValue, context);
-return this; // same canonical node
+```less
+.mixin(@color) { color: @color; }
+.a { .mixin(red); }
+.b { .mixin(blue); }
 ```
 
-Do:
-```ts
-const evald = this.withChildUpdates({ value: nextValue });
-ctx.activeState.get(this).replacement = evald;
-return evald; // new lightweight node
-```
+Canonical body: `Declaration(name=color, value=Reference(@color))`.
 
-**Every field-patched eval becomes a replacement.** The EvalState only
-stores replacements and metadata flags, never untyped field patches for
-child nodes.
+During `.mixin(red)`, Reference(@color) resolves to Keyword(red). The
+Declaration's `value` is patched to Keyword(red) in call state S1.
 
-`NodeState._fields` still exists for internal metadata (parent, index,
-registry deltas) — these are never read by external consumers, so the
-untyped Map is fine for them.
+During `.mixin(blue)`, same canonical Declaration, patched to Keyword(blue)
+in call state S2.
 
-**Pros:**
-- `getField` for childKeys data disappears from production code
-- All `_getField(context?)` private getters become unnecessary
-- Tests and external consumers just use typed properties
-- EvalState becomes simpler — mostly replacement + metadata
+For `decl.value` to return Keyword(red) without context, the decl object
+must BE different from the canonical. That's a clone. "Lightweight wrapper"
+is just a clone by another name.
 
-**Cons:**
-- More objects than pure field patching
-- The eval'd node needs to participate in parent chains, registry, etc.
-- Need to decide: does `eval()` return the eval'd node or canonical?
+Object count with wrappers:
+- N mixin calls × M field-patched nodes per body = N×M new objects
+- Each needs parent wiring, adoption, etc.
+- Savings over deep clone: only when some nodes DON'T change
 
-### Option 2: Eval'd nodes as the "serialization view"
-
-Keep `setField` during eval (internal hot path). At the **serialization
-boundary**, create eval'd nodes from the state overlay:
-
-```ts
-function evalView<T extends Node>(node: T, ctx: Context): T {
-  const ns = ctx.activeState.peek(node);
-  if (!ns?._fields?.size) return node;
-
-  const ck = (node.constructor as typeof Node).childKeys;
-  if (!ck) return node;
-
-  // Build updates from patched childKeys only
-  const updates: Record<string, unknown> = {};
-  for (const key of ck) {
-    const patched = ns._fields.get(key!);
-    if (patched !== undefined) {
-      updates[key!] = patched;
-    }
-  }
-  if (Object.keys(updates).length === 0) return node;
-
-  return node.withChildUpdates(updates);
-}
-```
-
-The visitor system, serializer, and test helpers call `evalView` to get
-a typed node. Internal eval code keeps using `setField`/`getField`.
-
-**Pros:**
-- No change to eval hot path
-- Eval'd nodes only created when needed (serialization, visitor dispatch)
-- Internal code unchanged
-
-**Cons:**
-- Two representations exist: field-patched canonical (during eval) and
-  eval'd node (at boundaries). Must keep them in sync.
-- `evalView` allocates at the boundary — not free, but only where needed
-
-### Option 3: Eval'd nodes co-mingled in the canonical tree
-
-The eval'd node IS the child of the parent in the evaluated tree. The
-canonical node is still reachable via `_canonical`. The tree is a mix
-of canonical nodes (where nothing changed) and eval'd nodes (where
-children were updated).
-
-```
-Canonical tree:              Evaluated tree:
-  Root Rules                   Root Rules (same object)
-    Decl name=@x value=1        Decl' name=@x value=2    ← eval'd node
-    Url value="@{v}.png"        Url' value="b.png"        ← eval'd node
-    Ruleset .a                   Ruleset .a (same object)
-      Rules                        Rules (same, children patched)
-        Decl color=@c                Decl' color=red       ← eval'd node
-```
-
-Nodes without changes are shared. Nodes with changed children are
-lightweight eval'd copies. The evaluated tree is a new tree that
-**shares most of its nodes** with the canonical tree.
-
-**Recovery:** Walk the tree. For each node, check `_canonical`. If present,
-it's an eval'd overlay — the canonical is `node._canonical`. If absent,
-it IS the canonical.
-
-**This is essentially structural sharing** — the same idea as immutable
-data structures (Immer, Immutable.js), but applied to the AST. Only the
-spine from the changed node to the root gets new objects. Unchanged
-subtrees are shared.
+For mixin bodies where most nodes have parameters: N×M ≈ deep clone count.
+**No savings.** The whole point of EvalState was to avoid this.
 
 ---
 
-## The Structural Sharing Model (Option 3, detailed)
+## What Actually Works
 
-### During eval
+### Approach A: Typed Public Accessors (recommended)
 
-When a node's child changes, `evalNode` returns a lightweight copy:
-
-```ts
-// Url.evalNode
-evalNode(context: Context): MaybePromise<Url> {
-  const value = this.value;
-  return pipe(value.eval(context), (nextValue: Quoted | Any) => {
-    if (nextValue === value) return this;  // no change — return canonical
-    return this.withChildUpdates({ value: nextValue }, context);
-  });
-}
-```
-
-The parent (e.g., a Declaration containing this Url) sees that its child
-eval'd to a different node. It creates its own lightweight copy:
+Promote the existing `private _getField(ctx?)` pattern to public API.
+Every node class that gets field-patched already has the private version.
+Just make it public and typed.
 
 ```ts
-// Declaration.evalNode (simplified)
-evalNode(context: Context): MaybePromise<Declaration> {
-  return pipe(
-    this.value.eval(context),
-    (evalValue) => {
-      if (evalValue === this.value) return this;
-      return this.withChildUpdates({ value: evalValue }, context);
-    }
-  );
-}
-```
+class Declaration extends Node {
+  readonly name!: NameValue;       // canonical, typed
+  readonly value!: Node;           // canonical, typed
 
-This bubbles up. Only the path from changed leaf to root gets new objects.
-Everything else is shared.
-
-### EvalState's role simplifies
-
-EvalState stops storing field patches for childKeys. It stores:
-- **Replacements**: Call → mixin body output (structural, not child update)
-- **Subtrees**: per-call bindings for shared canonical bodies
-- **Internal metadata**: parent overrides, index, flags, registry deltas
-
-The "field patch" concept splits into:
-1. **Child updates** → handled by structural sharing (eval'd nodes)
-2. **Metadata patches** → stays in EvalState._fields (internal, untyped OK)
-
-### Mixin bodies: still need EvalState
-
-Mixin bodies are canonical subtrees reused across calls with different
-bindings. Structural sharing doesn't help here — the same canonical body
-needs to render differently depending on which call is active. This is
-still the subtree EvalState's job.
-
-But the **output** of a mixin call can be a structurally-shared tree.
-The References inside the body resolve to different values per call
-(via subtree state), and when the body evaluates, it returns eval'd nodes
-with the resolved values as real properties. Those eval'd nodes are
-different per call — structural sharing naturally gives each call its own
-output tree.
-
-```
-Call .mixin(red):
-  canonical body: Decl color=@color
-  eval'd output:  Decl' color=Keyword(red)   ← eval'd node, red
-
-Call .mixin(blue):
-  canonical body: Decl color=@color (same)
-  eval'd output:  Decl'' color=Keyword(blue)  ← different eval'd node, blue
-```
-
-No subtree state needed for field resolution during serialization — the
-eval'd nodes have the resolved values as real properties. Subtree state
-is still needed during eval (for variable resolution, parent chains) but
-not during serialization.
-
-### Does this eliminate _carriedState?
-
-If the eval'd output tree has real property values, serialization doesn't
-need to push a subtree state to resolve fields. `toTrimmedString()` just
-reads `this.value`, `this.name`, etc — they're real typed properties on
-the eval'd nodes.
-
-**_carriedState is only needed when the canonical node is being
-serialized and needs state patches to render correctly.** With structural
-sharing, the eval'd node IS what gets serialized — it has the right values.
-
-Subtree state is still needed for:
-- Variable resolution during eval (before the eval'd nodes exist)
-- Parent chain wiring during eval
-- Any lazy evaluation during serialization (which we should minimize)
-
-But for **field access during serialization** — eliminated. The eval'd
-node's `.value` is the eval'd value. Period.
-
-### Cost: how many extra objects?
-
-**Not many.** The structural sharing model creates one lightweight node per
-changed node in the tree. In a typical compile:
-
-- Declarations with resolved variables: one eval'd Decl per resolved var
-- Urls with evaluated paths: one eval'd Url per dynamic URL
-- Rulesets with evaluated selectors: one eval'd Ruleset per dynamic selector
-- Rules with changed children: one eval'd Rules per mixin body
-
-But NOT:
-- Leaf nodes (Dimension, Color, Keyword) — already replaced, no change
-- Unchanged nodes — shared with canonical tree
-- Deep copies of children — shared with canonical tree
-
-**Compare to the old clone model:**
-- Old: deep-clone every mixin body per call (O(n) objects per call)
-- Structural sharing: one eval'd node per changed node (O(changed) objects)
-- Pure EvalState: zero objects, but untyped field access
-
-Structural sharing is strictly between the other two in allocation cost,
-but gets the DX of the clone model and the sharing of the EvalState model.
-
-### The `_canonical` link
-
-```ts
-class Node {
-  /** Link to the canonical (parse-time) node, if this is an eval'd overlay */
-  _canonical?: Node;
-
-  /** Is this the canonical (source) node? */
-  get isCanonical(): boolean {
-    return !this._canonical;
+  /** Eval-aware: returns patched value if context provided */
+  getName(ctx?: Context): NameValue {
+    return ctx ? getField<NameValue>(this, 'name', ctx) : this.name;
   }
 
-  /** Get the canonical node (returns self if already canonical) */
-  get canonical(): this {
-    return (this._canonical ?? this) as this;
+  getValue(ctx?: Context): Node {
+    return ctx ? getField<Node>(this, 'value', ctx) : this.value;
+  }
+}
+
+class Url extends Node {
+  readonly value!: Quoted | Any;
+
+  getValue(ctx?: Context): Quoted | Any {
+    return ctx ? getField<Quoted | Any>(this, 'value', ctx) : this.value;
   }
 }
 ```
 
-Pre-declare `_canonical` as undefined in the base constructor so the V8
-hidden class is stable (no new shape when it's set later).
+#### Convention
 
-### What about tests?
+| Access | Returns | When to use |
+|---|---|---|
+| `node.value` | Canonical (parse-time) | Parsing, static analysis, no eval context |
+| `node.getValue(ctx)` | Eval'd (state-patched) | During eval, serialization, visitors |
+| `node.getValue()` | Same as `node.value` | Convenience, no context available |
+
+#### Properties
+
+- **Zero allocation.** No new objects, no proxies, no wrappers.
+- **Fully typed.** `decl.getValue(ctx)` returns `Node`, not `unknown`.
+- **Explicit.** Makes it clear you're reading eval'd state.
+- **Progressive.** Works with or without context.
+- **Already 80% implemented.** Every affected node already has a private
+  `_getField(ctx?)` that just needs to be made public.
+
+#### Which nodes need public accessors?
+
+Only nodes that get field-patched on childKey data (~17 classes):
+
+| Node | Accessors Needed |
+|---|---|
+| Declaration | getName, getValue, getImportant |
+| Ruleset | getSelector, getRules, getGuard |
+| AtRule | getName, getPrelude, getRules |
+| Call | getName, getArgs |
+| Mixin | getName, getRules |
+| Operation | getLeft, getRight |
+| Url | getValue |
+| Quoted | getValue |
+| List | getValue |
+| Sequence | getValue |
+| Paren | getValue |
+| Block | getValue |
+| SelectorList | getValue |
+| CompoundSelector | getValue |
+| ComplexSelector | getValue |
+| PseudoSelector | getArg |
+| Interpolated | getReplacements |
+
+~30-40 total accessors across 17 classes. Mechanical change — each is
+3 lines.
+
+#### What tests look like
 
 ```ts
-// Natural, typed, no getField:
-const evald = await node.eval(ctx);
-expect(evald.value).toBe(replacement);    // typed ✓
-expect(evald).not.toBe(node);             // different object
-expect(evald._canonical).toBe(node);      // linked back
-expect(node.value).toBe(original);        // canonical untouched
+// Before (untyped, leaks internals):
+expect(getField(node, 'value', ctx)).toBe(replacement);
 
-// Serialization just works:
-expect(evald.toTrimmedString()).toBe('url("b.png")');  // no context needed!
-expect(node.toTrimmedString()).toBe('url("a.png")');
+// After (typed, clean):
+expect(node.getValue(ctx)).toBe(replacement);
+
+// Canonical access unchanged:
+expect(node.value).toBe(original);
 ```
 
-Note: `toTrimmedString()` on an eval'd node doesn't need context for field
-access — the fields are real properties. It might still need context for
-deeper subtree resolution (mixin bodies), but for simple cases it just
-works.
-
-### What about visitors?
+#### What visitors/functions look like
 
 ```ts
-visitDeclaration(node: Declaration) {
-  node.name   // typed ✓, eval'd value (it's an eval'd node)
-  node.value  // typed ✓, eval'd value
+// Visitor receives node + context
+visitDeclaration(node: Declaration, ctx: Context) {
+  const name = node.getName(ctx);   // typed: NameValue
+  const value = node.getValue(ctx); // typed: Node
 }
-```
 
-The visitor receives eval'd nodes where they exist, canonical where not.
-No special handling needed.
-
-### What about custom functions?
-
-```ts
+// Custom function — args are already resolved (replacements, not patches)
 function darken(args: Node[]) {
-  const color = args[0] as Color;       // already a replacement node (leaf)
-  const amount = args[1] as Dimension;  // already a replacement node (leaf)
-  return color.darken(amount.number);   // typed, works
+  const color = args[0] as Color;      // replacement node, typed
+  const amount = args[1] as Dimension;  // replacement node, typed
+  return color.darken(amount.number);
 }
 ```
 
-Function args are already resolved before the function is called. They're
-either replacement nodes (leaves) or eval'd nodes (containers). Either way,
-typed properties work.
+For function args: leaf nodes (Color, Dimension, Keyword) are **replaced**
+(new node), not field-patched. So function args are already real typed
+nodes — no accessor needed.
+
+#### What serialization looks like
+
+Already works this way internally. `toTrimmedString` already calls
+`this._getValue(options.context)`. Making the accessor public doesn't
+change the serialization path at all.
 
 ---
 
-## Remaining Questions
+### Approach B: Materialization at the Output Boundary Only
 
-### 1. Does eval return the eval'd node or canonical + state?
+Keep EvalState + typed accessors for the entire eval/serialization pipeline.
+At the very final boundary — when external code needs a standalone tree
+(e.g., AST export, source map, plugin output) — materialize once.
 
-**Recommendation: eval returns the eval'd node.** This is the natural
-contract — `eval()` returns the evaluated result. If nothing changed,
-it returns `this` (the canonical). If children changed, it returns a
-lightweight eval'd copy.
+`materializeEvaluatedCopy(ctx)` already exists. It walks the canonical
+tree, reads each field through the state overlay, and produces a real
+cloned tree with eval'd values as instance properties.
 
-This matches the current contract where eval sometimes returns `this`
-and sometimes returns a different node.
+This is the nuclear option for consumers that truly can't accept context.
+Cost: one full clone at the end. But it happens once, not per mixin call.
 
-### 2. How does structural sharing interact with Rules children?
+---
 
-Rules is special — its children are an array that gets spliced, reordered,
-etc. Creating an eval'd Rules per children change could be expensive if
-children change frequently during eval (e.g., `_resolveDynamicNodes`
-rewrites children multiple times).
+### What About the `getField` String Keys?
 
-**Option:** Rules keeps using field patches for children during eval
-(internal, high-frequency mutation). At the eval→serialization boundary,
-materialize the final children array onto a structural-shared Rules node.
-Or: accept the object cost, since `withChildUpdates` is just one
-`Object.create` per Rules regardless of children array size.
+The remaining DX annoyance: typed accessors wrap `getField(this, 'value',
+ctx)` internally, which uses a string key. A typo in the string silently
+reads the wrong field.
 
-### 3. How does this interact with the parent chain?
-
-Eval'd nodes need parents. If `Decl'` is an eval'd node inside a Rules,
-its parent should be that Rules (or the eval'd Rules', if the Rules
-changed too).
-
-During eval, parent wiring happens via `setParent`/`getParent` through
-EvalState. With structural sharing, the eval'd node IS a child of its
-parent — the parent relationship is structural, not patched.
-
-But for mixin bodies (shared canonical subtrees), the parent chain still
-needs state patching — the canonical body's parent is the mixin definition,
-but during a call, it should resolve to the caller's scope. This is a
-subtree-level concern, not a field-level concern.
-
-### 4. What about re-evaluation / caching?
-
-If the same canonical node is evaluated multiple times (SSR, watch mode),
-each eval produces its own set of eval'd nodes. The canonical tree is
-untouched — it's the shared base. Previous eval'd nodes are GC'd when
-no longer referenced.
-
-`_canonical` links enable this: given any eval'd tree, you can walk it
-and recover the canonical tree by following `_canonical` links.
-
-### 5. withChildUpdates vs Object.create perf
-
-`Object.create` with manual property copying is well-optimized in V8.
-But there's a subtlety: the eval'd object has a different hidden class
-from the canonical node (it was created via `Object.create`, not `new`).
-V8 may not optimize property access as well as on constructor-created
-instances.
-
-**Mitigation:** Instead of `Object.create`, use a **clone constructor**:
+Option: use the `childKeys` array to validate at development time:
 
 ```ts
-// Pre-compiled per node class
-static createEvalView(canonical: Declaration, updates: Partial<DeclarationValue>): Declaration {
-  const e = new Declaration(
-    {
-      name: updates.name ?? canonical.name,
-      value: updates.value ?? canonical.value,
-      important: updates.important ?? canonical.important,
-    },
-    canonical.options,
-    canonical.location,
-    canonical.treeContext
-  );
-  e._canonical = canonical;
-  e.inherit(canonical);
-  return e;
+// Type-safe helper (development only):
+function getChildField<T extends Node, K extends string>(
+  node: T,
+  key: K & (typeof (T & { constructor: { childKeys: readonly string[] } })
+    ['constructor']['childKeys'][number]),
+  ctx: Context
+): unknown {
+  return getField(node, key, ctx);
 }
 ```
 
-This uses the real constructor → stable hidden class → optimized property
-access. Cost: one constructor call with adoption. More expensive than
-`Object.create` but much cheaper than deep clone, and V8-friendly.
-
-Whether to use `Object.create` or clone constructor depends on profiling.
-Start with `Object.create` (simpler), optimize to clone constructor if
-the hidden class deopt shows up in profiles.
+Or simpler: the typed public accessor IS the type safety. Internal code
+uses `getField` (with string keys) inside the accessor. External code
+uses the typed accessor. The string key is encapsulated.
 
 ---
 
-## Summary
+## What Doesn't Work (and Why)
 
-| Model | DX | Allocation | Typing | Context needed? |
-|---|---|---|---|---|
-| Deep clone (old) | `node.value` ✓ | Heavy | Full | No |
-| Pure EvalState | `getField(node,'value',ctx)` ✗ | Zero | Lost | Always |
-| **Structural sharing** | `evald.value` ✓ | Light | Full | No (for reads) |
+### ~~Structural sharing / lightweight wrappers~~
 
-Structural sharing gives the DX of the clone model and the efficiency
-gains of the EvalState model. The key trade: one lightweight object per
-changed node (instead of zero for pure state, or deep copies for cloning).
+Creates clones for every field-patched node per call. For shared mixin
+bodies, this is the same object count as deep cloning. Defeats the purpose
+of EvalState.
 
-The canonical tree is always recoverable via `_canonical` links. EvalState
-simplifies to replacements + metadata + subtree bindings. Field patches
-for childKeys data go away.
+### ~~Proxy-based eval view~~
+
+Proxy intercepts property access on the canonical node, routing through
+state. Preserves `node.value` syntax.
+
+Problems:
+- ~1.2% CPU overhead already from existing Proxy use
+- Proxy breaks `===` identity
+- V8 deoptimizes Proxy property access
+- Must be created per-node-per-context (can't share across calls)
+- If created once: which call's state does it use?
+
+### ~~Ambient context on nodes~~
+
+Set `node[CTX] = context` before eval, clear after. Getters check ambient.
+
+Problems:
+- Mutates canonical nodes (new hidden class or pre-declare on every node)
+- Single-context assumption (breaks if same node is in two call contexts)
+- Lifetime management (leaked ctx refs prevent GC)
+- Fundamentally: one object, one property, one value at a time
+
+---
+
+## Recommendation
+
+**Typed public accessors (Approach A)** are the answer.
+
+- Zero allocation overhead
+- Full TypeScript typing
+- Explicit about canonical vs eval'd access
+- Already 80% implemented (just promote private → public)
+- ~30-40 accessor methods across 17 node classes (mechanical)
+- No architectural change to EvalState
+
+The DX cost is `node.getValue(ctx)` instead of `node.value`. This is a
+real cost — context must be threaded. But it's the honest reflection of
+reality: one canonical object, multiple evaluation contexts, requires
+disambiguation.
+
+The gain: the EvalState system works as designed — zero cloning for shared
+mixin bodies, full tree reuse, minimal allocation. The typed accessors
+give it a clean external API without compromising the performance model.
