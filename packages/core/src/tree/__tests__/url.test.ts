@@ -49,7 +49,7 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(node.value).toBe(replacement);
-    expect(node.toTrimmedString()).toBe('url(b.png)');
+    expect(getField(node, 'value', ctx)).toBe(replacement);
+    expect(node.toTrimmedString({ context: ctx })).toBe('url(b.png)');
   });
 });

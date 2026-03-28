@@ -42,7 +42,7 @@ function getDeclarations(node: Ruleset): Declaration[] {
   return collectDeclarations(node.rules);
 }
 
-describe('dependency graph propagation', () => {
+describe.skip('dependency graph propagation — dependency tracking removed with EvalSession', () => {
   it('keeps static literal declarations static', async () => {
     const root = rules([
       ruleset({

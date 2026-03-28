@@ -130,12 +130,12 @@ describe('registry characterization', () => {
       })
     ]);
     const evaluatedRules = importedRules.clone(false) as Rules;
+    const context = new Context();
     const originalRuleset = importedRules.at(0, context);
     const node = style(
       { path: quoted(any('dedupe-import.jess')) },
       { type: 'import', importOptions: { _dedupe: true } }
     );
-    const context = new Context();
     const finalRules = node.getFinalRules(evaluatedRules, context);
 
     expect(finalRules).not.toBe(evaluatedRules);
