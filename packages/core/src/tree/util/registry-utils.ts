@@ -188,18 +188,29 @@ export function syncRegistryCache(rules: Rules, context?: Context): void {
     return;
   }
   const data = ensureRegistryData(value);
-  if (data.indexedLength >= value.length || indexingRegistryValues.has(value)) {
-    return;
+  if (data.indexedLength < value.length && !indexingRegistryValues.has(value)) {
+    indexingRegistryValues.add(value);
+    try {
+      for (let i = data.indexedLength; i < value.length; i++) {
+        rules.registerNode(value[i]!);
+      }
+      data.indexedLength = value.length;
+    } finally {
+      indexingRegistryValues.delete(value);
+    }
   }
 
-  indexingRegistryValues.add(value);
-  try {
-    for (let i = data.indexedLength; i < value.length; i++) {
-      rules.registerNode(value[i]!);
+  // If context has state-overlaid children, index any nodes not in the
+  // canonical array so the registry can find state-injected params/decls.
+  if (context) {
+    const stateChildren = context.activeState.peek(rules)?._fields?.get('value') as readonly Node[] | undefined;
+    if (stateChildren && stateChildren !== value) {
+      for (const child of stateChildren) {
+        if (!value.includes(child)) {
+          rules.registerNode(child, undefined, context);
+        }
+      }
     }
-    data.indexedLength = value.length;
-  } finally {
-    indexingRegistryValues.delete(value);
   }
 }
 
