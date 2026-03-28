@@ -115,7 +115,7 @@ export function finalizeMixinInvocationReturn(
 ): Rules | Nil | ReturnType<Rules['toObject']> {
   if (receiver instanceof Context) {
     output.index ??= receiver.ruleCounter++;
-    if (output.value.length === 0) {
+    if (output._getChildren(receiver).length === 0) {
       return new Nil();
     }
     return output;
