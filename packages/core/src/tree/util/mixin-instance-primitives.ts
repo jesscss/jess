@@ -503,23 +503,14 @@ export function finalizeMixinInvocationOutput(
   rules: Rules,
   context: Context
 ): Rules {
-  // Each call needs a distinct output node to carry its own _carriedState.
-  // cloneDetachedShallowWrapper creates a thin shell sharing children.
-  if (rules === rules.sourceNode) {
-    const wrapper = rules.cloneDetachedShallowWrapper(context);
-    // The per-call position has patches keyed by the original `rules` node
-    // (e.g. the 'value' array). Copy those patches to the wrapper so
-    // getField(wrapper, ...) finds them.
-    {
-      const rulesState = context.activeState.peek(rules);
-      const patchedValue = rulesState?._fields?.get('value');
-      if (patchedValue !== undefined) {
-        context.activeState.get(wrapper).fields.set('value', patchedValue);
-      }
-    }
-    return wrapper;
-  }
-  return rules;
+  // Create a lightweight output identity per call. Each call gets a
+  // distinct node so per-call subtrees don't collide.
+  // Children are set canonically on the new node so they survive
+  // after the per-call state is popped.
+  const children = [...rules._getChildren(context)];
+  const output = Rules.create(children, { ...rules.options });
+  output.inherit(rules);
+  return output;
 }
 
 /**
@@ -1299,10 +1290,10 @@ export async function evaluateCandidateOutput(
     // Pop the per-call state.
     context.popState();
 
-    // Store the per-call state as a subtree on the output node in the
-    // caller's state so serialization can push it when rendering.
+    // Store the per-call state on the output node directly.
+    // Serialization checks this property to push the subtree.
     if (callState.size > 0) {
-      context.activeState.get(newRules)._subtree = callState;
+      newRules._carriedState = callState;
     }
     setSourceParent(newRules, sourceParent, context);
     setParent(newRules, callerParent, context);

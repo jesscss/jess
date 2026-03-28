@@ -989,8 +989,15 @@ export abstract class Node<
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           if (result !== value) {
-            if (state && typeof key === 'string') {
-              state.get(this).fields.set(key, result);
+            if (state) {
+              if (typeof key === 'string') {
+                state.get(this).fields.set(key, result);
+              } else {
+                // Array child — replace in the state-overlaid children array
+                const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
+                children[key as number] = result;
+                state.get(this).fields.set('value', children);
+              }
             } else {
               collection[key] = result;
             }
@@ -1002,8 +1009,14 @@ export abstract class Node<
         });
       }
       if (out !== value) {
-        if (state && typeof key === 'string') {
-          state.get(this).fields.set(key, out);
+        if (state) {
+          if (typeof key === 'string') {
+            state.get(this).fields.set(key, out);
+          } else {
+            const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
+            children[key as number] = out as Node;
+            state.get(this).fields.set('value', children);
+          }
         } else {
           collection[key] = out as Node;
         }

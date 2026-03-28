@@ -191,11 +191,7 @@ export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
-  const children = ctx.activeState.peek(rules)?._fields?.get('value');
-  if (children !== undefined) {
-    return children as Node[];
-  }
-  return rules.value;
+  return getField<readonly Node[]>(rules, 'value', ctx);
 }
 
 /**

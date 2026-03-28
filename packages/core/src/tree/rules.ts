@@ -699,7 +699,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Push this node's subtree (if any) so child nodes resolve
     // patched fields during serialization.
     const ctx = options.context;
-    const subtree = ctx?.activeState.peek(this)?._subtree;
+    const subtree = this._carriedState as EvalState | undefined
+      ?? ctx?.activeState.peek(this)?._subtree;
     if (ctx && subtree) {
       ctx.pushState(subtree);
     }
@@ -714,8 +715,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, EvalState>) {
     const finalRules: Node[] = [];
     const iterateRules = (rules: Rules, activeSubtree?: EvalState) => {
-      // Check for a subtree on this Rules node in the active state
-      const subtree = context?.activeState.peek(rules)?._subtree ?? activeSubtree;
+      const subtree = (rules._carriedState as EvalState | undefined)
+        ?? context?.activeState.peek(rules)?._subtree
+        ?? activeSubtree;
+
       for (let n of rules._getChildren(context)) {
         if (isNode(n, N.Rules)) {
           if ((n.options as RulesOptions)?.referenceMode === true) {
