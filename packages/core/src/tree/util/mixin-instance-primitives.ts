@@ -664,7 +664,12 @@ export function assembleMixinInvocationOutput(
     return output;
   }
 
-  const output = Rules.create([], {
+  // Generated node — safe to build canonically before returning.
+  for (let i = 0; i < outputRules.length; i++) {
+    outputRules[i]!.frozen = true;
+    outputRules[i]!.index = i;
+  }
+  const output = Rules.create(outputRules, {
     rulesVisibility: {
       Ruleset: 'public',
       Declaration: 'public',
@@ -673,14 +678,6 @@ export function assembleMixinInvocationOutput(
     },
     isMixinOutput: restrictMixinOutputLookup
   });
-
-  for (let i = 0; i < outputRules.length; i++) {
-    const rule = outputRules[i]!;
-    rule.frozen = true;
-    rule.index = i;
-    setParent(rule, output, context);
-    output.push(context, rule);
-  }
 
   return output;
 }
