@@ -193,7 +193,10 @@ export function populateMixinParamScope(
     param.options ??= {};
     param.options.paramVar = true;
     param.removeFlag(F_VISIBLE);
-    scope.push(context, param);
+    // Push canonically — scope is ephemeral, not shared.
+    // Avoids the children ending up in a caller-state that the per-call
+    // state can't see.
+    scope.push(param);
   }
 }
 
@@ -218,7 +221,7 @@ export function defineMixinArgumentsInScope(
     value: new Sequence(argumentsArgs)
   }, { readonly: true, paramVar: true });
   argumentsDecl.removeFlag(F_VISIBLE);
-  scope.push(context, argumentsDecl);
+  scope.push(argumentsDecl);
 
   const paramValues = params?.value
     .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
@@ -1284,26 +1287,20 @@ export async function evaluateCandidateOutput(
   context.evalStateStack.push(callState);
   try {
     let newRules: Rules;
-    // The outerRules (param scope) parent was set in the previous state.
-    // Copy it into the per-call state so lookups during body eval can
-    // walk through the param scope to the caller's scope chain.
     if (outerRules) {
-      // Check the parent in the state stack below us (the caller's state)
-      const prevStack = context.evalStateStack;
-      const callerStateIdx = prevStack.length - 2;
-      if (callerStateIdx >= 0) {
-        const callerState = prevStack[callerStateIdx]!;
-        const outerParent = callerState.peek(outerRules)?._fields?.get('parent');
-        if (outerParent !== undefined) {
-          setParent(outerRules, outerParent as Node, context);
-        }
-      }
-    }
-    if (!outerRules) {
-      setParent(rules, getParentFn(candidate), context);
+      // outerRules is an ephemeral scope with bound params (canonical children/registry).
+      // Wire: body → outerRules → caller scope.
+      // outerRules.parent was set in the caller's state; copy it into per-call state.
+      const callerIdx = context.evalStateStack.length - 2;
+      const callerState = callerIdx >= 0 ? context.evalStateStack[callerIdx] : undefined;
+      const outerParent = callerState?.peek(outerRules)?._fields?.get('parent')
+        ?? outerRules.parent
+        ?? getParentFn(candidate);
+      setParent(outerRules, outerParent as Node, context);
+      setParent(rules, outerRules, context);
       newRules = await rules.eval(context);
     } else {
-      setParent(rules, outerRules, context);
+      setParent(rules, getParentFn(candidate), context);
       newRules = await rules.eval(context);
     }
     newRules = finalizeMixinInvocationOutput(newRules, context);
