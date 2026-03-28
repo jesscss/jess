@@ -11,7 +11,9 @@ export type LogValue = {
   message: Node;
 };
 
-export interface Log extends Node<LogValue, NodeOptions> {
+export type LogChildData = { level: LogLevel; message: Node };
+
+export interface Log extends Node<LogValue, NodeOptions, LogChildData> {
   type: 'Log';
   shortType: 'log';
   eval(context: Context): MaybePromise<Nil>;
@@ -21,11 +23,11 @@ export interface Log extends Node<LogValue, NodeOptions> {
  * A log node for diagnostic at-rules (@debug, @warn, @error).
  * These are compile-time diagnostic directives that should not appear in CSS output.
  */
-export class Log extends Node<LogValue, NodeOptions> {
+export class Log extends Node<LogValue, NodeOptions, LogChildData> {
   static override childKeys = ['level', 'message'] as const;
 
-  level!: LogLevel;
-  message!: Node;
+  private level!: LogLevel;
+  private message!: Node;
 
   constructor(
     value: LogValue,
@@ -68,7 +70,7 @@ export class Log extends Node<LogValue, NodeOptions> {
 
   private _logMessage(msg: Node): void {
     const messageStr = String(msg);
-    const { level } = this;
+    const level = this.level;
 
     switch (level) {
       case 'debug':
