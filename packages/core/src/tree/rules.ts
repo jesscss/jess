@@ -333,14 +333,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         state = state.parent;
       }
     }
-    // Fall back to instance property, or create an empty one.
-    // Creating on read is fine — it's empty, no indexing cost.
-    let registry = (this as any)[key];
-    if (!registry) {
-      registry = new (Rules._registryClass(type))(this, context);
-      (this as any)[key] = registry;
-    }
-    return registry;
+    return (this as any)[key];
   }
 
   /**
@@ -358,8 +351,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType?: string,
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    let registry = this.getRegistry(type, options.context);
-    return (registry as any).find(keys, filterType, options);
+    const registry = this.getRegistry(type, options.context);
+    if (!registry) {
+      return undefined;
+    }
+    // Registry classes have varying find signatures; delegate with the union.
+    return (registry.find as Function)(keys, filterType, options);
   }
 
   findStatePatchedFunction(
@@ -850,12 +847,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * found variable, but before the current nested node.
        */
       if (node.options?.setDefined) {
-        // Skip setDefined logic if we're currently indexing to avoid recursive calls
-        if (Registries.isRegistryIndexing(this)) {
-          // We'll handle setDefined after indexing is complete
-          return;
-        }
-
         let key = (node as any).name?.toString();
         /** Don't set within sibling rules */
         let opts: Registries.FindOptions = {};
@@ -1675,8 +1666,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   readonly: result.options.readonly
                 }, context);
                 if (result.sourceNode?.type === 'StyleImport') {
-                  result.getRegistry('declaration').indexPendingItems();
-                  result.getRegistry('mixin').indexPendingItems();
+                  result.getRegistry('declaration')?.indexPendingItems();
+                  result.getRegistry('mixin')?.indexPendingItems();
                 }
               } else {
                 // For non-Rules results, adopt them to set up parent chain

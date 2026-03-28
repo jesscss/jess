@@ -875,9 +875,11 @@ export class MixinRegistry extends Registry<
     while (rules) {
       // Don't add to searchedRules yet - we'll add it after we finish searching (including children)
       let [startKey, ...search] = keyList;
-      let registry = rules.getRegistry('mixin', this.context);
-      registry.indexPendingItems();
-      const mixinIndices = [registry.index];
+      const registry = rules.getRegistry('mixin', this.context);
+      if (registry) {
+        registry.indexPendingItems();
+      }
+      const mixinIndices = registry ? [registry.index] : [];
       const existing: MixinRegistryEntry[] = [];
       for (const index of mixinIndices) {
         const entries = index.get(startKey!);
@@ -962,12 +964,8 @@ export class MixinRegistry extends Registry<
               // for the mixin registry to index them.
               this._ensureChildrenRegistered(subRules, context?.selectorBits);
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
-              subMixinRegistry.indexPendingItems();
-              // With the new indexing, nested rulesets are indexed by their local visible keys
-              // So we can just do a normal recursive search - no need to check for matches ending with search
-              // When searching inside a nested ruleset with searchParents: false, we don't need searchedRules
-              // because we're not traversing the parent chain
-              subMixinRegistry.find(search, filterType, {
+              subMixinRegistry?.indexPendingItems();
+              subMixinRegistry?.find(search, filterType, {
                 searchParents: false,
                 local,
                 candidates: candidates as Set<Node>,
@@ -1005,8 +1003,8 @@ export class MixinRegistry extends Registry<
               let subRules = isNode(value, N.Ruleset) ? (value as Ruleset).get('rules') : (value as Mixin).get('rules');
               this._ensureChildrenRegistered(subRules, context?.selectorBits);
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
-              subMixinRegistry.indexPendingItems();
-              subMixinRegistry.find(searchKeys, filterType, {
+              subMixinRegistry?.indexPendingItems();
+              subMixinRegistry?.find(searchKeys, filterType, {
                 searchParents: false,
                 local,
                 candidates: candidates as Set<Node>,
@@ -1083,8 +1081,8 @@ export class MixinRegistry extends Registry<
             if (matchesStartKey && search.length > 0 && (isRuleset || hasNoParams)) {
               let subRules = isRuleset ? (candidateNode as Ruleset).get('rules') : (candidateNode as Mixin).get('rules');
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
-              subMixinRegistry.indexPendingItems();
-              subMixinRegistry.find(search, filterType, {
+              subMixinRegistry?.indexPendingItems();
+              subMixinRegistry?.find(search, filterType, {
                 searchParents: false,
                 local,
                 candidates: candidates as Set<Node>,
@@ -1355,8 +1353,9 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
  *         same map.
  */
 export class DeclarationRegistry extends Registry<Declaration> {
+  private _index = new Map<string, Set<Declaration>>();
   get index(): Map<string, Set<Declaration>> {
-    return (ensureRegistryData(this.rules.value).declarationIndex ??= new Map<string, Set<Declaration>>());
+    return this._index;
   }
 
   override add(item: Declaration): void {
@@ -1423,33 +1422,14 @@ export class DeclarationRegistry extends Registry<Declaration> {
       visitedRules.add(rules);
       let currentReadonly = options?.readonly || rules.options.readonly;
       newReadonly = currentReadonly;
-      let registry = rules.getRegistry('declaration', this.context);
-      registry.indexPendingItems();
-      const sessionDeclarationIndex = getRegistryIndex(rules, 'declarationIndex', this.context);
-      const canonicalDeclarationIndex = registry.index;
-      // Build filtered list without intermediate spread — iterate Set directly
+      const registry = rules.getRegistry('declaration', this.context);
+      registry?.indexPendingItems();
       let list: Declaration[] | undefined;
-      const seenDeclarations = new Set<Declaration>();
       const filter = options?.filter;
-      let keptSessionEntries = 0;
-      const sessionSet = sessionDeclarationIndex?.get(key);
-      const canonicalSet = canonicalDeclarationIndex.get(key);
-      if (sessionSet) {
-        for (const n of sessionSet) {
-          if (canonicalSet && changedVars && !dependsOnChangedVar(n)) {
-            continue;
-          }
-          if (!seenDeclarations.has(n) && n.type === filterType && (!filter || filter(n))) {
-            seenDeclarations.add(n);
-            (list ??= []).push(n);
-            keptSessionEntries++;
-          }
-        }
-      }
-      if (keptSessionEntries === 0 && canonicalSet) {
-        for (const n of canonicalSet) {
-          if (!seenDeclarations.has(n) && n.type === filterType && (!filter || filter(n))) {
-            seenDeclarations.add(n);
+      const indexSet = registry?.index.get(key);
+      if (indexSet) {
+        for (const n of indexSet) {
+          if (n.type === filterType && (!filter || filter(n))) {
             (list ??= []).push(n);
           }
         }
@@ -1512,7 +1492,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       } else {
         searchChildrenOptions.readonly = newReadonly;
       }
-      rules.getRegistry('declaration', this.context)._searchRulesChildren(key, filterType, searchChildrenOptions);
+      rules.getRegistry('declaration', this.context)?._searchRulesChildren(key, filterType, searchChildrenOptions);
 
       // After searching the CURRENT scope (index + children), if we found public declarations,
       // sort them, find the best one (closest to start or at bottom), and return immediately.
@@ -1593,8 +1573,8 @@ export function getDirectDeclarationsByKey(
     if (!isNode(child, N.Declaration | N.VarDeclaration)) {
       continue;
     }
-    if (key === undefined || child.name.toString() === key) {
-      matches.push(child);
+    if (key === undefined || (child as Declaration).get('name')?.toString() === key) {
+      matches.push(child as Declaration);
     }
   }
   return matches;

@@ -726,10 +726,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           // during preEval (when we pushed rules to the stack). Since getFinalRules clones,
           // we need to re-register rulesets in finalRules' registry.
           if (shouldReRegisterLocalRootRulesets) {
-            const finalRulesRegistry = finalRules.getRegistry('ruleset');
             for (const maybeRuleset of finalRules.nodes()) {
               if (isNode(maybeRuleset, N.Ruleset)) {
-                finalRulesRegistry.add(maybeRuleset as Ruleset);
+                finalRules.register('ruleset', maybeRuleset as Ruleset);
               }
             }
           }

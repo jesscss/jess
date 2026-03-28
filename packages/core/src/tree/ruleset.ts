@@ -836,7 +836,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // Register to extend root's registry for extend lookups
           const extendRoot = context.extendRoots.getCurrentExtendRoot();
           if (extendRoot) {
-            extendRoot.getRegistry('ruleset').add(node as Ruleset);
+            extendRoot.register('ruleset', node as Ruleset);
             // Keep a per-root registry list for visibility processing
             context.extendRoots.registerRuleset(extendRoot, node as Ruleset);
           }
