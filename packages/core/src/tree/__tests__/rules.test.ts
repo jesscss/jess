@@ -1234,78 +1234,8 @@ describe('Rules', () => {
     expect(evald.render(context)).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
   });
 
-  describe('registry cache', () => {
-    it('shares the declaration registry cache across shallow clones', () => {
-      const root = rules([
-        vardecl({ name: 'foo', value: any('bar') })
-      ]);
-      const rootRegisterSpy = vi.spyOn(root, 'registerNode');
-
-      root.getRegistry('declaration');
-      expect(rootRegisterSpy).toHaveBeenCalledTimes(1);
-      rootRegisterSpy.mockClear();
-
-      const clone = root.clone(false);
-      const cloneRegisterSpy = vi.spyOn(clone, 'registerNode');
-
-      expect(clone.value).toBe(root.value);
-      expect(clone.find('declaration', 'foo', 'VarDeclaration', { searchParents: false })).toBeDefined();
-      expect(cloneRegisterSpy).not.toHaveBeenCalled();
-      expect(rootRegisterSpy).not.toHaveBeenCalled();
-    });
-
-    it('creates a new registry slot when a clone gets a new value array', () => {
-      const root = rules([
-        vardecl({ name: 'foo', value: any('bar') })
-      ]);
-
-      root.getRegistry('declaration');
-
-      const clone = root.clone(false);
-      const extra = vardecl({ name: 'bar', value: any('baz') });
-      const cloneRegisterSpy = vi.spyOn(clone, 'registerNode');
-
-      clone.setData([...clone.value, extra]);
-
-      expect(clone.value).not.toBe(root.value);
-      expect(clone.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBe(extra);
-      expect(root.find('declaration', 'bar', 'VarDeclaration', { searchParents: false })).toBeUndefined();
-      expect(cloneRegisterSpy).toHaveBeenCalledTimes(2);
-    });
-
-    it('shared-child wrapper helpers still inherit shallow-clone cache semantics, while cloneDetachedMaterializedWrapper is the explicit top-level child opt-out', () => {
-      const ctx = new Context();
-      const root = rules([
-        vardecl({ name: 'foo', value: any('bar') })
-      ]);
-      const rootRegisterSpy = vi.spyOn(root, 'registerNode');
-
-      root.getRegistry('declaration');
-      expect(rootRegisterSpy).toHaveBeenCalledTimes(1);
-      rootRegisterSpy.mockClear();
-
-      const detached = root.cloneDetachedShallowWrapper(ctx);
-      const lookup = root.cloneLookupSafeShallowWrapper(ctx);
-      const materialized = root.cloneDetachedMaterializedWrapper(ctx);
-      const detachedRegisterSpy = vi.spyOn(detached, 'registerNode');
-      const lookupRegisterSpy = vi.spyOn(lookup, 'registerNode');
-      const materializedRegisterSpy = vi.spyOn(materialized, 'registerNode');
-
-      expect(detached.value).toBe(root.value);
-      expect(lookup.value).toBe(root.value);
-      expect(materialized.value).not.toBe(root.value);
-      expect(materialized.at(0, context)).not.toBe(root.at(0, context));
-
-      expect(detached.find('declaration', 'foo', 'VarDeclaration', { searchParents: false, context: ctx })).toBeDefined();
-      expect(lookup.find('declaration', 'foo', 'VarDeclaration', { searchParents: false, context: ctx })).toBeDefined();
-      expect(materialized.find('declaration', 'foo', 'VarDeclaration', { searchParents: false, context: ctx })).toBeDefined();
-
-      expect(detachedRegisterSpy).not.toHaveBeenCalled();
-      expect(lookupRegisterSpy).not.toHaveBeenCalled();
-      expect(materializedRegisterSpy).toHaveBeenCalledTimes(1);
-      expect(rootRegisterSpy).not.toHaveBeenCalled();
-    });
-  });
+  // Deleted: registry cache tests — tested globalRegistryCache infrastructure
+  // which was removed in the NodeState-scoped registry refactor.
 
   describe.skip('eval state registry delta — registry deltas removed with EvalSession', () => {
     it('prefers state-only declaration entries over the canonical cache', () => {
