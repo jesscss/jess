@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
+import { setField } from './util/field-helpers.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -29,15 +29,17 @@ export type JsImportValue = {
   imports?: JsImportSpecifier[];
 };
 
+export type JsImportChildData = { path: Quoted; imports: JsImportSpecifier[] | undefined };
+
 export interface JsImport {
   type: 'JsImport';
   shortType: 'js';
 }
-export class JsImport extends Node<JsImportValue, JsImportOptions> {
+export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChildData> {
   static override childKeys = ['path', 'imports'] as const;
 
-  readonly path!: Quoted;
-  readonly imports: JsImportSpecifier[] | undefined;
+  private path!: Quoted;
+  private imports: JsImportSpecifier[] | undefined;
 
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -49,20 +51,8 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
-  private _getPath(context?: Context): Quoted {
-    return context
-      ? getField<Quoted>(this, 'path', context)
-      : this.path;
-  }
-
-  private _getImports(context?: Context): JsImportSpecifier[] | undefined {
-    return context
-      ? getField<JsImportSpecifier[] | undefined>(this, 'imports', context)
-      : this.imports;
-  }
-
   override evalNode(context: Context): MaybePromise<JsImport> {
-    const path = this._getPath(context);
+    const path = this.get('path', context);
     const finish = (nextPath: Quoted): JsImport => {
       const out = this.maybeClone(context) as JsImport;
       if (nextPath !== path) {
@@ -86,9 +76,9 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
-    const path = this._getPath(context);
+    const path = this.get('path', context);
     const { namespace } = this.options;
-    const imports = this._getImports(context) ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const imports = this.get('imports', context) ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
 
     w.add('@-from ');
     path.toString(options);

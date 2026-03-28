@@ -26,9 +26,9 @@ describe('Range', () => {
 
     expect(node.toTrimmedString({ context })).toBe('2 to <4 step 3');
     expect(node.toTrimmedString()).toBe('1 to <3 step 2');
-    expect(node.start.toTrimmedString()).toBe('1');
-    expect(node.end.toTrimmedString()).toBe('3');
-    expect(node.step?.toTrimmedString()).toBe('2');
+    expect(node.get('start').toTrimmedString()).toBe('1');
+    expect(node.get('end').toTrimmedString()).toBe('3');
+    expect(node.get('step')?.toTrimmedString()).toBe('2');
   });
 
   it('does not materialize state-patched bounds during eval', async () => {
@@ -45,6 +45,6 @@ describe('Range', () => {
     expect(evald.toTrimmedString()).toBe('1 to <3');
     expect(node.toTrimmedString({ context })).toBe('9 to <3');
     expect(node.toTrimmedString()).toBe('1 to <3');
-    expect(node.start.toTrimmedString()).toBe('1');
+    expect(node.get('start').toTrimmedString()).toBe('1');
   });
 });

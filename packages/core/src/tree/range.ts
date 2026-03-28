@@ -1,7 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField } from './util/field-helpers.js';
 
 export type RangeValue = {
   start: Node;
@@ -15,6 +14,8 @@ export type RangeOptions = {
   /** If false, serialize as `... to <3` */
   includeEnd?: boolean;
 };
+
+export type RangeChildData = { start: Node; end: Node; step: Node | undefined };
 
 /**
  * A numeric-ish range expression intended for `$for` headers.
@@ -30,12 +31,12 @@ export interface Range {
   shortType: 'range';
 }
 
-export class Range extends Node<RangeValue, RangeOptions> {
+export class Range extends Node<RangeValue, RangeOptions, RangeChildData> {
   static override childKeys = ['start', 'end', 'step'] as const;
 
-  start!: Node;
-  end!: Node;
-  step: Node | undefined;
+  private start!: Node;
+  private end!: Node;
+  private step: Node | undefined;
 
   constructor(value: RangeValue, options?: RangeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -57,32 +58,14 @@ export class Range extends Node<RangeValue, RangeOptions> {
     return this;
   }
 
-  private _getStart(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'start', context)
-      : this.start;
-  }
-
-  private _getEnd(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'end', context)
-      : this.end;
-  }
-
-  private _getStep(context?: Context): Node | undefined {
-    return context
-      ? getField<Node | undefined>(this, 'step', context)
-      : this.step;
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
-    const start = this._getStart(context);
-    const end = this._getEnd(context);
-    const step = this._getStep(context);
+    const start = this.get('start', context);
+    const end = this.get('end', context);
+    const step = this.get('step', context);
     const includeStart = this.options?.includeStart !== false;
     const includeEnd = this.options?.includeEnd !== false;
 

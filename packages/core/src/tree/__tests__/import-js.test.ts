@@ -28,7 +28,7 @@ describe('JsImport', () => {
     expect(evald.toTrimmedString({ context })).toBe('@-from "module.js" import ( foo );');
     expect(node.toTrimmedString()).toBe('@-from "$(module.js)" import ( foo );');
     expect(evald).toBe(node);
-    expect(evald.path).toBe(originalPath);
-    expect(node.path).toBe(originalPath);
+    expect(evald.get('path')).toBe(originalPath);
+    expect(node.get('path')).toBe(originalPath);
   });
 });
