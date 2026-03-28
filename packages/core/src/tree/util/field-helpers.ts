@@ -23,13 +23,17 @@ export function getField<T = unknown>(
   key: string,
   ctx: Context
 ): T {
-  const s = ctx.activeState.peek(node);
-  if (s) {
-    // Check fields map
-    const val = s._fields?.get(key);
+  // Walk the eval state stack from top to bottom
+  for (let i = ctx.evalStateStack.length - 1; i >= 0; i--) {
+    const val = ctx.evalStateStack[i]!.peek(node)?._fields?.get(key);
     if (val !== undefined) {
       return val as T;
     }
+  }
+  // Check root state
+  const val = ctx.evalState.peek(node)?._fields?.get(key);
+  if (val !== undefined) {
+    return val as T;
   }
   return (node as unknown as Record<string, unknown>)[key] as T;
 }
@@ -53,7 +57,15 @@ export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const parent = ctx.activeState.peek(node)?._fields?.get('parent');
+  // Walk the eval state stack from top to bottom
+  for (let i = ctx.evalStateStack.length - 1; i >= 0; i--) {
+    const parent = ctx.evalStateStack[i]!.peek(node)?._fields?.get('parent');
+    if (parent !== undefined) {
+      return parent as Node | undefined;
+    }
+  }
+  // Check root state
+  const parent = ctx.evalState.peek(node)?._fields?.get('parent');
   if (parent !== undefined) {
     return parent as Node | undefined;
   }

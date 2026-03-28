@@ -469,6 +469,17 @@ export class Context {
     return len > 0 ? this.evalStateStack[len - 1]! : this.evalState;
   }
 
+  /** Push a new eval state onto the stack, wiring its parent chain. */
+  pushState(state: EvalState): void {
+    state.parent = this.activeState;
+    this.evalStateStack.push(state);
+  }
+
+  /** Pop the top eval state from the stack. */
+  popState(): EvalState | undefined {
+    return this.evalStateStack.pop();
+  }
+
   _leakyRules: boolean | undefined;
   get leakyRules() {
     return this._leakyRules ?? this.treeContext?.leakyRules ?? false;

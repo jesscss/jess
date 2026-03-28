@@ -701,11 +701,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const ctx = options.context;
     const carried = this._carriedState as EvalState | undefined;
     if (ctx && carried) {
-      ctx.evalStateStack.push(carried);
+      ctx.pushState(carried);
     }
     this._emitRulesBody(options);
     if (ctx && carried) {
-      ctx.evalStateStack.pop();
+      ctx.popState();
     }
     return w.getSince(mark);
   }

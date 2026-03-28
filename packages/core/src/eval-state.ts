@@ -46,6 +46,9 @@ export class NodeState {
  *   state.peek(node)?.replacement;            // read-only, no allocation
  */
 export class EvalState extends Map<Node, NodeState> {
+  /** Parent state in the eval state chain (set when pushed onto stack) */
+  parent: EvalState | undefined;
+
   /** Always returns a NodeState — creates one if missing */
   override get(node: Node): NodeState {
     let s = super.get(node);
@@ -59,5 +62,16 @@ export class EvalState extends Map<Node, NodeState> {
   /** Read-only lookup — returns undefined if no state exists (no allocation) */
   peek(node: Node): NodeState | undefined {
     return super.get(node);
+  }
+
+  /** Read-only lookup walking the parent chain. Returns first match or undefined. */
+  resolve(node: Node): NodeState | undefined {
+    let state: EvalState | undefined = this;
+    while (state) {
+      const s = state.peek(node);
+      if (s) return s;
+      state = state.parent;
+    }
+    return undefined;
   }
 }

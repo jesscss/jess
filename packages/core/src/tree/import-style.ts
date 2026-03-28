@@ -555,7 +555,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Push an isolated EvalState so that adopt() calls inside Rules.push()
           // route parent writes into the overlay instead of permanently mutating
           // canonical library nodes.
-          context.evalStateStack.push(new EvalState());
+          context.pushState(new EvalState());
           pushedIsolatedState = true;
           for (const index of replacementAt.keys()) {
             const candidate = rules.value[index];
@@ -606,7 +606,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {
           if (!withValues) {
-            context.evalStateStack.push(new EvalState());
+            context.pushState(new EvalState());
             pushedIsolatedState = true;
           }
           let pushedImplicitReferenceEvalScope = false;
@@ -653,7 +653,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             rules = await rules.eval(context);
           } finally {
             if (pushedIsolatedState) {
-              context.evalStateStack.pop();
+              context.popState();
               pushedIsolatedState = false;
             }
             if (pushedImplicitReferenceEvalScope) {
@@ -680,7 +680,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // Shallow-clone the cached rules BEFORE evaluation so registries are populated
         // on the clone, not on the cached evaldRules. EvalState isolation ensures canonical
         // children's parent pointers are protected; preEval creates fresh clones via maybeClone.
-          context.evalStateStack.push(new EvalState());
+          context.pushState(new EvalState());
           rules = rules.cloneLookupSafeShallowWrapper(context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
@@ -691,7 +691,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            context.evalStateStack.pop();
+            context.popState();
             if (shouldIsolateSelectorFrames) {
               context.rulesetFrames = prevRulesetFrames!;
               context.frames = prevFrames!;

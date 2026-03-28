@@ -136,7 +136,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const dedupPos = positionMap.get(node);
     const dedupCtx = options.context;
     if (dedupCtx && dedupPos) {
-      dedupCtx.evalStateStack.push(dedupPos);
+      dedupCtx.pushState(dedupPos);
     }
     const declWriter = new OutputWriter();
     const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
@@ -189,18 +189,18 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const nodePosition = positionMap.get(n);
     const ctx = options.context;
     if (ctx && nodePosition) {
-      ctx.evalStateStack.push(nodePosition);
+      ctx.pushState(nodePosition);
     }
 
     if (!n.visible && !n.fullRender) {
       if (ctx && nodePosition) {
-        ctx.evalStateStack.pop();
+        ctx.popState();
       }
       continue;
     }
     if (inReferenceMode && !renderEnabled && !isContainer) {
       if (ctx && nodePosition) {
-        ctx.evalStateStack.pop();
+        ctx.popState();
       }
       continue;
     }
@@ -393,7 +393,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     // Restore position after this node's serialization
     if (ctx && nodePosition) {
-      ctx.evalStateStack.pop();
+      ctx.popState();
     }
   }
   inFrames.pop();

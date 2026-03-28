@@ -446,7 +446,7 @@ export async function evaluateMixinGuardCandidate(
     isDefaultValue: boolean
   ): Promise<{ passes: boolean; outerRules: Rules | undefined }> => {
     const prevIsDefault = context.isDefault;
-    context.evalStateStack.push(new EvalState());
+    context.pushState(new EvalState());
     try {
       const nextScope = seedMixinGuardScope(
         outerRules,
@@ -467,7 +467,7 @@ export async function evaluateMixinGuardCandidate(
       };
     } finally {
       context.isDefault = prevIsDefault;
-      context.evalStateStack.pop();
+      context.popState();
     }
   };
 
@@ -951,11 +951,11 @@ export async function evaluateMixinArgs(
  * Evaluate a pattern-match operand in a fresh session scope.
  */
 async function preparePatternOperand(node: Node, context: Context): Promise<Node> {
-  context.evalStateStack.push(new EvalState());
+  context.pushState(new EvalState());
   try {
     return await node.eval(context);
   } finally {
-    context.evalStateStack.pop();
+    context.popState();
   }
 }
 
@@ -1282,19 +1282,13 @@ export async function evaluateCandidateOutput(
 
   // Push a per-call EvalState so this mixin body evaluates in its own overlay.
   const callState = new EvalState();
-  context.evalStateStack.push(callState);
+  context.pushState(callState);
   try {
     let newRules: Rules;
     if (outerRules) {
-      // outerRules is an ephemeral scope with bound params (canonical children/registry).
-      // Wire: body → outerRules → caller scope.
-      // outerRules.parent was set in the caller's state; copy it into per-call state.
-      const callerIdx = context.evalStateStack.length - 2;
-      const callerState = callerIdx >= 0 ? context.evalStateStack[callerIdx] : undefined;
-      const outerParent = callerState?.peek(outerRules)?._fields?.get('parent')
-        ?? outerRules.parent
-        ?? getParentFn(candidate);
-      setParent(outerRules, outerParent as Node, context);
+      // Wire: body → outerRules (param scope).
+      // outerRules → caller scope is already in the caller's state
+      // and resolve() will find it via the parent chain.
       setParent(rules, outerRules, context);
       newRules = await rules.eval(context);
     } else {
@@ -1304,7 +1298,7 @@ export async function evaluateCandidateOutput(
     newRules = finalizeMixinInvocationOutput(newRules, context);
     newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
     // Pop the per-call state before we write to the caller's state.
-    context.evalStateStack.pop();
+    context.popState();
     setSourceParent(newRules, sourceParent, context);
     setParent(newRules, getParentFn(candidate), context);
     newRules.index = candidate.index;
@@ -1320,7 +1314,7 @@ export async function evaluateCandidateOutput(
     }
     outputRules.push(newRules);
   } catch (error) {
-    context.evalStateStack.pop();
+    context.popState();
     if (error instanceof ReferenceError && error.message?.includes('Recursive mixin call')) {
       return;
     }
@@ -1374,7 +1368,7 @@ export async function dispatchMixinEvalCandidates(
   } = dispatch;
   const pendingDefaultCandidates: PendingMixinDefaultCandidate<any>[] = [];
 
-  context.evalStateStack.push(new EvalState());
+  context.pushState(new EvalState());
 
   for (const candidate of evalCandidates) {
     if (isNode(candidate, N.Ruleset)) {
@@ -1455,7 +1449,7 @@ export async function dispatchMixinEvalCandidates(
     )
   );
 
-  context.evalStateStack.pop();
+  context.popState();
 
   const output = assembleMixinInvocationOutput(
     outputRules,

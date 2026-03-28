@@ -345,7 +345,7 @@ export class For extends Node<ForValue> {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
       const isolatedState = new EvalState();
-      context.evalStateStack.push(isolatedState);
+      context.pushState(isolatedState);
       try {
         const evaluatedIterable = await iterable.eval(context);
         for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
@@ -485,7 +485,7 @@ export class For extends Node<ForValue> {
           }
         }
       } finally {
-        context.evalStateStack.pop();
+        context.popState();
       }
       return new Rules(accumulatedNodes);
     };
