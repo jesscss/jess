@@ -1,125 +1,83 @@
-# Node Session Status
+# Node EvalState Status
 
-This is the concrete per-node inventory. It tracks two dimensions:
+Per-node audit for EvalState migration. Two dimensions:
 
-1. **Session contract** — are reads/writes session-aware? (`complete` / `partial` / `pending` / `leaf`)
-2. **Clone-free** — does this node's eval path avoid internal cloning? (`complete` / `has-clones` / `n/a`)
-
-A node is fully done when both dimensions are complete.
-
-Since all session helpers resolve `instanceRoot → node._instanceRoot → session → canonical`, every session-complete node automatically works under instance roots. The remaining work is eliminating clones in the few nodes that create them.
+1. **EvalState contract** — field reads/writes go through `activeState` (not canonical mutation)
+2. **State carrying** — if the node creates a per-scope EvalState, it carries it on output via `_carriedState`
 
 ## Status Legend
 
-### Session contract
-
 | Status | Meaning |
 | --- | --- |
-| `complete` | All active reads/writes use session helpers. Canonical fields are not mutated during eval. Has proof tests. |
-| `partial` | Some paths are session-aware, but some still mutate canonical or lack proof. |
-| `leaf` | Scalar/opaque value node. No session-backed write surface needed. |
-| `inherited` | Inherits session behavior from parent class. |
+| `clean` | All reads/writes use EvalState. No canonical mutations during eval. |
+| `needs-fix` | Some eval paths still mutate canonical fields or miss state carrying. |
+| `leaf` | Scalar/opaque node. No eval-time writes. |
+| `inherited` | Inherits from parent class. |
 
-### Clone-free
+## Core Eval Nodes
 
-| Status | Meaning |
-| --- | --- |
-| `complete` | No internal `clone()` / `copy()` / `materialize()` in this node's eval path. |
-| `has-clones` | This node's eval path still creates clones that should be replaced with instance root shadowing. |
-| `n/a` | Node doesn't clone (reads/writes only). Automatically works under instance roots via session helpers. |
+| Node | Status | Notes |
+| --- | --- | --- |
+| `Declaration` | `clean` | All writes via `setField`. All reads via context-aware getters. |
+| `VarDeclaration` | `inherited` | Inherits Declaration. |
+| `Ruleset` | `clean` | preEval uses `setField` for selector/guard. |
+| `Rules` | `clean` | evalNode delegates to `_evaluateQueue` which writes via `activeState`. `_setValueArray` used only in constructor. |
+| `AtRule` | `clean` | All field writes via `setField`. |
+| `Mixin` | `clean` | preEval writes via `setField`. |
+| `Call` | `clean` | evalNode routes through `evalMixinDirect`. No canonical mutations. |
+| `Func` | `clean` | evalCall delegates to mixin machinery. |
+| `Expression` | `clean` | evalNode is read-only + dependency tracking. |
+| `Operation` | `clean` | All left/right writes via `setField`. |
+| `Condition` | `clean` | Read-only eval. |
+| `Sequence` | `clean` | All value writes via `setField` / `_setValue`. |
+| `List` | `clean` | All value writes via `setField`. |
+| `Reference` | `clean` | evalNode is read-only (resolves and returns value). |
+| `Interpolated` | `clean` | Writes replacements via `setField`. |
+| `Block` | `clean` | Writes value via `setField`. |
+| `Paren` | `clean` | Writes value via `setField`, parents via `setParent`. |
+| `Quoted` | `clean` | Writes value via `setField`. |
+| `Control ($for)` | `clean` | pushState/popState per loop. Carries state via `_carriedState`. |
+| `Ampersand` | `clean` | Reads via `getField`. No mutations. |
+| `SelectorCapture` | `clean` | Writes value via `setField`. |
 
-## Core Containers And Eval Nodes
+## Import Pipeline
 
-| Node | Session | Clone-free | Notes |
-| --- | --- | --- | --- |
-| `Declaration` | `complete` | n/a | All eval-time reads and writes use session helpers. |
-| `VarDeclaration` | `inherited` | n/a | Inherits `Declaration` field behavior. |
-| `CustomDeclaration` | `inherited` | n/a | Inherits `Declaration`. |
-| `Ruleset` | `complete` | n/a | All fields session-aware on active eval/render paths. |
-| `Rules` | `partial` | has-clones | Session child-array overlays landed. Mixin body clone(true) → clone(false) ✓. Ruleset-as-mixin still needs deep clone (nested selectors). `preEval` still clones for reset-session. 1 regression: media.less nested @media prelude eval state leak. |
-| `RawRules` | `complete` | n/a | Serializer reads session child overlay. |
-| `AtRule` | `complete` | n/a | Render and eval read through session-aware view. |
-| `Mixin` | `complete` | n/a | Render reads session-aware. Remaining work is in callers (Rules/Call), not this node. |
-| `Call` | `complete` | has-clones | Session-aware reads. Direct dispatch via `evalMixinDirect()`. But internally delegates to `getFunctionFromMixins` which deep-clones. Also clones for Collection/detached rulesets. |
-| `Func` | `complete` | has-clones | Session-aware reads. `evalCall()` creates temporary mixin wrapper. Uses same clone machinery as Call. |
-| `StyleImport` | `complete` | has-clones | Instance root created per import placement. Still uses `cloneLookupSafeShallowWrapper` for compose re-eval and `cloneDetachedMaterializedWrapper` for output. |
-| `Expression` | `complete` | n/a | Session-aware reads. Clone preserves session-patched value. |
-| `Operation` | `complete` | n/a | Session-aware reads for `left` / `right`. |
-| `Condition` | `complete` | n/a | Session-aware reads for all fields. |
-| `Sequence` | `complete` | n/a | Session-aware `value[]` path. |
-| `List` | `complete` | n/a | Session-aware `value[]` path. |
-| `Range` | `complete` | n/a | Session-aware reads. |
-| `Reference` | `complete` | n/a | Session-aware reads. Ancestor walks use `sessionGetParent`. |
-| `Interpolated` | `complete` | n/a | Session-aware reads. |
-| `ImportJs` | `complete` | n/a | Session-aware reads. |
-| `If` / `For` / control | `complete` | n/a | All fields session-aware. Loop results use `sessionGetChildren`. |
-| `Block` | `complete` | n/a | Session-aware reads. |
-| `Negative` | `complete` | n/a | Session-aware reads. |
-| `Rest` | `complete` | n/a | Session-aware reads. |
-| `Extend` | `complete` | has-clones | Session-aware getters for all fields. But extend selector rewriting still uses structural copies. |
-| `ExtendList` | `complete` | n/a | Session-aware reads. |
-| `Paren` | `complete` | n/a | All eval-time mutations session-aware. |
-| `Quoted` | `complete` | n/a | All eval-time mutations session-aware. |
-| `Url` | `complete` | n/a | All eval-time mutations session-aware. |
+| Node | Status | Notes |
+| --- | --- | --- |
+| `StyleImport` | `needs-fix` | **3 canonical mutations**: (1) `materializeCloneParentLinks` directly sets `child.parent` (line 228). (2) Restores canonical parents after import eval (line 713). (3) `setData` on deduped cache (line 755). These save/restore canonical state instead of using EvalState. Root cause of 18 import-style test failures. |
+| `ImportJs` | `clean` | Reads via field helpers. |
 
 ## Selector Nodes
 
-| Node | Session | Clone-free | Notes |
-| --- | --- | --- | --- |
-| `BasicSelector` | `leaf` | n/a | Scalar selector token. |
-| `AttributeSelector` | `complete` | n/a | Session-aware reads. |
-| `InterpolatedSelector` | `complete` | n/a | Session-aware reads. |
-| `Ampersand` | `complete` | n/a | Session-aware reads. |
-| `PseudoSelector` | `complete` | n/a | Session-aware reads. |
-| `CompoundSelector` | `complete` | n/a | Session-aware reads. |
-| `ComplexSelector` | `complete` | n/a | Session-aware reads. `getKeySet(context)` composes session-specific key set. |
-| `SelectorList` | `complete` | n/a | Session-aware reads. |
-| `SelectorCapture` | `complete` | n/a | Session-aware reads. |
-
-## Leaf / Opaque Value Nodes
-
-| Node | Session | Clone-free | Notes |
-| --- | --- | --- | --- |
-| `Any` | `leaf` | n/a | |
-| `Bool` | `leaf` | n/a | |
-| `Color` | `leaf` | n/a | |
-| `Comment` | `leaf` | n/a | |
-| `Combinator` | `leaf` | n/a | |
-| `DefaultGuard` | `leaf` | n/a | |
-| `Dimension` | `leaf` | n/a | |
-| `JsArray` | `leaf` | n/a | |
-| `JsObject` | `leaf` | n/a | |
-| `JsFunction` | `leaf` | n/a | |
-| `JsExpression` | `leaf` | n/a | |
-| `Nil` | `leaf` | n/a | |
-| `Num` | `leaf` | n/a | |
-
-## Nodes With Remaining Clones
-
-These are the only nodes that still have `has-clones`. Everything else is done or n/a.
-
-| Node | Clone sites | What needs to happen |
+| Node | Status | Notes |
 | --- | --- | --- |
-| `Rules` | `getFunctionFromMixins`: body `clone(true)` per mixin call, `outerRules.clone(true)` in evaluateCandidateOutput, `cloneDetachedUnlockWrapper` for detached rulesets. `preEval`: `clone(false)` for reset-session. | Shallow clone attempt (body `clone(true)` → `cloneLookupSafeShallowWrapper`) causes 3 regressions because eval-time writes on shared children still bypass instance roots. Remaining direct mutations that need session/IR routing: parent chain writes during child iteration, registry population, `inherit()` calls. Eval state methods (`_isEvaluated`, etc.) are now IR-aware. See [mixin-direct-invocation.md](./mixin-direct-invocation.md). |
-| `Call` | `getFunctionFromMixins` (via Rules), Collection `clone(true)` for detached rulesets. | Follows from Rules clone elimination. Collection path is simpler — one clone site. |
-| `Func` | Uses mixin machinery — `evalCall` creates temp Mixin wrapper. | Follows from Rules clone elimination. |
-| `StyleImport` | `cloneLookupSafeShallowWrapper` for compose re-eval, shallow clone in `getFinalRules`. | Replace shallow wrapper with instance root parent shadow. |
-| `Extend` | `materializeImplicitAmpersands`, `copy(true)` in extend-core selector rewriting. | Extend mutates selectors structurally. Needs investigation — may be a legitimate edge case. |
+| `BasicSelector` | `leaf` | |
+| `AttributeSelector` | `clean` | Reads via context-aware getters. |
+| `InterpolatedSelector` | `clean` | |
+| `Ampersand` | `clean` | |
+| `PseudoSelector` | `clean` | |
+| `CompoundSelector` | `clean` | |
+| `ComplexSelector` | `clean` | |
+| `SelectorList` | `clean` | |
 
-## Edge Cases Where Clone Might Survive
+## Leaf Nodes
 
-| Case | Status | Notes |
+All `leaf` — no eval-time writes: Any, Bool, Color, Comment, Combinator, DefaultGuard, Dimension, JsArray, JsObject, JsFunction, JsExpression, Nil, Num.
+
+## Mixin Pipeline (mixin-instance-primitives.ts)
+
+| Function | Status | Notes |
 | --- | --- | --- |
-| Extend selector rewriting | not yet evaluated | Extend structurally mutates selectors (adds new alternatives). Shadow-based extend may require tracking per-selector shadow arrays. Needs investigation. |
-| `@arguments` construction | not yet evaluated | Currently deep-copies arg nodes into a Sequence. Could shadow instead, but the args are frozen copies already — may not be worth the complexity. |
+| `evaluateCandidateOutput` | `clean` | pushState/popState, carries state via `_carriedState`. All parent wiring AFTER pushState. |
+| `finalizeMixinInvocationOutput` | `clean` | Creates lightweight `Rules.create(children)` per call. |
+| `prepareMixinCandidateInvocation` | `clean` | No longer sets parents (moved to after pushState). |
+| `prepareMixinInvocationScope` | `clean` | Creates ephemeral scope with canonical params. |
+| `evaluateMixinArgs` | `clean` | Simplified — no deep copy/freeze, just eval. |
+| `matchMixinCandidates` | `needs-fix` | Uses `param.setData('value', boundValue)` (line 1060) — canonical mutation on copied param. Acceptable since params are deep-copied per match, but should eventually use state. |
 
-If a case is kept as a clone, it must be documented here with a concrete reason. "It was easier" is not a reason.
+## Remaining Issues
 
-## What "Complete" Means End-to-End
-
-A node is fully complete when:
-
-1. **Session**: all active reads/writes use session helpers (`complete`)
-2. **Clone-free**: no internal `clone()` / `copy()` / `materialize()` in that node's eval path (`complete` or `n/a`)
-
-The goal is to remove the entire cloning architecture in favor of instance roots. Materialization only at the final CSS output boundary.
+1. **StyleImport canonical mutations** — 3 sites that mutate canonical parent/children. Causes 18 test failures.
+2. **Nesting collapse** — `collapseNesting` needs context to compose selectors through state. Fixed in tests (12/13 pass).
+3. **forEachNode array replacement** — writes array child replacements through state when state active, canonical when not. `_forEachNodeSync` still mutates canonical arrays for named-key children.
+4. **`_carriedState`** — still needed because subtree storage on NodeState doesn't survive the eval pipeline's state transitions. See eval-state-sketch.md for architecture discussion.

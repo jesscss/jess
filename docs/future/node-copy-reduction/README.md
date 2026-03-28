@@ -11,10 +11,11 @@ See [eval-state-sketch.md](./eval-state-sketch.md) for the full design.
 ## Read Order
 
 1. [eval-state-sketch.md](./eval-state-sketch.md) — canonical architecture
-2. [STAGES.md](./STAGES.md) — current execution status
-3. [HANDOFF.md](./HANDOFF.md) — starter guide for next agent
-4. [node-update-status.md](./node-update-status.md) — per-node migration status
-5. [CLEANUP.md](./CLEANUP.md) — tracked cleanup items
+2. [state-node-association.md](./state-node-association.md) — subtree linkage problem and approaches
+3. [STAGES.md](./STAGES.md) — current execution status
+4. [HANDOFF.md](./HANDOFF.md) — starter guide for next agent
+5. [node-update-status.md](./node-update-status.md) — per-node migration status
+6. [CLEANUP.md](./CLEANUP.md) — tracked cleanup items
 
 ## Core Classes
 
