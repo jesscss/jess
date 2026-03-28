@@ -416,6 +416,13 @@ function addMixinToIndex(
     }
     if (keySetToUse !== undefined) {
       indexMixinSelectorStart(index, mixin, keySetToUse);
+    } else {
+      // Fallback: when keySetLibrary isn't available (e.g. test-created nodes),
+      // use valueOf() as the index key so the Ruleset is still discoverable.
+      const selectorStr = String(callableSelector.valueOf?.() ?? '');
+      if (selectorStr) {
+        indexMixinSelectorStart(index, mixin, [selectorStr]);
+      }
     }
     return;
   }
