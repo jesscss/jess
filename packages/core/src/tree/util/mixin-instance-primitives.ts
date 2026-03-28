@@ -353,7 +353,7 @@ export function prepareMixinCandidateInvocation(
   sourceParent: Node | undefined,
   index: number,
   nodeArgs: readonly Node[],
-  context: Context,
+  context: Context
 ): PreparedMixinCandidateInvocation {
   // NOTE: parent/sourceParent/options wiring now happens in
   // evaluateCandidateOutput AFTER pushState, so all patches
@@ -697,7 +697,7 @@ export async function evaluateRulesetMixinCandidateOutput(
   sourceParent: Node | undefined,
   candidateIndex: number,
   restrictMixinOutputLookup: boolean,
-  context: Context,
+  context: Context
 ): Promise<Rules> {
   let rules = sourceRules.clone(true, undefined, context);
   setParent(rules, parent, context);
@@ -725,7 +725,7 @@ export function unlockDetachedRulesetMixinCandidateOutput(
   parent: Node | undefined,
   sourceParent: Node | undefined,
   candidateIndex: number,
-  context: Context,
+  context: Context
 ): Rules {
   const unlocked = sourceRules.cloneDetachedUnlockWrapper(context);
   setParent(unlocked, parent, context);
@@ -1254,7 +1254,7 @@ export async function evaluateCandidateOutput(
   outerRules: Rules | undefined,
   params: List<Node> | undefined,
   context: Context,
-  opts: EvaluateCandidateOutputOptions,
+  opts: EvaluateCandidateOutputOptions
 ): Promise<void> {
   const { sourceParent, restrictMixinOutputLookup, outputRules, getCandidateParent: getParentFn } = opts;
   const currentCall = context.callStack.at(-1);
@@ -1265,6 +1265,10 @@ export async function evaluateCandidateOutput(
   // Push a per-call EvalState. ALL field patches for this call go here.
   const callState = new EvalState();
   context.pushState(callState);
+  // Clear rulesetFrames so mixin body children don't compose with
+  // the caller's selector. Mixin output starts a fresh selector scope.
+  const savedRulesetFrames = context.rulesetFrames;
+  context.rulesetFrames = [];
   try {
     // Wire the parent chain entirely within the per-call state.
     // outerRules (param scope) sits between body and caller scope.
@@ -1287,6 +1291,8 @@ export async function evaluateCandidateOutput(
     newRules = finalizeMixinInvocationOutput(newRules, context);
     newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
 
+    context.rulesetFrames = savedRulesetFrames;
+
     // Pop the per-call state.
     context.popState();
 
@@ -1306,6 +1312,7 @@ export async function evaluateCandidateOutput(
     }
     outputRules.push(newRules);
   } catch (error) {
+    context.rulesetFrames = savedRulesetFrames;
     context.popState();
     if (error instanceof ReferenceError && error.message?.includes('Recursive mixin call')) {
       return;
