@@ -117,6 +117,11 @@ Ensure all Registry `find` methods:
 
 **If the Rules was properly eval'd, its registry has the right entries.**
 
+Eval auto-registers children to the correct registry. If a lookup fails and the
+target Rules clearly has the node in its `value` (or state-overlaid value), the
+problem is almost certainly a skipped eval step — not a registry bug. The fix is
+to ensure the Rules is eval'd before the lookup, not to add re-indexing machinery.
+
 The bug that started this whole mess was that target Rules weren't being eval'd
 before lookup. The fix is to eval them, not to add 200 lines of caching machinery.
 
