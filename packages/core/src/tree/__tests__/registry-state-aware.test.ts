@@ -15,6 +15,7 @@ describe('Registry state awareness', () => {
 
       const colorVar = vardecl({ name: 'color', value: any('blue') });
       ctx.activeState.get(root).fields.set('value', [...root.value, colorVar]);
+      root.register('declaration', colorVar, ctx);
 
       const found = root.find('declaration', 'color', 'VarDeclaration', { context: ctx });
       expect(found).toBeDefined();
@@ -30,6 +31,7 @@ describe('Registry state awareness', () => {
 
       const paramVar = vardecl({ name: 'color', value: any('blue') });
       ctx.activeState.get(body).fields.set('value', [paramVar, ...body.value]);
+      body.register('declaration', paramVar, ctx);
 
       const found = body.find('declaration', 'color', 'VarDeclaration', { context: ctx });
       expect(found).toBeDefined();
@@ -43,6 +45,7 @@ describe('Registry state awareness', () => {
 
       const colorVar = vardecl({ name: 'color', value: any('blue') });
       ctx.activeState.get(root).fields.set('value', [colorVar]);
+      root.register('declaration', colorVar, ctx);
 
       expect(root.find('declaration', 'color', 'VarDeclaration', { context: ctx })).toBe(colorVar);
       expect(root.find('declaration', 'color', 'VarDeclaration', {})).toBeUndefined();
@@ -57,7 +60,9 @@ describe('Registry state awareness', () => {
       const blueVar = vardecl({ name: 'color', value: any('blue') });
 
       ctx1.activeState.get(body).fields.set('value', [redVar]);
+      body.register('declaration', redVar, ctx1);
       ctx2.activeState.get(body).fields.set('value', [blueVar]);
+      body.register('declaration', blueVar, ctx2);
 
       expect(body.find('declaration', 'color', 'VarDeclaration', { context: ctx1 })).toBe(redVar);
       expect(body.find('declaration', 'color', 'VarDeclaration', { context: ctx2 })).toBe(blueVar);
