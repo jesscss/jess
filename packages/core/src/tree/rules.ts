@@ -333,7 +333,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         state = state.parent;
       }
     }
-    return (this as any)[key];
+    // Fall back to instance property; create if missing.
+    // Empty registries are cheap — just a Map. The parent/child walk
+    // infrastructure needs a registry instance even when nothing is registered.
+    let registry = (this as any)[key];
+    if (!registry) {
+      registry = new (Rules._registryClass(type))(this, context);
+      (this as any)[key] = registry;
+    }
+    return registry;
   }
 
   /**
@@ -351,11 +359,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType?: string,
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    let registry = this.getRegistry(type, options.context);
-    if (!registry) {
-      // No entries registered locally, but parent walk still needs a registry.
-      registry = new (Rules._registryClass(type))(this, options.context);
-    }
+    const registry = this.getRegistry(type, options.context);
     return (registry.find as Function)(keys, filterType, options);
   }
 

@@ -1492,7 +1492,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       } else {
         searchChildrenOptions.readonly = newReadonly;
       }
-      (rules.getRegistry('declaration', this.context) ?? new DeclarationRegistry(rules, this.context))._searchRulesChildren(key, filterType, searchChildrenOptions);
+      rules.getRegistry('declaration', this.context)._searchRulesChildren(key, filterType, searchChildrenOptions);
 
       // After searching the CURRENT scope (index + children), if we found public declarations,
       // sort them, find the best one (closest to start or at bottom), and return immediately.
