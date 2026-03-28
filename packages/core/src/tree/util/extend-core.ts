@@ -85,7 +85,7 @@ function expandGeneratedIsAlternatives(selector: Selector): Selector[] {
     && selector.name === ':is'
     && isNode(selector.arg, N.SelectorList)
   ) {
-    return [...(selector.arg as SelectorList).value] as Selector[];
+    return [...(selector.arg as SelectorList).get('value')] as Selector[];
   }
 
   return [selector];
@@ -95,9 +95,9 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
   const flattened: Selector[] = [];
   const seen = new Set<string>();
 
-  for (const item of list.value) {
+  for (const item of list.get('value')) {
     if (isNode(item, N.PseudoSelector) && item.name === ':is' && isNode(item.arg, N.SelectorList)) {
-      for (const child of (item.arg as SelectorList).value) {
+      for (const child of (item.arg as SelectorList).get('value')) {
         const key = child.valueOf();
         if (!seen.has(key)) {
           seen.add(key);
@@ -107,10 +107,10 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
       continue;
     }
 
-    if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-      const only = item.value[0]!;
+    if (isNode(item, N.CompoundSelector) && (item as CompoundSelector).get('value').length === 1) {
+      const only = (item as CompoundSelector).get('value')[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
-        for (const child of (only.arg as SelectorList).value) {
+        for (const child of (only.arg as SelectorList).get('value')) {
           const key = child.valueOf();
           if (!seen.has(key)) {
             seen.add(key);
@@ -121,10 +121,10 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
       }
     }
 
-    if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-      const only = item.value[0]!;
+    if (isNode(item, N.ComplexSelector) && (item as ComplexSelector).get('value').length === 1) {
+      const only = (item as ComplexSelector).get('value')[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
-        for (const child of (only.arg as SelectorList).value) {
+        for (const child of (only.arg as SelectorList).get('value')) {
           const key = child.valueOf();
           if (!seen.has(key)) {
             seen.add(key);
@@ -143,7 +143,7 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
     flattened.push(item);
   }
 
-  if (flattened.length !== list.value.length) {
+  if (flattened.length !== list.get('value').length) {
     list.setData(flattened);
   }
 }
@@ -299,7 +299,7 @@ function collectCompoundConflictInfo(
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    const complexData = (selector as unknown as ComplexSelector).value;
+    const complexData = (selector as unknown as ComplexSelector).get('value');
     for (let i = complexData.length - 1; i >= 0; i--) {
       const child = complexData[i] as Selector;
       if (isNode(child, N.Combinator)) {
@@ -380,7 +380,7 @@ function stripRedundantCompoundContext(
     }
 
     if (isNode(node, N.CompoundSelector)) {
-      const next = (node as CompoundSelector).value
+      const next = (node as CompoundSelector).get('value')
         .map(child => normalize(child as Selector))
         .filter(Boolean) as Selector[];
       if (next.length === 0) {
@@ -393,7 +393,7 @@ function stripRedundantCompoundContext(
     }
 
     if (isNode(node, N.SelectorList)) {
-      const next = (node as SelectorList).value
+      const next = (node as SelectorList).get('value')
         .map(child => normalize(child as Selector))
         .filter(Boolean) as Selector[];
       if (next.length === 0) {
@@ -562,8 +562,8 @@ function resolveAmpersandTarget(
   const nextData: Selector[] = [];
   let replacedAny = false;
 
-  for (let i = 0; i < target.value.length; i++) {
-    const component = target.value[i]!;
+  for (let i = 0; i < (target as ComplexSelector).get('value').length; i++) {
+    const component = (target as ComplexSelector).get('value')[i]!;
     if (isNode(component, N.Ampersand)) {
       const resolvedRaw = component.getResolvedSelector() ?? parent;
       if (!resolvedRaw || isNode(resolvedRaw, N.Nil)) {
@@ -638,7 +638,7 @@ function materializeAmpersandsForHoist(
   }
 
   if (isNode(selector, N.SelectorList)) {
-    const next = selector.value.map(child =>
+    const next = (selector as SelectorList).get('value').map(child =>
       materializeAmpersandsForHoist((child as Selector).copy(true) as Selector, parent)
     ) as Selector[];
     const rebuilt = SelectorList.create(next).inherit(selector) as Selector;
@@ -649,8 +649,8 @@ function materializeAmpersandsForHoist(
   if (isNode(selector, N.ComplexSelector)) {
     const nextData: Selector[] = [];
 
-    for (let i = 0; i < selector.value.length; i++) {
-      const child = selector.value[i] as Selector;
+    for (let i = 0; i < (selector as ComplexSelector).get('value').length; i++) {
+      const child = (selector as ComplexSelector).get('value')[i] as Selector;
       if (isNode(child, N.Ampersand)) {
         const resolved = child.getResolvedSelector() ?? parent;
         const replacement = materializeAmpersandsForHoist(resolved.copy(true) as Selector, parent);
@@ -669,12 +669,12 @@ function materializeAmpersandsForHoist(
   if (isNode(selector, N.CompoundSelector)) {
     const nextData: Selector[] = [];
 
-    for (const child of (selector as CompoundSelector).value) {
+    for (const child of (selector as CompoundSelector).get('value')) {
       const selectorChild = child as Selector;
       if (isNode(selectorChild, N.Ampersand)) {
         const resolved = materializeAmpersandsForHoist((selectorChild.getResolvedSelector() ?? parent).copy(true) as Selector, parent);
         if (isNode(resolved, N.CompoundSelector)) {
-          nextData.push(...(resolved as CompoundSelector).value as Selector[]);
+          nextData.push(...(resolved as CompoundSelector).get('value') as Selector[]);
         } else if (isNode(resolved, N.ComplexSelector | N.SelectorList)) {
           nextData.push(wrapSelectorAsGeneratedIs(resolved));
         } else {
@@ -757,8 +757,8 @@ function wrapResolvedCompoundSpan(
 
 function getLastOrderedSelector(selector: Selector): Selector {
   if (isNode(selector, N.ComplexSelector)) {
-    for (let i = selector.value.length - 1; i >= 0; i--) {
-      const child = selector.value[i] as Selector;
+    for (let i = (selector as ComplexSelector).get('value').length - 1; i >= 0; i--) {
+      const child = (selector as ComplexSelector).get('value')[i] as Selector;
       if (!isNode(child, N.Combinator)) {
         return child;
       }
@@ -1063,7 +1063,7 @@ function mergeCompoundMembersIntoSelector(
 ): Selector {
   const merged: Selector[] = [...members];
   if (isNode(selector, N.CompoundSelector)) {
-    merged.push(...(selector as CompoundSelector).value as Selector[]);
+    merged.push(...(selector as CompoundSelector).get('value') as Selector[]);
   } else {
     merged.push(selector);
   }
@@ -1135,7 +1135,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     return undefined;
   }
 
-  const pseudoIndex = target.value.findIndex((node, index) =>
+  const pseudoIndex = (target as CompoundSelector).get('value').findIndex((node, index) =>
     index >= location.startIndex!
     && index <= location.endIndex!
     && isNode(node as Selector, N.PseudoSelector)
@@ -1146,8 +1146,8 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     return undefined;
   }
 
-  const pseudoNode = target.value[pseudoIndex] as PseudoSelector;
-  const pulledMembers = target.value.filter((node, index) =>
+  const pseudoNode = (target as CompoundSelector).get('value')[pseudoIndex] as PseudoSelector;
+  const pulledMembers = (target as CompoundSelector).get('value').filter((node, index) =>
     index >= location.startIndex!
     && index <= location.endIndex!
     && index !== pseudoIndex
@@ -1158,7 +1158,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
 
   const arg = pseudoNode.arg as Selector;
   const alternatives = isNode(arg, N.SelectorList)
-    ? [...arg.value] as Selector[]
+    ? [...(arg as SelectorList).get('value')] as Selector[]
     : [arg];
 
   for (let i = 0; i < alternatives.length; i++) {
@@ -1171,7 +1171,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
       continue;
     }
 
-    const lastSelector = alternative.value[lastIndex] as Selector;
+    const lastSelector = (alternative as ComplexSelector).get('value')[lastIndex] as Selector;
     const merged = mergeCompoundMembersIntoSelector(pulledMembers, lastSelector);
     const mergedMatch = selectorMatch(find, merged, undefined, context);
     if (!mergedMatch.fullMatch) {
@@ -1181,7 +1181,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     const wrapped = wrapSelectorInIs(merged, extendWith);
     alternative.setData(lastIndex, wrapped);
 
-    const nextData = target.value.filter((_, index) => !(index >= location.startIndex! && index <= location.endIndex! && index !== pseudoIndex));
+    const nextData = (target as CompoundSelector).get('value').filter((_, index) => !(index >= location.startIndex! && index <= location.endIndex! && index !== pseudoIndex));
     target.setData(nextData as any);
     return createSuccessResult(target);
   }
@@ -1682,7 +1682,7 @@ export function tryExtendSelector(
       }
     } else {
       if (isNode(target, N.CompoundSelector)) {
-        const childIndex = target.value.findIndex(node => node === location.containingNode);
+        const childIndex = (target as CompoundSelector).get('value').findIndex(node => node === location.containingNode);
         if (childIndex !== -1) {
           const conflict = getCompoundConflictError(
             getCompoundMembersOutsideRange(

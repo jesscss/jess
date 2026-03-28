@@ -503,13 +503,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     if (isNode(sel, N.SelectorList)) {
       const list = sel as SelectorList;
-      for (const item of list.value) {
+      for (const item of list.get('value')) {
         Ruleset.ensureSelectorVisible(item);
       }
       return;
     }
     if (isNode(sel, N.ComplexSelector)) {
-      const comps = (sel as ComplexSelector).value;
+      const comps = (sel as ComplexSelector).get('value');
       for (const c of comps) {
         Ruleset.ensureSelectorVisible(c as Selector);
       }
@@ -541,12 +541,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       if (isNode(node, N.SelectorList)) {
         const list = node as SelectorList;
-        return SelectorList.create(list.value.map(item => materialize(item as Selector))).inherit(node) as Selector;
+        return SelectorList.create(list.get('value').map(item => materialize(item as Selector))).inherit(node) as Selector;
       }
       if (isNode(node, N.ComplexSelector)) {
         const complex = node as ComplexSelector;
         const parts: ComplexSelectorComponent[] = [];
-        for (const part of complex.value) {
+        for (const part of complex.get('value')) {
           if (isNode(part, N.Ampersand)) {
             const amp = part as Ampersand;
             const n = amp as unknown as Node;
@@ -555,7 +555,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               if (resolved && !(resolved instanceof Nil)) {
                 const repl = materialize(resolved as Selector);
                 if (isNode(repl, N.ComplexSelector)) {
-                  parts.push(...(repl as ComplexSelector).value as ComplexSelectorComponent[]);
+                  parts.push(...(repl as ComplexSelector).get('value') as ComplexSelectorComponent[]);
                 } else {
                   parts.push(repl as ComplexSelectorComponent);
                 }
@@ -595,7 +595,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         && (items[0] as Ampersand).isPlainAmpersand();
     }
     if (isNode(sel, N.SelectorList)) {
-      return (sel as SelectorList).value.every(
+      return (sel as SelectorList).get('value').every(
         item => isNode(item, N.Ampersand) && (item as Ampersand).isPlainAmpersand()
       );
     }
@@ -628,7 +628,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
-    for (const item of (sel as SelectorList).value) {
+    for (const item of (sel as SelectorList).get('value')) {
       if (!shouldKeep(item)) {
         continue;
       }
@@ -663,7 +663,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     const originalValues = new Set<string>();
     if (isNode(original, N.SelectorList)) {
-      for (const item of (original as SelectorList).value) {
+      for (const item of (original as SelectorList).get('value')) {
         originalValues.add(item.valueOf());
       }
     } else {

@@ -189,7 +189,7 @@ describe('Condition', () => {
         el('.tail')
       ]);
       find.keySetLibrary = context.selectorBits;
-      for (const child of find.value as any[]) {
+      for (const child of find.get('value') as any[]) {
         if ('keySetLibrary' in child) {
           child.keySetLibrary = context.selectorBits;
         }
@@ -201,7 +201,7 @@ describe('Condition', () => {
       const right = sel([el('.beta'), co('>'), el('.tail')]);
       const otherBits = new Context().selectorBits;
       right.keySetLibrary = otherBits;
-      for (const child of right.value as any[]) {
+      for (const child of right.get('value') as any[]) {
         if ('keySetLibrary' in child) {
           child.keySetLibrary = otherBits;
         }

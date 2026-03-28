@@ -356,9 +356,9 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
               && baseSelector.arg
               && isNode(baseSelector.arg, N.SelectorList)
             ) {
-              baseSelectors.push(...(baseSelector.arg as SelectorList).value.map(item => item as Selector));
+              baseSelectors.push(...(baseSelector.arg as SelectorList).get('value').map(item => item as Selector));
             } else if (isNode(baseSelector, N.SelectorList)) {
-              baseSelectors.push(...baseSelector.value.map(item => item as Selector));
+              baseSelectors.push(...(baseSelector as SelectorList).get('value').map(item => item as Selector));
             } else {
               // Handle raw comma-separated strings (e.g. from ~'apple, satsuma, banana, pear')
               // by splitting into individual items so the template distributes across all of them.
@@ -384,10 +384,10 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
           };
           if (isNode(selector, N.SelectorList)) {
             const mergedItems: Selector[] = [];
-            for (const item of selector.value) {
+            for (const item of (selector as SelectorList).get('value')) {
               const merged = mergeTemplate(item as Selector);
               if (isNode(merged, N.SelectorList)) {
-                mergedItems.push(...merged.value);
+                mergedItems.push(...(merged as SelectorList).get('value'));
               } else {
                 mergedItems.push(merged);
               }
@@ -416,7 +416,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
           };
 
           if (isNode(selector, N.SelectorList)) {
-            selector.value.forEach(doAppendValue);
+            (selector as SelectorList).get('value').forEach(doAppendValue);
           } else {
             doAppendValue(selector);
           }

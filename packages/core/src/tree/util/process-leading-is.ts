@@ -50,7 +50,7 @@ export function processLeadingIs(
   };
 
   const getImplicitAmpPrefix = (complex: ComplexSelector): string | null => {
-    for (const part of complex.value) {
+    for (const part of complex.get('value')) {
       if (isNode(part, N.Ampersand) && (part as unknown as Node).hasFlag(F_IMPLICIT_AMPERSAND)) {
         const resolved = (part as Ampersand).getResolvedSelector();
         return resolved && !(resolved instanceof Nil) ? resolved.valueOf() : null;
@@ -95,19 +95,19 @@ export function processLeadingIs(
       return item.clone(false) as Selector;
     }
     const itemComplex = item as ComplexSelector;
-    const firstVisualIndex = getFirstVisualIndex([...itemComplex.value]);
+    const firstVisualIndex = getFirstVisualIndex([...itemComplex.get('value')]);
     if (firstVisualIndex < 0) {
       return item.clone(false) as Selector;
     }
-    const firstVisual = itemComplex.value[firstVisualIndex] as Selector;
+    const firstVisual = itemComplex.get('value')[firstVisualIndex] as Selector;
     if (firstVisual.valueOf() !== implicitAmpPrefix) {
       return item.clone(false) as Selector;
     }
     let start = firstVisualIndex + 1;
-    if (start < itemComplex.value.length && isNode(itemComplex.value[start], N.Combinator)) {
+    if (start < itemComplex.get('value').length && isNode(itemComplex.get('value')[start], N.Combinator)) {
       start++;
     }
-    const tail = itemComplex.value.slice(start).map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
+    const tail = itemComplex.get('value').slice(start).map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
     if (tail.length === 1 && !isNode(tail[0], N.Combinator)) {
       return tail[0] as Selector;
     }
@@ -132,7 +132,7 @@ export function processLeadingIs(
       seen.add(key);
       out.push(item);
     };
-    for (const item of list.value) {
+    for (const item of list.get('value')) {
       const result = processLeadingIs(item, { inSelectorList: true });
       if (Array.isArray(result)) {
         for (const entry of result) {
@@ -140,7 +140,7 @@ export function processLeadingIs(
         }
         changed = true;
       } else if (isNode(result, N.SelectorList)) {
-        for (const entry of (result as SelectorList).value.map(s => s.clone(false) as Selector)) {
+        for (const entry of (result as SelectorList).get('value').map(s => s.clone(false) as Selector)) {
           pushUnique(entry);
         }
         changed = true;
@@ -174,13 +174,13 @@ export function processLeadingIs(
     // :is(SelectorList): in list context merge; else return array for caller to handle
     if (isNode(arg, N.SelectorList)) {
       if (inSelectorList) {
-        return arg.value.map(s => s.clone(false) as Selector);
+        return (arg as SelectorList).get('value').map(s => s.clone(false) as Selector);
       }
       // Top-level single :is(SelectorList): unwrap to the list (or single if one item)
-      if (arg.value.length === 1) {
-        return arg.value[0]!.clone(false) as Selector;
+      if ((arg as SelectorList).get('value').length === 1) {
+        return (arg as SelectorList).get('value')[0]!.clone(false) as Selector;
       }
-      return SelectorList.create(arg.value.map(s => s.clone(false) as Selector)).inherit(selector) as Selector;
+      return SelectorList.create((arg as SelectorList).get('value').map(s => s.clone(false) as Selector)).inherit(selector) as Selector;
     }
     // :is(not list): unwrap to the single selector
     return arg.clone(false) as Selector;
@@ -190,7 +190,7 @@ export function processLeadingIs(
   // GCD of complex + compound is complex (e.g. parent * b + &[e] → * b[e]), so we unwrap to that shape.
   if (isNode(selector, N.CompoundSelector)) {
     const compound = selector as CompoundSelector;
-    const value = compound.value;
+    const value = compound.get('value');
     if (value.length === 0) {
       return selector;
     }
@@ -209,13 +209,13 @@ export function processLeadingIs(
     if (hasEscapedQuoted(arg)) {
       return selector;
     }
-    const normalizedArg = isNode(arg, N.SelectorList) && arg.value.length === 1
-      ? (arg.value[0]! as Selector)
+    const normalizedArg = isNode(arg, N.SelectorList) && (arg as SelectorList).get('value').length === 1
+      ? ((arg as SelectorList).get('value')[0]! as Selector)
       : arg;
     if (isNode(normalizedArg, N.SelectorList)) {
       const suffix = value.slice(1).map(s => (s as Selector).clone(false));
       if (suffix.length === 0) {
-        return SelectorList.create(normalizedArg.value.map(s => s.clone(false) as Selector)).inherit(selector) as Selector;
+        return SelectorList.create((normalizedArg as SelectorList).get('value').map(s => s.clone(false) as Selector)).inherit(selector) as Selector;
       }
       // Keep :is(list).suffix (e.g. :is(.one,.two).three) as one selector.
       return selector;
@@ -229,7 +229,7 @@ export function processLeadingIs(
     // Merge suffix into last component of arg (complex or compound)
     if (isNode(normalizedArg, N.ComplexSelector)) {
       const complex = normalizedArg as ComplexSelector;
-      const comps = complex.value.slice().map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
+      const comps = complex.get('value').slice().map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
       for (let i = comps.length - 1; i >= 0; i--) {
         const c = comps[i]!;
         if (isNode(c, N.Combinator)) {
@@ -238,7 +238,7 @@ export function processLeadingIs(
         if (isNode(c, N.CompoundSelector)) {
           const compound = c as CompoundSelector;
           const newCompound = CompoundSelector.create([
-            ...compound.value.map(s => (s as Selector).clone(false)),
+            ...compound.get('value').map(s => (s as Selector).clone(false)),
             ...suffix
           ]).inherit(compound);
           comps[i] = newCompound as ComplexSelectorComponent;
@@ -253,7 +253,7 @@ export function processLeadingIs(
       return ComplexSelector.create(comps).inherit(selector) as Selector;
     }
     if (isNode(normalizedArg, N.CompoundSelector)) {
-      const newCompound = (normalizedArg as CompoundSelector).value.slice().map(s => (s as Selector).clone(false));
+      const newCompound = (normalizedArg as CompoundSelector).get('value').slice().map(s => (s as Selector).clone(false));
       newCompound.push(...suffix);
       return CompoundSelector.create(newCompound).inherit(selector) as Selector;
     }
@@ -271,7 +271,7 @@ export function processLeadingIs(
     if (implicitAmpPrefix) {
       let changed = false;
       const outComponents: ComplexSelectorComponent[] = [];
-      for (const part of complex.value) {
+      for (const part of complex.get('value')) {
         if (isNode(part, N.PseudoSelector) && part.name === ':is' && part.generated) {
           const arg = part.arg;
           if (arg && hasEscapedQuoted(arg as Node)) {
@@ -279,7 +279,7 @@ export function processLeadingIs(
             continue;
           }
           if (arg && isNode(arg, N.SelectorList)) {
-            const normalizedArgs = arg.value.map((item) => {
+            const normalizedArgs = (arg as SelectorList).get('value').map((item) => {
               const normalized = stripImplicitPrefixFromItem(item as Selector, implicitAmpPrefix);
               if (normalized.valueOf() !== (item as Selector).valueOf()) {
                 changed = true;
@@ -288,7 +288,7 @@ export function processLeadingIs(
             });
             let nonCombinatorCount = 0;
             let hasImplicitAmpPart = false;
-            for (const c of complex.value) {
+            for (const c of complex.get('value')) {
               if (!isNode(c, N.Combinator)) {
                 nonCombinatorCount++;
                 if (isNode(c, N.Ampersand) && (c as unknown as Node).hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -301,7 +301,7 @@ export function processLeadingIs(
               return SelectorList.create(normalizedArgs).inherit(selector) as Selector;
             }
             const list = SelectorList.create(normalizedArgs).inherit(arg);
-            outComponents.push(...list.value.map(s => s.clone(false) as ComplexSelectorComponent));
+            outComponents.push(...(list as SelectorList).get('value').map(s => s.clone(false) as ComplexSelectorComponent));
             changed = true;
             continue;
           }
@@ -316,7 +316,7 @@ export function processLeadingIs(
       }
     }
 
-    const value = [...complex.value];
+    const value = [...complex.get('value')];
     const firstSelIndex = getFirstVisualIndex(value);
     if (firstSelIndex < 0) {
       return selector;
@@ -324,9 +324,9 @@ export function processLeadingIs(
     const first = value[firstSelIndex];
     if (
       isNode(first, N.CompoundSelector)
-      && isNode((first as CompoundSelector).value?.[0] as any, N.PseudoSelector)
-      && ((first as CompoundSelector).value?.[0] as PseudoSelector).name === ':is'
-      && ((first as CompoundSelector).value?.[0] as PseudoSelector).generated
+      && isNode((first as CompoundSelector).get('value')?.[0] as any, N.PseudoSelector)
+      && ((first as CompoundSelector).get('value')?.[0] as PseudoSelector).name === ':is'
+      && ((first as CompoundSelector).get('value')?.[0] as PseudoSelector).generated
     ) {
       const unwrappedFirst = processLeadingIs(first as Selector, { inSelectorList: false });
       if (!Array.isArray(unwrappedFirst)) {
@@ -337,7 +337,7 @@ export function processLeadingIs(
           .slice(firstSelIndex + 1)
           .map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
         const unwrappedComps = isNode(unwrappedFirst, N.ComplexSelector)
-          ? (unwrappedFirst as ComplexSelector).value.map(c => (c as Selector).clone(false) as ComplexSelectorComponent)
+          ? (unwrappedFirst as ComplexSelector).get('value').map(c => (c as Selector).clone(false) as ComplexSelectorComponent)
           : [unwrappedFirst.clone(false) as ComplexSelectorComponent];
         return ComplexSelector.create([
           ...prefix,
@@ -360,8 +360,8 @@ export function processLeadingIs(
     if (hasEscapedQuoted(arg)) {
       return selector;
     }
-    const normalizedArg = isNode(arg, N.SelectorList) && arg.value.length === 1
-      ? (arg.value[0]! as Selector)
+    const normalizedArg = isNode(arg, N.SelectorList) && (arg as SelectorList).get('value').length === 1
+      ? ((arg as SelectorList).get('value')[0]! as Selector)
       : arg;
     if (isNode(normalizedArg, N.SelectorList)) {
       const normalizedList = processLeadingIs(normalizedArg as Selector, { inSelectorList: true });
@@ -382,10 +382,10 @@ export function processLeadingIs(
       const listArg = isNode(normalizedList, N.SelectorList)
         ? normalizedList as SelectorList
         : normalizedArg as SelectorList;
-      const expanded: Selector[] = listArg.value.map((item) => {
+      const expanded: Selector[] = listArg.get('value').map((item) => {
         if (isNode(item, N.ComplexSelector)) {
           return ComplexSelector.create([
-            ...(item as ComplexSelector).value.map(c => (c as Selector).clone(false) as ComplexSelectorComponent),
+            ...(item as ComplexSelector).get('value').map(c => (c as Selector).clone(false) as ComplexSelectorComponent),
             ...rest
           ]).inherit(selector) as Selector;
         }
@@ -406,7 +406,7 @@ export function processLeadingIs(
     if (isNode(normalizedArg, N.ComplexSelector)) {
       const argComplex = normalizedArg as ComplexSelector;
       const rest = value.slice(firstSelIndex + 1);
-      const argComps = argComplex.value.slice().map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
+      const argComps = argComplex.get('value').slice().map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
       const restComps = rest.map(c => (c as Selector).clone(false) as ComplexSelectorComponent);
       const newValue = [...argComps, ...restComps];
       return ComplexSelector.create(newValue).inherit(selector) as Selector;

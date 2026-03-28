@@ -920,7 +920,7 @@ describe('Mixin', () => {
           el('.tail')
         ]);
         find.keySetLibrary = ctx.selectorBits;
-        for (const child of find.value as any[]) {
+        for (const child of find.get('value') as any[]) {
           if ('keySetLibrary' in child) {
             child.keySetLibrary = ctx.selectorBits;
           }
@@ -931,7 +931,7 @@ describe('Mixin', () => {
         const target = sel([el('.beta'), co('>'), el('.tail')]);
         const otherBits = new Context().selectorBits;
         target.keySetLibrary = otherBits;
-        for (const child of target.value as any[]) {
+        for (const child of target.get('value') as any[]) {
           if ('keySetLibrary' in child) {
             child.keySetLibrary = otherBits;
           }

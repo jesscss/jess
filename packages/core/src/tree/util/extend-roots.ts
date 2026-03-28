@@ -114,20 +114,20 @@ function syncRulesetDerivedSelector(ruleset: Ruleset, context?: Context): void {
 function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false): Selector {
   if (isNode(selector, N.SelectorList)) {
     return SelectorList.create(
-      (selector as SelectorList).value.map(item => normalizeGeneratedIsOrder(item as Selector, insideGeneratedIs))
+      (selector as SelectorList).get('value').map(item => normalizeGeneratedIsOrder(item as Selector, insideGeneratedIs))
     ).inherit(selector) as Selector;
   }
 
   if (isNode(selector, N.ComplexSelector)) {
     return ComplexSelector.create(
-      (selector as ComplexSelector).value.map(part =>
+      (selector as ComplexSelector).get('value').map(part =>
         normalizeGeneratedIsOrder(part as Selector, insideGeneratedIs) as ComplexSelectorComponent
       )
     ).inherit(selector) as Selector;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
-    const normalizedMembers = (selector as CompoundSelector).value.map(child =>
+    const normalizedMembers = (selector as CompoundSelector).get('value').map(child =>
       normalizeGeneratedIsOrder(child as Selector, insideGeneratedIs)
     );
     if (!insideGeneratedIs) {
@@ -619,7 +619,7 @@ function markExtendedSelector(selector: Selector, context?: Context): void {
     selector.addFlag(F_VISIBLE);
   }
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.value) {
+    for (const item of (selector as SelectorList).get('value')) {
       if (context) {
         (item as Selector)._addFlag(F_EXTENDED, context);
         (item as Selector)._addFlag(F_VISIBLE, context);
@@ -713,7 +713,7 @@ function applyInstructionToRuleset(
 
   const extendWithVal = instruction.extendWith.valueOf();
   const extendWithAlreadyTopLevel = isNode(targetInfo.selector, N.SelectorList)
-    ? (targetInfo.selector.value as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
+    ? ((targetInfo.selector as SelectorList).get('value') as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
     : targetInfo.selector.valueOf() === extendWithVal;
   if (extendWithAlreadyTopLevel) {
     activateExtendedRuleset(ruleset, targetInfo.selector, context);

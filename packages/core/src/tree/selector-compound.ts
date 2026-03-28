@@ -9,7 +9,9 @@ import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { N } from './node-type.js';
-import { getField, setField } from './util/field-helpers.js';
+import { setField } from './util/field-helpers.js';
+
+export type CompoundSelectorChildData = { value: SimpleSelector[] };
 
 /**
  * @example
@@ -23,10 +25,10 @@ export interface CompoundSelector {
   type: 'CompoundSelector';
   shortType: 'compound';
 }
-export class CompoundSelector extends Selector<SimpleSelector[]> {
+export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  readonly value!: SimpleSelector[];
+  private value!: SimpleSelector[];
 
   constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -42,19 +44,11 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return this.value.length;
   }
 
-  private _getValue(context?: Context): SimpleSelector[] {
-    return context
-      ? getField<SimpleSelector[]>(this, 'value', context)
-      : this.value;
-  }
-
   override valueOf() {
     let value = this._valueOf;
     if (!value) {
-      // Convert selectors to strings
       const components = this.value;
 
-      // Find element selectors (those that don't start with .#:[)
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];
 
@@ -65,7 +59,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
             && component.name === ':is'
             && isNode(component.arg, N.CompoundSelector)
           ) {
-            processComponents((component.arg as CompoundSelector).value);
+            processComponents((component.arg as CompoundSelector).get('value'));
             continue;
           }
           value = component.valueOf();
@@ -78,8 +72,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       };
       processComponents(components);
 
-      // Element selectors must come first for valid CSS
-      // Non-element selectors maintain their original order (no sorting)
       value = [...elementSelectors, ...nonElementSelectors.sort()].join('');
       this._valueOf = value;
     }
@@ -89,7 +81,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const data = this._getValue(options.context);
+    const data = this.get('value', options.context);
     const mark = w.mark();
     for (const item of data) {
       const out = w.capture(() => item.toString(options));
@@ -102,30 +94,40 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return pipe(
       () => {
         const sel = super.evalNode(context) as CompoundSelector;
-        const value = [...sel._getValue(context)];
-        const indices = value.map((_: any, i: number) => i);
-        const maybe = serialForEach(indices, (i: number) => {
+        const value = [...sel.get('value', context)];
+        let changed = false;
+        const maybe = serialForEach(value.map((_, i) => i), (i: number) => {
           const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<SimpleSelector>).then((res) => {
-              value[i] = res as SimpleSelector;
+              if (res !== value[i]) {
+                value[i] = res as SimpleSelector;
+                changed = true;
+              }
               return undefined;
             });
           }
-          value[i] = out as SimpleSelector;
+          if ((out as SimpleSelector) !== value[i]) {
+            value[i] = out as SimpleSelector;
+            changed = true;
+          }
           return undefined;
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
-            setField(sel, 'value', value, context);
+            if (changed) {
+              setField(sel, 'value', value, context);
+            }
             return sel;
           });
         }
-        setField(sel, 'value', value, context);
+        if (changed) {
+          setField(sel, 'value', value, context);
+        }
         return sel;
       },
       (sel) => {
-        let data: SimpleSelector[] = [...sel._getValue(context)].filter(n => n && !(n instanceof Nil));
+        let data: SimpleSelector[] = sel.get('value', context).filter(n => n && !(n instanceof Nil));
         data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
           let aIsElement = !nonElementRegex.test(a.valueOf());
           let bIsElement = !nonElementRegex.test(b.valueOf());
@@ -145,23 +147,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       }
     );
   }
-
-  /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   this.data.forEach(node => node.toCSS(context, out))
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', this.location)
-  //   const length = this.data.length - 1
-  //   this.data.forEach((node, i) => {
-  //     node.toModule(context, out)
-  //     if (i < length) {
-  //       out.add(', ')
-  //     }
-  //   })
-  //   out.add('])')
-  // }
 }
 
 export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound');

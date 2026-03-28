@@ -138,7 +138,7 @@ describe('Complex selector', () => {
 
       expect(node.toTrimmedString({ context })).toBe('.patched > .live');
       expect(node.valueOf()).toBe(canonicalValue);
-      expect(node.value.map(component => component.valueOf())).toEqual(['.one', '>', '.two']);
+      expect(node.get('value').map(component => component.valueOf())).toEqual(['.one', '>', '.two']);
     });
 
     it('does not materialize a non-array value back onto the node when valueOf is called', () => {
@@ -163,7 +163,7 @@ describe('Complex selector', () => {
         el('.tail')
       ]);
       node.keySetLibrary = context.selectorBits;
-      for (const child of node.value as any[]) {
+      for (const child of node.get('value') as any[]) {
         if ('keySetLibrary' in child) {
           child.keySetLibrary = context.selectorBits;
         }

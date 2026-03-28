@@ -134,7 +134,7 @@ describe('Fast-reject in selectorMatch', () => {
       el('.tail')
     ]);
     find.keySetLibrary = context.selectorBits;
-    for (const child of find.value as any[]) {
+    for (const child of find.get('value') as any[]) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = context.selectorBits;
       }
@@ -142,7 +142,7 @@ describe('Fast-reject in selectorMatch', () => {
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = context.selectorBits;
-    for (const child of target.value as any[]) {
+    for (const child of target.get('value') as any[]) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = context.selectorBits;
       }
@@ -179,7 +179,7 @@ describe('Fast-reject in selectorMatch', () => {
       el('.tail')
     ]);
     find.keySetLibrary = contextB.selectorBits;
-    for (const child of find.value as any[]) {
+    for (const child of find.get('value') as any[]) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = contextB.selectorBits;
       }
@@ -187,7 +187,7 @@ describe('Fast-reject in selectorMatch', () => {
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = contextA.selectorBits;
-    for (const child of target.value as any[]) {
+    for (const child of target.get('value') as any[]) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = contextA.selectorBits;
       }

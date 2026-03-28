@@ -1,5 +1,6 @@
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
+import type { SelectorList } from '../selector-list.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -349,7 +350,7 @@ function addMixinToIndex(
     ) as Selector;
     let keySetToUse: SelectorKeySet | string[] | undefined;
     if (isNode(selectorToIndex, N.SelectorList)) {
-      for (const sel of selectorToIndex.value) {
+      for (const sel of (selectorToIndex as SelectorList).get('value')) {
         const selKeySet = tryGetSelectorKeySet(sel as Selector);
         if (selKeySet) {
           indexMixinSelectorStart(index, mixin, selKeySet);
@@ -926,7 +927,7 @@ export class MixinRegistry extends Registry<
       }
       if (isNode(selector, N.SelectorList)) {
         // For selector lists, check if any selector matches
-        return selector.value.some((sel) => {
+        return (selector as SelectorList).get('value').some((sel) => {
           const selKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(sel as Selector, false));
           if (selKeys.length === 0) {
             return false;
