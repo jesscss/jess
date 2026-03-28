@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
+import { setField } from './util/field-helpers.js';
 
 export type PseudoSelectorValue = {
   /**
@@ -24,6 +24,8 @@ export type PseudoSelectorValue = {
   arg?: Node;
 };
 
+export type PseudoSelectorChildData = { name: string; arg: Node | undefined };
+
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
@@ -33,11 +35,11 @@ export interface PseudoSelector {
   type: 'PseudoSelector';
   shortType: 'pseudo';
 }
-export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOptions, PseudoSelectorChildData> {
   static override childKeys = ['name', 'arg'] as const;
 
-  readonly name!: string;
-  readonly arg: Node | undefined;
+  private name!: string;
+  private arg: Node | undefined;
 
   constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -46,18 +48,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (this.arg instanceof Node) {
       this.adopt(this.arg);
     }
-  }
-
-  private _getName(context?: Context): string {
-    return context
-      ? getField<string>(this, 'name', context)
-      : this.name;
-  }
-
-  private _getArg(context?: Context): Node | undefined {
-    return context
-      ? getField<Node | undefined>(this, 'arg', context)
-      : this.arg;
   }
 
   override computeKeySets(): void {
@@ -75,10 +65,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
         if (isNode(arg, N.SelectorList)) {
-          // `:is()` with alternatives — none are individually required
           this._requiredKeySet = library.getBitset();
         } else {
-          // `:is()` with a single selector — its keys are required
           this._requiredKeySet = arg.requiredKeySet;
         }
       } else {
@@ -101,8 +89,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const context = options.context;
-    const name = this._getName(context);
-    const arg = this._getArg(context);
+    const name = this.get('name', context);
+    const arg = this.get('arg', context);
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
@@ -136,23 +124,16 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override valueOf(): string {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, arg } = this;
-      /**
-       * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
-       * That is, anything that doesn't hold a selector as a value
-       * is, by definition, not space-sensitive.
-       *
-       * @todo 1n === n, 2n + 0 === 2n
-       */
+      let name = this.name;
+      let arg = this.arg;
       valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
-
       this._valueOf = valueOf;
     }
     return valueOf;
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
-    const currentArg = this._getArg(context);
+    const currentArg = this.get('arg', context);
     const node = super.evalNode(context) as PseudoSelector;
     if (!currentArg) {
       return node;
@@ -171,34 +152,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 }
 
-// Some experiments with type narrowing
-// type SelectorValue = {
-//   value: ':is' | ':where'
-//   arg: Selector
-// }
-
-// type PseudoFunctionValue = {
-//   value: string
-//   arg: Node
-// }
-
-// type GetType<T extends Array<[string, any]>> = TupleToUnion<{
-//   [K in keyof T]: T[K][0] extends 'arg'
-//     ? T[K][1]
-//     : never
-// }>
-
-// type PseudoFunctionClass<T extends PseudoFunctionValue = PseudoFunctionValue> =
-//   Class<PseudoSelector<T>, ConstructorParameters<typeof PseudoSelector<T>>>
-
-// export const PseudoFunction = PseudoSelector as unknown as (new<const T extends Array<[string, any]>>(value: T, opts?: NodeOptions) => Omit<PseudoFunctionClass, 'arg'> & { arg: GetType<T> }) // Omit<PseudoFunctionClass, 'arg'> & GetType<T>)
-
-// const foo = new PseudoFunction([
-//   ['value', ':is'],
-//   ['arg', new BasicSelector([['value', 'div']])]
-// ])
-// foo.arg
-
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
 
 /**
@@ -207,8 +160,7 @@ export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(Pse
  * @returns A PseudoSelector with name ":is" and the provided selector as argument
  */
 export function is(arg: Selector): PseudoSelector {
-  return pseudo({
-    name: ':is',
-    arg: arg
-  });
+  const p = pseudo({ name: ':is', arg });
+  p.generated = true;
+  return p;
 }

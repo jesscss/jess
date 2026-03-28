@@ -352,11 +352,11 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
             const baseSelectors: Selector[] = [];
             if (
               isNode(baseSelector, N.PseudoSelector)
-              && baseSelector.name === ':is'
-              && baseSelector.arg
-              && isNode(baseSelector.arg, N.SelectorList)
+              && baseSelector.get('name') === ':is'
+              && baseSelector.get('arg')
+              && isNode(baseSelector.get('arg'), N.SelectorList)
             ) {
-              baseSelectors.push(...(baseSelector.arg as SelectorList).get('value').map(item => item as Selector));
+              baseSelectors.push(...(baseSelector.get('arg') as SelectorList).get('value').map(item => item as Selector));
             } else if (isNode(baseSelector, N.SelectorList)) {
               baseSelectors.push(...(baseSelector as SelectorList).get('value').map(item => item as Selector));
             } else {

@@ -82,10 +82,10 @@ function expandGeneratedIsAlternatives(selector: Selector): Selector[] {
   if (
     isNode(selector, N.PseudoSelector)
     && selector.generated === true
-    && selector.name === ':is'
-    && isNode(selector.arg, N.SelectorList)
+    && selector.get('name') === ':is'
+    && isNode(selector.get('arg'), N.SelectorList)
   ) {
-    return [...(selector.arg as SelectorList).get('value')] as Selector[];
+    return [...(selector.get('arg') as SelectorList).get('value')] as Selector[];
   }
 
   return [selector];
@@ -96,8 +96,8 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
   const seen = new Set<string>();
 
   for (const item of list.get('value')) {
-    if (isNode(item, N.PseudoSelector) && item.name === ':is' && isNode(item.arg, N.SelectorList)) {
-      for (const child of (item.arg as SelectorList).get('value')) {
+    if (isNode(item, N.PseudoSelector) && item.get('name') === ':is' && isNode(item.get('arg'), N.SelectorList)) {
+      for (const child of (item.get('arg') as SelectorList).get('value')) {
         const key = child.valueOf();
         if (!seen.has(key)) {
           seen.add(key);
@@ -109,8 +109,8 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
 
     if (isNode(item, N.CompoundSelector) && (item as CompoundSelector).get('value').length === 1) {
       const only = (item as CompoundSelector).get('value')[0]!;
-      if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
-        for (const child of (only.arg as SelectorList).get('value')) {
+      if (isNode(only, N.PseudoSelector) && only.get('name') === ':is' && isNode(only.get('arg'), N.SelectorList)) {
+        for (const child of (only.get('arg') as SelectorList).get('value')) {
           const key = child.valueOf();
           if (!seen.has(key)) {
             seen.add(key);
@@ -123,8 +123,8 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
 
     if (isNode(item, N.ComplexSelector) && (item as ComplexSelector).get('value').length === 1) {
       const only = (item as ComplexSelector).get('value')[0]!;
-      if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
-        for (const child of (only.arg as SelectorList).get('value')) {
+      if (isNode(only, N.PseudoSelector) && only.get('name') === ':is' && isNode(only.get('arg'), N.SelectorList)) {
+        for (const child of (only.get('arg') as SelectorList).get('value')) {
           const key = child.valueOf();
           if (!seen.has(key)) {
             seen.add(key);
@@ -170,8 +170,8 @@ function appendAlternative(
     return target;
   }
 
-  if (isNode(target, N.PseudoSelector) && target.name === ':is' && isNode(target.arg, N.Selector)) {
-    const arg = target.arg as Selector;
+  if (isNode(target, N.PseudoSelector) && target.get('name') === ':is' && isNode(target.get('arg'), N.Selector)) {
+    const arg = target.get('arg') as Selector;
     if (isNode(arg, N.SelectorList)) {
       normalizeSelectorListAlternatives(arg);
       for (const item of next) {
@@ -311,10 +311,9 @@ function collectCompoundConflictInfo(
     return info;
   }
 
-  if (isNode(selector, N.PseudoSelector) && isNode((selector as unknown as PseudoSelector).arg, N.Selector)) {
-    const pseudo = selector as unknown as PseudoSelector;
-    if (pseudo.name === ':is') {
-      collectCompoundConflictInfo(pseudo.arg as Selector, info);
+  if (isNode(selector, N.PseudoSelector) && isNode(selector.get('arg'), N.Selector)) {
+    if (selector.get('name') === ':is') {
+      collectCompoundConflictInfo(selector.get('arg') as Selector, info);
     }
   }
 
@@ -405,8 +404,8 @@ function stripRedundantCompoundContext(
       return SelectorList.create(next).inherit(node) as Selector;
     }
 
-    if (isNode(node, N.PseudoSelector) && node.name === ':is' && isNode(node.arg, N.Selector)) {
-      const nextArg = normalize(node.arg as Selector);
+    if (isNode(node, N.PseudoSelector) && node.get('name') === ':is' && isNode(node.get('arg'), N.Selector)) {
+      const nextArg = normalize(node.get('arg') as Selector);
       if (!nextArg) {
         return undefined;
       }
@@ -527,7 +526,7 @@ function replaceDirectSelectorChild(
   child: Selector,
   replacement: Selector
 ): boolean {
-  if (isNode(parent, N.PseudoSelector) && parent.arg === child) {
+  if (isNode(parent, N.PseudoSelector) && parent.get('arg') === child) {
     parent.setData('arg', replacement);
     return true;
   }
@@ -697,9 +696,9 @@ function materializeAmpersandsForHoist(
     return rebuilt;
   }
 
-  if (isNode(selector, N.PseudoSelector) && isNode(selector.arg, N.Selector)) {
+  if (isNode(selector, N.PseudoSelector) && isNode(selector.get('arg'), N.Selector)) {
     const copy = selector.copy(true) as PseudoSelector;
-    copy.setData('arg', materializeAmpersandsForHoist(selector.arg as Selector, parent));
+    copy.setData('arg', materializeAmpersandsForHoist(selector.get('arg') as Selector, parent));
     copy.hoistToRoot = selector.hoistToRoot;
     return copy as Selector;
   }
@@ -971,8 +970,8 @@ function getSingleMatchedDirectChild(
 function getDirectPseudoArg(
   target: Selector
 ): Selector | undefined {
-  return isNode(target, N.PseudoSelector) && isNode(target.arg, N.Selector)
-    ? target.arg as Selector
+  return isNode(target, N.PseudoSelector) && isNode(target.get('arg'), N.Selector)
+    ? target.get('arg') as Selector
     : undefined;
 }
 
@@ -980,8 +979,8 @@ function getDirectPseudoArg(
 function getDirectIsArg(
   target: Selector
 ): Selector | undefined {
-  return isNode(target, N.PseudoSelector) && target.name === ':is' && isNode(target.arg, N.Selector)
-    ? target.arg as Selector
+  return isNode(target, N.PseudoSelector) && target.get('name') === ':is' && isNode(target.get('arg'), N.Selector)
+    ? target.get('arg') as Selector
     : undefined;
 }
 
@@ -993,8 +992,8 @@ function getDirectSelectorList(
     return target;
   }
 
-  if (isNode(target, N.PseudoSelector) && isNode(target.arg, N.SelectorList)) {
-    return target.arg as Selector;
+  if (isNode(target, N.PseudoSelector) && isNode(target.get('arg'), N.SelectorList)) {
+    return target.get('arg') as Selector;
   }
 
   return undefined;
@@ -1098,10 +1097,10 @@ function tryAppendIntoNestedIsOnFullMatch(
   const targetData = (target as unknown as CompoundSelector | ComplexSelector).value as readonly Selector[];
   for (let i = 0; i < targetData.length; i++) {
     const child = targetData[i] as Selector;
-    if (!(isNode(child, N.PseudoSelector) && child.name === ':is' && isNode(child.arg, N.Selector))) {
+    if (!(isNode(child, N.PseudoSelector) && child.get('name') === ':is' && isNode(child.get('arg'), N.Selector))) {
       continue;
     }
-    const innerMatch = selectorMatch(find, child.arg as Selector, parent, context);
+    const innerMatch = selectorMatch(find, child.get('arg') as Selector, parent, context);
     if (!innerMatch.fullMatch) {
       continue;
     }
@@ -1139,8 +1138,8 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     index >= location.startIndex!
     && index <= location.endIndex!
     && isNode(node as Selector, N.PseudoSelector)
-    && (node as PseudoSelector).name === ':is'
-    && isNode((node as PseudoSelector).arg, N.Selector)
+    && (node as PseudoSelector).get('name') === ':is'
+    && isNode((node as PseudoSelector).get('arg'), N.Selector)
   );
   if (pseudoIndex === -1) {
     return undefined;
@@ -1156,7 +1155,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     return undefined;
   }
 
-  const arg = pseudoNode.arg as Selector;
+  const arg = pseudoNode.get('arg') as Selector;
   const alternatives = isNode(arg, N.SelectorList)
     ? [...(arg as SelectorList).get('value')] as Selector[]
     : [arg];
@@ -1212,7 +1211,7 @@ function createExactExtendResult(
 ): ExtendResult {
   if (
     isNode(target, N.SelectorList)
-    || (isNode(target, N.PseudoSelector) && target.name === ':is' && isNode(target.arg, N.Selector))
+    || (isNode(target, N.PseudoSelector) && target.get('name') === ':is' && isNode(target.get('arg'), N.Selector))
   ) {
     // When the match crossed a parent boundary, materialize before appending.
     if (crossedAmpersand) {

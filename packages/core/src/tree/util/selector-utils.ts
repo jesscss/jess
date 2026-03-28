@@ -57,16 +57,16 @@ export function wrapInGeneratedIs(selector: Selector): Selector {
 
   const addItem = (item: Selector): void => {
     let pseudo: PseudoSelector | undefined;
-    if (isNode(item, N.PseudoSelector) && (item as PseudoSelector).generated && item.name === ':is') {
-      pseudo = item as PseudoSelector;
+    if (isNode(item, N.PseudoSelector) && item.generated && item.get('name') === ':is') {
+      pseudo = item;
     } else if (isNode(item, N.CompoundSelector) && (item as CompoundSelector).get('value').length === 1) {
       const only = (item as CompoundSelector).get('value')[0]!;
-      if (isNode(only, N.PseudoSelector) && (only as PseudoSelector).generated && only.name === ':is') {
-        pseudo = only as PseudoSelector;
+      if (isNode(only, N.PseudoSelector) && only.generated && only.get('name') === ':is') {
+        pseudo = only;
       }
     }
-    if (pseudo && isNode(pseudo.arg, N.SelectorList)) {
-      for (const child of (pseudo.arg as SelectorList).get('value')) {
+    if (pseudo && isNode(pseudo.get('arg'), N.SelectorList)) {
+      for (const child of (pseudo.get('arg') as SelectorList).get('value')) {
         addItem(child as Selector);
       }
       return;
@@ -121,8 +121,8 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
   };
 
   for (const item of list.get('value')) {
-    if (isNode(item, N.PseudoSelector) && item.name === ':is' && isNode(item.arg, N.SelectorList)) {
-      for (const child of (item.arg as SelectorList).get('value')) {
+    if (isNode(item, N.PseudoSelector) && item.get('name') === ':is' && isNode(item.get('arg'), N.SelectorList)) {
+      for (const child of (item.get('arg') as SelectorList).get('value')) {
         pushUnique(child as Selector);
       }
       continue;
@@ -130,8 +130,8 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
 
     if (isNode(item, N.CompoundSelector) && (item as CompoundSelector).get('value').length === 1) {
       const only = (item as CompoundSelector).get('value')[0]!;
-      if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
-        for (const child of (only.arg as SelectorList).get('value')) {
+      if (isNode(only, N.PseudoSelector) && only.get('name') === ':is' && isNode(only.get('arg'), N.SelectorList)) {
+        for (const child of (only.get('arg') as SelectorList).get('value')) {
           pushUnique(child as Selector);
         }
         continue;
@@ -140,8 +140,8 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
 
     if (isNode(item, N.ComplexSelector) && (item as ComplexSelector).get('value').length === 1) {
       const only = (item as ComplexSelector).get('value')[0]!;
-      if (isNode(only, N.PseudoSelector) && only.name === ':is' && isNode(only.arg, N.SelectorList)) {
-        for (const child of (only.arg as SelectorList).get('value')) {
+      if (isNode(only, N.PseudoSelector) && only.get('name') === ':is' && isNode(only.get('arg'), N.SelectorList)) {
+        for (const child of (only.get('arg') as SelectorList).get('value')) {
           pushUnique(child as Selector);
         }
         continue;
@@ -225,7 +225,7 @@ export function selectorHasAuthoredAmpersand(selector: Selector): boolean {
   }
 
   if (isNode(selector, N.PseudoSelector)) {
-    const arg = (selector as PseudoSelector).arg;
+    const arg = selector.get('arg');
     if (arg && isNode(arg, N.Selector)) {
       return selectorHasAuthoredAmpersand(arg as Selector);
     }
@@ -279,11 +279,11 @@ function applyTemplate(resolved: Selector, template: string, inherit: Selector):
     const distributeTemplate = (sel: Selector): Selector => {
       if (
         isNode(sel, N.PseudoSelector)
-        && (sel as PseudoSelector).generated
-        && (sel as PseudoSelector).name === ':is'
-        && isNode((sel as PseudoSelector).arg, N.SelectorList)
+        && sel.generated
+        && sel.get('name') === ':is'
+        && isNode(sel.get('arg'), N.SelectorList)
       ) {
-        return distributeTemplate((sel as PseudoSelector).arg as Selector);
+        return distributeTemplate(sel.get('arg') as Selector);
       }
       if (isNode(sel, N.SelectorList)) {
         const items = (sel as SelectorList).get('value').map(item => distributeTemplate(item as Selector));
@@ -323,11 +323,11 @@ function applyTemplate(resolved: Selector, template: string, inherit: Selector):
   let target = resolved;
   if (
     isNode(target, N.PseudoSelector)
-    && (target as PseudoSelector).generated
-    && (target as PseudoSelector).name === ':is'
-    && isNode((target as PseudoSelector).arg, N.SelectorList)
+    && target.generated
+    && target.get('name') === ':is'
+    && isNode(target.get('arg'), N.SelectorList)
   ) {
-    target = (target as PseudoSelector).arg as Selector;
+    target = target.get('arg') as Selector;
   }
   if (isNode(target, N.SelectorList)) {
     (target as SelectorList).get('value').forEach(item => doAppend(item as Selector));
@@ -473,10 +473,10 @@ function resolveAuthoredAmpersands(
   }
 
   if (isNode(selector, N.PseudoSelector)) {
-    const ps = selector as PseudoSelector;
-    if (ps.arg && isNode(ps.arg, N.Selector)) {
-      const copy = ps.copy(true) as PseudoSelector;
-      copy.setData('arg', resolveAuthoredAmpersands(ps.arg as Selector, parentSelector));
+    const arg = selector.get('arg');
+    if (arg && isNode(arg, N.Selector)) {
+      const copy = selector.copy(true) as PseudoSelector;
+      copy.setData('arg', resolveAuthoredAmpersands(arg as Selector, parentSelector));
       return copy as Selector;
     }
   }

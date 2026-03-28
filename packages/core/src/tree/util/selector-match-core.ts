@@ -171,8 +171,8 @@ function safeIsDisjoint(
 function isSearchablePseudoBoundary(node: Node): node is PseudoSelector {
   return (
     isNode(node, N.PseudoSelector)
-    && node.name !== ':is'
-    && isNode(node.arg, N.Selector)
+    && node.get('name') !== ':is'
+    && isNode(node.get('arg'), N.Selector)
   );
 }
 
@@ -295,7 +295,7 @@ function buildGroupRequirements(node: Node, parent?: Selector, context?: EvalCon
     return [createRequirement()];
   }
 
-  if (isNode(node, N.PseudoSelector) && node.name !== ':is') {
+  if (isNode(node, N.PseudoSelector) && node.get('name') !== ':is') {
     const requirement = createRequirement();
     addRequirementValue(requirement, selectorValueOf(node, context));
     return [requirement];
@@ -479,7 +479,7 @@ function consumeGroupBasics(
     return states;
   }
 
-  if (isNode(node, N.BasicSelector) || (isNode(node, N.PseudoSelector) && node.name !== ':is')) {
+  if (isNode(node, N.BasicSelector) || (isNode(node, N.PseudoSelector) && node.get('name') !== ':is')) {
     const idx = group.basicSelectorIndex.get(selectorValueOf(node, context));
 
     for (let i = 0; i < states.length; i++) {
@@ -692,7 +692,7 @@ function collectMatchedIndicesForWindow(
 
   for (let i = start; i <= end; i++) {
     const node = targetCompound.value[i]!;
-    if (!isNode(node, N.BasicSelector) && !(isNode(node, N.PseudoSelector) && node.name !== ':is')) {
+    if (!isNode(node, N.BasicSelector) && !(isNode(node, N.PseudoSelector) && node.get('name') !== ':is')) {
       continue;
     }
 
@@ -955,12 +955,12 @@ function getBranchAlternatives(node: Node): readonly Selector[] | undefined {
     return (node as SelectorList).get('value');
   }
 
-  if (isNode(node, N.PseudoSelector) && node.name === ':is' && isNode(node.arg, N.Selector)) {
-    if (isNode(node.arg, N.SelectorList)) {
-      return (node.arg as SelectorList).get('value');
+  if (isNode(node, N.PseudoSelector) && node.get('name') === ':is' && isNode(node.get('arg'), N.Selector)) {
+    if (isNode(node.get('arg'), N.SelectorList)) {
+      return (node.get('arg') as SelectorList).get('value');
     }
 
-    return [node.arg as Selector];
+    return [node.get('arg') as Selector];
   }
 
   return undefined;
@@ -1307,11 +1307,11 @@ function pushNestedPseudoMatches(
 ): void {
   if (isSearchablePseudoBoundary(targetNode)) {
     if (isSearchablePseudoBoundary(find)) {
-      if (find.name !== targetNode.name) {
+      if (find.get('name') !== targetNode.get('name')) {
         return;
       }
 
-      const nested = selectorMatchInternal(find.arg as Selector, targetNode.arg as Selector, undefined, context);
+      const nested = selectorMatchInternal(find.get('arg') as Selector, targetNode.get('arg') as Selector, undefined, context);
       for (let i = 0; i < nested.matches.length; i++) {
         const match = nested.matches[i]!;
         matches.push({
@@ -1326,7 +1326,7 @@ function pushNestedPseudoMatches(
       return;
     }
 
-    const nested = selectorMatchInternal(find, targetNode.arg as Selector, undefined, context);
+    const nested = selectorMatchInternal(find, targetNode.get('arg') as Selector, undefined, context);
     for (let i = 0; i < nested.matches.length; i++) {
       const match = nested.matches[i]!;
       matches.push({
@@ -1399,18 +1399,18 @@ function selectorMatchUncached(
 
   if (
     isNode(find, N.PseudoSelector)
-    && find.name !== ':is'
-    && isNode(find.arg, N.Selector)
+    && find.get('name') !== ':is'
+    && isNode(find.get('arg'), N.Selector)
   ) {
     if (isSearchablePseudoBoundary(target)) {
-      if (find.name !== target.name) {
+      if (find.get('name') !== target.get('name')) {
         return emptySelectorMatchState();
       }
 
-      return selectorMatchInternal(find.arg as Selector, target.arg as Selector, parent, context);
+      return selectorMatchInternal(find.get('arg') as Selector, target.get('arg') as Selector, parent, context);
     }
 
-    const nested = selectorMatchInternal(find.arg as Selector, target, parent, context);
+    const nested = selectorMatchInternal(find.get('arg') as Selector, target, parent, context);
     if (!nested.partialMatch) {
       return nested;
     }
@@ -1421,7 +1421,7 @@ function selectorMatchUncached(
       matches[i] = {
         startIndex: match.startIndex,
         endIndex: match.endIndex,
-        containingNode: find.arg as Node,
+        containingNode: find.get('arg') as Node,
         exact: false,
         consumedTarget: false,
         ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)

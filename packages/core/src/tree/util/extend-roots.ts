@@ -135,8 +135,8 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
     }
     const generatedIs = normalizedMembers.filter(member =>
       isNode(member, N.PseudoSelector)
-      && (member as PseudoSelector).generated
-      && (member as PseudoSelector).name === ':is'
+      && member.generated
+      && member.get('name') === ':is'
     );
     if (generatedIs.length !== 1 || generatedIs[0] === normalizedMembers[0]) {
       return CompoundSelector.create(normalizedMembers).inherit(selector) as Selector;
@@ -150,14 +150,14 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
   }
 
   if (isNode(selector, N.PseudoSelector)) {
-    const pseudo = selector as PseudoSelector;
-    if (pseudo.arg && isNode(pseudo.arg, N.Selector)) {
-      const copy = pseudo.copy(true) as PseudoSelector;
+    const arg = selector.get('arg');
+    if (arg && isNode(arg, N.Selector)) {
+      const copy = selector.copy(true) as PseudoSelector;
       copy.setData(
         'arg',
         normalizeGeneratedIsOrder(
-          pseudo.arg as Selector,
-          insideGeneratedIs || (pseudo.generated && pseudo.name === ':is')
+          arg as Selector,
+          insideGeneratedIs || (selector.generated && selector.get('name') === ':is')
         )
       );
       return copy as Selector;
