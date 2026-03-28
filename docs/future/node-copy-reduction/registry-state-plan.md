@@ -108,25 +108,46 @@ This means:
 ### Registration flow:
 
 ```ts
-// During eval, registerNode writes to the context-scoped registry:
+// During eval, register creates the registry lazily on first add:
 rules.register('mixin', node, context)
-  → rules.getRegistry('mixin', context).add(node)
+  → rules._ensureRegistry(context)[type].add(node)
 
-// getRegistry resolves the registry from state or instance:
-rules.getRegistry(type, context?) {
+// _ensureRegistry creates the RegistrySet if it doesn't exist yet.
+// This is the ONLY path that creates registries.
+rules._ensureRegistry(context?) {
   if (context) {
-    // State-scoped: check NodeState first
     let set = context.activeState.peek(this)?._fields?.get('_registry');
     if (!set) {
       set = new RegistrySet(this);
       context.activeState.get(this).fields.set('_registry', set);
     }
-    return set[type];
+    return set;
   }
   // No context: instance property (canonical)
-  return this._getOrCreateInstanceRegistry(type);
+  this._registries ??= new RegistrySet(this);
+  return this._registries;
+}
+
+// getRegistry is read-only — returns undefined if no registry exists.
+// A find() on a missing registry returns undefined immediately.
+rules.getRegistry(type, context?) {
+  if (context) {
+    const set = context.activeState.peek(this)?._fields?.get('_registry');
+    return set?.[type];  // undefined if never registered
+  }
+  return this._registries?.[type];  // undefined if never registered
 }
 ```
+
+### Laziness invariants:
+
+1. **Registries are created lazily** — only on first `register()`, never on
+   `find()`/`getRegistry()`. If `getRegistry` returns undefined, there are no
+   entries. No need to search.
+
+2. **Items are indexed lazily** — `add()` puts items in `pendingItems`. The
+   index is only built on the first `find()` call (`indexPendingItems()`).
+   If we never search a registry, we never pay for indexing.
 
 ### Why this is clean:
 
