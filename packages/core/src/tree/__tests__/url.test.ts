@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { any, quoted, url, Url } from '../index.js';
+import { any, quoted, url } from '../index.js';
 import { Context } from '../../context.js';
 
 describe('Url', () => {
@@ -33,7 +33,7 @@ describe('Url', () => {
     expect(node.valueOf()).toBe('a.png');
     expect(evald.valueOf()).toBe('a.png');
     expect(node.pathValue(ctx)).toBe('b.png');
-    expect((evald as Url).pathValue(ctx)).toBe('b.png');
+    expect(evald.pathValue(ctx)).toBe('b.png');
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
   });
 

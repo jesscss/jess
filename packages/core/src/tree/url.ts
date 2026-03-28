@@ -16,6 +16,7 @@ export type UrlChildData = { value: Quoted | Any };
 export interface Url {
   type: 'Url';
   shortType: 'url';
+  eval(context: Context): MaybePromise<Url>;
 }
 
 export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
@@ -43,12 +44,10 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   }
 
   pathValue(context?: Context): string {
-    let value: Node | string = this.value;
-    if (context) {
-      value = this.get('value', context);
-    }
+    let value: string | Quoted | Any = this.get('value', context);
+
     if (isNode(value, N.Quoted)) {
-      value = (value as any).value as Node | string;
+      value = value.value as string | Quoted | Any;
       if (isNode(value)) {
         return String((value as any).value);
       }
