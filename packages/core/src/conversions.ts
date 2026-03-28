@@ -258,7 +258,10 @@ export const splitSequence = (): PreprocessParams => {
 
       // Check if this is the last item and it's an Operation (likely a slash)
       if (i === seqItems.length - 1 && item.type === 'Operation') {
-        const { left, operator: op, right } = item as Operation;
+        const opNode = item as Operation;
+        const left = opNode.get('left');
+        const op = opNode.get('operator');
+        const right = opNode.get('right');
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)

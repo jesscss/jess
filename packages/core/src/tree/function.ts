@@ -37,17 +37,23 @@ export type FuncOptions = {
   returnName?: string;
 };
 
-export interface Func {
+export type FuncChildData = {
+  name: FuncValue['name'];
+  params: FuncValue['params'];
+  body: Node;
+};
+
+export interface Func extends Node<FuncValue, FuncOptions, FuncChildData> {
   type: 'Func';
   shortType: 'fn';
 }
 
-export class Func extends Node<FuncValue, FuncOptions> {
+export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
   static override childKeys = ['name', 'params', 'body'] as const;
 
-  name: FuncValue['name'];
-  params: FuncValue['params'];
-  body!: Node;
+  private name: FuncValue['name'];
+  private params: FuncValue['params'];
+  private body!: Node;
 
   constructor(value: FuncValue, options?: FuncOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -71,29 +77,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
   }
 
   getNameKey(context?: Context): string | undefined {
-    const name = this._getName(context);
+    const name = this.get('name', context);
     if (!name) {
       return undefined;
     }
     return String(name.valueOf());
-  }
-
-  private _getName(context?: Context): FuncValue['name'] {
-    return context
-      ? getField<FuncValue['name']>(this, 'name', context)
-      : this.name;
-  }
-
-  private _getParams(context?: Context): FuncValue['params'] {
-    return context
-      ? getField<FuncValue['params']>(this, 'params', context)
-      : this.params;
-  }
-
-  private _getBody(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'body', context)
-      : this.body;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -101,9 +89,9 @@ export class Func extends Node<FuncValue, FuncOptions> {
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
-    const name = this._getName(context);
-    const params = this._getParams(context);
-    const body = this._getBody(context);
+    const name = this.get('name', context);
+    const params = this.get('params', context);
+    const body = this.get('body', context);
 
     w.add('$function', this);
     w.add(' ');
@@ -129,11 +117,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
    */
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this.options?.returnName ?? 'return';
-    const name = this._getName(context);
-    const params = this._getParams(context);
+    const name = this.get('name', context);
+    const params = this.get('params', context);
 
     // Normalize body to a Rules node so it can be evaluated/scoped consistently.
-    const bodyNode = this._getBody(context);
+    const bodyNode = this.get('body', context);
     const detachedParams = params && !params.frozen
       ? freezeChildren(params) as List<Node>
       : params;

@@ -160,7 +160,7 @@ describe('Rules extend', () => {
       context.extendRoots.registerRuleset(root, headerNav);
       context.extendRoots.registerRuleset(root, footerNav);
       context.extends = [[
-        miss.target,
+        miss.get('target'),
         footerNav.getEffectiveSelector(false, context),
         false,
         root,
@@ -204,12 +204,12 @@ describe('Rules extend', () => {
 
       const cloned = node.clone(false, undefined, context);
 
-      expect(cloned.target.valueOf()).toBe('.other');
-      expect(cloned.namespace).toBe('patched');
-      expect(cloned.flag).toBe(ExtendFlag.All);
-      expect(node.target.valueOf()).toBe('.base');
-      expect(node.namespace).toBe('base');
-      expect(node.flag).toBe(ExtendFlag.Exact);
+      expect(cloned.get('target').valueOf()).toBe('.other');
+      expect(cloned.get('namespace')).toBe('patched');
+      expect(cloned.get('flag')).toBe(ExtendFlag.All);
+      expect(node.get('target').valueOf()).toBe('.base');
+      expect(node.get('namespace')).toBe('base');
+      expect(node.get('flag')).toBe(ExtendFlag.Exact);
     });
 
     it('registers a state-patched extend target without mutating the canonical extend node', async () => {
@@ -226,7 +226,7 @@ describe('Rules extend', () => {
 
       expect(context.extends).toHaveLength(1);
       expect(context.extends[0]![0].valueOf()).toBe('.other');
-      expect(extension.target.valueOf()).toBe('.base');
+      expect(extension.get('target').valueOf()).toBe('.base');
     });
 
     it('records a state-patched extend namespace in the instruction tuple without mutating the canonical node', async () => {
@@ -244,7 +244,7 @@ describe('Rules extend', () => {
 
       expect(context.extends).toHaveLength(1);
       expect(context.extends[0]![7]).toBe('patched');
-      expect(extension.namespace).toBe('base');
+      expect(extension.get('namespace')).toBe('base');
     });
 
     it('valueOf(context) reflects a state-patched target without mutating the canonical node', () => {
@@ -256,7 +256,7 @@ describe('Rules extend', () => {
 
       expect(extension.valueOf(context)).toBe('$extend .other');
       expect(extension.valueOf()).toBe('$extend .base');
-      expect(extension.target.valueOf()).toBe('.base');
+      expect(extension.get('target').valueOf()).toBe('.base');
     });
 
     it('treats a state-patched selector as explicit during extend registration', async () => {
@@ -278,7 +278,7 @@ describe('Rules extend', () => {
 
       expect(context.extends).toHaveLength(1);
       expect(context.extends[0]![1].valueOf()).toBe('.patched');
-      expect(extension.selector).toBeUndefined();
+      expect(extension.get('selector')).toBeUndefined();
     });
   });
 
@@ -928,7 +928,7 @@ describe('Rules extend', () => {
       context.extendRoots.registerRuleset(ownerRoot, child);
 
       context.extends = [[
-        extension.target,
+        extension.get('target'),
         child.getEffectiveSelector(false, context),
         false,
         ownerRoot,
@@ -980,7 +980,7 @@ describe('Rules extend', () => {
       context.extendRoots.registerRuleset(ownerRoot, child);
 
       context.extends = [[
-        extension.target,
+        extension.get('target'),
         child.getEffectiveSelector(false, context),
         false,
         ownerRoot,

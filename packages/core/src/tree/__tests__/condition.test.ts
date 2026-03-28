@@ -133,10 +133,10 @@ describe('Condition', () => {
 
       expect(node.toTrimmedString({ context })).toBe('not (false or true)');
       expect(node.toTrimmedString()).toBe('(true = false)');
-      expect(node.left.toTrimmedString()).toBe('true');
-      expect(node.operator).toBe('=');
-      expect(node.right?.toTrimmedString()).toBe('false');
-      expect(node.negate).toBe(false);
+      expect(node.get('left').toTrimmedString()).toBe('true');
+      expect(node.get('operator')).toBe('=');
+      expect(node.get('right')?.toTrimmedString()).toBe('false');
+      expect(node.get('negate')).toBe(false);
     });
 
     it('evaluates patched operands and operator from the active eval state without mutating the canonical node', async () => {
@@ -154,9 +154,9 @@ describe('Condition', () => {
 
       expect(evald.render(context)).toBe('true');
       expect(`${await node.eval(new Context())}`).toBe('false');
-      expect(node.left.toTrimmedString()).toBe('true');
-      expect(node.operator).toBe('and');
-      expect(node.right?.toTrimmedString()).toBe('false');
+      expect(node.get('left').toTrimmedString()).toBe('true');
+      expect(node.get('operator')).toBe('and');
+      expect(node.get('right')?.toTrimmedString()).toBe('false');
     });
 
     it('evaluates patched negate from the active eval state without mutating the canonical node', async () => {
@@ -170,7 +170,7 @@ describe('Condition', () => {
 
       expect(evald.render(context)).toBe('false');
       expect(`${await node.eval(new Context())}`).toBe('true');
-      expect(node.negate).toBe(false);
+      expect(node.get('negate')).toBe(false);
     });
 
     it('uses compare(context) for selector guard comparisons when an eval state is active', async () => {

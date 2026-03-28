@@ -127,7 +127,13 @@ export type StyleImportValue = {
   withType?: 'with' | 'set';
 };
 
-export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+export type StyleImportChildData = {
+  path: Quoted | Url;
+  withNode: Reference | Collection | undefined;
+  withType: 'with' | 'set' | undefined;
+};
+
+export interface StyleImport extends Node<StyleImportValue, StyleImportOptions, StyleImportChildData> {
   type: 'StyleImport';
   shortType: 'style';
   eval(context: Context): MaybePromise<Rules>;
@@ -141,12 +147,12 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  *
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
-export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+export class StyleImport extends Node<StyleImportValue, StyleImportOptions, StyleImportChildData> {
   static override childKeys = ['path', 'withNode'] as const;
 
-  readonly path!: Quoted | Url;
-  readonly withNode: Reference | Collection | undefined;
-  withType: 'with' | 'set' | undefined;
+  private readonly path!: Quoted | Url;
+  private readonly withNode: Reference | Collection | undefined;
+  private withType: 'with' | 'set' | undefined;
 
   override clone(deep?: boolean): this {
     const options = (this as any)._meta?.options;
@@ -178,32 +184,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
-  private _getPath(context?: Context): Quoted | Url {
-    if (!context) {
-      return this.path;
-    }
-    return getField<Quoted | Url>(this, 'path', context);
-  }
-
-  private _getWithNode(context?: Context): Reference | Collection | undefined {
-    if (!context) {
-      return this.withNode;
-    }
-    return getField<Reference | Collection | undefined>(this, 'withNode', context);
-  }
-
-  private _getWithType(context?: Context): 'with' | 'set' | undefined {
-    if (!context) {
-      return this.withType;
-    }
-    return getField<'with' | 'set' | undefined>(this, 'withType', context);
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const path = this._getPath(options.context);
+    const path = this.get('path', options.context);
     const { type, namespace, importOptions } = this.options;
 
     if (type === 'compose') {
@@ -301,7 +286,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     /** @removal-target — node-copy-reduction: materialize/clone wrappers.
      * Import/compose results should carry their EvalState. No wrapper
      * cloning needed — position patches provide isolation per import. */
-    const materializeConfiguredComposeChildren = type === 'compose' && this._getWithNode(context) != null;
+    const materializeConfiguredComposeChildren = type === 'compose' && this.get('withNode', context) != null;
     // Create a lightweight output per import — canonical children, no materialization.
     // Same pattern as mixin output (finalizeMixinInvocationOutput).
     let out: Rules;
@@ -359,9 +344,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const path = node._getPath(context);
-    const withNode = node._getWithNode(context);
-    const withType = node._getWithType(context);
+    const path = node.get('path', context);
+    const withNode = node.get('withNode', context);
+    const withType = node.get('withType', context);
     const withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
     const { options } = node;
     options.importOptions ??= {};

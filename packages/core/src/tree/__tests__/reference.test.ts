@@ -190,7 +190,7 @@ describe('reference', () => {
 
       const evald = await lookup.eval(context);
       expect(evald.render(context)).toBe('blue');
-      expect(lookup.key).toBe('foo');
+      expect(lookup.get('key')).toBe('foo');
     });
 
     it('evaluates with a state-patched target reference', async () => {
@@ -218,15 +218,16 @@ describe('reference', () => {
       setField(
         lookup,
         'target',
-        ref({ key: '.theme-b' }, { type: 'mixin-ruleset' })
-      , context);
+        ref({ key: '.theme-b' }, { type: 'mixin-ruleset' }),
+        context
+      );
       const preEvald = await scope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
 
       const evald = await lookup.eval(context);
       expect(evald.render(context)).toBe('blue');
-      expect(lookup.target).toBe(target);
+      expect(lookup.get('target')).toBe(target);
     });
 
     it('should resolve a variable reference with a keyword key inside an attribute selector', async () => {

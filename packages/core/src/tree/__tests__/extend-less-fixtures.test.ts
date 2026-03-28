@@ -629,6 +629,10 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
     const css = evald.render(context);
+    /**
+     * @todo - this is wrong / inefficient and a regression.
+     * :is(.bar, .baz) should be grouped
+     */
     expect(css.trim()).toBeString(`
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {

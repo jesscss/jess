@@ -165,7 +165,7 @@ describe('Control Nodes', () => {
   it('creates For with single var binding', () => {
     const singleVar = makePattern(['value'], 'single') as VarDeclaration;
     const forNode = new For({ vars: singleVar, iterable: list([new Any('a')]), rules: rules([]) });
-    expect(forNode.vars).toBe(singleVar);
+    expect(forNode.get('vars')).toBe(singleVar);
   });
 
   it('forces public rulesVisibility for $if and $for rules', () => {
@@ -193,14 +193,14 @@ describe('Control Nodes', () => {
         }
       })
     });
-    expect(ifNode.bodies[0]!.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.bodies[0]!.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.bodies[0]!.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.bodies[0]!.options.rulesVisibility.Mixin).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.get('bodies')[0]!.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.get('bodies')[0]!.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.get('bodies')[0]!.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.get('bodies')[0]!.options.rulesVisibility.Mixin).toBe('public');
+    expect(forNode.get('rules').options.rulesVisibility.Declaration).toBe('public');
+    expect(forNode.get('rules').options.rulesVisibility.Ruleset).toBe('public');
+    expect(forNode.get('rules').options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(forNode.get('rules').options.rulesVisibility.Mixin).toBe('public');
   });
 
   it('evaluates and renders $for with a state-patched iterable without mutating the canonical node', async () => {
@@ -218,7 +218,7 @@ describe('Control Nodes', () => {
     expect(evald.render(context)).toContain('item: patched');
     expect(loop.toTrimmedString({ context })).toContain('patched');
     expect(loop.toTrimmedString()).toContain('a');
-    expect(loop.iterable.toTrimmedString()).toBe('a');
+    expect(loop.get('iterable').toTrimmedString()).toBe('a');
   });
 
   it('renders $if with state-patched conditions and bodies without mutating the canonical node', () => {
@@ -236,8 +236,8 @@ describe('Control Nodes', () => {
     expect(ifNode.toTrimmedString({ context })).toContain('color: blue;');
     expect(ifNode.toTrimmedString()).toContain('$if (true)');
     expect(ifNode.toTrimmedString()).toContain('color: red;');
-    expect(ifNode.conditions[0]!.toTrimmedString()).toBe('true');
-    expect(ifNode.bodies[0]!.toTrimmedString()).toContain('color: red;');
+    expect(ifNode.get('conditions')[0]!.toTrimmedString()).toBe('true');
+    expect(ifNode.get('bodies')[0]!.toTrimmedString()).toContain('color: red;');
   });
 
   it('renders $while with state-patched condition and rules without mutating the canonical node', () => {
@@ -255,8 +255,8 @@ describe('Control Nodes', () => {
     expect(whileNode.toTrimmedString({ context })).toContain('color: blue;');
     expect(whileNode.toTrimmedString()).toContain('$while (true)');
     expect(whileNode.toTrimmedString()).toContain('color: red;');
-    expect(whileNode.condition.toTrimmedString()).toBe('true');
-    expect(whileNode.rules.toTrimmedString()).toContain('color: red;');
+    expect(whileNode.get('condition').toTrimmedString()).toBe('true');
+    expect(whileNode.get('rules').toTrimmedString()).toContain('color: red;');
   });
 
   it('renders $each with state-patched header and rules without mutating the canonical node', () => {
@@ -275,8 +275,8 @@ describe('Control Nodes', () => {
     expect(eachNode.toTrimmedString({ context })).toContain('color: blue;');
     expect(eachNode.toTrimmedString()).toContain('$each $(a)');
     expect(eachNode.toTrimmedString()).toContain('color: red;');
-    expect(eachNode.header.toTrimmedString()).toBe('$(a)');
-    expect(eachNode.rules.toTrimmedString()).toContain('color: red;');
+    expect(eachNode.get('header').toTrimmedString()).toBe('$(a)');
+    expect(eachNode.get('rules').toTrimmedString()).toContain('color: red;');
   });
 
   it('keeps merged $for declaration values state-local during coalescing', async () => {
@@ -288,7 +288,7 @@ describe('Control Nodes', () => {
       )
     ]);
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
-    const templateDecl = loop.rules.at(0, context) as ReturnType<typeof decl>;
+    const templateDecl = loop.get('rules').at(0, context) as ReturnType<typeof decl>;
     const root = rules([loop]);
 
     const evald = await root.eval(context);
@@ -303,7 +303,7 @@ describe('Control Nodes', () => {
       decl({ name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
-    const templateDecl = loop.rules.at(0, context) as ReturnType<typeof decl>;
+    const templateDecl = loop.get('rules').at(0, context) as ReturnType<typeof decl>;
     const root = rules([loop]);
 
     setField(templateDecl, 'options', {
@@ -358,20 +358,20 @@ describe('Control Nodes', () => {
       loop
     ]);
 
-    setField(loop.rules, 'options', {
-      ...loop.rules.options,
+    setField(loop.get('rules'), 'options', {
+      ...loop.get('rules').options,
       rulesVisibility: {
-        ...loop.rules.options.rulesVisibility,
+        ...loop.get('rules').options.rulesVisibility,
         VarDeclaration: 'private'
       }
     }, context);
 
-    const clonedLoopRules = loop.rules.clone(false, undefined, context);
+    const clonedLoopRules = loop.get('rules').clone(false, undefined, context);
     const evald = await root.eval(context);
 
     expect(clonedLoopRules.options.rulesVisibility.VarDeclaration).toBe('private');
     expect(evald.toTrimmedString({ context })).toContain('.item {\n  color: inner;');
-    expect(loop.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(loop.get('rules').options.rulesVisibility.VarDeclaration).toBe('public');
   });
 
   it('reads rules-iterable declaration names and values through the eval state', async () => {
@@ -407,7 +407,7 @@ describe('Control Nodes', () => {
       name: 'makeDecl',
       fn: () => decl({ name: 'item', value: new Any('ok') })
     }));
-    const loopRules = (root.at(0, context) as For).rules;
+    const loopRules = (root.at(0, context) as For).get('rules');
     const originalLoopChild = loopRules.at(0, context);
 
     const evald = await root.eval(context);
@@ -437,7 +437,7 @@ describe('Control Nodes', () => {
       ])
     }));
 
-    const loopRules = (root.at(0, context) as For).rules;
+    const loopRules = (root.at(0, context) as For).get('rules');
     const originalLoopChild = loopRules.at(0, context);
 
     const evald = await root.eval(context);

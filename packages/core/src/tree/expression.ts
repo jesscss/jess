@@ -2,7 +2,9 @@ import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getDependency, getField, setDependency, setParent } from './util/field-helpers.js';
+import { getDependency, setDependency, setParent } from './util/field-helpers.js';
+
+export type ExpressionChildData = { value: Node };
 
 /**
  * An expression is a node that returns a value.
@@ -11,19 +13,19 @@ import { getDependency, getField, setDependency, setParent } from './util/field-
  * When parsing Less/Sass, everything containing an operation is
  * considered an expression.
  */
-export interface Expression extends Node<Node> {
+export interface Expression extends Node<Node, NodeOptions, ExpressionChildData> {
   type: 'Expression';
   shortType: 'expr';
   eval(context: Context): MaybePromise<Node>;
 }
 
-export class Expression extends Node<Node> {
+export class Expression extends Node<Node, NodeOptions, ExpressionChildData> {
   static override childKeys = ['value'] as const;
 
-  readonly value!: Node;
+  private readonly value!: Node;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const value = this._getValue(ctx);
+    const value = this.get('value', ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const clonedValue = deep ? cloneChild(value) : value;
     const options = (this as any)._meta?.options;
@@ -51,14 +53,8 @@ export class Expression extends Node<Node> {
     this.addFlag(F_NON_STATIC);
   }
 
-  private _getValue(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'value', context)
-      : this.value;
-  }
-
   override evalNode(context: Context): MaybePromise<Node> {
-    const value = this._getValue(context);
+    const value = this.get('value', context);
     const out = value.eval(context);
     const applyDependency = (result: Node): Node => {
       const dependency = getDependency(result, context);
@@ -81,7 +77,7 @@ export class Expression extends Node<Node> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this._getValue(options.context);
+    const value = this.get('value', options.context);
     w.add('$', this);
     w.add('(');
     value.toString(options);

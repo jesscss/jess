@@ -488,7 +488,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
             return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {
-            throw new ReferenceError(`No matching mixins found for '${name.key.valueOf()}'`);
+            throw new ReferenceError(`No matching mixins found for '${name.get('key').valueOf()}'`);
           }
           throw e;
         }
@@ -501,7 +501,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
         setField(newCall, 'name', isNode(name, N.Reference) && name.options.fallbackValue === true
-          ? String(name.key)
+          ? String(name.get('key'))
           : String(n.valueOf()), context);
         setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
         return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));

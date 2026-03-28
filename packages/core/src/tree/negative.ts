@@ -3,21 +3,22 @@ import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
-import { getField } from './util/field-helpers.js';
+
+export type NegativeChildData = { value: Node };
 
 /**
  * The negative sign before a node
  */
-export interface Negative extends Node<Node> {
+export interface Negative extends Node<Node, NodeOptions, NegativeChildData> {
   type: 'Negative';
   shortType: 'negative';
   eval(context: Context): MaybePromise<Node>;
 }
 
-export class Negative extends Node<Node> {
+export class Negative extends Node<Node, NodeOptions, NegativeChildData> {
   static override childKeys = ['value'] as const;
 
-  value!: Node;
+  private value!: Node;
 
   constructor(value: Node, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -29,17 +30,11 @@ export class Negative extends Node<Node> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  private _getValue(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'value', context)
-      : this.value;
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this._getValue(options.context);
+    const value = this.get('value', options.context);
 
     w.add('-', this);
     value.toString(options);
@@ -49,7 +44,7 @@ export class Negative extends Node<Node> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     return pipe(
-      () => this._getValue(context).eval(context),
+      () => this.get('value', context).eval(context),
       tryStep((value: Node) => {
         if (!value.operate) {
           throw new TypeError(`Cannot operate on ${value.type}`);

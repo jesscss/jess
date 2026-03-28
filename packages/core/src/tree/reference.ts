@@ -148,6 +148,11 @@ function getStateSourceRulesParent(node: Node, context: Context): Rules | undefi
   return sourceParent ? getStateRulesParent(sourceParent, context) : undefined;
 }
 
+export type ReferenceChildData = {
+  target: Reference | Call | undefined;
+  key: ReferenceValue['key'];
+};
+
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
@@ -156,11 +161,11 @@ export interface Reference {
   type: 'Reference';
   shortType: 'ref';
 }
-export class Reference extends Node<ReferenceValue, ReferenceOptions> {
+export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceChildData> {
   static override childKeys = ['target', 'key'] as const;
 
-  target: Reference | Call | undefined;
-  key!: ReferenceValue['key'];
+  private target: Reference | Call | undefined;
+  private key!: ReferenceValue['key'];
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     if (typeof value === 'string') {
@@ -183,18 +188,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return '';
   }
 
-  private _getTarget(context?: Context): Reference | Call | undefined {
-    return context
-      ? getField<Reference | Call | undefined>(this, 'target', context)
-      : this.target;
-  }
-
-  private _getKey(context?: Context): ReferenceValue['key'] {
-    return context
-      ? getField<ReferenceValue['key']>(this, 'key', context)
-      : this.key;
-  }
-
   /**
    * @note - A reference doesn't render `$` (unless it has a target);
    *         that's managed by the parent expression.
@@ -205,8 +198,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue, role } = this.options;
     const context = options.context;
-    const target = this._getTarget(context);
-    const key = this._getKey(context);
+    const target = this.get('target', context);
+    const key = this.get('key', context);
     const emitKey = (k: any) => {
       if (typeof k === 'string' || typeof k === 'number') {
         w.add(String(k), this);
@@ -307,8 +300,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
-    let target = this._getTarget(context);
-    let key = this._getKey(context);
+    let target = this.get('target', context);
+    let key = this.get('key', context);
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();

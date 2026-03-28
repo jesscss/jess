@@ -22,7 +22,7 @@ export class QueryCondition extends Sequence {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let value = this._getValue(options.context);
+    let value = this.get('value', options.context);
     let length = value.length;
 
     if (length === 0) {

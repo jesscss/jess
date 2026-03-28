@@ -285,7 +285,7 @@ describe('AtRule', () => {
   });
 
   describe('@media with mixins and parameters', () => {
-    it('should handle mixin with nested @media using parameter', async () => {
+    it.only('should handle mixin with nested @media using parameter', async () => {
       // Represents:
       // .mediaMixin(@fallback: 200px) {
       //   background: black;

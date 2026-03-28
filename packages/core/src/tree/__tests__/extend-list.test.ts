@@ -22,6 +22,6 @@ describe('ExtendList', () => {
 
     expect(node.toTrimmedString({ context })).toBe('$extend .patched;;');
     expect(node.toTrimmedString()).toBe('$extend .base !exact;;');
-    expect(node.value[0]?.target.valueOf()).toBe('.base');
+    expect(node.get('value')[0]?.get('target').valueOf()).toBe('.base');
   });
 });

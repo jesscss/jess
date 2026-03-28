@@ -31,7 +31,7 @@ describe('Expression', () => {
     expect(getField(rule, 'value', context)).toBe(shared);
     expect(rule.toTrimmedString({ context })).toBe('$(bar)');
     // Canonical value unchanged
-    expect(rule.value).not.toBe(shared);
+    expect(rule.get('value')).not.toBe(shared);
     // Canonical parent unchanged
     expect(shared.parent).toBe(source);
   });

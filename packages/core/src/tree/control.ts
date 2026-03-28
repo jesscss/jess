@@ -125,7 +125,7 @@ function setControlDeclarationValue(node: Node, value: Node, context: Context): 
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.value.eval(context), context);
+    yield* resolveEntries(await input.get('value', context).eval(context), context);
     return;
   }
   if (isNode(input, N.Call)) {
@@ -137,20 +137,26 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     yield* resolveEntries(evald, context);
     return;
   }
-  if (isNode(input, N.Paren) && input.value instanceof Node) {
-    yield* resolveEntries(input.value, context);
-    return;
-  }
-  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.value)) {
-    for (let key = 0; key < input.value.length; key++) {
-      const value = input.value[key]!;
-      yield [value, key];
+  if (isNode(input, N.Paren)) {
+    const parenValue = input.get('value', context);
+    if (parenValue instanceof Node) {
+      yield* resolveEntries(parenValue, context);
+      return;
     }
-    return;
+  }
+  if ((isNode(input, N.Sequence) || isNode(input, N.List))) {
+    const items = input.get('value', context);
+    if (Array.isArray(items)) {
+      for (let key = 0; key < items.length; key++) {
+        const value = items[key]!;
+        yield [value, key];
+      }
+      return;
+    }
   }
   if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
-    const rules = isNode(input, N.Rules)
-      ? getControlField(input, 'value', context, input.value)
+    const rules: readonly Node[] = isNode(input, N.Rules)
+      ? getControlField(input, 'value', context, input.get('value', context) as Node[])
       : isNode(input, N.Ruleset)
         ? (input.rules ? getControlField(input.rules, 'value', context, input.rules.value) : [])
         : ((input as Mixin).get('rules') ? getControlField((input as Mixin).get('rules'), 'value', context, (input as Mixin).get('rules').value) : []);
@@ -183,24 +189,30 @@ export type IfValue = {
   elseBranch?: Rules;
 };
 
+export type IfChildData = {
+  conditions: Node[];
+  bodies: Rules[];
+  elseBranch: Rules | undefined;
+};
+
 /**
  * A control-flow block that serializes as:
  * - `$if (...) { ... }`
  * - `$else if (...) { ... }`
  * - `$else { ... }`
  *
- * This is language-agnostic: it’s the canonical Jess control node.
+ * This is language-agnostic: it's the canonical Jess control node.
  */
-export interface If extends Node<IfValue> {
+export interface If extends Node<IfValue, any, IfChildData> {
   type: 'If';
   shortType: 'if';
 }
-export class If extends Node<IfValue> {
+export class If extends Node<IfValue, any, IfChildData> {
   static override childKeys = ['conditions', 'bodies', 'elseBranch'] as const;
 
-  readonly conditions!: Node[];
-  readonly bodies!: Rules[];
-  readonly elseBranch: Rules | undefined;
+  private readonly conditions!: Node[];
+  private readonly bodies!: Rules[];
+  private readonly elseBranch: Rules | undefined;
 
   constructor(value: IfValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -229,27 +241,15 @@ export class If extends Node<IfValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  private _getConditions(context?: Context): Node[] {
-    return getControlField(this, 'conditions', context, this.conditions);
-  }
-
-  private _getBodies(context?: Context): Rules[] {
-    return getControlField(this, 'bodies', context, this.bodies);
-  }
-
-  private _getElseBranch(context?: Context): Rules | undefined {
-    return getControlField(this, 'elseBranch', context, this.elseBranch);
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
 
-    const conditions = this._getConditions(context);
-    const bodies = this._getBodies(context);
-    const elseBranch = this._getElseBranch(context);
+    const conditions = this.get('conditions', context);
+    const bodies = this.get('bodies', context);
+    const elseBranch = this.get('elseBranch', context);
     w.add('$if', this);
     w.add(' (');
     conditions[0]?.toString(options);
@@ -272,19 +272,25 @@ export class If extends Node<IfValue> {
   }
 }
 
-export interface For extends Node<ForValue> {
+export type ForChildData = {
+  vars: VarDeclaration | VarDeclaration[];
+  iterable: Node;
+  rules: Rules;
+};
+
+export interface For extends Node<ForValue, any, ForChildData> {
   type: 'For';
   shortType: 'for';
 }
 /**
  * `$for <header> { ... }`
  */
-export class For extends Node<ForValue> {
+export class For extends Node<ForValue, any, ForChildData> {
   static override childKeys = ['vars', 'iterable', 'rules'] as const;
 
-  readonly vars!: VarDeclaration | VarDeclaration[];
-  readonly iterable!: Node;
-  readonly rules!: Rules;
+  private readonly vars!: VarDeclaration | VarDeclaration[];
+  private readonly iterable!: Node;
+  private readonly rules!: Rules;
 
   constructor(value: ForValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -321,22 +327,10 @@ export class For extends Node<ForValue> {
     return this;
   }
 
-  private _getVars(context?: Context): VarDeclaration | VarDeclaration[] {
-    return getControlField(this, 'vars', context, this.vars);
-  }
-
-  private _getIterable(context?: Context): Node {
-    return getControlField(this, 'iterable', context, this.iterable);
-  }
-
-  private _getRules(context?: Context): Rules {
-    return getControlField(this, 'rules', context, this.rules);
-  }
-
   override evalNode(context: Context): MaybePromise<Node> {
-    const vars = this._getVars(context);
-    const iterable = this._getIterable(context);
-    const loopTemplate = this._getRules(context);
+    const vars = this.get('vars', context);
+    const iterable = this.get('iterable', context);
+    const loopTemplate = this.get('rules', context);
     const bindingNames = getBindingNames(vars);
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
@@ -504,12 +498,12 @@ export class For extends Node<ForValue> {
     const context = options.context;
     w.add('$for ', this);
     w.add('(');
-    varsToNode(this._getVars(context)).toString(options);
+    varsToNode(this.get('vars', context)).toString(options);
     w.add(' of ');
-    this._getIterable(context).toString(options);
+    this.get('iterable', context).toString(options);
     w.add(')');
     w.add(' ');
-    this._getRules(context).toBraced(options);
+    this.get('rules', context).toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -517,15 +511,20 @@ export class For extends Node<ForValue> {
 /**
  * `$each <header> { ... }`
  */
-export interface Each extends Node<LegacyLoopValue> {
+export type EachChildData = {
+  header: Sequence;
+  rules: Rules;
+};
+
+export interface Each extends Node<LegacyLoopValue, any, EachChildData> {
   type: 'Each';
   shortType: 'each';
 }
-export class Each extends Node<LegacyLoopValue> {
+export class Each extends Node<LegacyLoopValue, any, EachChildData> {
   static override childKeys = ['header', 'rules'] as const;
 
-  readonly header!: Sequence;
-  readonly rules!: Rules;
+  private readonly header!: Sequence;
+  private readonly rules!: Rules;
 
   constructor(value: LegacyLoopValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -542,23 +541,15 @@ export class Each extends Node<LegacyLoopValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  private _getHeader(context?: Context): Sequence {
-    return getControlField(this, 'header', context, this.header);
-  }
-
-  private _getRules(context?: Context): Rules {
-    return getControlField(this, 'rules', context, this.rules);
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
     w.add('$each ', this);
-    this._getHeader(context).toString(options);
+    this.get('header', context).toString(options);
     w.add(' ');
-    this._getRules(context).toBraced(options);
+    this.get('rules', context).toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -568,18 +559,23 @@ export type WhileValue = {
   rules: Rules;
 };
 
+export type WhileChildData = {
+  condition: Node;
+  rules: Rules;
+};
+
 /**
  * `$while (<condition>) { ... }`
  */
-export interface While {
+export interface While extends Node<WhileValue, any, WhileChildData> {
   type: 'While';
   shortType: 'while';
 }
-export class While extends Node<WhileValue> {
+export class While extends Node<WhileValue, any, WhileChildData> {
   static override childKeys = ['condition', 'rules'] as const;
 
-  readonly condition!: Node;
-  readonly rules!: Rules;
+  private readonly condition!: Node;
+  private readonly rules!: Rules;
 
   constructor(value: WhileValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -597,23 +593,15 @@ export class While extends Node<WhileValue> {
     makeDirectiveRulesPublic(this.rules);
   }
 
-  private _getCondition(context?: Context): Node {
-    return getControlField(this, 'condition', context, this.condition);
-  }
-
-  private _getRules(context?: Context): Rules {
-    return getControlField(this, 'rules', context, this.rules);
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
     w.add('$while (', this);
-    this._getCondition(context).toString(options);
+    this.get('condition', context).toString(options);
     w.add(') ');
-    this._getRules(context).toBraced(options);
+    this.get('rules', context).toBraced(options);
     return w.getSince(mark);
   }
 }

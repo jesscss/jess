@@ -20,25 +20,32 @@ export type ConditionOptions = {
   negate?: boolean;
 };
 
-export interface Condition extends Node<ConditionValue, ConditionOptions> {
+export type ConditionChildData = {
+  left: Node;
+  operator: ConditionOperator | undefined;
+  right: Node | undefined;
+  negate: boolean;
+};
+
+export interface Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
   type: 'Condition';
   shortType: 'condition';
   eval(context: Context): MaybePromise<Bool>;
 }
 
-export class Condition extends Node<ConditionValue, ConditionOptions> {
+export class Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  readonly left!: Node;
-  readonly operator: ConditionOperator | undefined;
-  readonly right: Node | undefined;
-  readonly negate: boolean;
+  private readonly left!: Node;
+  private readonly operator: ConditionOperator | undefined;
+  private readonly right: Node | undefined;
+  private readonly negate: boolean;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const left = this._getLeft(ctx);
-    const operator = this._getOperator(ctx);
-    const right = this._getRight(ctx);
-    const negate = this._getNegate(ctx);
+    const left = this.get('left', ctx);
+    const operator = this.get('operator', ctx);
+    const right = this.get('right', ctx);
+    const negate = this.get('negate', ctx);
     const options = (this as any)._meta?.options;
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const value: ConditionValue = operator !== undefined && right !== undefined
@@ -76,39 +83,15 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  private _getLeft(context?: Context): Node {
-    return context
-      ? getField<Node>(this, 'left', context)
-      : this.left;
-  }
-
-  private _getOperator(context?: Context): ConditionOperator | undefined {
-    return context
-      ? getField<ConditionOperator | undefined>(this, 'operator', context)
-      : this.operator;
-  }
-
-  private _getRight(context?: Context): Node | undefined {
-    return context
-      ? getField<Node | undefined>(this, 'right', context)
-      : this.right;
-  }
-
-  private _getNegate(context?: Context): boolean {
-    return context
-      ? getField<boolean>(this, 'negate', context)
-      : this.negate;
-  }
-
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
-    let left = this._getLeft(context);
-    let op = this._getOperator(context);
-    let right = this._getRight(context);
-    const negated = this._getNegate(context);
+    let left = this.get('left', context);
+    let op = this.get('operator', context);
+    let right = this.get('right', context);
+    const negated = this.get('negate', context);
     const needsParens = Boolean(right || negated);
     if (negated) {
       w.add('not ');
@@ -157,10 +140,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    let left = this._getLeft(context);
-    let op = this._getOperator(context);
-    let right = this._getRight(context);
-    let negated = this._getNegate(context);
+    let left = this.get('left', context);
+    let op = this.get('operator', context);
+    let right = this.get('right', context);
+    let negated = this.get('negate', context);
 
     return pipe(
       () => left.eval(context),

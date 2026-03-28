@@ -47,7 +47,7 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
     let value: string | Quoted | Any = this.get('value', context);
 
     if (isNode(value, N.Quoted)) {
-      value = value.value as string | Quoted | Any;
+      value = value.get('value') as string | Quoted | Any;
       if (isNode(value)) {
         return String((value as any).value);
       }

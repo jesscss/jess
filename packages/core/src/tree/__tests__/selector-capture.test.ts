@@ -77,6 +77,6 @@ describe('SelectorCapture', () => {
     expect(result).toBe(node);
     expect(node.toTrimmedString({ context })).toBe('*[next]');
     expect(node.toTrimmedString()).toBe('*[orig]');
-    expect(node.value.toTrimmedString()).toBe('orig');
+    expect(node.get('value').toTrimmedString()).toBe('orig');
   });
 });

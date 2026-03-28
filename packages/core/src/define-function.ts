@@ -745,7 +745,7 @@ async function buildCallWithContextPositionalArgs(
               const n = context.caller!.get('name');
               return typeof n === 'string'
                 ? n
-                : (isNode(n, N.Reference) ? String(n.key?.valueOf?.() ?? '') : '');
+                : (isNode(n, N.Reference) ? String(n.get('key')?.valueOf?.() ?? '') : '');
             })()
           : '';
         // Apply conversion plugins if defined
