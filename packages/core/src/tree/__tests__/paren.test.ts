@@ -43,7 +43,7 @@ describe('Paren', () => {
     const evald = await node.eval(ctx);
 
     expect(evald.toTrimmedString({ context: ctx })).toBe('(red)');
-    expect(node.value).toBe(original);
+    expect(node.get('value')).toBe(original);
     expect(node.toTrimmedString()).toBe('($color)');
   });
 
@@ -62,7 +62,7 @@ describe('Paren', () => {
     const evald = await node.eval(ctx);
 
     expect(evald.toTrimmedString({ context: ctx })).toBe('red');
-    expect(node.value).toBe(original);
+    expect(node.get('value')).toBe(original);
     expect(node.toTrimmedString({ context: ctx })).toBe('~($color)');
     expect(node.toTrimmedString()).toBe('($color)');
   });

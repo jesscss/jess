@@ -2,7 +2,8 @@ import type { Context } from '../context.js';
 import { defineType, Node, type OptionalLocation, type TreeContext, type NodeOptions } from './node.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField } from './util/field-helpers.js';
+
+export type RestChildData = { value: Node | string | undefined };
 
 /**
  * A rest expression (e.g. ...$var). By itself it doesn't do much.
@@ -13,10 +14,10 @@ export interface Rest {
   type: 'Rest';
   shortType: 'rest';
 }
-export class Rest extends Node<Node | string | undefined> {
+export class Rest extends Node<Node | string | undefined, NodeOptions, RestChildData> {
   static override childKeys = ['value'] as const;
 
-  value: Node | string | undefined;
+  private value: Node | string | undefined;
 
   constructor(value?: Node | string, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -26,14 +27,8 @@ export class Rest extends Node<Node | string | undefined> {
     }
   }
 
-  private _getValue(context?: Context): Node | string | undefined {
-    return context
-      ? getField<Node | string | undefined>(this, 'value', context)
-      : this.value;
-  }
-
   private _getName(context?: Context): string {
-    const value = this._getValue(context);
+    const value = this.get('value', context);
     if (value) {
       if (isNode(value)) {
         return value.toString();

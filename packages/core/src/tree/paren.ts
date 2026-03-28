@@ -13,6 +13,8 @@ export type ParenOptions = {
   delimiter?: 'paren' | 'square';
 };
 
+export type ParenChildData = { value: Node | undefined };
+
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
   return node instanceof Operation || node instanceof Expression;
 };
@@ -23,12 +25,13 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 export interface Paren {
   type: 'Paren';
   shortType: 'paren';
+  eval(context: Context): MaybePromise<Node>;
 }
 
-export class Paren extends Node<Node | undefined, ParenOptions> {
+export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> {
   static override childKeys = ['value'] as const;
 
-  value: Node | undefined;
+  private value: Node | undefined;
 
   constructor(value?: Node, options?: ParenOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -39,12 +42,6 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
-  }
-
-  private _getValue(context?: Context): Node | undefined {
-    return context
-      ? getField<Node | undefined>(this, 'value', context)
-      : this.value;
   }
 
   private _getOptions(context?: Context): ParenOptions | undefined {
@@ -60,7 +57,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   private _unwrapValue(value: Node, context?: Context): Node {
     let current = value;
     while (current instanceof Paren) {
-      const next = current._getValue(context);
+      const next = current.get('value', context);
       if (!next) {
         break;
       }
@@ -82,7 +79,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       w.add(escapeChar, this);
     }
     w.add(open);
-    let value = this._getValue(options.context);
+    let value = this.get('value', options.context);
     if (value) {
       if (value instanceof Node) {
         let out = w.capture(() => value.toString(options));
@@ -96,7 +93,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let value = this._getValue(context);
+    let value = this.get('value', context);
     if (value) {
       let isOp = isOpOrExpression(value);
       if (isOp) {
@@ -123,7 +120,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         }
         let node = this.maybeClone(context);
         if (node === this) {
-          const prevValue = this._getValue(context);
+          const prevValue = this.get('value', context);
           setField(node, 'value', value, context);
           if (prevValue instanceof Node && prevValue !== value) {
             setParent(prevValue, undefined, context);
