@@ -321,6 +321,82 @@ References walk up the parent chain. The parent chain is a mix of
 canonical parents and state-patched parents. The rule is the same:
 check the active state first, fall through to canonical.
 
+The problem: registry-utils `find` with `searchParents` does this:
+
+```ts
+// Current code (simplified)
+while (rules) {
+  search(rules);                               // search this level
+  rules = getParent(rules, this.context);      // walk up
+}
+```
+
+`getParent` returns the next Rules node but doesn't change the active
+state. If the parent Rules lives in a different EvalState (because
+we've crossed a subtree boundary), the next `search()` uses the wrong
+state and won't see the parent's state-patched children.
+
+#### Solution: walks carry (node, state) pairs
+
+```ts
+// getParent returns both the parent and which state owns it
+function getParentInState(
+  node: Node,
+  state: EvalState
+): [Node | undefined, EvalState] {
+  // Check current state for a patched parent
+  const patched = state.peek(node)?._fields?.get('parent') as Node;
+  const parent = patched ?? node.parent;
+  if (!parent) return [undefined, state];
+
+  // Which state owns the parent? The one that has an entry for it.
+  let s: EvalState | undefined = state;
+  while (s) {
+    if (s.has(parent)) return [parent, s];
+    s = s.parent;
+  }
+  // No state owns it — canonical. Stay in current state.
+  return [parent, state];
+}
+```
+
+The registry walk becomes:
+
+```ts
+let rules: Rules | undefined = startRules;
+let state: EvalState = ctx.activeState;
+
+while (rules) {
+  search(rules, state);                       // search using state
+  [rules, state] = getParentInState(rules, state);  // walk up
+}
+```
+
+Each iteration uses the correct state for the current Rules node.
+When the walk crosses from S2 into S1, the state cursor switches.
+No global state mutation, no stack walking — just a local cursor.
+
+#### Serialization uses the same pattern
+
+```ts
+function renderChildren(rules: Rules, state: EvalState, ctx: Context) {
+  for (const child of getChildren(rules, state)) {
+    const ns = state.peek(child);
+    const actual = ns?.replacement ?? child;
+    const childState = ns?._subtree ?? state;
+    render(actual, childState, ctx);
+  }
+}
+```
+
+Serialization passes `state` down. When it encounters a replacement
+with a subtree, it passes the subtree as the state for that branch.
+
+#### The simple getParent stays simple
+
+For code that does NOT need to cross state boundaries (most node code
+during eval, where the active state is correct), `getParent` stays:
+
 ```ts
 function getParent(node: Node, ctx: Context): Node | undefined {
   return ctx.activeState.peek(node)?._fields?.get('parent')
@@ -328,26 +404,11 @@ function getParent(node: Node, ctx: Context): Node | undefined {
 }
 ```
 
-During eval, the per-call state IS the active state (it was pushed).
-ALL nodes touched during that call have their fields set in that state.
-The parent chain for body → outerScope → caller is fully within the
-per-call state.
+Only the registry parent-walk and serialization use the (node, state)
+pair pattern. Everything else uses `activeState` directly.
 
-```
-Reference @color inside body:
-  1. getParent(Decl) → body       (canonical parent)
-  2. Search body registry → not found
-  3. getParent(body) → outerScope (set in S1 during call setup)
-  4. Search outerScope registry → found @color, value = blue
-```
-
-No state boundary crossing needed. Everything the reference needs is
-either in the active state or canonical.
-
-**Key constraint**: all field patches for a call MUST be written to that
-call's state. If outerScope's parent was set in the caller's state
-instead of the call's state, the reference walk breaks. The fix is to
-move all call setup (parent wiring, param binding) to AFTER pushState.
+**Key constraint** (unchanged): all field patches for a call MUST be
+written to that call's state. Move all call setup to AFTER pushState.
 
 #### Nested calls
 

@@ -469,8 +469,9 @@ export class Context {
     return len > 0 ? this.evalStateStack[len - 1]! : this.evalState;
   }
 
-  /** Push a new eval state onto the stack. */
+  /** Push a new eval state onto the stack, wiring its parent chain. */
   pushState(state: EvalState): void {
+    state.parent = this.activeState;
     this.evalStateStack.push(state);
   }
 

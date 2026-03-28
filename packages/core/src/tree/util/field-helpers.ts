@@ -1,6 +1,7 @@
 import type { Node } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
+import type { EvalState } from '../../eval-state.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 
@@ -23,9 +24,11 @@ export function getField<T = unknown>(
   key: string,
   ctx: Context
 ): T {
-  const val = ctx.resolveField(node, key);
-  if (val !== undefined) {
-    return val as T;
+  let state: EvalState | undefined = ctx.activeState;
+  while (state) {
+    const val = state.peek(node)?._fields?.get(key);
+    if (val !== undefined) return val as T;
+    state = state.parent;
   }
   return (node as unknown as Record<string, unknown>)[key] as T;
 }
@@ -49,9 +52,11 @@ export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const parent = ctx.resolveField(node, 'parent');
-  if (parent !== undefined) {
-    return parent as Node | undefined;
+  let state: EvalState | undefined = ctx.activeState;
+  while (state) {
+    const parent = state.peek(node)?._fields?.get('parent');
+    if (parent !== undefined) return parent as Node | undefined;
+    state = state.parent;
   }
   return node.parent;
 }

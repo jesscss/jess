@@ -155,9 +155,7 @@ export function attachMixinBodyToParamScope(
  * getFunctionFromMixins().
  */
 export function createMixinParamScope(
-  parent: Node | undefined,
-  index: number,
-  context: Context
+  index: number
 ): Rules {
   const scope = Rules.create([], {
     rulesVisibility: {
@@ -167,7 +165,6 @@ export function createMixinParamScope(
       Mixin: 'public'
     }
   });
-  setParent(scope, parent, context);
   scope.index = index;
   return scope;
 }
@@ -358,15 +355,9 @@ export function prepareMixinCandidateInvocation(
   nodeArgs: readonly Node[],
   context: Context,
 ): PreparedMixinCandidateInvocation {
-  setField(rules, 'options', {
-    ...rules.options,
-    rulesVisibility: {
-      ...(rules.options.rulesVisibility ?? {}),
-      VarDeclaration: 'public'
-    }
-  }, context);
-  setParent(rules, parent, context);
-  setSourceParent(rules, sourceParent, context);
+  // NOTE: parent/sourceParent/options wiring now happens in
+  // evaluateCandidateOutput AFTER pushState, so all patches
+  // land in the per-call state.
 
   const normalizedParams = normalizeMixinInvocationParams(params, context);
   const outerRules = normalizedParams
@@ -386,7 +377,7 @@ export function prepareMixinCandidateInvocation(
     outerRules,
     lookupScope: outerRules ?? rules,
     guardScopeChildren: outerRules
-      ? [...getChildren(outerRules, context)]
+      ? [...outerRules.value]
       : undefined
   };
 }
@@ -1280,31 +1271,41 @@ export async function evaluateCandidateOutput(
     return;
   }
 
-  // Push a per-call EvalState so this mixin body evaluates in its own overlay.
+  // Push a per-call EvalState. ALL field patches for this call go here.
   const callState = new EvalState();
   context.pushState(callState);
   try {
-    let newRules: Rules;
+    // Wire the parent chain entirely within the per-call state.
+    // outerRules (param scope) sits between body and caller scope.
+    const callerParent = getParentFn(candidate);
     if (outerRules) {
+      setParent(outerRules, callerParent, context);
       setParent(rules, outerRules, context);
-      newRules = await rules.eval(context);
     } else {
-      setParent(rules, getParentFn(candidate), context);
-      newRules = await rules.eval(context);
+      setParent(rules, callerParent, context);
     }
+    setField(rules, 'options', {
+      ...rules.options,
+      rulesVisibility: {
+        ...(rules.options.rulesVisibility ?? {}),
+        VarDeclaration: 'public'
+      }
+    }, context);
+
+    let newRules: Rules = await rules.eval(context);
     newRules = finalizeMixinInvocationOutput(newRules, context);
     newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
+
     // Pop the per-call state.
     context.popState();
+
     // Store the per-call state as a subtree on the output node in the
-    // caller's state. Serialization will push this subtree when rendering
-    // the output, so all eval-time patches are visible.
+    // caller's state so serialization can push it when rendering.
     if (callState.size > 0) {
-      const callerNs = context.activeState.get(newRules);
-      callerNs._subtree = callState;
+      context.activeState.get(newRules)._subtree = callState;
     }
     setSourceParent(newRules, sourceParent, context);
-    setParent(newRules, getParentFn(candidate), context);
+    setParent(newRules, callerParent, context);
     newRules.index = candidate.index;
     newRules.options.isMixinOutput = restrictMixinOutputLookup;
     if (context.treeContext?.file) {
