@@ -6,7 +6,6 @@ import type { BitSetLibrary } from './util/bitset.js';
 import { Interpolated } from './interpolated.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getField } from './util/field-helpers.js';
 
 const { isArray } = Array;
 
@@ -28,7 +27,9 @@ function propagateKeySetLibrary(sel: Selector, library: BitSetLibrary<string>) {
   }
 }
 
-export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
+export type InterpolatedSelectorChildData = { value: Interpolated };
+
+export interface InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptions, InterpolatedSelectorChildData> {
   type: 'InterpolatedSelector';
   shortType: 'interpolated-selector';
   eval(context: Context): MaybePromise<Selector>;
@@ -38,10 +39,10 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
  * A selector that wraps an interpolated value
  * This allows interpolation to be used in selector contexts
  */
-export class InterpolatedSelector extends SimpleSelector<Interpolated> {
+export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptions, InterpolatedSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  value!: Interpolated;
+  private value!: Interpolated;
 
   constructor(value: Interpolated, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -49,12 +50,6 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     if (this.value instanceof Node) {
       this.adopt(this.value);
     }
-  }
-
-  private _getValue(context?: Context): Interpolated {
-    return context
-      ? getField<Interpolated>(this, 'value', context)
-      : this.value;
   }
 
   get isClass() {
@@ -70,7 +65,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const result = this._getValue(context).evalToSelector(context);
+    const result = this.get('value', context).evalToSelector(context);
     const library = context.selectorBits;
     if (isThenable(result)) {
       return (result as Promise<Selector>).then((sel) => {
@@ -86,7 +81,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this._getValue(options.context).toString(options);
+    this.get('value', options.context).toString(options);
     return w.getSince(mark);
   }
 

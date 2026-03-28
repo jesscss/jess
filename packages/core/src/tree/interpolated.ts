@@ -10,7 +10,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
-import { getField, isEvaluated, setField, setEvaluated } from './util/field-helpers.js';
+import { isEvaluated, setField, setEvaluated } from './util/field-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -52,6 +52,8 @@ export type InterpolatedValue = {
   replacements: Node[];
 };
 
+export type InterpolatedChildData = { source: string; replacements: Node[] };
+
 /**
  * Merge an interface to declare the specific types
  *
@@ -64,7 +66,7 @@ export type InterpolatedValue = {
  */
 export interface Interpolated<
   Role extends AnyRole = AnyRole
-> extends Node<InterpolatedValue, AnyOptions<Role>> {
+> extends Node<InterpolatedValue, AnyOptions<Role>, InterpolatedChildData> {
   type: 'Interpolated';
   shortType: 'interpolated';
   eval(context: Context): MaybePromise<Any<Role>>;
@@ -82,11 +84,11 @@ export interface Interpolated<
  */
 export class Interpolated<
   Role extends AnyRole = AnyRole
-> extends Node<InterpolatedValue, AnyOptions<Role>> {
+> extends Node<InterpolatedValue, AnyOptions<Role>, InterpolatedChildData> {
   static override childKeys = ['source', 'replacements'] as const;
 
-  source!: string;
-  replacements!: Node[];
+  private source!: string;
+  private replacements!: Node[];
 
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value as any, options, location, treeContext);
@@ -105,23 +107,11 @@ export class Interpolated<
     return this.source;
   }
 
-  private _getSource(context?: Context): string {
-    return context
-      ? getField<string>(this, 'source', context)
-      : this.source;
-  }
-
-  private _getReplacements(context?: Context): Node[] {
-    return context
-      ? getField<Node[]>(this, 'replacements', context)
-      : this.replacements;
-  }
-
   replace(replacements?: Node[], options?: PrintOptions): string {
     const printOpts = getPrintOptions(options);
     const context = printOpts.context;
-    const source = this._getSource(context);
-    const activeReplacements = replacements ?? this._getReplacements(context);
+    const source = this.get('source', context);
+    const activeReplacements = replacements ?? this.get('replacements', context);
     let output = source;
     let i = 0;
     let w = printOpts!.writer;
@@ -169,8 +159,8 @@ export class Interpolated<
    * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
   createSelector(context?: Context) {
-    const source = this._getSource(context);
-    const replacements = this._getReplacements(context);
+    const source = this.get('source', context);
+    const replacements = this.get('replacements', context);
     const segments = source.split(INTERPOLATION_PLACEHOLDER);
     const isWholeSelectorInterpolation = (
       replacements.length === 1
@@ -252,7 +242,7 @@ export class Interpolated<
    */
   _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
-    let replacements = [...node._getReplacements(context)];
+    let replacements = [...node.get('replacements', context)];
     const markEvaluated = (result: Node): Node => {
       setEvaluated(result, true, context);
       return result;

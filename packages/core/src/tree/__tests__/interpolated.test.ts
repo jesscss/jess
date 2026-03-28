@@ -22,7 +22,7 @@ describe('Interpolated', () => {
     const result = await node.eval(ctx);
 
     expect(result.toTrimmedString()).toBe('--red');
-    expect(node.replacements[0]).toBe(original);
+    expect(node.get('replacements')[0]).toBe(original);
   });
 
   it('evaluates to a selector without overwriting canonical replacements', async () => {
@@ -36,6 +36,6 @@ describe('Interpolated', () => {
     const selector = await node.evalToSelector(ctx);
 
     expect(selector.toTrimmedString()).toBe('.button');
-    expect(node.replacements[0]).toBe(original);
+    expect(node.get('replacements')[0]).toBe(original);
   });
 });
