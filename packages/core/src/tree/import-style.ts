@@ -227,10 +227,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     prelude: Node;
   } {
     if (isNode(current, N.Call)) {
-      const callName = String(current.name).toLowerCase();
+      const callName = String(current.get('name')).toLowerCase();
       if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-        const args = current.args?.get('value') ?? [];
-        const prelude = args.length <= 1 ? args[0] : current.args;
+        const args = current.get('args')?.get('value') ?? [];
+        const prelude = args.length <= 1 ? args[0] : current.get('args');
         if (prelude) {
           return {
             atRuleName: `@${callName}` as '@media' | '@supports' | '@layer',

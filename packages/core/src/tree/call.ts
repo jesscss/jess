@@ -72,22 +72,24 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
+export type CallChildData = { name: string | Node; args: List<Node> | undefined; contentNode: Node | undefined };
+
 export interface Call {
   type: 'Call';
   shortType: 'call';
 }
 
-export class Call extends Node<CallValue, CallOptions> {
+export class Call extends Node<CallValue, CallOptions, CallChildData> {
   static override childKeys = ['name', 'args', 'contentNode'] as const;
 
-  readonly name!: string | Node;
-  readonly args: List<Node> | undefined;
-  readonly contentNode: Node | undefined;
+  private name!: string | Node;
+  private args: List<Node> | undefined;
+  private contentNode: Node | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const name = this._getName(ctx);
-    const args = this._getArgs(ctx);
-    const contentNode = this._getContentNode(ctx);
+    const name = this.get('name', ctx);
+    const args = this.get('args', ctx);
+    const contentNode = this.get('contentNode', ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const cloneData: CallValue = {
       name: deep && name instanceof Node ? cloneChild(name) : name,
@@ -145,24 +147,6 @@ export class Call extends Node<CallValue, CallOptions> {
     this.requiredSemi = true;
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-  }
-
-  private _getName(context?: Context): string | Node {
-    return context
-      ? getField<string | Node>(this, 'name', context)
-      : this.name;
-  }
-
-  private _getArgs(context?: Context): List<Node> | undefined {
-    return context
-      ? getField<List<Node> | undefined>(this, 'args', context)
-      : this.args;
-  }
-
-  private _getContentNode(context?: Context): Node | undefined {
-    return context
-      ? getField<Node | undefined>(this, 'contentNode', context)
-      : this.contentNode;
   }
 
   private _getOptions(context?: Context): CallOptions | undefined {
@@ -232,9 +216,9 @@ export class Call extends Node<CallValue, CallOptions> {
     const mark = w.mark();
     const context = options.context;
     const { silentFail, markImportant } = this._getOptions(context) ?? {};
-    const name = this._getName(context);
-    const args = this._getArgs(context);
-    const contentNode = this._getContentNode(context);
+    const name = this.get('name', context);
+    const args = this.get('args', context);
+    const contentNode = this.get('contentNode', context);
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
@@ -287,8 +271,8 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    let name = this._getName(context);
-    let args = this._getArgs(context);
+    let name = this.get('name', context);
+    let args = this.get('args', context);
     const callOptions = this._getOptions(context) ?? {};
     let { markImportant } = callOptions;
     const applyDependencyToResult = <T extends Node>(

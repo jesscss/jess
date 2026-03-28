@@ -2233,8 +2233,8 @@ export async function evalMixinDirect(
 ): Promise<Rules | Nil> {
   const mixinArr = isArray(mixins) ? mixins : [mixins];
   const caller = context.caller;
-  const callerSourceNode = caller && 'name' in caller && caller.name instanceof Node
-    ? caller.name
+  const callerSourceNode = caller && isNode(caller, N.Call) && caller.get('name') instanceof Node
+    ? caller.get('name')
     : caller;
   const sourceParent = callerSourceNode
     ? getSourceParent(callerSourceNode as Node, context)

@@ -741,11 +741,12 @@ async function buildCallWithContextPositionalArgs(
         validateArgumentIfNeeded(processedValue, def, 'Argument');
 
         const callerName = context.caller && isNode(context.caller, N.Call)
-          ? (typeof context.caller.name === 'string'
-              ? context.caller.name
-              : (isNode(context.caller.name, N.Reference)
-                  ? String(context.caller.name.key?.valueOf?.() ?? '')
-                  : ''))
+          ? (() => {
+              const n = context.caller!.get('name');
+              return typeof n === 'string'
+                ? n
+                : (isNode(n, N.Reference) ? String(n.key?.valueOf?.() ?? '') : '');
+            })()
           : '';
         // Apply conversion plugins if defined
         if (def.convert && processedValue instanceof Dimension) {

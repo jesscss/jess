@@ -128,7 +128,7 @@ describe('Call', () => {
     const evald = await root.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('fn(1): patched');
-    expect(node.contentNode).toBeUndefined();
+    expect(node.get('contentNode')).toBeUndefined();
     expect(node.toTrimmedString()).toBe('$fn??(1)');
   });
 
