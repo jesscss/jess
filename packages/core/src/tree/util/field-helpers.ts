@@ -27,7 +27,9 @@ export function getField<T = unknown>(
   let state: EvalState | undefined = ctx.activeState;
   while (state) {
     const val = state.peek(node)?._fields?.get(key);
-    if (val !== undefined) return val as T;
+    if (val !== undefined) {
+      return val as T;
+    }
     state = state.parent;
   }
   return (node as unknown as Record<string, unknown>)[key] as T;
@@ -55,7 +57,9 @@ export function getParent(
   let state: EvalState | undefined = ctx.activeState;
   while (state) {
     const parent = state.peek(node)?._fields?.get('parent');
-    if (parent !== undefined) return parent as Node | undefined;
+    if (parent !== undefined) {
+      return parent as Node | undefined;
+    }
     state = state.parent;
   }
   return node.parent;
@@ -304,9 +308,8 @@ export function markScopeDirty(
   // Registry rebuilds from children on next access.
 }
 
-// --- Dependency tracking stubs ---
-// These were tied to EvalSession. For now they're no-ops.
-// Dependency tracking may be re-added on EvalState if needed.
+// --- Dependency tracking ---
+// Stored as `_dependency` on NodeState (declare-only, zero cost when unused).
 
 export interface EvalDependency {
   dependsOn: Set<import('../declaration-var.js').VarDeclaration> | null;
@@ -314,32 +317,51 @@ export interface EvalDependency {
 }
 
 export function getDependency(
-  _node: Node,
-  _ctx: Context
+  node: Node,
+  ctx: Context
 ): EvalDependency | null {
-  return null;
+  return ctx.activeState.resolve(node)?._dependency ?? null;
 }
 
 export function setDependency(
-  _node: Node,
-  _dependency: EvalDependency,
-  _ctx: Context
+  node: Node,
+  dependency: EvalDependency,
+  ctx: Context
 ): void {
-  // no-op
+  ctx.activeState.get(node)._dependency = dependency;
 }
 
 export function isStatic(
-  _node: Node,
-  _ctx: Context
+  node: Node,
+  ctx: Context
 ): boolean {
-  return true;
+  const dep = getDependency(node, ctx);
+  return !dep?.dependsOn || dep.dependsOn.size === 0;
 }
 
 export function mergeDependencies(
-  _nodes: readonly (Node | undefined)[],
-  _ctx: Context
+  nodes: readonly (Node | undefined)[],
+  ctx: Context
 ): EvalDependency | null {
-  return null;
+  let merged: Set<import('../declaration-var.js').VarDeclaration> | null = null;
+  let sourceExpr: Node | undefined;
+  for (const node of nodes) {
+    if (!node) {
+      continue;
+    }
+    const dep = getDependency(node, ctx);
+    if (dep?.dependsOn && dep.dependsOn.size > 0) {
+      if (!merged) {
+        merged = new Set(dep.dependsOn);
+        sourceExpr = dep.sourceExpr;
+      } else {
+        for (const v of dep.dependsOn) {
+          merged.add(v);
+        }
+      }
+    }
+  }
+  return merged ? { dependsOn: merged, sourceExpr } : null;
 }
 
 /**
@@ -359,8 +381,6 @@ export function isTopLevelVarDeclaration(
 // -- Changed variable tracking --
 // Stored per-EvalState using a module-level WeakMap, so each push of an
 // isolated state starts with an empty changed-vars set.
-
-import type { EvalState } from '../../eval-state.js';
 
 const changedVarsMap = new WeakMap<EvalState, Set<Node>>();
 

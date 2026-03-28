@@ -42,7 +42,11 @@ function getDeclarations(node: Ruleset): Declaration[] {
   return collectDeclarations(node.rules);
 }
 
-describe.skip('dependency graph propagation — dependency tracking removed with EvalSession', () => {
+describe('dependency graph propagation', () => {
+  // Tests 2-5 access declaration.value after eval, which returns undefined
+  // for evaluated references on this branch. Unskip once API builders are
+  // updated for the .data refactor.
+
   it('keeps static literal declarations static', async () => {
     const root = rules([
       ruleset({
@@ -60,7 +64,7 @@ describe.skip('dependency graph propagation — dependency tracking removed with
     expect(getDependency(declaration.value, ctx)).toBeNull();
   });
 
-  it('tracks direct top-level variable references', async () => {
+  it.skip('tracks direct top-level variable references', async () => {
     const base = vardecl({ name: 'base', value: any('red') });
     const root = rules([
       base,
@@ -82,7 +86,7 @@ describe.skip('dependency graph propagation — dependency tracking removed with
     expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
   });
 
-  it('propagates dependencies through operations', async () => {
+  it.skip('propagates dependencies through operations', async () => {
     const base = vardecl({ name: 'base', value: any('10px') });
     const root = rules([
       base,
@@ -110,7 +114,7 @@ describe.skip('dependency graph propagation — dependency tracking removed with
     expect([...dependency!.dependsOn!].map(dep => dep.name.valueOf())).toEqual(['base']);
   });
 
-  it('treats mixin params with static inputs as static', async () => {
+  it.skip('treats mixin params with static inputs as static', async () => {
     const passthrough = mixin({
       name: any('.passthrough'),
       params: list([any('value', { role: 'property' })]),
@@ -138,7 +142,7 @@ describe.skip('dependency graph propagation — dependency tracking removed with
     expect(getDependency(declaration.value, ctx)).toBeNull();
   });
 
-  it('tracks top-level vars through mixin parameter binding', async () => {
+  it.skip('tracks top-level vars through mixin parameter binding', async () => {
     const base = vardecl({ name: 'base', value: any('red') });
     const passthrough = mixin({
       name: any('.passthrough'),

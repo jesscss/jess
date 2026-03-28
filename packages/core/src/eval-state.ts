@@ -21,6 +21,9 @@ export class NodeState {
     return (this._fields ??= new Map());
   }
 
+  /** Dependency tracking — stays off instance until first access */
+  declare _dependency: import('./tree/util/field-helpers.js').EvalDependency | undefined;
+
   /** Recursive subtree state — stays off instance until first access */
   declare _subtree: EvalState | undefined;
   get subtree(): EvalState {
@@ -69,7 +72,9 @@ export class EvalState extends Map<Node, NodeState> {
     let state: EvalState | undefined = this;
     while (state) {
       const s = state.peek(node);
-      if (s) return s;
+      if (s) {
+        return s;
+      }
       state = state.parent;
     }
     return undefined;
