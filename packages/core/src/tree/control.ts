@@ -487,7 +487,11 @@ export class For extends Node<ForValue> {
       } finally {
         context.popState();
       }
-      return new Rules(accumulatedNodes);
+      const output = new Rules(accumulatedNodes);
+      if (isolatedState.size > 0) {
+        output._carriedState = isolatedState;
+      }
+      return output;
     };
     return run();
   }
