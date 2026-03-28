@@ -19,7 +19,7 @@ describe('Quoted', () => {
 
     const evald = await node.eval(context);
 
-    expect(evald.toTrimmedString()).toBe('"blue"');
+    expect(evald.toTrimmedString({ context })).toBe('"blue"');
     expect(node.toTrimmedString()).toBe('"$(blue)"');
     expect(node.value).toBeTypeOf('object');
     expect(node.value).not.toBe('blue');

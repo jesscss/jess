@@ -93,7 +93,7 @@ describe('Complex selector', () => {
 
       const evald = await node.eval(context);
 
-      expect(evald.toTrimmedString()).toBe(':not(blue) > .target');
+      expect(evald.toTrimmedString({ context })).toBe(':not(blue) > .target');
     });
 
     it('propagates a state-only hoist flag when a complex selector collapses to one child', async () => {
@@ -118,7 +118,7 @@ describe('Complex selector', () => {
       const evald = await node.eval(context);
 
       expect(evald).not.toBe(child);
-      expect(evald.toTrimmedString()).toBe('.target');
+      expect(evald.toTrimmedString({ context })).toBe('.target');
       expect(child.parent).toBe(node);
     });
 

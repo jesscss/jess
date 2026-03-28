@@ -68,7 +68,7 @@ describe('Compound Selector', () => {
 
       const evald = await node.eval(context);
 
-      expect(evald.toTrimmedString()).toBe('button:not(blue)');
+      expect(evald.toTrimmedString({ context })).toBe('button:not(blue)');
     });
   });
 });

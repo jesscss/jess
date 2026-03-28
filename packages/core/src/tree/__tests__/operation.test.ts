@@ -13,6 +13,6 @@ describe('Operation', () => {
 
     const evald = await node.eval(context);
 
-    expect(evald.toTrimmedString()).toBe('foo / bar');
+    expect(evald.toTrimmedString({ context })).toBe('foo / bar');
   });
 });

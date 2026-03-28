@@ -44,7 +44,7 @@ describe('Attribute Selector', () => {
 
       const evald = await rule.eval(context);
 
-      expect(evald.toTrimmedString()).toBe('[data-theme=dark]');
+      expect(evald.toTrimmedString({ context })).toBe('[data-theme=dark]');
     });
   });
 });

@@ -17,7 +17,7 @@ describe('PseudoSelector', () => {
 
       const evald = await node.eval(context);
 
-      expect(evald.toTrimmedString()).toBe(':not(blue)');
+      expect(evald.toTrimmedString({ context })).toBe(':not(blue)');
     });
   });
 });

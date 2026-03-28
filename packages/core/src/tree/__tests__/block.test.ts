@@ -17,6 +17,6 @@ describe('Block', () => {
 
     const evald = await node.eval(ctx);
 
-    expect(evald.toTrimmedString()).toBe('{red}');
+    expect(evald.toTrimmedString({ context: ctx })).toBe('{red}');
   });
 });
