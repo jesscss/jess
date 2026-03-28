@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { rules, vardecl, decl, any, ref, ruleset, el, mixin, list, call } from '../index.js';
 import { Context } from '../../context.js';
+import { EvalState } from '../../eval-state.js';
+import { getParent, setParent } from '../util/field-helpers.js';
 
 describe('Registry state awareness', () => {
   describe('VarDeclaration lookup via state-overlaid children', () => {
@@ -158,8 +160,6 @@ describe('Registry state awareness', () => {
 
   describe('Subtree boundary crossing', () => {
     it('getParent walks from subtree state into parent state', () => {
-      const { getParent, setParent } = require('../util/field-helpers.js');
-      const { EvalState } = require('../../eval-state.js');
       const ctx = new Context({ leakyRules: true });
 
       const root = rules([]);
@@ -187,8 +187,6 @@ describe('Registry state awareness', () => {
     });
 
     it('variable lookup crosses subtree boundary to find param in parent scope', async () => {
-      const { setParent } = require('../util/field-helpers.js');
-      const { EvalState } = require('../../eval-state.js');
       const ctx = new Context({ leakyRules: true });
       ctx.depth = 2;
 

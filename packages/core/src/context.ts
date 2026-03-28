@@ -446,8 +446,7 @@ export class Context {
   isDefault: boolean | undefined;
 
   /**
-   * Sparse overlay on the canonical AST. Holds node replacements,
-   * field patches, and eval flags for this evaluation pass.
+   * Root eval state for this evaluation pass.
    * Lazy — allocated on first access, zero cost if never used.
    */
   private _evalState: EvalState | undefined;
@@ -456,37 +455,37 @@ export class Context {
     return (this._evalState ??= new EvalState());
   }
 
-  set evalState(value: EvalState | undefined) {
-    this._evalState = value;
-  }
+  /**
+   * The currently active eval state. Set by pushState/popState during
+   * eval, or by save/restore during registry walks and serialization.
+   * All field reads/writes go through this.
+   */
+  private _activeState: EvalState | undefined;
 
-  /** Stack of active subtree states for mixin/import reuse. */
-  evalStateStack: EvalState[] = [];
-
-  /** The currently active eval state (innermost subtree, or root). */
   get activeState(): EvalState {
-    const len = this.evalStateStack.length;
-    return len > 0 ? this.evalStateStack[len - 1]! : this.evalState;
+    return this._activeState ?? this.evalState;
   }
 
-  /** Push a new eval state onto the stack, wiring its parent chain. */
+  set activeState(value: EvalState) {
+    this._activeState = value;
+  }
+
+  /** Push a new eval state, saving the current as its parent. */
   pushState(state: EvalState): void {
     state.parent = this.activeState;
-    this.evalStateStack.push(state);
+    this._activeState = state;
   }
 
-  /** Pop the top eval state from the stack. */
+  /** Pop the current eval state, restoring its parent. */
   popState(): EvalState | undefined {
-    return this.evalStateStack.pop();
+    const popped = this._activeState;
+    this._activeState = popped?.parent;
+    return popped;
   }
 
-  /** Resolve a field on a node by walking the stack from top to root. */
+  /** @deprecated — use activeState directly */
   resolveField(node: Node, field: string): unknown {
-    for (let i = this.evalStateStack.length - 1; i >= 0; i--) {
-      const val = this.evalStateStack[i]!.peek(node)?._fields?.get(field);
-      if (val !== undefined) return val;
-    }
-    return this._evalState?.peek(node)?._fields?.get(field);
+    return this.activeState.peek(node)?._fields?.get(field);
   }
 
   _leakyRules: boolean | undefined;

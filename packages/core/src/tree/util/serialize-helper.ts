@@ -143,7 +143,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
     if (dedupCtx && dedupPos) {
-      dedupCtx.evalStateStack.pop();
+      dedupCtx.popState();
     }
     const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
     const declProp = (node as Declaration).getPropertyName(options.context);
