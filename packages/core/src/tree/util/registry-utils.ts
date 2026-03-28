@@ -1041,7 +1041,7 @@ export class MixinRegistry extends Registry<
       } else {
         mixinChildSearchOpts.searchedRules = searchedRules;
       }
-      registry._searchRulesChildren(startKey!, 'Mixin', mixinChildSearchOpts);
+      registry?._searchRulesChildren(startKey!, 'Mixin', mixinChildSearchOpts);
 
       // After _searchRulesChildren, check if any new candidates are mixins/rulesets we should search inside
       // This handles the case where #theme mixin is found in imported Rules and we need to search inside it

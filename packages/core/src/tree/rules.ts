@@ -351,11 +351,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType?: string,
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    const registry = this.getRegistry(type, options.context);
+    let registry = this.getRegistry(type, options.context);
     if (!registry) {
-      return undefined;
+      // No entries registered locally, but parent walk still needs a registry.
+      registry = new (Rules._registryClass(type))(this, options.context);
     }
-    // Registry classes have varying find signatures; delegate with the union.
     return (registry.find as Function)(keys, filterType, options);
   }
 

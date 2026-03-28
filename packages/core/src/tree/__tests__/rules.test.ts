@@ -38,12 +38,14 @@ let context: Context;
 function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
+  opts.context = context;
   return n.find('declaration', key, 'Declaration', opts);
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
+  opts.context = context;
   let decl = n.find('declaration', key, 'VarDeclaration', opts);
   return decl;
 }
