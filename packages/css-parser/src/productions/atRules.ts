@@ -271,16 +271,18 @@ export function mediaCondition(this: C, T: TokenMap, alt?: AltContext) {
           nodes!.push(node);
         }
         $.MANY({
-          GATE: () => {
-            const next = $.LA(1);
-            return next.tokenType === T.And || next.tokenType === T.Or;
-          },
+          GATE: () => $.LA(1).tokenType === T.And,
           DEF: () => {
-            let rule =
-              $.OR2([
-                { ALT: () => $.SUBRULE($.mediaAnd, { ARGS: [ctx] }) },
-                { ALT: () => $.SUBRULE($.mediaOr, { ARGS: [ctx] }) }
-              ]);
+            let rule = $.SUBRULE($.mediaAnd, { ARGS: [ctx] });
+            if (!RECORDING_PHASE) {
+              nodes!.push(...rule);
+            }
+          }
+        });
+        $.MANY2({
+          GATE: () => $.LA(1).tokenType === T.Or,
+          DEF: () => {
+            let rule = $.SUBRULE($.mediaOr, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
               nodes!.push(...rule);
             }
@@ -1090,15 +1092,18 @@ export function containerQuery(this: C, T: TokenMap) {
 
           // Check for and/or after the function call (similar to mediaCondition)
           $.MANY({
-            GATE: () => {
-              const next = $.LA(1);
-              return next.tokenType === T.And || next.tokenType === T.Or;
-            },
+            GATE: () => $.LA(1).tokenType === T.And,
             DEF: () => {
-              let rule = $.OR4([
-                { ALT: () => $.SUBRULE($.containerAnd, { ARGS: [ctx] }) },
-                { ALT: () => $.SUBRULE($.containerOr, { ARGS: [ctx] }) }
-              ]);
+              let rule = $.SUBRULE($.containerAnd, { ARGS: [ctx] });
+              if (!$.RECORDING_PHASE) {
+                nodes!.push(...rule);
+              }
+            }
+          });
+          $.MANY2({
+            GATE: () => $.LA(1).tokenType === T.Or,
+            DEF: () => {
+              let rule = $.SUBRULE($.containerOr, { ARGS: [ctx] });
               if (!$.RECORDING_PHASE) {
                 nodes!.push(...rule);
               }
@@ -1174,15 +1179,18 @@ export function containerCondition(this: C, T: TokenMap, alt?: AltContext) {
             nodes!.push(node);
           }
           $.MANY({
-            GATE: () => {
-              const next = $.LA(1);
-              return next.tokenType === T.And || next.tokenType === T.Or;
-            },
+            GATE: () => $.LA(1).tokenType === T.And,
             DEF: () => {
-              let rule = $.OR2([
-                { ALT: () => $.SUBRULE($.containerAnd, { ARGS: [ctx] }) },
-                { ALT: () => $.SUBRULE($.containerOr, { ARGS: [ctx] }) }
-              ]);
+              let rule = $.SUBRULE($.containerAnd, { ARGS: [ctx] });
+              if (!RECORDING_PHASE) {
+                nodes!.push(...rule);
+              }
+            }
+          });
+          $.MANY2({
+            GATE: () => $.LA(1).tokenType === T.Or,
+            DEF: () => {
+              let rule = $.SUBRULE($.containerOr, { ARGS: [ctx] });
               if (!RECORDING_PHASE) {
                 nodes!.push(...rule);
               }
