@@ -450,6 +450,20 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     return location;
   }
 
+  /**
+   * Extend Chevrotain's CST watermark save to also snapshot locationStack.length.
+   * Called at every speculative rollback point (OPTION, MANY, OR alternatives).
+   * Restoring via restoreCheckpoint() undoes any startRule() pushes from a failed alt.
+   */
+  protected override saveCheckpoint(): any {
+    return { cst: super.saveCheckpoint(), locationStack: this.locationStack.length };
+  }
+
+  protected override restoreCheckpoint(save: ReturnType<typeof this.saveCheckpoint>): void {
+    super.restoreCheckpoint(save.cst);
+    this.locationStack.length = save.locationStack;
+  }
+
   endRule(): LocationInfo {
     const tok = this.LA(0);
     const location = this.locationStack.pop();
