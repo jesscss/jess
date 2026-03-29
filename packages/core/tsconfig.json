@@ -9,7 +9,6 @@
     "test/**/*",
     "vitest.config.ts",
     "vite.config.ts",
-    "tsdown.config.ts",
     "../../vitest.d.ts"
   ],
   "exclude": ["node_modules", "lib", "**/*.js"]

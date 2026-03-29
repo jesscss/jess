@@ -142,7 +142,7 @@ export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
       return true;
     }
 
-    if (tt1 === $.T.Ident || tt1 === $.T.PlainIdent) {
+    if ($.isType($.T.Ident)) {
       return !$.shouldTryQualifiedRuleInDeclarationList();
     }
 
