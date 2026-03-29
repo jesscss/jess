@@ -19,7 +19,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "engines": {
     "node": ">=16"
@@ -41,8 +42,10 @@
     "prepublishOnly": "pnpm build && pnpm test -- --run",
     "build": "pnpm compile",
     "visualize": "vite build",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
-    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
+    "compile": "pnpm run build:js && pnpm run build:types",
+    "build:js": "tsdown --tsconfig tsconfig.build.json --no-dts",
+    "build:types": "node ../../tools/tsdown/write-index-types-shim.mjs",
+    "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "cross-env TEST=true vitest",
     "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",
     "test:coverage": "cross-env TEST=true vitest --coverage",
