@@ -559,8 +559,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (const child of normalized) {
       if (child instanceof Node) {
         this.adopt(child, ctx);
-        // Register into canonical instance registries so pre-eval lookups work.
-        // State-scoped registries are populated during eval.
         this.registerNode(child);
       }
     }
@@ -853,16 +851,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * declaration and inserts a new declaration at the same rules level as the
        * found variable, but before the current nested node.
        */
-      if (node.options?.setDefined) {
-        let key = (node as any).name?.toString();
-        /** Don't set within sibling rules */
+      if (node.options?.setDefined && context) {
+        const key = (node as any).name?.toString();
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
         opts.context = context;
-        // Don't use start when searching parents - we want to find variables in parent regardless of position
-        // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
-        // node.type is 'VarDeclaration' or 'Declaration', use it directly as filterType
+        // Exclude the node being registered so setDefined doesn't find itself
+        opts.filter = (n: Node) => n !== node;
         let result = this.find('declaration', key, node.type as 'VarDeclaration' | 'Declaration', opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
