@@ -42,7 +42,7 @@
     "@jesscss/less-parser": "workspace:*",
     "@jesscss/parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
-    "chevrotain": "npm:@jesscss/chevrotain@12.0.0-jesscss.0",
+    "chevrotain": "^12.0.0",
     "color-name": "~2.0.0"
   },
   "devDependencies": {
