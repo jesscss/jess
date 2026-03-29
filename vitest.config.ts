@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 import circleDependency from 'vite-plugin-circular-dependency';
-import { TestTypeReporter } from './test/vitest-test-type-reporter';
+import { TestTypeReporter } from './test/vitest-test-type-reporter.js';
 
 export default defineConfig({
   plugins: [
@@ -18,15 +18,6 @@ export default defineConfig({
     // Set TEST environment variable for packages that depend on it
     env: {
       TEST: 'true'
-    },
-    deps: {
-      // Transpile workspace libs instead of treating them as prebuilt node_modules
-      inline: [/^@jesscss\//]
-    },
-    server: {
-      deps: {
-        inline: [/^@jesscss\//]
-      }
     },
     // Ensure environment variables are passed to test processes
     environment: 'node',
