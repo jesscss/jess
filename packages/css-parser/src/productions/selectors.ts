@@ -35,12 +35,11 @@ export function stylesheet(this: C, T: TokenMap) {
     let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
-      let rules = (root as Rules).value;
-
       if (charset) {
         let loc = $.getLocationInfo(charset);
         let rootLoc = root.location;
-        rules.unshift(new Any(charset.image, { role: 'charset' }, loc, context!));
+        let rules = (root as Rules).value;
+        (root as Rules).setData([new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
         rootLoc[0] = loc[0];
         rootLoc[1] = loc[1];
         rootLoc[2] = loc[2];
@@ -433,15 +432,15 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
 
   valueAlt ??= (ctx: RuleContext = {}) => [
-      {
-        ALT: () => {
-          let token = $.CONSUME5(T.Ident);
-          if ($.RECORDING_PHASE) {
-            return;
-          }
-          return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), this.context);
+    {
+      ALT: () => {
+        let token = $.CONSUME5(T.Ident);
+        if ($.RECORDING_PHASE) {
+          return;
         }
-      },
+        return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), this.context);
+      }
+    },
     { ALT: () => $.SUBRULE($.string) }
   ];
 
@@ -617,7 +616,7 @@ export function relativeSelector(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
-              complex.value.unshift(combinator);
+              complex.setData([combinator, ...complex.get('value')]);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
