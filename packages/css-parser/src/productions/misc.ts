@@ -147,166 +147,113 @@ export function supportsAtRule(this: C, T: TokenMap, preludeRule?: any) {
   };
 }
 
-/** spec-compliant but simplified */
+/**
+ * @supports condition — modeled after the Less parser's working pattern.
+ * Uses GATE + MANY with explicit token checks instead of factory/alt pattern.
+ */
 export function supportsCondition(this: C, T: TokenMap) {
   const $ = this;
-
-  let conditionAlt = (ctx: RuleContext = {}) => [
+  return (ctx: RuleContext = {}) => $.OR([
     {
-      GATE: () => $.LA(1).tokenType === T.Not,
+      GATE: () => $.isType(T.Not),
       ALT: () => {
         $.startRule();
-        let keyword = $.CONSUME2(T.Not);
-        let value = $.SUBRULE2($.supportsInParens, { ARGS: [ctx] });
+        const keyword = $.CONSUME(T.Not);
+        const value = $.SUBRULE($.supportsInParens, { ARGS: [ctx] });
 
-        if (!$.RECORDING_PHASE) {
-          let location = $.endRule();
-          return new QueryCondition([
-            $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
-            value
-          ], undefined, location, this.context);
+        if ($.RECORDING_PHASE) {
+          return;
         }
+        const location = $.endRule();
+        return new QueryCondition([
+          $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+          value
+        ], undefined, location, this.context);
       }
     },
     {
-      GATE: () => $.LA(1).tokenType !== T.Not,
       ALT: () => {
-        let start = $.startRule();
-        let RECORDING_PHASE = $.RECORDING_PHASE;
-        let [startOffset, startLine, startColumn] = start ?? [];
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        let left = $.SUBRULE2($.supportsInParens, { ARGS: [ctx] });
 
-        let left = $.SUBRULE3($.supportsInParens, { ARGS: [ctx] });
-
-        /**
-         * Can be followed by many ands or many ors
-         */
-        $.OR2([
-          {
-            ALT: () => {
-              $.AT_LEAST_ONE2(() => {
-                let keyword = $.CONSUME3(T.And);
-                let right: Node = $.SUBRULE4($.supportsInParens, { ARGS: [ctx] });
-                if (!RECORDING_PHASE) {
-                  let [,,,endOffset, endLine, endColumn] = right.location;
-                  left = new QueryCondition([
-                    left,
-                    $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
-                    right
-                  ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
-                }
-              });
+        $.MANY({
+          GATE: () => $.isType(T.And) || $.isType(T.Or),
+          DEF: () => {
+            const keyword = $.OR2([
+              { ALT: () => $.CONSUME2(T.And) },
+              { ALT: () => $.CONSUME2(T.Or) }
+            ]);
+            const right = $.SUBRULE3($.supportsInParens, { ARGS: [ctx] });
+            if (!RECORDING_PHASE) {
+              const [startOffset, startLine, startColumn] = left.location;
+              const [,,, endOffset, endLine, endColumn] = right.location;
+              left = new QueryCondition([
+                left,
+                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+                right
+              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
             }
-          },
-          {
-            ALT: () => {
-              $.AT_LEAST_ONE3(() => {
-                let keyword = $.CONSUME4(T.Or);
-                let right: Node = $.SUBRULE5($.supportsInParens, { ARGS: [ctx] });
-                if (!RECORDING_PHASE) {
-                  let [,,,endOffset, endLine, endColumn] = right.location;
-                  left = new QueryCondition([
-                    left,
-                    $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
-                    right
-                  ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
-                }
-              });
-            }
-          },
-          {
-            ALT: EMPTY_ALT()
           }
-        ]);
+        });
 
-        if (!RECORDING_PHASE) {
-          $.endRule();
+        if (RECORDING_PHASE) {
+          return;
         }
-
+        $.endRule();
         return left;
       }
     }
-  ];
-
-  return (ctx: RuleContext = {}) => $.OR(conditionAlt(ctx));
+  ]);
 }
 
 export function supportsInParens(this: C, T: TokenMap) {
   const $ = this;
-
-  let conditionAlt = (ctx: RuleContext = {}) => [
+  return (ctx: RuleContext = {}) => $.OR<Node | undefined>([
     {
+      GATE: () => $.isType(T.Ident) && $.isTypeAt(2, T.LParen),
       ALT: () => {
         $.startRule();
-        /** Function-like call */
-        let name = $.CONSUME(T.Ident);
-        let args: List | undefined;
-        $.OR2([
-          {
-            GATE: $.noSep,
-            ALT: () => {
-              $.CONSUME2(T.LParen);
-              args = $.SUBRULE2($.valueList, { ARGS: [ctx] });
-              $.CONSUME3(T.RParen);
-            }
-          }
-        ]);
+        const name = $.CONSUME(T.Ident);
+        $.CONSUME(T.LParen);
+        const args = $.SUBRULE($.valueList, { ARGS: [ctx] });
+        $.CONSUME2(T.RParen);
 
-        if (!$.RECORDING_PHASE) {
-          let location = $.endRule();
-          return new Call({
-            name: name.image,
-            args
-          }, undefined, location, this.context);
+        if ($.RECORDING_PHASE) {
+          return;
         }
+        const location = $.endRule();
+        return new Call({ name: name.image, args }, undefined, location, this.context);
       }
     },
     {
+      GATE: () => $.isType(T.LParen),
       ALT: () => {
         $.startRule();
-        let values: Node[] = [];
-        $.CONSUME4(T.LParen);
-        /**
-         * Intentionally omits "generalEnclosed" from spec.
-         * See the note on media queries.
-         */
-        let value = $.OR3([
+        $.CONSUME3(T.LParen);
+        let value = $.OR2([
           {
-            /**
-             * supportsCondition starts with Not or (
-             * or Ident followed by ( (function-like supportsInParens)
-             */
             GATE: () => {
-              let t1 = $.LA(1).tokenType;
-              if (t1 === T.Not || t1 === T.LParen) {
-                return true;
-              }
-              // Ident followed by ( is a function-like call in supportsInParens
-              if ($.isTypeAt(1, T.Ident) && $.isTypeAt(2, T.LParen)) {
-                return true;
-              }
-              return false;
+              const t1 = $.LA(1).tokenType;
+              return t1 === T.Not || t1 === T.LParen
+                || ($.isTypeAt(1, T.Ident) && $.isTypeAt(2, T.LParen));
             },
-            ALT: () => $.SUBRULE3($.supportsCondition, { ARGS: [ctx] })
+            ALT: () => $.SUBRULE2($.supportsCondition, { ARGS: [ctx] })
           },
           {
-            /** declaration: Ident/CustomProperty followed by Colon */
-            ALT: () => $.SUBRULE4($.declaration, { ARGS: [ctx] })
+            ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] })
           }
         ]);
-        $.CONSUME5(T.RParen);
+        $.CONSUME4(T.RParen);
 
-        if (!$.RECORDING_PHASE) {
-          let location = $.endRule();
-          if (!(value instanceof Node)) {
-            value = new Sequence(values, undefined, $.getLocationFromNodes(values), this.context);
-          }
-          return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, this.context));
+        if ($.RECORDING_PHASE) {
+          return;
         }
+        const location = $.endRule();
+        return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, this.context));
       }
     }
-  ];
-
-  return (ctx: RuleContext = {}) => $.OR(conditionAlt(ctx) as Array<import('@chevrotain/types').IOrAlt<any>>);
+  ]);
 }
 
 /** Used within anyOuterValue  */
