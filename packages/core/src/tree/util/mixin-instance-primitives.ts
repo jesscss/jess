@@ -547,13 +547,6 @@ export function projectMixinParamScopeIntoOutput(
         return false;
       }
       return node.get('name', context).valueOf() !== 'arguments';
-    })
-    .map((node) => {
-      // Use a simple copy (no materialization) — the param's bound value
-      // is already on the canonical node via setData in matchMixinCandidates.
-      const copy = node.copy(true) as VarDeclaration;
-      copy.removeFlag(F_VISIBLE);
-      return copy;
     });
 
   if (projectedParams.length === 0) {

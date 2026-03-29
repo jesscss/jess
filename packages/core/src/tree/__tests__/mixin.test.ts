@@ -500,7 +500,6 @@ describe('Mixin', () => {
       const result = await fn.call(context, ref({ key: 'theme' }, { type: 'variable' }));
 
       expect(result.render(context)).toBeString(`
-        $color: blue;
         color: blue;
       `);
     });
