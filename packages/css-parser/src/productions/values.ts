@@ -50,10 +50,16 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
           nodes = [];
         }
         $.startRule();
-        $.MANY(() => {
-          let val = $.SUBRULE($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
-          if (!RECORDING_PHASE) {
-            nodes!.push(val);
+        $.MANY({
+          GATE: () => {
+            const tt = $.LA(1).tokenType;
+            return tt !== T.Semi && tt !== T.RCurly && tt !== T.RParen && tt !== T.Important;
+          },
+          DEF: () => {
+            let val = $.SUBRULE($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
+            if (!RECORDING_PHASE) {
+              nodes!.push(val);
+            }
           }
         });
         if (RECORDING_PHASE) {
