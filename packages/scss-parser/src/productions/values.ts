@@ -79,8 +79,8 @@ function wrapOuterExpressionIfNeeded($: P, node: Node, ctx: RuleContext | undefi
         calcFrames: getCalcFrames(ctx)
       },
       node.get('operator') as Operator,
-      node._left,
-      node._right
+      node.left,
+      node.right
     );
     if (shouldOperate) {
       return new Expression(node, { parens: true }, location ?? (node.location as LocationInfo | undefined), $.context);
@@ -706,9 +706,9 @@ export function parenValue(this: P, T: TokenMap) {
       (ctx.preferExpressionInParens ?? false)
       && isNode(value, N.List)
       && value.options?.sep === '/'
-      && (value as List)._value.length === 2
+      && (value as List).value.length === 2
     ) {
-      const [left, right] = (value as List)._value;
+      const [left, right] = (value as List).value;
       const exprCtx: RuleContext = {
         ...ctx,
         wrapInExpression: true,
@@ -815,17 +815,17 @@ export function functionCall(this: P, T: TokenMap) {
     }
     const call = mapped as Call;
 
-    if (typeof call._name === 'string' && call._name === 'selector.parse') {
-      const args = isNode(call._args, N.List) ? (call._args as List)._value : [];
+    if (typeof call.name === 'string' && call.name === 'selector.parse') {
+      const args = isNode(call.args, N.List) ? (call.args as List).value : [];
       const firstArg = args[0];
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
-      if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode((firstArg as Quoted)._value, N.Any)) {
+      if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode((firstArg as Quoted).value, N.Any)) {
         saveValueDiagnostic($, undefined, firstArg?.location as LocationInfo | undefined ?? loc, 'selector.parse() requires a quoted selector string literal.');
         return call;
       }
-      const selectorText = String((firstArg as Quoted)._value.valueOf());
+      const selectorText = String((firstArg as Quoted).value.valueOf());
       let selector: Selector;
       try {
         selector = parseSelectorListExpression(selectorText);
@@ -849,12 +849,12 @@ export function functionCall(this: P, T: TokenMap) {
     // Plain Sass/Less-style function call: `foo(...)`
     // Parse as Call(name: Reference(type='function', fallbackValue: true)) so evaluation tries function registry,
     // but still serializes safely if unresolved.
-    if (typeof call._name === 'string') {
+    if (typeof call.name === 'string') {
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
       const ref = new Reference(
-        { key: call._name },
+        { key: call.name },
         { type: 'function', fallbackValue: true },
         loc,
         $.context
@@ -864,7 +864,7 @@ export function functionCall(this: P, T: TokenMap) {
       const { silentFail: silentFailIgnored, ...rest } = call.options ?? {};
       void silentFailIgnored;
       const nextOptions = Object.keys(rest).length > 0 ? rest : undefined;
-      return new Call({ name: ref, args: call._args }, nextOptions, loc, $.context);
+      return new Call({ name: ref, args: call.args }, nextOptions, loc, $.context);
     }
     return call;
   };

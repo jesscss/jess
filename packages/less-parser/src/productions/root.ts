@@ -113,7 +113,7 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
       return true;
     }
     if (current.type === 'Call') {
-      const callName = (current as Call)._name;
+      const callName = (current as Call).name;
       const callNameStr = String(
         (callName as any)?.valueOf?.() ?? callName ?? ''
       );
@@ -140,7 +140,7 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
   if (!node || node.type !== 'Call') {
     return false;
   }
-  const callName = (node as Call)._name;
+  const callName = (node as Call).name;
   const callNameStr = String((callName as any)?.valueOf?.() ?? callName ?? '');
   if (callNameStr === 'default' || callNameStr === '??') {
     return true;
@@ -169,9 +169,9 @@ export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContex
 
   // Math expressions: only wrap if this operation would actually be performed.
   if (isNode(node, N.Operation)) {
-    const left = node._left;
+    const left = node.left;
     const op = node.get('operator');
-    const right = node._right;
+    const right = node.right;
     const mathMode = this.mathMode ?? 'parens-division';
     const shouldOperate = shouldOperateWithMathFrames(
       {
@@ -327,7 +327,7 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext._target;
+    let target = ext.target;
     let flag = ext.get('flag') ?? 1; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
@@ -1392,11 +1392,11 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           for (let e of extend) {
             e.setData('selector', undefined);
           }
-          rules.setData([...extend, ...rules._value]);
+          rules.setData([...extend, ...rules.value]);
           ctx.extendNodes = undefined;
         } else {
           const selectorList = selector as SelectorList;
-          const selectorCount = selectorList._value.length;
+          const selectorCount = selectorList.value.length;
           const extendCount = extend.length;
 
           // Determine if extends should bubble up:
@@ -1415,7 +1415,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
               let extendNodes = finalExtends[0]!;
               let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
               finalExtend.setData('selector', undefined);
-              rules.setData([finalExtend, ...rules._value]);
+              rules.setData([finalExtend, ...rules.value]);
               ctx.extendNodes = undefined;
             } else {
             // Multiple extend groups (different targets/flags) - bubble up
@@ -1504,7 +1504,7 @@ export function qualifiedRule(this: P, T: TokenMap) {
       // Set the Extend nodes' selector to the ruleset's selector (not &)
       // This allows the extends to work correctly when evaluated in the wrapper Rules context
       for (const extendNode of ctx.extendNodes) {
-        if (extendNode._selector === undefined || (extendNode._selector as any)?.type === 'Ampersand') {
+        if (extendNode.selector === undefined || (extendNode.selector as any)?.type === 'Ampersand') {
           extendNode.setData('selector', selector);
         }
       }
@@ -1544,12 +1544,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
     const convertArgsForDefinition = (args: List<Node> | undefined) => {
-      if (!args || !args._value.length) {
+      if (!args || !args.value.length) {
         return;
       }
 
-      for (let i = 0; i < args._value.length; i++) {
-        const node = args._value[i]!;
+      for (let i = 0; i < args.value.length; i++) {
+        const node = args.value[i]!;
         const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
@@ -1567,12 +1567,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
     // Helper function to convert Any nodes to Reference nodes for mixin call arguments
     const convertArgsForCall = (args: List<Node> | undefined) => {
-      if (!args || !args._value.length) {
+      if (!args || !args.value.length) {
         return;
       }
 
-      for (let i = 0; i < args._value.length; i++) {
-        const node = args._value[i]!;
+      for (let i = 0; i < args.value.length; i++) {
+        const node = args.value[i]!;
         const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
@@ -1666,7 +1666,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         if (
           (s instanceof BasicSelector && (s.isClass || s.isId))
           || (s instanceof InterpolatedSelector && (s.isClass || s.isId))
-          || (s instanceof Combinator && (s._value === '>' || s._value === ' '))
+          || (s instanceof Combinator && (s.value === '>' || s.value === ' '))
         ) {
           continue;
         }
@@ -1778,7 +1778,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             // Set the Extend nodes' selector to the ruleset's selector (not &)
             // This allows the extends to work correctly when evaluated in the wrapper Rules context
             for (const extendNode of ctx.extendNodes) {
-              if (extendNode._selector === undefined || (extendNode._selector as any)?.type === 'Ampersand') {
+              if (extendNode.selector === undefined || (extendNode.selector as any)?.type === 'Ampersand') {
                 extendNode.setData('selector', selector);
               }
             }

@@ -82,9 +82,9 @@ export interface Call {
 export class Call extends Node<CallValue, CallOptions, CallChildData> {
   static override childKeys = ['name', 'args', 'contentNode'] as const;
 
-  /** @internal */ _name!: string | Node;
-  /** @internal */ _args: List<Node> | undefined;
-  /** @internal */ _contentNode: Node | undefined;
+  /** @internal */ name!: string | Node;
+  /** @internal */ args: List<Node> | undefined;
+  /** @internal */ contentNode: Node | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const name = this.get('name', ctx);
@@ -132,17 +132,17 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
 
   constructor(value: CallValue, options?: CallOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._name = value.name;
-    this._args = value.args;
-    this._contentNode = value.contentNode;
-    if (this._name instanceof Node) {
-      this.adopt(this._name);
+    this.name = value.name;
+    this.args = value.args;
+    this.contentNode = value.contentNode;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
     }
-    if (this._args instanceof Node) {
-      this.adopt(this._args);
+    if (this.args instanceof Node) {
+      this.adopt(this.args);
     }
-    if (this._contentNode instanceof Node) {
-      this.adopt(this._contentNode);
+    if (this.contentNode instanceof Node) {
+      this.adopt(this.contentNode);
     }
     this.requiredSemi = true;
     // Function calls are always non-static and may be async
@@ -255,7 +255,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
     let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
-    for (const rule of rules._value) {
+    for (const rule of rules.value) {
       if (isNode(rule, N.Declaration)) {
         rule.setData('important', important);
       } else if (isNode(rule, N.Rules)) {
@@ -408,7 +408,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       /** @removal-target — node-copy-reduction: clone(true) for Collection unlock.
        * Detached ruleset children should be referenced through position, not cloned. */
       let rules = Rules.create(
-        n._value.map(child => child.clone(true, undefined, context)),
+        n.value.map(child => child.clone(true, undefined, context)),
         n.options ? { ...n.options } : undefined
       );
       // Inherit from Collection (n) to preserve definition-scope parent chain
@@ -428,7 +428,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       return rules;
     }
 
-    let fn = isNode(n, N.JsFunction) ? n._value : n;
+    let fn = isNode(n, N.JsFunction) ? n.value : n;
     if (typeof fn === 'function') {
       const originalCaller = context.caller;
       context.caller = this;
@@ -476,8 +476,8 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           return adoptCallWhitespace(evald);
         }
         let castResult = cast(result);
-        if (isNode(castResult, N.Rules) && castResult._value.length === 1) {
-          return adoptCallWhitespace(castResult._value[0]!);
+        if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+          return adoptCallWhitespace(castResult.value[0]!);
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
@@ -504,7 +504,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           ? String(name.get('key'))
           : String(n.valueOf()), context);
         setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
-        return applyDependencyToResult(adoptCallWhitespace(newCall), newCall._args?.get('value'));
+        return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));
       } finally {
         context.caller = originalCaller;
         context.parenFrames.pop();

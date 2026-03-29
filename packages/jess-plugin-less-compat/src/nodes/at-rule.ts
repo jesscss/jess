@@ -11,11 +11,11 @@ export const transformAtRuleToLess = createFromAdapter<AtRule>({
     },
     rules: (a, cache) => {
       const rules = a.get('rules');
-      return rules ? rules._value.map((r: Node) => toLessNode(r, { cache })) : [];
+      return rules ? rules.value.map((r: Node) => toLessNode(r, { cache })) : [];
     }
   },
   accept: childrenAccept((a) => {
     const rules = a.get('rules');
-    return rules?._value?.length ? [...rules._value] : [];
+    return rules?.value?.length ? [...rules.value] : [];
   })
 });

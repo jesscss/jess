@@ -12,11 +12,11 @@ export interface DefaultGuard extends Node<string> {
 export class DefaultGuard extends Node<string> {
   static override childKeys = null as null;
 
-  /** @internal */ readonly _value!: string;
+  /** @internal */ readonly value!: string;
 
   constructor(value: string, options?: any, location?: any, treeContext?: any) {
     super(value as any, options, location, treeContext);
-    this._value = value;
+    this.value = value;
   }
 
   override toTrimmedString(options?: PrintOptions) {

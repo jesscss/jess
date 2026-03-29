@@ -36,16 +36,16 @@ export interface Operation {
 export class Operation extends Node<OperationValue, NodeOptions, OperationChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  /** @internal */ _left!: Node;
+  /** @internal */ left!: Node;
   private operator!: Operator;
-  /** @internal */ _right!: Node;
+  /** @internal */ right!: Node;
 
   override clone(deep?: boolean): this {
     const options = (this as any)._meta?.options;
     const value: OperationValue = [
-      deep ? this._left.clone(deep) : this._left,
+      deep ? this.left.clone(deep) : this.left,
       this.operator,
-      deep ? this._right.clone(deep) : this._right
+      deep ? this.right.clone(deep) : this.right
     ];
     const newNode = new (this.constructor as any)(
       value,
@@ -59,14 +59,14 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
 
   constructor(value: OperationValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._left = value[0];
+    this.left = value[0];
     this.operator = value[1];
-    this._right = value[2];
-    if (this._left instanceof Node) {
-      this.adopt(this._left);
+    this.right = value[2];
+    if (this.left instanceof Node) {
+      this.adopt(this.left);
     }
-    if (this._right instanceof Node) {
-      this.adopt(this._right);
+    if (this.right instanceof Node) {
+      this.adopt(this.right);
     }
     // Operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);

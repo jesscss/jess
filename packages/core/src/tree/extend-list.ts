@@ -20,11 +20,11 @@ export interface ExtendList extends Node<Extend[], NodeOptions, ExtendListChildD
 export class ExtendList extends Node<Extend[], NodeOptions, ExtendListChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ readonly _value!: Extend[];
+  /** @internal */ readonly value!: Extend[];
 
   constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     for (const child of value) {
       if (child instanceof Node) {
         this.adopt(child);

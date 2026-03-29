@@ -25,10 +25,10 @@ function registerInnerExtendRootIfHoisted(
   context: Context,
   layerName?: string
 ): void {
-  if (wrapperRules._value.length !== 1) {
+  if (wrapperRules.value.length !== 1) {
     return;
   }
-  const first = wrapperRules._value[0];
+  const first = wrapperRules.value[0];
   if (!isNode(first, N.Ruleset)) {
     return;
   }
@@ -79,24 +79,24 @@ export interface AtRule {
 export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
   static override childKeys = ['name', 'prelude', 'rules'] as const;
 
-  /** @internal */ _name!: Any<'atkeyword'> | Interpolated<'atkeyword'>;
-  /** @internal */ _prelude: Node | undefined;
-  /** @internal */ _rules: Rules | undefined;
+  /** @internal */ name!: Any<'atkeyword'> | Interpolated<'atkeyword'>;
+  /** @internal */ prelude: Node | undefined;
+  /** @internal */ rules: Rules | undefined;
   private frames: (Ruleset | AtRule)[] | undefined;
 
   constructor(value: AtRuleValue, options?: AtRuleOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this._name = value.name;
-    this._prelude = value.prelude;
-    this._rules = value.rules;
-    if (this._name instanceof Node) {
-      this.adopt(this._name);
+    this.name = value.name;
+    this.prelude = value.prelude;
+    this.rules = value.rules;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
     }
-    if (this._prelude instanceof Node) {
-      this.adopt(this._prelude);
+    if (this.prelude instanceof Node) {
+      this.adopt(this.prelude);
     }
-    if (this._rules instanceof Node) {
-      this.adopt(this._rules);
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
     }
     this.allowRoot = true;
   }
@@ -105,7 +105,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
-    return (this._valueOf ??= (this._name.toString() + (this._prelude ? ' ' + this._prelude.valueOf() : '')));
+    return (this._valueOf ??= (this.name.toString() + (this.prelude ? ' ' + this.prelude.valueOf() : '')));
   }
 
   /**
@@ -268,7 +268,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           const parentFrame = frame as AtRule;
           const parentName = parentFrame.get('name', context);
           const parentRules = parentFrame.get('rules', context);
-          if (parentName?.toTrimmedString?.() === '@layer' && parentRules?._value?.includes(node)) {
+          if (parentName?.toTrimmedString?.() === '@layer' && parentRules?.value?.includes(node)) {
             parentLayerName = context.extendRoots.getLayerName(parentFrame);
           }
           if (parentLayerName) {
@@ -378,7 +378,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
       if (!outerRules) {
         return;
       }
-      const visible = outerRules._value.filter(n => n.visible);
+      const visible = outerRules.value.filter(n => n.visible);
       if (visible.length !== 1) {
         return;
       }
@@ -509,14 +509,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
                 if (shouldClearRulesetFrames) {
                   context.rulesetFrames = [];
                 }
-                const onlyRuleSetChild = isNode(bodyToEval._value[0], N.Ruleset);
+                const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
                 const evalOut = bodyToEval.eval(context);
                 const doRegister = (r: Rules) => {
                   if (savedRulesetFrames !== undefined) {
                     context.rulesetFrames = savedRulesetFrames;
                   }
                   const finalRules =
-                    onlyRuleSetChild && isNode(r._value[0], N.Rules) ? r._value[0] : r;
+                    onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
                   setField(node, 'rules', finalRules, context);
                   tryMergeNestedMedia();
                   context.extendRoots.popExtendRoot();
@@ -545,7 +545,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
             pushedExtendRoot = true;
           }
 
-          let onlyRuleSetChild = isNode(bodyToEval._value[0], N.Ruleset);
+          let onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
 
           // For root-only at-rules that are hoisted, clear rulesetFrames
           // so internal rulesets don't inherit parent selectors
@@ -563,7 +563,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
               }
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
-              const finalRules = onlyRuleSetChild && isNode(r._value[0], N.Rules) ? r._value[0] : r;
+              const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               setField(node, 'rules', finalRules, context);
               tryMergeNestedMedia();
 
@@ -592,7 +592,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           }
 
           const finalRules =
-            onlyRuleSetChild && isNode(out._value[0], N.Rules) ? out._value[0] : out;
+            onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
           setField(node, 'rules', finalRules, context);
           tryMergeNestedMedia();
 

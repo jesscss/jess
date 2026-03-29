@@ -34,7 +34,7 @@ export function jessCollection(this: P, T: TokenMap) {
     $.CONSUME($.T.RCurly);
     $.CONSUME($.T.Semi);
     const loc = $.endRule();
-    return new Collection(rules._value, undefined, loc, $.context);
+    return new Collection(rules.value, undefined, loc, $.context);
   };
 }
 

@@ -22,7 +22,7 @@ export interface Expression extends Node<Node, NodeOptions, ExpressionChildData>
 export class Expression extends Node<Node, NodeOptions, ExpressionChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ readonly _value!: Node;
+  /** @internal */ readonly value!: Node;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const value = this.get('value', ctx);
@@ -46,7 +46,7 @@ export class Expression extends Node<Node, NodeOptions, ExpressionChildData> {
 
   constructor(value: Node, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     if (value instanceof Node) {
       this.adopt(value);
     }

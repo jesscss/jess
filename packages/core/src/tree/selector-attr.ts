@@ -37,17 +37,17 @@ export interface AttributeSelector {
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, NodeOptions, AttributeSelectorChildData> {
   static override childKeys = ['name', 'value'] as const;
 
-  /** @internal */ _name!: string | Node;
+  /** @internal */ name!: string | Node;
   private op: string | undefined;
-  /** @internal */ _value: Node | undefined;
+  /** @internal */ value: Node | undefined;
   private mod: string | undefined;
 
   override clone(deep?: boolean): this {
     const newNode = new (this.constructor as any)(
       {
-        name: deep && this._name instanceof Node ? this._name.clone(deep) : this._name,
+        name: deep && this.name instanceof Node ? this.name.clone(deep) : this.name,
         op: this.op,
-        value: deep && this._value instanceof Node ? this._value.clone(deep) : this._value,
+        value: deep && this.value instanceof Node ? this.value.clone(deep) : this.value,
         mod: this.mod
       },
       undefined,
@@ -60,15 +60,15 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
 
   constructor(data: AttributeSelectorValue, options?: undefined, location?: OptionalLocation, treeContext?: TreeContext) {
     super(data as any, options, location, treeContext);
-    this._name = data.name;
+    this.name = data.name;
     this.op = data.op;
-    this._value = data.value;
+    this.value = data.value;
     this.mod = data.mod;
-    if (this._name instanceof Node) {
-      this.adopt(this._name as Node);
+    if (this.name instanceof Node) {
+      this.adopt(this.name as Node);
     }
-    if (this._value instanceof Node) {
-      this.adopt(this._value);
+    if (this.value instanceof Node) {
+      this.adopt(this.value);
     }
   }
 
@@ -134,9 +134,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
   override valueOf() {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let name = this._name;
+      let name = this.name;
       let op = this.op;
-      let value = this._value;
+      let value = this.value;
       let mod = this.mod;
       let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
       if (!op) {

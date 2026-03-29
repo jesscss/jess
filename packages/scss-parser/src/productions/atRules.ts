@@ -273,7 +273,7 @@ function createNullParentAmpersand(context: any, selector?: Selector): Ampersand
 function prefixAtRootSelector(selector: Selector, context: any): Selector {
   if (isNode(selector, N.SelectorList)) {
     const list = new SelectorList(
-      (selector as SelectorList)._value.map(item => prefixAtRootSelector(item as Selector, context)),
+      (selector as SelectorList).value.map(item => prefixAtRootSelector(item as Selector, context)),
       undefined,
       selector.location,
       context
@@ -286,7 +286,7 @@ function prefixAtRootSelector(selector: Selector, context: any): Selector {
   const amp = createNullParentAmpersand(context, selector);
   if (isNode(selector, N.ComplexSelector)) {
     const complex = new ComplexSelector(
-      [amp, ...(selector as ComplexSelector)._value] as any,
+      [amp, ...(selector as ComplexSelector).value] as any,
       undefined,
       selector.location,
       context
@@ -306,36 +306,36 @@ function lowerPlainAtRootRules(rules: RulesType, context: any): void {
   const transformRule = (node: Node): Node => {
     if (isNode(node, N.Ruleset)) {
       const ruleset = node as Ruleset;
-      if (!isNode(ruleset._selector, N.Nil)) {
-        ruleset.setData('selector', prefixAtRootSelector(ruleset._selector as Selector, context));
+      if (!isNode(ruleset.selector, N.Nil)) {
+        ruleset.setData('selector', prefixAtRootSelector(ruleset.selector as Selector, context));
       }
       return ruleset;
     }
 
-    if (node instanceof AtRule && node._rules) {
-      lowerPlainAtRootRules(node._rules as RulesType, context);
+    if (node instanceof AtRule && node.rules) {
+      lowerPlainAtRootRules(node.rules as RulesType, context);
       return node;
     }
 
     if (node instanceof If) {
-      for (const body of node._bodies) {
+      for (const body of node.bodies) {
         lowerPlainAtRootRules(body as RulesType, context);
       }
-      if (node._elseBranch) {
-        lowerPlainAtRootRules(node._elseBranch as RulesType, context);
+      if (node.elseBranch) {
+        lowerPlainAtRootRules(node.elseBranch as RulesType, context);
       }
       return node;
     }
 
     if (node instanceof For || node instanceof While) {
-      lowerPlainAtRootRules(node._rules as RulesType, context);
+      lowerPlainAtRootRules(node.rules as RulesType, context);
       return node;
     }
 
     return node;
   };
 
-  rules.setData(rules._value.map((rule: Node) => transformRule(rule)));
+  rules.setData(rules.value.map((rule: Node) => transformRule(rule)));
 }
 
 function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: any } | undefined {
@@ -2140,7 +2140,7 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
 
     if (!prelude) {
       lowerPlainAtRootRules(rules as RulesType, $.context);
-      const flattened = [...(rules as RulesType)._value];
+      const flattened = [...(rules as RulesType).value];
       if (flattened.length === 0) {
         return new Nil(undefined, undefined, loc, $.context);
       }

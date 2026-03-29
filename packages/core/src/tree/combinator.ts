@@ -13,7 +13,7 @@ export interface Combinator extends Selector<Combinators> {
 export class Combinator extends Selector<Combinators> {
   static override childKeys = null as null;
 
-  /** @internal */ readonly _value!: Combinators;
+  /** @internal */ readonly value!: Combinators;
 
   constructor(
     value: Combinators,
@@ -22,7 +22,7 @@ export class Combinator extends Selector<Combinators> {
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     this.addFlag(F_STATIC);
   }
 }

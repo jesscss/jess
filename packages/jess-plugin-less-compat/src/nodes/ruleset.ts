@@ -16,7 +16,7 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
     },
     rules: (rs, cache) => {
       const rules = rs.get('rules');
-      return rules._value.map((r: Node) => toLessNode(r, { cache }));
+      return rules.value.map((r: Node) => toLessNode(r, { cache }));
     }
   },
   accept: (ruleset, visitor, cache) => {
@@ -49,8 +49,8 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
     }
 
     // Traverse rules
-    if (rules?._value?.length > 0) {
-      const lessRules = rules._value.map((r: Node) => toLessNode(r, { cache }));
+    if (rules?.value?.length > 0) {
+      const lessRules = rules.value.map((r: Node) => toLessNode(r, { cache }));
       if (visitor.visitArray) {
         visitor.visitArray(lessRules);
       } else {

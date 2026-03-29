@@ -22,11 +22,11 @@ export interface Url {
 export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ _value!: Quoted | Any;
+  /** @internal */ value!: Quoted | Any;
 
   constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     if (value instanceof Node) {
       this.adopt(value);
     }
@@ -49,11 +49,11 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
     if (isNode(value, N.Quoted)) {
       value = value.get('value') as string | Quoted | Any;
       if (isNode(value)) {
-        return String((value as any)._value);
+        return String((value as any).value);
       }
       return value as string;
     }
-    return (value as any)._value;
+    return (value as any).value;
   }
 
   override evalNode(context: Context): MaybePromise<Url> {

@@ -38,15 +38,15 @@ export interface PseudoSelector {
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOptions, PseudoSelectorChildData> {
   static override childKeys = ['name', 'arg'] as const;
 
-  /** @internal */ _name!: string;
-  /** @internal */ _arg: Node | undefined;
+  /** @internal */ name!: string;
+  /** @internal */ arg: Node | undefined;
 
   constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._name = value.name;
-    this._arg = value.arg;
-    if (this._arg instanceof Node) {
-      this.adopt(this._arg);
+    this.name = value.name;
+    this.arg = value.arg;
+    if (this.arg instanceof Node) {
+      this.adopt(this.arg);
     }
   }
 
@@ -54,8 +54,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
     }
-    let name = this._name;
-    let arg: unknown = this._arg;
+    let name = this.name;
+    let arg: unknown = this.arg;
     let library = this.keySetLibrary;
     if (!library) {
       throw new Error('Selector keySet library not found');
@@ -124,8 +124,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
   override valueOf(): string {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let name = this._name;
-      let arg = this._arg;
+      let name = this.name;
+      let arg = this.arg;
       valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
       this._valueOf = valueOf;
     }

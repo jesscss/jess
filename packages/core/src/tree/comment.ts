@@ -17,12 +17,12 @@ export interface Comment extends Node<string, CommentOptions> {
 export class Comment extends Node<string, CommentOptions> {
   static override childKeys = null as null;
 
-  /** @internal */ readonly _value!: string;
+  /** @internal */ readonly value!: string;
   readonly lineComment: boolean;
 
   constructor(value: string, options?: CommentOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     this.lineComment = !!options?.lineComment;
     this.allowRoot = true;
     this.allowRuleRoot = true;

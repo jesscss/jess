@@ -87,14 +87,14 @@ export class Interpolated<
 > extends Node<InterpolatedValue, AnyOptions<Role>, InterpolatedChildData> {
   static override childKeys = ['source', 'replacements'] as const;
 
-  /** @internal */ _source!: string;
-  /** @internal */ _replacements!: Node[];
+  /** @internal */ source!: string;
+  /** @internal */ replacements!: Node[];
 
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value as any, options, location, treeContext);
-    this._source = value.source;
-    this._replacements = value.replacements;
-    for (const r of this._replacements) {
+    this.source = value.source;
+    this.replacements = value.replacements;
+    for (const r of this.replacements) {
       if (r instanceof Node) {
         this.adopt(r);
       }
@@ -104,7 +104,7 @@ export class Interpolated<
   }
 
   override valueOf(): string {
-    return this._source;
+    return this.source;
   }
 
   replace(replacements?: Node[], options?: PrintOptions): string {

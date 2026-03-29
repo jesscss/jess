@@ -118,11 +118,11 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       if ((collection as Mixin).get('params')?.length) {
         throw new Error('We can\'t iterate over a mixin with parameters');
       }
-      rules = [...(collection as Mixin).get('rules')._value];
+      rules = [...(collection as Mixin).get('rules').value];
     } else if ((collection as Node).type === 'Ruleset') {
-      rules = [...(collection as Ruleset).get('rules')._value];
+      rules = [...(collection as Ruleset).get('rules').value];
     } else if ((collection as Node).type === 'Rules') {
-      rules = [...(collection as Rules)._value];
+      rules = [...(collection as Rules).value];
     }
     for (let [, value] of rules!.entries()) {
       if (value.type === 'Comment') {
@@ -133,8 +133,8 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       }
       yield [(value as any).value, (value as any).name, rules!] as unknown as GetEntriesOf<T>;
     }
-  } else if (isNode(collection) && isArray((collection as Rules)._value)) {
-    yield* getEntries((collection as Rules)._value as unknown[], reverse) as Generator<GetEntriesOf<T>>;
+  } else if (isNode(collection) && isArray((collection as Rules).value)) {
+    yield* getEntries((collection as Rules).value as unknown[], reverse) as Generator<GetEntriesOf<T>>;
   } else {
     yield [collection, 'value', collection] as unknown as GetEntriesOf<T>;
   }

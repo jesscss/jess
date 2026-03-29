@@ -39,11 +39,11 @@ export interface ComplexSelector {
 export class ComplexSelector extends Selector<ComplexSelectorValue, any, ComplexSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ _value!: ComplexSelectorValue;
+  /** @internal */ value!: ComplexSelectorValue;
 
   constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     for (const child of value) {
       if (child instanceof Selector) {
         this.adopt(child);
@@ -52,13 +52,13 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
   }
 
   get length() {
-    return this._value.length;
+    return this.value.length;
   }
 
   override valueOf() {
-    const value = Array.isArray(this._value)
-      ? this._value
-      : [this._value as unknown as ComplexSelectorComponent];
+    const value = Array.isArray(this.value)
+      ? this.value
+      : [this.value as unknown as ComplexSelectorComponent];
     return (this._valueOf ??= value.map(n => n.valueOf()).join(''));
   }
 
@@ -76,7 +76,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
         if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
-        let co = component._value;
+        let co = component.value;
         if (co !== ' ') {
           let out = w.capture(() => component.toString(options));
           if (out !== '|') {

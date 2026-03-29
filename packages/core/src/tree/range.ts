@@ -34,23 +34,23 @@ export interface Range {
 export class Range extends Node<RangeValue, RangeOptions, RangeChildData> {
   static override childKeys = ['start', 'end', 'step'] as const;
 
-  /** @internal */ _start!: Node;
-  /** @internal */ _end!: Node;
-  /** @internal */ _step: Node | undefined;
+  /** @internal */ start!: Node;
+  /** @internal */ end!: Node;
+  /** @internal */ step: Node | undefined;
 
   constructor(value: RangeValue, options?: RangeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._start = value.start;
-    this._end = value.end;
-    this._step = value.step;
-    if (this._start instanceof Node) {
-      this.adopt(this._start);
+    this.start = value.start;
+    this.end = value.end;
+    this.step = value.step;
+    if (this.start instanceof Node) {
+      this.adopt(this.start);
     }
-    if (this._end instanceof Node) {
-      this.adopt(this._end);
+    if (this.end instanceof Node) {
+      this.adopt(this.end);
     }
-    if (this._step instanceof Node) {
-      this.adopt(this._step);
+    if (this.step instanceof Node) {
+      this.adopt(this.step);
     }
   }
 

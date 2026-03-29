@@ -118,7 +118,7 @@ function addRulesetToIndex(
     ?? rules.treeContext?.opts?.selectorBits;
   if (selectorBits && !selector.keySetLibrary) {
     selector.keySetLibrary = selectorBits;
-    const selectorValue = (selector as unknown as { _value?: unknown })._value;
+    const selectorValue = (selector as unknown as { value?: unknown }).value;
     if (isArray(selectorValue)) {
       for (const child of selectorValue as Selector[]) {
         if (child && !child.keySetLibrary) {
@@ -699,12 +699,12 @@ export class MixinRegistry extends Registry<
    * keySetLibrary so selectors can compute their keySets.
    */
   private _ensureChildrenRegistered(rules: Rules, selectorBits?: BitSetLibrary<string>) {
-    for (const child of rules._value) {
+    for (const child of rules.value) {
       if (isNode(child, N.Ruleset)) {
         const sel = (child as Ruleset).get('selector');
         if (sel && selectorBits && !isNode(sel, N.Nil) && !(sel as Selector).keySetLibrary) {
           (sel as Selector).keySetLibrary = selectorBits;
-          const selValue = (sel as unknown as { _value?: unknown })._value;
+          const selValue = (sel as unknown as { value?: unknown }).value;
           if (isArray(selValue)) {
             for (const sub of selValue as Selector[]) {
               if (!sub.keySetLibrary) {
@@ -1567,7 +1567,7 @@ export function getDirectDeclarationsByKey(
   key: string | undefined,
   context?: Context
 ): Declaration[] {
-  const children = context ? getChildren(rules, context) : rules._value;
+  const children = context ? getChildren(rules, context) : rules.value;
   const matches: Declaration[] = [];
   for (const child of children) {
     if (!isNode(child, N.Declaration | N.VarDeclaration)) {

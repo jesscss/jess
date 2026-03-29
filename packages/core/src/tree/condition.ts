@@ -3,7 +3,7 @@ import { F_NON_STATIC, F_VISIBLE, Node, defineType, type OptionalLocation, type 
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
-import { getData } from './util/field-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -36,9 +36,9 @@ export interface Condition extends Node<ConditionValue, ConditionOptions, Condit
 export class Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  /** @internal */ readonly _left!: Node;
+  /** @internal */ readonly left!: Node;
   private readonly operator: ConditionOperator | undefined;
-  /** @internal */ readonly _right: Node | undefined;
+  /** @internal */ readonly right: Node | undefined;
   private readonly negate: boolean;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
@@ -69,15 +69,15 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
 
   constructor(value: ConditionValue, options?: ConditionOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._left = value[0];
+    this.left = value[0];
     this.operator = value[1];
-    this._right = value[2];
+    this.right = value[2];
     this.negate = !!options?.negate;
-    if (this._left instanceof Node) {
-      this.adopt(this._left);
+    if (this.left instanceof Node) {
+      this.adopt(this.left);
     }
-    if (this._right instanceof Node) {
-      this.adopt(this._right);
+    if (this.right instanceof Node) {
+      this.adopt(this.right);
     }
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
@@ -114,7 +114,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
 
   static getBool(node: Node, negated: boolean): Bool {
     if (node instanceof Bool) {
-      return new Bool(negated ? !node._value : node._value);
+      return new Bool(negated ? !node.value : node.value);
     }
     // Less guards treat only explicit booleans as truthy.
     // Any non-boolean (number, quoted, keyword, list, nil, etc.) is false.
@@ -123,8 +123,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
 
   static getResult(a: Node, b: Node, op: ConditionOperator, context?: Context): boolean {
     switch (op) {
-      case 'and': return Condition.getBool(a, false)._value && Condition.getBool(b, false)._value;
-      case 'or': return Condition.getBool(a, false)._value || Condition.getBool(b, false)._value;
+      case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
+      case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
       default:
         switch (a.compare(b, context)) {
           case -1:
@@ -173,7 +173,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
           if (node.type !== 'Call') {
             return node;
           }
-          const rawCallName = getData<string | Node | undefined>(node, 'name', context);
+          const rawCallName = getField<string | Node | undefined>(node, 'name', context);
           const callName = String(typeof rawCallName === 'string'
             ? rawCallName
             : rawCallName?.valueOf?.() ?? '');

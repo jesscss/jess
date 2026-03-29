@@ -31,11 +31,11 @@ export interface Paren {
 export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ _value: Node | undefined;
+  /** @internal */ value: Node | undefined;
 
   constructor(value?: Node, options?: ParenOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     if (value instanceof Node) {
       this.adopt(value);
     }

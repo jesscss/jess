@@ -3,7 +3,7 @@ import { createFromAdapter, selfVisitAccept } from '../transform/adapter.js';
 
 export const transformKeywordToLess = createFromAdapter<Keyword>({
   fields: {
-    value: k => k._value
+    value: k => k.value
   },
   accept: selfVisitAccept()
 });

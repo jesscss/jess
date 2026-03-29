@@ -23,11 +23,11 @@ export interface SelectorList {
 export class SelectorList extends Selector<Selector[], any, SelectorListChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ _value!: Selector[];
+  /** @internal */ value!: Selector[];
 
   constructor(value: Selector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this._value = value;
+    this.value = value;
     for (const child of value) {
       if (child instanceof Selector) {
         this.adopt(child);
@@ -36,7 +36,7 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
   }
 
   get length() {
-    return this._value.length;
+    return this.value.length;
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -110,7 +110,7 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
   }
 
   override valueOf() {
-    const itemValues = this._value.map(item => item.valueOf());
+    const itemValues = this.value.map(item => item.valueOf());
     return itemValues.join(',');
   }
 

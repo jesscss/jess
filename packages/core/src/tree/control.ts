@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalState } from '../eval-state.js';
-import { getChildren, getData, getField, setField, setParent } from './util/field-helpers.js';
+import { getChildren, getField, setField, setParent } from './util/field-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -97,15 +97,15 @@ function getControlField<T>(node: Node, key: string, context: Context | undefine
       return srcState._fields.get(key) as T;
     }
   }
-  return getData<T>(node, key, context);
+  return getField<T>(node, key, context);
 }
 
 function getControlDeclarationValue(node: Node, context: Context): Node {
-  return getData<Node>(node, 'value', context);
+  return getField<Node>(node, 'value', context);
 }
 
 function getControlDeclarationName(node: Node, context: Context): string {
-  return String(getData<Node>(node, 'name', context));
+  return String(getField<Node>(node, 'name', context));
 }
 
 function getControlDeclarationAssignType(node: Node, context: Context): AssignmentType | undefined {
@@ -158,8 +158,8 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     const rules: readonly Node[] = isNode(input, N.Rules)
       ? getControlField(input, 'value', context, input.get('value', context) as Node[])
       : isNode(input, N.Ruleset)
-        ? (input.get('rules') ? getControlField(input.get('rules'), 'value', context, input.get('rules')._value) : [])
-        : ((input as Mixin).get('rules') ? getControlField((input as Mixin).get('rules'), 'value', context, (input as Mixin).get('rules')._value) : []);
+        ? (input.get('rules') ? getControlField(input.get('rules'), 'value', context, input.get('rules').value) : [])
+        : ((input as Mixin).get('rules') ? getControlField((input as Mixin).get('rules'), 'value', context, (input as Mixin).get('rules').value) : []);
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -205,31 +205,31 @@ export interface If extends Node<IfValue, any, IfChildData> {
 export class If extends Node<IfValue, any, IfChildData> {
   static override childKeys = ['conditions', 'bodies', 'elseBranch'] as const;
 
-  /** @internal */ readonly _conditions!: Node[];
-  /** @internal */ readonly _bodies!: Rules[];
-  /** @internal */ readonly _elseBranch: Rules | undefined;
+  /** @internal */ readonly conditions!: Node[];
+  /** @internal */ readonly bodies!: Rules[];
+  /** @internal */ readonly elseBranch: Rules | undefined;
 
   constructor(value: IfValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this._conditions = value.conditions;
-    this._bodies = value.bodies;
-    this._elseBranch = value.elseBranch;
-    for (const cond of this._conditions) {
+    this.conditions = value.conditions;
+    this.bodies = value.bodies;
+    this.elseBranch = value.elseBranch;
+    for (const cond of this.conditions) {
       if (cond instanceof Node) {
         this.adopt(cond);
       }
     }
-    for (const body of this._bodies) {
+    for (const body of this.bodies) {
       if (body instanceof Node) {
         this.adopt(body);
       }
       makeDirectiveRulesPublic(body);
     }
-    if (this._elseBranch) {
-      if (this._elseBranch instanceof Node) {
-        this.adopt(this._elseBranch);
+    if (this.elseBranch) {
+      if (this.elseBranch instanceof Node) {
+        this.adopt(this.elseBranch);
       }
-      makeDirectiveRulesPublic(this._elseBranch);
+      makeDirectiveRulesPublic(this.elseBranch);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
@@ -283,34 +283,34 @@ export interface For extends Node<ForValue, any, ForChildData> {
 export class For extends Node<ForValue, any, ForChildData> {
   static override childKeys = ['vars', 'iterable', 'rules'] as const;
 
-  /** @internal */ readonly _vars!: VarDeclaration | VarDeclaration[];
-  /** @internal */ readonly _iterable!: Node;
-  /** @internal */ readonly _rules!: Rules;
+  /** @internal */ readonly vars!: VarDeclaration | VarDeclaration[];
+  /** @internal */ readonly iterable!: Node;
+  /** @internal */ readonly rules!: Rules;
 
   constructor(value: ForValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this._vars = value.vars;
-    this._iterable = value.iterable;
-    this._rules = value.rules;
-    if (Array.isArray(this._vars)) {
-      for (const v of this._vars) {
+    this.vars = value.vars;
+    this.iterable = value.iterable;
+    this.rules = value.rules;
+    if (Array.isArray(this.vars)) {
+      for (const v of this.vars) {
         if (v instanceof Node) {
           this.adopt(v);
         }
       }
-    } else if (this._vars instanceof Node) {
-      this.adopt(this._vars);
+    } else if (this.vars instanceof Node) {
+      this.adopt(this.vars);
     }
-    if (this._iterable instanceof Node) {
-      this.adopt(this._iterable);
+    if (this.iterable instanceof Node) {
+      this.adopt(this.iterable);
     }
-    if (this._rules instanceof Node) {
-      this.adopt(this._rules);
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(this._rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override preEval(context: Context): MaybePromise<Node> {
@@ -518,18 +518,18 @@ export interface Each extends Node<LegacyLoopValue, any, EachChildData> {
 export class Each extends Node<LegacyLoopValue, any, EachChildData> {
   static override childKeys = ['header', 'rules'] as const;
 
-  /** @internal */ readonly _header!: Sequence;
-  /** @internal */ readonly _rules!: Rules;
+  /** @internal */ readonly header!: Sequence;
+  /** @internal */ readonly rules!: Rules;
 
   constructor(value: LegacyLoopValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this._header = value.header;
-    this._rules = value.rules;
-    if (this._header instanceof Node) {
-      this.adopt(this._header);
+    this.header = value.header;
+    this.rules = value.rules;
+    if (this.header instanceof Node) {
+      this.adopt(this.header);
     }
-    if (this._rules instanceof Node) {
-      this.adopt(this._rules);
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
@@ -569,23 +569,23 @@ export interface While extends Node<WhileValue, any, WhileChildData> {
 export class While extends Node<WhileValue, any, WhileChildData> {
   static override childKeys = ['condition', 'rules'] as const;
 
-  /** @internal */ readonly _condition!: Node;
-  /** @internal */ readonly _rules!: Rules;
+  /** @internal */ readonly condition!: Node;
+  /** @internal */ readonly rules!: Rules;
 
   constructor(value: WhileValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this._condition = value.condition;
-    this._rules = value.rules;
-    if (this._condition instanceof Node) {
-      this.adopt(this._condition);
+    this.condition = value.condition;
+    this.rules = value.rules;
+    if (this.condition instanceof Node) {
+      this.adopt(this.condition);
     }
-    if (this._rules instanceof Node) {
-      this.adopt(this._rules);
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(this._rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

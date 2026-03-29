@@ -116,7 +116,7 @@ export function finalizeMixinInvocationReturn(
 ): Rules | Nil | ReturnType<Rules['toObject']> {
   if (receiver instanceof Context) {
     output.index ??= receiver.ruleCounter++;
-    if (output._value.length === 0) {
+    if (output.value.length === 0) {
       return new Nil();
     }
     return output;
@@ -224,7 +224,7 @@ export function defineMixinArgumentsInScope(
 
   const paramValues = params?.get('value')
     .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
-    .map(p => (p as any)._value);
+    .map(p => (p as any).value);
   const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
   for (const argNode of argumentNodes) {
     if (isNode(argNode, N.Sequence) && (argNode as Sequence).get('value').length > 1) {
@@ -317,15 +317,15 @@ export function normalizeMixinInvocationParams(
     }
 
     let restName: string;
-    if (typeof (param as any)._value === 'string') {
-      restName = (param as any)._value;
+    if (typeof (param as any).value === 'string') {
+      restName = (param as any).value;
     } else {
       restName = unnamedRestCount === 0 ? 'rest' : `rest${unnamedRestCount + 1}`;
       unnamedRestCount++;
     }
 
-    const restValue = isNode((param as any)._value)
-      ? (param as any)._value as Node
+    const restValue = isNode((param as any).value)
+      ? (param as any).value as Node
       : (
           context.treeContext?.file
             ? new Sequence([])
@@ -380,7 +380,7 @@ export function prepareMixinCandidateInvocation(
     outerRules,
     lookupScope: outerRules ?? rules,
     guardScopeChildren: outerRules
-      ? [...outerRules._value]
+      ? [...outerRules.value]
       : undefined
   };
 }
@@ -456,7 +456,7 @@ export async function evaluateMixinGuardCandidate(
         () => guardNode.eval(context)
       );
       return {
-        passes: probeResult instanceof Bool && probeResult._value === true,
+        passes: probeResult instanceof Bool && probeResult.value === true,
         outerRules: nextScope
       };
     } finally {
@@ -833,7 +833,7 @@ function normalizeBoundLeadingItemWhitespace(node: Node): void {
   if (!isNode(node, N.List | N.Sequence)) {
     return;
   }
-  const items = (node as unknown as { _value: Node[] })._value;
+  const items = (node as unknown as { value: Node[] }).value;
   if (items.length > 0) {
     items[0]!.pre = 0;
   }
@@ -898,12 +898,12 @@ export async function evaluateMixinArgs(
         }
         const evald = await arg.eval(context);
         if (evald.type === 'Rest') {
-          let restValue = (evald as unknown as { _value: unknown })._value;
+          let restValue = (evald as unknown as { value: unknown }).value;
           if (isNode(restValue as Node) && !isNode(restValue as Node, N.Sequence | N.List)) {
             restValue = await (restValue as Node).eval(context);
           }
           if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
-            for (const restArg of (restValue as unknown as { _value: Node[] })._value) {
+            for (const restArg of (restValue as unknown as { value: Node[] }).value) {
               nodeArgs.push(restArg);
             }
             continue;
@@ -1064,8 +1064,8 @@ export async function matchMixinCandidates(
           }
           const restVarDecl = new VarDeclarationCtor({
             name: new Any(
-              (param as unknown as { _value: string | undefined })._value
-                ? `${(param as unknown as { _value: string })._value}`
+              (param as unknown as { value: string | undefined }).value
+                ? `${(param as unknown as { value: string }).value}`
                 : `rest${pi}`,
               { role: 'property' }
             ) as Any<'property'>,
@@ -1131,7 +1131,7 @@ function guardContainsDefault(node: Node | undefined): boolean {
       return true;
     }
   }
-  const value = (node as unknown as { _value: unknown })._value;
+  const value = (node as unknown as { value: unknown }).value;
   if (Array.isArray(value)) {
     for (const item of value) {
       if (isNode(item) && guardContainsDefault(item)) {

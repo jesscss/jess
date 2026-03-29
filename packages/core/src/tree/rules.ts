@@ -29,7 +29,6 @@ import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import {
   getChildren,
-  getData,
   getField,
   getParent,
   getSourceParent,
@@ -130,7 +129,7 @@ export type RulesOptions = {
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  /** @internal */ readonly _value: readonly Node[];
+  /** @internal */ readonly value: readonly Node[];
   get options(): RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
@@ -163,7 +162,7 @@ export interface Rules {
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ readonly _value!: readonly Node[];
+  /** @internal */ readonly value!: readonly Node[];
 
   functionRegistry: Registries.FunctionRegistry | undefined;
 
@@ -219,7 +218,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const newRules = deep
       ? super.clone(deep, cloneFn, ctx)
       : new (this.constructor as typeof Rules)(
-        this._value,
+        this.value,
         options ? { ...options } : undefined,
         location,
         this.treeContext
@@ -494,7 +493,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
   private _setValueArray(value: Node[]): void {
-    (this as unknown as { _value: Node[] })._value = value;
+    (this as unknown as { value: Node[] }).value = value;
   }
 
   /**
@@ -522,11 +521,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     );
     // Now set the children array directly — NOT through the constructor
     // so adopt() is NOT called on canonical children.
-    wrapper._setValueArray([...this._value]);
+    wrapper._setValueArray([...this.value]);
     wrapper.inherit(this);
     // Set state parent for each child to the wrapper
     if (ctx) {
-      for (const child of wrapper._value) {
+      for (const child of wrapper.value) {
         if (child instanceof Node) {
           wrapper.adopt(child, ctx);
         }
@@ -568,7 +567,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   * [Symbol.iterator]() {
-    let value = this._value;
+    let value = this.value;
     /**
      * This should always be the case? But at one point something somewhere
      * set the value to undefined I think, so just leaving this defensively.
@@ -581,7 +580,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _getChildren(context?: Context): readonly Node[] {
     return context
       ? getChildren(this, context)
-      : this._value;
+      : this.value;
   }
 
   private _setChildren(value: readonly Node[], context?: Context, markDirty: boolean = true): void {
@@ -885,7 +884,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
           // Add to the value array AFTER the found declaration
           // This ensures it shadows the original and is evaluated after it
-          const foundIndex = foundRules._value.indexOf(result);
+          const foundIndex = foundRules.value.indexOf(result);
           if (foundIndex !== -1) {
             if (context) {
               foundRules.splice(context, foundIndex + 1, 0, newDeclaration);
@@ -942,10 +941,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       return;
     }
-    this._setValueArray([...this._value]);
+    this._setValueArray([...this.value]);
     for (const node of nodes) {
       this.adopt(node, ctx);
-      (this._value as Node[]).push(node);
+      (this.value as Node[]).push(node);
       this.registerNode(node, undefined, ctx);
     }
   }
@@ -974,7 +973,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
       return removed as Node[];
     }
-    const nextValue = [...this._value];
+    const nextValue = [...this.value];
     const removed = nextValue.splice(start, deleteCount, ...items);
     this._setValueArray(nextValue);
     for (const item of items) {
@@ -1009,8 +1008,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       (this as unknown as { _invalidateValueOf: () => void })._invalidateValueOf();
       return;
     }
-    this._setValueArray([...this._value]);
-    (this._value as Node[]).unshift(...items);
+    this._setValueArray([...this.value]);
+    (this.value as Node[]).unshift(...items);
     for (const item of items) {
       if (item instanceof Node) {
         this.adopt(item, ctx);
@@ -1529,20 +1528,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // value is a detached ruleset containing mixin definitions). This avoids changing evaluation
       // order for regular detached rulesets like `@ruleset()` used for property blocks.
       if (priority === Priority.None && rules.treeContext?.leakyRules === true && isNode(rule, N.Expression)) {
-        const inner = (rule as any)._value;
-        if (isNode(inner, N.Call) && isNode((inner as any)._name, N.Reference)) {
-          const ref = (inner as any)._name;
+        const inner = (rule as any).value;
+        if (isNode(inner, N.Call) && isNode((inner as any).name, N.Reference)) {
+          const ref = (inner as any).name;
           const refType = String(ref?.options?.type ?? '');
           if (refType === 'variable') {
             const raw = ref.key;
             const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
             // Only if variable exists and its value is a detached ruleset Mixin with nested Mixin definitions.
             const decl = rules.find('declaration', keyStr, 'VarDeclaration', { context }) as any;
-            const val = decl?._value;
+            const val = decl?.value;
             const hasNestedMixinDefinitions =
               isNode(val, N.Mixin)
-              && isNode((val as any)._rules, N.Rules)
-              && (val as any)._rules._getChildren(context).some((n: any) => n?.type === 'Mixin');
+              && isNode((val as any).rules, N.Rules)
+              && (val as any).rules._getChildren(context).some((n: any) => n?.type === 'Mixin');
             if (hasNestedMixinDefinitions) {
               priority = Priority.High;
             }
@@ -1651,7 +1650,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               // Store in eval position: patch the parent's value array.
               {
                 const children = (context.activeState.peek(rules)?._fields?.get('value') as Node[] | undefined)
-                  ?? [...rules._value];
+                  ?? [...rules.value];
                 children[idx] = result;
                 context.activeState.get(rules).fields.set('value', children);
               }
@@ -1720,13 +1719,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _coalesceMergedDeclarations(rules: Rules, context?: Context): void {
     const getDeclValue = (node: Node): Node => (
-      context ? getData<Node>(node, 'value', context) : (node as any)._value
+      context ? getField<Node>(node, 'value', context) : (node as any).value
     );
     const getDeclImportant = (node: Node): Node | undefined => (
-      context ? getData<Node | undefined>(node, 'important', context) : (node as any)._important
+      context ? getField<Node | undefined>(node, 'important', context) : (node as any).important
     );
     const getDeclName = (node: Node): string => {
-      const name = context ? getData<Node>(node, 'name', context) : (node as any)._name;
+      const name = context ? getField<Node>(node, 'name', context) : (node as any).name;
       return String((name as any)?.valueOf?.() ?? name);
     };
     const getDeclAssign = (node: Node): string => {

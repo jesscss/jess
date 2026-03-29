@@ -36,12 +36,12 @@ function getLegacyData(this: Node) {
     });
 
     if (childKeys.length === 1 && extraKeys.length === 0) {
-      return (this as any)[`_${childKeys[0]!}`];
+      return (this as any)[childKeys[0]!];
     }
 
     const out: Record<string, unknown> = {};
     for (const key of childKeys) {
-      const value = (this as any)[`_${key}`];
+      const value = (this as any)[key];
       if (value !== undefined) {
         out[key] = value;
       }
@@ -55,7 +55,7 @@ function getLegacyData(this: Node) {
     return Object.keys(out).length > 0 ? out : undefined;
   }
 
-  const directValue = (this as any)._value;
+  const directValue = (this as any).value;
   if (directValue !== undefined) {
     return directValue;
   }

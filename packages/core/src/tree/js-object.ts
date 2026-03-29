@@ -11,11 +11,11 @@ export interface JsObject {
 export class JsObject extends Node<Record<string, any>> {
   static override childKeys = null as null;
 
-  /** @internal */ _value!: Record<string, any>;
+  /** @internal */ value!: Record<string, any>;
 
   constructor(value: Record<string, any>, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this._value = value;
+    this.value = value;
   }
 }
 
