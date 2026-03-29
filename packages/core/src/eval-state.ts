@@ -27,10 +27,10 @@ export class NodeState {
   declare _dependency: EvalDependency | undefined;
 
   /** Per-type registries — created lazily on first register(), never on find() */
-  declare _rulesetRegistry: RulesetRegistry | undefined;
-  declare _mixinRegistry: MixinRegistry | undefined;
-  declare _declarationRegistry: DeclarationRegistry | undefined;
-  declare _functionRegistry: FunctionRegistry | undefined;
+  declare rulesetRegistry: RulesetRegistry | undefined;
+  declare mixinRegistry: MixinRegistry | undefined;
+  declare declarationRegistry: DeclarationRegistry | undefined;
+  declare functionRegistry: FunctionRegistry | undefined;
 
   /** Recursive subtree state — stays off instance until first access */
   declare _subtree: EvalState | undefined;

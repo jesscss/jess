@@ -275,9 +275,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Lazily create registries for types as needed.
    */
-  private static _registryKey(type: string): '_rulesetRegistry' | '_mixinRegistry' | '_declarationRegistry' | 'functionRegistry' {
-    // functionRegistry keeps its existing name (no underscore) for backward compatibility
-    return type === 'function' ? 'functionRegistry' : `_${type}Registry` as any;
+  private static _registryKey(type: string): 'rulesetRegistry' | 'mixinRegistry' | 'declarationRegistry' | 'functionRegistry' {
+    return `${type}Registry` as any;
   }
 
   private static _registryClass(type: string) {
