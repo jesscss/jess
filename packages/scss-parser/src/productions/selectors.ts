@@ -131,76 +131,42 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
  */
 export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
   const $ = this;
-  const isDeclarationStart = () => {
-    const tt1 = $.LA(1).tokenType;
-    if (
-      tt1 === $.T.DollarVariable
-      || tt1 === $.T.InterpolationStart
-      || tt1 === $.T.CustomProperty
-      || ($.legacyMode && tt1 === $.T.LegacyPropIdent)
-    ) {
-      return true;
-    }
 
-    if ($.isType($.T.Ident)) {
-      return !$.shouldTryQualifiedRuleInDeclarationList();
-    }
-
-    return false;
-  };
-
+  /**
+   * SCSS declaration-list routing: use proper GATE/ALT pattern so
+   * Chevrotain can analyze all paths during recording phase.
+   */
   alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
     {
-      GATE: () => !isDeclarationStart(),
+      GATE: () => $.shouldTryQualifiedRuleInDeclarationList(),
       ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] })
     },
-    {
-      GATE: isDeclarationStart,
-      ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] })
-    },
+    { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME($.T.Semi) }
   ];
 
   return (ctx: RuleContext = {}) => {
     const rules: Node[] = [];
-    let requiredSemi = false;
     let lastRule: Node | undefined;
 
-    $.MANY({
-      GATE: () => !requiredSemi || (requiredSemi && (
-        $.LA(1).tokenType === $.T.Semi
-        || $.LA(0).tokenType === $.T.Semi
-      )),
-      DEF: () => {
-        let value: unknown;
+    $.MANY(() => {
+      let value: unknown = $.OR(alt!(ctx));
 
-        if ($.RECORDING_PHASE) {
-          value = $.OR(alt!(ctx));
-        } else if ($.LA(1).tokenType === $.T.Semi) {
-          value = $.CONSUME($.T.Semi);
-        } else if ($.isTypeAt(1, $.T.AtName)) {
-          value = $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] });
-        } else if (isDeclarationStart()) {
-          value = $.SUBRULE($.declaration, { ARGS: [ctx] });
-        } else {
-          value = $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
+      if (!(value instanceof Node)) {
+        if (lastRule) {
+          lastRule.options.semi = true;
+        } else if (!$.RECORDING_PHASE) {
+          rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), $.context));
         }
+        return;
+      }
 
-        if (!(value instanceof Node)) {
-          if (lastRule) {
-            lastRule.options.semi = true;
-          } else if (!$.RECORDING_PHASE) {
-            rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), $.context));
-          }
-          return;
-        }
-
+      if (!$.RECORDING_PHASE) {
         const pending = $.consumePendingNodes();
         if (pending.length) {
           rules.push(...pending);
         }
-        requiredSemi = !!value.requiredSemi;
         rules.push(value);
         lastRule = value;
       }
