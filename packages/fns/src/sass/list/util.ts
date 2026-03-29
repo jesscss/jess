@@ -1,5 +1,5 @@
 import { Bool, List, Node, Paren, Quoted, coerceListItems } from '@jesscss/core';
-import { getListSeparator, isBracketedList } from '@jesscss/core/tree/util/list-like';
+import { getListSeparator, isBracketedList } from '@jesscss/core';
 
 export type SassListSep = ',' | ';' | '/' | undefined;
 

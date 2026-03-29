@@ -3,6 +3,14 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": "./src",
+    "declaration": true,
+    "emitDeclarationOnly": false,
+    "composite": false,
+    "module": "ESNext",
+    "target": "ES2020",
+    "allowJs": false,
+    "isolatedDeclarations": true,
+    "types": ["node"],
     "noEmit": false
   },
   "include": ["src/**/*.ts"],

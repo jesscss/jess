@@ -15,12 +15,6 @@
       "source": "./src/index.ts",
       "require": "./lib/index.cjs"
     },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts",
-      "require": "./lib/*.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -30,7 +24,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "bench": "tsx test/bench.ts",
     "bench:save": "tsx test/bench.ts --save",
@@ -41,6 +35,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
+    "chevrotain": "^12.0.0",
     "color-name": "~2.0.0",
     "lodash-es": "~4.17.21",
     "xregexp": "^5.1.1"
@@ -50,7 +45,6 @@
     "@types/color-name": "^1.1.1",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0",
-    "chevrotain": "^12.0.0",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

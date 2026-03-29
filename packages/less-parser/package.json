@@ -15,12 +15,6 @@
       "source": "./src/index.ts",
       "require": "./lib/index.cjs"
     },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts",
-      "require": "./lib/*.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -30,7 +24,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "bench": "tsx test/bench.ts",
     "bench:save": "tsx test/bench.ts --save",

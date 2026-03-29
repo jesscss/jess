@@ -9,7 +9,7 @@
  * separator(1 / 2 / 3) // "slash"
  */
 import { defineFunction, Node, Quoted } from '@jesscss/core';
-import { getListSeparator } from '@jesscss/core/tree/util/list-like';
+import { getListSeparator } from '@jesscss/core';
 
 const separator = defineFunction(
   'separator',

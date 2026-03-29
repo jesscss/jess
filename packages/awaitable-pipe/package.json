@@ -12,12 +12,6 @@
       "source": "./src/index.ts",
       "require": "./lib/index.cjs"
     },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts",
-      "require": "./lib/*.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,7 +26,7 @@
     "test": "vitest run",
     "test:types": "tsc -p tsconfig.json --noEmit",
     "test:watch": "vitest",
-    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly"
+    "compile": "tsdown --tsconfig tsconfig.build.json"
   },
   "repository": {
     "type": "git",
