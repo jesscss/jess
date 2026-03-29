@@ -274,6 +274,23 @@ function isVariableLike($: P, T: TokenMap): boolean {
     return false;
   }
 
+  // Known at-rule tokens (@media, @supports, etc.) followed by ( without space:
+  // Only treat as a variable call if the parens are empty — @media();
+  // Otherwise it's an at-rule — @media(min-width: 0) { }
+  if (isParen && $.matchToken($.LA(1), T.AtName) && $.LA(1).tokenType !== T.AtKeyword) {
+    if (postToken.tokenType === T.RParen) {
+      // @media() — empty parens, allow as deprecated variable call
+      $.warnDeprecation(
+        'Using known at-rule names as variables is deprecated',
+        $.LA(1),
+        'at-rule-variable'
+      );
+      return true;
+    }
+    // @media(min-width: ...) — at-rule, not a variable
+    return false;
+  }
+
   let isVariable = !$.preSkippedTokenMap.has(token.startOffset)
     || (isColon && $.preSkippedTokenMap.has(postToken.startOffset));
   return isVariable;
