@@ -436,6 +436,24 @@ export class JessError extends Error {
     this.lexerErrors = init.lexerErrors;
   }
 
+  /** Lightweight JSON for serializers (e.g. Vitest). Strips heavy Chevrotain token trees and full source. */
+  toJSON() {
+    return {
+      severity: this.severity,
+      code: this.code,
+      phase: this.phase,
+      fileObj: this.fileObj
+        ? { name: this.fileObj.name, path: this.fileObj.path, fullPath: this.fileObj.fullPath }
+        : undefined,
+      filePath: this.filePath,
+      reason: this.reason,
+      fix: this.fix,
+      note: this.note,
+      errors: this.errors?.map(e => ({ message: e.message, stack: e.stack })),
+      lexerErrors: this.lexerErrors?.map(e => ({ message: e.message, line: e.line, column: e.column }))
+    };
+  }
+
   /** Pretty, clickable string for terminal/Problems panel. */
   override toString(): string {
     const abs = this.fileObj?.fullPath ?? this.filePath;
