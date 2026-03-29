@@ -632,7 +632,7 @@ function matchTargetGroup(
 }
 
 function matchCompoundWindow(
-  targetCompound: Selector & { value: readonly Node[] },
+  targetCompound: Selector & { _value: readonly Node[] },
   start: number,
   end: number,
   requirement: MatchGroupRequirement,
@@ -647,14 +647,14 @@ function matchCompoundWindow(
   }];
 
   for (let i = start; i <= end && states.length > 0 && !allStatesAreTerminalPartial(states); i++) {
-    states = consumeGroupBasics(targetCompound.value[i]!, requirement, states, false, parent, context);
+    states = consumeGroupBasics(targetCompound._value[i]!, requirement, states, false, parent, context);
   }
 
   const summary = summarizeStates(states);
   if (!summary.matched && parent) {
     let allAmpersands = true;
     for (let i = start; i <= end; i++) {
-      if (!isNode(targetCompound.value[i]!, N.Ampersand)) {
+      if (!isNode(targetCompound._value[i]!, N.Ampersand)) {
         allAmpersands = false;
         break;
       }
@@ -681,7 +681,7 @@ function matchCompoundWindow(
 }
 
 function collectMatchedIndicesForWindow(
-  targetCompound: Selector & { value: readonly Node[] },
+  targetCompound: Selector & { _value: readonly Node[] },
   start: number,
   end: number,
   requirement: MatchGroupRequirement,
@@ -691,7 +691,7 @@ function collectMatchedIndicesForWindow(
   const matchedIndices: number[] = [];
 
   for (let i = start; i <= end; i++) {
-    const node = targetCompound.value[i]!;
+    const node = targetCompound._value[i]!;
     if (!isNode(node, N.BasicSelector) && !(isNode(node, N.PseudoSelector) && node.get('name') !== ':is')) {
       continue;
     }
@@ -760,7 +760,7 @@ function collectGroupMatchLocations(
 
   const matches: SelectorMatchLocation[] = [];
   const seen = new Set<number>();
-  const targetCompound = targetGroup as unknown as Selector & { value: readonly Node[] };
+  const targetCompound = targetGroup as unknown as Selector & { _value: readonly Node[] };
   const targetLength = (targetGroup as CompoundSelector).get('value').length;
 
   for (let i = 0; i < findGroup.alternatives.length; i++) {
@@ -921,7 +921,7 @@ function getCachedGroupMatch(
 
     for (let i = 0; i < findGroup.alternatives.length; i++) {
       const windowMatch = matchCompoundWindow(
-        targetGroup as unknown as Selector & { value: readonly Node[] },
+        targetGroup as unknown as Selector & { _value: readonly Node[] },
         0,
         (targetGroup as CompoundSelector).get('value').length - 1,
         findGroup.alternatives[i]!,
@@ -1625,7 +1625,7 @@ function selectorMatchUncached(
       const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
       const lastParentUnit = parentUnits[parentUnits.length - 1]!;
       const leadingAmpersand = hasLeadingAmpersandBoundary(routePlan.selector)
-        ? (routePlan.selector as any).value[0]
+        ? (routePlan.selector as ComplexSelector)._value[0]
         : undefined;
       const ampersandCrossings: SelectorMatchAmpersandCrossing[] = [{
         ampersandNode: leadingAmpersand,

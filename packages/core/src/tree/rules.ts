@@ -29,6 +29,7 @@ import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import {
   getChildren,
+  getData,
   getField,
   getParent,
   getSourceParent,
@@ -1719,13 +1720,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _coalesceMergedDeclarations(rules: Rules, context?: Context): void {
     const getDeclValue = (node: Node): Node => (
-      context ? getField<Node>(node, 'value', context) : (node as any)._value
+      context ? getData<Node>(node, 'value', context) : (node as any)._value
     );
     const getDeclImportant = (node: Node): Node | undefined => (
-      context ? getField<Node | undefined>(node, 'important', context) : (node as any).important
+      context ? getData<Node | undefined>(node, 'important', context) : (node as any)._important
     );
     const getDeclName = (node: Node): string => {
-      const name = context ? getField<Node>(node, 'name', context) : (node as any).name;
+      const name = context ? getData<Node>(node, 'name', context) : (node as any)._name;
       return String((name as any)?.valueOf?.() ?? name);
     };
     const getDeclAssign = (node: Node): string => {

@@ -44,7 +44,7 @@ function flattenSelectorToElements(
         continue;
       }
       if (component instanceof Combinator) {
-        nextCombinatorValue = component.value;
+        nextCombinatorValue = component._value;
         continue;
       }
 

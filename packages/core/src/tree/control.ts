@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalState } from '../eval-state.js';
-import { getChildren, getField, setField, setParent } from './util/field-helpers.js';
+import { getChildren, getData, getField, setField, setParent } from './util/field-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -97,15 +97,15 @@ function getControlField<T>(node: Node, key: string, context: Context | undefine
       return srcState._fields.get(key) as T;
     }
   }
-  return getField<T>(node, key, context);
+  return getData<T>(node, key, context);
 }
 
 function getControlDeclarationValue(node: Node, context: Context): Node {
-  return getField<Node>(node, 'value', context);
+  return getData<Node>(node, 'value', context);
 }
 
 function getControlDeclarationName(node: Node, context: Context): string {
-  return String(getField<Node>(node, 'name', context));
+  return String(getData<Node>(node, 'name', context));
 }
 
 function getControlDeclarationAssignType(node: Node, context: Context): AssignmentType | undefined {

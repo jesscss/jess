@@ -1,5 +1,5 @@
 import { isPlainObject, NodeTraversalCursor } from './util/collections.js';
-import { getField } from './util/field-helpers.js';
+import { getData } from './util/field-helpers.js';
 import {
   type TreeContext,
   type Context
@@ -1717,7 +1717,7 @@ export abstract class Node<
       for (const key of ck) {
         // Resolve through eval state when context available
         const field = ctx
-          ? getField(this as Node, key!, ctx)
+          ? getData(this as Node, key!, ctx)
           : (this as any)[`_${key!}`];
         if (isArray(field)) {
           for (const item of field) {

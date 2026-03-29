@@ -19,7 +19,11 @@ import { N } from '../node-type.js';
  * Read a field from a node.
  * Resolution: activeState → canonical.
  */
-export function getField<T = unknown>(
+/**
+ * Read a childKey field from a node, checking EvalState overlay first.
+ * Falls back to `node._key` (underscore-prefixed internal storage).
+ */
+export function getData<T = unknown>(
   node: Node,
   key: string,
   ctx: Context
@@ -33,6 +37,27 @@ export function getField<T = unknown>(
     state = state.parent;
   }
   return (node as unknown as Record<string, unknown>)[`_${key}`] as T;
+}
+
+/**
+ * Read any instance field from a node, checking EvalState overlay first.
+ * Falls back to `node[key]` (no prefix). Use for non-childKey fields
+ * like `options`, `hoistToRoot`, `template`, etc.
+ */
+export function getField<T = unknown>(
+  node: Node,
+  key: string,
+  ctx: Context
+): T {
+  let state: EvalState | undefined = ctx.activeState;
+  while (state) {
+    const val = state.peek(node)?._fields?.get(key);
+    if (val !== undefined) {
+      return val as T;
+    }
+    state = state.parent;
+  }
+  return (node as unknown as Record<string, unknown>)[key] as T;
 }
 
 /**
@@ -195,7 +220,7 @@ export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
-  return getField<readonly Node[]>(rules, 'value', ctx);
+  return getData<readonly Node[]>(rules, 'value', ctx);
 }
 
 /**

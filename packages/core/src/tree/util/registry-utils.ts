@@ -118,7 +118,7 @@ function addRulesetToIndex(
     ?? rules.treeContext?.opts?.selectorBits;
   if (selectorBits && !selector.keySetLibrary) {
     selector.keySetLibrary = selectorBits;
-    const selectorValue = (selector as unknown as { value?: unknown }).value;
+    const selectorValue = (selector as unknown as { _value?: unknown })._value;
     if (isArray(selectorValue)) {
       for (const child of selectorValue as Selector[]) {
         if (child && !child.keySetLibrary) {
@@ -704,7 +704,7 @@ export class MixinRegistry extends Registry<
         const sel = (child as Ruleset).get('selector');
         if (sel && selectorBits && !isNode(sel, N.Nil) && !(sel as Selector).keySetLibrary) {
           (sel as Selector).keySetLibrary = selectorBits;
-          const selValue = (sel as unknown as { value?: unknown }).value;
+          const selValue = (sel as unknown as { _value?: unknown })._value;
           if (isArray(selValue)) {
             for (const sub of selValue as Selector[]) {
               if (!sub.keySetLibrary) {

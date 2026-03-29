@@ -9,7 +9,7 @@ export const transformQuotedToLess = createFromAdapter<Quoted>({
         return value;
       }
       if (value instanceof Any) {
-        return value.value;
+        return value._value;
       }
       if (value instanceof Interpolated) {
         return String(value.get('source'));
