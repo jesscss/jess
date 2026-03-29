@@ -1,7 +1,7 @@
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { tokenMatcher, NoViableAltException } from 'chevrotain';
+import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   type TreeContext,
@@ -809,7 +809,7 @@ export function mixinArg(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const firstToken = $.LA(1);
-    const atStart = tokenMatcher(firstToken, T.AtName);
+    const atStart = $.matchToken(firstToken, T.AtName);
     const tt2 = $.LA(2).tokenType;
     const tt3 = $.LA(3).tokenType;
     const hasWsAfterName = tt2 === T.WS;

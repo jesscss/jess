@@ -6,16 +6,19 @@
   },
   "version": "2.0.0-alpha.5",
   "description": "The Jess Core Library",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
+      "require": "./lib/index.cjs",
       "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
       "source": "./src/index.ts"
     },
     "./*": {
       "types": "./lib/*.d.ts",
+      "require": "./lib/*.cjs",
       "import": "./lib/*.js",
       "source": "./src/*.ts"
     },
@@ -42,12 +45,16 @@
     "ci": "pnpm build && pnpm test -- --run",
     "prepublishOnly": "pnpm build && pnpm test -- --run",
     "build": "pnpm compile",
+    "build:tsdown": "tsdown --config tsdown.config.ts && tsc -p tsconfig.types.json",
+    "build:types": "tsc -p tsconfig.types.json",
     "visualize": "vite build",
     "compile": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
+    "dev:tsdown": "tsdown --config tsdown.config.ts --watch",
     "test": "cross-env TEST=true vitest",
     "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",
     "test:coverage": "cross-env TEST=true vitest --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },

@@ -2,7 +2,6 @@
 // Converted from Chevrotain-based productions.ts (lines 2060-3015)
 import type { RuleContext, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { tokenMatcher } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   type TreeContext,
@@ -113,7 +112,7 @@ export function expressionSum(this: P, T: TokenMap) {
         const opToken = $.CONSUME(T.Minus);
         op = opToken.image;
         right = $.SUBRULE4($.expressionProduct, { ARGS: [ctx] });
-      } else if ($.noSep() && tokenMatcher($.LA(1), T.Signed)) {
+      } else if ($.noSep() && $.matchToken($.LA(1), T.Signed)) {
         const tok = $.CONSUME(T.Signed);
         let startValue: Node | undefined;
         const str = tok.image;

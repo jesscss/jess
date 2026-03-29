@@ -2,7 +2,7 @@
 // Converted from lines 1-1145 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { tokenMatcher, type IOrAlt } from 'chevrotain';
+import { type IOrAlt } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 
 import {
@@ -196,9 +196,9 @@ function isEscapedString($: P, T: TokenMap): boolean {
   return (
     next.image.startsWith('~')
     && (
-      tokenMatcher(next, T.QuoteStart)
-      || tokenMatcher(next, T.DoubleQuoteStart)
-      || tokenMatcher(next, T.SingleQuoteStart)
+      $.matchToken(next, T.QuoteStart)
+      || $.matchToken(next, T.DoubleQuoteStart)
+      || $.matchToken(next, T.SingleQuoteStart)
     )
   );
 }
@@ -273,6 +273,7 @@ function isVariableLike($: P, T: TokenMap): boolean {
   if (!isColon && !isParen) {
     return false;
   }
+
   let isVariable = !$.preSkippedTokenMap.has(token.startOffset)
     || (isColon && $.preSkippedTokenMap.has(postToken.startOffset));
   return isVariable;
@@ -399,13 +400,13 @@ export function main(this: P, T: TokenMap) {
       const isSelectorLikeContinuation = (offset: number) => {
         const tok = $.LA(offset);
         return (
-          tokenMatcher(tok, T.LCurly)
-          || tokenMatcher(tok, T.Comma)
-          || tokenMatcher(tok, T.Combinator)
-          || tokenMatcher(tok, T.LSquare)
-          || tokenMatcher(tok, T.Colon)
-          || tokenMatcher(tok, T.NthPseudoClass)
-          || tokenMatcher(tok, T.SelectorPseudoClass)
+          $.matchToken(tok, T.LCurly)
+          || $.matchToken(tok, T.Comma)
+          || $.matchToken(tok, T.Combinator)
+          || $.matchToken(tok, T.LSquare)
+          || $.matchToken(tok, T.Colon)
+          || $.matchToken(tok, T.NthPseudoClass)
+          || $.matchToken(tok, T.SelectorPseudoClass)
         );
       };
       if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
@@ -425,11 +426,11 @@ export function main(this: P, T: TokenMap) {
         tt3 === T.Colon
         || tt3 === T.NthPseudoClass
         || tt3 === T.SelectorPseudoClass
-        || tokenMatcher($.LA(3), T.FunctionStart)
+        || $.matchToken($.LA(3), T.FunctionStart)
       ) {
         return true;
       }
-      if (!tokenMatcher($.LA(3), T.Ident)) {
+      if (!$.matchToken($.LA(3), T.Ident)) {
         return false;
       }
       return isSelectorLikeContinuation(4);
@@ -440,7 +441,7 @@ export function main(this: P, T: TokenMap) {
     };
     const isCustomPropertyStart = () =>
       $.isType(T.InterpolatedCustomProperty) || $.isType(T.CustomProperty);
-    const isAtRuleStart = () => tokenMatcher($.LA(1), T.AtName);
+    const isAtRuleStart = () => $.matchToken($.LA(1), T.AtName);
     const shouldTryQualifiedRule = () =>
       !isCustomPropertyStart()
       && !isMixinOrQualifiedStart()
@@ -568,13 +569,13 @@ export function declarationList(this: P, T: TokenMap) {
       const isSelectorLikeContinuation = (offset: number) => {
         const tok = $.LA(offset);
         return (
-          tokenMatcher(tok, T.LCurly)
-          || tokenMatcher(tok, T.Comma)
-          || tokenMatcher(tok, T.Combinator)
-          || tokenMatcher(tok, T.LSquare)
-          || tokenMatcher(tok, T.Colon)
-          || tokenMatcher(tok, T.NthPseudoClass)
-          || tokenMatcher(tok, T.SelectorPseudoClass)
+          $.matchToken(tok, T.LCurly)
+          || $.matchToken(tok, T.Comma)
+          || $.matchToken(tok, T.Combinator)
+          || $.matchToken(tok, T.LSquare)
+          || $.matchToken(tok, T.Colon)
+          || $.matchToken(tok, T.NthPseudoClass)
+          || $.matchToken(tok, T.SelectorPseudoClass)
         );
       };
       if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
@@ -594,11 +595,11 @@ export function declarationList(this: P, T: TokenMap) {
         tt3 === T.Colon
         || tt3 === T.NthPseudoClass
         || tt3 === T.SelectorPseudoClass
-        || tokenMatcher($.LA(3), T.FunctionStart)
+        || $.matchToken($.LA(3), T.FunctionStart)
       ) {
         return true;
       }
-      if (!tokenMatcher($.LA(3), T.Ident)) {
+      if (!$.matchToken($.LA(3), T.Ident)) {
         return false;
       }
       return isSelectorLikeContinuation(4);
@@ -609,7 +610,7 @@ export function declarationList(this: P, T: TokenMap) {
     };
     const isCustomPropertyStart = () =>
       $.isType(T.InterpolatedCustomProperty) || $.isType(T.CustomProperty);
-    const isAtRuleStart = () => tokenMatcher($.LA(1), T.AtName);
+    const isAtRuleStart = () => $.matchToken($.LA(1), T.AtName);
     const shouldTryQualifiedRule = () =>
       !isCustomPropertyStart()
       && !isMixinOrQualifiedStart()
