@@ -35,6 +35,7 @@ import {
   setField,
   setChildren,
   setChildAt,
+  getIndex,
   setIndex,
   setParent,
   isPreEvaluated,
@@ -1289,7 +1290,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const children = rules._getChildren(context);
       for (let i = 0; i < children.length; i++) {
         const node = children[i]!;
-        const resolvedNode = resolvedNodes.find(n => n.index === node.index);
+        const nodeIdx = getIndex(node, context);
+        const resolvedNode = resolvedNodes.find(n => getIndex(n, context) === nodeIdx);
         if (resolvedNode && resolvedNode !== node) {
           rules._setChildAt(i, resolvedNode.inherit(node), context, false);
           rules.adopt(resolvedNode, context);

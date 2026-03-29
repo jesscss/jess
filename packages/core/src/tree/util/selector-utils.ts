@@ -532,16 +532,14 @@ function composeSelectorRouteWithParent(
  */
 export function getImplicitSelector(
   selector: Selector,
-  parent: Ruleset | Selector,
+  parent: Selector,
   collapseNesting: boolean = false
 ): Selector {
   if (isNode(selector, N.Nil)) {
     return selector;
   }
 
-  const parentSelector = isNode(parent, N.Ruleset)
-    ? (parent as Ruleset).get('selector')
-    : parent as Selector;
+  const parentSelector = parent;
   if (!parentSelector || isNode(parentSelector, N.Nil)) {
     return selector.copy(true) as Selector;
   }

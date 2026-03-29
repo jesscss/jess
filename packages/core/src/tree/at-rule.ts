@@ -13,6 +13,7 @@ import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
 import { getField, getParent, setField, isPreEvaluated } from './util/field-helpers.js';
+import { getImplicitSelector } from './util/selector-utils.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -467,27 +468,50 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           // Required for serialization: rulesets inside @media need this wrapper to output
           // e.g. ".parent { font-size: 14px; }" inside @media.
           if (node.isNestable(context) && !node.isRootOnly(context) && node.isHoisted(context.opts)) {
-            const parentRuleset = context.rulesetFrames.at(-1);
-            const parentSel = parentRuleset?.get('selector');
-            const isCallWrapped = context.callStack.length > 0
-              && parentSel
-              && !isNode(parentSel, N.Nil);
+            const parentRuleset = context.rulesetFrames.at(-1)
+              ?? (context.callStack.length > 0 ? context.callerRulesetFrame : undefined);
+            // Read parent selector WITH context to get the composed (effective) selector,
+            // not the canonical one. This is critical for deeply nested rulesets.
+            const parentSel = parentRuleset?.getCurrentSelector(context);
+            const hasParentSel = parentSel && !isNode(parentSel, N.Nil);
+            // Use materializeEvaluatedCopy to capture the fully-resolved selector
+            // (with Ampersands resolved to their evaluated values), not copy() which
+            // would copy the canonical tree and preserve unresolved Ampersands.
+            const wrapperSel = hasParentSel
+              ? (parentSel!.materializeEvaluatedCopy(context) as Selector)
+              : undefined;
             let existingRules = rules;
             rules = Rules.create([
               Ruleset.create({
-                selector: isCallWrapped
-                  ? (parentSel!.copy(true) as Selector)
-                  : Ampersand.create(undefined),
+                selector: wrapperSel ?? Ampersand.create(undefined),
                 rules: existingRules
-              }, isCallWrapped
+              }, wrapperSel
                 ? {
                     generated: true,
-                    ownSelector: parentSel!.copy(true) as Selector,
+                    ownSelector: wrapperSel.materializeEvaluatedCopy() as Selector,
                     resolvedHoistWrapper: true
                   }
                 : { generated: true })
             ]).inherit(existingRules);
             node.adopt(rules);
+
+            // When child rulesets were already preEval'd in a mixin body (reuse
+            // without cloning), their selectors weren't composed with the caller's
+            // parent selector. Use EvalState to overlay the composed selector.
+            // Non-mixin children were already correctly composed via _preEvalPrelude.
+            if (wrapperSel && context.callStack.length > 0) {
+              for (const child of existingRules.value) {
+                if (isNode(child, N.Ruleset)) {
+                  const childRs = child as Ruleset;
+                  const childSel = childRs.get('selector', context);
+                  if (childSel && !(childSel instanceof Nil)) {
+                    const composed = getImplicitSelector(childSel as Selector, wrapperSel as Selector, false);
+                    setField(childRs, 'selector', composed, context);
+                    childRs.setOwnSelector(childSel as Selector, context);
+                  }
+                }
+              }
+            }
           }
 
           // Register extend root for nestable at-rules (including @layer).

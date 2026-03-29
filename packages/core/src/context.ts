@@ -308,6 +308,12 @@ export class Context {
 
   /** Frames for nested rulesets, used for selector evaluation */
   rulesetFrames: Ruleset[] = [];
+  /**
+   * When mixin eval clears `rulesetFrames`, this preserves the caller's
+   * last ruleset frame so at-rule hoisting can still pick up the caller's
+   * selector for the wrapper Ruleset.
+   */
+  callerRulesetFrame: Ruleset | undefined;
   /** Unified frames array for flat rendering when collapseNesting is true */
   frames: (Ruleset | AtRule)[] = [];
 

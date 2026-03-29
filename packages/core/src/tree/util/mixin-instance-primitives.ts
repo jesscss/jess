@@ -1258,9 +1258,14 @@ export async function evaluateCandidateOutput(
   // Push a per-call EvalState. ALL field patches for this call go here.
   const callState = new EvalState();
   context.pushState(callState);
-  // Clear rulesetFrames so mixin body children don't compose with
-  // the caller's selector. Mixin output starts a fresh selector scope.
+  // Save and clear rulesetFrames so mixin body children don't compose
+  // with the caller's selector during re-preEval. Mixin body rulesets are
+  // re-preEval'd per call (EvalState isolation), so they'd incorrectly
+  // compose with the caller's frames if we didn't clear.
+  // callerRulesetFrame preserves the last caller frame for at-rule hoisting.
   const savedRulesetFrames = context.rulesetFrames;
+  const savedCallerRulesetFrame = context.callerRulesetFrame;
+  context.callerRulesetFrame = savedRulesetFrames.at(-1);
   context.rulesetFrames = [];
   try {
     // Wire the parent chain entirely within the per-call state.
@@ -1285,6 +1290,7 @@ export async function evaluateCandidateOutput(
     newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
 
     context.rulesetFrames = savedRulesetFrames;
+    context.callerRulesetFrame = savedCallerRulesetFrame;
 
     // Pop the per-call state.
     context.popState();
@@ -1306,6 +1312,7 @@ export async function evaluateCandidateOutput(
     outputRules.push(newRules);
   } catch (error) {
     context.rulesetFrames = savedRulesetFrames;
+    context.callerRulesetFrame = savedCallerRulesetFrame;
     context.popState();
     if (error instanceof ReferenceError && error.message?.includes('Recursive mixin call')) {
       return;
