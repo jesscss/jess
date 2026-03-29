@@ -1,9 +1,9 @@
 export {
   stylesheet, main, declarationList, declaration, mediaQuery, mediaCondition,
   mediaConditionWithoutOr, lessMediaQueryFromString, lessMediaQueryFromReference,
-  lessMediaQueryTail, supportsAtRule, lessSupportsCondition, lessSupportsInParens,
-  mediaInParens, supportsInParens,
-  mediaFeature, containerInParens, mfValue, mfNonIdentifierValue, wrappedDeclarationList,
+  lessMediaQueryTail,
+  mediaInParens,
+  mediaFeature, mfValue, mfNonIdentifierValue, wrappedDeclarationList,
   qualifiedRuleBody, qualifiedRule, mixinOrQualifiedRule
 } from './root.js';
 

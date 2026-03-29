@@ -1,7 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 import circleDependency from 'vite-plugin-circular-dependency';
-import { TestTypeReporter } from './test/vitest-test-type-reporter';
 
 export default defineConfig({
   plugins: [
@@ -41,7 +40,7 @@ export default defineConfig({
     // Reduce memory usage
     isolate: true,
     // Use Vitest's built-in tree reporter for grouped console output.
-    reporters: [['tree', { summary: true }], new TestTypeReporter()],
+    reporters: [['tree', { summary: true }]],
     // Enable globals for describe, test, etc.
     globals: true,
     // Include all test files from all packages - use absolute paths relative to config file
