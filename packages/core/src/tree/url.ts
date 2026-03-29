@@ -49,11 +49,11 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
     if (isNode(value, N.Quoted)) {
       value = value.get('value') as string | Quoted | Any;
       if (isNode(value)) {
-        return String((value as any).value);
+        return String((value as any)._value);
       }
       return value as string;
     }
-    return (value as any).value;
+    return (value as any)._value;
   }
 
   override evalNode(context: Context): MaybePromise<Url> {
