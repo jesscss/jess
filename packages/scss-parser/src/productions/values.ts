@@ -445,12 +445,12 @@ function getScssValueAlts($: P, T: TokenMap, ctx: RuleContext = {}): Alt {
     },
     { GATE: () => $.LA(1).tokenType === $.T.DollarVariable, ALT: () => $.CONSUME($.T.DollarVariable) },
     {
-      GATE: () => $.isTypeAt(1, $.T.Ident) || $.LA(1).tokenType === $.T.PlainIdent,
+      GATE: () => $.isType($.T.Ident),
       ALT: () => $.SUBRULE($.scssIdentValue, { ARGS: [ctx] })
     },
-    { GATE: () => $.isTypeAt(1, $.T.Dimension), ALT: () => $.CONSUME($.T.Dimension) },
-    { GATE: () => $.isTypeAt(1, $.T.Number), ALT: () => $.CONSUME($.T.Number) },
-    { GATE: () => $.LA(1).tokenType === $.T.Color, ALT: () => $.CONSUME($.T.Color) },
+    { GATE: () => $.isType($.T.Dimension), ALT: () => $.CONSUME($.T.Dimension) },
+    { GATE: () => $.isType($.T.Number), ALT: () => $.CONSUME($.T.Number) },
+    { GATE: () => $.isType($.T.Color), ALT: () => $.CONSUME($.T.Color) },
     { GATE: () => $.LA(1).tokenType === $.T.UnicodeRange, ALT: () => $.CONSUME($.T.UnicodeRange) },
     {
       GATE: () => $.LA(1).tokenType === $.T.SingleQuoteStart || $.LA(1).tokenType === $.T.DoubleQuoteStart,
