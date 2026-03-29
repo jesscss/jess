@@ -15,6 +15,45 @@ export type SyntacticContentAssistSuggestion = {
 };
 
 /**
+ * Cached lexer + parser singletons. Chevrotain initialization (~500ms)
+ * only happens once — config changes are applied via instance properties
+ * before each parse.
+ */
+let cachedLexer: Lexer | undefined;
+let cachedParser: LessRecursiveParser | undefined;
+let cachedTokenMap: TokenMap | undefined;
+
+function getSharedLexerAndParser(config: LessParserConfig): { lexer: Lexer; parser: LessRecursiveParser } {
+  if (!cachedLexer || !cachedParser) {
+    const { lexer, T } = createLexerDefinition(
+      lessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
+      lessTokens()
+    );
+    cachedTokenMap = T as TokenMap;
+    cachedLexer = new Lexer(lexer, {
+      ensureOptimizations: true,
+      skipValidations: process.env.TEST !== 'true'
+    });
+    cachedParser = new LessRecursiveParser(cachedTokenMap, config);
+  }
+  // Apply per-parse config to the cached parser instance
+  const {
+    looseMode = true,
+    leakyRules = true,
+    mathMode = 'parens-division',
+    wrapOuterExpressions = true,
+    legacyMode = looseMode
+  } = config;
+  cachedParser.looseMode = looseMode;
+  cachedParser.leakyRules = leakyRules;
+  cachedParser.mathMode = mathMode;
+  cachedParser.wrapOuterExpressions = wrapOuterExpressions;
+  cachedParser.legacyMode = legacyMode;
+
+  return { lexer: cachedLexer, parser: cachedParser };
+}
+
+/**
  * Less parser using the new recursive-descent engine.
  * Keeps Chevrotain's lexer, replaces the parser.
  */
@@ -29,16 +68,9 @@ export class LessParser {
       looseMode: true,
       ...config
     };
-    const { lexer, T } = createLexerDefinition(
-      lessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
-      lessTokens()
-    );
-
-    this.lexer = new Lexer(lexer, {
-      ensureOptimizations: true,
-      skipValidations: process.env.TEST !== 'true'
-    });
-    this.parser = new LessRecursiveParser(T as TokenMap, config);
+    const shared = getSharedLexerAndParser(config);
+    this.lexer = shared.lexer;
+    this.parser = shared.parser;
     this.parse = this.parse.bind(this);
   }
 
