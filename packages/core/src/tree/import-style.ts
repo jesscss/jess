@@ -547,17 +547,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           for (let i = 0; i < rules.value.length; i++) {
             finalChildren.push(replacementAt.get(i) ?? rules.value[i]!);
           }
-          const finalRules = Rules.create([]);
-          // Directly assign value array (skip adopt to preserve library parents)
-          (finalRules as unknown as { value: Node[] }).value = finalChildren;
-          // Only adopt injected/replacement nodes (new per-import, safe to reparent)
-          for (const newNode of newVariables) {
-            finalRules.adopt(newNode);
-          }
-          for (const replacement of replacementAt.values()) {
-            finalRules.adopt(replacement);
-          }
-          rules = finalRules;
+          rules = Rules.create(finalChildren);
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root
