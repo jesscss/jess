@@ -2,14 +2,15 @@
   "name": "@jesscss/plugin-js",
   "version": "2.0.0-alpha.5",
   "description": "Jess plugin for JavaScript/TypeScript module imports with Deno runtime checks",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
       "import": "./lib/index.js",
       "default": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -18,8 +19,8 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
-    "dev": "tsc -b tsconfig.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'",
     "test": "vitest --run --passWithNoTests"
@@ -37,5 +38,7 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "type": "module",
+  "module": "lib/index.js"
 }

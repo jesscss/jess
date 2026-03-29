@@ -6,18 +6,20 @@
   },
   "version": "2.0.0-alpha.5",
   "description": "Jess LESS parser",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
       "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "require": "./lib/index.cjs"
     },
     "./*": {
       "types": "./lib/*.d.ts",
       "import": "./lib/*.js",
-      "source": "./src/*.ts"
+      "source": "./src/*.ts",
+      "require": "./lib/*.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -28,8 +30,8 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "bench": "tsx test/bench.ts",
     "bench:save": "tsx test/bench.ts --save",
     "bench:memory": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --memory",
@@ -56,5 +58,6 @@
   "bugs": {
     "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/jesscss/jess#readme"
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "module": "lib/index.js"
 }

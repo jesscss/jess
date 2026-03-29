@@ -2,7 +2,6 @@ import type {
   IToken,
   TokenType,
 } from 'chevrotain';
-import { tokenMatcher } from 'chevrotain';
 
 import {
   CssRecursiveParser,
@@ -159,13 +158,13 @@ export class ScssRecursiveParser extends CssRecursiveParser {
     const isSelectorLikeContinuation = (offset: number): boolean => {
       const tok = this.LA(offset);
       return (
-        tokenMatcher(tok, LCurly)
-        || tokenMatcher(tok, Comma)
-        || tokenMatcher(tok, this.T.Combinator)
-        || tokenMatcher(tok, LSquare)
-        || tokenMatcher(tok, Colon)
-        || tokenMatcher(tok, NthPseudoClass)
-        || tokenMatcher(tok, SelectorPseudoClass)
+        this.matchToken(tok, LCurly)
+        || this.matchToken(tok, Comma)
+        || this.matchToken(tok, this.T.Combinator)
+        || this.matchToken(tok, LSquare)
+        || this.matchToken(tok, Colon)
+        || this.matchToken(tok, NthPseudoClass)
+        || this.matchToken(tok, SelectorPseudoClass)
       );
     };
 
@@ -195,7 +194,7 @@ export class ScssRecursiveParser extends CssRecursiveParser {
     }
 
     const third = this.LA(3);
-    const thirdIsNameLike = tokenMatcher(third, Ident)
+    const thirdIsNameLike = this.matchToken(third, Ident)
       || (PlainIdent !== undefined && third.tokenType === PlainIdent);
     if (!thirdIsNameLike) {
       return false;

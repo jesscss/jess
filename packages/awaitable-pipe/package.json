@@ -3,18 +3,20 @@
   "version": "2.0.0-alpha.5",
   "description": "A tiny, strongly-typed pipe that stays sync when possible and becomes a Promise when needed. With an optional single-point error handler.",
   "type": "module",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
       "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "require": "./lib/index.cjs"
     },
     "./*": {
       "types": "./lib/*.d.ts",
       "import": "./lib/*.js",
-      "source": "./src/*.ts"
+      "source": "./src/*.ts",
+      "require": "./lib/*.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -24,12 +26,13 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsc -w -p tsconfig.build.json",
+    "build": "pnpm compile",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "prepublishOnly": "pnpm run build",
     "test": "vitest run",
     "test:types": "tsc -p tsconfig.json --noEmit",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly"
   },
   "repository": {
     "type": "git",
@@ -51,6 +54,6 @@
   "sideEffects": false,
   "devDependencies": {
     "typescript": "~5.8.2"
-  }
+  },
+  "module": "lib/index.js"
 }
-

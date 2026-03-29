@@ -2,7 +2,7 @@
 // Converted from lines 1184-3096 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser';
-import { tokenMatcher, NoViableAltException } from 'chevrotain';
+import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   Ampersand,
@@ -1472,14 +1472,14 @@ export function scssMixinAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       $.OR([
         {
-          GATE: () => tokenMatcher($.LA(1), $.T.FunctionStart),
+          GATE: () => $.matchToken($.LA(1), $.T.FunctionStart),
           ALT: () => {
             nameTok = $.CONSUME($.T.FunctionStart) as unknown as IToken;
             hasParamsFromStart = true;
           }
         },
         {
-          GATE: () => tokenMatcher($.LA(1), $.T.GenericFunctionStart),
+          GATE: () => $.matchToken($.LA(1), $.T.GenericFunctionStart),
           ALT: () => {
             nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
             hasParamsFromStart = true;
@@ -1489,10 +1489,10 @@ export function scssMixinAtRule(this: P, T: TokenMap) {
           nameNode = parseScssNameNode($, ctx, new Set([$.T.LParen, $.T.LCurly]));
         } }
       ]);
-    } else if (tokenMatcher($.LA(1), $.T.FunctionStart)) {
+    } else if ($.matchToken($.LA(1), $.T.FunctionStart)) {
       nameTok = $.CONSUME($.T.FunctionStart) as unknown as IToken;
       hasParamsFromStart = true;
-    } else if (tokenMatcher($.LA(1), $.T.GenericFunctionStart)) {
+    } else if ($.matchToken($.LA(1), $.T.GenericFunctionStart)) {
       nameTok = $.CONSUME($.T.GenericFunctionStart) as unknown as IToken;
       hasParamsFromStart = true;
     } else {
@@ -1530,7 +1530,7 @@ export function scssMixinAtRule(this: P, T: TokenMap) {
     rules.options.rulesVisibility.VarDeclaration ??= 'private';
     rules.options.rulesVisibility.Mixin ??= 'private';
     const finalNameNode = nameNode ?? (() => {
-      const mixinName = (tokenMatcher(nameTok as any, $.T.FunctionStart) || tokenMatcher(nameTok as any, $.T.GenericFunctionStart))
+      const mixinName = ($.matchToken(nameTok as any, $.T.FunctionStart) || $.matchToken(nameTok as any, $.T.GenericFunctionStart))
         ? String(nameTok!.image).slice(0, -1)
         : String(nameTok!.image);
       return new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok!), $.context);
@@ -2096,7 +2096,7 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
       // @at-root .selector { ... }
         GATE: () => {
           const next = $.LA(1);
-          return tokenMatcher(next, $.T.NestedRuleStart)
+          return $.matchToken(next, $.T.NestedRuleStart)
             && next.tokenType !== $.T.AtKeyword
             && next.tokenType !== $.T.LParen;
         },

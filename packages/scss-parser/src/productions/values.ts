@@ -2,7 +2,7 @@
 // Converted from Chevrotain-based productions.ts
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
 import type { IToken } from '@jesscss/parser';
-import { NoViableAltException, tokenMatcher } from 'chevrotain';
+import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   Any,
@@ -536,7 +536,7 @@ export function expressionSum(this: P, T: TokenMap) {
         const opToken = $.CONSUME2($.T.Minus) as unknown as IToken;
         op = opToken.image;
         right = $.SUBRULE3($.expressionProduct, { ARGS: [ctx] }) as unknown as Node;
-      } else if ($.noSep() && tokenMatcher($.LA(1), $.T.Signed)) {
+      } else if ($.noSep() && $.matchToken($.LA(1), $.T.Signed)) {
         const token = $.CONSUME($.T.Signed) as unknown as IToken;
         op = token.image[0];
         right = $.SUBRULE4($.expressionProduct, {
