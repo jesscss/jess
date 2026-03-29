@@ -237,25 +237,18 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     node.sourceNode ??= this;
 
     const name = node.get('name', context);
-    let rules = node.get('rules', context);
-    {
-      const isolatedRules = rules.cloneDetachedUnlockWrapper(context);
-      isolatedRules.options = {
-        ...isolatedRules.options,
-        rulesVisibility: { ...(isolatedRules.options.rulesVisibility ?? {}) }
-      };
-      setField(node, 'rules', isolatedRules, context);
-      rules = isolatedRules;
-    }
+    const rules = node.get('rules', context);
+    // Set visibility on the canonical rules options — mixin body visibility
+    // is set once during preEval, same as dev baseline.
+    const rulesVisibility = { ...(rules.options.rulesVisibility ?? {}) };
     if (context.leakyRules) {
-      rules.options.rulesVisibility.Mixin = 'public';
-      // Keep Less mixin-definition vars as fallback by default. Call-time scope
-      // controls for params/local vars are handled in mixin evaluation paths.
-      rules.options.rulesVisibility.VarDeclaration = 'optional';
+      rulesVisibility.Mixin = 'public';
+      rulesVisibility.VarDeclaration = 'optional';
     } else {
-      rules.options.rulesVisibility.Mixin = 'private';
-      rules.options.rulesVisibility.VarDeclaration = 'private';
+      rulesVisibility.Mixin = 'private';
+      rulesVisibility.VarDeclaration = 'private';
     }
+    rules.options = { ...rules.options, rulesVisibility };
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
