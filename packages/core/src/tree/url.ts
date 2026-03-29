@@ -22,11 +22,11 @@ export interface Url {
 export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: Quoted | Any;
+  /** @internal */ _value!: Quoted | Any;
 
   constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     if (value instanceof Node) {
       this.adopt(value);
     }

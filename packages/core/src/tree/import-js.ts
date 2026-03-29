@@ -38,15 +38,15 @@ export interface JsImport {
 export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChildData> {
   static override childKeys = ['path', 'imports'] as const;
 
-  private path!: Quoted;
-  private imports: JsImportSpecifier[] | undefined;
+  /** @internal */ _path!: Quoted;
+  /** @internal */ _imports: JsImportSpecifier[] | undefined;
 
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.path = value.path;
-    this.imports = value.imports;
-    if (this.path instanceof Node) {
-      this.adopt(this.path);
+    this._path = value.path;
+    this._imports = value.imports;
+    if (this._path instanceof Node) {
+      this.adopt(this._path);
     }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }

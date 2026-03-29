@@ -119,7 +119,7 @@ function findDisallowedExtendSelector(selector: Selector, allowed?: readonly Ext
     return undefined;
   }
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.value) {
+    for (const item of selector._value) {
       const disallowed = findDisallowedExtendSelector(item, allowed);
       if (disallowed) {
         return disallowed;
@@ -181,8 +181,8 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext.target;
-    let flag = ext.flag ?? 1; // ExtendFlag.Exact = 1
+    let target = ext._target;
+    let flag = ext.get('flag') ?? 1; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -224,11 +224,11 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      let target = currentNode.target;
+      let target = currentNode._target;
       if (!(target instanceof SelectorList)) {
-        currentNode.target = new SelectorList([target, ext.target], undefined, location, context);
+        currentNode.setData('target', new SelectorList([target, ext.target], undefined, location, context));
       } else {
-        target.setData([...target.value, ext.target]);
+        target.setData([...target._value, ext.target]);
       }
     } else {
       if (!extendNodes || !extendNodes.includes(currentNode)) {
@@ -264,7 +264,7 @@ function isSelectorLikeListItem(node: Node): boolean {
     return node.options.type === 'mixin-ruleset';
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 0 && (node as List).value.every(isSelectorLikeListItem);
+    return (node as List)._value.length > 0 && (node as List)._value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -278,7 +278,7 @@ function isLegacySelectorLikeValue(node: Node): boolean {
     return false; // Single mixin reference is valid.
   }
   if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 1 && (node as List).value.every(isSelectorLikeListItem);
+    return (node as List)._value.length > 1 && (node as List)._value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -302,16 +302,16 @@ export function relativeSelector(this: P, T: TokenMap) {
           let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
           let targetNode =
             node instanceof Extend
-              ? node.selector
+              ? node._selector
               : node;
           if (targetNode instanceof ComplexSelector) {
-            targetNode.setData([combinator, ...targetNode.value]);
-            targetNode._location = $.getLocationFromNodes(targetNode.value);
+            targetNode.setData([combinator, ...targetNode._value]);
+            targetNode._location = $.getLocationFromNodes(targetNode._value);
           } else {
             let nodes = [combinator, targetNode as ComplexSelectorComponent];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
             if (node instanceof Extend) {
-              node.selector = complex;
+              node.setData('selector', complex);
               let location = node.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -816,7 +816,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
       // Check if this should be parsed as Collection or Rules
       const shouldBeCollection = (() => {
         let properties: Declaration[] = [];
-        for (const node of rules.value) {
+        for (const node of rules._value) {
           if (node.type === 'Declaration') {
             properties.push(node);
           } else if (node.type === 'Comment' || node.type === 'VarDeclaration') {
@@ -833,7 +833,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         }
 
         const validPropertyCount = properties.filter((decl) => {
-          const name = decl.name;
+          const name = decl._name;
           const propName = typeof name === 'string' ? name : name.valueOf();
           // Skip custom properties (--*)
           if (propName.startsWith('--')) {
@@ -855,7 +855,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         || usage === 'default-param';
       const shouldBeCollectionFinal = shouldBeCollection && !forceMixinForDynamicUsage;
       if (shouldBeCollectionFinal) {
-        return new Collection(rules.value, rules.options, $.endRule(), $.context);
+        return new Collection(rules._value, rules.options, $.endRule(), $.context);
       }
     }
 

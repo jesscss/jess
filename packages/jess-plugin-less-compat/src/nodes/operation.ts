@@ -4,11 +4,17 @@ import { toLessNode } from '../transform/to-less.js';
 
 export const transformOperationToLess = createFromAdapter<Operation>({
   fields: {
-    op: (o) => o.operator || '',
+    op: o => o.get('operator') || '',
     operands: (o, cache) => {
       const operands: Node[] = [];
-      if (o.left instanceof Node) operands.push(o.left);
-      if (o.right instanceof Node) operands.push(o.right);
+      const left = o.get('left');
+      const right = o.get('right');
+      if (left instanceof Node) {
+        operands.push(left);
+      }
+      if (right instanceof Node) {
+        operands.push(right);
+      }
       return operands.map(n => toLessNode(n, { cache }));
     }
   },

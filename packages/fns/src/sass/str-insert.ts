@@ -12,8 +12,8 @@ import { toNumber } from '@jesscss/core';
 const strInsert = defineFunction(
   'str-insert',
   function(string: Quoted, insert: Quoted, index: Dimension): Quoted {
-    const strValue = typeof string.value === 'string' ? string.value : string.valueOf();
-    const insertValue = typeof insert.value === 'string' ? insert.value : insert.valueOf();
+    const strValue = String(typeof string.get('value') === 'string' ? string.get('value') : string.valueOf());
+    const insertValue = String(typeof insert.get('value') === 'string' ? insert.get('value') : insert.valueOf());
     const indexValue = toNumber()(index) as number;
     const indexInt = Math.floor(indexValue);
 

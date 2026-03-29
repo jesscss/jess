@@ -524,7 +524,7 @@ export function ifFunction(this: P, T: TokenMap) {
     } else {
       isCssBranch = false;
       let node: Node = firstNode;
-      const condNode = node instanceof Paren && node.value instanceof Node ? node.value : node;
+      const condNode = node instanceof Paren && node.get('value') instanceof Node ? node.get('value') as Node : node;
       args = new List([condNode]);
 
       $.OR([
@@ -532,11 +532,11 @@ export function ifFunction(this: P, T: TokenMap) {
           ALT: () => {
             $.CONSUME(T.Semi);
             node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-            args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+            args = new List([...args._value, node], args.options, $.getLocationFromNodes([...args._value, node]), $.context);
             $.OPTION(() => {
               $.CONSUME4(T.Semi);
               node = $.SUBRULE3($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-              args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+              args = new List([...args._value, node], args.options, $.getLocationFromNodes([...args._value, node]), $.context);
             });
           }
         },
@@ -544,11 +544,11 @@ export function ifFunction(this: P, T: TokenMap) {
           ALT: () => {
             $.CONSUME(T.Comma);
             node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-            args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+            args = new List([...args._value, node], args.options, $.getLocationFromNodes([...args._value, node]), $.context);
             $.OPTION2(() => {
               $.CONSUME2(T.Comma);
               node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-              args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
+              args = new List([...args._value, node], args.options, $.getLocationFromNodes([...args._value, node]), $.context);
             });
           }
         }
@@ -575,7 +575,7 @@ export function booleanFunction(this: P, T: TokenMap) {
     $.CONSUME(T.RParen);
 
     let location = $.endRule();
-    const conditionNode = arg instanceof Paren && arg.value instanceof Node ? arg.value : arg;
+    const conditionNode = arg instanceof Paren && arg.get('value') instanceof Node ? arg.get('value') as Node : arg;
     const exprNode = new Expression(conditionNode, { parens: true }, location, $.context);
     return exprNode;
   };
@@ -726,11 +726,11 @@ export function functionCall(this: P, T: TokenMap) {
       if (!modernColorFunctions.has(name.toLowerCase())) {
         return false;
       }
-      if (!args || args.value.length !== 1) {
+      if (!args || args._value.length !== 1) {
         return false;
       }
-      const firstArg = args.value[0];
-      return Boolean(isNode(firstArg, N.Sequence) && firstArg.value.length >= 2);
+      const firstArg = args._value[0];
+      return Boolean(isNode(firstArg, N.Sequence) && firstArg._value.length >= 2);
     };
 
     let funcAlt = (ctx: RuleContext = {}) => [
@@ -765,12 +765,12 @@ export function functionCall(this: P, T: TokenMap) {
           $.CONSUME(T.RParen);
           const location = $.endRule();
           const nameValue = fnNameForCtx;
-          if (nameValue === 'unit' && args?.value[1] instanceof Any) {
-            const unitArg = args.value[1];
+          if (nameValue === 'unit' && args?._value[1] instanceof Any) {
+            const unitArg = args._value[1];
             const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, $.context);
             quotedUnit.pre = unitArg.pre;
             quotedUnit.post = unitArg.post;
-            const newArgsData = [...args.value];
+            const newArgsData = [...args._value];
             newArgsData[1] = quotedUnit;
             args = new List(newArgsData, args.options, $.getLocationFromNodes(newArgsData), $.context);
           }

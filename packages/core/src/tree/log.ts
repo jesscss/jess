@@ -26,8 +26,8 @@ export interface Log extends Node<LogValue, NodeOptions, LogChildData> {
 export class Log extends Node<LogValue, NodeOptions, LogChildData> {
   static override childKeys = ['level', 'message'] as const;
 
-  private level!: LogLevel;
-  private message!: Node;
+  /** @internal */ _level!: LogLevel;
+  /** @internal */ _message!: Node;
 
   constructor(
     value: LogValue,
@@ -36,10 +36,10 @@ export class Log extends Node<LogValue, NodeOptions, LogChildData> {
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);
-    this.level = value.level;
-    this.message = value.message;
-    if (this.message instanceof Node) {
-      this.adopt(this.message);
+    this._level = value.level;
+    this._message = value.message;
+    if (this._message instanceof Node) {
+      this.adopt(this._message);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
@@ -55,7 +55,7 @@ export class Log extends Node<LogValue, NodeOptions, LogChildData> {
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    const messageResult = this.message.eval(context);
+    const messageResult = this._message.eval(context);
 
     if (messageResult && typeof (messageResult as any).then === 'function') {
       return (messageResult as Promise<Node>).then((evaluatedMessage) => {
@@ -70,7 +70,7 @@ export class Log extends Node<LogValue, NodeOptions, LogChildData> {
 
   private _logMessage(msg: Node): void {
     const messageStr = String(msg);
-    const level = this.level;
+    const level = this._level;
 
     switch (level) {
       case 'debug':

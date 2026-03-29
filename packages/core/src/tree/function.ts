@@ -51,23 +51,23 @@ export interface Func extends Node<FuncValue, FuncOptions, FuncChildData> {
 export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
   static override childKeys = ['name', 'params', 'body'] as const;
 
-  private name: FuncValue['name'];
-  private params: FuncValue['params'];
-  private body!: Node;
+  /** @internal */ _name: FuncValue['name'];
+  /** @internal */ _params: FuncValue['params'];
+  /** @internal */ _body!: Node;
 
   constructor(value: FuncValue, options?: FuncOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.name = value.name;
-    this.params = value.params;
-    this.body = value.body;
-    if (this.name instanceof Node) {
-      this.adopt(this.name);
+    this._name = value.name;
+    this._params = value.params;
+    this._body = value.body;
+    if (this._name instanceof Node) {
+      this.adopt(this._name);
     }
-    if (this.params instanceof Node) {
-      this.adopt(this.params);
+    if (this._params instanceof Node) {
+      this.adopt(this._params);
     }
-    if (this.body instanceof Node) {
-      this.adopt(this.body);
+    if (this._body instanceof Node) {
+      this.adopt(this._body);
     }
     this.removeFlag(F_VISIBLE);
   }

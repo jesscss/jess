@@ -17,13 +17,13 @@ export interface Rest {
 export class Rest extends Node<Node | string | undefined, NodeOptions, RestChildData> {
   static override childKeys = ['value'] as const;
 
-  private value: Node | string | undefined;
+  /** @internal */ _value: Node | string | undefined;
 
   constructor(value?: Node | string, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.value = value;
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
+    this._value = value;
+    if (this._value instanceof Node) {
+      this.adopt(this._value);
     }
   }
 

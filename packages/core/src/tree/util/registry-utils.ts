@@ -699,7 +699,7 @@ export class MixinRegistry extends Registry<
    * keySetLibrary so selectors can compute their keySets.
    */
   private _ensureChildrenRegistered(rules: Rules, selectorBits?: BitSetLibrary<string>) {
-    for (const child of rules.value) {
+    for (const child of rules._value) {
       if (isNode(child, N.Ruleset)) {
         const sel = (child as Ruleset).get('selector');
         if (sel && selectorBits && !isNode(sel, N.Nil) && !(sel as Selector).keySetLibrary) {
@@ -1567,7 +1567,7 @@ export function getDirectDeclarationsByKey(
   key: string | undefined,
   context?: Context
 ): Declaration[] {
-  const children = context ? getChildren(rules, context) : rules.value;
+  const children = context ? getChildren(rules, context) : rules._value;
   const matches: Declaration[] = [];
   for (const child of children) {
     if (!isNode(child, N.Declaration | N.VarDeclaration)) {

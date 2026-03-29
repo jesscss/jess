@@ -42,13 +42,13 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated, NodeO
 export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptions, InterpolatedSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: Interpolated;
+  /** @internal */ _value!: Interpolated;
 
   constructor(value: Interpolated, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.value = value;
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
+    this._value = value;
+    if (this._value instanceof Node) {
+      this.adopt(this._value);
     }
   }
 
@@ -86,7 +86,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
   }
 
   override valueOf(): string {
-    return this.value.valueOf();
+    return this._value.valueOf();
   }
 }
 

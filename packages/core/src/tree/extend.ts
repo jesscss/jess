@@ -58,8 +58,8 @@ export interface Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> 
 export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
   static override childKeys = ['selector', 'target'] as const;
 
-  private readonly selector: ExtendValue['selector'];
-  private readonly target!: Selector;
+  /** @internal */ readonly _selector: ExtendValue['selector'];
+  /** @internal */ readonly _target!: Selector;
   private readonly namespace: string | undefined;
   private readonly flag: ExtendFlag | undefined;
 
@@ -103,15 +103,15 @@ export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
 
   constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.selector = value.selector;
-    this.target = value.target;
+    this._selector = value.selector;
+    this._target = value.target;
     this.namespace = value.namespace;
     this.flag = value.flag;
-    if (this.selector instanceof Node) {
-      this.adopt(this.selector);
+    if (this._selector instanceof Node) {
+      this.adopt(this._selector);
     }
-    if (this.target instanceof Node) {
-      this.adopt(this.target);
+    if (this._target instanceof Node) {
+      this.adopt(this._target);
     }
     this.removeFlag(F_VISIBLE);
     this.addFlag(F_NON_STATIC);

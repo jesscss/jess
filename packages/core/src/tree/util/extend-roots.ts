@@ -56,7 +56,7 @@ function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): v
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
-  for (const child of (rules as Rules).value) {
+  for (const child of (rules as Rules)._value) {
     if (isNode(child, N.Ruleset)) {
       invalidateRulesetSelectorCaches(child as Ruleset, context);
     }
@@ -74,7 +74,7 @@ function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context
     return;
   }
 
-  for (const child of (rules as Rules).value) {
+  for (const child of (rules as Rules)._value) {
     if (!isNode(child, N.Ruleset)) {
       continue;
     }
@@ -497,7 +497,7 @@ function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset)
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
-  for (const child of (rules as Rules).value) {
+  for (const child of (rules as Rules)._value) {
     if (isNode(child, N.Ruleset)) {
       invalidateTargetInfoCacheTree(cache, child as Ruleset);
     }

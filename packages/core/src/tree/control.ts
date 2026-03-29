@@ -158,8 +158,8 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     const rules: readonly Node[] = isNode(input, N.Rules)
       ? getControlField(input, 'value', context, input.get('value', context) as Node[])
       : isNode(input, N.Ruleset)
-        ? (input.get('rules') ? getControlField(input.get('rules'), 'value', context, input.get('rules').value) : [])
-        : ((input as Mixin).get('rules') ? getControlField((input as Mixin).get('rules'), 'value', context, (input as Mixin).get('rules').value) : []);
+        ? (input.get('rules') ? getControlField(input.get('rules'), 'value', context, input.get('rules')._value) : [])
+        : ((input as Mixin).get('rules') ? getControlField((input as Mixin).get('rules'), 'value', context, (input as Mixin).get('rules')._value) : []);
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -177,12 +177,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
   yield [input, 0];
 }
 
-/** @deprecated Use IfValue directly (conditions/bodies/elseBranch). */
-export type IfBranch = {
-  condition?: Node;
-  rules: Rules;
-};
-
+/** @todo - I don't understand how these are different or why the LLM did this? */
 export type IfValue = {
   conditions: Node[];
   bodies: Rules[];
@@ -210,31 +205,31 @@ export interface If extends Node<IfValue, any, IfChildData> {
 export class If extends Node<IfValue, any, IfChildData> {
   static override childKeys = ['conditions', 'bodies', 'elseBranch'] as const;
 
-  private readonly conditions!: Node[];
-  private readonly bodies!: Rules[];
-  private readonly elseBranch: Rules | undefined;
+  /** @internal */ readonly _conditions!: Node[];
+  /** @internal */ readonly _bodies!: Rules[];
+  /** @internal */ readonly _elseBranch: Rules | undefined;
 
   constructor(value: IfValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this.conditions = value.conditions;
-    this.bodies = value.bodies;
-    this.elseBranch = value.elseBranch;
-    for (const cond of this.conditions) {
+    this._conditions = value.conditions;
+    this._bodies = value.bodies;
+    this._elseBranch = value.elseBranch;
+    for (const cond of this._conditions) {
       if (cond instanceof Node) {
         this.adopt(cond);
       }
     }
-    for (const body of this.bodies) {
+    for (const body of this._bodies) {
       if (body instanceof Node) {
         this.adopt(body);
       }
       makeDirectiveRulesPublic(body);
     }
-    if (this.elseBranch) {
-      if (this.elseBranch instanceof Node) {
-        this.adopt(this.elseBranch);
+    if (this._elseBranch) {
+      if (this._elseBranch instanceof Node) {
+        this.adopt(this._elseBranch);
       }
-      makeDirectiveRulesPublic(this.elseBranch);
+      makeDirectiveRulesPublic(this._elseBranch);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
@@ -288,34 +283,34 @@ export interface For extends Node<ForValue, any, ForChildData> {
 export class For extends Node<ForValue, any, ForChildData> {
   static override childKeys = ['vars', 'iterable', 'rules'] as const;
 
-  private readonly vars!: VarDeclaration | VarDeclaration[];
-  private readonly iterable!: Node;
-  private readonly rules!: Rules;
+  /** @internal */ readonly _vars!: VarDeclaration | VarDeclaration[];
+  /** @internal */ readonly _iterable!: Node;
+  /** @internal */ readonly _rules!: Rules;
 
   constructor(value: ForValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this.vars = value.vars;
-    this.iterable = value.iterable;
-    this.rules = value.rules;
-    if (Array.isArray(this.vars)) {
-      for (const v of this.vars) {
+    this._vars = value.vars;
+    this._iterable = value.iterable;
+    this._rules = value.rules;
+    if (Array.isArray(this._vars)) {
+      for (const v of this._vars) {
         if (v instanceof Node) {
           this.adopt(v);
         }
       }
-    } else if (this.vars instanceof Node) {
-      this.adopt(this.vars);
+    } else if (this._vars instanceof Node) {
+      this.adopt(this._vars);
     }
-    if (this.iterable instanceof Node) {
-      this.adopt(this.iterable);
+    if (this._iterable instanceof Node) {
+      this.adopt(this._iterable);
     }
-    if (this.rules instanceof Node) {
-      this.adopt(this.rules);
+    if (this._rules instanceof Node) {
+      this.adopt(this._rules);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(this.rules);
+    makeDirectiveRulesPublic(this._rules);
   }
 
   override preEval(context: Context): MaybePromise<Node> {
@@ -523,18 +518,18 @@ export interface Each extends Node<LegacyLoopValue, any, EachChildData> {
 export class Each extends Node<LegacyLoopValue, any, EachChildData> {
   static override childKeys = ['header', 'rules'] as const;
 
-  private readonly header!: Sequence;
-  private readonly rules!: Rules;
+  /** @internal */ readonly _header!: Sequence;
+  /** @internal */ readonly _rules!: Rules;
 
   constructor(value: LegacyLoopValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this.header = value.header;
-    this.rules = value.rules;
-    if (this.header instanceof Node) {
-      this.adopt(this.header);
+    this._header = value.header;
+    this._rules = value.rules;
+    if (this._header instanceof Node) {
+      this.adopt(this._header);
     }
-    if (this.rules instanceof Node) {
-      this.adopt(this.rules);
+    if (this._rules instanceof Node) {
+      this.adopt(this._rules);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
@@ -574,23 +569,23 @@ export interface While extends Node<WhileValue, any, WhileChildData> {
 export class While extends Node<WhileValue, any, WhileChildData> {
   static override childKeys = ['condition', 'rules'] as const;
 
-  private readonly condition!: Node;
-  private readonly rules!: Rules;
+  /** @internal */ readonly _condition!: Node;
+  /** @internal */ readonly _rules!: Rules;
 
   constructor(value: WhileValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this.condition = value.condition;
-    this.rules = value.rules;
-    if (this.condition instanceof Node) {
-      this.adopt(this.condition);
+    this._condition = value.condition;
+    this._rules = value.rules;
+    if (this._condition instanceof Node) {
+      this.adopt(this._condition);
     }
-    if (this.rules instanceof Node) {
-      this.adopt(this.rules);
+    if (this._rules instanceof Node) {
+      this.adopt(this._rules);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(this.rules);
+    makeDirectiveRulesPublic(this._rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

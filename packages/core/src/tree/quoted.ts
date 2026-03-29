@@ -26,13 +26,13 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions,
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, QuotedChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: string | Any | Interpolated;
+  /** @internal */ _value!: string | Any | Interpolated;
   readonly quote: '"' | '\'' | undefined;
   readonly escaped: boolean;
 
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     this.quote = options?.quote;
     this.escaped = !!options?.escaped;
     if (value instanceof Node) {
@@ -70,7 +70,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
     // It has no Context parameter, so making it state-aware here would make
     // a single Quoted instance report different observer values across
     // concurrent sessions with different patched `value`s.
-    const value = this.value;
+    const value = this._value;
     return value instanceof Node ? value.valueOf() : value as string;
   }
 

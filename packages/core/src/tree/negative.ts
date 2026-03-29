@@ -18,11 +18,11 @@ export interface Negative extends Node<Node, NodeOptions, NegativeChildData> {
 export class Negative extends Node<Node, NodeOptions, NegativeChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: Node;
+  /** @internal */ _value!: Node;
 
   constructor(value: Node, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     if (value instanceof Node) {
       this.adopt(value);
     }

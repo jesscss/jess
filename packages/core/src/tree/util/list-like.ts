@@ -73,10 +73,10 @@ export function* iterateItems(input: Node): Generator<[Node, EntryKey]> {
 
   if (input instanceof Rules || input instanceof Ruleset || input instanceof Mixin) {
     const rules = input instanceof Rules
-      ? input.value
+      ? input._value
       : input instanceof Ruleset
-        ? input.get('rules')?.value ?? []
-        : input.get('rules')?.value ?? [];
+        ? input.get('rules')?._value ?? []
+        : input.get('rules')?._value ?? [];
     for (const rule of rules) {
       if (!rule || rule instanceof Comment) {
         continue;

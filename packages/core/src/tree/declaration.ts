@@ -102,23 +102,23 @@ export interface Declaration {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts, DeclarationChildData> {
   static override childKeys = ['name', 'value', 'important'] as const;
 
-  private name!: NameValue;
-  private value!: Node;
-  private important: Any<'flag'> | undefined;
+  /** @internal */ _name!: NameValue;
+  /** @internal */ _value!: Node;
+  /** @internal */ _important: Any<'flag'> | undefined;
 
   constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.name = value.name;
-    this.value = value.value;
-    this.important = value.important;
-    if (this.name instanceof Node) {
-      this.adopt(this.name);
+    this._name = value.name;
+    this._value = value.value;
+    this._important = value.important;
+    if (this._name instanceof Node) {
+      this.adopt(this._name);
     }
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
+    if (this._value instanceof Node) {
+      this.adopt(this._value);
     }
-    if (this.important instanceof Node) {
-      this.adopt(this.important);
+    if (this._important instanceof Node) {
+      this.adopt(this._important);
     }
     this.allowRuleRoot = true;
   }
@@ -374,7 +374,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             : new Sequence(baseItems, undefined, valueNode.location, this.treeContext);
           return { baseValue, collection: last as Collection };
         };
-        const cloneImportant = () => node.important?.copy(true) as Any<'flag'> | undefined;
+        const cloneImportant = () => node._important?.copy(true) as Any<'flag'> | undefined;
         const makePropertyName = (prefix: string, childName: NameValue): Any<'property'> =>
           new Any(
             `${prefix}-${String(childName.valueOf())}`,
@@ -383,19 +383,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             this.treeContext
           );
         const expandNestedPropertyDeclaration = (declNode: Declaration): MaybePromise<Declaration | Rules | Nil> => {
-          const nested = splitNestedPropertyValue(declNode.value);
+          const nested = splitNestedPropertyValue(declNode._value);
           if (!nested) {
             return declNode;
           }
 
           const expanded: Node[] = [];
           const declCtor = declNode.constructor as any;
-          const prefix = String(declNode.name.valueOf());
+          const prefix = String(declNode._name.valueOf());
 
           if (nested.baseValue) {
             expanded.push(new declCtor(
               {
-                name: declNode.name.copy(true) as NameValue,
+                name: declNode._name.copy(true) as NameValue,
                 value: nested.baseValue.copy(true),
                 important: cloneImportant()
               },
@@ -405,7 +405,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             ));
           }
 
-          const entries = nested.collection.value.filter(
+          const entries = nested.collection._value.filter(
             child => isNode(child, N.Declaration) && !isNode(child, N.VarDeclaration)
           ) as Declaration[];
 
@@ -423,9 +423,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
               const prefixedDecl = new declCtor(
                 {
-                  name: makePropertyName(prefix, resolvedCurrent.name as NameValue),
-                  value: resolvedCurrent.value.copy(true),
-                  important: (resolvedCurrent.important?.copy(true) as Any<'flag'> | undefined)
+                  name: makePropertyName(prefix, resolvedCurrent._name as NameValue),
+                  value: resolvedCurrent._value.copy(true),
+                  important: (resolvedCurrent._important?.copy(true) as Any<'flag'> | undefined)
                 },
                 { ...resolvedCurrent.options } as any,
                 resolvedCurrent.location,
@@ -436,7 +436,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               const afterEval = (resolvedPrefixed: Declaration | Rules | Nil): MaybePromise<void> => {
                 if (!(resolvedPrefixed instanceof Nil)) {
                   if (isNode(resolvedPrefixed, N.Rules)) {
-                    expanded.push(...(resolvedPrefixed as Rules).value);
+                    expanded.push(...(resolvedPrefixed as Rules)._value);
                   } else {
                     expanded.push(resolvedPrefixed as Declaration);
                   }

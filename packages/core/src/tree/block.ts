@@ -23,13 +23,13 @@ export interface Block extends Node<Node, BlockOptions, BlockChildData> {
 export class Block extends Node<Node, BlockOptions, BlockChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: Node;
+  /** @internal */ _value!: Node;
 
   constructor(value: Node, options?: BlockOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.value = value;
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
+    this._value = value;
+    if (this._value instanceof Node) {
+      this.adopt(this._value);
     }
   }
 

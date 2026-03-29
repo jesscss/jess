@@ -36,9 +36,9 @@ export interface Condition extends Node<ConditionValue, ConditionOptions, Condit
 export class Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  private readonly left!: Node;
+  /** @internal */ readonly _left!: Node;
   private readonly operator: ConditionOperator | undefined;
-  private readonly right: Node | undefined;
+  /** @internal */ readonly _right: Node | undefined;
   private readonly negate: boolean;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
@@ -69,15 +69,15 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
 
   constructor(value: ConditionValue, options?: ConditionOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.left = value[0];
+    this._left = value[0];
     this.operator = value[1];
-    this.right = value[2];
+    this._right = value[2];
     this.negate = !!options?.negate;
-    if (this.left instanceof Node) {
-      this.adopt(this.left);
+    if (this._left instanceof Node) {
+      this.adopt(this._left);
     }
-    if (this.right instanceof Node) {
-      this.adopt(this.right);
+    if (this._right instanceof Node) {
+      this.adopt(this._right);
     }
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
@@ -114,7 +114,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
 
   static getBool(node: Node, negated: boolean): Bool {
     if (node instanceof Bool) {
-      return new Bool(negated ? !node.value : node.value);
+      return new Bool(negated ? !node._value : node._value);
     }
     // Less guards treat only explicit booleans as truthy.
     // Any non-boolean (number, quoted, keyword, list, nil, etc.) is false.
@@ -123,8 +123,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
 
   static getResult(a: Node, b: Node, op: ConditionOperator, context?: Context): boolean {
     switch (op) {
-      case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
-      case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
+      case 'and': return Condition.getBool(a, false)._value && Condition.getBool(b, false)._value;
+      case 'or': return Condition.getBool(a, false)._value || Condition.getBool(b, false)._value;
       default:
         switch (a.compare(b, context)) {
           case -1:

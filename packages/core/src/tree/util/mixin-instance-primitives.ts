@@ -116,7 +116,7 @@ export function finalizeMixinInvocationReturn(
 ): Rules | Nil | ReturnType<Rules['toObject']> {
   if (receiver instanceof Context) {
     output.index ??= receiver.ruleCounter++;
-    if (output.value.length === 0) {
+    if (output._value.length === 0) {
       return new Nil();
     }
     return output;
@@ -380,7 +380,7 @@ export function prepareMixinCandidateInvocation(
     outerRules,
     lookupScope: outerRules ?? rules,
     guardScopeChildren: outerRules
-      ? [...outerRules.value]
+      ? [...outerRules._value]
       : undefined
   };
 }
@@ -456,7 +456,7 @@ export async function evaluateMixinGuardCandidate(
         () => guardNode.eval(context)
       );
       return {
-        passes: probeResult instanceof Bool && probeResult.value === true,
+        passes: probeResult instanceof Bool && probeResult._value === true,
         outerRules: nextScope
       };
     } finally {

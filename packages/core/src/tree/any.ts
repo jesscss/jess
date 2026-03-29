@@ -49,7 +49,7 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   static override childKeys = null as null;
 
-  readonly value!: string;
+  /** @internal */ readonly _value!: string;
   readonly role: Role | undefined;
 
   constructor(
@@ -59,7 +59,7 @@ export class Any<
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
   }
@@ -88,10 +88,10 @@ export class Any<
       return undefined;
     }
     if (other.type === 'Any' || other.type === 'Keyword') {
-      return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
+      return this._value === String(other.valueOf?.() ?? '') ? 0 : undefined;
     }
     if (other.type === 'Num' || other.type === 'Dimension') {
-      const text = this.value.trim();
+      const text = this._value.trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }

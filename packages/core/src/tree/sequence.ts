@@ -34,11 +34,11 @@ export type SequenceChildData = { value: Node[] };
 export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: Node[];
+  /** @internal */ _value!: Node[];
 
   constructor(value: Node[], options?: SequenceOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     for (const child of value) {
       if (child instanceof Node) {
         this.adopt(child);
@@ -59,7 +59,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
       this.location,
       this.treeContext
     );
-    newNode.value = clonedValue;
+    newNode._value = clonedValue;
     if (ctx) {
       for (const child of clonedValue) {
         setParent(child, newNode, ctx);
@@ -74,7 +74,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   }
 
   get length() {
-    return this.value.length;
+    return this._value.length;
   }
 
   private _getOptions(context?: Context): SequenceOptions | undefined {

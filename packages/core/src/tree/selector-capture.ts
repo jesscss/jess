@@ -20,18 +20,18 @@ export interface SelectorCapture extends Node<Selector, NodeOptions, SelectorCap
 export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCaptureChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: Selector;
+  /** @internal */ _value!: Selector;
 
   constructor(value: Selector, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
-    this.value = value;
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
+    this._value = value;
+    if (this._value instanceof Node) {
+      this.adopt(this._value);
     }
   }
 
   override valueOf(): string {
-    return String(this.value.valueOf());
+    return String(this._value.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {

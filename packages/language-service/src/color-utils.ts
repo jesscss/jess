@@ -206,11 +206,12 @@ function isColorKeyword(node: Node): boolean {
 function isColorFunction(call: Call): boolean {
   let name: string | null = null;
 
-  if (typeof call.name === 'string') {
-    name = call.name.toLowerCase();
-  } else if (call.name) {
+  const callName = call.get('name');
+  if (typeof callName === 'string') {
+    name = callName.toLowerCase();
+  } else if (callName) {
     // Name is a Node - try multiple ways to extract the string value
-    const nameNode = call.name as any;
+    const nameNode = callName;
 
     // Try valueOf first (works for most Node types)
     if (typeof nameNode.valueOf === 'function') {
@@ -223,21 +224,12 @@ function isColorFunction(call: Call): boolean {
 
     // If valueOf didn't work, try type-specific extraction
     if (!name) {
-      if (nameNode.type === 'Any') {
-        // Any node - extract the data
-        const value = typeof nameNode.value === 'string' ? nameNode.value : String(nameNode.value ?? '');
-        name = value.toLowerCase();
-      } else if (nameNode.type === 'Reference') {
-        // Reference node - try to get the key
-        const key = nameNode.key;
-        if (typeof key === 'string') {
-          name = key.toLowerCase();
-        } else if (key && typeof key.valueOf === 'function') {
-          name = String(key.valueOf()).toLowerCase();
+      if (nameNode.type === 'Any' || nameNode.type === 'Reference') {
+        // Try valueOf for any node type
+        const str = String(nameNode.valueOf() ?? '');
+        if (str) {
+          name = str.toLowerCase();
         }
-      } else if (typeof nameNode.value === 'string') {
-        // Generic node with string value
-        name = nameNode.value.toLowerCase();
       }
     }
   }

@@ -164,21 +164,21 @@ export interface Reference {
 export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceChildData> {
   static override childKeys = ['target', 'key'] as const;
 
-  private target: Reference | Call | undefined;
-  private key!: ReferenceValue['key'];
+  /** @internal */ _target: Reference | Call | undefined;
+  /** @internal */ _key!: ReferenceValue['key'];
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     if (typeof value === 'string') {
       value = { key: value };
     }
     super(value as any, options, location, treeContext);
-    this.target = value.target;
-    this.key = value.key;
-    if (this.target instanceof Node) {
-      this.adopt(this.target);
+    this._target = value.target;
+    this._key = value.key;
+    if (this._target instanceof Node) {
+      this.adopt(this._target);
     }
-    if (this.key instanceof Node) {
-      this.adopt(this.key);
+    if (this._key instanceof Node) {
+      this.adopt(this._key);
     }
     // References are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);

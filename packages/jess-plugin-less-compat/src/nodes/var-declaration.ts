@@ -4,9 +4,9 @@ import { toLessNode } from '../transform/to-less.js';
 
 export const transformVarDeclarationToLess = createFromAdapter<VarDeclaration>({
   fields: {
-    name: v => v.name,
+    name: v => v.get('name'),
     value: (v, cache) => {
-      const value = v.value;
+      const value = v.get('value');
       return value instanceof Node ? toLessNode(value, { cache }) : value;
     },
     index: (v) => {
@@ -14,5 +14,8 @@ export const transformVarDeclarationToLess = createFromAdapter<VarDeclaration>({
       return loc.length ? loc[0] : undefined;
     }
   },
-  accept: singleChildAccept(v => v.value instanceof Node ? v.value as Node : undefined)
+  accept: singleChildAccept((v) => {
+    const value = v.get('value');
+    return value instanceof Node ? value : undefined;
+  })
 });

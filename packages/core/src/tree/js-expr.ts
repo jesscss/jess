@@ -18,11 +18,11 @@ export interface JsExpression extends Node<string> {
 export class JsExpression extends Node<string> {
   static override childKeys = null as null;
 
-  value!: string;
+  /** @internal */ _value!: string;
 
   constructor(value: string, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.value = value;
+    this._value = value;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -30,7 +30,7 @@ export class JsExpression extends Node<string> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('`', this);
-    w.add(this.value);
+    w.add(this._value);
     w.add('`');
     return w.getSince(mark);
   }
@@ -41,7 +41,7 @@ export class JsExpression extends Node<string> {
    */
   override evalNode(context: Context): Promise<Node> {
     return (async () => {
-      const result = await eval(this.value);
+      const result = await eval(this._value);
       return cast(result);
     })();
   }

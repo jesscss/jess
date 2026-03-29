@@ -4,13 +4,13 @@ import { toLessNode } from '../transform/to-less.js';
 
 export const transformCallToLess = createFromAdapter<Call>({
   fields: {
-    name: c => c.name,
+    name: c => c.get('name'),
     args: (c, cache) => {
-      const args = c.args;
+      const args = c.get('args');
       if (!args) {
         return [];
       }
-      return args.value.map((arg: any) =>
+      return args.get('value').map((arg: any) =>
         arg instanceof Node ? toLessNode(arg, { cache }) : arg
       );
     },
@@ -20,9 +20,10 @@ export const transformCallToLess = createFromAdapter<Call>({
     }
   },
   accept: childrenAccept((c) => {
-    const args = c.args;
-    return args?.value?.length
-      ? args.value.filter((a: any) => a instanceof Node) as Node[]
+    const args = c.get('args');
+    const argsValue = args?.get('value');
+    return argsValue?.length
+      ? argsValue.filter((a: any) => a instanceof Node) as Node[]
       : [];
   })
 });

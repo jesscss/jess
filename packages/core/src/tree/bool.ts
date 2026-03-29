@@ -14,7 +14,7 @@ export interface Bool extends Node<boolean> {
 export class Bool extends Node<boolean> {
   static override childKeys = null as null;
 
-  readonly value!: boolean;
+  /** @internal */ readonly _value!: boolean;
 
   constructor(
     value: boolean,
@@ -23,13 +23,13 @@ export class Bool extends Node<boolean> {
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     this.addFlag(F_STATIC);
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
     if (other instanceof Bool) {
-      return this.value === other.value ? 0 : undefined;
+      return this._value === other._value ? 0 : undefined;
     }
     return undefined;
   }
@@ -38,7 +38,7 @@ export class Bool extends Node<boolean> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    w.add(this.value ? 'true' : 'false', this);
+    w.add(this._value ? 'true' : 'false', this);
     return w.getSince(mark);
   }
 }

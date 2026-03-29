@@ -78,9 +78,9 @@ function wrapOuterExpressionIfNeeded($: P, node: Node, ctx: RuleContext | undefi
         parenFrames: getParenFrames(ctx),
         calcFrames: getCalcFrames(ctx)
       },
-      node.operator,
-      node.left,
-      node.right
+      node.get('operator') as Operator,
+      node._left,
+      node._right
     );
     if (shouldOperate) {
       return new Expression(node, { parens: true }, location ?? (node.location as LocationInfo | undefined), $.context);
@@ -706,9 +706,9 @@ export function parenValue(this: P, T: TokenMap) {
       (ctx.preferExpressionInParens ?? false)
       && isNode(value, N.List)
       && value.options?.sep === '/'
-      && value.value.length === 2
+      && (value as List)._value.length === 2
     ) {
-      const [left, right] = value.value;
+      const [left, right] = (value as List)._value;
       const exprCtx: RuleContext = {
         ...ctx,
         wrapInExpression: true,
@@ -751,7 +751,9 @@ export function squareValue(this: P, T: TokenMap) {
     const delimiter = (
       isNode(value, N.Any)
       && value.options?.role === 'ident'
-    ) ? 'square' : 'paren';
+    )
+      ? 'square'
+      : 'paren';
 
     return new Paren(value, { delimiter }, location, $.context);
   };
@@ -806,24 +808,24 @@ export function functionCall(this: P, T: TokenMap) {
       return node as unknown as any;
     }
 
-  // First, keep existing Sass map.get() desugaring behavior.
-  const mapped = desugarMapLookup($, node);
-  if (isNode(mapped, N.Reference)) {
-    return mapped as unknown as any;
-  }
-  const call = mapped as Call;
+    // First, keep existing Sass map.get() desugaring behavior.
+    const mapped = desugarMapLookup($, node);
+    if (isNode(mapped, N.Reference)) {
+      return mapped as unknown as any;
+    }
+    const call = mapped as Call;
 
-    if (typeof call.name === 'string' && call.name === 'selector.parse') {
-      const args = isNode(call.args, N.List) ? (call.args as List).value : [];
+    if (typeof call._name === 'string' && call._name === 'selector.parse') {
+      const args = isNode(call._args, N.List) ? (call._args as List)._value : [];
       const firstArg = args[0];
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
-      if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode((firstArg as Quoted).value, N.Any)) {
+      if (!firstArg || !isNode(firstArg, N.Quoted) || !isNode((firstArg as Quoted)._value, N.Any)) {
         saveValueDiagnostic($, undefined, firstArg?.location as LocationInfo | undefined ?? loc, 'selector.parse() requires a quoted selector string literal.');
         return call;
       }
-      const selectorText = String((firstArg as Quoted).value.valueOf());
+      const selectorText = String((firstArg as Quoted)._value.valueOf());
       let selector: Selector;
       try {
         selector = parseSelectorListExpression(selectorText);
@@ -844,15 +846,15 @@ export function functionCall(this: P, T: TokenMap) {
       return new Expression(maybe, undefined, loc, $.context);
     }
 
-  // Plain Sass/Less-style function call: `foo(...)`
-  // Parse as Call(name: Reference(type='function', fallbackValue: true)) so evaluation tries function registry,
-  // but still serializes safely if unresolved.
-    if (typeof call.name === 'string') {
+    // Plain Sass/Less-style function call: `foo(...)`
+    // Parse as Call(name: Reference(type='function', fallbackValue: true)) so evaluation tries function registry,
+    // but still serializes safely if unresolved.
+    if (typeof call._name === 'string') {
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
       const ref = new Reference(
-        { key: call.name },
+        { key: call._name },
         { type: 'function', fallbackValue: true },
         loc,
         $.context
@@ -862,7 +864,7 @@ export function functionCall(this: P, T: TokenMap) {
       const { silentFail: silentFailIgnored, ...rest } = call.options ?? {};
       void silentFailIgnored;
       const nextOptions = Object.keys(rest).length > 0 ? rest : undefined;
-      return new Call({ name: ref, args: call.args }, nextOptions, loc, $.context);
+      return new Call({ name: ref, args: call._args }, nextOptions, loc, $.context);
     }
     return call;
   };
@@ -941,30 +943,30 @@ export function scssMapLiteral(this: P, T: TokenMap) {
     $.startRule();
     $.CONSUME($.T.LParen);
 
-  const decls: Declaration[] = [];
+    const decls: Declaration[] = [];
 
-  if ($.LA(1).tokenType !== $.T.RParen) {
-    $.OPTION(() => {
-      $.AT_LEAST_ONE_SEP({
-        SEP: $.T.Comma,
-        DEF: () => {
-          const keyNode = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
-          $.CONSUME($.T.Colon);
-          const valueNode = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+    if ($.LA(1).tokenType !== $.T.RParen) {
+      $.OPTION(() => {
+        $.AT_LEAST_ONE_SEP({
+          SEP: $.T.Comma,
+          DEF: () => {
+            const keyNode = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
+            $.CONSUME($.T.Colon);
+            const valueNode = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
 
-          const keyStr = toDeclKey(keyNode);
-          const declName = new Any(keyStr, { role: 'property' });
-          const decl = new Declaration(
-            { name: declName, value: valueNode },
-            undefined,
-            $.getLocationFromNodes([keyNode, valueNode]),
-            $.context
-          );
-          decls.push(decl);
-        }
+            const keyStr = toDeclKey(keyNode);
+            const declName = new Any(keyStr, { role: 'property' });
+            const decl = new Declaration(
+              { name: declName, value: valueNode },
+              undefined,
+              $.getLocationFromNodes([keyNode, valueNode]),
+              $.context
+            );
+            decls.push(decl);
+          }
+        });
       });
-    });
-  }
+    }
 
     $.CONSUME($.T.RParen);
 

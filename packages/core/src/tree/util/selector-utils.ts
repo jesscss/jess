@@ -310,7 +310,7 @@ function applyTemplate(resolved: Selector, template: string, inherit: Selector):
     for (const s of n.nodes(true)) {
       if (isNode(s, N.SimpleSelector)) {
         if (isNode(s, N.BasicSelector)) {
-          (s as BasicSelector).setData((s as BasicSelector).value + template);
+          (s as BasicSelector).setData((s as BasicSelector)._value + template);
           return;
         }
         throw new SyntaxError(`Cannot append "${template}" to this type of selector`);

@@ -11,7 +11,7 @@ export interface JsFunction {
 export class JsFunction extends Node<Fn> {
   static override childKeys = null as null;
 
-  value!: Fn;
+  /** @internal */ _value!: Fn;
   name?: string | undefined;
 
   constructor(
@@ -23,7 +23,7 @@ export class JsFunction extends Node<Fn> {
     const fn = typeof value === 'function' ? value : value.fn;
 
     super(fn, options, location, treeContext);
-    this.value = fn;
+    this._value = fn;
     this.name = typeof value === 'function' ? undefined : value.name;
   }
 }

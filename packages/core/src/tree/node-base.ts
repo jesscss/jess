@@ -358,17 +358,17 @@ export abstract class Node<
       }
       return value;
     };
-    const getFieldFromView = (key: string): unknown => {
+    const getFieldFromView = (key: string, isChildKey = true): unknown => {
       const patched = state.peek(this)?._fields?.get(key);
       if (patched !== undefined) {
         return patched;
       }
-      return (this as any)[key];
+      return (this as any)[isChildKey ? `_${key}` : key];
     };
 
     if (ck === null) {
       const value = materializeValue(getFieldFromView('value'));
-      const options = getFieldFromView('options') ?? this._meta?.options;
+      const options = getFieldFromView('options', false) ?? this._meta?.options;
       const newNode = new Class(
         value as any,
         options ? { ...(options as Record<string, unknown>) } : undefined,
@@ -400,7 +400,7 @@ export abstract class Node<
       }
     }
 
-    const options = getFieldFromView('options') ?? this._meta?.options;
+    const options = getFieldFromView('options', false) ?? this._meta?.options;
     const newNode = new Class(
       cloneData,
       options ? { ...(options as Record<string, unknown>) } : undefined,
@@ -441,7 +441,7 @@ export abstract class Node<
 
     if (Array.isArray(ck)) {
       for (const key of ck) {
-        const field = (this as any)[key!];
+        const field = (this as any)[`_${key!}`];
         if (field instanceof Node) {
           sharedChildren.push({
             child: field,
@@ -494,7 +494,7 @@ export abstract class Node<
 
     if (Array.isArray(ck)) {
       for (const key of ck) {
-        const field = (this as any)[key!];
+        const field = (this as any)[`_${key!}`];
         if (field instanceof Node) {
           sharedChildren.push({
             child: field,
@@ -563,12 +563,12 @@ export abstract class Node<
 
     if (ck.length === 1) {
       const key = ck[0]!;
-      wrapper.setData(materializeValue((wrapper as any)[key]) as NodeValue);
+      wrapper.setData(materializeValue((wrapper as any)[`_${key}`]) as NodeValue);
       return wrapper;
     }
 
     for (const key of ck) {
-      wrapper.setData(key!, materializeValue((wrapper as any)[key!]));
+      wrapper.setData(key!, materializeValue((wrapper as any)[`_${key!}`]));
     }
 
     return wrapper;
@@ -672,15 +672,15 @@ export abstract class Node<
       const val = args[0];
       const ck = (this.constructor as typeof Node).childKeys;
       if (Array.isArray(ck) && ck.length === 1 && (Array.isArray(val) || typeof val !== 'object')) {
-        (this as any)[ck[0]] = val;
+        (this as any)[`_${ck[0]}`] = val;
       } else if (Array.isArray(ck) && ck.length > 1 && typeof val === 'object' && val !== null) {
         for (const key of ck) {
           if (key! in (val as any)) {
-            (this as any)[key!] = (val as any)[key!];
+            (this as any)[`_${key!}`] = (val as any)[key!];
           }
         }
       } else {
-        (this as any).value = val;
+        (this as any)._value = val;
       }
       this._adoptValue(val);
       this._invalidateValueOf();
@@ -692,18 +692,18 @@ export abstract class Node<
     // For array-based containers (childKeys=['value']), numeric keys index into
     // the array field, not the instance itself.
     if (typeof key === 'number') {
-      const arr = (this as any)[ck![0]!];
+      const arr = (this as any)[`_${ck![0]!}`];
       const prev = arr[key];
       if (prev === val) {
         return;
       }
       arr[key] = val;
     } else {
-      const prev = (this as any)[key];
+      const prev = (this as any)[`_${key}`];
       if (prev === val) {
         return;
       }
-      (this as any)[key] = val;
+      (this as any)[`_${key}`] = val;
     }
     this._adoptValue(val);
     this._invalidateValueOf();
@@ -724,7 +724,7 @@ export abstract class Node<
   /** Get the array field for array-valued nodes (childKeys=['value'] etc.) */
   private _getArrayField(): any[] {
     const ck = (this.constructor as typeof Node).childKeys;
-    return (this as any)[ck![0]!];
+    return (this as any)[`_${ck![0]!}`];
   }
 
   /** Push items onto an array-valued node.
@@ -946,7 +946,7 @@ export abstract class Node<
         state = state.parent;
       }
     }
-    return (this as unknown as Record<string, unknown>)[key] as ChildData[K];
+    return (this as unknown as Record<string, unknown>)[`_${key}`] as ChildData[K];
   }
 
   /**
@@ -1019,7 +1019,7 @@ export abstract class Node<
                 state.get(this).fields.set(key, result);
               } else {
                 // Array child — replace in the state-overlaid children array
-                const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
+                const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any)._value as Node[])];
                 children[key as number] = result;
                 state.get(this).fields.set('value', children);
               }
@@ -1038,7 +1038,7 @@ export abstract class Node<
           if (typeof key === 'string') {
             state.get(this).fields.set(key, out);
           } else {
-            const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
+            const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any)._value as Node[])];
             children[key as number] = out as Node;
             state.get(this).fields.set('value', children);
           }
@@ -1058,7 +1058,7 @@ export abstract class Node<
     }
     const entries: [unknown, string | number, any][] = [];
     for (const key of ck) {
-      const field = (this as any)[key!];
+      const field = (this as any)[`_${key!}`];
       if (isArray(field)) {
         for (let i = 0; i < field.length; i++) {
           entries.push([field[i], i, field]);
@@ -1077,7 +1077,7 @@ export abstract class Node<
     if (Array.isArray(ck)) {
       let idx = 0;
       for (const key of ck) {
-        const field = (this as any)[key!];
+        const field = (this as any)[`_${key!}`];
         if (isArray(field)) {
           for (let i = 0; i < field.length; i++) {
             const item = field[i];
@@ -1097,7 +1097,7 @@ export abstract class Node<
             if (state) {
               state.get(this).fields.set(key!, result);
             } else {
-              (this as any)[key!] = result;
+              (this as any)[`_${key!}`] = result;
             }
             this.adopt(result);
             this._invalidateValueOf();
@@ -1240,7 +1240,7 @@ export abstract class Node<
     // Leaf node — no children to iterate or deep-clone
     if (ck === null) {
       const options = this._meta?.options;
-      const newNode = new Class((this as any).value, options ? { ...options } : undefined, this.location, this.treeContext);
+      const newNode = new Class((this as any)._value, options ? { ...options } : undefined, this.location, this.treeContext);
       newNode.inherit(this);
       return newNode;
     }
@@ -1248,12 +1248,12 @@ export abstract class Node<
     // Container — build constructor value from childKeys
     let cloneData: any;
     if (ck!.length === 1) {
-      const field = (this as any)[ck![0]!];
+      const field = (this as any)[`_${ck![0]!}`];
       cloneData = isArray(field) ? [...field] : field;
     } else {
       cloneData = {};
       for (const key of ck!) {
-        const field = (this as any)[key!];
+        const field = (this as any)[`_${key!}`];
         cloneData[key!] = isArray(field) ? [...field] : field;
       }
     }
@@ -1590,12 +1590,12 @@ export abstract class Node<
     const ck = (this.constructor as typeof Node).childKeys;
     if (!ck) {
       // Leaf node — value is a primitive
-      return (this as any).value as Primitive;
+      return (this as any)._value as Primitive;
     }
     // Container — collect string values from children
     const parts: string[] = [];
     for (const key of ck) {
-      const field = (this as any)[key!];
+      const field = (this as any)[`_${key!}`];
       if (isArray(field)) {
         for (let i = 0; i < field.length; i++) {
           parts.push(`${field[i]}`);
@@ -1718,7 +1718,7 @@ export abstract class Node<
         // Resolve through eval state when context available
         const field = ctx
           ? getField(this as Node, key!, ctx)
-          : (this as any)[key!];
+          : (this as any)[`_${key!}`];
         if (isArray(field)) {
           for (const item of field) {
             if (item instanceof Node) {
@@ -1741,7 +1741,7 @@ export abstract class Node<
       }
     } else {
       // Leaf node — render the primitive value directly
-      const s = String((this as any).value ?? '');
+      const s = String((this as any)._value ?? '');
       if (s) {
         w.add(s, this);
       }

@@ -23,30 +23,30 @@ export function parseRelativeColorSyntax(rawArgs: List): {
   channels: Node[];
   alpha?: Node;
 } | null {
-  if (!rawArgs || !rawArgs.value || rawArgs.value.length === 0) {
+  if (!rawArgs || !rawArgs.get('value') || rawArgs.get('value').length === 0) {
     return null;
   }
 
-  const firstArg = rawArgs.value[0];
+  const firstArg = rawArgs.get('value')[0];
 
   // Check if first argument is a Sequence starting with "from"
-  if (firstArg instanceof Sequence && firstArg.value && firstArg.value.length > 0) {
-    const firstItem = firstArg.value[0];
+  if (firstArg instanceof Sequence && firstArg.get('value') && firstArg.get('value').length > 0) {
+    const firstItem = firstArg.get('value')[0];
 
     // Check if first item is "from" keyword
     if (firstItem instanceof Any && firstItem.value.toLowerCase() === 'from') {
       // This is relative color syntax
-      if (firstArg.value.length < 2) {
+      if (firstArg.get('value').length < 2) {
         throw new Error('Relative color syntax requires an origin color after "from"');
       }
 
-      const originColor = firstArg.value[1]!;
-      const channels = firstArg.value.slice(2) || [];
+      const originColor = firstArg.get('value')[1]!;
+      const channels = firstArg.get('value').slice(2) || [];
 
       // Check if there's an alpha value separated by / (rawArgs.value[1] when sep is '/')
       let alpha: Node | undefined;
-      if (rawArgs.value.length > 1 && rawArgs.options?.sep === '/') {
-        alpha = rawArgs.value[1];
+      if (rawArgs.get('value').length > 1 && rawArgs.options?.sep === '/') {
+        alpha = rawArgs.get('value')[1];
       }
 
       return {
@@ -128,14 +128,15 @@ function substituteChannelVariables(
   }
 
   // If it's a Call node (like calc()), recursively substitute in its arguments
-  if (node instanceof Call && node.args) {
+  if (node instanceof Call && node.get('args')) {
     const cloned = node.clone();
     // Recursively substitute in arguments
-    if (cloned.args) {
-      const substitutedArgs = node.args.value.map(arg =>
+    const clonedArgs = cloned.get('args');
+    if (clonedArgs) {
+      const substitutedArgs = node.get('args')!.get('value').map((arg: Node) =>
         substituteChannelVariables(arg, channelValues, format)
       );
-      cloned.args.setData(substitutedArgs);
+      clonedArgs.setData(substitutedArgs);
     }
     return cloned;
   }
@@ -143,7 +144,9 @@ function substituteChannelVariables(
   // If it's an Operation, recursively substitute in its operands
   if (node instanceof Operation) {
     const cloned = node.clone();
-    const { left, operator: op, right } = node;
+    const left = node.get('left');
+    const op = node.get('operator');
+    const right = node.get('right');
     cloned.setData([
       substituteChannelVariables(left, channelValues, format),
       op as Operator,

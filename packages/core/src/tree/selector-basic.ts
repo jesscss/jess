@@ -16,7 +16,7 @@ export interface BasicSelector extends SimpleSelector<string> {
 export class BasicSelector extends SimpleSelector<string> {
   static override childKeys = null as null;
 
-  value!: string;
+  /** @internal */ _value!: string;
 
   constructor(
     value: string,
@@ -25,33 +25,33 @@ export class BasicSelector extends SimpleSelector<string> {
     treeContext?: TreeContext
   ) {
     super(value as any, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     this.addFlag(F_STATIC);
   }
 
   get isClass() {
-    return /^\./.test(this.value);
+    return /^\./.test(this._value);
   }
 
   get isId() {
-    return /^#/.test(this.value);
+    return /^#/.test(this._value);
   }
 
   /** A tag-type selector */
   get isTag() {
-    return /^[^.#*]/.test(this.value);
+    return /^[^.#*]/.test(this._value);
   }
 
   override evalNode(context: Context): BasicSelector {
     const node = super.evalNode(context) as BasicSelector;
     if (node.isClass) {
-      context.hashClass(node.value);
+      context.hashClass(node._value);
     }
     return node;
   }
 
   override valueOf(): string {
-    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value));
+    return (this._valueOf ??= (this.isTag ? this._value.toLowerCase() : this._value));
   }
 
   /** @todo - move to visitors */

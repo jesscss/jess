@@ -85,7 +85,7 @@ export class ScssPlugin extends AbstractPlugin {
 
     try {
       const parseResult = this.parser.parse(source, 'stylesheet', { context });
-      tree = parseResult.tree;
+      tree = parseResult.tree as Rules;
 
       // Convert parser errors to normalized diagnostics
       if (parseResult.errors.length) {

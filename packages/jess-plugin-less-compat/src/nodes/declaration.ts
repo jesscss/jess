@@ -4,17 +4,17 @@ import { toLessNode } from '../transform/to-less.js';
 
 export const transformDeclarationToLess = createFromAdapter<Declaration>({
   fields: {
-    name: d => d.name,
+    name: d => d.get('name'),
     value: (d, cache) => {
-      const value = d.value;
+      const value = d.get('value');
       return value instanceof Node ? toLessNode(value, { cache }) : value;
     },
-    important: d => d.important || false,
+    important: d => d.get('important') || false,
     variable: d => d.options?.assign !== undefined,
     merge: () => false
   },
   accept: (decl, visitor, cache) => {
-    const value = decl.value;
+    const value = decl.get('value');
     if (value instanceof Node) {
       const lessValue = toLessNode(value, { cache });
       if (lessValue?.accept) {

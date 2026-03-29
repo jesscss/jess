@@ -6,30 +6,36 @@ import { fromLessNode } from '../transform/from-less.js';
 export const transformSequenceToLess = createFromAdapter<Sequence>({
   fields: {
     value: (seq, cache) =>
-      (seq.value ?? [])
+      (seq.get('value') ?? [])
         .map((item: any) => item instanceof Node ? toLessNode(item, { cache }) : item)
         .filter((item: any) => item != null),
-    length: (seq) =>
-      (seq.value ?? []).filter((v: any) => v != null).length
+    length: seq =>
+      (seq.get('value') ?? []).filter((v: any) => v != null).length
   },
   dynamicField: (prop, seq, cache) => {
     if (typeof prop === 'string' && /^\d+$/.test(prop)) {
       const idx = Number(prop);
-      const arr = (seq.value ?? []).filter((v: any) => v != null);
+      const arr = (seq.get('value') ?? []).filter((v: any) => v != null);
       const item = arr[idx];
       return item instanceof Node ? toLessNode(item, { cache }) : item;
     }
     return undefined;
   },
   accept: (seq, visitor, cache) => {
-    const raw = seq.value ?? [];
-    if (!Array.isArray(raw) || raw.length === 0) return seq;
+    const raw = seq.get('value') ?? [];
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return seq;
+    }
 
     for (let i = 0; i < raw.length; i++) {
       const item = raw[i];
-      if (item == null) continue;
+      if (item == null) {
+        continue;
+      }
       const lessItem = item instanceof Node ? toLessNode(item, { cache }) : item;
-      if (!lessItem || typeof visitor?.visit !== 'function') continue;
+      if (!lessItem || typeof visitor?.visit !== 'function') {
+        continue;
+      }
 
       const visited = visitor.visit(lessItem);
       if (visited && visited !== lessItem && typeof visited === 'object' && (visited as any).type) {
@@ -40,7 +46,9 @@ export const transformSequenceToLess = createFromAdapter<Sequence>({
             (jessReplacement as any).post = (item as any).post;
           }
           seq.adopt(jessReplacement);
-          (seq.value as any[])[i] = jessReplacement;
+          const seqArr = seq.get('value') as Node[];
+          seqArr[i] = jessReplacement;
+          seq.setData('value', seqArr);
         } catch {
           // If we can't convert it back, ignore
         }

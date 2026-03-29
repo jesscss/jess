@@ -32,7 +32,7 @@ export function getField<T = unknown>(
     }
     state = state.parent;
   }
-  return (node as unknown as Record<string, unknown>)[key] as T;
+  return (node as unknown as Record<string, unknown>)[`_${key}`] as T;
 }
 
 /**
@@ -225,7 +225,7 @@ export function setChildAt(
 ): void {
   const s = ctx.activeState.get(rules);
   const currentChildren = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
+    ?? [...rules._value];
   const prev = currentChildren[index];
   if (prev === node) {
     return;
@@ -247,7 +247,7 @@ export function appendChildren(
 ): void {
   const s = ctx.activeState.get(rules);
   const current = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
+    ?? [...rules._value];
   s.fields.set('value', [...current, ...nodes]);
   markScopeDirty(rules, ctx);
 }
@@ -262,7 +262,7 @@ export function prependChildren(
 ): void {
   const s = ctx.activeState.get(rules);
   const current = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
+    ?? [...rules._value];
   s.fields.set('value', [...nodes, ...current]);
   markScopeDirty(rules, ctx);
 }

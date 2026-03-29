@@ -35,11 +35,11 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions, List
 export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   static override childKeys = ['value'] as const;
 
-  private value!: T[];
+  /** @internal */ _value!: T[];
 
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     for (const child of value) {
       if (child instanceof Node) {
         this.adopt(child);
@@ -51,13 +51,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
   // Unlike render/eval surfaces, it has no Context channel, so making it
   // state-aware would require a broader API change rather than a node-local patch.
   get length() {
-    return this.value.length;
+    return this._value.length;
   }
 
   // NOTE: iteration intentionally remains canonical for now for the same reason as
   // `length`: there is no explicit Context channel on the iterator protocol.
   * [Symbol.iterator]() {
-    yield* this.value.entries();
+    yield* this._value.entries();
   }
 
   private _valueOf: string | undefined;
@@ -67,7 +67,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
   // Context parameter. Making it state-aware here would make the cache
   // ambiguous across concurrent sessions that see different patched `value`s.
   override valueOf() {
-    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
+    return (this._valueOf ??= this._value.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -102,7 +102,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     // NOTE: `compare()` intentionally remains canonical for now.
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray([...this.value], [...other.value], equalityMode);
+      const result = compareNodeArray([...this._value], [...other._value], equalityMode);
       return result;
     }
     if (other.type === 'Any') {

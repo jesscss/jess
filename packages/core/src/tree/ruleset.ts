@@ -93,30 +93,30 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
   private frames: (Ruleset | AtRule)[] | undefined;
 
-  private selector!: Selector | Nil;
-  private rules!: Rules;
-  private guard: Condition | Nil | undefined;
-  private selectorBeforeExtend: Selector | Nil | undefined;
+  /** @internal */ _selector!: Selector | Nil;
+  /** @internal */ _rules!: Rules;
+  /** @internal */ _guard: Condition | Nil | undefined;
+  /** @internal */ _selectorBeforeExtend: Selector | Nil | undefined;
   /** Patched selector from extend — used by serialization instead of canonical selector. */
   private _extendedSelector: Selector | Nil | undefined;
 
   constructor(value: NarrowRulesetValue<T>, options?: RulesetOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    this.selector = value.selector;
-    this.rules = value.rules;
-    this.guard = value.guard;
-    this.selectorBeforeExtend = value.selectorBeforeExtend;
-    if (this.selector instanceof Node) {
-      this.adopt(this.selector);
+    this._selector = value.selector;
+    this._rules = value.rules;
+    this._guard = value.guard;
+    this._selectorBeforeExtend = value.selectorBeforeExtend;
+    if (this._selector instanceof Node) {
+      this.adopt(this._selector);
     }
-    if (this.rules instanceof Node) {
-      this.adopt(this.rules);
+    if (this._rules instanceof Node) {
+      this.adopt(this._rules);
     }
-    if (this.guard instanceof Node) {
-      this.adopt(this.guard);
+    if (this._guard instanceof Node) {
+      this.adopt(this._guard);
     }
-    if (this.selectorBeforeExtend instanceof Node) {
-      this.adopt(this.selectorBeforeExtend);
+    if (this._selectorBeforeExtend instanceof Node) {
+      this.adopt(this._selectorBeforeExtend);
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
@@ -131,11 +131,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     ruleset: Ruleset,
     sharedValue: RulesetValue
   ): void {
-    const rules = ruleset.rules;
+    const rules = ruleset._rules;
     if (!rules || !isNode(rules, N.Rules)) {
       return;
     }
-    const children = (rules as Rules).value;
+    const children = (rules as Rules)._value;
     if (!Array.isArray(children)) {
       return;
     }
@@ -152,11 +152,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   static collapseRedundantGeneratedChildren(ruleset: Ruleset): void {
-    const rules = ruleset.rules;
+    const rules = ruleset._rules;
     if (!rules || !isNode(rules, N.Rules)) {
       return;
     }
-    const children = [...rules.value];
+    const children = [...rules._value];
     const normalized: Node[] = [];
     for (const child of children) {
       if (!isNode(child, N.Ruleset)) {
@@ -168,14 +168,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const shouldInline =
         Boolean(ruleset.options?.generated)
         && Boolean(childRuleset.options?.generated)
-        && String(ruleset.selector?.valueOf?.() ?? '') === String(childRuleset.selector?.valueOf?.() ?? '');
+        && String(ruleset._selector?.valueOf?.() ?? '') === String(childRuleset._selector?.valueOf?.() ?? '');
       if (shouldInline) {
-        normalized.push(...childRuleset.rules.value);
+        normalized.push(...childRuleset._rules._value);
         continue;
       }
       normalized.push(childRuleset);
     }
-    if (normalized.length !== rules.value.length || normalized.some((node, index) => node !== rules.value[index])) {
+    if (normalized.length !== rules._value.length || normalized.some((node, index) => node !== rules._value[index])) {
       rules.setData(normalized);
       for (const child of normalized) {
         rules.adopt(child);
@@ -433,7 +433,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       || this.treeContext?.opts?.collapseNesting === true
     )
       ? this.getEffectiveSelector()
-      : this.selector;
+      : this._selector;
     if (selector instanceof Nil) {
       this._valueOf = '';
       return this._valueOf;
@@ -949,7 +949,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             () => guard.eval(context),
             (guardResult) => {
               const selectorText = String(this.get('selector', context)?.valueOf?.() ?? '');
-              const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
+              const guardPasses = Boolean(guardResult instanceof Bool && guardResult._value === true);
               if (selectorText.includes('#guarded') || selectorText.includes('#top') || selectorText.includes('#deeper')) {
               }
               if (!guardPasses) {

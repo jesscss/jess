@@ -3,7 +3,7 @@ import { createFromAdapter } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
 
 function getFilteredValue(list: List, cache?: WeakMap<any, any>) {
-  const data = list.value;
+  const data = list.get('value');
   if (Array.isArray(data)) {
     return data
       .map((item: any) => {
@@ -39,7 +39,7 @@ export const transformListToLess = createFromAdapter<List>({
     return undefined;
   },
   accept: (list, visitor, cache) => {
-    const value = list.value;
+    const value = list.get('value');
     if (Array.isArray(value) && value.length > 0) {
       const lessItems = value
         .map((item: any) => item instanceof Node ? toLessNode(item, { cache }) : item)

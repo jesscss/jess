@@ -150,16 +150,16 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions, 
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions, StyleImportChildData> {
   static override childKeys = ['path', 'withNode'] as const;
 
-  private readonly path!: Quoted | Url;
-  private readonly withNode: Reference | Collection | undefined;
+  /** @internal */ readonly _path!: Quoted | Url;
+  /** @internal */ readonly _withNode: Reference | Collection | undefined;
   private withType: 'with' | 'set' | undefined;
 
   override clone(deep?: boolean): this {
     const options = (this as any)._meta?.options;
     const newNode = new (this.constructor as any)(
       {
-        path: deep ? this.path.clone(deep) : this.path,
-        withNode: deep && this.withNode instanceof Node ? this.withNode.clone(deep) : this.withNode,
+        path: deep ? this._path.clone(deep) : this._path,
+        withNode: deep && this._withNode instanceof Node ? this._withNode.clone(deep) : this._withNode,
         withType: this.withType
       },
       options ? { ...options } : undefined,
@@ -172,14 +172,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.path = value.path;
-    this.withNode = value.withNode;
+    this._path = value.path;
+    this._withNode = value.withNode;
     this.withType = value.withType;
-    if (this.path instanceof Node) {
-      this.adopt(this.path);
+    if (this._path instanceof Node) {
+      this.adopt(this._path);
     }
-    if (this.withNode instanceof Node) {
-      this.adopt(this.withNode);
+    if (this._withNode instanceof Node) {
+      this.adopt(this._withNode);
     }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
@@ -457,9 +457,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           rules = evaldRules;
           importOptions!._dedupe = true;
           dedupedCachedRules = rules;
-          dedupedCanonicalChildren = [...rules.value];
+          dedupedCanonicalChildren = [...rules._value];
           dedupedCanonicalParents = new Map(
-            rules.value.map(child => [child, child.parent] as const)
+            rules._value.map(child => [child, child.parent] as const)
           );
         }
 
@@ -482,7 +482,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           const withRules = withRulesNode as Rules;
           if (withValues.type === 'with') {
             configuredWithCanonicalParents = new Map(
-              rules.value.map(child => [child, child.parent] as const)
+              rules._value.map(child => [child, child.parent] as const)
             );
           }
 
@@ -492,8 +492,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           // A session created in the evaluation block below ensures that evaluated/preEvaluated
           // tracking does not permanently mark canonical nodes as evaluated.
           const topLevelVarIndex = new Map<string, number>();
-          for (let i = 0; i < rules.value.length; i++) {
-            const n = rules.value[i]!;
+          for (let i = 0; i < rules._value.length; i++) {
+            const n = rules._value[i]!;
             if (isNode(n, N.VarDeclaration)) {
               const varName = String((n as VarDeclaration).get('name')?.valueOf() ?? '');
               if (varName && !topLevelVarIndex.has(varName)) {
@@ -506,7 +506,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           const replacementAt = new Map<number, Node>();
           const newVariables: Node[] = [];
 
-          for (const injectedNode of withRules.value) {
+          for (const injectedNode of withRules._value) {
             if (isNode(injectedNode, N.VarDeclaration)) {
               const varName = String((injectedNode as VarDeclaration).get('name')?.valueOf() ?? '');
               if (varName) {
@@ -530,7 +530,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           context.pushState(new EvalState());
           pushedIsolatedState = true;
           for (const index of replacementAt.keys()) {
-            const candidate = rules.value[index];
+            const candidate = rules._value[index];
             if (isNode(candidate, N.VarDeclaration)) {
               markChangedVar(context, candidate as VarDeclaration);
             }
@@ -544,8 +544,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           for (const newNode of newVariables) {
             finalChildren.push(newNode);
           }
-          for (let i = 0; i < rules.value.length; i++) {
-            finalChildren.push(replacementAt.get(i) ?? rules.value[i]!);
+          for (let i = 0; i < rules._value.length; i++) {
+            finalChildren.push(replacementAt.get(i) ?? rules._value[i]!);
           }
           rules = Rules.create(finalChildren);
         }

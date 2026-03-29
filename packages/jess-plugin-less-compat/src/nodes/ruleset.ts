@@ -5,31 +5,35 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformRulesetToLess = createFromAdapter<Ruleset>({
   fields: {
     selectors: (rs, cache) => {
-      const selector = rs.selector;
-      if (selector instanceof Nil) return [];
+      const selector = rs.get('selector');
+      if (selector instanceof Nil) {
+        return [];
+      }
       if (selector instanceof SelectorList) {
-        return selector.value.map((s: Selector) => toLessNode(s, { cache }));
+        return selector.get('value').map((s: Selector) => toLessNode(s, { cache }));
       }
       return [toLessNode(selector, { cache })];
     },
     rules: (rs, cache) => {
-      const rules = rs.rules;
+      const rules = rs.get('rules');
       return rules.value.map((r: Node) => toLessNode(r, { cache }));
     }
   },
   accept: (ruleset, visitor, cache) => {
-    const selector = ruleset.selector;
-    const rules = ruleset.rules;
+    const selector = ruleset.get('selector');
+    const rules = ruleset.get('rules');
 
     // Traverse selectors
     if (selector && !(selector instanceof Nil)) {
       if (selector instanceof SelectorList) {
-        const lessSelectors = selector.value.map((s: Selector) => toLessNode(s, { cache }));
+        const lessSelectors = selector.get('value').map((s: Selector) => toLessNode(s, { cache }));
         if (visitor.visitArray) {
           visitor.visitArray(lessSelectors);
         } else {
           for (const ls of lessSelectors) {
-            if (ls?.accept) ls.accept(visitor);
+            if (ls?.accept) {
+              ls.accept(visitor);
+            }
           }
         }
       } else {
@@ -51,7 +55,9 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
         visitor.visitArray(lessRules);
       } else {
         for (const lr of lessRules) {
-          if (lr?.accept) lr.accept(visitor);
+          if (lr?.accept) {
+            lr.accept(visitor);
+          }
         }
       }
     }

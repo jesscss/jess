@@ -27,14 +27,15 @@ function flattenSelectorToElements(
   const elements: LessNode[] = [];
 
   if (selector instanceof SelectorList) {
-    if (selector.value.length > 0 && selector.value[0]) {
-      return flattenSelectorToElements(selector.value[0], cache);
+    const selectorListValue = selector.get('value');
+    if (selectorListValue.length > 0 && selectorListValue[0]) {
+      return flattenSelectorToElements(selectorListValue[0], cache);
     }
     return [];
   }
 
   if (selector instanceof ComplexSelector) {
-    const components = selector.value;
+    const components = selector.get('value');
     let nextCombinatorValue = '';
 
     for (let i = 0; i < components.length; i++) {
@@ -48,8 +49,9 @@ function flattenSelectorToElements(
       }
 
       if (component instanceof CompoundSelector) {
-        for (let j = 0; j < component.value.length; j++) {
-          const simple = component.value[j];
+        const compoundValue = component.get('value');
+        for (let j = 0; j < compoundValue.length; j++) {
+          const simple = compoundValue[j];
           if (!simple) {
             continue;
           }
@@ -67,8 +69,9 @@ function flattenSelectorToElements(
       nextCombinatorValue = '';
     }
   } else if (selector instanceof CompoundSelector) {
-    for (let i = 0; i < selector.value.length; i++) {
-      const basic = selector.value[i];
+    const compoundSelValue = selector.get('value');
+    for (let i = 0; i < compoundSelValue.length; i++) {
+      const basic = compoundSelValue[i];
       if (!basic) {
         continue;
       }

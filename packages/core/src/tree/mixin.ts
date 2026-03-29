@@ -90,10 +90,10 @@ export interface Mixin {
 export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   static override childKeys = ['name', 'rules', 'params', 'guard'] as const;
 
-  private name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
-  private rules!: Rules;
-  private params: List<Node> | undefined;
-  private guard: Condition | undefined;
+  /** @internal */ _name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  /** @internal */ _rules!: Rules;
+  /** @internal */ _params: List<Node> | undefined;
+  /** @internal */ _guard: Condition | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const name = this.get('name', ctx);
@@ -146,21 +146,21 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
 
   constructor(value: MixinValue, options?: MixinOptions, location?: OptionalLocation, context?: TreeContext) {
     super(value, options, location, context);
-    this.name = value.name;
-    this.rules = value.rules;
-    this.params = value.params;
-    this.guard = value.guard;
-    if (this.name instanceof Node) {
-      this.adopt(this.name);
+    this._name = value.name;
+    this._rules = value.rules;
+    this._params = value.params;
+    this._guard = value.guard;
+    if (this._name instanceof Node) {
+      this.adopt(this._name);
     }
-    if (this.rules instanceof Node) {
-      this.adopt(this.rules);
+    if (this._rules instanceof Node) {
+      this.adopt(this._rules);
     }
-    if (this.params instanceof Node) {
-      this.adopt(this.params);
+    if (this._params instanceof Node) {
+      this.adopt(this._params);
     }
-    if (this.guard instanceof Node) {
-      this.adopt(this.guard);
+    if (this._guard instanceof Node) {
+      this.adopt(this._guard);
     }
     this.removeFlag(F_VISIBLE);
   }
@@ -173,7 +173,7 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   get keySet() {
     let keySet = this._keySet;
     if (!keySet) {
-      const name = this.name;
+      const name = this._name;
       if (!name) {
         return (this._keySet = new Set());
       }

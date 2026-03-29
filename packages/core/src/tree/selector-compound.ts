@@ -28,11 +28,11 @@ export interface CompoundSelector {
 export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  private value!: SimpleSelector[];
+  /** @internal */ _value!: SimpleSelector[];
 
   constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.value = value;
+    this._value = value;
     for (const child of value) {
       if (child instanceof Selector) {
         this.adopt(child);
@@ -41,13 +41,13 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
   }
 
   get length() {
-    return this.value.length;
+    return this._value.length;
   }
 
   override valueOf() {
     let value = this._valueOf;
     if (!value) {
-      const components = this.value;
+      const components = this._value;
 
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];

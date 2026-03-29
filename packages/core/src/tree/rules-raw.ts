@@ -24,7 +24,7 @@ export class RawRules extends Rules {
     const mark = w.mark();
     const children = options.context
       ? getChildren(this, options.context)
-      : this.value;
+      : this._value;
     w.add('{');
     // Emit children using toString to preserve exact whitespace/comments
     for (const child of children) {
@@ -41,7 +41,7 @@ export class RawRules extends Rules {
     const mark = w.mark();
     const children = options.context
       ? getChildren(this, options.context)
-      : this.value;
+      : this._value;
     for (const child of children) {
       child.toString(options);
     }

@@ -16,7 +16,7 @@ const unquote = defineFunction(
       return string;
     }
     // Create new Quoted without quote option (unquoted)
-    const value = typeof string.value === 'string' ? string.value : string.valueOf();
+    const value = String(typeof string.get('value') === 'string' ? string.get('value') : string.valueOf());
     return new Quoted(value);
   },
   {
