@@ -989,13 +989,26 @@ export function lessSupportsCondition(this: P, T: TokenMap) {
         let left = $.SUBRULE2($.lessSupportsInParens, { ARGS: [ctx] });
 
         $.MANY({
-          GATE: () => $.isType(T.And) || $.isType(T.Or),
+          GATE: () => $.isType(T.And),
           DEF: () => {
-            const keyword = $.OR2([
-              { ALT: () => $.CONSUME(T.And) },
-              { ALT: () => $.CONSUME(T.Or) }
-            ]);
+            const keyword = $.CONSUME(T.And);
             const right = $.SUBRULE3($.lessSupportsInParens, { ARGS: [ctx] });
+            if (!RECORDING_PHASE) {
+              const [startOffset, startLine, startColumn] = left.location;
+              const [,,, endOffset, endLine, endColumn] = right.location;
+              left = new QueryCondition([
+                left,
+                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
+                right
+              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
+            }
+          }
+        });
+        $.MANY2({
+          GATE: () => $.isType(T.Or),
+          DEF: () => {
+            const keyword = $.CONSUME(T.Or);
+            const right = $.SUBRULE4($.lessSupportsInParens, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
               const [startOffset, startLine, startColumn] = left.location;
               const [,,, endOffset, endLine, endColumn] = right.location;

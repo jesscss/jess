@@ -178,13 +178,26 @@ export function supportsCondition(this: C, T: TokenMap) {
         let left = $.SUBRULE2($.supportsInParens, { ARGS: [ctx] });
 
         $.MANY({
-          GATE: () => $.isType(T.And) || $.isType(T.Or),
+          GATE: () => $.isType(T.And),
           DEF: () => {
-            const keyword = $.OR2([
-              { ALT: () => $.CONSUME2(T.And) },
-              { ALT: () => $.CONSUME2(T.Or) }
-            ]);
+            const keyword = $.CONSUME2(T.And);
             const right = $.SUBRULE3($.supportsInParens, { ARGS: [ctx] });
+            if (!RECORDING_PHASE) {
+              const [startOffset, startLine, startColumn] = left.location;
+              const [,,, endOffset, endLine, endColumn] = right.location;
+              left = new QueryCondition([
+                left,
+                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+                right
+              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
+            }
+          }
+        });
+        $.MANY2({
+          GATE: () => $.isType(T.Or),
+          DEF: () => {
+            const keyword = $.CONSUME2(T.Or);
+            const right = $.SUBRULE4($.supportsInParens, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
               const [startOffset, startLine, startColumn] = left.location;
               const [,,, endOffset, endLine, endColumn] = right.location;
@@ -231,26 +244,37 @@ export function supportsInParens(this: C, T: TokenMap) {
       ALT: () => {
         $.startRule();
         $.CONSUME3(T.LParen);
-        let value = $.OR2([
-          {
-            GATE: () => {
-              const t1 = $.LA(1).tokenType;
-              return t1 === T.Not || t1 === T.LParen
-                || ($.isTypeAt(1, T.Ident) && $.isTypeAt(2, T.LParen));
-            },
-            ALT: () => $.SUBRULE2($.supportsCondition, { ARGS: [ctx] })
-          },
-          {
-            ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] })
+        let value: Node | undefined;
+        // Try supportsCondition first (starts with Not, LParen, or Ident+LParen)
+        $.OPTION({
+          GATE: () => (
+            $.isType(T.Not)
+            || $.isType(T.LParen)
+            || ($.isTypeAt(1, T.Ident) && $.isTypeAt(2, T.LParen))
+          ),
+          DEF: () => {
+            value = $.SUBRULE2($.supportsCondition, { ARGS: [ctx] });
           }
-        ]);
+        });
+        // Otherwise parse as declaration (property: value)
+        $.OPTION2({
+          GATE: () => (
+            !value
+            && !$.isType(T.Not)
+            && !$.isType(T.LParen)
+            && !($.isTypeAt(1, T.Ident) && $.isTypeAt(2, T.LParen))
+          ),
+          DEF: () => {
+            value = $.SUBRULE($.declaration, { ARGS: [ctx] });
+          }
+        });
         $.CONSUME4(T.RParen);
 
         if ($.RECORDING_PHASE) {
           return;
         }
         const location = $.endRule();
-        return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, this.context));
+        return $.wrap(new Paren(value ? $.wrap(value, 'both') : undefined, undefined, location, this.context));
       }
     }
   ]);
