@@ -221,11 +221,11 @@ export function selectorHasAuthoredAmpersand(selector: Selector): boolean {
   }
 
   if (isNode(selector, N.SelectorList | N.ComplexSelector | N.CompoundSelector)) {
-    return ((selector as SelectorList | ComplexSelector | CompoundSelector).value as Selector[]).some(item => selectorHasAuthoredAmpersand(item));
+    return ((selector as SelectorList | ComplexSelector | CompoundSelector).get('value') as Selector[]).some(item => selectorHasAuthoredAmpersand(item));
   }
 
   if (isNode(selector, N.PseudoSelector)) {
-    const arg = selector.get('arg');
+    const arg = (selector as PseudoSelector).get('arg');
     if (arg && isNode(arg, N.Selector)) {
       return selectorHasAuthoredAmpersand(arg as Selector);
     }
@@ -394,7 +394,7 @@ function resolveAuthoredAmpersands(
   }
 
   if (isNode(selector, N.ComplexSelector | N.CompoundSelector)) {
-    const selectorData = (selector as ComplexSelector | CompoundSelector).value as Selector[];
+    const selectorData = (selector as ComplexSelector | CompoundSelector).get('value') as Selector[];
     const nextData: Selector[] = [];
     let hasAppendValue = false;
     const isCompound = isNode(selector, N.CompoundSelector);
@@ -473,9 +473,9 @@ function resolveAuthoredAmpersands(
   }
 
   if (isNode(selector, N.PseudoSelector)) {
-    const arg = selector.get('arg');
+    const arg = (selector as PseudoSelector).get('arg');
     if (arg && isNode(arg, N.Selector)) {
-      const copy = selector.copy(true) as PseudoSelector;
+      const copy = (selector as PseudoSelector).copy(true) as PseudoSelector;
       copy.setData('arg', resolveAuthoredAmpersands(arg as Selector, parentSelector));
       return copy as Selector;
     }

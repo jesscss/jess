@@ -699,7 +699,7 @@ function applyInstructionToRuleset(
 
   const currentSelector = ruleset.getCurrentSelector(context);
   if (!ruleset.getSelectorBeforeExtend(context) && currentSelector && !isNode(currentSelector, N.Nil)) {
-    ruleset.setSelectorBeforeExtend(currentSelector.copy(true) as Selector, context);
+    ruleset.setSelectorBeforeExtend(currentSelector.copy(true) as Selector, context!);
   }
 
   if (

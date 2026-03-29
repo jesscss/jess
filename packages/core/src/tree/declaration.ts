@@ -529,7 +529,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               normalizeMergedLeadingPlaceholder();
               copyDependency(newValue, node.get('value', context));
               // Merge !important from referenced declarations
-              if (context.hasImportantSource && !node._getImportant(context)) {
+              if (context.hasImportantSource && !node.get('important', context)) {
                 setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               // Pop important source after merging (if it was set)
@@ -549,7 +549,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const expanded = expandNestedPropertyDeclaration(node);
           if (isThenable(expanded)) {
             return (expanded as Promise<Declaration | Rules | Nil>).then((resolvedExpanded) => {
-              if (context.hasImportantSource && !node._getImportant(context) && isNode(resolvedExpanded, N.Declaration)) {
+              if (context.hasImportantSource && !node.get('important', context) && isNode(resolvedExpanded, N.Declaration)) {
                 setField(resolvedExpanded as Declaration, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               if (context.hasImportantSource) {
@@ -565,7 +565,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return expanded;
           }
           // Merge !important from referenced declarations
-          if (context.hasImportantSource && !node._getImportant(context)) {
+          if (context.hasImportantSource && !node.get('important', context)) {
             setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
           }
           // Pop important source after merging (if it was set)

@@ -102,7 +102,7 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     const guard = this.get('guard', ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const cloneData: MixinValue = {
-      name: deep && name instanceof Node ? cloneChild(name) as Any<AnyRole> | Interpolated<AnyRole> : name,
+      name: deep && name instanceof Node ? cloneChild(name) as Any<'name'> | Interpolated<'name'> : name as Any<'name'> | Interpolated<'name'> | undefined,
       rules: deep ? cloneChild(rules) as Rules : rules,
       params: deep && params instanceof Node ? cloneChild(params) as List<Node> : params,
       guard: deep && guard instanceof Node ? cloneChild(guard) as Condition : guard

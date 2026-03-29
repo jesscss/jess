@@ -116,7 +116,7 @@ export function finalizeMixinInvocationReturn(
 ): Rules | Nil | ReturnType<Rules['toObject']> {
   if (receiver instanceof Context) {
     output.index ??= receiver.ruleCounter++;
-    if (output._getChildren(receiver).length === 0) {
+    if (output.value.length === 0) {
       return new Nil();
     }
     return output;
@@ -286,7 +286,7 @@ export function prepareMixinInvocationScope(
   if (!params) {
     return undefined;
   }
-  const scope = createMixinParamScope(parent, index, context);
+  const scope = createMixinParamScope(index);
   populateMixinParamScope(scope, params, context);
   defineMixinArgumentsInScope(scope, params, nodeArgs, context);
   attachMixinBodyToParamScope(body, scope, context);
@@ -397,7 +397,7 @@ export function withMixinLookupScope<T>(
   const previousRulesContext = context.rulesContext;
   const previousLookupScope = context.lookupScope;
   context.lookupScope = scope;
-  context.rulesContext = scope;
+  context.rulesContext = scope!;
   try {
     const out = fn();
     if (isThenable(out)) {
@@ -510,7 +510,7 @@ export function finalizeMixinInvocationOutput(
   // distinct node so per-call subtrees don't collide.
   // Children are set canonically on the new node so they survive
   // after the per-call state is popped.
-  const children = [...rules._getChildren(context)];
+  const children = [...getChildren(rules, context)];
   const output = Rules.create(children, { ...rules.options });
   output.inherit(rules);
   return output;

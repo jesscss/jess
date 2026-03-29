@@ -292,7 +292,7 @@ function collectCompoundConflictInfo(
   }
 
   if (isNode(selector, N.CompoundSelector | N.SelectorList)) {
-    for (const child of (selector as CompoundSelector | SelectorList).value) {
+    for (const child of (selector as CompoundSelector | SelectorList).get('value')) {
       collectCompoundConflictInfo(child as Selector, info);
     }
     return info;
@@ -311,9 +311,10 @@ function collectCompoundConflictInfo(
     return info;
   }
 
-  if (isNode(selector, N.PseudoSelector) && isNode(selector.get('arg'), N.Selector)) {
-    if (selector.get('name') === ':is') {
-      collectCompoundConflictInfo(selector.get('arg') as Selector, info);
+  const sel = selector as Selector;
+  if (isNode(sel, N.PseudoSelector) && isNode(sel.get('arg'), N.Selector)) {
+    if (sel.get('name') === ':is') {
+      collectCompoundConflictInfo(sel.get('arg') as Selector, info);
     }
   }
 
@@ -532,7 +533,7 @@ function replaceDirectSelectorChild(
   }
 
   if (isNode(parent, N.SelectorList | N.ComplexSelector | N.CompoundSelector)) {
-    const parentArr = (parent as unknown as SelectorList | ComplexSelector | CompoundSelector).value as readonly unknown[];
+    const parentArr = (parent as unknown as SelectorList | ComplexSelector | CompoundSelector).get('value') as readonly unknown[];
     const index = (parentArr as unknown[]).findIndex((node: unknown) => node === child);
     if (index !== -1) {
       parent.setData(index, replacement);
@@ -830,7 +831,7 @@ function wrapResolvedOrderedSpanWithTailRemainder(
   }
 
   const matchedTailSelector = buildMatchedCompoundSelector(
-    tail as Selector & { value: readonly Selector[] },
+    tail as unknown as Selector & { value: readonly Selector[] },
     tailStartIndex,
     tailEndIndex,
     effectiveTailMatchedIndices
@@ -844,7 +845,7 @@ function wrapResolvedOrderedSpanWithTailRemainder(
     : ComplexSelector.create(matchedPrefix).inherit(targetSelector) as Selector;
   const wrapped = wrapSelectorInIs(orderedMatchedSelector, extendWith);
   const tailRemainder = getCompoundMembersOutsideRange(
-    tail as Selector & { value: readonly Selector[] },
+    tail as unknown as Selector & { value: readonly Selector[] },
     tailStartIndex,
     tailEndIndex,
     effectiveTailMatchedIndices
@@ -963,7 +964,7 @@ function getSingleMatchedDirectChild(
     return undefined;
   }
 
-  return (target as SelectorList | CompoundSelector | ComplexSelector).value[location.startIndex] as Selector | undefined;
+  return (target as SelectorList | CompoundSelector | ComplexSelector).get('value')[location.startIndex] as Selector | undefined;
 }
 
 /** Returns the direct selector-valued arg on a pseudo selector, if any. */
@@ -1094,7 +1095,7 @@ function tryAppendIntoNestedIsOnFullMatch(
     return undefined;
   }
 
-  const targetData = (target as unknown as CompoundSelector | ComplexSelector).value as readonly Selector[];
+  const targetData = (target as unknown as CompoundSelector | ComplexSelector).get('value') as readonly Selector[];
   for (let i = 0; i < targetData.length; i++) {
     const child = targetData[i] as Selector;
     if (!(isNode(child, N.PseudoSelector) && child.get('name') === ':is' && isNode(child.get('arg'), N.Selector))) {
@@ -1165,7 +1166,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     if (!isNode(alternative, N.ComplexSelector)) {
       continue;
     }
-    const lastIndex = getLastOrderedSelectorIndex(alternative as Selector & { value: readonly Selector[] });
+    const lastIndex = getLastOrderedSelectorIndex(alternative as unknown as Selector & { value: readonly Selector[] });
     if (lastIndex === -1) {
       continue;
     }
@@ -1276,7 +1277,7 @@ function tryHandleMultiDirectChildFullMatches(
   }
 
   const matchedChildren: Array<{ index: number; child: Selector }> = [];
-  const targetData = (target as SelectorList | CompoundSelector | ComplexSelector).value as Selector[];
+  const targetData = (target as SelectorList | CompoundSelector | ComplexSelector).get('value') as Selector[];
   for (let i = 0; i < targetData.length; i++) {
     const child = targetData[i];
     if (!child || !isNode(child, N.Selector)) {
@@ -1314,7 +1315,7 @@ function tryHandleMultiDirectChildFullMatches(
       }
     } else if (isNode(target, N.CompoundSelector)) {
       const outsideMembers = getCompoundMembersOutsideRange(
-        target as Selector & { value: readonly Selector[] },
+        target as unknown as Selector & { value: readonly Selector[] },
         index,
         index,
         undefined
@@ -1475,7 +1476,7 @@ export function tryExtendSelector(
       return finalize(createSuccessResult(target, false));
     }
     if (isNode(replacement, preserveRootKinds)) {
-      target.setData([...(replacement as SelectorList | ComplexSelector | CompoundSelector).value] as any);
+      target.setData([...(replacement as SelectorList | ComplexSelector | CompoundSelector).get('value')] as any);
       markTargetHoist();
       return finalize(createSuccessResult(target));
     }
@@ -1509,7 +1510,7 @@ export function tryExtendSelector(
       || location.endIndex === undefined
       || location.startIndex !== location.endIndex
       || (
-        isNode((target as ComplexSelector | CompoundSelector).value[location.startIndex] as Selector, N.CompoundSelector)
+        isNode((target as ComplexSelector | CompoundSelector).get('value')[location.startIndex] as Selector, N.CompoundSelector)
         && location.matchedIndices
         && location.matchedIndices.length > 0
       )
@@ -1519,7 +1520,7 @@ export function tryExtendSelector(
 
     const compoundOutsideMembers = isNode(target, N.CompoundSelector)
       ? getCompoundMembersOutsideRange(
-          target as Selector & { value: readonly Selector[] },
+          target as unknown as Selector & { value: readonly Selector[] },
           location.startIndex,
           location.endIndex,
           location.matchedIndices
@@ -1533,7 +1534,7 @@ export function tryExtendSelector(
       }
     }
 
-    const existing = (target as ComplexSelector | CompoundSelector).value[location.startIndex] as Selector;
+    const existing = (target as ComplexSelector | CompoundSelector).get('value')[location.startIndex] as Selector;
     const nestedIsListAppend = tryAppendToDirectSelectorListOnFullMatch(existing, find, extendWith, parent, context);
     if (nestedIsListAppend) {
       target.setData(location.startIndex, nestedIsListAppend.value);
@@ -1569,7 +1570,7 @@ export function tryExtendSelector(
       const crossedAmpersandParent = getCrossedAmpersandParent(location);
       if (crossedAmpersandParent) {
         const replacement = wrapResolvedCompoundSpan(
-          target as Selector & { value: readonly Selector[] },
+          target as unknown as Selector & { value: readonly Selector[] },
           location.startIndex,
           location.endIndex,
           extendWith,
@@ -1579,7 +1580,7 @@ export function tryExtendSelector(
       }
 
       const outsideMembers = getCompoundMembersOutsideRange(
-        target as Selector & { value: readonly Selector[] },
+        target as unknown as Selector & { value: readonly Selector[] },
         location.startIndex,
         location.endIndex,
         location.matchedIndices
@@ -1595,7 +1596,7 @@ export function tryExtendSelector(
       }
 
       const replacement = wrapCompoundMatchRange(
-        target as Selector & { value: readonly Selector[] },
+        target as unknown as Selector & { value: readonly Selector[] },
         location.startIndex,
         location.endIndex,
         location.matchedIndices,
@@ -1615,7 +1616,7 @@ export function tryExtendSelector(
         ?? (crossedAmpersand ? parent : undefined);
       if (crossedAmpersandParent) {
         const replacement = wrapResolvedOrderedSpanWithTailRemainder(
-          target as Selector & { value: readonly Selector[] },
+          target as unknown as Selector & { value: readonly Selector[] },
           location.startIndex,
           location.endIndex,
           extendWith,
@@ -1629,7 +1630,7 @@ export function tryExtendSelector(
         }
       }
 
-      const replacement = wrapOrderedMatchRange(target as Selector & { value: readonly Selector[] }, location.startIndex, location.endIndex, extendWith);
+      const replacement = wrapOrderedMatchRange(target as unknown as Selector & { value: readonly Selector[] }, location.startIndex, location.endIndex, extendWith);
       return finishRootReplacement(replacement, N.ComplexSelector);
     }
 
@@ -1659,7 +1660,7 @@ export function tryExtendSelector(
         } else {
           const conflict = getCompoundConflictError(
             getCompoundMembersOutsideRange(
-              location.containingNode as Selector & { value: readonly Selector[] },
+              location.containingNode as unknown as Selector & { value: readonly Selector[] },
               location.startIndex,
               location.endIndex,
               location.matchedIndices
@@ -1671,7 +1672,7 @@ export function tryExtendSelector(
           }
 
           replacement = wrapCompoundMatchRange(
-            location.containingNode as Selector & { value: readonly Selector[] },
+            location.containingNode as unknown as Selector & { value: readonly Selector[] },
             location.startIndex,
             location.endIndex,
             location.matchedIndices,
@@ -1685,7 +1686,7 @@ export function tryExtendSelector(
         if (childIndex !== -1) {
           const conflict = getCompoundConflictError(
             getCompoundMembersOutsideRange(
-              target as Selector & { value: readonly Selector[] },
+              target as unknown as Selector & { value: readonly Selector[] },
               childIndex,
               childIndex,
               undefined

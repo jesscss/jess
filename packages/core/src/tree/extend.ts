@@ -4,7 +4,7 @@ import { Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Ruleset } from './ruleset.js';
 import { Nil } from './nil.js';
-import { ComplexSelector } from './selector-complex.js';
+import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -220,8 +220,8 @@ export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
               resolvedSel = ComplexSelector.create([
                 wrapParentSelectorForNestedContext(parentSel as Selector),
                 Combinator.create(' '),
-                ownSel.copy(true)
-              ]) as unknown as Selector;
+                ownSel.copy(true) as Selector
+              ] as unknown as ComplexSelectorComponent[]) as unknown as Selector;
               usedParentListComposition = true;
             }
           }
@@ -287,8 +287,8 @@ export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
           resolvedSel = ComplexSelector.create([
             wrapParentSelectorForNestedContext(parentSel as Selector),
             Combinator.create(' '),
-            ownSel.copy(true)
-          ]) as unknown as Selector;
+            ownSel.copy(true) as Selector
+          ] as unknown as ComplexSelectorComponent[]) as unknown as Selector;
           usedParentListComposition = true;
         }
       }

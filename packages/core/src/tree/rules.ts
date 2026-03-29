@@ -225,7 +225,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       ) as this;
 
     if (deep && options) {
-      newRules.options = options;
+      newRules.options = options as typeof newRules.options;
     }
 
     if (!deep) {
@@ -389,8 +389,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       do {
-        rules = getParent(rules, context) as Rules | undefined;
-        if (findRoot && rules?.type === 'Rules' && getParent(rules, context) === undefined) {
+        rules = context ? getParent(rules, context) as Rules | undefined : rules?.parent as Rules | undefined;
+        if (findRoot && rules?.type === 'Rules' && (context ? getParent(rules, context) : rules?.parent) === undefined) {
           break;
         }
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
@@ -714,7 +714,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       w.add(rule, n); // Pass node as origin to preserve location info
       const needsSemi = isNode(n, N.Declaration | N.VarDeclaration)
         ? (n as Declaration).requiresSemi(childOptions.context)
-        : n.requiredSemi;
+        : (n as Node).requiredSemi;
       if (needsSemi && n.options.semi !== false) {
         w.add(';', n);
       }
@@ -1240,7 +1240,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (context && isPreEvaluated(node, context)) {
         return true;
       }
-      return selector.hasFlag(F_STATIC);
+      return (selector as Node).hasFlag(F_STATIC);
     }
     return node.hasFlag(F_STATIC);
   }
