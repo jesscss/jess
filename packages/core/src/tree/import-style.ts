@@ -741,7 +741,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       if (resolvedPath instanceof Url) {
         return resolvedPath.pathValue(context);
       }
-      const quotedValue = getField<string | Node>(resolvedPath, 'value', context);
+      const quotedValue = resolvedPath.get('value', context) as string | Node;
       if (isNode(quotedValue)) {
         return String((quotedValue as Node).valueOf());
       }

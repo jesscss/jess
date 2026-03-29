@@ -11,7 +11,7 @@ import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { freezeChildren } from './util/cloning.js';
-import { getField, getParent, setParent } from './util/field-helpers.js';
+import { getParent, setParent } from './util/field-helpers.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -155,7 +155,7 @@ export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
       throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    const returnValue = getField<Node>(decl, 'value', context);
+    const returnValue = (decl as Declaration).get('value', context);
     return await returnValue.eval(context);
   }
 }
