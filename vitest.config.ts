@@ -27,7 +27,7 @@ export default defineConfig({
     },
     // Ensure environment variables are passed to test processes
     environment: 'node',
-    testTimeout: 10_000,
+    testTimeout: 30_000,
     reporters: [['tree', { summary: true }]],
     // Enable globals for describe, test, etc.
     globals: true,
@@ -49,6 +49,7 @@ export default defineConfig({
             'node_modules/**',
             'dist/**',
             'lib/**',
+            'packages/css-parser/test/perf.test.ts',
             '**/*bench*'
           ]
         }

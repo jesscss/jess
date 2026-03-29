@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  chevrotain: ^12.0.0
+
 patchedDependencies:
   superstruct@1.0.3:
     hash: yw7l4yujuzgyn2yu6vvqqe6xmq
