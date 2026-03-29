@@ -552,7 +552,7 @@ export function projectMixinParamScopeIntoOutput(
       // Use a simple copy (no materialization) — the param's bound value
       // is already on the canonical node via setData in matchMixinCandidates.
       const copy = node.copy(true) as VarDeclaration;
-      copy.addFlag(F_VISIBLE);
+      copy.removeFlag(F_VISIBLE);
       return copy;
     });
 
