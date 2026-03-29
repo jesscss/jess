@@ -775,7 +775,7 @@ export function varFunction(this: C, T: TokenMap) {
       args = new List([propNode], undefined, $.getLocationInfo(prop), this.context);
     } else {
       let { startOffset, startLine, startColumn } = prop;
-      args.setData([propNode, ...args.get('value')]);
+      args.setData([propNode, ...args.value]);
       args.location[0] = startOffset;
       args.location[1] = startLine!;
       args.location[2] = startColumn!;

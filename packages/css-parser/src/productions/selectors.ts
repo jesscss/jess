@@ -616,7 +616,7 @@ export function relativeSelector(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
-              complex.setData([combinator, ...complex.get('value')]);
+              complex.setData([combinator, ...complex.value]);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;

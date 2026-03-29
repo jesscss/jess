@@ -354,12 +354,11 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    const argsValue = args?.get('value');
-    if (!argsValue || argsValue.length !== 1) {
+    if (!args || args.value.length !== 1) {
       return false;
     }
-    const firstArg = argsValue[0];
-    return Boolean(firstArg instanceof Sequence && firstArg.get('value').length >= 2);
+    const firstArg = args.value[0];
+    return Boolean(firstArg instanceof Sequence && firstArg.value.length >= 2);
   };
 
   alt ??= (ctx: RuleContext = {}) => [
