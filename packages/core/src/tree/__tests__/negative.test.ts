@@ -32,7 +32,7 @@ describe('Negative', () => {
     const alternate = new Dimension({ number: 4, unit: 'px' });
     const node = new Negative(canonical);
     const key = {} as RenderKey;
-    const cursor = { node, key };
+    const cursor = { node, renderKey: key };
 
     expect(node.value).toBe(canonical);
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);

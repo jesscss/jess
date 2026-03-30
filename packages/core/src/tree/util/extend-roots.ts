@@ -17,7 +17,7 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
-import { getField, setField } from './field-helpers.js';
+import { getField } from './field-helpers.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -670,7 +670,7 @@ function getRulesetHoistToRoot(ruleset: Ruleset, context?: Context): boolean | u
 
 function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, context?: Context): void {
   if (context) {
-    setField(ruleset, 'hoistToRoot', value, context);
+    context.activeState.get(ruleset).fields.set('hoistToRoot', value);
     return;
   }
   ruleset.hoistToRoot = value;

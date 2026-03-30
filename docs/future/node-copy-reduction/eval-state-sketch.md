@@ -12,7 +12,7 @@ The older `EvalState` / `NodeState` design is deprecated.
 - canonical nodes own canonical edges
 - canonical nodes may also own alternate edges keyed by render key
 - `RenderKey` is only the path-selection key
-- traversal carries a cursor: `{ node, key }`
+- traversal carries a cursor: `{ node, renderKey }`
 
 ## Constraint
 
@@ -38,6 +38,9 @@ That also means:
 ```ts
 type RenderKey = object | symbol;
 
+const CANONICAL: unique symbol = Symbol('CANONICAL');
+const EVAL: unique symbol = Symbol('EVAL');
+
 type NodeEdge<T> = Map<RenderKey, T>;
 
 type Node = {
@@ -50,25 +53,11 @@ type Node = {
    * Alternate parent edges keyed by render key.
    */
   parentEdges?: NodeEdge<Node>;
-
-  /**
-   * Alternate child edges keyed by child-field name.
-   *
-   * For singular child fields:
-   *   Map<RenderKey, Node>
-   *
-   * For list-shaped child fields:
-   *   Array<Map<RenderKey, Node> | undefined>
-   */
-  childEdges?: Map<
-    string,
-    NodeEdge<Node> | Array<NodeEdge<Node> | undefined>
-  >;
 };
 
 type Cursor = {
   node: Node;
-  key: RenderKey;
+  renderKey: RenderKey;
 };
 ```
 
@@ -87,15 +76,26 @@ So we need a key for:
 
 - which live placement/path are we on?
 
-That key is `RenderKey`.
+That path selector is `RenderKey`.
 
 Examples of render keys:
 
-- canonical token
-- eval token
+- `CANONICAL`
+- `EVAL`
 - mixin instance key
 - loop instance key
 - stylesheet instance key
+
+Important distinction:
+
+- no explicit canonical key does **not** mean "force canonical"
+- ordinary traversal should follow the current cursor key
+- an explicit canonical key is what forces canonical edges
+
+So:
+
+- `Cursor.renderKey` = "which path am I currently walking?"
+- `CANONICAL` = "ignore alternates and force canonical edges"
 
 `RenderKey` is not a patch owner. It is only the selector for which alternate
 edge to follow.
@@ -125,52 +125,133 @@ That pair is the cursor.
 - eval may temporarily carry the current cursor in context, but the cursor is
   the real source of truth
 
+## Function Boundary Rule
+
+Custom/user-function boundaries should not have to understand render keys.
+
+So:
+
+- internal engine traversal stays cursor-based
+- function-call evaluation may use cursor/view semantics internally
+- but values handed to custom functions should already be current-view nodes for
+  that call
+
+That means userland/custom-function code can stay node-centric:
+
+- inspect direct fields on the handed-off node
+- call ordinary node methods on that handed-off node
+- avoid carrying cursor semantics through every external API
+
+This is an allowed boundary where "current-view node" handoff is acceptable.
+It is not a license to reintroduce generic internal materialization as the
+default engine strategy.
+
+### Field-Aligned Edge Shape
+
+Canonical child fields stay as the actual canonical value.
+
+Alternate edges mirror the node's real field shape instead of living in a
+generic `childEdges` table.
+
+For singular children:
+
+```ts
+class Ruleset extends Node {
+  selector: Selector | Nil;
+  selectorEdge?: NodeEdge<Selector | Nil>;
+
+  rules: Rules;
+  rulesEdge?: NodeEdge<Rules>;
+
+  guard?: Condition | Nil;
+  guardEdge?: NodeEdge<Condition | Nil | undefined>;
+}
+```
+
+For list-shaped children:
+
+```ts
+class Rules extends Node {
+  value: Node[];
+  valueEdges?: Array<NodeEdge<Node> | undefined>;
+}
+```
+
+So:
+
+- canonical field = actual canonical child/children
+- `fooEdge` = optional alternate singular child by render key
+- `fooEdges` = optional alternate indexed children by render key
+
+Generic `childEdges` maps are temporary migration scaffolding only, not the
+target architecture.
+
+### Local `Rules` Wrappers
+
+Local scope registries should live on shallow `Rules` wrappers, not on the
+canonical `Rules` node and not in detached EvalState registry tables.
+
+That means:
+
+- canonical `Rules` keeps the canonical `value`
+- shallow wrapper `Rules` can own local declaration/mixin/ruleset registries
+- the wrapper may still point at the same `value` and `valueEdges`
+- the wrapper may store the `renderKey` it was created for
+- only actual structural divergence should force a new child array
+
+So a shallow wrapper is allowed to exist purely to own:
+
+- scope-local registries
+- scope-local options/visibility
+- scope-local identity for lookup
+
+without eagerly cloning the child array it is wrapping.
+
 ### Edge Helpers
 
 ```ts
 function lookupEdge<T>(
   edges: Map<RenderKey, T> | undefined,
-  key: RenderKey
+  renderKey: RenderKey
 ): T | undefined {
-  return edges?.get(key);
+  return edges?.get(renderKey);
 }
 
 function getParentEdge(cursor: Cursor): Cursor | undefined {
-  const overridden = lookupEdge(cursor.node.parentEdges, cursor.key);
+  const overridden = lookupEdge(cursor.node.parentEdges, cursor.renderKey);
   if (overridden !== undefined) {
-    return overridden ? { node: overridden, key: cursor.key } : undefined;
+    return overridden ? { node: overridden, renderKey: cursor.renderKey } : undefined;
   }
 
   return cursor.node.parent
-    ? { node: cursor.node.parent, key: cursor.key }
+    ? { node: cursor.node.parent, renderKey: cursor.renderKey }
     : undefined;
 }
 
 function getEdge(cursor: Cursor, key: string): Cursor | undefined {
-  const entry = cursor.node.childEdges?.get(key);
-  if (entry instanceof Map) {
-    const overridden = lookupEdge(entry, cursor.key);
-    if (overridden !== undefined) {
-      return overridden ? { node: overridden, key: cursor.key } : undefined;
-    }
+  const edgeKey = `${key}Edge` as keyof Node;
+  const edge = (cursor.node as Record<string, unknown>)[edgeKey as string] as NodeEdge<Node> | undefined;
+  const overridden = lookupEdge(edge, cursor.renderKey);
+  if (overridden !== undefined) {
+    return overridden ? { node: overridden, renderKey: cursor.renderKey } : undefined;
   }
-
   const canonicalChild = (cursor.node as Record<string, unknown>)[key] as Node | undefined;
-  return canonicalChild ? { node: canonicalChild, key: cursor.key } : undefined;
+  return canonicalChild ? { node: canonicalChild, renderKey: cursor.renderKey } : undefined;
 }
 
 function getEdgeAt(cursor: Cursor, key: string, index: number): Cursor | undefined {
-  const entry = cursor.node.childEdges?.get(key);
-  if (Array.isArray(entry)) {
-    const overridden = lookupEdge(entry[index], cursor.key);
+  const edgesKey = `${key}Edges` as keyof Node;
+  const edges = (cursor.node as Record<string, unknown>)[edgesKey as string] as Array<NodeEdge<Node> | undefined> | undefined;
+  if (edges) {
+    const overridden = lookupEdge(edges[index], cursor.renderKey);
     if (overridden !== undefined) {
-      return overridden ? { node: overridden, key: cursor.key } : undefined;
+      return overridden ? { node: overridden, renderKey: cursor.renderKey } : undefined;
     }
   }
 
   const canonicalList = (cursor.node as Record<string, unknown>)[key] as Node[] | undefined;
   const canonicalChild = canonicalList?.[index];
-  return canonicalChild ? { node: canonicalChild, key: cursor.key } : undefined;
+  return canonicalChild ? { node: canonicalChild, renderKey: cursor.renderKey } : undefined;
 }
 ```
 

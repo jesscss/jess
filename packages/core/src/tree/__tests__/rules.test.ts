@@ -361,6 +361,26 @@ describe('Rules', () => {
         expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
+      it('createShallowBodyWrapper reuses the same top-level child array', () => {
+        const ctx = new Context();
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+
+        const wrapper = node.createShallowBodyWrapper(ctx);
+
+        expect(wrapper).not.toBe(node);
+        expect(wrapper.value).toBe(node.value);
+        expect(wrapper.at(0, context)).toBe(nested);
+        expect(getParent(nested, ctx)).toBe(wrapper);
+        expect(nested.parent).toBe(node);
+      });
+
       it('characterizes evaluateCandidateOutput non-Rules child shaping as exposing source-ruleset clone semantics plus wrapper parent assignment', () => {
         const ctx = new Context();
         const sourceBody = rules([

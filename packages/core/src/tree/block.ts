@@ -2,7 +2,6 @@ import type { Context } from '../context.js';
 import { Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
@@ -37,7 +36,7 @@ export class Block extends Node<Node, BlockOptions, BlockChildData> {
     const value = this.get('value', context);
     const finish = (nextValue: Node): Block => {
       if (nextValue !== value) {
-        setField(this, 'value', nextValue, context);
+        this.value = nextValue;
       }
       return this;
     };

@@ -43,7 +43,7 @@ describe('Expression', () => {
     const alternate = any('bar');
     const rule = expr(canonical);
     const key = {} as RenderKey;
-    const cursor = { node: rule, key };
+    const cursor = { node: rule, renderKey: key };
 
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);
 

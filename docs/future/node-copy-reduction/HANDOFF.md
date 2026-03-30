@@ -12,7 +12,9 @@ The branch should move toward:
 
 - canonical nodes with canonical edges
 - alternate parent/child edges keyed by `RenderKey`
-- cursor-based traversal: `{ node, key }`
+- field-aligned child edge storage (`fooEdge` / `fooEdges`)
+- cursor-based traversal: `{ node, renderKey }`
+- shallow `Rules` wrappers as the owners of local declaration/mixin/ruleset registries
 
 The branch should move away from:
 

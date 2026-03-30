@@ -1,6 +1,8 @@
 import { any, nil, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { setField } from '../util/field-helpers.js';
+import { addEdgeAt, getEdgeAt } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 /**
  * @todo - sequences need to make sure that the result could be re-parsed
@@ -145,5 +147,23 @@ describe('Sequence', () => {
 
     expect(node.valueOf()).toBe('1020');
     expect(node.toTrimmedString({ context })).toBe('30');
+  });
+
+  it('reads indexed children through the cursor model without mutating the canonical array', () => {
+    const first = num(10);
+    const second = num(20);
+    const alternate = num(30);
+    const node = seq([first, second]);
+    const key = {} as RenderKey;
+    const cursor = { node, renderKey: key };
+
+    expect(getEdgeAt(cursor, 'value', 0)?.node).toBe(first);
+    expect(getEdgeAt(cursor, 'value', 1)?.node).toBe(second);
+
+    addEdgeAt(node, 'value', 1, key, alternate);
+
+    expect(getEdgeAt(cursor, 'value', 0)?.node).toBe(first);
+    expect(getEdgeAt(cursor, 'value', 1)?.node).toBe(alternate);
+    expect(node.value).toEqual([first, second]);
   });
 });

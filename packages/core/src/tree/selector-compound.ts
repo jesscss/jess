@@ -9,7 +9,6 @@ import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { N } from './node-type.js';
-import { setField } from './util/field-helpers.js';
 
 export type CompoundSelectorChildData = { value: SimpleSelector[] };
 
@@ -116,13 +115,21 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              setField(sel, 'value', value, context);
+              if (sel === this) {
+                context.activeState.get(sel).fields.set('value', value);
+              } else {
+                sel.setData('value', value);
+              }
             }
             return sel;
           });
         }
         if (changed) {
-          setField(sel, 'value', value, context);
+          if (sel === this) {
+            context.activeState.get(sel).fields.set('value', value);
+          } else {
+            sel.setData('value', value);
+          }
         }
         return sel;
       },
@@ -142,7 +149,11 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
         if (data.length === 1) {
           return data[0]!.inherit(this) as Selector;
         }
-        setField(sel, 'value', [...data], context);
+        if (sel === this) {
+          context.activeState.get(sel).fields.set('value', [...data]);
+        } else {
+          sel.setData('value', [...data]);
+        }
         return sel;
       }
     );

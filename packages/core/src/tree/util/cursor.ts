@@ -1,5 +1,35 @@
 import type { Cursor, Node, NodeEdge, RenderKey } from '../node.js';
 
+function getSingularEdgeStore(
+  node: Node,
+  key: string
+): NodeEdge<Node> | undefined {
+  return (node as unknown as Record<string, unknown>)[`${key}Edge`] as NodeEdge<Node> | undefined;
+}
+
+function getIndexedEdgeStore(
+  node: Node,
+  key: string
+): Array<NodeEdge<Node> | undefined> | undefined {
+  return (node as unknown as Record<string, unknown>)[`${key}Edges`] as Array<NodeEdge<Node> | undefined> | undefined;
+}
+
+function setSingularEdgeStore(
+  node: Node,
+  key: string,
+  edge: NodeEdge<Node>
+): void {
+  (node as unknown as Record<string, unknown>)[`${key}Edge`] = edge;
+}
+
+function setIndexedEdgeStore(
+  node: Node,
+  key: string,
+  edges: Array<NodeEdge<Node> | undefined>
+): void {
+  (node as unknown as Record<string, unknown>)[`${key}Edges`] = edges;
+}
+
 export function lookupEdge<T>(
   edges: NodeEdge<T> | undefined,
   key: RenderKey
@@ -8,41 +38,41 @@ export function lookupEdge<T>(
 }
 
 export function getParentEdge(cursor: Cursor): Cursor | undefined {
-  const overridden = lookupEdge(cursor.node.parentEdges, cursor.key);
+  const overridden = lookupEdge(cursor.node.parentEdges, cursor.renderKey);
   if (overridden !== undefined) {
-    return overridden ? { node: overridden, key: cursor.key } : undefined;
+    return overridden ? { node: overridden, renderKey: cursor.renderKey } : undefined;
   }
 
   return cursor.node.parent
-    ? { node: cursor.node.parent, key: cursor.key }
+    ? { node: cursor.node.parent, renderKey: cursor.renderKey }
     : undefined;
 }
 
 export function getEdge(cursor: Cursor, key: string): Cursor | undefined {
-  const entry = cursor.node.childEdges?.get(key);
-  if (entry instanceof Map) {
-    const overridden = lookupEdge(entry, cursor.key);
+  const edge = getSingularEdgeStore(cursor.node, key);
+  if (edge) {
+    const overridden = lookupEdge(edge, cursor.renderKey);
     if (overridden !== undefined) {
-      return overridden ? { node: overridden, key: cursor.key } : undefined;
+      return overridden ? { node: overridden, renderKey: cursor.renderKey } : undefined;
     }
   }
 
   const canonicalChild = (cursor.node as Record<string, unknown>)[key] as Node | undefined;
-  return canonicalChild ? { node: canonicalChild, key: cursor.key } : undefined;
+  return canonicalChild ? { node: canonicalChild, renderKey: cursor.renderKey } : undefined;
 }
 
 export function getEdgeAt(cursor: Cursor, key: string, index: number): Cursor | undefined {
-  const entry = cursor.node.childEdges?.get(key);
-  if (Array.isArray(entry)) {
-    const overridden = lookupEdge(entry[index], cursor.key);
+  const edges = getIndexedEdgeStore(cursor.node, key);
+  if (edges) {
+    const overridden = lookupEdge(edges[index], cursor.renderKey);
     if (overridden !== undefined) {
-      return overridden ? { node: overridden, key: cursor.key } : undefined;
+      return overridden ? { node: overridden, renderKey: cursor.renderKey } : undefined;
     }
   }
 
   const canonicalList = (cursor.node as Record<string, unknown>)[key] as Node[] | undefined;
   const canonicalChild = canonicalList?.[index];
-  return canonicalChild ? { node: canonicalChild, key: cursor.key } : undefined;
+  return canonicalChild ? { node: canonicalChild, renderKey: cursor.renderKey } : undefined;
 }
 
 export function addEdge(
@@ -51,14 +81,9 @@ export function addEdge(
   renderKey: RenderKey,
   child: Node
 ): void {
-  node.childEdges ??= new Map<string, NodeEdge<Node> | Array<NodeEdge<Node> | undefined>>();
-  const entry = node.childEdges.get(key);
-  if (Array.isArray(entry)) {
-    throw new TypeError(`Cannot assign singular child edge for indexed field '${key}'`);
-  }
-  const edge = entry ?? new Map<RenderKey, Node>();
+  const edge = getSingularEdgeStore(node, key) ?? new Map<RenderKey, Node>();
   edge.set(renderKey, child);
-  node.childEdges.set(key, edge);
+  setSingularEdgeStore(node, key, edge);
 }
 
 export function addEdgeAt(
@@ -68,14 +93,9 @@ export function addEdgeAt(
   renderKey: RenderKey,
   child: Node
 ): void {
-  node.childEdges ??= new Map<string, NodeEdge<Node> | Array<NodeEdge<Node> | undefined>>();
-  const existing = node.childEdges.get(key);
-  if (existing instanceof Map) {
-    throw new TypeError(`Cannot assign indexed child edge for singular field '${key}'`);
-  }
-  const indexedEdges = existing ?? [];
+  const indexedEdges = getIndexedEdgeStore(node, key) ?? [];
   const edge = indexedEdges[index] ?? new Map<RenderKey, Node>();
   edge.set(renderKey, child);
   indexedEdges[index] = edge;
-  node.childEdges.set(key, indexedEdges);
+  setIndexedEdgeStore(node, key, indexedEdges);
 }

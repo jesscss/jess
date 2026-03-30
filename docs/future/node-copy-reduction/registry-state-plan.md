@@ -1,5 +1,18 @@
 # Registry State-Awareness Plan
 
+> Deprecated for the current refactor direction.
+>
+> This document reflects an older plan where local registries lived in
+> EvalState/NodeState. The current target model is different:
+>
+> - local declaration/mixin/ruleset registries live on shallow `Rules` wrappers
+> - shallow wrappers may share canonical `value` / `valueEdges`
+> - wrapper-local registry answers must be aware of the active `renderKey`
+>
+> Use [eval-state-sketch.md](./eval-state-sketch.md) and
+> [node-update-status.md](./node-update-status.md) as the canonical source
+> instead.
+
 ## Problem Statement
 
 The registry system was rewritten during the EvalState migration with excessive
@@ -169,7 +182,8 @@ When the same mixin body is called twice:
 - Call 2: different per-call state. `rules.getRegistry('mixin', context)` creates
   a SEPARATE RegistrySet in the new state. No collision.
 
-No wrappers or clones needed just for registry isolation.
+Shallow `Rules` wrappers are now part of the target ownership model for local
+registry isolation.
 
 ### Fallback for unevaluated Rules:
 

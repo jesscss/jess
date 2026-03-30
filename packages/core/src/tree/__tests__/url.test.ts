@@ -15,13 +15,12 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(node.get('value', ctx)).toBe(replacement);
-    expect(node.get('value')).toBe(original);
+    expect(node.value).toBe(replacement);
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
-    expect(node.toTrimmedString()).toBe('url("a.png")');
+    expect(node.toTrimmedString()).toBe('url("b.png")');
   });
 
-  it('keeps valueOf canonical after a state-only eval replacement', async () => {
+  it('keeps valueOf aligned with the evaluated child', async () => {
     const ctx = new Context();
     const original = quoted('a.png');
     const replacement = quoted('b.png');
@@ -31,9 +30,9 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(node.get('value', ctx)).toBe(replacement);
-    expect(node.valueOf()).toBe('a.png');
-    expect(evald.valueOf()).toBe('a.png');
+    expect(node.value).toBe(replacement);
+    expect(node.valueOf()).toBe('b.png');
+    expect(evald.valueOf()).toBe('b.png');
     expect(node.pathValue(ctx)).toBe('b.png');
     expect(evald.pathValue(ctx)).toBe('b.png');
     expect(node.toTrimmedString({ context: ctx })).toBe('url("b.png")');
@@ -50,7 +49,7 @@ describe('Url', () => {
     const evald = await node.eval(ctx);
 
     expect(evald).toBe(node);
-    expect(node.get('value', ctx)).toBe(replacement);
+    expect(node.value).toBe(replacement);
     expect(node.toTrimmedString({ context: ctx })).toBe('url(b.png)');
   });
 
@@ -59,7 +58,7 @@ describe('Url', () => {
     const alternate = quoted('b.png');
     const node = url(canonical);
     const key = {} as RenderKey;
-    const cursor = { node, key };
+    const cursor = { node, renderKey: key };
 
     expect(node.value).toBe(canonical);
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);

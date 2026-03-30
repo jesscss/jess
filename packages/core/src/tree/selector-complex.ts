@@ -14,7 +14,6 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -122,13 +121,21 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              setField(selector, 'value', value, context);
+              if (selector === this) {
+                context.activeState.get(selector).fields.set('value', value);
+              } else {
+                selector.value = value;
+              }
             }
             return selector;
           });
         }
         if (changed) {
-          setField(selector, 'value', value, context);
+          if (selector === this) {
+            context.activeState.get(selector).fields.set('value', value);
+          } else {
+            selector.value = value;
+          }
         }
         return selector;
       },
@@ -138,8 +145,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
           const originalOnly = value[0]!;
           const only = originalOnly.clone(false, undefined, context);
           only.inherit(selector);
-          if (getField<boolean | undefined>(selector, 'hoistToRoot', context) || only.hoistToRoot) {
-            setField(only, 'hoistToRoot', true, context);
+          if ((context.activeState.peek(this)?.fields.get('hoistToRoot') as boolean | undefined) || this.hoistToRoot || only.hoistToRoot) {
+            only.hoistToRoot = true;
           }
           return only;
         }

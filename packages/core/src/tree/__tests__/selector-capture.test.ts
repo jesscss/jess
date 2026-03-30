@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { Selector } from '../selector.js';
 import { el, selcap, sellist } from '../index.js';
-import { setField } from '../util/field-helpers.js';
 import { addEdge, getEdge } from '../util/cursor.js';
 import type { RenderKey } from '../node.js';
 
@@ -42,7 +41,7 @@ describe('SelectorCapture', () => {
     const context = new Context();
     const node = selcap(el('.a'));
 
-    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
+    context.activeState.get(node).fields.set('value', sellist([el('.x'), el('.y')]));
 
     expect(node.toTrimmedString({ context })).toBe('*[.x,\n.y]');
     expect(node.toTrimmedString()).toBe('*[.a]');
@@ -52,7 +51,7 @@ describe('SelectorCapture', () => {
     const context = new Context();
     const node = selcap(el('.a'));
 
-    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
+    context.activeState.get(node).fields.set('value', sellist([el('.x'), el('.y')]));
 
     expect(node.valueOf()).toBe('.a');
     expect(node.toTrimmedString({ context })).toBe('*[.x,\n.y]');
@@ -63,7 +62,7 @@ describe('SelectorCapture', () => {
     const context = new Context();
     const node = selcap(el('.a'));
 
-    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
+    context.activeState.get(node).fields.set('value', sellist([el('.x'), el('.y')]));
 
     const result = await node.eval(context);
     expect(result.toTrimmedString({ context })).toBe('.x,\n.y');
@@ -87,7 +86,7 @@ describe('SelectorCapture', () => {
     const alternate = el('.b');
     const node = selcap(canonical);
     const key = {} as RenderKey;
-    const cursor = { node, key };
+    const cursor = { node, renderKey: key };
 
     expect(node.value).toBe(canonical);
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);

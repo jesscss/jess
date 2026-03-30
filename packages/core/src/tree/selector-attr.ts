@@ -4,7 +4,6 @@ import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -83,10 +82,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
       const node = this.maybeClone(context);
 
       if (name !== currentName) {
-        setField(node, 'name', name, context);
+        node.setData('name', name);
       }
       if (value !== currentValue) {
-        setField(node, 'value', value, context);
+        node.setData('value', value);
       }
 
       return node;

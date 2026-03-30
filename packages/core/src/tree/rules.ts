@@ -3,6 +3,7 @@ import {
   defineType,
   type NodeOptions,
   type LocationInfo, type OptionalLocation,
+  type RenderKey,
   type TreeContext,
   F_STATIC,
   F_VISIBLE
@@ -164,6 +165,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   static override childKeys = ['value'] as const;
 
   /** @internal */ readonly value!: readonly Node[];
+  renderKey: RenderKey | undefined;
 
   functionRegistry: Registries.FunctionRegistry | undefined;
 
@@ -287,8 +289,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Register a child node into the appropriate registry.
    * Creates the registry lazily on first registration.
-   * With context: writes to the state-scoped registry on NodeState.
-   * Without context: writes to the instance property (canonical).
+   * Wrapper/derived Rules own their registries directly.
+   * Canonical Rules still fall back to state-scoped registries while the
+   * remaining lookup paths are migrated off EvalState.
    */
   register(
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
@@ -296,7 +299,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context?: Context
   ) {
     const key = Rules._registryKey(type);
-    if (context) {
+    if (context && this === this.sourceNode) {
       const ns = context.activeState.get(this);
       let registry = ns[key];
       if (!registry) {
@@ -324,7 +327,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context) {
     const key = Rules._registryKey(type);
-    if (context) {
+    if (context && this === this.sourceNode) {
       let state: EvalState | undefined = context.activeState;
       while (state) {
         const registry = state.peek(this)?.[key];
@@ -498,14 +501,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Create a shallow body wrapper for mixin eval — O(N) array copy vs O(N²) deep clone.
+   * Create a shallow body wrapper for mixin eval.
    *
-   * Creates a new Rules with a COPY of the children array but does NOT adopt children
-   * (their canonical .parent stays unchanged). Session/IR handles the per-call parent
-   * chain via overlay. Registries are left empty — they'll be populated during eval.
+   * Creates a new Rules that SHARES the current children array and does NOT adopt
+   * children canonically (their canonical `.parent` stays unchanged). Session/IR
+   * handles the per-call parent chain via overlay.
    *
    * This replaces clone(true) in the mixin body path for massive perf improvement:
-   * a mixin body with 100 declarations creates 1 array copy + 1 Rules object
+   * a mixin body with 100 declarations creates 1 Rules wrapper
    * instead of recursively cloning all 100+ nodes.
    */
   createShallowBodyWrapper(ctx?: Context): Rules {
@@ -520,9 +523,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       location,
       this.treeContext
     );
-    // Now set the children array directly — NOT through the constructor
+    // Reuse the same child array directly — NOT through the constructor
     // so adopt() is NOT called on canonical children.
-    wrapper._setValueArray([...this.value]);
+    wrapper._setValueArray(this.value as Node[]);
     wrapper.inherit(this);
     // Set state parent for each child to the wrapper
     if (ctx) {

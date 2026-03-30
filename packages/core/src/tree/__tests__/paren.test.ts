@@ -74,7 +74,7 @@ describe('Paren', () => {
     const alternate = any('blue');
     const node = paren(canonical);
     const key = {} as RenderKey;
-    const cursor = { node, key };
+    const cursor = { node, renderKey: key };
 
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);
 

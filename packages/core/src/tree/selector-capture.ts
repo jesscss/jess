@@ -3,7 +3,6 @@ import { Node, defineType, type OptionalLocation, type NodeOptions, type TreeCon
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type SelectorCaptureChildData = { value: Selector };
 
@@ -38,7 +37,9 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.get('value', options.context);
+    const value = options.context
+      ? ((options.context.activeState.peek(this)?.fields.get('value') as Selector | undefined) ?? this.value)
+      : this.value;
     w.add('*[', this);
     value.toString(options);
     w.add(']', this);
@@ -51,10 +52,10 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
     }
     const node = this.maybeClone(context) as this;
     node._setPreEvaluated(true, context);
-    const value = this.get('value', context);
+    const value = ((context.activeState.peek(this)?.fields.get('value') as Selector | undefined) ?? this.value);
     const applyValue = (preEvald: Selector): this => {
-      if (node.get('value', context) !== preEvald) {
-        setField(node, 'value', preEvald, context);
+      if (((context.activeState.peek(node)?.fields.get('value') as Selector | undefined) ?? node.value) !== preEvald) {
+        context.activeState.get(node).fields.set('value', preEvald);
       }
       return node;
     };
@@ -66,7 +67,8 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.get('value', context).eval(context);
+    const value = ((context.activeState.peek(this)?.fields.get('value') as Selector | undefined) ?? this.value);
+    const out = value.eval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then((selector) => {
         return selector;

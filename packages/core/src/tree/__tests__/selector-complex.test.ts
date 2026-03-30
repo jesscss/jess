@@ -1,6 +1,5 @@
 import { any, expr, sel, compound, el, co, pseudo, sellist, amp, rules, ruleset } from '../index.js';
 import { Context } from '../../context.js';
-import { getField, setField } from '../util/field-helpers.js';
 
 let context: Context;
 
@@ -100,12 +99,11 @@ describe('Complex selector', () => {
       const child = el('.target');
       const node = sel([child]);
 
-      setField(node, 'hoistToRoot', true, context);
+      context.activeState.get(node).fields.set('hoistToRoot', true);
 
       const evald = await node.eval(context);
 
-      expect(getField(evald, 'hoistToRoot', context)).toBe(true);
-      expect(evald.hoistToRoot).toBeUndefined();
+      expect(evald.hoistToRoot).toBe(true);
       expect(node.hoistToRoot).toBeUndefined();
     });
 
@@ -130,11 +128,11 @@ describe('Complex selector', () => {
       ]);
       const canonicalValue = node.valueOf();
 
-      setField(node, 'value', [
+      context.activeState.get(node).fields.set('value', [
         el('.patched'),
         co('>'),
         el('.live')
-      ] as any, context);
+      ] as any);
 
       expect(node.toTrimmedString({ context })).toBe('.patched > .live');
       expect(node.valueOf()).toBe(canonicalValue);
@@ -171,7 +169,7 @@ describe('Complex selector', () => {
 
       const patched = el('.beta');
       patched.keySetLibrary = context.selectorBits;
-      setField(parent, 'selector', patched, context);
+      context.activeState.get(parent).fields.set('selector', patched);
 
       expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha', '>', '.tail']))).toBe(true);
       expect(node.getKeySet(context).equals(context.selectorBits.getBitset(['.beta', '>', '.tail']))).toBe(true);

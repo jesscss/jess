@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { getField, getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/field-helpers.js';
+import { getField, getParent, getSourceParent, setParent, setSourceParent } from '../util/field-helpers.js';
 
 let context: Context;
 
@@ -342,10 +342,10 @@ describe('Mixin', () => {
         rules: canonicalRules
       });
 
-      setField(mixinDef, 'name', any('.patched-mixin'), localContext);
-      setField(mixinDef, 'params', patchedParams, localContext);
-      setField(mixinDef, 'guard', patchedGuard, localContext);
-      setField(mixinDef, 'rules', patchedRules, localContext);
+      localContext.activeState.get(mixinDef).fields.set('name', any('.patched-mixin'));
+      localContext.activeState.get(mixinDef).fields.set('params', patchedParams);
+      localContext.activeState.get(mixinDef).fields.set('guard', patchedGuard);
+      localContext.activeState.get(mixinDef).fields.set('rules', patchedRules);
 
       const preEvald = await mixinDef.preEval(localContext);
 
@@ -889,7 +889,7 @@ describe('Mixin', () => {
       const { root, arg } = buildRoot();
       context.root = root;
 
-      setField(arg, 'value', [num(10), num(20)], context);
+      context.activeState.get(arg).fields.set('value', [num(10), num(20)]);
 
       const evald = await root.eval(context);
       const css = evald.render(context);
@@ -965,7 +965,7 @@ describe('Mixin', () => {
 
       const live = buildRoot(context);
       context.root = live.root;
-      setField(live.parent, 'selector', live.patched, context);
+      context.activeState.get(live.parent).fields.set('selector', live.patched);
 
       const evald = await live.root.eval(context);
       const css = evald.render(context);

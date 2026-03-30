@@ -10,7 +10,6 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
-import { isEvaluated, setField, setEvaluated } from './util/field-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -172,7 +171,7 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (context && !isEvaluated(replacement, context)) {
+      if (context && !(context.activeState.peek(replacement)?.evaluated ?? false)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
@@ -182,7 +181,7 @@ export class Interpolated<
     }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
-      if (context && !isEvaluated(replacement, context)) {
+      if (context && !(context.activeState.peek(replacement)?.evaluated ?? false)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       let part = replacement.toTrimmedString();
@@ -244,7 +243,7 @@ export class Interpolated<
     let node = this;
     let replacements = [...node.get('replacements', context)];
     const markEvaluated = (result: Node): Node => {
-      setEvaluated(result, true, context);
+      context.activeState.get(result).evaluated = true;
       return result;
     };
 
@@ -260,11 +259,19 @@ export class Interpolated<
     });
     if (isThenable(maybe)) {
       return maybe.then(() => {
-        setField(node, 'replacements', replacements, context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('replacements', replacements);
+        } else {
+          node.replacements = replacements;
+        }
         return node;
       });
     }
-    setField(node, 'replacements', replacements, context);
+    if (node === this) {
+      context.activeState.get(node).fields.set('replacements', replacements);
+    } else {
+      node.replacements = replacements;
+    }
     return node;
   }
 }

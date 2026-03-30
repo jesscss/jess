@@ -1,6 +1,5 @@
 import { TreeContext, list, spaced, num, any, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
 import { addEdgeAt, getEdgeAt } from '../util/cursor.js';
 import type { RenderKey } from '../node.js';
 
@@ -35,7 +34,7 @@ describe('List', () => {
   it('renders state-patched items without mutating the canonical list', () => {
     const node = list([any('red'), any('blue')]);
 
-    setField(node, 'value', [any('cyan'), any('magenta')], context);
+    context.activeState.get(node).fields.set('value', [any('cyan'), any('magenta')]);
 
     expect(node.toTrimmedString({ context })).toBe('cyan, magenta');
     expect(node.toTrimmedString()).toBe('red, blue');
@@ -44,7 +43,7 @@ describe('List', () => {
   it('operate() uses state-patched left-hand items when cloning', () => {
     const left = list([any('red')]);
 
-    setField(left, 'value', [any('cyan'), any('magenta')], context);
+    context.activeState.get(left).fields.set('value', [any('cyan'), any('magenta')]);
 
     const result = left.operate(any('black'), '+', context);
 
@@ -56,7 +55,7 @@ describe('List', () => {
     const left = list([any('red')]);
     const right = list([any('blue')]);
 
-    setField(right, 'value', [any('cyan'), any('magenta')], context);
+    context.activeState.get(right).fields.set('value', [any('cyan'), any('magenta')]);
 
     const result = left.operate(right, '+', context);
 
@@ -99,7 +98,7 @@ describe('List', () => {
   it('length and iteration remain canonical without a Context channel', () => {
     const node = list([any('red'), any('blue')]);
 
-    setField(node, 'value', [any('cyan'), any('magenta'), any('black')], context);
+    context.activeState.get(node).fields.set('value', [any('cyan'), any('magenta'), any('black')]);
 
     expect(node.toTrimmedString({ context })).toBe('cyan, magenta, black');
     expect(node.length).toBe(2);
@@ -113,8 +112,8 @@ describe('List', () => {
 
     expect(node.valueOf()).toBe('red;blue');
 
-    setField(node, 'value', [any('cyan'), any('magenta')], ctx1);
-    setField(node, 'value', [any('black'), any('white')], ctx2);
+    ctx1.activeState.get(node).fields.set('value', [any('cyan'), any('magenta')]);
+    ctx2.activeState.get(node).fields.set('value', [any('black'), any('white')]);
 
     expect(node.toTrimmedString({ context: ctx1 })).toBe('cyan, magenta');
     expect(node.toTrimmedString({ context: ctx2 })).toBe('black, white');
@@ -125,7 +124,7 @@ describe('List', () => {
     const left = list([any('red'), any('blue')]);
     const right = list([any('red'), any('blue')]);
 
-    setField(left, 'value', [any('cyan'), any('magenta')], context);
+    context.activeState.get(left).fields.set('value', [any('cyan'), any('magenta')]);
 
     expect(left.toTrimmedString({ context })).toBe('cyan, magenta');
     expect(left.compare(right)).toBe(0);
@@ -137,7 +136,7 @@ describe('List', () => {
     const alternate = any('cyan');
     const node = list([first, second]);
     const key = {} as RenderKey;
-    const cursor = { node, key };
+    const cursor = { node, renderKey: key };
 
     expect(getEdgeAt(cursor, 'value', 0)?.node).toBe(first);
     expect(getEdgeAt(cursor, 'value', 1)?.node).toBe(second);

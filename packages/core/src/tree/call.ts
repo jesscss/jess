@@ -11,7 +11,7 @@ import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { getField, getParent, mergeDependencies, setField, setDependency, setParent } from './util/field-helpers.js';
+import { getField, getParent, mergeDependencies, setDependency, setParent } from './util/field-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -501,10 +501,10 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           let newCall = this.clone(false, undefined, context).inherit(this);
           /** Remove this flag for serialization */
           newCall.options.silentFail = false;
-          setField(newCall, 'name', isNode(name, N.Reference) && name.options.fallbackValue === true
+          newCall.name = isNode(name, N.Reference) && name.options.fallbackValue === true
             ? String(name.get('key'))
-            : String(n.valueOf()), context);
-          setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
+            : String(n.valueOf());
+          newCall.args = this._materializeFallbackArgs(await evalArgNodes(args));
           return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));
         } finally {
           context.caller = originalCaller;
@@ -541,8 +541,13 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
             return applyDependencyToResult(new Paren(evalArgItems[0]!), evalArgItems);
           }
         }
-        setField(node, 'name', n, context);
-        setField(node, 'args', evaluatedArgs, context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('name', n);
+          context.activeState.get(node).fields.set('args', evaluatedArgs);
+        } else {
+          node.name = n;
+          node.args = evaluatedArgs;
+        }
         return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.get('value'));
       }
     })().then(value => value);

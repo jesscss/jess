@@ -12,7 +12,7 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
-import { getField, getParent, setField, isPreEvaluated } from './util/field-helpers.js';
+import { getField, getParent, isPreEvaluated } from './util/field-helpers.js';
 import { getImplicitSelector } from './util/selector-utils.js';
 
 /**
@@ -155,11 +155,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
         const maybeKey = name.eval(context);
         if (isThenable(maybeKey)) {
           return (maybeKey as Promise<Any<'atkeyword'>>).then((key) => {
-            setField(node, 'name', key, context);
+            if (node === this) {
+              context.activeState.get(node).fields.set('name', key);
+            } else {
+              node.name = key;
+            }
             return this._preEvalPrelude(node, context);
           });
         }
-        setField(node, 'name', maybeKey as Any<'atkeyword'>, context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('name', maybeKey as Any<'atkeyword'>);
+        } else {
+          node.name = maybeKey as Any<'atkeyword'>;
+        }
       }
 
       return this._preEvalPrelude(node, context);
@@ -176,7 +184,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
     const atRuleName = String(name.valueOf?.() ?? name ?? '').trim();
     if (atRuleName === '@import') {
       if (prelude) {
-        setField(node, 'prelude', prelude, context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('prelude', prelude);
+        } else {
+          node.prelude = prelude;
+        }
       }
       // Reference branches are traversed for symbol/extend resolution, but plain
       // CSS @import hoisting must remain a visible-output concern only.
@@ -210,7 +222,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
     // Defer prelude evaluation to evalNode so variable lookups happen in the correct
     // call-time scope (e.g. mixin parameters referenced from nested @media preludes).
     if (prelude) {
-      setField(node, 'prelude', prelude, context);
+      if (node === this) {
+        context.activeState.get(node).fields.set('prelude', prelude);
+      } else {
+        node.prelude = prelude;
+      }
     }
     // Depth-first: preEval child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
@@ -238,7 +254,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           if (pushedExtendRootForPreEval) {
             context.extendRoots.popExtendRoot();
           }
-          setField(node, 'rules', evaldRules, context);
+          if (node === this) {
+            context.activeState.get(node).fields.set('rules', evaldRules);
+          } else {
+            node.rules = evaldRules;
+          }
           return node;
         });
       }
@@ -248,7 +268,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
       if (pushedExtendRootForPreEval) {
         context.extendRoots.popExtendRoot();
       }
-      setField(node, 'rules', preEvaldRules as Rules, context);
+      if (node === this) {
+        context.activeState.get(node).fields.set('rules', preEvaldRules as Rules);
+      } else {
+        node.rules = preEvaldRules as Rules;
+      }
     }
     return node;
   }
@@ -352,7 +376,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
       const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
       if (hasRulesetParent) {
         // Mark for hoisting - this will render at root level but in-place
-        setField(node, 'hoistToRoot', true, context);
+        context.activeState.get(node).fields.set('hoistToRoot', true);
         // We'll clear rulesetFrames when evaluating internal rules
         // to prevent selector inheritance from piercing through
         shouldClearRulesetFrames = true;
@@ -362,7 +386,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
     // Store frames snapshot for hoisting serialization
     const nodeHoistToRoot = getField<boolean | undefined>(node, 'hoistToRoot', context) ?? node.hoistToRoot;
     if (context.opts.collapseNesting || nodeHoistToRoot) {
-      setField(node, 'frames', [...context.frames], context);
+      context.activeState.get(node).fields.set('frames', [...context.frames]);
     }
 
     const tryMergeNestedMedia = () => {
@@ -401,13 +425,25 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
         const outerText = outerPrelude.toTrimmedString().trim();
         const innerText = innerPrelude.toTrimmedString().trim();
         const combined = `${outerText} and ${innerText}`.replace(/[ \t]+/g, ' ').trim();
-        setField(node, 'prelude', new Any(combined), context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('prelude', new Any(combined));
+        } else {
+          node.prelude = new Any(combined);
+        }
       } else {
-        setField(node, 'prelude', outerPrelude ?? innerPrelude, context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('prelude', outerPrelude ?? innerPrelude);
+        } else {
+          node.prelude = outerPrelude ?? innerPrelude;
+        }
       }
 
       // Replace outer rules with the inner rules (flatten nested media).
-      setField(node, 'rules', innerRules, context);
+      if (node === this) {
+        context.activeState.get(node).fields.set('rules', innerRules);
+      } else {
+        node.rules = innerRules;
+      }
       node.adopt(innerRules);
     };
 
@@ -439,18 +475,26 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           context.rulesContext = savedRulesContext;
           if (isThenable(out)) {
             return (out as Promise<Node>).then((n) => {
-              setField(node, 'prelude', n, context);
+              if (node === this) {
+                context.activeState.get(node).fields.set('prelude', n);
+              } else {
+                node.prelude = n;
+              }
               return undefined;
             });
           }
-          setField(node, 'prelude', out as Node, context);
+          if (node === this) {
+            context.activeState.get(node).fields.set('prelude', out as Node);
+          } else {
+            node.prelude = out as Node;
+          }
         }
       },
       () => {
         let rules = node.get('rules', context);
         if (rules) {
           if (context.opts.collapseNesting) {
-            setField(node, 'hoistToRoot', true, context);
+            context.activeState.get(node).fields.set('hoistToRoot', true);
           }
           // Push to frames before evaluating rules so we can use context.frames to find parent layers
           // This allows nested layers to find their parent layer names
@@ -506,7 +550,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
                   const childSel = childRs.get('selector', context);
                   if (childSel && !(childSel instanceof Nil)) {
                     const composed = getImplicitSelector(childSel as Selector, wrapperSel as Selector, false);
-                    setField(childRs, 'selector', composed, context);
+                    if (childRs === this) {
+                      context.activeState.get(childRs).fields.set('selector', composed);
+                    } else {
+                      childRs.selector = composed;
+                    }
                     childRs.setOwnSelector(childSel as Selector, context);
                   }
                 }
@@ -541,7 +589,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
                   }
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-                  setField(node, 'rules', finalRules, context);
+                  if (node === this) {
+                    context.activeState.get(node).fields.set('rules', finalRules);
+                  } else {
+                    node.rules = finalRules;
+                  }
                   tryMergeNestedMedia();
                   context.extendRoots.popExtendRoot();
                   const layerName = context.extendRoots.takeLayerName(node);
@@ -588,7 +640,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-              setField(node, 'rules', finalRules, context);
+              if (node === this) {
+                context.activeState.get(node).fields.set('rules', finalRules);
+              } else {
+                node.rules = finalRules;
+              }
               tryMergeNestedMedia();
 
               if (pushedExtendRoot && node.isNestable(context)) {
@@ -617,7 +673,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
           const finalRules =
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
-          setField(node, 'rules', finalRules, context);
+          if (node === this) {
+            context.activeState.get(node).fields.set('rules', finalRules);
+          } else {
+            node.rules = finalRules;
+          }
           tryMergeNestedMedia();
 
           if (pushedExtendRoot && node.isNestable(context)) {

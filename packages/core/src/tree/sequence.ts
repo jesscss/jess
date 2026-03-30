@@ -7,7 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setField, setParent } from './util/field-helpers.js';
+import { getField, setParent } from './util/field-helpers.js';
 
 export type SequenceOptions = {
   /**
@@ -34,7 +34,7 @@ export type SequenceChildData = { value: Node[] };
 export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Node[];
+  value!: Node[];
 
   constructor(value: Node[], options?: SequenceOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -81,6 +81,14 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     return context
       ? getField<SequenceOptions | undefined>(this, 'options', context)
       : this.options;
+  }
+
+  private _setValue(value: Node[], context: Context): void {
+    if (context.activeState.peek(this)) {
+      context.activeState.get(this).fields.set('value', value);
+      return;
+    }
+    this.setData('value', value);
   }
 
   // NOTE: `length` intentionally remains canonical for now. A state-aware
@@ -177,11 +185,19 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
       if (values.length) {
         values[0]!.pre = 1;
       }
-      setField(newSequence, 'value', [...newSequence.get('value', context), ...values], context);
+      if (newSequence === this) {
+        this._setValue([...newSequence.get('value', context), ...values], context);
+      } else {
+        newSequence.setData('value', [...newSequence.get('value', context), ...values]);
+      }
     } else {
       b = b.maybeClone(context);
       b.pre = 1;
-      setField(newSequence, 'value', [...newSequence.get('value', context), b], context);
+      if (newSequence === this) {
+        this._setValue([...newSequence.get('value', context), b], context);
+      } else {
+        newSequence.setData('value', [...newSequence.get('value', context), b]);
+      }
     }
     return newSequence;
   }
@@ -226,19 +242,19 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              setField(node, 'value', nextValue, context);
+              node._setValue(nextValue, context);
             }
             return node;
           });
         }
         if (changed) {
-          setField(node, 'value', nextValue, context);
+          node._setValue(nextValue, context);
         }
         return node;
       },
       (node) => {
         const value = node.get('value', context).filter(n => n && !(n instanceof Nil));
-        setField(node, 'value', value, context);
+        node._setValue(value, context);
         if (value.length === 1 && !node._getOptions(context)?.preserveWhitespace) {
           return value[0]!;
         }

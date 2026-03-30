@@ -9,7 +9,6 @@ import { Call } from './call.js';
 import { list } from './list.js';
 import {
   mergeDependencies,
-  setField,
   setDependency,
   setEvaluated
 } from './util/field-helpers.js';
@@ -110,8 +109,8 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
           const outOperation = n.clone(false) as Operation;
-          setField(outOperation, 'left', l, context);
-          setField(outOperation, 'right', r, context);
+          outOperation.setData('left', l);
+          outOperation.setData('right', r);
           return applyMergedDependency(outOperation, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -129,8 +128,8 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
             if (error instanceof TypeError) {
               // Preserve canonical operation state by materializing an isolated wrapper when needed.
               const calcOperation = n.clone(false) as Operation;
-              setField(calcOperation, 'left', l, context);
-              setField(calcOperation, 'right', r, context);
+              calcOperation.setData('left', l);
+              calcOperation.setData('right', r);
               setEvaluated(calcOperation, true, context);
               setEvaluated(l, true, context);
               setEvaluated(r, true, context);
@@ -154,8 +153,8 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
         out.post = right.post;
         return applyMergedDependency(out, l, r);
       }
-      setField(n, 'left', l, context);
-      setField(n, 'right', r, context);
+      context.activeState.get(n).fields.set('left', l);
+      context.activeState.get(n).fields.set('right', r);
       return applyMergedDependency(n, l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {

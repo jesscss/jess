@@ -5,7 +5,6 @@ import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type ListOptions = {
   /**
@@ -121,7 +120,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     const ownItems = this.get('value', context);
     const nextItems = b instanceof List ? b.get('value', context) : [b as T];
     let newList = this.maybeClone(context);
-    setField(newList, 'value', [...ownItems, ...nextItems], context);
+    const nextValue = [...ownItems, ...nextItems];
+    if (newList === this) {
+      context.activeState.get(this).fields.set('value', nextValue);
+    } else {
+      newList.value = nextValue;
+    }
     return newList;
   }
 
@@ -146,7 +150,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         }
       }
       if (changed) {
-        setField(node, 'value', nextValue, context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('value', nextValue);
+        } else {
+          node.value = nextValue;
+        }
       }
       return node;
     }
@@ -166,17 +174,25 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         nextValue[i] = result as T;
         changed = true;
       }
-    });
+      });
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          setField(node, 'value', nextValue, context);
+          if (node === this) {
+            context.activeState.get(node).fields.set('value', nextValue);
+          } else {
+            node.value = nextValue;
+          }
         }
         return node;
       });
     }
     if (changed) {
-      setField(node, 'value', nextValue, context);
+      if (node === this) {
+        context.activeState.get(node).fields.set('value', nextValue);
+      } else {
+        node.value = nextValue;
+      }
     }
     return node;
   }
@@ -196,7 +212,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         }
       }
       if (changed) {
-        setField(this, 'value', nextValue, context);
+        context.activeState.get(this).fields.set('value', nextValue);
       }
       return this;
     }
@@ -220,13 +236,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          setField(this, 'value', nextValue, context);
+          context.activeState.get(this).fields.set('value', nextValue);
         }
         return this;
       });
     }
     if (changed) {
-      setField(this, 'value', nextValue, context);
+      context.activeState.get(this).fields.set('value', nextValue);
     }
     return this;
   }

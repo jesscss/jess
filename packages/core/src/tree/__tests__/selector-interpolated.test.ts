@@ -37,7 +37,7 @@ describe('InterpolatedSelector', () => {
     });
     const node = interpolatedSelector(canonical);
     const key = Symbol('selector-interpolated') as RenderKey;
-    const cursor = { node, key };
+    const cursor = { node, renderKey: key };
 
     expect(node.value).toBe(canonical);
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);

@@ -27,7 +27,7 @@ describe('Block', () => {
     const alternate = any('blue');
     const node = block(canonical);
     const key = {} as RenderKey;
-    const cursor = { node, key };
+    const cursor = { node, renderKey: key };
 
     expect(node.value).toBe(canonical);
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);

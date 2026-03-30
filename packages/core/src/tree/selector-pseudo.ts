@@ -12,7 +12,6 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type PseudoSelectorValue = {
   /**
@@ -145,7 +144,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        setField(node, 'arg', evaluatedArg, context);
+        if (node === this) {
+          context.activeState.get(node).fields.set('arg', evaluatedArg);
+        } else {
+          node.setData('arg', evaluatedArg);
+        }
         return node;
       }
     );

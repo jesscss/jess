@@ -4,7 +4,6 @@ import { Node, F_STATIC, F_NON_STATIC, defineType, type OptionalLocation, type T
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -26,7 +25,7 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions,
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, QuotedChildData> {
   static override childKeys = ['value'] as const;
 
-  readonly value!: string | Any | Interpolated;
+  value!: string | Any | Interpolated;
   readonly quote: '"' | '\'' | undefined;
   readonly escaped: boolean;
 
@@ -49,7 +48,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.get('value', options.context);
+    const value = this.value;
     let { quote = '"', escaped } = this;
     let escapeChar = escaped ? '~' : '';
     if (escapeChar) {
@@ -66,20 +65,11 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
   }
 
   override valueOf(): string {
-    // NOTE: `valueOf()` intentionally remains canonical for now.
-    // It has no Context parameter, so making it state-aware here would make
-    // a single Quoted instance report different observer values across
-    // concurrent sessions with different patched `value`s.
     const value = this.value;
     return value instanceof Node ? value.valueOf() : value as string;
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
-    // NOTE: `compare()` intentionally remains canonical for now.
-    // It has no Context parameter, so a state-aware comparison here would
-    // require hidden ambient session state or a broader API change. Keep it
-    // anchored to the canonical node values until compare gains an explicit
-    // context-aware surface.
     if (other.type === 'Quoted' && !this.escaped && !(other as Quoted).escaped) {
       const left = String(this.valueOf());
       const right = String(other.valueOf?.() ?? '');
@@ -92,7 +82,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    let value: string | Any | Interpolated | Node = this.get('value', context);
+    const originalValue = this.value;
+    let value: string | Any | Interpolated | Node = originalValue;
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
       value = v as any;
       if (this.escaped) {
@@ -101,8 +92,17 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
         }
         return new Any(value as string);
       }
-      let quoted = this.maybeClone(context);
-      setField(quoted, 'value', value as string | Any | Interpolated, context);
+      if (value === originalValue) {
+        return this;
+      }
+      const quoted = this.clone();
+      if (originalValue instanceof Node) {
+        originalValue.parent = this;
+      }
+      quoted.value = value as string | Any | Interpolated;
+      if (value instanceof Node) {
+        quoted.adopt(value);
+      }
       return quoted;
     };
     if (value instanceof Node) {

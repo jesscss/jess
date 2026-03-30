@@ -14,7 +14,7 @@ import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { EvalState } from '../eval-state.js';
-import { getChildren, getField, setField, setParent } from './util/field-helpers.js';
+import { getChildren, getField, setParent } from './util/field-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -120,7 +120,11 @@ function getControlDeclarationAssignType(node: Node, context: Context): Assignme
 
 function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
   node.adopt(value, context);
-  setField(node, 'value', value, context);
+  if (context.activeState.peek(node)) {
+    context.activeState.get(node).fields.set('value', value);
+  } else {
+    node.value = value;
+  }
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {

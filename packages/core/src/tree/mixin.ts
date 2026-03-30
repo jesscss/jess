@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField, setParent } from './util/field-helpers.js';
+import { setParent } from './util/field-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -230,8 +230,6 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
-    /** @removal-target — node-copy-reduction: maybeClone → return this.
-     * Name interpolation result should go through position.setField. */
     let node = this.maybeClone(context);
     node._setPreEvaluated(true, context);
     node.sourceNode ??= this;
@@ -253,11 +251,19 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          setField(node, 'name', key, context);
+          if (node === this) {
+            context.activeState.get(node).fields.set('name', key);
+          } else {
+            node.setData('name', key);
+          }
           return node;
         });
       }
-      setField(node, 'name', maybeKey as Any<'name'>, context);
+      if (node === this) {
+        context.activeState.get(node).fields.set('name', maybeKey as Any<'name'>);
+      } else {
+        node.setData('name', maybeKey as Any<'name'>);
+      }
     }
     return node;
   }

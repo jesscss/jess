@@ -10,7 +10,6 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorMatch } from './util/selector-match-core.js';
-import { setField } from './util/field-helpers.js';
 
 export type SelectorListChildData = { value: Selector[] };
 
@@ -151,13 +150,21 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              setField(list, 'value', value, context);
+              if (list === this) {
+                context.activeState.get(list).fields.set('value', value);
+              } else {
+                list.value = value;
+              }
             }
             return list;
           });
         }
         if (changed) {
-          setField(list, 'value', value, context);
+          if (list === this) {
+            context.activeState.get(list).fields.set('value', value);
+          } else {
+            list.value = value;
+          }
         }
         return list;
       },
@@ -195,7 +202,11 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
           flattened.push(item);
         }
         if (flattened.length !== value.length) {
-          setField(list, 'value', flattened, context);
+          if (list === this) {
+            context.activeState.get(list).fields.set('value', flattened);
+          } else {
+            list.value = flattened;
+          }
         }
         if (flattened.length === 1) {
           return flattened[0]!;
