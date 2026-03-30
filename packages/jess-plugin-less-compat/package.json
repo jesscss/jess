@@ -10,21 +10,21 @@
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "require": "./lib/index.js",
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.js"
     },
     "./transform": {
-      "import": "./lib/transform/index.js",
       "types": "./lib/transform/index.d.ts",
       "source": "./src/transform/index.ts",
+      "import": "./lib/transform/index.js",
       "require": "./lib/transform/index.cjs"
     },
     "./less-compat-structures": {
-      "import": "./lib/less-compat-structures.js",
       "types": "./lib/less-compat-structures.d.ts",
       "source": "./src/less-compat-structures.ts",
+      "import": "./lib/less-compat-structures.js",
       "require": "./lib/less-compat-structures.cjs"
     },
     "./package.json": "./package.json"

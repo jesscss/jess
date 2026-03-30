@@ -7,15 +7,15 @@
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
       "source": "./src/index.ts",
+      "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./server": {
-      "import": "./lib/server.js",
       "types": "./lib/server.d.ts",
       "source": "./src/server.ts",
+      "import": "./lib/server.js",
       "require": "./lib/server.cjs"
     },
     "./package.json": "./package.json"

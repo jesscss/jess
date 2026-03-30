@@ -6,11 +6,11 @@
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
-      "default": "./lib/index.js",
       "types": "./lib/index.d.ts",
       "source": "./src/index.ts",
-      "require": "./lib/index.cjs"
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs",
+      "default": "./lib/index.js"
     },
     "./package.json": "./package.json"
   },
