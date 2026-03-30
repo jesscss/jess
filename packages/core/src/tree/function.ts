@@ -51,9 +51,9 @@ export interface Func extends Node<FuncValue, FuncOptions, FuncChildData> {
 export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
   static override childKeys = ['name', 'params', 'body'] as const;
 
-  /** @internal */ name: FuncValue['name'];
-  /** @internal */ params: FuncValue['params'];
-  /** @internal */ body!: Node;
+  name: FuncValue['name'];
+  params: FuncValue['params'];
+  body!: Node;
 
   constructor(value: FuncValue, options?: FuncOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);

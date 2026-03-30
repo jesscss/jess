@@ -10,7 +10,7 @@ export interface JsArray {
 export class JsArray extends Node<readonly any[]> {
   static override childKeys = null as null;
 
-  /** @internal */ value!: readonly any[];
+  value!: readonly any[];
 
   constructor(value: readonly any[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);

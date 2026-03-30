@@ -1459,7 +1459,7 @@ export async function dispatchMixinEvalCandidates(
       if ((candidate as Ruleset).get('guard') instanceof Nil) {
         continue;
       }
-      const currentRules = (candidate as Ruleset).getCurrentRules(context);
+      const currentRules = (candidate as Ruleset).enterRules(context);
       const sourceRules = getRootSourceRules(currentRules);
       const rules = await evaluateRulesetMixinCandidateOutput(
         sourceRules,

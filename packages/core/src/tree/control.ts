@@ -209,9 +209,9 @@ export interface If extends Node<IfValue, any, IfChildData> {
 export class If extends Node<IfValue, any, IfChildData> {
   static override childKeys = ['conditions', 'bodies', 'elseBranch'] as const;
 
-  /** @internal */ readonly conditions!: Node[];
-  /** @internal */ readonly bodies!: Rules[];
-  /** @internal */ readonly elseBranch: Rules | undefined;
+  readonly conditions!: Node[];
+  readonly bodies!: Rules[];
+  readonly elseBranch: Rules | undefined;
 
   constructor(value: IfValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -287,9 +287,9 @@ export interface For extends Node<ForValue, any, ForChildData> {
 export class For extends Node<ForValue, any, ForChildData> {
   static override childKeys = ['vars', 'iterable', 'rules'] as const;
 
-  /** @internal */ readonly vars!: VarDeclaration | VarDeclaration[];
-  /** @internal */ readonly iterable!: Node;
-  /** @internal */ readonly rules!: Rules;
+  readonly vars!: VarDeclaration | VarDeclaration[];
+  readonly iterable!: Node;
+  readonly rules!: Rules;
 
   constructor(value: ForValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -522,8 +522,8 @@ export interface Each extends Node<LegacyLoopValue, any, EachChildData> {
 export class Each extends Node<LegacyLoopValue, any, EachChildData> {
   static override childKeys = ['header', 'rules'] as const;
 
-  /** @internal */ readonly header!: Sequence;
-  /** @internal */ readonly rules!: Rules;
+  readonly header!: Sequence;
+  readonly rules!: Rules;
 
   constructor(value: LegacyLoopValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -573,8 +573,8 @@ export interface While extends Node<WhileValue, any, WhileChildData> {
 export class While extends Node<WhileValue, any, WhileChildData> {
   static override childKeys = ['condition', 'rules'] as const;
 
-  /** @internal */ readonly condition!: Node;
-  /** @internal */ readonly rules!: Rules;
+  readonly condition!: Node;
+  readonly rules!: Rules;
 
   constructor(value: WhileValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);

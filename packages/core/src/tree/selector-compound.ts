@@ -27,7 +27,7 @@ export interface CompoundSelector {
 export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: SimpleSelector[];
+  value!: SimpleSelector[];
 
   constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);

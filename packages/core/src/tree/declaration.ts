@@ -102,9 +102,9 @@ export interface Declaration {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts, DeclarationChildData> {
   static override childKeys = ['name', 'value', 'important'] as const;
 
-  /** @internal */ name!: NameValue;
-  /** @internal */ value!: Node;
-  /** @internal */ important: Any<'flag'> | undefined;
+  name!: NameValue;
+  value!: Node;
+  important: Any<'flag'> | undefined;
 
   constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);

@@ -22,7 +22,7 @@ export interface SelectorList {
 export class SelectorList extends Selector<Selector[], any, SelectorListChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Selector[];
+  value!: Selector[];
 
   constructor(value: Selector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);

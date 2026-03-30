@@ -49,7 +49,7 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   static override childKeys = null as null;
 
-  /** @internal */ readonly value!: string;
+  readonly value!: string;
   readonly role: Role | undefined;
 
   constructor(

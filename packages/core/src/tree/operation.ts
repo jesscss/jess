@@ -35,9 +35,9 @@ export interface Operation {
 export class Operation extends Node<OperationValue, NodeOptions, OperationChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  /** @internal */ left!: Node;
+  left!: Node;
   private operator!: Operator;
-  /** @internal */ right!: Node;
+  right!: Node;
 
   override clone(deep?: boolean): this {
     const options = (this as any)._meta?.options;

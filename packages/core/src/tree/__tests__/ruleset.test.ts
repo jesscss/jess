@@ -111,7 +111,7 @@ describe('Rule', () => {
     const preEvald = await node.preEval(context);
 
     expect(preEvald.getOwnSelector(context)?.valueOf()).toBe('.beta');
-    expect(preEvald.getCurrentSelector(context).valueOf()).toBe('.beta');
+    expect(preEvald.get('selector', context).valueOf()).toBe('.beta');
     expect(node.getOwnSelector()).toBeUndefined();
     expect(node.get('selector').valueOf()).toBe('.alpha');
   });
@@ -132,7 +132,7 @@ describe('Rule', () => {
     context.frames.push(parent);
 
     const preEvald = await child.preEval(context);
-    const currentSelector = preEvald.getCurrentSelector(context);
+    const currentSelector = preEvald.get('selector', context);
     const runtimeSourceNode = getField<Node | undefined>(currentSelector, 'sourceNode', context) ?? currentSelector.sourceNode;
 
     expect(currentSelector.valueOf()).toBe('.parent .child');
@@ -228,7 +228,7 @@ describe('Rule', () => {
     expect(getParent(cloned.get('rules'), context)).toBe(cloned);
   });
 
-  it('getCurrentRules reparents a shared rules body through the current clone view', () => {
+  it('enterRules reparents a shared rules body through the current clone view', () => {
     const source = ruleset({
       selector: el('.alpha'),
       rules: rules([
@@ -237,7 +237,7 @@ describe('Rule', () => {
     });
 
     const cloned = source.clone(false, undefined, context);
-    const currentRules = cloned.getCurrentRules(context);
+    const currentRules = cloned.enterRules(context);
 
     expect(currentRules).toBe(source.get('rules'));
     expect(getParent(currentRules, context)).toBe(cloned);
@@ -272,7 +272,7 @@ describe('Rule', () => {
     expect(node.get('rules').options.rulesVisibility.VarDeclaration).toBe('public');
 
     const preEvald = await node.preEval(context);
-    const currentRules = preEvald.getCurrentRules(context);
+    const currentRules = preEvald.enterRules(context);
     const currentOptions = currentRules.getCurrentOptions(context);
 
     expect(currentOptions.rulesVisibility.Mixin).toBe('private');
@@ -300,7 +300,7 @@ describe('Rule', () => {
     context.extendRoots.pushExtendRoot(root);
 
     const preEvaldBase = await base.preEval(context);
-    const currentRules = preEvaldBase.getCurrentRules(context);
+    const currentRules = preEvaldBase.enterRules(context);
     const preEvaldNested = currentRules.at(0, context) as typeof nested;
     const registeredRulesets = context.extendRoots.getRulesets(root);
 
@@ -330,7 +330,7 @@ describe('Rule', () => {
 
     expect(evald._hasFlag(F_VISIBLE, context)).toBe(false);
     expect(evald.hasFlag(F_VISIBLE)).toBe(true);
-    expect(evald.getCurrentRules(context)).toBe(emptyRules);
+    expect(evald.enterRules(context)).toBe(emptyRules);
     expect(node.get('rules').value).toHaveLength(1);
   });
 

@@ -26,8 +26,8 @@ export interface Log extends Node<LogValue, NodeOptions, LogChildData> {
 export class Log extends Node<LogValue, NodeOptions, LogChildData> {
   static override childKeys = ['level', 'message'] as const;
 
-  /** @internal */ level!: LogLevel;
-  /** @internal */ message!: Node;
+  level!: LogLevel;
+  message!: Node;
 
   constructor(
     value: LogValue,

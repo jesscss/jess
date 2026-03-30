@@ -151,6 +151,52 @@ So the preferred split is:
 - `node.get('rules', context)` only while a surface still genuinely mixes
   render-path selection with old state-overlay reads
 
+## Helper Naming Convention
+
+For typed node-local read helpers, prefer:
+
+- `get<Field>(renderKey?)`
+
+Examples:
+
+- `ruleset.getGuard(renderKey?)`
+- `ruleset.getSelector(renderKey?)`
+- `atRule.getPrelude(renderKey?)`
+
+The `renderKey` parameter already explains that the read is view/path-sensitive,
+so avoid redundant `Current` naming for ordinary field reads.
+
+Reserve verb names for the small number of helpers that do more than read:
+
+- `enter<Field>(...)` when a call may wrap, adopt, or otherwise establish
+  render-owned container identity
+
+So:
+
+- field read: `getGuard(renderKey?)`
+- traversal: `getEdge(cursor, 'rules')`
+- render-owner entry: `enterRules(...)`
+
+On converted nodes, these typed field reads should inline field-aligned edge
+selection directly instead of routing back through generic `.get(...)`.
+
+Example:
+
+```ts
+getSelector(renderKey?: RenderKey) {
+  return renderKey !== undefined
+    ? this.selectorEdge?.get(renderKey) ?? this.selector
+    : this.selector;
+}
+```
+
+So the intended end-state is:
+
+- canonical fallback uses the direct field
+- alternate render-path selection uses the matching `fooEdge`
+- generic `node.get('field', renderKey)` is transitional glue, not the final
+  hot-path implementation on converted nodes
+
 ## Function Boundary Rule
 
 Custom/user-function boundaries should not have to understand render keys.
@@ -369,7 +415,7 @@ These are intentionally not part of the default shape:
 - field patches
 - render-root-owned patch tables
 - replacement links like `replacedBy`
-- `/** @internal */` field markers on ordinary child fields
+- field-level `@internal` markers on ordinary child fields
 
 If one of those later proves unavoidable for a specific case, it should be
 added as an explicit future extension, not baked into the main model now.

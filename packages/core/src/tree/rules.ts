@@ -138,7 +138,7 @@ export type RulesOptions = {
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  /** @internal */ readonly value: readonly Node[];
+  readonly value: readonly Node[];
   get options(): RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
@@ -171,7 +171,7 @@ export interface Rules {
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ readonly value!: readonly Node[];
+  readonly value!: readonly Node[];
   renderKey: RenderKey | undefined;
   renderParent: Rules | undefined;
   private _wrapperRegistrySeeded = false;
@@ -408,24 +408,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._rulesSet = [];
 
       for (const child of this.getRegistryChildren(context)) {
-        const registryChild = this._createWrapperRegistryPlacement(child, context);
-        this.registerNode(registryChild, undefined, context);
+        this.registerNode(child, undefined, context);
       }
 
       this._wrapperRegistrySeeded = true;
     } finally {
       this._wrapperRegistrySeeding = false;
     }
-  }
-
-  private _createWrapperRegistryPlacement(child: Node, context?: Context): Node {
-    if (!this._isWrapperRegistryOwner() || !context || !isNode(child, N.Ruleset | N.Mixin)) {
-      return child;
-    }
-    const placement = child.clone(false, undefined, context);
-    placement.parent = this;
-    placement.renderKey = this.renderKey;
-    return placement;
   }
 
   /**
@@ -675,8 +664,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Create a shallow body wrapper for mixin eval.
    *
    * Creates a new Rules that SHARES the current children array and does NOT adopt
-   * children canonically (their canonical `.parent` stays unchanged). Session/IR
-   * handles the per-call parent chain via overlay.
+   * children canonically (their canonical `.parent` stays unchanged). Render-key
+   * parent edges carry the per-placement parent chain.
    *
    * This replaces clone(true) in the mixin body path for massive perf improvement:
    * a mixin body with 100 declarations creates 1 Rules wrapper
@@ -790,22 +779,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const existing = getEdgeAt(cursor, 'value', index)?.node;
     if (existing) {
       return existing;
-    }
-
-    if (
-      context
-      && canonical
-      && isNode(canonical, N.Rules | N.Ruleset | N.Mixin | N.AtRule)
-    ) {
-      const placement = canonical.clone(false, undefined, context);
-      placement.parent = this;
-      placement.renderKey = this.renderKey;
-      addEdgeAt(this, 'value', index, this.renderKey, placement);
-      addParentEdge(placement, this.renderKey, this);
-      const nextValue = [...this.value];
-      nextValue[index] = placement;
-      this._setValueArray(nextValue);
-      return placement;
     }
 
     return canonical;

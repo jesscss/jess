@@ -986,7 +986,7 @@ export class MixinRegistry extends Registry<
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = isNode(value, N.Ruleset)
-                ? (value as Ruleset).getCurrentRules(this.context)
+                ? (value as Ruleset).enterRules(this.context)
                 : (value as Mixin).get('rules', this.context).withRenderOwner(
                     value as Mixin,
                     this.context?.renderKey,
@@ -1036,7 +1036,7 @@ export class MixinRegistry extends Registry<
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
               let subRules = isNode(value, N.Ruleset)
-                ? (value as Ruleset).getCurrentRules(this.context)
+                ? (value as Ruleset).enterRules(this.context)
                 : (value as Mixin).get('rules', this.context).withRenderOwner(
                     value as Mixin,
                     this.context?.renderKey,
@@ -1137,7 +1137,7 @@ export class MixinRegistry extends Registry<
             // Search inside the candidate if it matches startKey and we have remaining search keys
             if (matchesStartKey && search.length > 0 && (isRuleset || hasNoParams)) {
               let subRules = isRuleset
-                ? (candidateNode as Ruleset).getCurrentRules(this.context)
+                ? (candidateNode as Ruleset).enterRules(this.context)
                 : (candidateNode as Mixin).get('rules', this.context).withRenderOwner(
                     candidateNode as Mixin,
                     this.context?.renderKey,

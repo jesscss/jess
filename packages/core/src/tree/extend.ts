@@ -58,8 +58,8 @@ export interface Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> 
 export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
   static override childKeys = ['selector', 'target'] as const;
 
-  /** @internal */ readonly selector: ExtendValue['selector'];
-  /** @internal */ readonly target!: Selector;
+  readonly selector: ExtendValue['selector'];
+  readonly target!: Selector;
   private readonly namespace: string | undefined;
   private readonly flag: ExtendFlag | undefined;
 

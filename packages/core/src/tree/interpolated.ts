@@ -86,8 +86,8 @@ export class Interpolated<
 > extends Node<InterpolatedValue, AnyOptions<Role>, InterpolatedChildData> {
   static override childKeys = ['source', 'replacements'] as const;
 
-  /** @internal */ source!: string;
-  /** @internal */ replacements!: Node[];
+  source!: string;
+  replacements!: Node[];
 
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value as any, options, location, treeContext);

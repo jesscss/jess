@@ -13,7 +13,7 @@ export interface Combinator extends Selector<Combinators> {
 export class Combinator extends Selector<Combinators> {
   static override childKeys = null as null;
 
-  /** @internal */ readonly value!: Combinators;
+  readonly value!: Combinators;
 
   constructor(
     value: Combinators,

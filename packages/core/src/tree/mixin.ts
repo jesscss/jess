@@ -90,10 +90,10 @@ export interface Mixin {
 export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   static override childKeys = ['name', 'rules', 'params', 'guard'] as const;
 
-  /** @internal */ name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
-  /** @internal */ rules!: Rules;
-  /** @internal */ params: List<Node> | undefined;
-  /** @internal */ guard: Condition | undefined;
+  name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  rules!: Rules;
+  params: List<Node> | undefined;
+  guard: Condition | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const name = this.get('name', ctx);

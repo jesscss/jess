@@ -36,9 +36,9 @@ export interface Condition extends Node<ConditionValue, ConditionOptions, Condit
 export class Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  /** @internal */ readonly left!: Node;
+  readonly left!: Node;
   private readonly operator: ConditionOperator | undefined;
-  /** @internal */ readonly right: Node | undefined;
+  readonly right: Node | undefined;
   private readonly negate: boolean;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {

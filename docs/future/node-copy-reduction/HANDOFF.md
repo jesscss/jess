@@ -31,6 +31,11 @@ The branch should move away from:
 - if a node cannot answer a parent question without a render key, use a cursor
 - if a lookup only needs path selection, pass `renderKey` or cursor, not full
   `Context`
+- for typed field reads, prefer `get<Field>(renderKey?)`
+- on converted nodes, inline `fooEdge?.get(renderKey) ?? foo` instead of
+  routing typed field reads back through generic `.get(...)`
+- reserve `enter<Field>(...)` for helpers that may wrap/adopt to establish a
+  render-owned container
 - if a node-local value truly changes identity, use a thin derived node only if edge rewiring is not enough
 - do not add new generic `childEdges` maps as target architecture
 

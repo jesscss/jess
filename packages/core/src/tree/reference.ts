@@ -165,8 +165,8 @@ export interface Reference {
 export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceChildData> {
   static override childKeys = ['target', 'key'] as const;
 
-  /** @internal */ target: Reference | Call | undefined;
-  /** @internal */ key!: ReferenceValue['key'];
+  target: Reference | Call | undefined;
+  key!: ReferenceValue['key'];
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     if (typeof value === 'string') {
@@ -403,7 +403,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
          */
         if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
           const targetRules = isNode(resolvedTarget, N.Ruleset)
-            ? (resolvedTarget as Ruleset).getCurrentRules(context)
+            ? (resolvedTarget as Ruleset).enterRules(context)
             : (resolvedTarget as Mixin)
               .get('rules', context)
               .withRenderOwner(
@@ -645,7 +645,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
         const lookupTarget = isNode(resolvedTarget, N.Ruleset)
-          ? (resolvedTarget as Ruleset).getCurrentRules(context)
+          ? (resolvedTarget as Ruleset).enterRules(context)
           : resolvedTarget;
         let returnVal: any;
         if (isNode(lookupTarget, N.Rules)) {

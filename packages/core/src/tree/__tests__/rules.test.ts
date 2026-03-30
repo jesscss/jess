@@ -399,6 +399,32 @@ describe('Rules', () => {
         expect(nested.parent).toBe(node);
       });
 
+      it('render-key child replacement on a shallow wrapper updates parentEdges without corrupting canonical parentage', () => {
+        const ctx = new Context();
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        });
+        const node = rules([nested]);
+        const wrapper = node.createShallowBodyWrapper(ctx);
+        const replacement = ruleset({
+          selector: sel([el('.other')]),
+          rules: rules([
+            decl({ name: 'color', value: any('blue') })
+          ])
+        });
+
+        ctx.renderKey = wrapper.renderKey;
+        setChildren(wrapper, [replacement], ctx, { markDirty: false });
+
+        expect(wrapper.value[0]).toBe(replacement);
+        expect(getParent(replacement, ctx)).toBe(wrapper);
+        expect(getParent(nested, ctx)).toBe(node);
+        expect(node.value[0]).toBe(nested);
+      });
+
       it('wrapper-local declaration registry indexes render-visible value edge overrides', () => {
         const ctx = new Context();
         const canonical = decl({ name: 'color', value: any('red') });

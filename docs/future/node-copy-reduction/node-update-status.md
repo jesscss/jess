@@ -110,40 +110,27 @@ Primary files:
 
 This section tracks only edge/cursor conversion status.
 
-### Converted Or Mostly Converted
+| Node | Status | Notes |
+| --- | --- | --- |
+| `Expression` | `converted` | Direct canonical field kept; render-key child selection characterized. |
+| `Block` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `Negative` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `Paren` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `Quoted` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `SelectorCapture` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `SelectorInterpolated` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `Url` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `List` | `converted` | List child surface converted to direct field + render-key read path. |
+| `Rest` | `converted` | Simple child surface converted to direct field + render-key read path. |
+| `Sequence` | `converted` | List child surface converted to direct field + render-key read path. |
+| `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding now indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation now updates/removes `parentEdges` directly on wrapper-owned paths. Still hybrid because render walks and option/state surfaces still mix edge work with overlay-era behavior. |
+| `Ruleset` | `in_progress` | Still hybrid. `rules` container entry is partly render-key aware, but selector/rules/option behavior still mixes edge work with clone/state-era behavior. |
+| `AtRule` | `in_progress` | Current-view `prelude` / `rules` reads improved, but node is not edge/cursor-complete. |
+| `Call` | `not_converted` | Still tied to hybrid mixin output and old eval-state replacement behavior. |
+| `Mixin` | `not_converted` | Still routes body/current-view handling through hybrid clone/state-era behavior. |
+| `Control` | `not_converted` | Still relies on hybrid loop/output plumbing rather than direct edge/cursor ownership. |
 
-- `Expression`
-  - direct canonical field kept
-  - render-key child selection characterized
-- `Block`
-- `Negative`
-- `Paren`
-- `Quoted`
-- `SelectorCapture`
-- `SelectorInterpolated`
-- `Url`
-- `List`
-- `Rest`
-- `Sequence`
-
-These are useful hard-gate targets for focused edge/cursor tests.
-
-### Not Yet Converted
-
-- `Rules`
-  - still hybrid
-  - still owns major render-key entry/exit behavior
-- `Ruleset`
-  - still hybrid
-  - still mixes edge work with clone/state-era behavior
-- `AtRule`
-  - still hybrid
-  - current-view reads improved, but node is not edge/cursor-complete
-- `Call`
-- `Mixin`
-- `Control`
-
-These are not valid final acceptance gates yet.
+Only the `converted` rows are valid hard-gate targets for focused edge/cursor tests.
 
 ## Immediate Next Work
 

@@ -48,11 +48,11 @@ function invalidateSelectorCache(selector?: Selector | Nil): void {
 
 function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): void {
   ruleset.invalidateSelectorValueCache();
-  invalidateSelectorCache(ruleset.getCurrentSelector(context));
+  invalidateSelectorCache(ruleset.get('selector', context));
   invalidateSelectorCache(ruleset.getExtendedSelector(context));
   invalidateSelectorCache(ruleset.getOwnSelector(context));
   invalidateSelectorCache(ruleset.getSelectorBeforeExtend(context));
-  const rules = ruleset.getCurrentRules(context);
+  const rules = ruleset.enterRules(context);
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
@@ -64,7 +64,7 @@ function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): v
 }
 
 function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context): void {
-  const rules = parentRuleset.getCurrentRules(context);
+  const rules = parentRuleset.enterRules(context);
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
@@ -98,7 +98,7 @@ function getDerivedSelectorFromParent(ruleset: Ruleset, context?: Context): Sele
   }
 
   const composedSelector = getImplicitSelector(ownSelector, parentSelector, false);
-  const currentSelector = ruleset.getCurrentSelector(context);
+  const currentSelector = ruleset.get('selector', context);
   if (!isNode(currentSelector, N.Nil) && composedSelector.valueOf() === currentSelector.valueOf()) {
     return undefined;
   }
@@ -651,7 +651,7 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   if (getRulesetHoistToRoot(ruleset, context) !== undefined) {
     setRulesetHoistToRoot(ruleset, undefined, context);
   }
-  const selector = (ruleset.getExtendedSelector(context) ?? ruleset.getCurrentSelector(context));
+  const selector = (ruleset.getExtendedSelector(context) ?? ruleset.get('selector', context));
   if (selector && !isNode(selector, N.Nil)) {
     if (context) {
       selector._removeFlag(F_EXTENDED, context);
@@ -697,13 +697,13 @@ function applyInstructionToRuleset(
     return { matched: false, changed: false };
   }
 
-  const currentSelector = ruleset.getCurrentSelector(context);
+  const currentSelector = ruleset.get('selector', context);
   if (!ruleset.getSelectorBeforeExtend(context) && currentSelector && !isNode(currentSelector, N.Nil)) {
     ruleset.setSelectorBeforeExtend(currentSelector.copy(true) as Selector, context!);
   }
 
   if (
-    isNodeInsideRules(instruction.extendNode, ruleset.getCurrentRules(context))
+    isNodeInsideRules(instruction.extendNode, ruleset.enterRules(context))
     && instruction.extendWith.valueOf() === targetInfo.selector.valueOf()
     && targetMatch.fullMatch
   ) {

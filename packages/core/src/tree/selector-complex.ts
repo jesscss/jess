@@ -38,7 +38,7 @@ export interface ComplexSelector {
 export class ComplexSelector extends Selector<ComplexSelectorValue, any, ComplexSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: ComplexSelectorValue;
+  value!: ComplexSelectorValue;
 
   constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);

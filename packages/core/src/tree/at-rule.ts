@@ -80,9 +80,11 @@ export interface AtRule {
 export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
   static override childKeys = ['name', 'prelude', 'rules'] as const;
 
-  /** @internal */ name!: Any<'atkeyword'> | Interpolated<'atkeyword'>;
-  /** @internal */ prelude: Node | undefined;
-  /** @internal */ rules: Rules | undefined;
+  name!: Any<'atkeyword'> | Interpolated<'atkeyword'>;
+  prelude: Node | undefined;
+  rules: Rules | undefined;
+  declare preludeEdge: Map<RenderKey, Node | undefined> | undefined;
+  declare rulesEdge: Map<RenderKey, Rules | undefined> | undefined;
   private frames: (Ruleset | AtRule)[] | undefined;
 
   private _setCurrentField(
@@ -97,23 +99,39 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
     context.activeState.get(this).fields.set(key, value);
   }
 
-  private _getCurrentRenderKey(context?: Context): RenderKey | undefined {
+  private _resolveRenderKey(context?: Context): RenderKey | undefined {
     return context?.renderKey ?? this.renderKey;
   }
 
-  private _getCurrentPrelude(context?: Context): Node | undefined {
-    const renderKey = this._getCurrentRenderKey(context);
-    if (renderKey !== undefined) {
-      return this.get('prelude', renderKey);
+  private _readPreludeForContext(context?: Context): Node | undefined {
+    if (context) {
+      return this.get('prelude', context);
     }
-    return context ? this.get('prelude', context) : this.get('prelude');
+    return this.getPrelude(this.renderKey);
   }
 
-  private _getCurrentRules(context?: Context): Rules | undefined {
-    const renderKey = this._getCurrentRenderKey(context);
-    const rules = renderKey !== undefined
-      ? this.get('rules', renderKey)
-      : context ? this.get('rules', context) : this.get('rules');
+  private _readRulesForContext(context?: Context): Rules | undefined {
+    if (context) {
+      return this.get('rules', context);
+    }
+    return this.getRules(this.renderKey);
+  }
+
+  getPrelude(renderKey?: RenderKey): Node | undefined {
+    return renderKey !== undefined
+      ? this.preludeEdge?.get(renderKey) ?? this.prelude
+      : this.prelude;
+  }
+
+  getRules(renderKey?: RenderKey): Rules | undefined {
+    return renderKey !== undefined
+      ? this.rulesEdge?.get(renderKey) ?? this.rules
+      : this.rules;
+  }
+
+  enterRules(context?: Context): Rules | undefined {
+    const renderKey = this._resolveRenderKey(context);
+    const rules = this._readRulesForContext(context);
     return rules?.withRenderOwner(this, renderKey, context);
   }
 
@@ -208,8 +226,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
   }
 
   private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule | Nil> {
-    const prelude = node._getCurrentPrelude(context);
-    const rules = node._getCurrentRules(context);
+    const prelude = node._readPreludeForContext(context);
+    const rules = node.enterRules(context);
     // Preserve @import prelude as-authored (including comments). Evaluation here can
     // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
     const name = node.get('name', context);
@@ -234,7 +252,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           }
           const queued = queuedNode as AtRule;
           const queuedName = queued.get('name', context);
-          const queuedPrelude = queued._getCurrentPrelude(context);
+          const queuedPrelude = queued._readPreludeForContext(context);
           return (
             queued === node
             || queued.sourceNode === node.sourceNode
@@ -311,7 +329,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
   private _extractAndStoreLayerName(node: AtRule, context: Context): void {
     const name = node.get('name', context);
-    const prelude = node._getCurrentPrelude(context);
+    const prelude = node._readPreludeForContext(context);
     const atRuleName = name?.toTrimmedString?.() ?? name?.toString?.() ?? '';
     if (atRuleName === '@layer' && prelude) {
       const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
@@ -324,7 +342,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
         }
         const parentFrame = frame as AtRule;
         const parentName = parentFrame.get('name', context);
-        const parentRules = parentFrame._getCurrentRules(context);
+        const parentRules = parentFrame.enterRules(context);
           if (parentName?.toTrimmedString?.() === '@layer' && parentRules?.value?.includes(node)) {
             parentLayerName = context.extendRoots.getLayerName(parentFrame);
           }
@@ -342,8 +360,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
     const name = this.get('name', options.context);
-    const prelude = this._getCurrentPrelude(options.context);
-    const rules = this._getCurrentRules(options.context);
+    const prelude = this._readPreludeForContext(options.context);
+    const rules = this.enterRules(options.context);
 
     let idt = indent(options.depth);
     let out = idt;
@@ -431,7 +449,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
       if (node.get('name', context)?.valueOf?.() !== '@media') {
         return;
       }
-      const outerRules = node._getCurrentRules(context);
+      const outerRules = node.enterRules(context);
       if (!outerRules) {
         return;
       }
@@ -444,14 +462,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
         return;
       }
       const inner = only as AtRule;
-      const innerRules = inner._getCurrentRules(context);
+      const innerRules = inner.enterRules(context);
       if (!innerRules) {
         return;
       }
 
       // Combine media queries using "and" like Less does.
-      const outerPrelude = node._getCurrentPrelude(context);
-      const innerPrelude = inner._getCurrentPrelude(context);
+      const outerPrelude = node._readPreludeForContext(context);
+      const innerPrelude = inner._readPreludeForContext(context);
       if (outerPrelude && innerPrelude) {
         // Build a normalized text prelude to avoid double-spacing from nested sequences.
         const outerText = outerPrelude.toTrimmedString().trim();
@@ -482,7 +500,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
     return pipe(
       () => {
         // Evaluate prelude in the correct scope (mixin params, vars, etc.).
-        const prelude = node._getCurrentPrelude(context);
+        const prelude = node._readPreludeForContext(context);
         if (prelude) {
         // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
           // This matches Less behavior for mixin parameters referenced from nested @media preludes.
@@ -523,7 +541,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
         }
       },
       () => {
-        let rules = node._getCurrentRules(context);
+        let rules = node.enterRules(context);
         if (rules) {
           if (context.opts.collapseNesting) {
             node._setCurrentField('hoistToRoot', true, context);
@@ -549,7 +567,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
               ?? (context.callStack.length > 0 ? context.callerRulesetFrame : undefined);
             // Read parent selector WITH context to get the composed (effective) selector,
             // not the canonical one. This is critical for deeply nested rulesets.
-            const parentSel = parentRuleset?.getCurrentSelector(context);
+            const parentSel = parentRuleset?.get('selector', context);
             const hasParentSel = parentSel && !isNode(parentSel, N.Nil);
             // Use materializeEvaluatedCopy to capture the fully-resolved selector
             // (with Ampersands resolved to their evaluated values), not copy() which
@@ -733,7 +751,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
         // Pop the frame that was pushed in preEval
         // This frame was kept on the stack during rules evaluation so children could access it
         context.frames.pop();
-        let rules = node._getCurrentRules(context);
+        let rules = node.enterRules(context);
         if (rules && rules.visibleRules().length === 0) {
           node._removeFlag(F_VISIBLE, context);
         }

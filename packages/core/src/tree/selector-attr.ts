@@ -36,9 +36,9 @@ export interface AttributeSelector {
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, NodeOptions, AttributeSelectorChildData> {
   static override childKeys = ['name', 'value'] as const;
 
-  /** @internal */ name!: string | Node;
+  name!: string | Node;
   private op: string | undefined;
-  /** @internal */ value: Node | undefined;
+  value: Node | undefined;
   private mod: string | undefined;
 
   override clone(deep?: boolean): this {

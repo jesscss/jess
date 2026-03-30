@@ -82,9 +82,9 @@ export interface Call {
 export class Call extends Node<CallValue, CallOptions, CallChildData> {
   static override childKeys = ['name', 'args', 'contentNode'] as const;
 
-  /** @internal */ name!: string | Node;
-  /** @internal */ args: List<Node> | undefined;
-  /** @internal */ contentNode: Node | undefined;
+  name!: string | Node;
+  args: List<Node> | undefined;
+  contentNode: Node | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const name = this.get('name', ctx);

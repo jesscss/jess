@@ -1,8 +1,8 @@
 import { any, nil, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { setField } from '../util/field-helpers.js';
-import { addEdgeAt, getEdgeAt } from '../util/cursor.js';
-import type { RenderKey } from '../node.js';
+import { addEdgeAt, addParentEdge, getEdgeAt, getParentEdge } from '../util/cursor.js';
+import { CANONICAL, EVAL, type RenderKey } from '../node.js';
 
 /**
  * @todo - sequences need to make sure that the result could be re-parsed
@@ -165,5 +165,33 @@ describe('Sequence', () => {
     expect(getEdgeAt(cursor, 'value', 0)?.node).toBe(first);
     expect(getEdgeAt(cursor, 'value', 1)?.node).toBe(alternate);
     expect(node.value).toEqual([first, second]);
+  });
+
+  it('keeps canonical and eval paths independent when one indexed child is replaced', () => {
+    const first = num(10);
+    const second = num(20);
+    const third = num(30);
+    const replacement = num(200);
+    const node = seq([first, second, third]);
+
+    addEdgeAt(node, 'value', 1, EVAL, replacement);
+    addParentEdge(replacement, EVAL, node);
+
+    const evalCursor = { node, renderKey: EVAL };
+    const canonicalCursor = { node, renderKey: CANONICAL };
+
+    expect(node.value).toEqual([first, second, third]);
+
+    expect(getEdgeAt(evalCursor, 'value', 0)?.node).toBe(first);
+    expect(getEdgeAt(evalCursor, 'value', 1)?.node).toBe(replacement);
+    expect(getEdgeAt(evalCursor, 'value', 2)?.node).toBe(third);
+
+    expect(getEdgeAt(canonicalCursor, 'value', 0)?.node).toBe(first);
+    expect(getEdgeAt(canonicalCursor, 'value', 1)?.node).toBe(second);
+    expect(getEdgeAt(canonicalCursor, 'value', 2)?.node).toBe(third);
+
+    expect(getParentEdge({ node: replacement, renderKey: EVAL })?.node).toBe(node);
+    expect(getParentEdge({ node: second, renderKey: CANONICAL })?.node).toBe(node);
+    expect(second.parent).toBe(node);
   });
 });

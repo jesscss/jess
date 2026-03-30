@@ -37,8 +37,8 @@ export interface PseudoSelector {
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOptions, PseudoSelectorChildData> {
   static override childKeys = ['name', 'arg'] as const;
 
-  /** @internal */ name!: string;
-  /** @internal */ arg: Node | undefined;
+  name!: string;
+  arg: Node | undefined;
 
   constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);

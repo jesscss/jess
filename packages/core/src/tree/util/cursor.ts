@@ -113,3 +113,17 @@ export function addParentEdge(
   edge.set(renderKey, parent);
   node.parentEdges = edge;
 }
+
+export function removeParentEdge(
+  node: Node,
+  renderKey: RenderKey
+): void {
+  const edge = node.parentEdges;
+  if (!edge) {
+    return;
+  }
+  edge.delete(renderKey);
+  if (edge.size === 0) {
+    node.parentEdges = undefined;
+  }
+}

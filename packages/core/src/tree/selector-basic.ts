@@ -16,7 +16,7 @@ export interface BasicSelector extends SimpleSelector<string> {
 export class BasicSelector extends SimpleSelector<string> {
   static override childKeys = null as null;
 
-  /** @internal */ value!: string;
+  value!: string;
 
   constructor(
     value: string,
