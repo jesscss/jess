@@ -1,4 +1,4 @@
-# Render-Root Cursor Sketch
+# Render-Key Cursor Sketch
 
 ## Target
 
@@ -10,9 +10,9 @@ The older `EvalState` / `NodeState` design is deprecated.
 
 - keep one canonical tree
 - canonical nodes own canonical edges
-- canonical nodes may also own alternate edges keyed by render root
-- `RenderRoot` is only the path-selection key
-- traversal carries a cursor: `{ node, root }`
+- canonical nodes may also own alternate edges keyed by render key
+- `RenderKey` is only the path-selection key
+- traversal carries a cursor: `{ node, key }`
 
 ## Constraint
 
@@ -26,20 +26,19 @@ The important constraint is:
 So harmless runtime flags can live directly on nodes if they do not alter
 structural or serialization identity.
 
+That also means:
+
+- one node has one local value
+- if local node data changes, that is a new node
+- per-render variation lives in edges, not field patches
+- direct node fields stay direct fields
+
 ## Minimal Types
 
 ```ts
-type RenderRoot = {
-  parent?: RenderRoot;
-};
+type RenderKey = object | symbol;
 
-type RenderEdge<T> = WeakMap<RenderRoot, T>;
-
-type IndexedChildEdges = Map<number, RenderEdge<Node | null>>;
-
-type ChildEdgeValue =
-  | RenderEdge<Node | null>
-  | IndexedChildEdges;
+type NodeEdge<T> = Map<RenderKey, T>;
 
 type Node = {
   /**
@@ -48,29 +47,32 @@ type Node = {
   parent?: Node;
 
   /**
-   * Alternate parent edges keyed by render root.
+   * Alternate parent edges keyed by render key.
    */
-  parentEdges?: RenderEdge<Node | null>;
+  parentEdges?: NodeEdge<Node>;
 
   /**
    * Alternate child edges keyed by child-field name.
    *
    * For singular child fields:
-   *   WeakMap<RenderRoot, Node | null>
+   *   Map<RenderKey, Node>
    *
    * For list-shaped child fields:
-   *   Map<number, WeakMap<RenderRoot, Node | null>>
+   *   Array<Map<RenderKey, Node> | undefined>
    */
-  childEdges?: Map<string, ChildEdgeValue>;
+  childEdges?: Map<
+    string,
+    NodeEdge<Node> | Array<NodeEdge<Node> | undefined>
+  >;
 };
 
 type Cursor = {
   node: Node;
-  root: RenderRoot;
+  key: RenderKey;
 };
 ```
 
-## Why `RenderRoot` Exists
+## Why `RenderKey` Exists
 
 If one canonical node is reused in multiple live placements, upward traversal
 becomes ambiguous.
@@ -85,10 +87,21 @@ So we need a key for:
 
 - which live placement/path are we on?
 
-That key is `RenderRoot`.
+That key is `RenderKey`.
 
-`RenderRoot` is not a patch owner. It is only the selector for which alternate
+Examples of render keys:
+
+- canonical token
+- eval token
+- mixin instance key
+- loop instance key
+- stylesheet instance key
+
+`RenderKey` is not a patch owner. It is only the selector for which alternate
 edge to follow.
+
+`NodeEdge` uses `Map`, not `WeakMap`, because these keyed edges live on the
+nodes themselves and the whole tree can be discarded after serialization/eval.
 
 ## Why `Cursor` Exists
 
@@ -100,7 +113,7 @@ you are on.
 So traversal needs both:
 
 - current node
-- current render root
+- current render key
 
 That pair is the cursor.
 
@@ -116,56 +129,48 @@ That pair is the cursor.
 
 ```ts
 function lookupEdge<T>(
-  edges: WeakMap<RenderRoot, T> | undefined,
-  root: RenderRoot
+  edges: Map<RenderKey, T> | undefined,
+  key: RenderKey
 ): T | undefined {
-  let current: RenderRoot | undefined = root;
-  while (current) {
-    const hit = edges?.get(current);
-    if (hit !== undefined) {
-      return hit;
-    }
-    current = current.parent;
-  }
-  return undefined;
+  return edges?.get(key);
 }
 
-function getParent(cursor: Cursor): Cursor | undefined {
-  const overridden = lookupEdge(cursor.node.parentEdges, cursor.root);
+function getParentEdge(cursor: Cursor): Cursor | undefined {
+  const overridden = lookupEdge(cursor.node.parentEdges, cursor.key);
   if (overridden !== undefined) {
-    return overridden ? { node: overridden, root: cursor.root } : undefined;
+    return overridden ? { node: overridden, key: cursor.key } : undefined;
   }
 
   return cursor.node.parent
-    ? { node: cursor.node.parent, root: cursor.root }
+    ? { node: cursor.node.parent, key: cursor.key }
     : undefined;
 }
 
-function getChild(cursor: Cursor, key: string): Cursor | undefined {
+function getEdge(cursor: Cursor, key: string): Cursor | undefined {
   const entry = cursor.node.childEdges?.get(key);
-  if (entry instanceof WeakMap) {
-    const overridden = lookupEdge(entry, cursor.root);
+  if (entry instanceof Map) {
+    const overridden = lookupEdge(entry, cursor.key);
     if (overridden !== undefined) {
-      return overridden ? { node: overridden, root: cursor.root } : undefined;
+      return overridden ? { node: overridden, key: cursor.key } : undefined;
     }
   }
 
   const canonicalChild = (cursor.node as Record<string, unknown>)[key] as Node | undefined;
-  return canonicalChild ? { node: canonicalChild, root: cursor.root } : undefined;
+  return canonicalChild ? { node: canonicalChild, key: cursor.key } : undefined;
 }
 
-function getChildAt(cursor: Cursor, key: string, index: number): Cursor | undefined {
+function getEdgeAt(cursor: Cursor, key: string, index: number): Cursor | undefined {
   const entry = cursor.node.childEdges?.get(key);
-  if (entry instanceof Map) {
-    const overridden = lookupEdge(entry.get(index), cursor.root);
+  if (Array.isArray(entry)) {
+    const overridden = lookupEdge(entry[index], cursor.key);
     if (overridden !== undefined) {
-      return overridden ? { node: overridden, root: cursor.root } : undefined;
+      return overridden ? { node: overridden, key: cursor.key } : undefined;
     }
   }
 
   const canonicalList = (cursor.node as Record<string, unknown>)[key] as Node[] | undefined;
   const canonicalChild = canonicalList?.[index];
-  return canonicalChild ? { node: canonicalChild, root: cursor.root } : undefined;
+  return canonicalChild ? { node: canonicalChild, key: cursor.key } : undefined;
 }
 ```
 
@@ -208,12 +213,21 @@ It is:
 - some singular
 - some list-shaped
 
-That is why the runtime API should feel like:
+That is why canonical access should stay direct:
 
 ```ts
-getChild(cursor, 'rules');
-getChild(cursor, 'selector');
-getChildAt(cursor, 'value', 3);
+ruleset.selector
+ruleset.rules
+call.args
+expression.value
+```
+
+Only edge traversal should need helpers:
+
+```ts
+getEdge(cursor, 'rules');
+getEdge(cursor, 'selector');
+getEdgeAt(cursor, 'value', 3);
 ```
 
 ## `Ruleset` Example
@@ -226,9 +240,9 @@ class Ruleset extends Node {
     'guard'
   ] as const;
 
-  selector!: Selector | Nil;
-  rules!: Rules;
-  guard!: Condition | Nil | undefined;
+  readonly selector!: Selector | Nil;
+  readonly rules!: Rules;
+  readonly guard!: Condition | Nil | undefined;
 }
 ```
 
@@ -244,15 +258,20 @@ Notes:
 
 These are intentionally not part of the default shape:
 
+- `.get()` / `.set()` as the target access model
 - field patches
 - render-root-owned patch tables
 - replacement links like `replacedBy`
+- `/** @internal */` field markers on ordinary child fields
 
 If one of those later proves unavoidable for a specific case, it should be
 added as an explicit future extension, not baked into the main model now.
 
 ## Why This Is Simpler
 
+- one node has one local value
+- direct fields are just direct fields
+- only edge traversal needs the render key
 - no detached patch-table architecture
 - no `_carriedState` / `subtreeMap` style rescue path for serialization
 - no pretending a naked node can answer render-aware parent questions
@@ -262,8 +281,8 @@ Instead:
 
 - canonical nodes keep canonical structure
 - alternate edges live with the node they belong to
-- render root selects the path
-- cursor carries `node + root`
+- render key selects the path
+- cursor carries `node + key`
 
 ## Future Considerations Only If Proven Necessary
 

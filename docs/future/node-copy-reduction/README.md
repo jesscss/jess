@@ -6,9 +6,9 @@ The target model is:
 
 - one canonical AST
 - canonical nodes own canonical edges
-- canonical nodes may also own alternate edges keyed by render root
-- `RenderRoot` is only the path-selection key
-- traversal is done through a cursor: `{ node, root }`
+- canonical nodes may also own alternate edges keyed by render key
+- `RenderKey` is only the path-selection key
+- traversal is done through a cursor: `{ node, key }`
 
 See [eval-state-sketch.md](./eval-state-sketch.md) for the actual shape.
 
@@ -30,6 +30,7 @@ Treat that as transitional implementation baggage, not the target architecture.
 
 - no field-patch architecture
 - no render-root-owned patch tables
+- no generic `childEdges` map as the target shape
 - no routine deep cloning for eval isolation
 - no internal materialization except at explicit downstream boundaries
 - no hidden ambient state deciding which parent path a shared node uses
@@ -40,7 +41,7 @@ If one canonical node can be reached from multiple live placements, then:
 
 - a naked `Node` is not enough for traversal
 - code must carry a cursor
-- parent-aware traversal must use `{ node, root }`
+- parent-aware traversal must use `{ node, key }`
 
 ## Success Criteria
 

@@ -11,8 +11,8 @@
 The branch should move toward:
 
 - canonical nodes with canonical edges
-- alternate parent/child edges keyed by `RenderRoot`
-- cursor-based traversal: `{ node, root }`
+- alternate parent/child edges keyed by `RenderKey`
+- cursor-based traversal: `{ node, key }`
 
 The branch should move away from:
 
@@ -28,6 +28,7 @@ The branch should move away from:
 - do not introduce new detached overlay concepts
 - if a node cannot answer a parent question without a render key, use a cursor
 - if a node-local value truly changes identity, use a thin derived node only if edge rewiring is not enough
+- do not add new generic `childEdges` maps as target architecture
 
 ## Work Loop
 

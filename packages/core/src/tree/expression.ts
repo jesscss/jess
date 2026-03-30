@@ -22,7 +22,7 @@ export interface Expression extends Node<Node, NodeOptions, ExpressionChildData>
 export class Expression extends Node<Node, NodeOptions, ExpressionChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ readonly value!: Node;
+  readonly value!: Node;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const value = this.get('value', ctx);

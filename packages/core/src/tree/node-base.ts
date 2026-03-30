@@ -81,6 +81,15 @@ export type LocationInfoOrEmpty = LocationInfo | [];
  */
 export type OptionalLocation = LocationInfoOrEmpty | undefined;
 
+export type RenderKey = object | symbol;
+
+export type NodeEdge<T> = Map<RenderKey, T>;
+
+export type Cursor = {
+  node: Node;
+  key: RenderKey;
+};
+
 /**
  * Utility type to mark a node's value as generated
  */
@@ -609,8 +618,13 @@ export abstract class Node<
    * The parent node of this node. Usually, this
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
-   */
+  */
   declare readonly parent: Node | undefined;
+  declare parentEdges: NodeEdge<Node> | undefined;
+  declare childEdges: Map<
+    string,
+    NodeEdge<Node> | Array<NodeEdge<Node> | undefined>
+  > | undefined;
 
   get sourceParent() {
     return this._meta?.sourceParent;

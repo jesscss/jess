@@ -1,6 +1,8 @@
 import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
 import { getField, getParent, setField } from '../util/field-helpers.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -34,6 +36,21 @@ describe('Expression', () => {
     expect(rule.get('value')).not.toBe(shared);
     // Canonical parent unchanged
     expect(shared.parent).toBe(source);
+  });
+
+  it('reads a singular child through the cursor model', () => {
+    const canonical = any('foo');
+    const alternate = any('bar');
+    const rule = expr(canonical);
+    const key = {} as RenderKey;
+    const cursor = { node: rule, key };
+
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(rule, 'value', key, alternate);
+
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
+    expect(rule.value).toBe(canonical);
   });
 
   // it('should serialize to a module', () => {

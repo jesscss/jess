@@ -1,6 +1,6 @@
 # Node Update Status
 
-This file tracks the next runtime surfaces to move toward the render-root
+This file tracks the next runtime surfaces to move toward the render-key
 cursor model.
 
 It is intentionally short. It should only answer:
@@ -13,12 +13,35 @@ It is intentionally short. It should only answer:
 The target model is:
 
 - canonical nodes own alternate parent/child edges
-- traversal uses a cursor: `{ node, root }`
+- traversal uses a cursor: `{ node, key }`
+- one node has one local value
+- direct child fields stay direct readonly fields
+- generic `childEdges` scaffolding is temporary, not the target shape
+- edge helpers use `getEdge` / `getEdgeAt` / `addEdge` / `addEdgeAt`
 - no field-patch architecture
+- no `.get()` / `.set()` as the target node API
 - no render-root-owned patch tables
+- no `/** @internal */` markers on ordinary child fields
 - no clone/materialize escape hatch for ordinary eval flow
 
 ## Immediate Next Surfaces
+
+### 0. Expression
+
+Status: `started`
+
+What changed:
+
+- added cursor helper primitives for parent/child traversal
+- `Expression` keeps a direct readonly `value` field
+- singular child divergence is currently expressed with `addEdge(...)` / `getEdge(...)`
+- focused test covers canonical fallback plus render-root-selected child edge
+
+Relevant files:
+
+- `packages/core/src/tree/util/cursor.ts`
+- `packages/core/src/tree/expression.ts`
+- `packages/core/src/tree/__tests__/expression.test.ts`
 
 ### 1. Parent/child traversal helpers
 
@@ -31,7 +54,7 @@ Current issue:
 Target:
 
 - introduce cursor-aware edge helpers
-- make parent-aware traversal explicitly depend on `{ node, root }`
+- make parent-aware traversal explicitly depend on `{ node, key }`
 
 Likely files:
 
