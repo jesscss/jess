@@ -85,7 +85,7 @@ export class ScssPlugin extends AbstractPlugin {
 
     try {
       const parseResult = this.parser.parse(source, 'stylesheet', { context });
-      tree = parseResult.tree as Rules;
+      tree = parseResult.tree;
 
       // Convert parser errors to normalized diagnostics
       if (parseResult.errors.length) {
@@ -122,8 +122,8 @@ export class ScssPlugin extends AbstractPlugin {
         }
       }
     } catch (error: unknown) {
-      if (error && typeof error === 'object' && 'severity' in error) {
-        const diagnostic = toDiagnostic(error as JessError);
+      if (error instanceof JessError) {
+        const diagnostic = toDiagnostic(error);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {

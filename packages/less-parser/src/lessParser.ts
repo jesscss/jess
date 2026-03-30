@@ -76,6 +76,7 @@ export class LessParser {
 
   parse(text: string): IParseResult<Rules>;
   parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet', options: { context?: TreeContext }): IParseResult<Rules>;
   parse(text: string, rule?: LessRules, options?: { context?: TreeContext }): IParseResult;
   parse(text: string, rule: LessRules = 'stylesheet', options?: { context?: TreeContext }): IParseResult {
     const parser = this.parser;

@@ -40,6 +40,7 @@ export class ScssParser {
 
   parse(text: string): IParseResult<Rules>;
   parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet', options: { context?: TreeContext }): IParseResult<Rules>;
   parse(text: string, rule?: ScssRules, options?: { context?: TreeContext }): IParseResult;
   parse(text: string, rule: ScssRules = 'stylesheet', options?: { context?: TreeContext }): IParseResult {
     const parser = this.parser;

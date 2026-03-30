@@ -115,15 +115,13 @@ export function pipe<A>(
 export function pipe(...args: any[]): any {
   let input: any;
   let fns: AnyFn[];
-  if (args.length === 0) return undefined as any;
+  if (args.length === 0) {
+    return undefined as any;
+  }
 
   const first = args[0];
   const second = args[1];
   const rest = args.slice(1) as AnyFn[];
-  // Disambiguation:
-  // - If first and second are both functions → treat as steps-only (no explicit input)
-  // - Else if more than one arg → treat first as input (value | Promise | thunk)
-  // - Else single function → steps-only
   const stepsOnly = typeof first === 'function' && typeof second === 'function';
   if (stepsOnly) {
     input = undefined;
@@ -178,7 +176,7 @@ function runAsyncSafe<R>(v: any, fns: AnyFn[], startIndex: number, opts: SafePip
   for (let i = startIndex; i < fns.length; i++) {
     const fn = fns[i]!;
     p = p.then(
-      val => {
+      (val) => {
         try {
           return fn(val);
         } catch (e) {
@@ -186,13 +184,13 @@ function runAsyncSafe<R>(v: any, fns: AnyFn[], startIndex: number, opts: SafePip
           return resolveFallback(fallback);
         }
       },
-      e => {
+      (e) => {
         callOnError(e);
         return resolveFallback(fallback);
       }
     );
   }
-  return p.catch(e => {
+  return p.catch((e) => {
     callOnError(e);
     return resolveFallback(fallback);
   });
@@ -252,18 +250,18 @@ export function safePipe(...args: any[]): any {
   let options: SafePipeOptions<any>;
   let fns: AnyFn[];
 
-  if (args.length === 0) return undefined as any;
+  if (args.length === 0) {
+    return undefined as any;
+  }
 
   const first = args[0];
   const second = args[1];
   const looksLikeOptions = (x: unknown): x is SafePipeOptions<any> => !!x && typeof x === 'object' && !Array.isArray(x);
-  // Special-case: options-first with no steps should return undefined
   if (args.length === 1 && !!first && typeof first === 'object') {
     return undefined as any;
   }
   const bothFns = typeof first === 'function' && typeof second === 'function';
   if (looksLikeOptions(first) || bothFns) {
-    // options-first or steps-only (no explicit input)
     input = undefined;
     options = looksLikeOptions(first) ? (first as SafePipeOptions<any>) : {};
     fns = (looksLikeOptions(first) ? args.slice(1) : args) as AnyFn[];
@@ -282,11 +280,11 @@ export function safePipe(...args: any[]): any {
       }
       input = out;
     } catch (e) {
-      try { options?.onError?.(e); } catch {}
+      try {
+        options?.onError?.(e);
+      } catch {}
       return resolveFallback(options?.fallback) as any;
     }
   }
   return input as any;
 }
-
-
