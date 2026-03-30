@@ -5,10 +5,12 @@ import mergeWith from 'lodash-es/mergeWith.js';
 import { getConfigWithMeta } from './config.js';
 import {
   Context,
+  Rules,
+  type ContextOptions,
   type PrintOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
-  type JessError,
+  JessError,
   toDiagnostic,
   logger,
   type Deprecation
@@ -17,7 +19,8 @@ import {
   getOptions,
   type StylesConfig,
   type JavaScriptSandboxConfig,
-  type CompileJavaScriptOption
+  type CompileJavaScriptOption,
+  type OutputOptions
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
@@ -90,24 +93,24 @@ const createBaseConfig = (): ConfigOptions => ({
 /**
  * Customizer for mergeWith that concatenates arrays instead of replacing them
  */
-function arrayConcatCustomizer(objValue: any, srcValue: any): any {
+function arrayConcatCustomizer(objValue: unknown, srcValue: unknown): unknown {
   if (isArray(objValue) && isArray(srcValue)) {
     return [...objValue, ...srcValue];
   }
-  // Return undefined to use default merge behavior for non-arrays
   return undefined;
 }
 
-function stableStringify(value: any): string {
+function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(',')}]`;
   }
-  const entries = Object.keys(value)
+  const obj = value as Record<string, unknown>;
+  const entries = Object.keys(obj)
     .sort()
-    .map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
+    .map(key => `${JSON.stringify(key)}:${stableStringify(obj[key])}`);
   return `{${entries.join(',')}}`;
 }
 
@@ -228,8 +231,8 @@ const createConsumerRequire = (fromDir?: string) => {
 const resolveFromConsumer = (specifier: string, fromDir?: string): string | undefined => {
   try {
     return createConsumerRequire(fromDir).resolve(specifier);
-  } catch (err: any) {
-    if (err?.code === 'MODULE_NOT_FOUND') {
+  } catch (err: unknown) {
+    if (err instanceof Error && 'code' in err && err.code === 'MODULE_NOT_FOUND') {
       return undefined;
     }
     throw err;
@@ -331,14 +334,14 @@ export class Compiler {
     if (!resolvedOutputFilePath) {
       if (Array.isArray(effectiveConfig.output)) {
         // If output is an array, we need the expected output file path to match
-      } else if (effectiveConfig.output && 'file' in effectiveConfig.output && (effectiveConfig.output as any).file) {
+      } else if (effectiveConfig.output && !Array.isArray(effectiveConfig.output) && effectiveConfig.output.file) {
         const dir = filePath ? path.dirname(filePath) : '.';
         const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
-        resolvedOutputFilePath = path.join(dir, (effectiveConfig.output as any).file.replace('{name}', name));
-      } else if (renderOptions?.output && !Array.isArray(renderOptions.output) && 'file' in renderOptions.output && (renderOptions.output as any).file) {
+        resolvedOutputFilePath = path.join(dir, effectiveConfig.output.file.replace('{name}', name));
+      } else if (renderOptions?.output && !Array.isArray(renderOptions.output) && 'file' in renderOptions.output && renderOptions.output.file) {
         const dir = filePath ? path.dirname(filePath) : '.';
         const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
-        resolvedOutputFilePath = path.join(dir, (renderOptions.output as any).file.replace('{name}', name));
+        resolvedOutputFilePath = path.join(dir, renderOptions.output.file.replace('{name}', name));
       }
     }
     const configInputPath = filePath ?? (
@@ -361,8 +364,8 @@ export class Compiler {
       if (!Array.isArray(effectiveConfig.output) || !resolvedOutputFilePath) {
         return undefined;
       }
-      const outputEntries = effectiveConfig.output as Array<Record<string, any>>;
-      let defaults: Record<string, any> = {};
+      const outputEntries = effectiveConfig.output as OutputOptions[];
+      let defaults: OutputOptions = {};
       if (outputEntries[0] && typeof outputEntries[0] === 'object' && !('file' in outputEntries[0])) {
         defaults = outputEntries[0]!;
       }
@@ -376,10 +379,10 @@ export class Compiler {
         const expandedPath = path.join(dir, filePattern.replace('{name}', name));
         if (expandedPath === resolvedOutputFilePath) {
           if ('collapseNesting' in entry) {
-            return entry.collapseNesting as boolean | undefined;
+            return entry.collapseNesting;
           }
           if ('collapseNesting' in defaults) {
-            return defaults.collapseNesting as boolean | undefined;
+            return defaults.collapseNesting;
           }
           return undefined;
         }
@@ -388,11 +391,10 @@ export class Compiler {
     };
 
     const matchedOutputCollapseNesting = resolveMatchedOutputCollapseNesting();
-    const explicitOutputCollapseNesting = (
+    const explicitOutputCollapseNesting: boolean | undefined =
       !Array.isArray(effectiveConfig.output)
-        ? (effectiveConfig.output as any)?.collapseNesting
-        : undefined
-    ) as boolean | undefined;
+        ? effectiveConfig.output?.collapseNesting
+        : undefined;
     const printOptions = {
       collapseNesting: explicitOutputCollapseNesting
         ?? matchedOutputCollapseNesting
@@ -416,10 +418,10 @@ export class Compiler {
     return stableStringify({
       math: lessOptions.math,
       mathMode: lessOptions.mathMode,
-      strictUnits: (lessOptions as any).strictUnits,
+      strictUnits: lessOptions.strictUnits,
       unitMode: lessOptions.unitMode,
       equalityMode: lessOptions.equalityMode,
-      allowExtendSelectors: (lessOptions as any).allowExtendSelectors,
+      allowExtendSelectors: lessOptions.allowExtendSelectors,
       leakyRules: lessOptions.leakyRules,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
       collapseNesting: lessOptions.collapseNesting
@@ -439,17 +441,19 @@ export class Compiler {
   private getConfiguredPluginFactory(specifier: string): Promise<PluginFactoryRecord> {
     let factoryPromise = this.configuredPluginFactoryCache.get(specifier);
     if (!factoryPromise) {
-      factoryPromise = import(specifier).then((mod: any) => {
-        const pluginFactoryOrInstance = mod?.default ?? mod?.lessCompatPlugin ?? mod?.plugin ?? mod;
+      factoryPromise = import(specifier).then((mod: Record<string, unknown>) => {
+        const pluginFactoryOrInstance = (mod?.default ?? mod?.lessCompatPlugin ?? mod?.plugin ?? mod) as
+          | ((...args: unknown[]) => unknown)
+          | Record<string, unknown>;
         if (typeof pluginFactoryOrInstance === 'function') {
           return {
             name: specifier,
-            create: () => {
-              const plugin = pluginFactoryOrInstance();
+            create: (): PluginInterface => {
+              const plugin = pluginFactoryOrInstance() as Record<string, unknown>;
               if (!plugin || typeof plugin !== 'object' || typeof plugin.name !== 'string') {
                 throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
               }
-              return plugin as PluginInterface;
+              return plugin as unknown as PluginInterface;
             }
           };
         }
@@ -457,8 +461,8 @@ export class Compiler {
           throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
         }
         return {
-          name: pluginFactoryOrInstance.name,
-          create: () => pluginFactoryOrInstance as PluginInterface
+          name: pluginFactoryOrInstance.name as string,
+          create: (): PluginInterface => pluginFactoryOrInstance as unknown as PluginInterface
         };
       });
       this.configuredPluginFactoryCache.set(specifier, factoryPromise);
@@ -480,12 +484,13 @@ export class Compiler {
       return pluginPromise;
     };
 
-    const base: Record<string, any> = {
+    const base: Record<string | symbol, unknown> = {
       name: specifier,
       prewarm: async () => {
         const plugin = await getPlugin();
-        if (typeof (plugin as any).prewarm === 'function') {
-          await (plugin as any).prewarm();
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.prewarm === 'function') {
+          await (p.prewarm as () => Promise<void>)();
         }
       }
     };
@@ -501,10 +506,11 @@ export class Compiler {
         if (!loadedPlugin) {
           return undefined;
         }
-        const value = (loadedPlugin as any)[prop];
-        return typeof value === 'function' ? value.bind(loadedPlugin) : value;
+        const lp = loadedPlugin as unknown as Record<string | symbol, unknown>;
+        const value = lp[prop];
+        return typeof value === 'function' ? (value as Function).bind(loadedPlugin) : value;
       }
-    }) as LazyPluginInterface;
+    }) as unknown as LazyPluginInterface;
   }
 
   private getJsPluginFactory(
@@ -521,8 +527,8 @@ export class Compiler {
     });
     let factoryPromise = this.jsPluginFactoryCache.get(key);
     if (!factoryPromise) {
-      factoryPromise = import(pathToFileURL(resolvedSpecifier).href).then((mod: any) => {
-        const pluginFactory = (mod?.default ?? mod) as ((opts?: JavaScriptSandboxConfig) => PluginInterface);
+      factoryPromise = import(pathToFileURL(resolvedSpecifier).href).then((mod: Record<string, unknown>) => {
+        const pluginFactory = (mod?.default ?? mod) as unknown as ((opts?: JavaScriptSandboxConfig) => PluginInterface);
         return {
           name: 'js',
           create: () => pluginFactory(jsConfig)
@@ -567,8 +573,9 @@ export class Compiler {
       supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
       prewarm: async () => {
         const plugin = await getPlugin();
-        if (typeof (plugin as any).prewarm === 'function') {
-          await (plugin as any).prewarm();
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.prewarm === 'function') {
+          await (p.prewarm as () => Promise<void>)();
         }
       },
       import: async (absoluteFilePath) => {
@@ -603,7 +610,7 @@ export class Compiler {
           pluginMap.set(plugin, this.createConfiguredPluginProxy(plugin));
           continue;
         }
-        pluginMap.set(plugin.name, plugin as PluginInterface);
+        pluginMap.set(plugin.name, plugin as unknown as PluginInterface);
       }
     }
 
@@ -627,22 +634,22 @@ export class Compiler {
   }
 
   private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
-    const contextOptions = {
+    const contextOptions: Record<string, unknown> = {
       ...resolved.effectiveConfig.compile,
       ...resolved.activeOptions
     };
     if (resolved.normalizedCompileJavaScript) {
-      (contextOptions as any).javascript = resolved.jsPluginConfig;
+      contextOptions.javascript = resolved.jsPluginConfig;
     }
-    (contextOptions as any).collapseNesting = resolved.printOptions.collapseNesting;
-    (contextOptions as any).output = {
-      ...(typeof (resolved.effectiveConfig.output as any) === 'object' && !Array.isArray(resolved.effectiveConfig.output)
-        ? (resolved.effectiveConfig.output as any)
+    contextOptions.collapseNesting = resolved.printOptions.collapseNesting;
+    contextOptions.output = {
+      ...(typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
+        ? resolved.effectiveConfig.output
         : {}),
       collapseNesting: resolved.printOptions.collapseNesting
     };
 
-    return new Context(contextOptions, plugins);
+    return new Context(contextOptions as ContextOptions, plugins);
   }
 
   private async prepareRender(
@@ -672,29 +679,30 @@ export class Compiler {
     return this.createContextFromResolved(resolved, plugins);
   }
 
-  private applyPreEvalVisitors(context: Context, tree: any, currentFilePath: string) {
+  private applyPreEvalVisitors(context: Context, tree: any, currentFilePath: string): any {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
     let current = tree;
-    const processed = new Set<any>();
+    const processed = new Set<unknown>();
     for (let pass = 0; pass < 2; pass++) {
       for (const plugin of context.plugins) {
-        if (typeof (plugin as any).setContext === 'function') {
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.setContext === 'function') {
           try {
-            (plugin as any).setContext(context);
+            (p.setContext as (ctx: Context) => void)(context);
           } catch {
             // ignore
           }
         }
-        if (typeof (plugin as any).setCurrentFilePath === 'function') {
+        if (typeof p.setCurrentFilePath === 'function') {
           try {
-            (plugin as any).setCurrentFilePath(currentFilePath);
+            (p.setCurrentFilePath as (fp: string) => void)(currentFilePath);
           } catch {
             // ignore
           }
         }
-        const pre = (plugin as any).preEvalVisitor;
+        const pre = plugin.preEvalVisitor;
         if (!pre) {
           continue;
         }
@@ -717,13 +725,13 @@ export class Compiler {
     return current;
   }
 
-  private applyPostEvalVisitors(context: Context, tree: any) {
+  private applyPostEvalVisitors(context: Context, tree: any): any {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
     let current = tree;
     for (const plugin of context.plugins) {
-      const post = (plugin as any).postEvalVisitor;
+      const post = plugin.postEvalVisitor;
       if (!post) {
         continue;
       }
@@ -747,14 +755,14 @@ export class Compiler {
     };
 
     const originalGetTree = context.getTree.bind(context);
-    context.getTree = async (importPath: string, importOptions: any = {}) => {
+    context.getTree = async (importPath: string, importOptions = {}) => {
       const result = await originalGetTree(importPath, importOptions);
       const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
       const processedTree = this.applyPreEvalVisitors(context, result.node, resolvedPath);
       if (processedTree && processedTree !== result.node) {
         result.node = processedTree;
         if (result.resolvedPath) {
-          context.sourceTrees.set(result.resolvedPath, processedTree as any);
+          context.sourceTrees.set(result.resolvedPath, processedTree as Rules);
         }
       }
       return result;
@@ -763,8 +771,9 @@ export class Compiler {
 
   private async prewarmPlugins(context: Context) {
     for (const plugin of context.plugins) {
-      if (typeof (plugin as any).prewarm === 'function') {
-        await (plugin as any).prewarm();
+      const p = plugin as unknown as Record<string, unknown>;
+      if (typeof p.prewarm === 'function') {
+        await (p.prewarm as () => Promise<void>)();
       }
     }
   }
@@ -817,10 +826,11 @@ export class Compiler {
     css = measureProfileSync(profile, 'postProcessCss', () => {
       let nextCss = css;
       for (const plugin of context.plugins || []) {
-        if (typeof (plugin as any).runPostProcessors === 'function') {
-          nextCss = (plugin as any).runPostProcessors(nextCss, {});
-        } else if (typeof (plugin as any).postProcessCss === 'function') {
-          nextCss = (plugin as any).postProcessCss(nextCss, context);
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.runPostProcessors === 'function') {
+          nextCss = (p.runPostProcessors as (css: string, opts: Record<string, unknown>) => string)(nextCss, {});
+        } else if (typeof p.postProcessCss === 'function') {
+          nextCss = (p.postProcessCss as (css: string, ctx: Context) => string)(nextCss, context);
         }
       }
       return nextCss;
@@ -849,7 +859,7 @@ export class Compiler {
         warnings: context.warnings.length
       });
       return { tree: postEvald, context };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
@@ -857,7 +867,7 @@ export class Compiler {
           verbose: options?.verbose ?? false
         });
       } else {
-        logger.error(err.toString());
+        logger.error(String(err));
       }
       finalizeRenderProfile(profile, {
         method: 'compile',
@@ -865,7 +875,7 @@ export class Compiler {
         errors: context.errors.length,
         warnings: context.warnings.length,
         failed: true,
-        errorMessage: err?.message ?? String(err)
+        errorMessage: err instanceof Error ? err.message : String(err)
       });
       throw err;
     }
@@ -883,9 +893,9 @@ export class Compiler {
         warnings: context.warnings.length
       });
       return css;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(err.toString());
+        logger.error(String(err));
       }
       finalizeRenderProfile(profile, {
         method: 'render',
@@ -893,7 +903,7 @@ export class Compiler {
         errors: context.errors.length,
         warnings: context.warnings.length,
         failed: true,
-        errorMessage: err?.message ?? String(err)
+        errorMessage: err instanceof Error ? err.message : String(err)
       });
       throw err;
     }
@@ -918,15 +928,15 @@ export class Compiler {
         warnings: context.warnings.length
       });
       return css;
-    } catch (err: any) {
-      logger.error(err.toString());
+    } catch (err: unknown) {
+      logger.error(String(err));
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
         errors: context.errors.length,
         warnings: context.warnings.length,
         failed: true,
-        errorMessage: err?.message ?? String(err)
+        errorMessage: err instanceof Error ? err.message : String(err)
       });
       throw err;
     }
@@ -976,12 +986,13 @@ export class Compiler {
         warnings: [...context.warnings],
         loadedUrls
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
       const warnings: WarningDiagnostic[] = [...context.warnings];
+      const errMsg = err instanceof Error ? err.message : String(err);
 
-      if (err && typeof err === 'object' && 'severity' in err) {
-        const diagnostic = toDiagnostic(err as JessError);
+      if (err instanceof JessError) {
+        const diagnostic = toDiagnostic(err);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {
@@ -991,8 +1002,8 @@ export class Compiler {
         errors.push({
           code: 'internal/unknown',
           phase: 'eval',
-          message: err?.message || 'Unknown error',
-          reason: err?.message || 'An unexpected error occurred during compilation.',
+          message: errMsg || 'Unknown error',
+          reason: errMsg || 'An unexpected error occurred during compilation.',
           fix: 'Check the file and ensure it is valid.',
           filePath: filePath ?? undefined,
           line: 1,
@@ -1015,7 +1026,7 @@ export class Compiler {
         errors: errors.length,
         warnings: warnings.length,
         failed: true,
-        errorMessage: err?.message ?? String(err)
+        errorMessage: errMsg
       });
       return {
         css: '',
@@ -1053,12 +1064,13 @@ export class Compiler {
         errors: [...context.errors],
         warnings: [...context.warnings]
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
       const warnings: WarningDiagnostic[] = [...context.warnings];
+      const errMsg = err instanceof Error ? err.message : String(err);
 
-      if (err && typeof err === 'object' && 'severity' in err) {
-        const diagnostic = toDiagnostic(err as JessError);
+      if (err instanceof JessError) {
+        const diagnostic = toDiagnostic(err);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {
@@ -1068,8 +1080,8 @@ export class Compiler {
         errors.push({
           code: 'internal/unknown',
           phase: 'eval',
-          message: err?.message || 'Unknown error',
-          reason: err?.message || 'An unexpected error occurred during compilation.',
+          message: errMsg || 'Unknown error',
+          reason: errMsg || 'An unexpected error occurred during compilation.',
           fix: 'Check the file and ensure it is valid.',
           filePath,
           line: 1,
@@ -1083,7 +1095,7 @@ export class Compiler {
         errors: errors.length,
         warnings: warnings.length,
         failed: true,
-        errorMessage: err?.message ?? String(err)
+        errorMessage: errMsg
       });
       return { tree: null, context, errors, warnings };
     }
@@ -1108,12 +1120,13 @@ export class Compiler {
 
       const css = tree.toString(printOptions);
       return { css, errors, warnings };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       const errors: ErrorDiagnostic[] = [{
         code: 'internal/unknown',
         phase: 'eval',
-        message: err?.message || 'Unknown error',
-        reason: err?.message || 'An unexpected error occurred during rendering.',
+        message: errMsg || 'Unknown error',
+        reason: errMsg || 'An unexpected error occurred during rendering.',
         fix: 'Check the file and ensure it is valid.',
         filePath,
         line: 1,

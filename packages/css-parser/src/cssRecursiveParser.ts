@@ -29,6 +29,11 @@ import {
 
 import colors from 'color-name';
 
+type ColorName = keyof typeof colors;
+function isColorName(key: string): key is ColorName {
+  return key in colors;
+}
+
 import { type CssTokenType, SKIPPED_LABEL } from './cssTokens.js';
 
 export { tokenMatcher };
@@ -423,8 +428,8 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
           endColumn = t.endColumn!;
         }
         found = true;
-      } else if (item.location && (item.location as LocationInfo).length === 6) {
-        const loc = item.location as LocationInfo;
+      } else if (item.location && item.location.length === 6) {
+        const loc: LocationInfo = item.location;
         if (loc[0] < startOffset) {
           startOffset = loc[0];
           startLine = loc[1];
@@ -520,7 +525,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     }
     const rules: Node[] = [];
 
-    const processPrePost = (prePost: Node['pre']) => {
+    const processPrePost = (prePost: Node['pre']): Node['pre'] => {
       if (isArray(prePost)) {
         const remainder: Array<string | Node> = [];
         for (let i = 0; i < prePost.length; i++) {
@@ -549,12 +554,12 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     for (const rule of existingRules) {
       if (rule.pre === undefined) {
         const pre = this.getPrePost(rule.location[0]!);
-        rule.pre = processPrePost(pre) as Node['pre'];
+        rule.pre = processPrePost(pre);
       }
       rules.push(rule);
     }
     const tail = this.getPrePost(nextTokenLocation[0]!);
-    const remainder = processPrePost(tail) as 0 | 1 | Array<string | Comment | Nil> | undefined;
+    const remainder = processPrePost(tail);
     const returnRules = new Rules(
       rules,
       undefined,
@@ -609,8 +614,8 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
           this.context
         );
       }
-      if (colors[colorKey as keyof typeof colors]) {
-        const cv = colors[colorKey as keyof typeof colors];
+      if (isColorName(colorKey)) {
+        const cv = colors[colorKey];
         return new Color(
           { node: tokValue, rgb: cv, alpha: 1 },
           { format: ColorFormat.HEX },
@@ -621,17 +626,27 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       return new Any(tokValue, { role: 'ident' }, this.getLocationInfo(token), this.context);
     }
     if (tokenMatcher(token, T.Dimension)) {
-      const pl = token.payload as [string, string] | undefined;
+      const pl = token.payload as unknown as [string, string] | undefined;
       dimValue = { number: parseFloat(pl?.[0] ?? '0'), unit: pl?.[1] ?? '' };
       return getDimension(dimValue);
     }
     if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
-        case 'pi': numValue = Math.PI; break;
-        case 'infinity': numValue = Infinity; break;
-        case '-infinity': numValue = -Infinity; break;
-        case 'e': numValue = Math.E; break;
-        case 'nan': numValue = NaN; break;
+        case 'pi':
+          numValue = Math.PI;
+          break;
+        case 'infinity':
+          numValue = Infinity;
+          break;
+        case '-infinity':
+          numValue = -Infinity;
+          break;
+        case 'e':
+          numValue = Math.E;
+          break;
+        case 'nan':
+          numValue = NaN;
+          break;
       }
       return getNumber(numValue!);
     }

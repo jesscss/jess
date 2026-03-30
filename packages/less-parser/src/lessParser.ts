@@ -1,4 +1,4 @@
-import { Lexer, type IToken } from 'chevrotain';
+import { Lexer, type IToken, type IRecognitionException } from 'chevrotain';
 import { lessTokens, lessFragments } from './lessTokens.js';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { LessRecursiveParser, type LessParserConfig, type TokenMap } from './lessRecursiveParser.js';
@@ -26,7 +26,7 @@ let cachedTokenMap: TokenMap | undefined;
 function getSharedLexerAndParser(config: LessParserConfig): { lexer: Lexer; parser: LessRecursiveParser } {
   if (!cachedLexer || !cachedParser) {
     const { lexer, T } = createLexerDefinition(
-      lessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
+      lessFragments(),
       lessTokens()
     );
     cachedTokenMap = T as TokenMap;
@@ -86,14 +86,18 @@ export class LessParser {
       parser.context = options.context;
     }
     parser.input = lexerResult.tokens;
-    const tree = (parser as any)[rule]() as Node;
+    const ruleMethod = parser[rule as keyof typeof parser] as (() => Node) | undefined;
+    if (typeof ruleMethod !== 'function') {
+      throw new Error(`Unknown parser rule: ${rule}`);
+    }
+    const tree: Node = ruleMethod.call(parser);
 
     const warnings = [...parser.warnings];
 
     return {
       tree,
       lexerResult,
-      errors: parser.errors as any,
+      errors: parser.errors,
       warnings
     };
   }

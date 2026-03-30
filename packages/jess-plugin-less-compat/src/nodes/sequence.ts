@@ -38,12 +38,12 @@ export const transformSequenceToLess = createFromAdapter<Sequence>({
       }
 
       const visited = visitor.visit(lessItem);
-      if (visited && visited !== lessItem && typeof visited === 'object' && (visited as any).type) {
+      if (visited && visited !== lessItem && typeof visited === 'object' && 'type' in visited) {
         try {
           const jessReplacement = fromLessNode(visited, { cache: new WeakMap() });
           if (item instanceof Node) {
-            (jessReplacement as any).pre = (item as any).pre;
-            (jessReplacement as any).post = (item as any).post;
+            jessReplacement.pre = item.pre;
+            jessReplacement.post = item.post;
           }
           seq.adopt(jessReplacement);
           const seqArr = seq.get('value') as Node[];

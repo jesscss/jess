@@ -70,17 +70,28 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
 };
 
 function isDefaultGuardCall(node: Node | undefined): node is Call {
-  if (!node || node.type !== 'Call') {
+  if (!node || !isNode(node, N.Call)) {
     return false;
   }
-  const callName = (node as Call).name;
-  const callNameStr = String((callName as any)?.valueOf?.() ?? callName ?? '');
+  const callName = node.name;
+  const callNameStr = String(
+    (typeof callName === 'object' && callName !== null && 'valueOf' in callName)
+      ? callName.valueOf()
+      : callName ?? ''
+  );
   if (callNameStr === 'default' || callNameStr === '??') {
     return true;
   }
-  const key = (callName as any)?.key;
-  const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
-  return keyStr === 'default' || keyStr === '??';
+  if (callName instanceof Reference) {
+    const key = callName.key;
+    const keyStr = String(
+      (typeof key === 'object' && key !== null && 'valueOf' in key)
+        ? key.valueOf()
+        : key ?? ''
+    );
+    return keyStr === 'default' || keyStr === '??';
+  }
+  return false;
 }
 
 // Save CSS production factory for super calls
@@ -484,30 +495,28 @@ export function mixinName(this: P, T: TokenMap) {
     let nameValue = name.image;
     let location = $.getLocationInfo(name);
     if (nameValue.includes('@') || nameValue.includes('$')) {
-      nameNode = getInterpolated(nameValue, location, $.context);
+      const interpolated = getInterpolated(nameValue, location, $.context);
+      nameNode = interpolated;
       if (asReference) {
-        // For interpolated keys, we can't merge into array easily, so keep nested structure
-        // But we still check type to ensure consistency
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
-          // Keep nested structure for interpolated keys
-          nameNode = new Reference({ target: ctx.node, key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
+          nameNode = new Reference({ target: ctx.node, key: interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
         } else {
-          nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
+          const target = ctx.node as Node | undefined;
+          nameNode = new Reference({ target: target instanceof Call ? target : target instanceof Reference ? target : undefined, key: interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
         }
       }
     } else {
       if (asReference) {
         // If target is a Reference with matching type, merge keys instead of nesting
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
-          const existingKey = (ctx.node as Reference).key;
+          const existingKey = ctx.node.key;
           let mergedKeys: string[];
           if (Array.isArray(existingKey)) {
             mergedKeys = [...existingKey];
           } else {
-            mergedKeys = [existingKey as string];
+            mergedKeys = [String(existingKey)];
           }
           mergedKeys.push(nameValue);
-          // Create a single Reference with merged keys (no target)
           nameNode = new Reference(
             { key: mergedKeys.length === 1 ? mergedKeys[0]! : mergedKeys },
             { type: 'mixin-ruleset', role: 'name' },
@@ -515,8 +524,8 @@ export function mixinName(this: P, T: TokenMap) {
             $.context
           );
         } else {
-          // Target is Call, Reference with different type, or undefined - create Reference with target
-          nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
+          const target = ctx.node as Node | undefined;
+          nameNode = new Reference({ target: target instanceof Call ? target : target instanceof Reference ? target : undefined, key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
         }
       } else {
         nameNode = $.wrap(new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), $.context), true);
@@ -636,13 +645,12 @@ export function lookupOrCall(this: P, T: TokenMap) {
             return;
           }
           let ref: Reference;
-          let target = ctx.node as Call | Reference;
+          const targetNode = ctx.node;
+          const target = targetNode instanceof Call ? targetNode : targetNode instanceof Reference ? targetNode : undefined;
           if (keyToken) {
             let tokenStr = keyToken.image;
             let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
-            // Handle all token types consistently
             if (keyToken.tokenType === T.NestedReference) {
-              // For NestedReference, add $ prefix if not present
               let tokenStr = keyToken.image;
               if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
                 tokenStr = '$' + tokenStr;
@@ -650,17 +658,15 @@ export function lookupOrCall(this: P, T: TokenMap) {
             }
             let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), $.context);
 
-            // Only merge keys for mixin, mixin-ruleset, or ruleset types
-            // For variable and property types, keep them nested (target.key structure)
             const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
             const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
             if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
-              const existingKey = (target as Reference).key;
+              const existingKey = target.key;
               let mergedKeys: string[];
               if (Array.isArray(existingKey)) {
                 mergedKeys = [...existingKey];
               } else {
-                mergedKeys = [existingKey as string];
+                mergedKeys = [String(existingKey)];
               }
               mergedKeys.push(result);
               ref = new Reference(
@@ -691,7 +697,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
           if ($.RECORDING_PHASE) {
             return;
           }
-          return new Call({ name: ctx.node as Call | Reference, args }, undefined, $.endRule(), $.context);
+          return new Call({ name: ctx.node!, args }, undefined, $.endRule(), $.context);
         }
       }
     ]);
@@ -784,7 +790,8 @@ export function mixinArgList(this: P, T: TokenMap) {
     let location = $.endRule();
     let nodes = isSemiList ? semiNodes : commaNodes!;
     let sep: ';' | ',' = isSemiList ? ';' : ',';
-    return $.wrap(new List(nodes, { sep }, location, $.context), 'both') as List;
+    const result: List = $.wrap(new List(nodes, { sep }, location, $.context), 'both');
+    return result;
   };
 }
 
@@ -933,9 +940,9 @@ export function exportAtRule(this: P, T: TokenMap) {
         $.CONSUME(T.PlainIdent);
       }
       // Consume namespace identifier
-      const nsTok = $.isType(T.Ident)
-        ? ($.CONSUME(T.Ident) as unknown as IToken)
-        : ($.CONSUME(T.PlainIdent) as unknown as IToken);
+      const nsTok: IToken = $.isType(T.Ident)
+        ? $.CONSUME(T.Ident)
+        : $.CONSUME(T.PlainIdent);
       namespace = nsTok.image;
     });
 

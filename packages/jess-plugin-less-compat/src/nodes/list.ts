@@ -19,7 +19,7 @@ function getFilteredValue(list: List, cache?: WeakMap<any, any>) {
   }
   if (data != null) {
     if (data && typeof data === 'object' && 'type' in data) {
-      const lessValue = toLessNode(data as unknown as Node, { cache });
+      const lessValue = toLessNode(data as Node, { cache });
       return lessValue ? [lessValue] : [];
     }
     return [data];

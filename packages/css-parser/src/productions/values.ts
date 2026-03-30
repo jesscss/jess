@@ -117,7 +117,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
     {
       GATE: () => $.LA(1).tokenType.name === 'ColorIntStart' || $.LA(1).tokenType.name === 'ColorIdentStart',
       ALT: () => {
-        const token = $.CONSUME($.LA(1).tokenType as any);
+        const token = $.CONSUME($.LA(1).tokenType);
         if (!$.RECORDING_PHASE) {
           return $.wrap($.processValueToken(token, ctx), undefined, ctx);
         }
@@ -154,7 +154,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
 
   return (ctx: RuleContext = {}) => {
     if (!$.RECORDING_PHASE && ($.LA(1).tokenType.name === 'ColorIntStart' || $.LA(1).tokenType.name === 'ColorIdentStart')) {
-      const token = $.CONSUME($.LA(1).tokenType as any);
+      const token = $.CONSUME($.LA(1).tokenType);
       return $.wrap($.processValueToken(token, ctx), undefined, ctx);
     }
     return $.OR(alt(ctx));
@@ -564,7 +564,7 @@ export function mathSum(this: C, T: TokenMap) {
       if (tt !== T.Plus && tt !== T.Minus) {
         break;
       }
-      const op = $.CONSUME(tt as any);
+      const op = $.CONSUME(tt);
       while ($.LA(1).tokenType === T.WS) {
         $.CONSUME3(T.WS);
       }
@@ -619,7 +619,7 @@ export function mathProduct(this: C, T: TokenMap) {
       if (tt !== T.Star && tt !== T.Divide) {
         break;
       }
-      const op = $.CONSUME(tt as any);
+      const op = $.CONSUME(tt);
       while ($.LA(1).tokenType === T.WS) {
         $.CONSUME3(T.WS);
       }
@@ -746,7 +746,7 @@ export function ifFunction(this: C, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     const start = $.CONSUME(T.FunctionStart);
-    const args = $.SUBRULE($.ifFunctionArgs, { ARGS: [{ ...ctx, inner: true }] }) as Node;
+    const args: Node = $.SUBRULE($.ifFunctionArgs, { ARGS: [{ ...ctx, inner: true }] });
     $.CONSUME(T.RParen);
     if (!$.RECORDING_PHASE) {
       const location = $.endRule();

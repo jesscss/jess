@@ -52,7 +52,7 @@ export type LessExtraTokenType =
   | 'InterpolatedSelector';
 
 function $preBuildFragments() {
-  const fragments = rawCssFragments() as unknown as string[][];
+  const fragments: string[][] = rawCssFragments().map(f => [...f]);
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
   fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}']);
 
@@ -339,7 +339,7 @@ function $preBuildTokens() {
     'SingleQuoteStart',
     'DoubleQuoteStart',
     'WS'
-  ] as any;
+  ] as Array<RawTokenConfig | string>;
   return tokens;
 }
 

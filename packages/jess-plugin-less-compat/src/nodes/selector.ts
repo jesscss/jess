@@ -111,7 +111,6 @@ function createElementProxy(
   // the shared cache so toLessNode returns it when the Jess walker visits
   // this BasicSelector — matching the original code's caching behavior.
   const proxy = createLessProxy(basic, undefined, (prop, target) => {
-    const basicSel = target as Node;
     if (prop === 'type') {
       return 'Element';
     }
@@ -119,24 +118,24 @@ function createElementProxy(
       return combinator;
     }
     if (prop === 'value') {
-      return (basicSel as { value?: unknown }).value;
+      return 'value' in target ? target.value : undefined;
     }
     if (prop === 'isVariable') {
       return false;
     }
     if (prop === 'accept') {
-      return function(visitor: any) {
+      return function(visitor: { visit?: (n: unknown) => void }) {
         if (combinator && visitor.visit) {
           visitor.visit(combinator);
         }
-        const value = (basicSel as { value?: unknown }).value;
-        if (value && typeof value === 'object') {
-          const lessValue = toLessNode(value as Node, { cache });
+        const value = 'value' in target ? target.value : undefined;
+        if (value && typeof value === 'object' && value instanceof Node) {
+          const lessValue = toLessNode(value, { cache });
           if (lessValue && visitor.visit) {
             visitor.visit(lessValue);
           }
         }
-        return basicSel;
+        return target;
       };
     }
     return undefined;

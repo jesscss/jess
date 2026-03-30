@@ -1,6 +1,6 @@
 import type { Color as LSPColor, ColorInformation, ColorPresentation } from 'vscode-languageserver-types';
 import type { Node, Color, Call, Any, Context, Rules } from '@jesscss/core';
-import { isNode, getValues, Context as ContextClass, Rules as RulesClass, JsFunction, TreeContext } from '@jesscss/core';
+import { isNode, getValues, N, Context as ContextClass, Rules as RulesClass, JsFunction, TreeContext } from '@jesscss/core';
 import { Color as ColorClass } from '@jesscss/core';
 import type * as LessFunctions from '@jesscss/fns';
 
@@ -173,7 +173,7 @@ export function colorToLSP(color: Color): LSPColor {
  * Get the text span of a node for creating a Range
  */
 export function getNodeSpan(node: Node): { start: number; end: number } | null {
-  const loc = (node as any).location as unknown;
+  const loc: unknown = node.location;
   if (Array.isArray(loc) && loc.length === 6) {
     const start = Number(loc[0]);
     const end = Number(loc[3]);
@@ -187,11 +187,11 @@ export function getNodeSpan(node: Node): { start: number; end: number } | null {
 /**
  * Check if a node is a color keyword identifier
  */
-function isColorKeyword(node: Node): boolean {
-  if (node.type !== 'Any') {
+function isColorKeyword(node: Node): node is Any {
+  if (!isNode(node, N.Any)) {
     return false;
   }
-  const anyNode = node as Any;
+  const anyNode = node;
   // Any nodes have value as a string
   const text = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
   if (!text || text === 'none') {
@@ -256,8 +256,11 @@ async function createEvaluationContext(): Promise<Context> {
 
     // Register all Less functions (including color functions like rgb, hsl, etc.)
     for (const [key, value] of Object.entries(lessFunctions)) {
-      if (typeof value === 'function' || (value && typeof (value as any).default === 'function')) {
-        const fn = (value as any).default || value;
+      if (typeof value === 'function') {
+        tree.register('function', new JsFunction({ name: key, fn: value }));
+      } else if (value && typeof value === 'object' && 'default' in value && typeof value.default === 'function') {
+        const defaultFn = value.default;
+        const fn = (...args: unknown[]) => defaultFn(...args);
         tree.register('function', new JsFunction({ name: key, fn }));
       }
     }
@@ -295,8 +298,8 @@ async function tryEvaluateColorCall(call: Call, context?: Context): Promise<Colo
     const result = await call.eval(evalContext);
 
     // Check if the result is a Color node
-    if (result && result.type === 'Color') {
-      return result as Color;
+    if (isNode(result, N.Color)) {
+      return result;
     }
 
     return null;
@@ -325,14 +328,13 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     seen.add(node);
 
     // Check if this node is a Color
-    if (node.type === 'Color') {
-      const colorNode = node as Color;
-      colors.push({ node: colorNode, color: colorNode });
+    if (isNode(node, N.Color)) {
+      colors.push({ node, color: node });
     }
 
     // Check if this is a color keyword (Any node with color keyword text)
     if (isColorKeyword(node)) {
-      const anyNode = node as Any;
+      const anyNode = node;
       const keyword = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
       if (keyword && keyword in colorKeywords) {
         const hexValue = colorKeywords[keyword];
@@ -349,18 +351,17 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     }
 
     // Check if this is a Call node that might be a color function
-    if (node.type === 'Call') {
-      const callNode = node as Call;
-      if (isColorFunction(callNode)) {
-        callNodes.push(callNode);
+    if (isNode(node, N.Call)) {
+      if (isColorFunction(node)) {
+        callNodes.push(node);
       }
     }
 
     // Traverse children
-    const value = (node as any).data;
+    const value = Reflect.get(node, 'data');
     for (const child of getValues(value)) {
       if (isNode(child)) {
-        stack.push(child as Node);
+        stack.push(child);
       }
     }
   }

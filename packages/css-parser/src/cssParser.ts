@@ -2,7 +2,7 @@ import { Lexer } from 'chevrotain';
 import { cssLexer } from './cssTokens.js';
 import { CssRecursiveParser, type CssRecursiveParserConfig } from './cssRecursiveParser.js';
 import { type Node, type Rules, type IParseResult } from '@jesscss/core';
-import type { IToken } from '@chevrotain/types';
+import type { TokenMap } from './cssRecursiveParser.js';
 
 export type CssRules = keyof {
   [K in keyof CssRecursiveParser as CssRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
@@ -35,7 +35,7 @@ export class CssParser {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new CssRecursiveParser(T as any, config);
+    this.parser = new CssRecursiveParser(T as TokenMap, config);
   }
 
   parse(text: string): IParseResult<Rules>;
@@ -44,13 +44,17 @@ export class CssParser {
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser;
     const lexerResult = this.lexer.tokenize(text);
-    parser.input = lexerResult.tokens as IToken[];
-    const tree = (parser as any)[rule]() as Node;
+    parser.input = lexerResult.tokens;
+    const ruleFn = Reflect.get(parser, rule);
+    if (typeof ruleFn !== 'function') {
+      throw new Error(`Unknown parser rule: ${rule}`);
+    }
+    const tree: Node = Reflect.apply(ruleFn, parser, []);
 
     return {
       tree,
       lexerResult,
-      errors: parser.errors as any,
+      errors: parser.errors,
       warnings: []
     };
   }

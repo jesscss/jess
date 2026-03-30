@@ -1,6 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { IToken } from '@chevrotain/types';
-import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
+import type { CssRecursiveParser, RuleContext, TokenMap, Rule } from '../cssRecursiveParser.js';
 import { EMPTY_ALT } from 'chevrotain';
 import {
   type LocationInfo,
@@ -34,7 +34,7 @@ export function layerAtRule(this: C, T: TokenMap) {
     // Parse now, structure later:
     // Parse optional first layer-name, then decide block vs statement
     // based on what follows (LCurly → block, Comma/Semi → statement)
-    const preludeNodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+    const preludeNodes: Node[] = [];
 
     // Parse optional first layer name
     $.OPTION(() => {
@@ -92,7 +92,7 @@ export function layerName(this: C, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+    const nodes: Node[] = [];
 
     const first = $.CONSUME(T.Ident);
     if (!RECORDING_PHASE) {
@@ -119,18 +119,24 @@ export function layerName(this: C, T: TokenMap) {
 /**
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@supports
  */
-export function supportsAtRule(this: C, T: TokenMap, preludeRule?: any) {
+export function supportsAtRule(this: C, T: TokenMap, preludeRule?: Rule | string) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
     $.startRule();
 
     let name = $.CONSUME(T.AtSupports);
-    const resolvedPreludeRule = typeof preludeRule === 'string'
-      ? ($ as unknown as Record<string, unknown>)[preludeRule]
-      : preludeRule;
-    const prelude: Node = typeof resolvedPreludeRule === 'function'
-      ? $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] })
+    let resolvedPreludeRule: Rule | undefined;
+    if (typeof preludeRule === 'string') {
+      const resolved: unknown = Reflect.get($, preludeRule);
+      if (typeof resolved === 'function') {
+        resolvedPreludeRule = resolved as Rule;
+      }
+    } else {
+      resolvedPreludeRule = preludeRule;
+    }
+    const prelude: Node = resolvedPreludeRule
+      ? $.SUBRULE(resolvedPreludeRule, { ARGS: [ctx] })
       : $.SUBRULE($.supportsCondition, { ARGS: [ctx] });
     $.CONSUME(T.LCurly);
     let rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
@@ -287,7 +293,10 @@ export function functionCallLike(this: C, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     const name = $.CONSUME(T.FunctionStart);
-    let args: Node[] = !RECORDING_PHASE ? [] : undefined as unknown as Node[];
+    let args!: Node[];
+    if (!RECORDING_PHASE) {
+      args = [];
+    }
     let seq: Sequence | undefined;
     $.MANY({
       GATE: () => {
@@ -465,7 +474,7 @@ export function importAtRule(this: C, T: TokenMap) {
     if (!RECORDING_PHASE) {
       preludeNodes = [];
     }
-    let node = $.SUBRULE($.importPrelude, { ARGS: [ctx] }) as Node;
+    let node: Node = $.SUBRULE($.importPrelude, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
       preludeNodes!.push($.wrap(node));
@@ -473,7 +482,7 @@ export function importAtRule(this: C, T: TokenMap) {
 
     let extraNodes: Node[] | undefined;
     $.OPTION(() => {
-      extraNodes = $.SUBRULE($.importPostlude, { ARGS: [ctx] }) as Node[];
+      extraNodes = $.SUBRULE($.importPostlude, { ARGS: [ctx] });
     });
     if (!RECORDING_PHASE && extraNodes && extraNodes.length) {
       for (const n of extraNodes) {
@@ -761,7 +770,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
           const seqLoc = $.getLocationFromNodes(valueNodes!);
           const seq = new Sequence(valueNodes!, undefined, seqLoc, this.context);
           // Use RawRules to avoid inserting newlines/indentation during serialization
-          rules = new RawRules([seq], undefined, seqLoc, this.context) as unknown as Rules;
+          rules = new RawRules([seq], undefined, seqLoc, this.context);
         }
       }
       return new AtRule({

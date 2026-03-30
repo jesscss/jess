@@ -35,11 +35,11 @@ export function stylesheet(this: C, T: TokenMap) {
     let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
-      if (charset) {
+      if (charset && root instanceof Rules) {
         let loc = $.getLocationInfo(charset);
         let rootLoc = root.location;
-        let rules = (root as Rules).value;
-        (root as Rules).setData([new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
+        let rules = root.value;
+        root.setData([new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
         rootLoc[0] = loc[0];
         rootLoc[1] = loc[1];
         rootLoc[2] = loc[2];
@@ -198,7 +198,8 @@ export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
         }
         return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
       }
-      return selector as Node;
+      const node: Node = selector;
+      return node;
     }
   };
 }
@@ -449,7 +450,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
     $.startRule();
 
     $.CONSUME2(T.LSquare);
-    let key = $.SUBRULE2($.attributeName) as Any;
+    let key: Any = $.SUBRULE2($.attributeName);
     let op: IToken | undefined;
     let value: Node | undefined;
     let mod: IToken | undefined;

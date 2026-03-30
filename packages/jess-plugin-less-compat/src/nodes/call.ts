@@ -23,7 +23,7 @@ export const transformCallToLess = createFromAdapter<Call>({
     const args = c.get('args');
     const argsValue = args?.get('value');
     return argsValue?.length
-      ? argsValue.filter((a: any) => a instanceof Node) as Node[]
+      ? argsValue.filter((a): a is Node => a instanceof Node)
       : [];
   })
 });

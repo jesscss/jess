@@ -57,8 +57,12 @@ type JessIndex = {
   findNodeAtOffset(offset: number): Node | null;
 };
 
+function nodeField(node: object, key: string): unknown {
+  return Reflect.get(node, key);
+}
+
 function getSpan(node: Node): { start: number; end: number } | null {
-  const loc = (node as any).location as unknown;
+  const loc: unknown = node.location;
   if (Array.isArray(loc) && loc.length === 6) {
     const start = Number(loc[0]);
     const end = Number(loc[3]);
@@ -86,10 +90,10 @@ function buildJessIndex(root: Node): JessIndex {
       out.push({ node, start: span.start, end: span.end });
     }
 
-    const value = (node as any).data;
+    const value = nodeField(node, 'data');
     for (const child of getValues(value)) {
       if (isNode(child)) {
-        stack.push(child as Node);
+        stack.push(child);
       }
     }
   }
@@ -266,13 +270,15 @@ function rangeFrom(
 // - Properties: use the same package Less parser uses (`known-css-properties`).
 // - Property values: from web custom data (properties have `values` arrays).
 const require = createRequire(import.meta.url);
-const webCssData = require('@vscode/web-custom-data/data/browsers.css-data.json') as {
-  atDirectives?: Array<{ name: string; description?: string | { value: string; kind?: string } }>;
-  properties?: Array<{ name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }> }>;
-};
 
 type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } };
 type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }> };
+type WebCssData = {
+  atDirectives?: AtDirectiveEntry[];
+  properties?: PropertyEntry[];
+};
+
+const webCssData: WebCssData = require('@vscode/web-custom-data/data/browsers.css-data.json');
 
 const AT_RULES: string[] = (webCssData.atDirectives ?? []).map(d => d.name).filter(Boolean);
 const AT_RULES_MAP = new Map<string, AtDirectiveEntry>();
@@ -282,8 +288,8 @@ for (const d of webCssData.atDirectives ?? []) {
   }
 }
 
-const knownCssProperties = require('known-css-properties') as { all?: unknown };
-const CSS_PROPERTIES: string[] = Array.isArray(knownCssProperties.all) ? (knownCssProperties.all as string[]) : [];
+const knownCssProperties: { all?: unknown } = require('known-css-properties');
+const CSS_PROPERTIES: string[] = Array.isArray(knownCssProperties.all) ? knownCssProperties.all.filter((v): v is string => typeof v === 'string') : [];
 
 // Build property name -> property data map for hover/completions.
 const PROPERTIES_MAP = new Map<string, PropertyEntry>();
@@ -442,11 +448,13 @@ function asStringName(value: unknown): string {
   if (typeof value === 'string') {
     return value;
   }
-  if (value && typeof (value as any).valueOf === 'function') {
-    return String((value as any).valueOf());
-  }
-  if (value && typeof (value as any).value === 'string') {
-    return String((value as any).value);
+  if (value && typeof value === 'object') {
+    if ('valueOf' in value && typeof value.valueOf === 'function') {
+      return String(value.valueOf());
+    }
+    if ('value' in value && typeof value.value === 'string') {
+      return String(value.value);
+    }
   }
   return String(value ?? '');
 }
@@ -820,10 +828,15 @@ export function createEngine(): JessLanguageServiceEngine {
     configure(config) {
       // Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
       // Example: { diagnostics: { severity: { "var/undefined": "error" } } }
-      const severity = (config as any)?.diagnostics?.severity;
+      const diagnosticsObj = (config && typeof config === 'object' && 'diagnostics' in config)
+        ? config.diagnostics
+        : undefined;
+      const severity = (diagnosticsObj && typeof diagnosticsObj === 'object' && 'severity' in diagnosticsObj)
+        ? diagnosticsObj.severity
+        : undefined;
       if (severity && typeof severity === 'object') {
         const next: Record<string, DiagnosticSeverity> = { ...semanticDiagnosticSeverities };
-        for (const [k, v] of Object.entries(severity as Record<string, unknown>)) {
+        for (const [k, v] of Object.entries(severity)) {
           const parsed = parseSeverity(v);
           if (parsed === null) {
             // off or invalid: delete to fall back to default behavior (or skip if off explicitly)
@@ -884,24 +897,15 @@ export function createEngine(): JessLanguageServiceEngine {
       if (wantVar && tracked.index) {
         const prefix = currentWord.toLowerCase();
         for (const { node } of tracked.index.nodes) {
-          if ((node as any).type !== 'VarDeclaration') {
+          if (node.type !== 'VarDeclaration') {
             continue;
           }
-          const nameNode = (node as any).name;
+          const nameNode = nodeField(node, 'name');
           if (!nameNode) {
             continue;
           }
           // Extract string value from node (might be Any node with valueOf(), or already a string)
-          let nameStr: string;
-          if (typeof nameNode === 'string') {
-            nameStr = nameNode;
-          } else if (nameNode && typeof nameNode.valueOf === 'function') {
-            nameStr = String(nameNode.valueOf());
-          } else if (nameNode && typeof nameNode.value === 'string') {
-            nameStr = nameNode.value;
-          } else {
-            nameStr = String(nameNode);
-          }
+          const nameStr = asStringName(nameNode);
           // Remove prefix if present for normalization (SCSS already strips $, Less might keep @)
           const nameWithoutPrefix = nameStr.replace(/^[$@]/, '');
           const label =
@@ -1069,15 +1073,14 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       // Walk up the tree to find Reference or Mixin if the node at position isn't one
-      let targetNode: any = node;
-      const maxDepth = 10; // Prevent infinite loops
+      let targetNode: Node | undefined = node;
+      const maxDepth = 10;
       let depth = 0;
       while (depth < maxDepth && targetNode) {
-        const n: any = targetNode;
-        if (n.type === 'Reference' || n.type === 'Mixin') {
+        if (targetNode.type === 'Reference' || targetNode.type === 'Mixin') {
           break;
         }
-        targetNode = (targetNode as any).parent;
+        targetNode = targetNode.parent;
         depth++;
       }
       if (!targetNode) {
@@ -1086,8 +1089,8 @@ export function createEngine(): JessLanguageServiceEngine {
       node = targetNode;
 
       // Variable definition lookup: find VarDeclaration for a Reference(type=variable).
-      if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
-        const key = (node as any).key;
+      if (node.type === 'Reference' && node.options?.type === 'variable') {
+        const key = nodeField(node, 'key');
         const name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         if (!name) {
           return null;
@@ -1098,9 +1101,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
         // First search current document
         for (const entry of index.nodes) {
-          const n: any = entry.node;
+          const n = entry.node;
           if (n.type === 'VarDeclaration') {
-            const nameNode = n.name;
+            const nameNode = nodeField(n, 'name');
             const declNameStr = asStringName(nameNode);
             const declName = declNameStr.replace(/^[$@]/, '');
             if (declName === normalizedName) {
@@ -1120,8 +1123,8 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       // Mixin definition lookup: find Mixin for a Reference(type=mixin or mixin-ruleset).
-      if ((node as any).type === 'Reference' && ((node as any).options?.type === 'mixin' || (node as any).options?.type === 'mixin-ruleset')) {
-        const key = (node as any).key;
+      if (node.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
+        const key = nodeField(node, 'key');
         const name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         if (!name) {
           return null;
@@ -1135,9 +1138,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
         // First search current document
         for (const entry of index.nodes) {
-          const n: any = entry.node;
+          const n = entry.node;
           if (n.type === 'Mixin') {
-            const nameNode = n.name;
+            const nameNode = nodeField(n, 'name');
             const declNameStr = asStringName(nameNode);
             let declName = declNameStr.trim();
             // Normalize mixin name: remove parentheses if present
@@ -1178,16 +1181,15 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       // Walk up the tree to find VarDeclaration, Reference, or Mixin if the node at position isn't one
-      let targetNode: any = node;
-      const maxDepth = 10; // Prevent infinite loops
+      let targetNode: Node | undefined = node;
+      const maxDepth = 10;
       let depth = 0;
       while (depth < maxDepth && targetNode) {
-        const n: any = targetNode;
-        if (n.type === 'VarDeclaration' || n.type === 'Mixin'
-          || (n.type === 'Reference' && (n.options?.type === 'variable' || n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset'))) {
+        if (targetNode.type === 'VarDeclaration' || targetNode.type === 'Mixin'
+          || (targetNode.type === 'Reference' && (targetNode.options?.type === 'variable' || targetNode.options?.type === 'mixin' || targetNode.options?.type === 'mixin-ruleset'))) {
           break;
         }
-        targetNode = (targetNode as any).parent;
+        targetNode = targetNode.parent;
         depth++;
       }
       if (!targetNode) {
@@ -1200,20 +1202,20 @@ export function createEngine(): JessLanguageServiceEngine {
       let isVariable = false;
       let isMixin = false;
 
-      if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
-        const key = (node as any).key;
+      if (node.type === 'Reference' && node.options?.type === 'variable') {
+        const key = nodeField(node, 'key');
         targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         isVariable = true;
-      } else if ((node as any).type === 'VarDeclaration') {
-        const nameNode = (node as any).name;
+      } else if (node.type === 'VarDeclaration') {
+        const nameNode = nodeField(node, 'name');
         targetName = asStringName(nameNode);
         isVariable = true;
-      } else if ((node as any).type === 'Reference' && ((node as any).options?.type === 'mixin' || (node as any).options?.type === 'mixin-ruleset')) {
-        const key = (node as any).key;
+      } else if (node.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
+        const key = nodeField(node, 'key');
         targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
         isMixin = true;
-      } else if ((node as any).type === 'Mixin') {
-        const nameNode = (node as any).name;
+      } else if (node.type === 'Mixin') {
+        const nameNode = nodeField(node, 'name');
         targetName = asStringName(nameNode);
         isMixin = true;
       }
@@ -1322,39 +1324,41 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       };
 
+      const asNodeOrNull = (v: unknown): Node | null => isNode(v) ? v : null;
+
       // Collect symbols in document order (index is already sorted)
       for (const entry of index.nodes) {
-        const n = entry.node as any;
-        if (!n || seen.has(n as Node)) {
+        const n = entry.node;
+        if (!n || seen.has(n)) {
           continue;
         }
 
-        seen.add(n as Node);
+        seen.add(n);
 
         if (n.type === 'Ruleset') {
-          const selector = n.selector;
-          const name = asStringName((n as any).valueOf?.() ?? (selector ? asStringName(selector) : 'ruleset'));
-          const bodyNode = n.rules;
-          addDocumentSymbol(name, SymbolKind.Class, n as Node, selector as Node | null, bodyNode as Node | null);
+          const selector = nodeField(n, 'selector');
+          const name = asStringName(typeof n.valueOf === 'function' ? (n.valueOf() ?? (selector ? asStringName(selector) : 'ruleset')) : 'ruleset');
+          const bodyNode = nodeField(n, 'rules');
+          addDocumentSymbol(name, SymbolKind.Class, n, asNodeOrNull(selector), asNodeOrNull(bodyNode));
         } else if (n.type === 'AtRule') {
-          const nameNode = n.name;
+          const nameNode = nodeField(n, 'name');
           const atRuleName = asStringName(nameNode);
-          const bodyNode = n.rules;
-          addDocumentSymbol(atRuleName, SymbolKind.Namespace, n as Node, nameNode as Node | null, bodyNode as Node | null);
+          const bodyNode = nodeField(n, 'rules');
+          addDocumentSymbol(atRuleName, SymbolKind.Namespace, n, asNodeOrNull(nameNode), asNodeOrNull(bodyNode));
         } else if (n.type === 'VarDeclaration') {
-          const nameNode = n.name;
+          const nameNode = nodeField(n, 'name');
           const varName = formatVarName(tracked.lang, asStringName(nameNode));
-          addDocumentSymbol(varName, SymbolKind.Variable, n as Node, nameNode as Node | null, null);
+          addDocumentSymbol(varName, SymbolKind.Variable, n, asNodeOrNull(nameNode), null);
         } else if (n.type === 'Mixin') {
-          const nameNode = n.name;
-          const mixinName = asStringName(n.name ?? 'mixin');
-          const bodyNode = n.rules;
-          addDocumentSymbol(mixinName, SymbolKind.Function, n as Node, nameNode as Node | null, bodyNode as Node | null);
+          const nameNode = nodeField(n, 'name');
+          const mixinName = asStringName(nodeField(n, 'name') ?? 'mixin');
+          const bodyNode = nodeField(n, 'rules');
+          addDocumentSymbol(mixinName, SymbolKind.Function, n, asNodeOrNull(nameNode), asNodeOrNull(bodyNode));
         } else if (n.type === 'Func') {
-          const nameNode = n.name;
-          const funcName = asStringName(n.nameKey ?? n.name ?? 'function');
-          const bodyNode = n.body;
-          addDocumentSymbol(funcName, SymbolKind.Function, n as Node, nameNode as Node | null, bodyNode as Node | null);
+          const nameNode = nodeField(n, 'name');
+          const funcName = asStringName(nodeField(n, 'nameKey') ?? nodeField(n, 'name') ?? 'function');
+          const bodyNode = nodeField(n, 'body');
+          addDocumentSymbol(funcName, SymbolKind.Function, n, asNodeOrNull(nameNode), asNodeOrNull(bodyNode));
         }
       }
 
@@ -1461,7 +1465,7 @@ export function createEngine(): JessLanguageServiceEngine {
       };
 
       // Lexer errors.
-      for (const err of lexErrors as any[]) {
+      for (const err of lexErrors) {
         diagnostics.push({
           code: 'parse/lexer',
           source: 'jess',
@@ -1472,7 +1476,7 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       // Parser errors.
-      for (const err of parseErrors as any[]) {
+      for (const err of parseErrors) {
         diagnostics.push({
           code: 'parse/parser',
           source: 'jess',
@@ -1504,7 +1508,8 @@ export function createEngine(): JessLanguageServiceEngine {
 
         // Traverse full tree (do not rely on `tracked.index.nodes`, since some nodes (e.g. Reference)
         // may not have a location span, but their children do).
-        const stack: Node[] = [parse.tree as unknown as Node];
+        const treeNode: Node = parse.tree;
+        const stack: Node[] = [treeNode];
         const seen = new Set<Node>();
         while (stack.length) {
           const node = stack.pop()!;
@@ -1513,18 +1518,16 @@ export function createEngine(): JessLanguageServiceEngine {
           }
           seen.add(node);
 
-          const n: any = node;
-          if (n.type === 'VarDeclaration') {
-            const nameNode = n.name;
-            const nameStr = typeof nameNode === 'string' ? nameNode : String(nameNode?.valueOf?.() ?? nameNode?.value ?? '');
+          if (node.type === 'VarDeclaration') {
+            const nameNode = nodeField(node, 'name');
+            const nameStr = asStringName(nameNode);
             const norm = normalizeVar(nameStr);
             if (norm) {
               declVars.add(norm);
             }
-          } else if (n.type === 'Mixin') {
-            const nameNode = n.name;
+          } else if (node.type === 'Mixin') {
+            const nameNode = nodeField(node, 'name');
             const nameStr = asStringName(nameNode);
-            // Normalize mixin name: remove parentheses and arguments if present (e.g., ".light()" -> ".light", ".light(arg)" -> ".light")
             let norm = nameStr.trim();
             const parenIdx = norm.indexOf('(');
             if (parenIdx >= 0) {
@@ -1533,55 +1536,47 @@ export function createEngine(): JessLanguageServiceEngine {
             if (norm) {
               declMixins.add(norm);
             }
-          } else if (n.type === 'Reference' && n.options?.type === 'variable') {
-            const key = n.key;
-            const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+          } else if (node.type === 'Reference' && node.options?.type === 'variable') {
+            const key = nodeField(node, 'key');
+            const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : asStringName(key);
             const norm = normalizeVar(raw);
             if (norm) {
               refsVar.push({ name: norm, node });
             }
-          } else if (n.type === 'Call') {
-            // Mixin calls can be Call nodes (e.g., .light() or .light(arg))
-            // In Less, only .foo() and #foo() are mixins - everything else is a function call
-            const nameNode = n.name;
+          } else if (node.type === 'Call') {
+            const nameNode = nodeField(node, 'name');
             if (nameNode) {
-              // Check if the call name is a Reference to a mixin
-              const nameType = typeof nameNode === 'string' ? null : (nameNode as any)?.type;
-              const nameOptions = typeof nameNode === 'string' ? null : (nameNode as any)?.options;
+              const nameType = typeof nameNode === 'string' ? null : (isNode(nameNode) ? nameNode.type : null);
+              const nameOptions = typeof nameNode === 'string' ? null : (isNode(nameNode) ? nameNode.options : null);
               if (nameType === 'Reference' && (nameOptions?.type === 'mixin' || nameOptions?.type === 'mixin-ruleset')) {
-                const key = (nameNode as any).key;
-                const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
-                // Normalize mixin name: remove parentheses and arguments if present
+                const key = isNode(nameNode) ? nodeField(nameNode, 'key') : null;
+                const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : asStringName(key);
                 let nameStr = raw.trim();
                 const parenIdx = nameStr.indexOf('(');
                 if (parenIdx >= 0) {
                   nameStr = nameStr.slice(0, parenIdx);
                 }
-                // In Less, mixins must start with . or # - everything else is a function call
                 if (tracked.lang === 'less' && nameStr && !nameStr.startsWith('.') && !nameStr.startsWith('#')) {
                   // Not a mixin in Less - it's a function call
                 } else if (nameStr) {
-                  refsMixin.push({ name: nameStr, node: n }); // Use Call node for span
+                  refsMixin.push({ name: nameStr, node });
                 }
               } else if (typeof nameNode === 'string') {
-                // Direct string name (e.g., "light" or ".light")
                 let nameStr = nameNode.trim();
                 const parenIdx = nameStr.indexOf('(');
                 if (parenIdx >= 0) {
                   nameStr = nameStr.slice(0, parenIdx);
                 }
-                // In Less, mixins must start with . or # - everything else is a function call
                 if (tracked.lang === 'less' && nameStr && !nameStr.startsWith('.') && !nameStr.startsWith('#')) {
                   // Not a mixin in Less - it's a function call
                 } else if (nameStr) {
-                  refsMixin.push({ name: nameStr, node: n });
+                  refsMixin.push({ name: nameStr, node });
                 }
               }
             }
-          } else if (n.type === 'Reference' && (n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset')) {
-            const key = n.key;
-            const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
-            // Normalize mixin name: remove parentheses and arguments if present
+          } else if (node.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
+            const key = nodeField(node, 'key');
+            const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : asStringName(key);
             let nameStr = raw.trim();
             const parenIdx = nameStr.indexOf('(');
             if (parenIdx >= 0) {
@@ -1590,31 +1585,22 @@ export function createEngine(): JessLanguageServiceEngine {
             if (nameStr) {
               refsMixin.push({ name: nameStr, node });
             }
-          } else if (n.type === 'Interpolated') {
-            // Interpolated nodes contain replacement nodes in value.replacements
-            // These replacement nodes should be collected as separate variable references
-            // so each interpolation gets its own diagnostic span
-            // IMPORTANT: We need to process replacements BEFORE getValues(value) to ensure
-            // they're collected separately and not lost in the generic traversal
-            const replacements = n.replacements;
+          } else if (node.type === 'Interpolated') {
+            const replacements = nodeField(node, 'replacements');
             if (Array.isArray(replacements)) {
               for (const replacementNode of replacements) {
                 if (isNode(replacementNode)) {
-                  // Push replacement node to stack so it gets processed
-                  // This will allow Reference nodes inside replacements to be collected
-                  stack.push(replacementNode as Node);
+                  stack.push(replacementNode);
                 }
               }
             }
-            // Don't traverse Interpolated node's value with getValues - we've already handled replacements
-            // The source string is not a node, so we skip it
             continue;
           }
 
-          const value = (node as any).data;
+          const value = nodeField(node, 'data');
           for (const child of getValues(value)) {
             if (isNode(child)) {
-              stack.push(child as Node);
+              stack.push(child);
             }
           }
         }
@@ -1624,17 +1610,12 @@ export function createEngine(): JessLanguageServiceEngine {
           return typeof s === 'number' ? s : null;
         };
 
-        const spanFor = (n: any): { start: number; end: number } | null => {
-          // For Reference nodes inside interpolations, we need to find the @{...} boundaries FIRST
-          // before falling back to other methods, because the Reference node span might only cover
-          // the variable name, not the @{ and }
-          // Check if this is a Reference node first, before any other checks
-          if (n && n.type === 'Reference' && n.options?.type === 'variable') {
-            // Check if this Reference is inside an Interpolated node by walking up the parent chain
+        const spanFor = (n: Node): { start: number; end: number } | null => {
+          if (n.type === 'Reference' && n.options?.type === 'variable') {
             let isInInterpolation = false;
-            let current: any = n;
-            while (current && (current as any).parent) {
-              current = (current as any).parent;
+            let current: Node | undefined = n;
+            while (current?.parent) {
+              current = current.parent;
               if (current && current.type === 'Interpolated') {
                 isInInterpolation = true;
                 break;
@@ -1642,17 +1623,11 @@ export function createEngine(): JessLanguageServiceEngine {
             }
 
             if (isInInterpolation) {
-              // Get the Reference node's span (this is the variable name inside @{...})
-              // The Reference node span should be just the variable name (e.g., "in" or "terpolation")
-              // Try multiple ways to get the span:
-              // 1. Direct span from the Reference node
-              // 2. Span from the key node
-              // 3. Span from the value.key if it's a node
-              let actualRefSpan = getSpan(n as Node);
+              let actualRefSpan = getSpan(n);
               if (!actualRefSpan) {
-                const key = n?.key;
+                const key = nodeField(n, 'key');
                 if (isNode(key)) {
-                  actualRefSpan = getSpan(key as Node);
+                  actualRefSpan = getSpan(key);
                 }
               }
 
@@ -1660,11 +1635,8 @@ export function createEngine(): JessLanguageServiceEngine {
                 const refStartPos = doc.positionAt(actualRefSpan.start);
                 const refEndPos = doc.positionAt(actualRefSpan.end);
 
-                // Look backwards from reference start to find @{
-                // The @{ should be immediately before the reference node
                 let atBraceStart = actualRefSpan.start;
                 if (refStartPos.character >= 2) {
-                  // Check the 2 characters immediately before the reference
                   const lookBackStart = Math.max(0, refStartPos.character - 2);
                   const textBefore = doc.getText(Range.create(
                     Position.create(refStartPos.line, lookBackStart),
@@ -1673,8 +1645,6 @@ export function createEngine(): JessLanguageServiceEngine {
                   if (textBefore === '@{') {
                     atBraceStart = doc.offsetAt(Position.create(refStartPos.line, lookBackStart));
                   } else {
-                    // If not found immediately before, search backwards more carefully
-                    // Look for the nearest @{ before this reference
                     for (let lookBack = 2; lookBack <= Math.min(20, refStartPos.character); lookBack++) {
                       const checkStart = Math.max(0, refStartPos.character - lookBack);
                       const checkText = doc.getText(Range.create(
@@ -1689,8 +1659,6 @@ export function createEngine(): JessLanguageServiceEngine {
                   }
                 }
 
-                // Look forwards from reference end to find }
-                // The } should be immediately after the reference node
                 let braceEnd = actualRefSpan.end;
                 const textAfter = doc.getText(Range.create(
                   refEndPos,
@@ -1699,8 +1667,6 @@ export function createEngine(): JessLanguageServiceEngine {
                 if (textAfter.startsWith('}')) {
                   braceEnd = doc.offsetAt(Position.create(refEndPos.line, refEndPos.character + 1));
                 } else {
-                  // If not found immediately after, the reference span might be wrong
-                  // Try to find } after the reference
                   const searchEnd = Math.min(doc.getText().length, refEndPos.character + 10);
                   const searchText = doc.getText(Range.create(
                     refEndPos,
@@ -1712,20 +1678,14 @@ export function createEngine(): JessLanguageServiceEngine {
                   }
                 }
 
-                // Return the full interpolation span including @{ and }
-                // Only return if we found valid boundaries (atBraceStart should be before braceEnd)
                 if (atBraceStart < braceEnd && atBraceStart >= 0 && braceEnd > atBraceStart) {
                   return { start: atBraceStart, end: braceEnd };
                 }
-                // If boundaries weren't found correctly, fall through to try other methods
               } else {
-                // Reference node doesn't have a span - this shouldn't happen for interpolations
-                // but if it does, try to get span from the key
-                const key = n?.key;
+                const key = nodeField(n, 'key');
                 if (isNode(key)) {
-                  const keySpan = getSpan(key as Node);
+                  const keySpan = getSpan(key);
                   if (keySpan) {
-                    // Try to find @{ and } around the key span
                     const keyStartPos = doc.positionAt(keySpan.start);
                     const keyEndPos = doc.positionAt(keySpan.end);
 
@@ -1759,24 +1719,20 @@ export function createEngine(): JessLanguageServiceEngine {
             }
           }
 
-          // For Call nodes (mixin calls), the Call node itself should have location info
-          // that includes the full call including parentheses
-          const span = getSpan(n as Node);
+          const span = getSpan(n);
           if (span) {
             return span;
           }
 
-          // Fallback: use span of reference key (common for Less mixin-ruleset refs).
-          const key = n?.key;
+          const key = nodeField(n, 'key');
           if (isNode(key)) {
-            return getSpan(key as Node);
+            return getSpan(key);
           }
 
-          // For Call nodes, try to get span from the name node as fallback
-          if (n.type === 'Call' && n.name) {
-            const nameNode = n.name;
+          if (n.type === 'Call') {
+            const nameNode = nodeField(n, 'name');
             if (isNode(nameNode)) {
-              return getSpan(nameNode as Node);
+              return getSpan(nameNode);
             }
           }
 
@@ -1968,15 +1924,14 @@ export function createEngine(): JessLanguageServiceEngine {
       const diagnostics = Array.isArray(context?.diagnostics) ? context.diagnostics : [];
       const findNodeAt = (pos: Position) => tracked.index?.findNodeAtOffset(doc.offsetAt(pos)) ?? null;
 
-      for (const diag of diagnostics as any[]) {
+      for (const diag of diagnostics) {
         const code = String(diag?.code ?? '');
         if (code === 'var/undefined') {
-          // Try to recover variable name from AST at diagnostic range.
-          const node: any = findNodeAt(diag.range?.start ?? range.start);
+          const node = findNodeAt(diag.range?.start ?? range.start);
           let raw = '';
           if (node?.type === 'Reference' && node.options?.type === 'variable') {
-            const key = node.key;
-            raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+            const key = nodeField(node, 'key');
+            raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : asStringName(key);
           } else {
             raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
           }
@@ -2005,11 +1960,11 @@ export function createEngine(): JessLanguageServiceEngine {
         }
 
         if (code === 'mixin/undefined') {
-          const node: any = findNodeAt(diag.range?.start ?? range.start);
+          const node = findNodeAt(diag.range?.start ?? range.start);
           let name = '';
           if (node?.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
-            const key = node.key;
-            name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+            const key = nodeField(node, 'key');
+            name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : asStringName(key);
           } else {
             name = String(diag?.message ?? '').match(/Undefined mixin\s+(.+)$/)?.[1] ?? '';
           }
@@ -2041,7 +1996,7 @@ export function createEngine(): JessLanguageServiceEngine {
       const tracked = ensure(uri);
       const doc = tracked.document;
       const parse = tracked.parse;
-      const tree: any = parse?.tree as any;
+      const tree = parse?.tree;
       if (!tree || typeof tree.toTrimmedString !== 'function') {
         return [];
       }
@@ -2234,6 +2189,7 @@ export function createEngine(): JessLanguageServiceEngine {
       // Chevrotain uses 1-based line/column.
       const tokens = parse.lexerResult.tokens as ChevTok[];
       const index = tracked.index;
+      const varRefTokens = new WeakSet<object>();
 
       const nonWs = (t: ChevTok | undefined) => t && t.tokenType?.name !== 'WS' && t.tokenType?.name !== 'Newline';
       const prevNonWsIdx = (i: number) => {
@@ -2342,31 +2298,25 @@ export function createEngine(): JessLanguageServiceEngine {
                   continue;
                 }
 
-                // Check for Call node first (function calls take precedence)
-                if ((node as any).type === 'Call') {
+                if (node.type === 'Call') {
                   callNode = node;
                   break;
                 }
 
-                // Check the node itself for variable reference
-                if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
+                if (node.type === 'Reference' && node.options?.type === 'variable') {
                   varRefNode = node;
                   break;
                 }
 
-                // Walk up the parent chain to find a Call or Reference node
-                // This handles cases where the token is inside a node (e.g., just the identifier part)
-                let current: any = node;
-                while (current && (current as any).parent) {
-                  current = (current as any).parent;
+                let current: Node | undefined = node;
+                while (current?.parent) {
+                  current = current.parent;
 
-                  // Check for Call node first (function calls take precedence)
                   if (current && current.type === 'Call') {
                     callNode = current;
                     break;
                   }
 
-                  // Check for variable reference
                   if (current && current.type === 'Reference' && current.options?.type === 'variable') {
                     varRefNode = current;
                     break;
@@ -2378,49 +2328,39 @@ export function createEngine(): JessLanguageServiceEngine {
                 }
               }
 
-              // Function calls take precedence - don't override if already 'function'
               if (callNode && type !== 'function') {
                 type = 'function';
               } else if (varRefNode) {
-                // This token is part of a variable reference, force it to be 'variable'
                 type = 'variable';
-                // Store that this is a variable reference so we can apply declaration modifier later
-                // This makes variable references color the same as their declarations
-                (tok as any)._isVarRef = true;
+                varRefTokens.add(tok);
               }
             }
           } else {
-            // Not an @ token (or not Less), check for function calls and variable references
             for (const offset of checkOffsets) {
               const node = index.findNodeAtOffset(offset);
               if (!node) {
                 continue;
               }
 
-              // Check for Call node first (function calls take precedence)
-              if ((node as any).type === 'Call') {
+              if (node.type === 'Call') {
                 callNode = node;
                 break;
               }
 
-              // Check the node itself for variable reference
-              if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
+              if (node.type === 'Reference' && node.options?.type === 'variable') {
                 varRefNode = node;
                 break;
               }
 
-              // Walk up the parent chain to find a Call or Reference node
-              let current: any = node;
-              while (current && (current as any).parent) {
-                current = (current as any).parent;
+              let current: Node | undefined = node;
+              while (current?.parent) {
+                current = current.parent;
 
-                // Check for Call node first (function calls take precedence)
                 if (current && current.type === 'Call') {
                   callNode = current;
                   break;
                 }
 
-                // Check for variable reference
                 if (current && current.type === 'Reference' && current.options?.type === 'variable') {
                   varRefNode = current;
                   break;
@@ -2432,13 +2372,11 @@ export function createEngine(): JessLanguageServiceEngine {
               }
             }
 
-            // Function calls take precedence - ensure they're classified as 'function'
             if (callNode && type !== 'function') {
               type = 'function';
             } else if (varRefNode) {
-              // This token is part of a variable reference, force it to be 'variable'
               type = 'variable';
-              (tok as any)._isVarRef = true;
+              varRefTokens.add(tok);
             }
           }
         }
@@ -2826,7 +2764,7 @@ export function createEngine(): JessLanguageServiceEngine {
         // Also apply declaration modifier to variable references detected via AST
         // This makes them color the same as their declarations
         // We do this for all variable references found via AST lookup, since they're at least syntactically valid
-        if (effType === 'variable' && (tok as any)._isVarRef) {
+        if (effType === 'variable' && varRefTokens.has(tok)) {
           modifiers |= MOD_DECLARATION;
         }
 
@@ -2881,18 +2819,19 @@ export function createEngine(): JessLanguageServiceEngine {
         return [];
       }
 
-      const { findColorsInAST, colorToLSP, getNodeSpan } = require('./color-utils.js');
-      const colors = await findColorsInAST(parse.tree as Node);
+      const colorUtils: typeof import('./color-utils.js') = require('./color-utils.js');
+      const treeAsNode: Node = parse.tree;
+      const colors = await colorUtils.findColorsInAST(treeAsNode);
       const result: ColorInformation[] = [];
 
       for (const { node, color: colorNode } of colors) {
-        const span = getNodeSpan(node);
+        const span = colorUtils.getNodeSpan(node);
         if (!span) {
           continue;
         }
 
         try {
-          const lspColor = colorToLSP(colorNode);
+          const lspColor = colorUtils.colorToLSP(colorNode);
           const range: Range = {
             start: doc.positionAt(span.start),
             end: doc.positionAt(span.end)
@@ -2907,8 +2846,8 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getColorPresentations(uri, color, range) {
-      const { getColorPresentations: getPresentations } = require('./color-utils.js');
-      const presentations = getPresentations(color);
+      const colorUtilsSync: typeof import('./color-utils.js') = require('./color-utils.js');
+      const presentations = colorUtilsSync.getColorPresentations(color);
 
       // Set textEdit for each presentation
       return presentations.map((p: ColorPresentation) => ({
