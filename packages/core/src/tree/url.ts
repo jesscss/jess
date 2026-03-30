@@ -22,7 +22,7 @@ export interface Url {
 export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Quoted | Any;
+  readonly value!: Quoted | Any;
 
   constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);

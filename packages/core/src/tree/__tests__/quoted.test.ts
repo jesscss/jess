@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { any, expr, interpolated, quoted } from '../index.js';
 import { Context } from '../../context.js';
 import { setField } from '../util/field-helpers.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 describe('Quoted', () => {
   it('serializes a quoted string', () => {
@@ -66,5 +68,21 @@ describe('Quoted', () => {
     expect(left.toTrimmedString({ context: ctx1 })).toBe('"cyan"');
     expect(left.toTrimmedString({ context: ctx2 })).toBe('"magenta"');
     expect(left.compare(right)).toBe(0);
+  });
+
+  it('reads a render-key alternate child without mutating the canonical value', () => {
+    const canonical = expr(any('blue'));
+    const alternate = expr(any('green'));
+    const node = quoted(canonical);
+    const key = {} as RenderKey;
+    const cursor = { node, key };
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(node, 'value', key, alternate);
+
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
+    expect(node.value).toBe(canonical);
   });
 });

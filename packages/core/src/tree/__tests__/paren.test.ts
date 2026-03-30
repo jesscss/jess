@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { any, paren, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { setField } from '../util/field-helpers.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 describe('Paren', () => {
   it('serializes wrapped values on the public render path', () => {
@@ -65,5 +67,20 @@ describe('Paren', () => {
     expect(node.get('value')).toBe(original);
     expect(node.toTrimmedString({ context: ctx })).toBe('~($color)');
     expect(node.toTrimmedString()).toBe('($color)');
+  });
+
+  it('reads a singular child through the cursor model', () => {
+    const canonical = any('red');
+    const alternate = any('blue');
+    const node = paren(canonical);
+    const key = {} as RenderKey;
+    const cursor = { node, key };
+
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(node, 'value', key, alternate);
+
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
+    expect(node.value).toBe(canonical);
   });
 });

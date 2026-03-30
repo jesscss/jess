@@ -20,7 +20,7 @@ export interface SelectorCapture extends Node<Selector, NodeOptions, SelectorCap
 export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCaptureChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Selector;
+  readonly value!: Selector;
 
   constructor(value: Selector, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);

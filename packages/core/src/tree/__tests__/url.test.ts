@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { any, quoted, url } from '../index.js';
 import { Context } from '../../context.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 describe('Url', () => {
   it('eval stores an evaluated child in the eval state without mutating the canonical value', async () => {
@@ -50,5 +52,21 @@ describe('Url', () => {
     expect(evald).toBe(node);
     expect(node.get('value', ctx)).toBe(replacement);
     expect(node.toTrimmedString({ context: ctx })).toBe('url(b.png)');
+  });
+
+  it('reads a singular child through the render-key cursor model', () => {
+    const canonical = quoted('a.png');
+    const alternate = quoted('b.png');
+    const node = url(canonical);
+    const key = {} as RenderKey;
+    const cursor = { node, key };
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(node, 'value', key, alternate);
+
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
+    expect(node.value).toBe(canonical);
   });
 });

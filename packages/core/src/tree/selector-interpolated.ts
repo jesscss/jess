@@ -42,7 +42,7 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated, NodeO
 export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptions, InterpolatedSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Interpolated;
+  readonly value!: Interpolated;
 
   constructor(value: Interpolated, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
@@ -65,7 +65,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const result = this.get('value', context).evalToSelector(context);
+    const result = this.value.evalToSelector(context);
     const library = context.selectorBits;
     if (isThenable(result)) {
       return (result as Promise<Selector>).then((sel) => {
@@ -81,7 +81,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this.get('value', options.context).toString(options);
+    this.value.toString(options);
     return w.getSince(mark);
   }
 

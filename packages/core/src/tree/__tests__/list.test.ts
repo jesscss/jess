@@ -1,6 +1,8 @@
 import { TreeContext, list, spaced, num, any, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { setField } from '../util/field-helpers.js';
+import { addEdgeAt, getEdgeAt } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 describe('List compare', () => {
   it('treats separator differences as equal in strict mode', () => {
@@ -127,6 +129,24 @@ describe('List', () => {
 
     expect(left.toTrimmedString({ context })).toBe('cyan, magenta');
     expect(left.compare(right)).toBe(0);
+  });
+
+  it('reads indexed children through the cursor model without mutating the canonical array', () => {
+    const first = any('red');
+    const second = any('blue');
+    const alternate = any('cyan');
+    const node = list([first, second]);
+    const key = {} as RenderKey;
+    const cursor = { node, key };
+
+    expect(getEdgeAt(cursor, 'value', 0)?.node).toBe(first);
+    expect(getEdgeAt(cursor, 'value', 1)?.node).toBe(second);
+
+    addEdgeAt(node, 'value', 1, key, alternate);
+
+    expect(getEdgeAt(cursor, 'value', 0)?.node).toBe(first);
+    expect(getEdgeAt(cursor, 'value', 1)?.node).toBe(alternate);
+    expect(node.value).toEqual([first, second]);
   });
   // it('should serialize to a module', () => {
   //   let rule = list([spaced([any('1'), any('2'), any('3')]), any('four')])

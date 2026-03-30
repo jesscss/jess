@@ -3,6 +3,8 @@ import { Context } from '../../context.js';
 import { Selector } from '../selector.js';
 import { el, selcap, sellist } from '../index.js';
 import { setField } from '../util/field-helpers.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 class PreEvalReplacingSelector extends Selector<string> {
   static override childKeys = [] as const;
@@ -78,5 +80,21 @@ describe('SelectorCapture', () => {
     expect(node.toTrimmedString({ context })).toBe('*[next]');
     expect(node.toTrimmedString()).toBe('*[orig]');
     expect(node.get('value').toTrimmedString()).toBe('orig');
+  });
+
+  it('keeps canonical selector access direct while render-key edges can diverge', () => {
+    const canonical = el('.a');
+    const alternate = el('.b');
+    const node = selcap(canonical);
+    const key = {} as RenderKey;
+    const cursor = { node, key };
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(node, 'value', key, alternate);
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
   });
 });

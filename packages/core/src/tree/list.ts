@@ -35,7 +35,7 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions, List
 export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: T[];
+  value!: T[];
 
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);

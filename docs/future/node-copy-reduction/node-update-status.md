@@ -43,6 +43,30 @@ Relevant files:
 - `packages/core/src/tree/expression.ts`
 - `packages/core/src/tree/__tests__/expression.test.ts`
 
+### 0a. Low-complexity child nodes
+
+Status: `started`
+
+What changed:
+
+- several singular-child nodes now keep direct child fields without the
+  `@internal` marker
+- focused tests characterize render-key alternate child selection through
+  `addEdge(...)` / `getEdge(...)`
+- `List` now has the first indexed-child characterization through
+  `addEdgeAt(...)` / `getEdgeAt(...)`
+
+Relevant files:
+
+- `packages/core/src/tree/block.ts`
+- `packages/core/src/tree/negative.ts`
+- `packages/core/src/tree/paren.ts`
+- `packages/core/src/tree/quoted.ts`
+- `packages/core/src/tree/selector-capture.ts`
+- `packages/core/src/tree/selector-interpolated.ts`
+- `packages/core/src/tree/url.ts`
+- `packages/core/src/tree/list.ts`
+
 ### 1. Parent/child traversal helpers
 
 Status: `next`
