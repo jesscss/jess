@@ -14,6 +14,8 @@ it does not belong here.
 
 The target runtime shape is:
 
+- every node instance starts with `renderKey = CANONICAL`
+- eval only assigns `EVAL` when evaluation returns a different node object
 - canonical child fields stay the canonical value
 - alternate child links are field-aligned edges:
   - singular child: `fooEdge?: NodeEdge<T>`

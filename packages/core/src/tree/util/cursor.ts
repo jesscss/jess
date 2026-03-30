@@ -1,4 +1,4 @@
-import type { Cursor, Node, NodeEdge, RenderKey } from '../node.js';
+import { CANONICAL, type Cursor, type Node, type NodeEdge, type RenderKey } from '../node.js';
 
 function nodeFields(node: Node): Record<string, unknown> {
   return node as unknown as Record<string, unknown>;
@@ -85,6 +85,13 @@ export function addEdge(
   renderKey: RenderKey,
   child: Node
 ): void {
+  if (renderKey === CANONICAL) {
+    const canonicalChild = nodeFields(node)[key] as Node | undefined;
+    if (canonicalChild === child) {
+      return;
+    }
+    throw new Error(`Cannot add a second CANONICAL edge for ${node.type}.${key}`);
+  }
   const edge = getSingularEdgeStore(node, key) ?? new Map<RenderKey, Node>();
   edge.set(renderKey, child);
   setSingularEdgeStore(node, key, edge);
@@ -97,6 +104,14 @@ export function addEdgeAt(
   renderKey: RenderKey,
   child: Node
 ): void {
+  if (renderKey === CANONICAL) {
+    const canonicalList = nodeFields(node)[key] as Node[] | undefined;
+    const canonicalChild = canonicalList?.[index];
+    if (canonicalChild === child) {
+      return;
+    }
+    throw new Error(`Cannot add a second CANONICAL edge for ${node.type}.${key}[${index}]`);
+  }
   const indexedEdges = getIndexedEdgeStore(node, key) ?? [];
   const edge = indexedEdges[index] ?? new Map<RenderKey, Node>();
   edge.set(renderKey, child);
@@ -109,6 +124,12 @@ export function addParentEdge(
   renderKey: RenderKey,
   parent: Node
 ): void {
+  if (renderKey === CANONICAL) {
+    if (node.parent === parent) {
+      return;
+    }
+    throw new Error(`Cannot add a second CANONICAL parent edge for ${node.type}`);
+  }
   const edge = node.parentEdges ?? new Map<RenderKey, Node>();
   edge.set(renderKey, parent);
   node.parentEdges = edge;

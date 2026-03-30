@@ -325,12 +325,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       : this.guard;
   }
 
-  getSelectorBeforeExtend(context?: Context): Selector | Nil | undefined {
-    if (context) {
-      return this._readSelectorBeforeExtendForContext(context);
-    }
-    return this.renderKey !== undefined
-      ? this.selectorBeforeExtendEdge?.get(this.renderKey) ?? this.selectorBeforeExtend
+  getSelectorBeforeExtend(renderKey?: RenderKey): Selector | Nil | undefined {
+    return renderKey !== undefined
+      ? this.selectorBeforeExtendEdge?.get(renderKey) ?? this.selectorBeforeExtend
       : this.selectorBeforeExtend;
   }
 
@@ -338,12 +335,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     this._setCurrentField('selectorBeforeExtend', selector, context);
   }
 
-  getExtendedSelector(context?: Context): Selector | Nil | undefined {
-    if (context) {
-      return this._readExtendedSelectorForContext(context);
-    }
-    return this.renderKey !== undefined
-      ? this._extendedSelectorEdge?.get(this.renderKey) ?? this._extendedSelector
+  getExtendedSelector(renderKey?: RenderKey): Selector | Nil | undefined {
+    return renderKey !== undefined
+      ? this._extendedSelectorEdge?.get(renderKey) ?? this._extendedSelector
       : this._extendedSelector;
   }
 
@@ -450,12 +444,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if (
         parentSelector
         && !(parentSelector instanceof Nil)
-        && parentRs?.getSelectorBeforeExtend(context)
+        && parentRs?._readSelectorBeforeExtendForContext(context)
         && Ruleset.isInReferenceScope(parentRs, context)
       ) {
         parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
           parentSelector as Selector,
-          parentRs.getSelectorBeforeExtend(context)
+          parentRs._readSelectorBeforeExtendForContext(context)
         );
       }
       return parentSelector;

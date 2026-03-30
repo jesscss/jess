@@ -32,6 +32,9 @@ That also means:
 - if local node data changes, that is a new node
 - per-render variation lives in edges, not field patches
 - direct node fields stay direct fields
+- every node instance starts with `renderKey = CANONICAL`
+- eval only assigns `EVAL` when evaluation returns a different node identity
+- if evaluation keeps the same object, that node stays canonical
 
 ## Minimal Types
 
@@ -44,6 +47,12 @@ const EVAL: unique symbol = Symbol('EVAL');
 type NodeEdge<T> = Map<RenderKey, T>;
 
 type Node = {
+  /**
+   * Every node starts canonical. Derived eval nodes may switch to `EVAL`
+   * or another explicit non-canonical render key.
+   */
+  renderKey: RenderKey;
+
   /**
    * Canonical/default parent edge.
    */

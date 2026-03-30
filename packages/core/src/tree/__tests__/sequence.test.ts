@@ -194,4 +194,18 @@ describe('Sequence', () => {
     expect(getParentEdge({ node: second, renderKey: CANONICAL })?.node).toBe(node);
     expect(second.parent).toBe(node);
   });
+
+  it('throws if a second canonical child or parent edge is added', () => {
+    const first = num(10);
+    const second = num(20);
+    const replacement = num(200);
+    const node = seq([first, second]);
+
+    expect(() => addEdgeAt(node, 'value', 1, CANONICAL, replacement)).toThrow(
+      'Cannot add a second CANONICAL edge for Sequence.value[1]'
+    );
+    expect(() => addParentEdge(replacement, CANONICAL, node)).toThrow(
+      'Cannot add a second CANONICAL parent edge for Num'
+    );
+  });
 });

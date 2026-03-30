@@ -49,9 +49,9 @@ function invalidateSelectorCache(selector?: Selector | Nil): void {
 function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): void {
   ruleset.invalidateSelectorValueCache();
   invalidateSelectorCache(ruleset.get('selector', context));
-  invalidateSelectorCache(ruleset.getExtendedSelector(context));
+  invalidateSelectorCache(context ? ruleset.get('_extendedSelector', context) : ruleset.getExtendedSelector());
   invalidateSelectorCache(ruleset.getOwnSelector(context));
-  invalidateSelectorCache(ruleset.getSelectorBeforeExtend(context));
+  invalidateSelectorCache(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend());
   const rules = ruleset.enterRules(context);
   if (!rules || !isNode(rules, N.Rules)) {
     return;
@@ -552,7 +552,9 @@ function getRulesetExtendTarget(
     return undefined;
   }
   const parentRs = getParentRuleset(ruleset, context);
-  const parentSelectorBeforeExtend = parentRs?.getSelectorBeforeExtend(context);
+  const parentSelectorBeforeExtend = parentRs
+    ? (context ? parentRs.get('selectorBeforeExtend', context) : parentRs.getSelectorBeforeExtend())
+    : undefined;
   const activeParentSelector = parentRs?.getEffectiveSelector(false, context);
   const parentSelector = (
     !partial
@@ -651,7 +653,7 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   if (getRulesetHoistToRoot(ruleset, context) !== undefined) {
     setRulesetHoistToRoot(ruleset, undefined, context);
   }
-  const selector = (ruleset.getExtendedSelector(context) ?? ruleset.get('selector', context));
+  const selector = ((context ? ruleset.get('_extendedSelector', context) : ruleset.getExtendedSelector()) ?? ruleset.get('selector', context));
   if (selector && !isNode(selector, N.Nil)) {
     if (context) {
       selector._removeFlag(F_EXTENDED, context);
@@ -698,7 +700,7 @@ function applyInstructionToRuleset(
   }
 
   const currentSelector = ruleset.get('selector', context);
-  if (!ruleset.getSelectorBeforeExtend(context) && currentSelector && !isNode(currentSelector, N.Nil)) {
+  if (!(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend()) && currentSelector && !isNode(currentSelector, N.Nil)) {
     ruleset.setSelectorBeforeExtend(currentSelector.copy(true) as Selector, context!);
   }
 

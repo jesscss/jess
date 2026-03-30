@@ -628,7 +628,7 @@ export abstract class Node<
   */
   declare readonly parent: Node | undefined;
   declare parentEdges: NodeEdge<Node> | undefined;
-  declare renderKey: RenderKey | undefined;
+  declare renderKey: RenderKey;
   declare evaluatedRenderKeys: Set<RenderKey> | undefined;
   declare preEvaluatedRenderKeys: Set<RenderKey> | undefined;
 
@@ -928,6 +928,7 @@ export abstract class Node<
     treeContext?: TreeContext
   ) {
     (this as any).parent = undefined;
+    (this as any).renderKey = CANONICAL;
     this.index = undefined as any;
     this._location = location;
     if (options !== undefined || treeContext !== undefined) {
@@ -1518,6 +1519,7 @@ export abstract class Node<
         preEvaluatedNode = preEvald;
         preEvaluatedNode._setPreEvaluated(true, context);
         if (preEvald !== node) {
+          Node._inheritDerivedRenderKey(node, preEvaluatedNode);
           preEvaluatedNode.inherit(node);
         }
         if (!preEvaluatedNode._isEvaluated(context)) {
@@ -1532,6 +1534,7 @@ export abstract class Node<
           (evald as Record<string, unknown>).evaluated = true;
         }
         if (preEvaluatedNode !== evald) {
+          Node._inheritDerivedRenderKey(preEvaluatedNode, evald);
           evald.inherit(preEvaluatedNode);
         }
         return evald;
@@ -1549,6 +1552,7 @@ export abstract class Node<
     }
     preEvaluatedNode._setPreEvaluated(true, context);
     if (preEvaluatedNode !== node) {
+      Node._inheritDerivedRenderKey(node, preEvaluatedNode);
       preEvaluatedNode.inherit(node);
     }
 
@@ -1564,9 +1568,19 @@ export abstract class Node<
       (evald as Record<string, unknown>).evaluated = true;
     }
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
+      Node._inheritDerivedRenderKey(preEvaluatedNode, evald);
       evald.inherit(preEvaluatedNode);
     }
     return evald;
+  }
+
+  private static _inheritDerivedRenderKey(source: Node, derived: Node): void {
+    if (source === derived || derived.renderKey !== CANONICAL) {
+      return;
+    }
+    derived.renderKey = source.renderKey === CANONICAL
+      ? EVAL
+      : source.renderKey;
   }
 
   /**

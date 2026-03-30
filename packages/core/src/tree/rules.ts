@@ -4,6 +4,7 @@ import {
   type NodeOptions,
   type LocationInfo, type OptionalLocation,
   type RenderKey,
+  CANONICAL,
   EVAL,
   type TreeContext,
   F_STATIC,
@@ -167,12 +168,13 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
 export interface Rules {
   type: 'Rules' | 'RawRules' | 'Collection';
   shortType: 'rules' | 'rules-raw' | 'coll';
+  renderKey: RenderKey;
 }
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   static override childKeys = ['value'] as const;
 
   readonly value!: readonly Node[];
-  renderKey: RenderKey | undefined;
+  renderKey: RenderKey;
   renderParent: Rules | undefined;
   private _wrapperRegistrySeeded = false;
   private _wrapperRegistrySeeding = false;
@@ -186,7 +188,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!context) {
       return fn();
     }
-    const needsRenderKey = this.renderKey !== undefined && context.renderKey !== this.renderKey;
+    const needsRenderKey = context.renderKey !== this.renderKey;
     const needsRulesContext = context.rulesContext !== this;
     if (!needsRenderKey && !needsRulesContext) {
       return fn();
@@ -311,7 +313,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   cloneDetachedUnlockWrapper(ctx: Context): this {
     const wrapper = this.cloneLookupSafeShallowWrapper(ctx);
-    wrapper.renderKey ??= EVAL;
+    if (wrapper.renderKey === CANONICAL) {
+      wrapper.renderKey = EVAL;
+    }
     return wrapper;
   }
 
@@ -322,7 +326,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   cloneVisibilityIsolationWrapper(ctx: Context): this {
     const wrapper = this.cloneLookupSafeShallowWrapper(ctx);
-    wrapper.renderKey ??= EVAL;
+    if (wrapper.renderKey === CANONICAL) {
+      wrapper.renderKey = EVAL;
+    }
     return wrapper;
   }
 
@@ -357,7 +363,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _isWrapperRegistryOwner(): boolean {
-    return this.renderKey !== undefined;
+    return this.renderKey !== CANONICAL;
   }
 
   private _connectSharedChildren(renderKey: RenderKey): void {
@@ -699,7 +705,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): Rules {
     let rules: Rules = this;
     const effectiveRenderKey = renderKey ?? owner.renderKey;
-    if (effectiveRenderKey !== undefined && rules.renderKey === undefined) {
+    if (effectiveRenderKey !== undefined && effectiveRenderKey !== CANONICAL && rules.renderKey === CANONICAL) {
       const existing = ((owner as unknown as Record<string, unknown>).rulesEdge as Map<RenderKey, Rules> | undefined)
         ?.get(effectiveRenderKey);
       if (existing) {
@@ -771,7 +777,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _getRenderVisibleChildAt(index: number, context?: Context): Node | undefined {
     const canonical = this.value[index];
-    if (this.renderKey === undefined) {
+    if (this.renderKey === CANONICAL) {
       return canonical;
     }
 
@@ -786,7 +792,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _getChildren(context?: Context): readonly Node[] {
     return this._withOwnRenderKey(context, () => {
-      if (this.renderKey === undefined) {
+      if (this.renderKey === CANONICAL) {
         return context
           ? getChildren(this, context)
           : this.value;
@@ -1007,7 +1013,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           continue;
         }
         if (!visibleOnly || n.visible || n.fullRender) {
-          if (positionMap && (subtree || renderKey !== undefined)) {
+          if (positionMap && (subtree || renderKey !== CANONICAL)) {
             positionMap.set(n, { subtree, renderKey });
           }
           finalRules.push(n);
@@ -1736,7 +1742,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Always set root if not set - needed for extends to work with API-created Rules
     context.root ??= rules;
     context.rulesContext = rules;
-    if (rules.renderKey !== undefined) {
+    if (rules.renderKey !== CANONICAL) {
       context.renderKey = rules.renderKey;
     }
   }
@@ -2174,7 +2180,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * we still have all rulesets registered and root set for extend lookups.
    */
   private _afterPreEvalStep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
-    if (rules === context.root && rules.renderKey === undefined && context.renderKey === undefined) {
+    if (
+      rules === context.root
+      && rules.renderKey === CANONICAL
+      && (context.renderKey === undefined || context.renderKey === CANONICAL)
+      && getCurrentParentNode(rules, context) === undefined
+    ) {
       const evalRoot = rules.createShallowBodyWrapper(undefined, EVAL);
       context.root = evalRoot;
       context.rulesContext = evalRoot;
