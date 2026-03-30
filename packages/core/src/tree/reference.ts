@@ -17,6 +17,7 @@ import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
+import type { Mixin } from './mixin.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import type { VarDeclaration } from './declaration-var.js';
@@ -401,17 +402,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
          * We accumulate the new key and use registry lookup to verify the compound match
          */
         if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
-          const mixinResult = (resolvedTarget as Ruleset).get('rules').eval(context);
-          if (isThenable(mixinResult)) {
-            return (mixinResult as Promise<Rules>).then((rules) => {
-              rules.inherit((resolvedTarget as Ruleset).get('rules'));
-              return [rules, valueKey] as [Node, string | string[]];
-            });
-          } else {
-            mixinResult.inherit((resolvedTarget as Ruleset).get('rules'));
-            resolvedTarget = mixinResult as Rules;
-            return [resolvedTarget, valueKey] as [Node, string | string[]];
-          }
+          const targetRules = isNode(resolvedTarget, N.Ruleset)
+            ? (resolvedTarget as Ruleset).getCurrentRules(context)
+            : (resolvedTarget as Mixin)
+              .get('rules', context)
+              .withRenderOwner(
+                resolvedTarget as Node,
+                (resolvedTarget as Node).renderKey ?? context.renderKey,
+                context
+              );
+          return [targetRules, valueKey] as [Node, string | string[]];
         }
 
         return [resolvedTarget, valueKey] as [Node, string | string[]];
@@ -645,7 +645,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
         const lookupTarget = isNode(resolvedTarget, N.Ruleset)
-          ? (resolvedTarget as Ruleset).get('rules')
+          ? (resolvedTarget as Ruleset).getCurrentRules(context)
           : resolvedTarget;
         let returnVal: any;
         if (isNode(lookupTarget, N.Rules)) {
@@ -657,6 +657,36 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             if (returnVal === undefined) {
               returnVal = performLookup(activeSourceRulesParent);
             }
+          }
+        }
+        if (type === 'mixin-ruleset') {
+          const keyStr = isArray(valueKey) ? valueKey.join('.') : String(valueKey);
+          if (keyStr.includes('sayGender') || keyStr.includes('nav-justified')) {
+            console.log('REF-LOOKUP', {
+              key: keyStr,
+              lookupTargetType: lookupTarget?.type,
+              lookupTargetRenderKey: isNode(lookupTarget, N.Rules) ? (lookupTarget as Rules).renderKey : undefined,
+              returnValType: Array.isArray(returnVal)
+                ? returnVal.map(item => `${item?.type}:${String((item as any)?.name?.valueOf?.() ?? item?.valueOf?.() ?? '')}:${String((item as any)?.renderKey ?? 'none')}`)
+                : isNode(returnVal) ? returnVal.type : typeof returnVal
+            });
+          }
+        }
+        if (type === 'variable') {
+          const keyStr = isArray(valueKey) ? valueKey.join('.') : String(valueKey);
+          if (keyStr === 'gender' || keyStr === 'gender_') {
+            console.log('VAR-LOOKUP', {
+              key: keyStr,
+              contextRulesType: context.rulesContext?.type,
+              contextRulesRenderKey: context.rulesContext?.renderKey,
+              activeRulesParentType: activeRulesParent?.type,
+              activeRulesParentRenderKey: activeRulesParent?.renderKey,
+              lookupTargetType: lookupTarget?.type,
+              lookupTargetRenderKey: isNode(lookupTarget, N.Rules) ? (lookupTarget as Rules).renderKey : undefined,
+              returnValType: Array.isArray(returnVal)
+                ? returnVal.map(item => `${item?.type}:${String((item as any)?.name?.valueOf?.() ?? item?.valueOf?.() ?? '')}:${String((item as any)?.renderKey ?? 'none')}`)
+                : isNode(returnVal) ? `${returnVal.type}:${String((returnVal as any)?.name?.valueOf?.() ?? returnVal.valueOf?.() ?? '')}:${String((returnVal as any)?.renderKey ?? 'none')}` : typeof returnVal
+            });
           }
         }
         return { returnVal, valueKey };
@@ -741,6 +771,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           // scope entry instead of eagerly converting it into a callable mixin.
           if (type === 'mixin-ruleset' && !isNode(getParent(this, context), N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
+            const firstKey = isArray(valueKey) ? valueKey.join('.') : String(valueKey);
+            if (firstKey.includes('person')) {
+              console.log('REF-TARGET-RETURN', {
+                key: firstKey,
+                firstType: first?.type,
+                firstRenderKey: (first as any)?.renderKey,
+                firstParentType: first?.parent?.type
+              });
+            }
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
               setSourceParent(first as Node, this, context);
               context.popReference();
@@ -758,12 +797,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               return cast(undefined);
             }
           }
-          // When the parent is a Call, single match, and a simple mixin lookup
-          // (not namespace/mixin-ruleset), return the entry directly so
-          // Call.evalNode uses evalMixinDirect without the function wrapper.
+          // When the parent is a Call and lookup resolved to a single mixin/ruleset
+          // candidate, return the entry directly so Call.evalNode keeps the
+          // candidate placement/renderKey instead of routing through the older
+          // JsFunction wrapper path.
           if (
             returnVal.length === 1
-            && type === 'mixin'
+            && (type === 'mixin' || type === 'mixin-ruleset')
             && isNode(getParent(this, context), N.Call)
           ) {
             context.popReference();

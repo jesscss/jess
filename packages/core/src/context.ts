@@ -10,6 +10,7 @@ import type {
 import { EvalState } from './eval-state.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
+import type { RenderKey } from './tree/node-base.js';
 import type { PluginInterface } from './plugin.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
@@ -254,6 +255,13 @@ export class Context {
 
   /** The call that is currently being evaluated */
   caller?: Call;
+
+  /**
+   * Current render-key selection for parent/edge-sensitive traversal.
+   *
+   * Canonical traversal falls back when no alternate edge exists.
+   */
+  renderKey?: RenderKey;
 
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;

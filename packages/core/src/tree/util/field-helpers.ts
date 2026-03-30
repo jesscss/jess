@@ -1,9 +1,10 @@
-import type { Node } from '../node-base.js';
+import { EVAL, type Node } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
 import type { EvalState } from '../../eval-state.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
+import { addEdgeAt, addParentEdge } from './cursor.js';
 
 /**
  * EvalState-based field read/write helpers.
@@ -44,6 +45,18 @@ export function setField(
   value: unknown,
   ctx: Context
 ): void {
+  if (ctx.renderKey !== undefined) {
+    const childKeys = (node.constructor as { childKeys?: readonly string[] | null }).childKeys;
+    if (childKeys?.includes(key) && isNode(value)) {
+      const record = node as unknown as Record<string, unknown>;
+      const edgeKey = `${key}Edge`;
+      const edge = (record[edgeKey] as Map<object | symbol, Node> | undefined) ?? new Map<object | symbol, Node>();
+      edge.set(ctx.renderKey, value);
+      record[edgeKey] = edge;
+      node.adopt(value);
+      return;
+    }
+  }
   ctx.activeState.get(node).fields.set(key, value);
 }
 
@@ -54,6 +67,15 @@ export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
+  const renderKey = ctx.renderKey
+    ?? node.renderKey
+    ?? (node.parentEdges?.has(EVAL) ? EVAL : undefined);
+  if (renderKey !== undefined) {
+    const parent = node.parentEdges?.get(renderKey);
+    if (parent !== undefined) {
+      return parent;
+    }
+  }
   let state: EvalState | undefined = ctx.activeState;
   while (state) {
     const parent = state.peek(node)?._fields?.get('parent');
@@ -83,6 +105,10 @@ export function isEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
+  const renderKey = ctx.renderKey ?? node.renderKey;
+  if (renderKey !== undefined) {
+    return node.evaluatedRenderKeys?.has(renderKey) ?? false;
+  }
   return ctx.activeState.peek(node)?.evaluated ?? false;
 }
 
@@ -94,6 +120,15 @@ export function setEvaluated(
   value: boolean,
   ctx: Context
 ): void {
+  if (ctx.renderKey !== undefined) {
+    const keys = (node.evaluatedRenderKeys ??= new Set());
+    if (value) {
+      keys.add(ctx.renderKey);
+    } else {
+      keys.delete(ctx.renderKey);
+    }
+    return;
+  }
   ctx.activeState.get(node).evaluated = value;
 }
 
@@ -104,6 +139,10 @@ export function isPreEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
+  const renderKey = ctx.renderKey ?? node.renderKey;
+  if (renderKey !== undefined) {
+    return node.preEvaluatedRenderKeys?.has(renderKey) ?? false;
+  }
   return ctx.activeState.peek(node)?.preEvaluated ?? false;
 }
 
@@ -115,6 +154,15 @@ export function setPreEvaluated(
   value: boolean,
   ctx: Context
 ): void {
+  if (ctx.renderKey !== undefined) {
+    const keys = (node.preEvaluatedRenderKeys ??= new Set());
+    if (value) {
+      keys.add(ctx.renderKey);
+    } else {
+      keys.delete(ctx.renderKey);
+    }
+    return;
+  }
   ctx.activeState.get(node).preEvaluated = value;
 }
 
@@ -195,7 +243,7 @@ export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
-  return getField<readonly Node[]>(rules, 'value', ctx);
+  return rules.get('value', ctx);
 }
 
 /**
@@ -223,6 +271,31 @@ export function setChildAt(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
+  if (ctx.renderKey !== undefined) {
+    if (rules.renderKey !== undefined && rules.renderKey === ctx.renderKey) {
+      const currentChildren = rules.value;
+      if (currentChildren[index] === node) {
+        return;
+      }
+      const nextValue = [...currentChildren];
+      nextValue[index] = node;
+      (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(nextValue);
+      if (options.markDirty !== false) {
+        markScopeDirty(rules, ctx);
+      }
+      return;
+    }
+    const currentChildren = rules.get('value', ctx);
+    if (currentChildren[index] === node) {
+      return;
+    }
+    addEdgeAt(rules, 'value', index, ctx.renderKey, node);
+    addParentEdge(node, ctx.renderKey, rules);
+    if (options.markDirty !== false) {
+      markScopeDirty(rules, ctx);
+    }
+    return;
+  }
   const s = ctx.activeState.get(rules);
   const currentChildren = s._fields?.get('value') as Node[] | undefined
     ?? [...rules.value];

@@ -125,6 +125,32 @@ That pair is the cursor.
 - eval may temporarily carry the current cursor in context, but the cursor is
   the real source of truth
 
+## Lookup Inputs
+
+Path selection should depend on the smallest thing that actually decides the
+path.
+
+So:
+
+- if the operation only needs alternate-edge selection, pass `renderKey`
+- if the operation needs both location and path, pass a `Cursor`
+- only pass full `Context` when the operation truly needs eval machinery beyond
+  path selection
+
+The goal is:
+
+- fewer property lookups per call
+- clearer semantics at the call site
+- no accidental reintroduction of "pass context to everything" just to find the
+  current edge
+
+So the preferred split is:
+
+- `node.get('rules', renderKey)` for edge/path selection
+- `getEdge(cursor, 'rules')` / `getParentEdge(cursor)` for traversal
+- `node.get('rules', context)` only while a surface still genuinely mixes
+  render-path selection with old state-overlay reads
+
 ## Function Boundary Rule
 
 Custom/user-function boundaries should not have to understand render keys.

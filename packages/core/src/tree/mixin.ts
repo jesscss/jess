@@ -198,7 +198,7 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     const w = options.writer!;
     const context = options.context;
     const name = this.get('name', context);
-    const rules = this.get('rules', context);
+    const rules = this.get('rules', context).withRenderOwner(this, context?.renderKey, context);
     const params = this.get('params', context);
     const guard = this.get('guard', context);
     const mark = w.mark();
@@ -235,7 +235,7 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     node.sourceNode ??= this;
 
     const name = node.get('name', context);
-    const rules = node.get('rules', context);
+    const rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);
     // Set visibility on the canonical rules options — mixin body visibility
     // is set once during preEval, same as dev baseline.
     const rulesVisibility = { ...(rules.options.rulesVisibility ?? {}) };

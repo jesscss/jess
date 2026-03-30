@@ -316,7 +316,7 @@ describe('Rules', () => {
         expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
-      it('cloneLookupSafeShallowWrapper records the nearest Rules scope as renderParent', () => {
+      it('cloneLookupSafeShallowWrapper resolves the nearest Rules scope through the current parent chain', () => {
         const ctx = new Context();
         const inner = rules([
           decl({ name: 'color', value: any('red') })
@@ -325,7 +325,7 @@ describe('Rules', () => {
 
         const wrapper = inner.cloneLookupSafeShallowWrapper(ctx);
 
-        expect(wrapper.renderParent).toBe(outer);
+        expect(wrapper.renderParent).toBeUndefined();
         expect(wrapper.getRegistryParent(ctx)).toBe(outer);
       });
 

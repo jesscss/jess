@@ -93,6 +93,10 @@ export type Cursor = {
   renderKey: RenderKey;
 };
 
+function isContextArg(value: Context | RenderKey | undefined): value is Context {
+  return typeof value === 'object' && value !== null && 'activeState' in value;
+}
+
 /**
  * Utility type to mark a node's value as generated
  */
@@ -624,6 +628,9 @@ export abstract class Node<
   */
   declare readonly parent: Node | undefined;
   declare parentEdges: NodeEdge<Node> | undefined;
+  declare renderKey: RenderKey | undefined;
+  declare evaluatedRenderKeys: Set<RenderKey> | undefined;
+  declare preEvaluatedRenderKeys: Set<RenderKey> | undefined;
 
   get sourceParent() {
     return this._meta?.sourceParent;
@@ -940,15 +947,49 @@ export abstract class Node<
 
   /**
    * Type-safe access to child data fields.
-   * Without context: returns canonical (parse-time) value.
-   * With context: returns eval-state-patched value if one exists.
+   * Without a second arg: returns canonical (parse-time) value.
+   * With a renderKey: returns edge-selected value if one exists.
+   * With a context: returns edge-selected value first, then any eval-state-patched value.
    *
    * @example
-   *   url.get('value')        // canonical, typed
-   *   url.get('value', ctx)   // eval-aware, typed
-   *   url.get('name')         // TS error if 'name' not in ChildData
+   *   url.get('value')              // canonical, typed
+   *   url.get('value', renderKey)   // render-path aware, typed
+   *   url.get('value', ctx)         // render + eval-state aware, typed
+   *   url.get('name')               // TS error if 'name' not in ChildData
    */
-  get<K extends keyof ChildData & string>(key: K, ctx?: Context): ChildData[K] {
+  get<K extends keyof ChildData & string>(key: K): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, renderKey: RenderKey): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, ctx: Context): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, ctxOrRenderKey?: Context | RenderKey): ChildData[K] {
+    const ctx = isContextArg(ctxOrRenderKey) ? ctxOrRenderKey : undefined;
+    const renderKey = ctx
+      ? (ctx.renderKey ?? this.renderKey)
+      : ctxOrRenderKey;
+
+    if (renderKey !== undefined) {
+      const singularEdge = (this as unknown as Record<string, unknown>)[`${key}Edge`] as NodeEdge<ChildData[K]> | undefined;
+      const overridden = singularEdge?.get(renderKey);
+      if (overridden !== undefined) {
+        return overridden as ChildData[K];
+      }
+      const canonicalValue = (this as unknown as Record<string, unknown>)[key] as unknown;
+      if (isArray(canonicalValue)) {
+        const indexedEdges = (this as unknown as Record<string, unknown>)[`${key}Edges`] as Array<NodeEdge<unknown> | undefined> | undefined;
+        if (indexedEdges) {
+          let resolved: unknown[] | undefined;
+          for (let i = 0; i < canonicalValue.length; i++) {
+            const item = indexedEdges[i]?.get(renderKey);
+            if (item !== undefined) {
+              (resolved ??= [...canonicalValue])[i] = item;
+            }
+          }
+          if (resolved) {
+            return resolved as ChildData[K];
+          }
+        }
+      }
+    }
+
     if (ctx) {
       let state: EvalState | undefined = ctx.activeState;
       while (state) {
@@ -1730,7 +1771,7 @@ export abstract class Node<
       for (const key of ck) {
         // Resolve through eval state when context available
         const field = ctx
-          ? getField(this as Node, key!, ctx)
+          ? this.get(key! as keyof ChildData & string, ctx)
           : (this as any)[key!];
         if (isArray(field)) {
           for (const item of field) {

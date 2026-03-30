@@ -1,17 +1,21 @@
 import type { Cursor, Node, NodeEdge, RenderKey } from '../node.js';
 
+function nodeFields(node: Node): Record<string, unknown> {
+  return node as unknown as Record<string, unknown>;
+}
+
 function getSingularEdgeStore(
   node: Node,
   key: string
 ): NodeEdge<Node> | undefined {
-  return (node as unknown as Record<string, unknown>)[`${key}Edge`] as NodeEdge<Node> | undefined;
+  return nodeFields(node)[`${key}Edge`] as NodeEdge<Node> | undefined;
 }
 
 function getIndexedEdgeStore(
   node: Node,
   key: string
 ): Array<NodeEdge<Node> | undefined> | undefined {
-  return (node as unknown as Record<string, unknown>)[`${key}Edges`] as Array<NodeEdge<Node> | undefined> | undefined;
+  return nodeFields(node)[`${key}Edges`] as Array<NodeEdge<Node> | undefined> | undefined;
 }
 
 function setSingularEdgeStore(
@@ -19,7 +23,7 @@ function setSingularEdgeStore(
   key: string,
   edge: NodeEdge<Node>
 ): void {
-  (node as unknown as Record<string, unknown>)[`${key}Edge`] = edge;
+  nodeFields(node)[`${key}Edge`] = edge;
 }
 
 function setIndexedEdgeStore(
@@ -27,7 +31,7 @@ function setIndexedEdgeStore(
   key: string,
   edges: Array<NodeEdge<Node> | undefined>
 ): void {
-  (node as unknown as Record<string, unknown>)[`${key}Edges`] = edges;
+  nodeFields(node)[`${key}Edges`] = edges;
 }
 
 export function lookupEdge<T>(
@@ -57,7 +61,7 @@ export function getEdge(cursor: Cursor, key: string): Cursor | undefined {
     }
   }
 
-  const canonicalChild = (cursor.node as Record<string, unknown>)[key] as Node | undefined;
+  const canonicalChild = nodeFields(cursor.node)[key] as Node | undefined;
   return canonicalChild ? { node: canonicalChild, renderKey: cursor.renderKey } : undefined;
 }
 
@@ -70,7 +74,7 @@ export function getEdgeAt(cursor: Cursor, key: string, index: number): Cursor | 
     }
   }
 
-  const canonicalList = (cursor.node as Record<string, unknown>)[key] as Node[] | undefined;
+  const canonicalList = nodeFields(cursor.node)[key] as Node[] | undefined;
   const canonicalChild = canonicalList?.[index];
   return canonicalChild ? { node: canonicalChild, renderKey: cursor.renderKey } : undefined;
 }
@@ -98,4 +102,14 @@ export function addEdgeAt(
   edge.set(renderKey, child);
   indexedEdges[index] = edge;
   setIndexedEdgeStore(node, key, indexedEdges);
+}
+
+export function addParentEdge(
+  node: Node,
+  renderKey: RenderKey,
+  parent: Node
+): void {
+  const edge = node.parentEdges ?? new Map<RenderKey, Node>();
+  edge.set(renderKey, parent);
+  node.parentEdges = edge;
 }

@@ -15,7 +15,7 @@ import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { getChildren, getDependency, getParent, isPreEvaluated, hasChangedVars, getChangedVars } from './field-helpers.js';
+import { getChildren, getDependency, getParent, isPreEvaluated, hasChangedVars, getChangedVars, setParent } from './field-helpers.js';
 
 const { isArray } = Array;
 
@@ -347,6 +347,7 @@ export abstract class Registry<
     // Note: childFilterType can be undefined to mean "don't filter" (accept both Mixin and Ruleset)
     const actualChildFilterType = 'childFilterType' in options ? childFilterType : filterType;
     let firstValue = candidates.values().next().value;
+    rules.ensureCurrentRenderRulesRegistered(context);
     if (rules._rulesSet) {
       const { rulesSet } = rules;
       const length = rulesSet.length;
@@ -842,6 +843,28 @@ export class MixinRegistry extends Registry<
       context,
       hasTarget = false
     } = options ?? {};
+    const addCandidate = (node: Mixin | Ruleset): void => {
+      const sourceNode = node.sourceNode ?? node;
+      for (const existing of candidates) {
+        const existingNode = existing as Mixin | Ruleset;
+        if ((existingNode.sourceNode ?? existingNode) !== sourceNode) {
+          continue;
+        }
+        const existingRenderKey = (existingNode as Node).renderKey;
+        const nextRenderKey = (node as Node).renderKey;
+        if (existingRenderKey !== undefined && nextRenderKey === undefined) {
+          return;
+        }
+        if (existingRenderKey === undefined && nextRenderKey !== undefined) {
+          candidates.delete(existingNode);
+        }
+        break;
+      }
+      if (context && rules) {
+        setParent(node, rules, context);
+      }
+      (candidates ??= new Set()).add(node);
+    };
     const mixinHasNoRequiredParams = (mixinNode: Mixin): boolean => {
       const params = mixinNode.get('params');
       if (!params || params.length === 0) {
@@ -925,6 +948,8 @@ export class MixinRegistry extends Registry<
 
       if (allEntriesToCheck.length > 0) {
         const targetMatch = search.length === 0 ? [startKey!] : search;
+        const deferredExactMatches: Array<Mixin | Ruleset> = [];
+        const candidateSizeBeforeEntries = candidates.size;
         for (const { value, match } of allEntriesToCheck) {
           if (filterType && value.type !== filterType) {
             continue;
@@ -937,12 +962,16 @@ export class MixinRegistry extends Registry<
           // but haven't fully matched the compound path. The startKey should only be added as a candidate if we're
           // doing a simple lookup (keyList.length === 1), where the startKey IS the full match.
           if (arraysEqualAsSet(match, targetMatch)) {
-            (candidates ??= new Set()).add(value);
+            if (keyList.length > 1) {
+              deferredExactMatches.push(value);
+            } else {
+              addCandidate(value);
+            }
             continue;
           }
           // Only add startKey mixin as candidate if we're doing a simple lookup (not a compound path)
           if (search.length === 0 && match.length === 0 && keyList.length === 1) {
-            (candidates ??= new Set()).add(value);
+            addCandidate(value);
             continue;
           }
           // For compound paths, we don't add startKey as a candidate, but we still need to search inside it
@@ -956,7 +985,13 @@ export class MixinRegistry extends Registry<
               (isNode(value, N.Ruleset))
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
-              let subRules = isNode(value, N.Ruleset) ? (value as Ruleset).get('rules') : (value as Mixin).get('rules');
+              let subRules = isNode(value, N.Ruleset)
+                ? (value as Ruleset).getCurrentRules(this.context)
+                : (value as Mixin).get('rules', this.context).withRenderOwner(
+                    value as Mixin,
+                    this.context?.renderKey,
+                    this.context
+                  );
               // Mixin rules aren't preEvaluated during registration — register
               // child rulesets/mixins now so namespace lookup can descend.
               // Always ensure children are registered for namespace descent —
@@ -1000,7 +1035,13 @@ export class MixinRegistry extends Registry<
               (isNode(value, N.Ruleset))
               || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
             ) {
-              let subRules = isNode(value, N.Ruleset) ? (value as Ruleset).get('rules') : (value as Mixin).get('rules');
+              let subRules = isNode(value, N.Ruleset)
+                ? (value as Ruleset).getCurrentRules(this.context)
+                : (value as Mixin).get('rules', this.context).withRenderOwner(
+                    value as Mixin,
+                    this.context?.renderKey,
+                    this.context
+                  );
               this._ensureChildrenRegistered(subRules, context?.selectorBits);
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
               subMixinRegistry?.indexPendingItems();
@@ -1014,6 +1055,12 @@ export class MixinRegistry extends Registry<
                 searchedRules: searchedRules
               } as FindOptions);
             }
+          }
+        }
+
+        if (keyList.length > 1 && candidates.size === candidateSizeBeforeEntries) {
+          for (const candidate of deferredExactMatches) {
+            addCandidate(candidate);
           }
         }
       }
@@ -1064,10 +1111,20 @@ export class MixinRegistry extends Registry<
             const candidateKey = isMixin
               ? (candidateNode as Mixin).get('name')?.valueOf?.()
               : (isRuleset ? (candidateNode as Ruleset).get('selector').valueOf?.() : '');
+            const candidateSelector = isRuleset
+              ? (candidateNode as Ruleset).get('selector') as Selector | Nil
+              : undefined;
+            const candidateVisibleKeySet = candidateSelector && !isNode(candidateSelector, N.Nil)
+              ? tryGetSelectorKeySet(candidateSelector, true)
+              : undefined;
+            const candidateKeySet = candidateSelector && !isNode(candidateSelector, N.Nil)
+              ? tryGetSelectorKeySet(candidateSelector, false)
+              : undefined;
             const matchesStartKey = isRuleset
               ? (
-                  (!isNode((candidateNode as Ruleset).get('selector'), N.Nil) && hasSelectorKey(((candidateNode as Ruleset).get('selector') as Selector).visibleKeySet, startKey!))
-                  || (!isNode((candidateNode as Ruleset).get('selector'), N.Nil) && hasSelectorKey(((candidateNode as Ruleset).get('selector') as Selector).keySet, startKey!))
+                  hasSelectorKey(candidateVisibleKeySet, startKey!)
+                  || hasSelectorKey(candidateKeySet, startKey!)
+                  || candidateKey === startKey
                 )
               : candidateKey === startKey;
 
@@ -1079,7 +1136,13 @@ export class MixinRegistry extends Registry<
 
             // Search inside the candidate if it matches startKey and we have remaining search keys
             if (matchesStartKey && search.length > 0 && (isRuleset || hasNoParams)) {
-              let subRules = isRuleset ? (candidateNode as Ruleset).get('rules') : (candidateNode as Mixin).get('rules');
+              let subRules = isRuleset
+                ? (candidateNode as Ruleset).getCurrentRules(this.context)
+                : (candidateNode as Mixin).get('rules', this.context).withRenderOwner(
+                    candidateNode as Mixin,
+                    this.context?.renderKey,
+                    this.context
+                  );
               const subMixinRegistry = subRules.getRegistry('mixin', this.context);
               subMixinRegistry?.indexPendingItems();
               subMixinRegistry?.find(search, filterType, {

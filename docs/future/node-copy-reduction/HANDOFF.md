@@ -29,6 +29,8 @@ The branch should move away from:
 - prefer smaller targeted changes over broad rewrites
 - do not introduce new detached overlay concepts
 - if a node cannot answer a parent question without a render key, use a cursor
+- if a lookup only needs path selection, pass `renderKey` or cursor, not full
+  `Context`
 - if a node-local value truly changes identity, use a thin derived node only if edge rewiring is not enough
 - do not add new generic `childEdges` maps as target architecture
 

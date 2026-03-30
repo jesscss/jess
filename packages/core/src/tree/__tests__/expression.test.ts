@@ -42,7 +42,7 @@ describe('Expression', () => {
     const canonical = any('foo');
     const alternate = any('bar');
     const rule = expr(canonical);
-    const key = {} as RenderKey;
+    const key: RenderKey = Symbol('cursor');
     const cursor = { node: rule, renderKey: key };
 
     expect(getEdge(cursor, 'value')?.node).toBe(canonical);
@@ -51,6 +51,18 @@ describe('Expression', () => {
 
     expect(getEdge(cursor, 'value')?.node).toBe(alternate);
     expect(rule.value).toBe(canonical);
+  });
+
+  it('reads a singular child through get(field, renderKey) without a context', () => {
+    const canonical = any('foo');
+    const alternate = any('bar');
+    const rule = expr(canonical);
+    const renderKey = Symbol('render');
+
+    addEdge(rule, 'value', renderKey, alternate);
+
+    expect(rule.get('value')).toBe(canonical);
+    expect(rule.get('value', renderKey)).toBe(alternate);
   });
 
   // it('should serialize to a module', () => {

@@ -7,6 +7,7 @@ import type { Condition } from '../condition.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import type { Ruleset } from '../ruleset.js';
+import type { AtRule } from '../at-rule.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { VarDeclaration as VarDeclarationCtor } from '../declaration-var.js';
 import type { List } from '../list.js';
@@ -134,7 +135,8 @@ export function bindMixinParamValue(
   value: Node,
   context: Context
 ): void {
-  setField(param, 'value', value, context);
+  void context;
+  param.setData('value', value);
 }
 
 /**
@@ -147,7 +149,8 @@ export function attachMixinBodyToParamScope(
   paramScope: Rules,
   context: Context
 ): void {
-  setParent(body, paramScope, context);
+  void context;
+  paramScope.adopt(body);
 }
 
 /**
@@ -277,7 +280,8 @@ export function seedMixinGuardScope(
  */
 export function prepareMixinInvocationScope(
   body: Rules,
-  parent: Node | undefined,
+  definitionParent: Node | undefined,
+  placementParent: Node | undefined,
   index: number,
   params: List<Node> | undefined,
   nodeArgs: readonly Node[],
@@ -287,10 +291,66 @@ export function prepareMixinInvocationScope(
     return undefined;
   }
   const scope = createMixinParamScope(index);
+  void body;
   populateMixinParamScope(scope, params, context);
   defineMixinArgumentsInScope(scope, params, nodeArgs, context);
-  attachMixinBodyToParamScope(body, scope, context);
+  scope.parent = placementParent ?? definitionParent;
+  scope.renderParent = isNode(definitionParent, N.Rules)
+    ? definitionParent as Rules
+    : undefined;
   return scope;
+}
+
+export function createMixinInvocationRules(
+  body: Rules,
+  definitionParent: Node | undefined,
+  placementParent: Node | undefined,
+  sourceParent: Node | undefined,
+  index: number,
+  params: List<Node> | undefined,
+  nodeArgs: readonly Node[],
+  context: Context
+): Rules {
+  const renderKey = Symbol('mixin-invocation');
+  const wrapper = body.createShallowBodyWrapper(undefined, renderKey);
+  wrapper.index = index;
+  wrapper.parent = placementParent ?? definitionParent;
+  wrapper.renderParent = isNode(definitionParent, N.Rules)
+    ? definitionParent as Rules
+    : undefined;
+  wrapper.sourceParent = sourceParent;
+
+  if (params) {
+    const paramScope = createMixinParamScope(index);
+    populateMixinParamScope(paramScope, params, context);
+    defineMixinArgumentsInScope(paramScope, params, nodeArgs, context);
+    wrapper.prependWrapperChildren(...paramScope.value as Node[]);
+  }
+
+  wrapper.options = {
+    ...wrapper.options,
+    rulesVisibility: {
+      ...(wrapper.options.rulesVisibility ?? {}),
+      VarDeclaration: 'public'
+    }
+  };
+  if (
+    definitionParent
+    && (
+      (isNode(definitionParent, N.Mixin) && String(definitionParent.get('name')?.valueOf?.() ?? '').includes('sayGender'))
+      || (isNode(definitionParent, N.Rules) && String((definitionParent.parent as any)?.name?.valueOf?.() ?? '').includes('sayGender'))
+    )
+  ) {
+    console.log('MIXIN-INVOKE-WRAPPER', {
+      renderKey: String(renderKey),
+      definitionParentType: definitionParent.type,
+      placementParentType: placementParent?.type,
+      wrapperParentType: wrapper.parent?.type,
+      wrapperRenderParentType: wrapper.renderParent?.type,
+      wrapperRenderParentRenderKey: wrapper.renderParent?.renderKey
+    });
+  }
+  return wrapper;
 }
 
 /**
@@ -358,27 +418,35 @@ export function prepareMixinCandidateInvocation(
   nodeArgs: readonly Node[],
   context: Context
 ): PreparedMixinCandidateInvocation {
-  // NOTE: parent/sourceParent/options wiring now happens in
-  // evaluateCandidateOutput AFTER pushState, so all patches
-  // land in the per-call state.
-
+  const placementParent = context.rulesContext ?? parent;
   const normalizedParams = normalizeMixinInvocationParams(params, context);
   const outerRules = normalizedParams
     ? prepareMixinInvocationScope(
         rules,
-        context.rulesContext ?? parent,
+        parent,
+        placementParent,
         index,
         normalizedParams,
         nodeArgs,
         context
       )
     : undefined;
+  const invocationRules = createMixinInvocationRules(
+    rules,
+    parent,
+    placementParent,
+    sourceParent,
+    index,
+    normalizedParams,
+    nodeArgs,
+    context
+  );
 
   return {
-    rules,
+    rules: invocationRules,
     params: normalizedParams,
     outerRules,
-    lookupScope: outerRules ?? rules,
+    lookupScope: invocationRules,
     guardScopeChildren: outerRules
       ? [...outerRules.value]
       : undefined
@@ -396,22 +464,27 @@ export function withMixinLookupScope<T>(
 ): MaybePromise<T> {
   const previousRulesContext = context.rulesContext;
   const previousLookupScope = context.lookupScope;
+  const previousRenderKey = context.renderKey;
   context.lookupScope = scope;
   context.rulesContext = scope!;
+  context.renderKey = scope?.renderKey ?? previousRenderKey;
   try {
     const out = fn();
     if (isThenable(out)) {
       return (out as Promise<T>).finally(() => {
         context.lookupScope = previousLookupScope;
         context.rulesContext = previousRulesContext;
+        context.renderKey = previousRenderKey;
       });
     }
     context.lookupScope = previousLookupScope;
     context.rulesContext = previousRulesContext;
+    context.renderKey = previousRenderKey;
     return out;
   } catch (error) {
     context.lookupScope = previousLookupScope;
     context.rulesContext = previousRulesContext;
+    context.renderKey = previousRenderKey;
     throw error;
   }
 }
@@ -504,15 +577,12 @@ export async function evaluateMixinGuardCandidate(
  */
 export function finalizeMixinInvocationOutput(
   rules: Rules,
-  context: Context
+  context: Context,
+  subtree?: EvalState
 ): Rules {
-  // Create a lightweight output identity per call. Each call gets a
-  // distinct node so per-call subtrees don't collide.
-  // Children are set canonically on the new node so they survive
-  // after the per-call state is popped.
-  const children = [...getChildren(rules, context)];
-  const output = Rules.create(children, { ...rules.options });
-  output.inherit(rules);
+  const output = rules;
+  void context;
+  void subtree;
   return output;
 }
 
@@ -692,18 +762,43 @@ export async function evaluateRulesetMixinCandidateOutput(
   restrictMixinOutputLookup: boolean,
   context: Context
 ): Promise<Rules> {
-  let rules = sourceRules.clone(true, undefined, context);
-  setParent(rules, parent, context);
-  setSourceParent(rules, sourceParent, context);
+  const renderKey = Symbol('ruleset-mixin');
+  let rules = sourceRules.createShallowBodyWrapper(undefined, renderKey);
+  rules.parent = parent;
+  if (context.rulesContext && context.rulesContext !== rules) {
+    rules.renderParent = context.rulesContext;
+  }
+  rules.sourceParent = sourceParent;
   const previousRulesContext = context.rulesContext;
+  const previousRenderKey = context.renderKey;
+  const previousFrames = context.frames;
+  const previousRulesetFrames = context.rulesetFrames;
+  const seededFrames: Array<Ruleset | AtRule> = [];
+  let frameCursor = parent;
+  while (frameCursor) {
+    if (isNode(frameCursor, N.Ruleset | N.AtRule)) {
+      seededFrames.push(frameCursor as Ruleset | AtRule);
+    }
+    frameCursor = getParent(frameCursor, context);
+  }
+  seededFrames.reverse();
   context.rulesContext = rules;
+  context.renderKey = renderKey;
+  context.frames = seededFrames;
+  context.rulesetFrames = seededFrames.filter((frame): frame is Ruleset => isNode(frame, N.Ruleset));
   try {
     rules = await rules.eval(context);
   } finally {
     context.rulesContext = previousRulesContext;
+    context.renderKey = previousRenderKey;
+    context.frames = previousFrames;
+    context.rulesetFrames = previousRulesetFrames;
   }
-  setSourceParent(rules, sourceParent, context);
-  setParent(rules, parent, context);
+  rules.sourceParent = sourceParent;
+  rules.parent = parent;
+  if (rules.renderParent === undefined && previousRulesContext && previousRulesContext !== rules) {
+    rules.renderParent = previousRulesContext;
+  }
   rules.index = candidateIndex;
   rules.options.isMixinOutput = restrictMixinOutputLookup;
   return rules;
@@ -721,8 +816,8 @@ export function unlockDetachedRulesetMixinCandidateOutput(
   context: Context
 ): Rules {
   const unlocked = sourceRules.cloneDetachedUnlockWrapper(context);
-  setParent(unlocked, parent, context);
-  setSourceParent(unlocked, sourceParent, context);
+  unlocked.parent = parent;
+  unlocked.sourceParent = sourceParent;
   unlocked.options.isMixinOutput = false;
   unlocked.index = candidateIndex;
   return unlocked;
@@ -1230,6 +1325,7 @@ export function filterAndSortMixinEvalCandidates(
 
 export type EvaluateCandidateOutputOptions = {
   sourceParent: Node | undefined;
+  invocationParent: Node | undefined;
   restrictMixinOutputLookup: boolean;
   outputRules: Rules[];
   getCandidateParent: (node: Node<any, any>) => Node;
@@ -1249,60 +1345,28 @@ export async function evaluateCandidateOutput(
   context: Context,
   opts: EvaluateCandidateOutputOptions
 ): Promise<void> {
-  const { sourceParent, restrictMixinOutputLookup, outputRules, getCandidateParent: getParentFn } = opts;
+  const {
+    sourceParent,
+    invocationParent,
+    restrictMixinOutputLookup,
+    outputRules,
+    getCandidateParent: getParentFn
+  } = opts;
   const currentCall = context.callStack.at(-1);
   if (currentCall && context.callMap.add(currentCall, params)) {
     return;
   }
-
-  // Push a per-call EvalState. ALL field patches for this call go here.
-  const callState = new EvalState();
-  context.pushState(callState);
-  // Save and clear rulesetFrames so mixin body children don't compose
-  // with the caller's selector during re-preEval. Mixin body rulesets are
-  // re-preEval'd per call (EvalState isolation), so they'd incorrectly
-  // compose with the caller's frames if we didn't clear.
-  // callerRulesetFrame preserves the last caller frame for at-rule hoisting.
-  const savedRulesetFrames = context.rulesetFrames;
-  const savedCallerRulesetFrame = context.callerRulesetFrame;
-  context.callerRulesetFrame = savedRulesetFrames.at(-1);
-  context.rulesetFrames = [];
   try {
-    // Wire the parent chain entirely within the per-call state.
-    // outerRules (param scope) sits between body and caller scope.
     const callerParent = getParentFn(candidate);
-    if (outerRules) {
-      setParent(outerRules, callerParent, context);
-      setParent(rules, outerRules, context);
-    } else {
-      setParent(rules, callerParent, context);
-    }
-    setField(rules, 'options', {
-      ...rules.options,
-      rulesVisibility: {
-        ...(rules.options.rulesVisibility ?? {}),
-        VarDeclaration: 'public'
-      }
-    }, context);
+    void outerRules;
+    rules.parent = invocationParent ?? callerParent;
+    rules.sourceParent = sourceParent;
 
     let newRules: Rules = await rules.eval(context);
     newRules = finalizeMixinInvocationOutput(newRules, context);
-    newRules = projectMixinParamScopeIntoOutput(newRules, outerRules, context);
-
-    context.rulesetFrames = savedRulesetFrames;
-    context.callerRulesetFrame = savedCallerRulesetFrame;
-
-    // Pop the per-call state.
-    context.popState();
-
-    // Store the per-call state on the output node directly.
-    // Serialization checks this property to push the subtree.
-    if (callState.size > 0) {
-      newRules._carriedState = callState;
-      context.subtreeMap.set(newRules, callState);
-    }
-    setSourceParent(newRules, sourceParent, context);
-    setParent(newRules, callerParent, context);
+    newRules.renderKey ??= rules.renderKey;
+    newRules.parent = invocationParent ?? callerParent;
+    newRules.sourceParent = sourceParent;
     newRules.index = candidate.index;
     newRules.options.isMixinOutput = restrictMixinOutputLookup;
     if (context.treeContext?.file) {
@@ -1311,9 +1375,6 @@ export async function evaluateCandidateOutput(
     }
     outputRules.push(newRules);
   } catch (error) {
-    context.rulesetFrames = savedRulesetFrames;
-    context.callerRulesetFrame = savedCallerRulesetFrame;
-    context.popState();
     if (error instanceof ReferenceError && error.message?.includes('Recursive mixin call')) {
       return;
     }
@@ -1332,6 +1393,7 @@ export type MixinDispatchContext = {
   hasDefault: boolean;
   nodeArgs: Node[];
   sourceParent: Node | undefined;
+  invocationParent: Node | undefined;
   caller: Node | undefined;
   restrictMixinOutputLookup: boolean;
   outputRules: Rules[];
@@ -1359,6 +1421,7 @@ export async function dispatchMixinEvalCandidates(
     hasDefault,
     nodeArgs,
     sourceParent,
+    invocationParent,
     caller,
     restrictMixinOutputLookup,
     outputRules,
@@ -1370,15 +1433,37 @@ export async function dispatchMixinEvalCandidates(
   context.pushState(new EvalState());
 
   for (const candidate of evalCandidates) {
+    if (isNode(candidate, N.Mixin | N.Ruleset)) {
+      const candidateName = isNode(candidate, N.Mixin)
+        ? String(candidate.get('name')?.valueOf?.() ?? '')
+        : String(candidate.valueOf());
+      if (candidateName.includes('sayGender') || candidateName.includes('nav-justified')) {
+        const candidateParent = getCandidateParent(candidate, context);
+        console.log('MIXIN-CANDIDATE', {
+          candidateType: candidate.type,
+          candidateName,
+          candidateRenderKey: candidate.renderKey,
+          candidateParentType: candidateParent?.type,
+          candidateParentRenderKey: (candidateParent as any)?.renderKey,
+          candidateParentChildren: isNode(candidateParent, N.Rules)
+            ? (candidateParent as Rules).getRegistryChildren(context).map(child => `${child.type}:${String((child as any)?.name?.valueOf?.() ?? child.valueOf?.() ?? '')}:${String((child as any)?.renderKey ?? 'none')}`)
+            : undefined,
+          contextRulesType: context.rulesContext?.type,
+          contextRulesRenderKey: context.rulesContext?.renderKey,
+          invocationParentType: invocationParent?.type,
+          sourceParentType: sourceParent?.type
+        });
+      }
+    }
     if (isNode(candidate, N.Ruleset)) {
       if ((candidate as Ruleset).get('guard') instanceof Nil) {
         continue;
       }
-      const candidateRules = (candidate as Ruleset).get('rules');
-      const sourceRules = getRootSourceRules(candidateRules);
+      const currentRules = (candidate as Ruleset).getCurrentRules(context);
+      const sourceRules = getRootSourceRules(currentRules);
       const rules = await evaluateRulesetMixinCandidateOutput(
         sourceRules,
-        getCandidateParent(candidate),
+        invocationParent ?? getCandidateParent(candidate),
         sourceParent,
         candidate.index,
         restrictMixinOutputLookup,
@@ -1396,7 +1481,7 @@ export async function dispatchMixinEvalCandidates(
       const sourceRules = getRootSourceRules(candidate.get('rules'));
       const unlocked = unlockDetachedRulesetMixinCandidateOutput(
         sourceRules,
-        getCandidateParent(candidate),
+        invocationParent ?? getCandidateParent(candidate),
         sourceParent ?? caller,
         candidate.index,
         context
@@ -1405,7 +1490,10 @@ export async function dispatchMixinEvalCandidates(
       continue;
     }
 
-    let rules = candidate.get('rules');
+    const candidateRenderKey = candidate.renderKey ?? context.renderKey;
+    let rules = candidate
+      .get('rules', candidateRenderKey ?? context)
+      .withRenderOwner(candidate, candidateRenderKey, context);
     let params = getField<List<Node> | undefined>(candidate as Node, 'params', context);
     const prepared = prepareMixinCandidateInvocation(
       rules,

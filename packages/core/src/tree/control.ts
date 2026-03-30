@@ -329,7 +329,7 @@ export class For extends Node<ForValue, any, ForChildData> {
   override evalNode(context: Context): MaybePromise<Node> {
     const vars = this.get('vars', context);
     const iterable = this.get('iterable', context);
-    const loopTemplate = this.get('rules', context);
+    const loopTemplate = this.get('rules', context).withRenderOwner(this, context.renderKey, context);
     const bindingNames = getBindingNames(vars);
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
@@ -502,7 +502,7 @@ export class For extends Node<ForValue, any, ForChildData> {
     this.get('iterable', context).toString(options);
     w.add(')');
     w.add(' ');
-    this.get('rules', context).toBraced(options);
+    this.get('rules', context).withRenderOwner(this, context?.renderKey, context).toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -548,7 +548,7 @@ export class Each extends Node<LegacyLoopValue, any, EachChildData> {
     w.add('$each ', this);
     this.get('header', context).toString(options);
     w.add(' ');
-    this.get('rules', context).toBraced(options);
+    this.get('rules', context).withRenderOwner(this, context?.renderKey, context).toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -600,7 +600,7 @@ export class While extends Node<WhileValue, any, WhileChildData> {
     w.add('$while (', this);
     this.get('condition', context).toString(options);
     w.add(') ');
-    this.get('rules', context).toBraced(options);
+    this.get('rules', context).withRenderOwner(this, context?.renderKey, context).toBraced(options);
     return w.getSince(mark);
   }
 }

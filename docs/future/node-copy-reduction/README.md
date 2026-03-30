@@ -28,7 +28,6 @@ Treat that as transitional implementation baggage, not the target architecture.
 2. [node-update-status.md](./node-update-status.md) — current migration targets
 3. [HANDOFF.md](./HANDOFF.md) — short working rules for the next agent
 4. [STAGES.md](./STAGES.md) — optional branch sequencing notes
-5. [CLEANUP.md](./CLEANUP.md) — cleanup list for old scaffolding
 
 ## Hard Rules
 
@@ -38,6 +37,8 @@ Treat that as transitional implementation baggage, not the target architecture.
 - no routine deep cloning for eval isolation
 - no internal materialization except at explicit downstream boundaries
 - no hidden ambient state deciding which parent path a shared node uses
+- no passing full `Context` to edge/path lookups when `renderKey` or cursor is
+  enough
 
 ## Practical Rule
 
@@ -46,6 +47,12 @@ If one canonical node can be reached from multiple live placements, then:
 - a naked `Node` is not enough for traversal
 - code must carry a cursor
 - parent-aware traversal must use `{ node, renderKey }`
+
+If a read only needs path selection, then:
+
+- pass `renderKey`, not full `Context`
+- use full `Context` only when the read truly also depends on eval-state
+  machinery
 
 ## Success Criteria
 

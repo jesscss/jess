@@ -350,6 +350,21 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       context.parenFrames.push(false);
 
       let n = typeof name === 'string' ? name : await name.eval(context);
+      if (isNode(name, N.Reference)) {
+        const rawKey = name.get('key', context);
+        const keyStr = Array.isArray(rawKey) ? rawKey.join('.') : String(rawKey);
+        if (keyStr.includes('sayGender') || keyStr.includes('nav-justified')) {
+          console.log('CALL-RESOLVE', {
+            key: keyStr,
+            resolvedType: Array.isArray(n)
+              ? `array:${n.map(item => item?.type).join(',')}`
+              : isNode(n) ? n.type : typeof n,
+            rulesContextType: context.rulesContext?.type,
+            rulesContextRenderKey: context.rulesContext?.renderKey,
+            contextRenderKey: context.renderKey
+          });
+        }
+      }
       // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
       if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
         n = await n.eval(context);
@@ -376,6 +391,21 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         context.caller = this;
         try {
           const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
+          if (isNode(name, N.Reference)) {
+            const rawKey = name.get('key', context);
+            const keyStr = Array.isArray(rawKey) ? rawKey.join('.') : String(rawKey);
+            if (keyStr.includes('sayGender') || keyStr.includes('nav-justified')) {
+              console.log('CALL-RESULT', {
+                key: keyStr,
+                resultType: result.type,
+                resultVisible: result.visible,
+                resultRenderKey: (result as any).renderKey,
+                resultValueTypes: isNode(result, N.Rules)
+                  ? (result as Rules).value.map(child => `${child.type}:${String((child as any)?.name?.valueOf?.() ?? child.valueOf?.() ?? '')}`)
+                  : undefined
+              });
+            }
+          }
           // Result is already fully evaluated by the dispatch primitives — no re-eval.
           if (markImportant && isNode(result, N.Rules)) {
             this.makeImportant(result);
