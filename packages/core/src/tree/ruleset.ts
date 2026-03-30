@@ -28,7 +28,7 @@ import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './ut
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
-import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
+import { getCurrentParentNode, getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 import { getField, getParent, setParent } from './util/field-helpers.js';
 
@@ -240,7 +240,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private _getRulesContainer(context?: Context): Rules {
     const rules = this.get('rules', context);
-    if (context && getParent(rules, context) !== this) {
+    if (context && getCurrentParentNode(rules, context) !== this) {
       this.adopt(rules, context);
     }
     return rules;
@@ -306,12 +306,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private _hasAncestorRuleset(context?: Context): boolean {
-    let current = context ? getParent(this, context) : this.parent;
+    let current = getCurrentParentNode(this, context);
     while (current) {
       if (isNode(current, N.Ruleset)) {
         return true;
       }
-      current = context ? getParent(current, context) : current.parent;
+      current = getCurrentParentNode(current, context);
     }
     return false;
   }
@@ -593,9 +593,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if (isNode(current, N.Rules) && (current as Rules).options?.referenceMode === true) {
         return true;
       }
-      current = (context
-        ? getParent(current, context)
-        : current.parent) as Node | undefined;
+      current = getCurrentParentNode(current, context);
     }
     return false;
   }

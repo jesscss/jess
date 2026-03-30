@@ -32,6 +32,8 @@ import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { getChildren, getIndex, getParent, getSourceParent, markChangedVar, markScopeDirty, setField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/field-helpers.js';
 import { N } from '../node-type.js';
+import { EVAL } from '../node.js';
+import { addEdgeAt } from '../util/cursor.js';
 
 let context: Context;
 
@@ -306,10 +308,25 @@ describe('Rules', () => {
 
         expect(wrapper).not.toBe(node);
         expect(wrappedRuleset).toBe(nested);
+        expect(wrapper.renderKey).toBe(EVAL);
+        expect(wrapper.renderParent).toBeUndefined();
         expect(wrappedRuleset.parent).toBe(node);
         expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
         expect(wrappedRuleset.get('rules')).toBe(nestedBody);
         expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
+      });
+
+      it('cloneLookupSafeShallowWrapper records the nearest Rules scope as renderParent', () => {
+        const ctx = new Context();
+        const inner = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const outer = rules([inner]);
+
+        const wrapper = inner.cloneLookupSafeShallowWrapper(ctx);
+
+        expect(wrapper.renderParent).toBe(outer);
+        expect(wrapper.getRegistryParent(ctx)).toBe(outer);
       });
 
       it('cloneDetachedUnlockWrapper keeps canonical parentage while giving shared top-level children an unlock-wrapper state parent', () => {
@@ -376,9 +393,24 @@ describe('Rules', () => {
 
         expect(wrapper).not.toBe(node);
         expect(wrapper.value).toBe(node.value);
+        expect(wrapper.renderKey).toBe(EVAL);
         expect(wrapper.at(0, context)).toBe(nested);
         expect(getParent(nested, ctx)).toBe(wrapper);
         expect(nested.parent).toBe(node);
+      });
+
+      it('wrapper-local declaration registry indexes render-visible value edge overrides', () => {
+        const ctx = new Context();
+        const canonical = decl({ name: 'color', value: any('red') });
+        const alternate = decl({ name: 'background', value: any('blue') });
+        const node = rules([canonical]);
+
+        const wrapper = node.cloneLookupSafeShallowWrapper(ctx);
+        wrapper.adopt(alternate, ctx);
+        addEdgeAt(wrapper, 'value', 0, EVAL, alternate);
+
+        expect(wrapper.find('declaration', 'background', 'Declaration', { context: ctx })).toBe(alternate);
+        expect(wrapper.find('declaration', 'color', 'Declaration', { context: ctx })).toBeUndefined();
       });
 
       it('characterizes evaluateCandidateOutput non-Rules child shaping as exposing source-ruleset clone semantics plus wrapper parent assignment', () => {

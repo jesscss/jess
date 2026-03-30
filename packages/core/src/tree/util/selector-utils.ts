@@ -99,9 +99,14 @@ export function wrapInGeneratedIs(selector: Selector): Selector {
 }
 
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
+export function getCurrentParentNode(node: Node, context?: Context): Node | undefined {
+  return (context ? getParent(node, context) : node.parent) as Node | undefined;
+}
+
+/** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
 export function getParentRuleset(node: Node, context?: Context): Ruleset | undefined {
-  const rules = context ? getParent(node, context) : node.parent;
-  const parent = rules && (context ? getParent(rules, context) : rules.parent);
+  const rules = getCurrentParentNode(node, context);
+  const parent = rules && getCurrentParentNode(rules, context);
   return parent && isNode(parent, N.Ruleset)
     ? parent as Ruleset
     : undefined;

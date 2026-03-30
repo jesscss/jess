@@ -699,7 +699,7 @@ export class MixinRegistry extends Registry<
    * keySetLibrary so selectors can compute their keySets.
    */
   private _ensureChildrenRegistered(rules: Rules, selectorBits?: BitSetLibrary<string>) {
-    for (const child of rules.value) {
+    for (const child of rules.getRegistryChildren(this.context)) {
       if (isNode(child, N.Ruleset)) {
         const sel = (child as Ruleset).get('selector');
         if (sel && selectorBits && !isNode(sel, N.Nil) && !(sel as Selector).keySetLibrary) {
@@ -1107,9 +1107,7 @@ export class MixinRegistry extends Registry<
         break;
       }
       do {
-        rules = rules && this.context
-          ? getParent(rules, this.context) as Rules | undefined
-          : rules?.parent as Rules;
+        rules = rules?.getRegistryParent(this.context);
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
@@ -1185,15 +1183,11 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
       }
 
       do {
-        rules = rules && this.context
-          ? getParent(rules, this.context) as Rules | undefined
-          : rules?.parent as Rules;
+        rules = rules?.getRegistryParent(this.context);
         if (
           findRoot
           && rules?.type === 'Rules'
-          && (this.context
-            ? getParent(rules, this.context) === undefined
-            : rules?.parent === undefined)
+          && rules.getRegistryParent(this.context) === undefined
         ) {
           /** We're at the root */
           break;
@@ -1528,9 +1522,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       }
 
       do {
-        rules = rules && this.context
-          ? getParent(rules, this.context) as Rules | undefined
-          : rules?.parent as Rules;
+        rules = rules?.getRegistryParent(this.context);
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
@@ -1567,7 +1559,7 @@ export function getDirectDeclarationsByKey(
   key: string | undefined,
   context?: Context
 ): Declaration[] {
-  const children = context ? getChildren(rules, context) : rules.value;
+  const children = rules.getRegistryChildren(context);
   const matches: Declaration[] = [];
   for (const child of children) {
     if (!isNode(child, N.Declaration | N.VarDeclaration)) {

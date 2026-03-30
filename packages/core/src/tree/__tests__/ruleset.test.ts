@@ -228,6 +228,21 @@ describe('Rule', () => {
     expect(getParent(cloned.get('rules'), context)).toBe(cloned);
   });
 
+  it('getCurrentRules reparents a shared rules body through the current clone view', () => {
+    const source = ruleset({
+      selector: el('.alpha'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const cloned = source.clone(false, undefined, context);
+    const currentRules = cloned.getCurrentRules(context);
+
+    expect(currentRules).toBe(source.get('rules'));
+    expect(getParent(currentRules, context)).toBe(cloned);
+  });
+
   it('keeps a source ruleset shallow clone as a live eval state view over shared nested children', () => {
     const source = ruleset({
       selector: el('.alpha'),

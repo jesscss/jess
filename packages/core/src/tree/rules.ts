@@ -4,6 +4,7 @@ import {
   type NodeOptions,
   type LocationInfo, type OptionalLocation,
   type RenderKey,
+  EVAL,
   type TreeContext,
   F_STATIC,
   F_VISIBLE
@@ -28,6 +29,8 @@ import type { Declaration } from './declaration.js';
 import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
+import { getEdgeAt } from './util/cursor.js';
+import { getCurrentParentNode } from './util/selector-utils.js';
 import {
   getChildren,
   getField,
@@ -166,6 +169,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /** @internal */ readonly value!: readonly Node[];
   renderKey: RenderKey | undefined;
+  renderParent: Rules | undefined;
+  private _wrapperRegistrySeeded = false;
+  private _wrapperRegistrySeeding = false;
 
   functionRegistry: Registries.FunctionRegistry | undefined;
 
@@ -236,7 +242,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     if (ctx) {
-      const parent = getParent(this, ctx);
+      const parent = getCurrentParentNode(this, ctx);
       if (parent) {
         setParent(newRules, parent, ctx);
       }
@@ -263,7 +269,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * to rely on raw clone(false) semantics.
    */
   cloneDetachedUnlockWrapper(ctx: Context): this {
-    return this.cloneLookupSafeShallowWrapper(ctx);
+    const wrapper = this.cloneLookupSafeShallowWrapper(ctx);
+    wrapper.renderKey ??= EVAL;
+    return wrapper;
   }
 
   /**
@@ -272,7 +280,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * resolve through the wrapper during the current session.
    */
   cloneVisibilityIsolationWrapper(ctx: Context): this {
-    return this.cloneLookupSafeShallowWrapper(ctx);
+    const wrapper = this.cloneLookupSafeShallowWrapper(ctx);
+    wrapper.renderKey ??= EVAL;
+    return wrapper;
+  }
+
+  override cloneLookupSafeShallowWrapper(ctx: Context): this {
+    const wrapper = super.cloneLookupSafeShallowWrapper(ctx) as this;
+    wrapper.renderKey ??= EVAL;
+    wrapper.renderParent ??= this.getRegistryParent(ctx);
+    wrapper._hoistStateRegistriesOntoWrapper(ctx);
+    return wrapper;
   }
 
   /**
@@ -284,6 +302,48 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private static _registryClass(type: string) {
     return Registries[`${type.charAt(0).toUpperCase()}${type.slice(1)}Registry` as 'RulesetRegistry' | 'MixinRegistry' | 'DeclarationRegistry' | 'FunctionRegistry'];
+  }
+
+  private _isWrapperRegistryOwner(): boolean {
+    return this.renderKey !== undefined;
+  }
+
+  private _hoistStateRegistriesOntoWrapper(ctx: Context): void {
+    const state = ctx.activeState.peek(this);
+    if (!state) {
+      return;
+    }
+
+    for (const key of ['rulesetRegistry', 'mixinRegistry', 'declarationRegistry', 'functionRegistry'] as const) {
+      const registry = state[key];
+      if (!registry) {
+        continue;
+      }
+      (this as any)[key] ??= registry;
+      delete state[key];
+    }
+  }
+
+  private _ensureWrapperRegistrySeeded(context?: Context): void {
+    if (!this._isWrapperRegistryOwner() || this._wrapperRegistrySeeded || this._wrapperRegistrySeeding) {
+      return;
+    }
+
+    this._wrapperRegistrySeeding = true;
+    try {
+      (this as any).rulesetRegistry = undefined;
+      (this as any).mixinRegistry = undefined;
+      (this as any).declarationRegistry = undefined;
+      this._rulesSet = [];
+
+      for (const child of this.getRegistryChildren(context)) {
+        this.registerNode(child, undefined, context);
+      }
+
+      this._wrapperRegistrySeeded = true;
+    } finally {
+      this._wrapperRegistrySeeding = false;
+    }
   }
 
   /**
@@ -299,7 +359,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context?: Context
   ) {
     const key = Rules._registryKey(type);
-    if (context && this === this.sourceNode) {
+    this._ensureWrapperRegistrySeeded(context);
+    if (context && !this._isWrapperRegistryOwner()) {
       const ns = context.activeState.get(this);
       let registry = ns[key];
       if (!registry) {
@@ -327,7 +388,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context) {
     const key = Rules._registryKey(type);
-    if (context && this === this.sourceNode) {
+    this._ensureWrapperRegistrySeeded(context);
+    if (context && !this._isWrapperRegistryOwner()) {
       let state: EvalState | undefined = context.activeState;
       while (state) {
         const registry = state.peek(this)?.[key];
@@ -346,6 +408,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       (this as any)[key] = registry;
     }
     return registry;
+  }
+
+  getRegistryParent(context?: Context): Rules | undefined {
+    if (this.renderParent) {
+      return this.renderParent;
+    }
+
+    let parent = getCurrentParentNode(this, context);
+    while (parent && parent.type !== 'Rules') {
+      parent = getCurrentParentNode(parent, context);
+    }
+    return parent as Rules | undefined;
   }
 
   /**
@@ -393,8 +467,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       do {
-        rules = context ? getParent(rules, context) as Rules | undefined : rules?.parent as Rules | undefined;
-        if (findRoot && rules?.type === 'Rules' && (context ? getParent(rules, context) : rules?.parent) === undefined) {
+        rules = rules?.getRegistryParent(context);
+        if (findRoot && rules?.type === 'Rules' && rules.getRegistryParent(context) === undefined) {
           break;
         }
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
@@ -527,6 +601,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // so adopt() is NOT called on canonical children.
     wrapper._setValueArray(this.value as Node[]);
     wrapper.inherit(this);
+    wrapper.renderKey ??= EVAL;
+    wrapper.renderParent ??= this.getRegistryParent(ctx);
     // Set state parent for each child to the wrapper
     if (ctx) {
       for (const child of wrapper.value) {
@@ -585,6 +661,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return context
       ? getChildren(this, context)
       : this.value;
+  }
+
+  getRegistryChildren(context?: Context): readonly Node[] {
+    if (this.renderKey === undefined) {
+      return this._getChildren(context);
+    }
+
+    const cursor = { node: this as Node, renderKey: this.renderKey };
+    const visible: Node[] = [];
+    for (let i = 0; i < this.value.length; i++) {
+      const child = getEdgeAt(cursor, 'value', i)?.node ?? this.value[i];
+      if (child) {
+        visible.push(child);
+      }
+    }
+    return visible;
   }
 
   private _setChildren(value: readonly Node[], context?: Context, markDirty: boolean = true): void {
@@ -870,9 +962,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Find the Rules node that contains the found declaration
-          let foundRules: Rules | undefined = context
-            ? getParent(result, context) as Rules | undefined
-            : result.parent as Rules | undefined;
+          let foundRules = getCurrentParentNode(result, context) as Rules | undefined;
 
           if (!foundRules) {
             throw new Error(`Could not find parent Rules for declaration '${key}'`);
@@ -1040,7 +1130,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
-      const activeParent = getParent(this, context);
+      const activeParent = getCurrentParentNode(this, context);
       const parentAtRule = activeParent?.type === 'AtRule' ? activeParent : null;
       const isNestableAtRuleBody =
         parentAtRule
@@ -1074,8 +1164,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         setIndex(n, i, context);
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
-      const parent = getParent(this, context);
-      if (parent && !getParent(rules, context)) {
+      const parent = getCurrentParentNode(this, context);
+      if (parent && !getCurrentParentNode(rules, context)) {
         parent.adopt(rules, context);
       }
 
@@ -1852,7 +1942,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         && prior !== node
         && (
           context
-            ? getParent(prior, context) !== getParent(node, context)
+            ? getCurrentParentNode(prior, context) !== getCurrentParentNode(node, context)
             : prior.parent !== node.parent
         )
       ) {
@@ -2039,7 +2129,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                     if (isNode(currentDecl, N.VarDeclaration) && !currentDecl.options?.setDefined) {
                       // Only throw if the variable is a direct child of the Rules node (same level)
                       // Nested variables (e.g., inside rulesets) are allowed to shadow
-                      if (getParent(currentDecl, context) === rules) {
+                      if (getCurrentParentNode(currentDecl, context) === rules) {
                         throw new ReferenceError(`"${key}" is readonly`);
                       }
                     }
