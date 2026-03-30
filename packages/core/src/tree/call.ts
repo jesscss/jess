@@ -270,280 +270,282 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
   }
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
-  override async evalNode(context: Context): Promise<Node> {
-    let name = this.get('name', context);
-    let args = this.get('args', context);
-    const callOptions = this._getOptions(context) ?? {};
-    let { markImportant } = callOptions;
-    const applyDependencyToResult = <T extends Node>(
-      result: T,
-      nodes?: readonly (Node | undefined)[]
-    ): T => {
-      const dependency = mergeDependencies(
-        nodes ? [result, ...nodes] : [result],
-        context
-      );
-      if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-        setDependency(result, {
-          dependsOn: new Set(dependency.dependsOn),
-          sourceExpr: this
-        }, context);
-      }
-      return result;
-    };
-    const adoptCallWhitespace = <T extends Node>(node: T): T => {
-      node.pre = this.pre;
-      node.post = this.post;
-      node.sourceParent = this;
-      return node;
-    };
-    /** @removal-target — node-copy-reduction: clone(false) + runtime copy.
-     * Position isolates; downstream reads resolve through eval state helpers. */
-    const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
-      const clone = node.clone(false, undefined, context) as T;
-      const nodeState = context.activeState.peek(node);
-      if (nodeState?._fields) {
-        const sn = nodeState._fields.get('sourceNode');
-        if (sn) {
-          clone.sourceNode = sn as Node;
+  override evalNode(context: Context): Promise<Node> {
+    return (async () => {
+      let name = this.get('name', context);
+      let args = this.get('args', context);
+      const callOptions = this._getOptions(context) ?? {};
+      let { markImportant } = callOptions;
+      const applyDependencyToResult = <T extends Node>(
+        result: T,
+        nodes?: readonly (Node | undefined)[]
+      ): T => {
+        const dependency = mergeDependencies(
+          nodes ? [result, ...nodes] : [result],
+          context
+        );
+        if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+          setDependency(result, {
+            dependsOn: new Set(dependency.dependsOn),
+            sourceExpr: this
+          }, context);
         }
-        if (nodeState._fields.has('sourceParent')) {
-          clone.sourceParent = nodeState._fields.get('sourceParent') as Node | undefined;
+        return result;
+      };
+      const adoptCallWhitespace = <T extends Node>(node: T): T => {
+        node.pre = this.pre;
+        node.post = this.post;
+        node.sourceParent = this;
+        return node;
+      };
+      /** @removal-target — node-copy-reduction: clone(false) + runtime copy.
+       * Position isolates; downstream reads resolve through eval state helpers. */
+      const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
+        const clone = node.clone(false, undefined, context) as T;
+        const nodeState = context.activeState.peek(node);
+        if (nodeState?._fields) {
+          const sn = nodeState._fields.get('sourceNode');
+          if (sn) {
+            clone.sourceNode = sn as Node;
+          }
+          if (nodeState._fields.has('sourceParent')) {
+            clone.sourceParent = nodeState._fields.get('sourceParent') as Node | undefined;
+          }
         }
-      }
-      return clone;
-    };
-    /** @removal-target — node-copy-reduction: remove entirely.
-     * No internal materialization; position patches provide isolation. */
-    const materializeDownstreamResult = <T extends Node>(node: T): T => {
-      if (node === node.sourceNode) {
-        const childKeys = (node.constructor as typeof Node).childKeys;
-        if (childKeys === null) {
-          return cloneLeafDownstreamResult(node);
+        return clone;
+      };
+      /** @removal-target — node-copy-reduction: remove entirely.
+       * No internal materialization; position patches provide isolation. */
+      const materializeDownstreamResult = <T extends Node>(node: T): T => {
+        if (node === node.sourceNode) {
+          const childKeys = (node.constructor as typeof Node).childKeys;
+          if (childKeys === null) {
+            return cloneLeafDownstreamResult(node);
+          }
+          return node.materializeEvaluatedCopy(context) as T;
         }
-        return node.materializeEvaluatedCopy(context) as T;
-      }
-      return node;
-    };
-    /** @removal-target — node-copy-reduction: remove entirely.
-     * Output shaping (pre/post/sourceParent/makeImportant) should go through
-     * position.setField on the result node. No materialization boundary. */
-    const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
-      if (node === node.sourceNode && isNode(node, N.Rules)) {
-        return node.cloneDetachedMaterializedWrapper(context) as T;
-      }
-      return materializeDownstreamResult(node);
-    };
-    const evalArgNodes = async (nodes?: List<Node>) => {
-      if (!nodes) {
-        return undefined;
-      }
-      const out: Node[] = [];
-      for (const node of nodes.get('value')) {
-        out.push(await node.eval(context) as Node);
-      }
-      return list(out, nodes.options);
-    };
+        return node;
+      };
+      /** @removal-target — node-copy-reduction: remove entirely.
+       * Output shaping (pre/post/sourceParent/makeImportant) should go through
+       * position.setField on the result node. No materialization boundary. */
+      const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
+        if (node === node.sourceNode && isNode(node, N.Rules)) {
+          return node.cloneDetachedMaterializedWrapper(context) as T;
+        }
+        return materializeDownstreamResult(node);
+      };
+      const evalArgNodes = async (nodes?: List<Node>) => {
+        if (!nodes) {
+          return undefined;
+        }
+        const out: Node[] = [];
+        for (const node of nodes.get('value')) {
+          out.push(await node.eval(context) as Node);
+        }
+        return list(out, nodes.options);
+      };
 
-    context.callStack.push(this);
-    context.parenFrames.push(false);
+      context.callStack.push(this);
+      context.parenFrames.push(false);
 
-    let n = typeof name === 'string' ? name : await name.eval(context);
-    // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
-    if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
-      n = await n.eval(context);
-    }
-    // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
-    // by parsers that support them. We intentionally avoid implicit string→function lookup here
-    // to prevent surprising behavior for plain CSS function-like calls.
-    // If the evaluated name is a Call node, execute it directly
-    // This handles cases like @alias: .something(foo); @alias();
-    if (isNode(n, N.Call)) {
-      // Execute the inner Call node (it will handle its own callStack push/pop)
-      const result = materializeDownstreamResult(await n.eval(context));
-      // Apply markImportant if needed
-      if (markImportant && isNode(result, N.Rules)) {
-        this.makeImportant(result);
+      let n = typeof name === 'string' ? name : await name.eval(context);
+      // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
+      if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
+        n = await n.eval(context);
       }
-      // Always pop the outer call's stack entries
-      context.callStack.pop();
-      context.parenFrames.pop();
-      return adoptCallWhitespace(result);
-    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
-      // Direct mixin invocation — skip getFunctionFromMixins/callWithContext wrapper
-      const originalCaller = context.caller;
-      context.caller = this;
-      try {
-        const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
-        // Result is already fully evaluated by the dispatch primitives — no re-eval.
+      // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
+      // by parsers that support them. We intentionally avoid implicit string→function lookup here
+      // to prevent surprising behavior for plain CSS function-like calls.
+      // If the evaluated name is a Call node, execute it directly
+      // This handles cases like @alias: .something(foo); @alias();
+      if (isNode(n, N.Call)) {
+        // Execute the inner Call node (it will handle its own callStack push/pop)
+        const result = materializeDownstreamResult(await n.eval(context));
+        // Apply markImportant if needed
         if (markImportant && isNode(result, N.Rules)) {
           this.makeImportant(result);
         }
+        // Always pop the outer call's stack entries
         context.callStack.pop();
         context.parenFrames.pop();
         return adoptCallWhitespace(result);
-      } finally {
-        context.caller = originalCaller;
-      }
-    } else if (isNode(n, N.Func)) {
-      // Execute stylesheet-defined functions via their evalCall behavior.
-      const argNodes = await evalArgNodes(args) ?? list([]);
-      const result = await (n as any).evalCall(context, argNodes);
-      context.callStack.pop();
-      context.parenFrames.pop();
-      return applyDependencyToResult(
-        adoptCallWhitespace(materializeStylesheetFunctionRulesBoundary(result)),
-        argNodes.get('value')
-      );
-    } else if (isNode(n, N.Collection)) {
-      // If the evaluated name is Rules or Collection (detached rulesets),
-      // return those rules directly, but only if args are empty
-      // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.get('value').length > 0) {
-        context.callStack.pop();
-        context.parenFrames.pop();
-        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
-      }
-      const Rules = await getRules();
-      /** @removal-target — node-copy-reduction: clone(true) for Collection unlock.
-       * Detached ruleset children should be referenced through position, not cloned. */
-      let rules = Rules.create(
-        n.value.map(child => child.clone(true, undefined, context)),
-        n.options ? { ...n.options } : undefined
-      );
-      // Inherit from Collection (n) to preserve definition-scope parent chain
-      // This ensures variables like @a resolve from where the detached ruleset was defined
-      // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
-      rules.inherit(n);
-      // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
-      // to this call so leaky fallback can resolve call-site variables (e.g. @d).
-      rules.sourceParent = this;
-      rules = await rules.eval(context);
-      context.callStack.pop();
-      context.parenFrames.pop();
-      // Apply markImportant if needed
-      if (markImportant) {
-        this.makeImportant(rules);
-      }
-      return rules;
-    }
-
-    let fn = isNode(n, N.JsFunction) ? n.value : n;
-    if (typeof fn === 'function') {
-      const originalCaller = context.caller;
-      context.caller = this;
-      let didPopCallStack = false;
-      try {
-        /** Freeze args */
-        if (args) {
-          const copiedArgs = this._materializeFunctionArgs(args, context);
-          for (const copied of copiedArgs.get('value')) {
-            // Anchor copied references to this Call so nested property refs
-            // (e.g. $list-1) can walk back to call-site Rules.
-            // Also anchor copied Mixin callback args to call-site source scope
-            // so callback bodies can resolve surrounding variables.
-            if (isNode(copied, N.Reference) && copied.options?.type === 'property') {
-              copied.sourceParent = this;
-            } else if (isNode(copied, N.Mixin)) {
-              copied.sourceParent = this;
-            }
-            copied.frozen = true;
+      } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
+        // Direct mixin invocation — skip getFunctionFromMixins/callWithContext wrapper
+        const originalCaller = context.caller;
+        context.caller = this;
+        try {
+          const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
+          // Result is already fully evaluated by the dispatch primitives — no re-eval.
+          if (markImportant && isNode(result, N.Rules)) {
+            this.makeImportant(result);
           }
-          args = copiedArgs;
-        }
-        const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
-        const fnCallable = fn as (...args: any[]) => any;
-        const result = await (
-          args
-            ? (
-                shouldPassListArgs
-                  ? callWithContext(context, fnCallable, args)
-                  : callWithContext(context, fnCallable, ...[...args.get('value')])
-              )
-            : callWithContext(context, fnCallable)
-        );
-        context.caller = originalCaller;
-        context.callStack.pop();
-        didPopCallStack = true;
-        if (isNode(result)) {
-          let evald = result.eval(context);
-          if (isThenable(evald)) {
-            evald = await evald;
-          }
-          if (markImportant && isNode(evald, N.Rules)) {
-            this.makeImportant(evald);
-          }
-          return adoptCallWhitespace(evald);
-        }
-        let castResult = cast(result);
-        if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-          return adoptCallWhitespace(castResult.value[0]!);
-        }
-        return adoptCallWhitespace(castResult);
-      } catch (e) {
-        const unitMode = context?.opts?.unitMode ?? 'loose';
-        const shouldRethrowForMode = unitMode === 'strict';
-        if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          if (getParent(this, context)?.type === 'SelectorCapture') {
-            return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
-          }
-          if (isNode(name, N.Reference)) {
-            throw new ReferenceError(`No matching mixins found for '${name.get('key').valueOf()}'`);
-          }
-          throw e;
-        }
-        if (!callOptions.silentFail || shouldRethrowForMode) {
-          throw e;
-        }
-        /** @removal-target — node-copy-reduction: clone for silentFail fallback.
-         * Options/name/args changes should go through position patches. */
-        let newCall = this.clone(false, undefined, context).inherit(this);
-        /** Remove this flag for serialization */
-        newCall.options.silentFail = false;
-        setField(newCall, 'name', isNode(name, N.Reference) && name.options.fallbackValue === true
-          ? String(name.get('key'))
-          : String(n.valueOf()), context);
-        setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
-        return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));
-      } finally {
-        context.caller = originalCaller;
-        context.parenFrames.pop();
-        if (!didPopCallStack) {
           context.callStack.pop();
+          context.parenFrames.pop();
+          return adoptCallWhitespace(result);
+        } finally {
+          context.caller = originalCaller;
         }
+      } else if (isNode(n, N.Func)) {
+        // Execute stylesheet-defined functions via their evalCall behavior.
+        const argNodes = await evalArgNodes(args) ?? list([]);
+        const result = await (n as any).evalCall(context, argNodes);
+        context.callStack.pop();
+        context.parenFrames.pop();
+        return applyDependencyToResult(
+          adoptCallWhitespace(materializeStylesheetFunctionRulesBoundary(result)),
+          argNodes.get('value')
+        );
+      } else if (isNode(n, N.Collection)) {
+        // If the evaluated name is Rules or Collection (detached rulesets),
+        // return those rules directly, but only if args are empty
+        // If args are provided, throw an error - you can't call Rules/Collection with arguments
+        if (args && args.get('value').length > 0) {
+          context.callStack.pop();
+          context.parenFrames.pop();
+          throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+        }
+        const Rules = await getRules();
+        /** @removal-target — node-copy-reduction: clone(true) for Collection unlock.
+         * Detached ruleset children should be referenced through position, not cloned. */
+        let rules = Rules.create(
+          n.value.map(child => child.clone(true, undefined, context)),
+          n.options ? { ...n.options } : undefined
+        );
+        // Inherit from Collection (n) to preserve definition-scope parent chain
+        // This ensures variables like @a resolve from where the detached ruleset was defined
+        // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
+        rules.inherit(n);
+        // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
+        // to this call so leaky fallback can resolve call-site variables (e.g. @d).
+        rules.sourceParent = this;
+        rules = await rules.eval(context);
+        context.callStack.pop();
+        context.parenFrames.pop();
+        // Apply markImportant if needed
+        if (markImportant) {
+          this.makeImportant(rules);
+        }
+        return rules;
       }
-    } else {
-      if (n === 'calc') {
-        context.calcFrames++;
-      }
-      const evaluatedArgs = await evalArgNodes(args);
 
-      if (n === 'calc') {
-        context.calcFrames--;
-      }
-      context.parenFrames.pop();
-      context.callStack.pop();
-      /** @removal-target — node-copy-reduction: clone for non-mixin call eval.
-       * All field mutations (name, args, options) should go through position. */
-      const needsMaterializedClone = Boolean(callOptions.silentFail);
-      const node = needsMaterializedClone
-        ? this.clone(false, undefined, context)
-        : this.maybeClone(context);
-      node.options.silentFail = false;
-      if (
-        n === 'calc' && evaluatedArgs
-      ) {
-        const evalArgItems = evaluatedArgs.get('value');
-        if (isNode(evalArgItems[0], N.Dimension)) {
-          return applyDependencyToResult(evalArgItems[0]!, evalArgItems);
-        } else if (context.calcFrames !== 0) {
-          return applyDependencyToResult(new Paren(evalArgItems[0]!), evalArgItems);
+      let fn = isNode(n, N.JsFunction) ? n.value : n;
+      if (typeof fn === 'function') {
+        const originalCaller = context.caller;
+        context.caller = this;
+        let didPopCallStack = false;
+        try {
+          /** Freeze args */
+          if (args) {
+            const copiedArgs = this._materializeFunctionArgs(args, context);
+            for (const copied of copiedArgs.get('value')) {
+              // Anchor copied references to this Call so nested property refs
+              // (e.g. $list-1) can walk back to call-site Rules.
+              // Also anchor copied Mixin callback args to call-site source scope
+              // so callback bodies can resolve surrounding variables.
+              if (isNode(copied, N.Reference) && copied.options?.type === 'property') {
+                copied.sourceParent = this;
+              } else if (isNode(copied, N.Mixin)) {
+                copied.sourceParent = this;
+              }
+              copied.frozen = true;
+            }
+            args = copiedArgs;
+          }
+          const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
+          const fnCallable = fn as (...args: any[]) => any;
+          const result = await (
+            args
+              ? (
+                  shouldPassListArgs
+                    ? callWithContext(context, fnCallable, args)
+                    : callWithContext(context, fnCallable, ...[...args.get('value')])
+                )
+              : callWithContext(context, fnCallable)
+          );
+          context.caller = originalCaller;
+          context.callStack.pop();
+          didPopCallStack = true;
+          if (isNode(result)) {
+            let evald = result.eval(context);
+            if (isThenable(evald)) {
+              evald = await evald;
+            }
+            if (markImportant && isNode(evald, N.Rules)) {
+              this.makeImportant(evald);
+            }
+            return adoptCallWhitespace(evald);
+          }
+          let castResult = cast(result);
+          if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+            return adoptCallWhitespace(castResult.value[0]!);
+          }
+          return adoptCallWhitespace(castResult);
+        } catch (e) {
+          const unitMode = context?.opts?.unitMode ?? 'loose';
+          const shouldRethrowForMode = unitMode === 'strict';
+          if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+            if (getParent(this, context)?.type === 'SelectorCapture') {
+              return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+            }
+            if (isNode(name, N.Reference)) {
+              throw new ReferenceError(`No matching mixins found for '${name.get('key').valueOf()}'`);
+            }
+            throw e;
+          }
+          if (!callOptions.silentFail || shouldRethrowForMode) {
+            throw e;
+          }
+          /** @removal-target — node-copy-reduction: clone for silentFail fallback.
+           * Options/name/args changes should go through position patches. */
+          let newCall = this.clone(false, undefined, context).inherit(this);
+          /** Remove this flag for serialization */
+          newCall.options.silentFail = false;
+          setField(newCall, 'name', isNode(name, N.Reference) && name.options.fallbackValue === true
+            ? String(name.get('key'))
+            : String(n.valueOf()), context);
+          setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
+          return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));
+        } finally {
+          context.caller = originalCaller;
+          context.parenFrames.pop();
+          if (!didPopCallStack) {
+            context.callStack.pop();
+          }
         }
+      } else {
+        if (n === 'calc') {
+          context.calcFrames++;
+        }
+        const evaluatedArgs = await evalArgNodes(args);
+
+        if (n === 'calc') {
+          context.calcFrames--;
+        }
+        context.parenFrames.pop();
+        context.callStack.pop();
+        /** @removal-target — node-copy-reduction: clone for non-mixin call eval.
+         * All field mutations (name, args, options) should go through position. */
+        const needsMaterializedClone = Boolean(callOptions.silentFail);
+        const node = needsMaterializedClone
+          ? this.clone(false, undefined, context)
+          : this.maybeClone(context);
+        node.options.silentFail = false;
+        if (
+          n === 'calc' && evaluatedArgs
+        ) {
+          const evalArgItems = evaluatedArgs.get('value');
+          if (isNode(evalArgItems[0], N.Dimension)) {
+            return applyDependencyToResult(evalArgItems[0]!, evalArgItems);
+          } else if (context.calcFrames !== 0) {
+            return applyDependencyToResult(new Paren(evalArgItems[0]!), evalArgItems);
+          }
+        }
+        setField(node, 'name', n, context);
+        setField(node, 'args', evaluatedArgs, context);
+        return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.get('value'));
       }
-      setField(node, 'name', n, context);
-      setField(node, 'args', evaluatedArgs, context);
-      return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.get('value'));
-    };
+    })().then(value => value);
   }
 }
 

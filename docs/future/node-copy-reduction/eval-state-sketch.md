@@ -1,530 +1,275 @@
-# EvalState Architecture Sketch
+# Render-Root Cursor Sketch
 
-## Current Architecture
+## Target
 
-Three overlapping layers, all doing field-level patching with no concept separation:
+This is the target model.
 
-```
-Context
-  ├── session: EvalSession          // "everything bag" — WeakMaps for patches, runtime,
-  │     ├── patches: WeakMap<Node, Record<string, unknown>>    scopes, deps, registry deltas,
-  │     ├── runtime: WeakMap<Node, RuntimeState>               children, materialized, changedVars
-  │     ├── scopes, dependencies, registryDeltas, ...
-  │     └── instanceRoots: SessionInstanceRoot[]
-  │           └── overrides: WeakMap<Node, ShadowEntry>   // per-placement shadows
-  │               └── { patches, runtime, children }
-  │
-  ├── instanceRoot: SessionInstanceRoot   // currently active instance root
-  │
-  └── _position: EvalPosition       // "clean" field patches, lazy-created
-        └── patches: Map<Node, Record<string, unknown>>
-```
+The older `EvalState` / `NodeState` design is deprecated.
 
-### Problems
+## Core Idea
 
-1. **No node-level patching.** To "replace" a Call with its mixin body, you patch the
-   parent's `children` field with a new array. Two patches minimum (parent + replacement
-   node's fields) instead of one (the replacement itself).
+- keep one canonical tree
+- canonical nodes own canonical edges
+- canonical nodes may also own alternate edges keyed by render root
+- `RenderRoot` is only the path-selection key
+- traversal carries a cursor: `{ node, root }`
 
-2. **No concept separation.** Node replacements, field overrides, eval flags, parent
-   pointers — all stored as `Record<string, unknown>` in the same bag.
+## Constraint
 
-3. **Three redundant layers.** EvalPosition, SessionInstanceRoot, and EvalSession all
-   have `setField`/`getField` with a complex fallback chain:
-   `position → carried._evalPosition → instanceRoot → session → canonical`
+The important constraint is not "never mutate a node."
 
-4. **"Session" naming.** The concept was supposed to be killed. EvalSession is still the
-   primary state container.
+The important constraint is:
 
-5. **Flat patch maps can't handle mixin reuse.** Same canonical mixin body returned from
-   two calls needs different patches per call. Currently handled by creating
-   SessionInstanceRoot per placement — but that's a separate concept bolted on.
+- do not mutate canonical node data in a way that changes which structure or
+  serialized output it represents across render paths
 
----
+So harmless runtime flags can live directly on nodes if they do not alter
+structural or serialization identity.
 
-## Proposed Architecture
-
-One class: `EvalState`. Lives on `Context`. Two distinct patch types. Recursive for
-subtree reuse.
+## Minimal Types
 
 ```ts
-/**
- * Sparse overlay on the canonical AST for one evaluation pass.
- *
- * Two kinds of patches:
- *   - Node patches:  canonical node → replacement node (tree structure)
- *   - Field patches: any node → property overrides (metadata)
- *
- * Recursive: a node patch can carry its own EvalState for the replacement's
- * subtree, enabling the same canonical subtree (mixin body, import) to be
- * reused with different bindings at different call sites.
- */
-class EvalState extends Map<Node, NodeState> {
-  /** Always returns a NodeState — creates one if missing */
-  override get(node: Node): NodeState {
-    let s = super.get(node);
-    if (!s) { s = new NodeState(); super.set(node, s); }
-    return s;
+type RenderRoot = {
+  parent?: RenderRoot;
+};
+
+type RenderEdge<T> = WeakMap<RenderRoot, T>;
+
+type IndexedChildEdges = Map<number, RenderEdge<Node | null>>;
+
+type ChildEdgeValue =
+  | RenderEdge<Node | null>
+  | IndexedChildEdges;
+
+type Node = {
+  /**
+   * Canonical/default parent edge.
+   */
+  parent?: Node;
+
+  /**
+   * Alternate parent edges keyed by render root.
+   */
+  parentEdges?: RenderEdge<Node | null>;
+
+  /**
+   * Alternate child edges keyed by child-field name.
+   *
+   * For singular child fields:
+   *   WeakMap<RenderRoot, Node | null>
+   *
+   * For list-shaped child fields:
+   *   Map<number, WeakMap<RenderRoot, Node | null>>
+   */
+  childEdges?: Map<string, ChildEdgeValue>;
+};
+
+type Cursor = {
+  node: Node;
+  root: RenderRoot;
+};
+```
+
+## Why `RenderRoot` Exists
+
+If one canonical node is reused in multiple live placements, upward traversal
+becomes ambiguous.
+
+Example:
+
+- canonical node `X` is reached from call site A
+- the same canonical node `X` is also reached from call site B
+- `X.parent` cannot mean both parents at once
+
+So we need a key for:
+
+- which live placement/path are we on?
+
+That key is `RenderRoot`.
+
+`RenderRoot` is not a patch owner. It is only the selector for which alternate
+edge to follow.
+
+## Why `Cursor` Exists
+
+A naked `Node` is not enough for traversal of shared nodes.
+
+It tells you where you are in the canonical graph, but not which render path
+you are on.
+
+So traversal needs both:
+
+- current node
+- current render root
+
+That pair is the cursor.
+
+## Traversal
+
+- downward traversal returns a new `Cursor`
+- upward traversal accepts a `Cursor`
+- serialization keeps track of the current cursor as it walks
+- eval may temporarily carry the current cursor in context, but the cursor is
+  the real source of truth
+
+### Edge Helpers
+
+```ts
+function lookupEdge<T>(
+  edges: WeakMap<RenderRoot, T> | undefined,
+  root: RenderRoot
+): T | undefined {
+  let current: RenderRoot | undefined = root;
+  while (current) {
+    const hit = edges?.get(current);
+    if (hit !== undefined) {
+      return hit;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+function getParent(cursor: Cursor): Cursor | undefined {
+  const overridden = lookupEdge(cursor.node.parentEdges, cursor.root);
+  if (overridden !== undefined) {
+    return overridden ? { node: overridden, root: cursor.root } : undefined;
   }
 
-  /** Read-only lookup — returns undefined if no state exists (no allocation) */
-  peek(node: Node): NodeState | undefined {
-    return super.get(node);
-  }
+  return cursor.node.parent
+    ? { node: cursor.node.parent, root: cursor.root }
+    : undefined;
 }
 
-class NodeState {
-  replacement: Node | undefined = undefined;
-  evaluated = false;
-  preEvaluated = false;
-  _fields: Map<string, unknown> | undefined; 
-  get fields(): Map<string, unknown> {
-    return (this._fields ??= new Map());
-  }
-  declare _subtree: EvalState | undefined;
-  /** Rare — stays off instance until assigned */
-  get subtree(): EvalState {
-    return (this._subtree ??= new EvalState());
-  }
-}
-```
-
-Usage — cache the NodeState when touching multiple fields:
-```ts
-// Write
-const s = state.get(node);
-s.replacement = mixinBody;
-s.evaluated = true;
-s.fields.set('parent', parentNode);
-
-// Read
-const s = state.get(node);
-s.replacement   // Node | undefined
-s.evaluated     // boolean
-s.fields.get('parent')
-
-```
-
-### Context integration
-
-```ts
-class Context {
-  /** The root eval state for this evaluation pass (lazy) */
-  private _evalState?: EvalState;
-  get evalState(): EvalState {
-    return (this._evalState ??= new EvalState());
-  }
-
-  /** Current active state — settable cursor, save/restore pattern.
-   *  pushState/popState use EvalState.parent chain. */
-  activeState: EvalState;
-
-  /** Maps output nodes → their call-site EvalState (global O(1) lookup) */
-  readonly subtreeMap: WeakMap<Node, EvalState>;
-
-  pushState(state: EvalState): void {
-    state.parent = this.activeState;
-    this._activeState = state;
-  }
-
-  popState(): EvalState | undefined {
-    const popped = this._activeState;
-    this._activeState = popped?.parent;
-    return popped;
-  }
-}
-```
-```
-
-### Use cases
-
-#### 1. Simple eval (expression, operation, block)
-
-Node evaluates to a different node. One node patch, no subtree needed.
-
-```less
-// Block wrapping an expression
-{ 1 + 2 }
-```
-
-```ts
-// Operation eval: replace canonical Operation with result Dimension
-ctx.activeState.get(operationNode).replacement = new Dimension([3, 'px']);
-
-// Block eval: replace canonical child expression with evaluated one
-ctx.activeState.get(exprNode).replacement = evaluatedExpr;
-
-// Canonical nodes untouched — read with:
-ctx.activeState.get(operationNode).replacement  // Dimension(3px)
-operationNode.left   // still the canonical Dimension(1px)
-```
-
-#### 2. Variable resolution (Reference → value)
-
-```less
-@color: red;
-.a { color: @color; }
-```
-
-```ts
-// Reference resolves to its value
-ctx.activeState.get(refNode).replacement = keywordRed;
-```
-
-#### 3. Mixin call (subtree reuse with different bindings)
-
-```less
-.mixin(@color) { color: @color; }
-.a { .mixin(red); }
-.b { .mixin(blue); }
-```
-
-```ts
-// Call1 → canonical mixin body M
-ctx.activeState.get(Call1).replacement = M;
-const sub1 = ctx.activeState.get(Call1).subtree;
-ctx.pushSubtree(sub1);
-  // Inside M, @color reference resolves to red
-  ctx.activeState.get(refNode).replacement = keywordRed;
-ctx.popSubtree();
-
-// Call2 → same canonical body M, different subtree
-ctx.activeState.get(Call2).replacement = M;
-const sub2 = ctx.activeState.get(Call2).subtree;
-ctx.pushSubtree(sub2);
-  // Inside M, @color reference resolves to blue
-  ctx.activeState.get(refNode).replacement = keywordBlue;
-ctx.popSubtree();
-```
-
-Both calls share `M`. `refNode` resolves differently because each subtree
-has its own replacement for it.
-
-#### 4. Mixin param binding (canonical defaults preserved)
-
-```less
-.mixin(@color: red) { ... }
-.test { .mixin(blue); }
-```
-
-```ts
-// The VarDeclaration's default value stays canonical ("red").
-// The call-site binding is a node replacement in the subtree:
-const sub = ctx.activeState.get(callNode).subtree!;
-sub.get(paramVarDecl).replacement = keywordBlue;
-
-// Read: paramVarDecl.value is still "red" canonically
-// But inside the subtree: sub.get(paramVarDecl)?.replacement → blue
-```
-
-#### 5. Field patch (metadata, not structure)
-
-```ts
-// Mark a node as evaluated — direct property, no Map overhead
-ctx.activeState.get(node).evaluated = true;
-
-// Read
-ctx.activeState.get(node).evaluated  // true
-// Canonical node has no evaluated property — it's pure parse tree
-
-// Less common fields go through the Map
-const s = ctx.activeState.get(node);
-(s.fields ??= new Map()).set('index', 3);
-```
-
-#### 6. Import reuse
-
-Same pattern as mixin. An imported file's canonical tree is shared across
-all `@import` sites. Each import gets its own subtree EvalState for any
-bindings or overrides specific to that import context.
-
-#### 7. Serialization
-
-```ts
-function serialize(node: Node, ctx: Context): string {
-  const s = ctx.activeState.peek(node);
-  const actual = s?.replacement ?? node;
-
-  // If this node has a subtree (mixin/import), push it
-  if (s?._subtree) ctx.evalStateStack.push(s._subtree);
-
-  const result = actual.render(ctx);  // renders using activeState for field reads
-
-  if (s?._subtree) ctx.evalStateStack.pop();
-  return result;
-}
-```
-
-### Lookup
-
-```ts
-// Read-only lookups use native Map.get (returns undefined, no allocation)
-function getNodeAt(node: Node, ctx: Context): Node {
-  for (let i = ctx.evalStateStack.length - 1; i >= 0; i--) {
-    const r = ctx.evalStateStack[i].peek(node)?.replacement;
-    if (r !== undefined) return r;
-  }
-  return ctx.evalState.peek(node)?.replacement ?? node;
-}
-
-function getFieldAt(node: Node, field: string, ctx: Context): unknown {
-  for (let i = ctx.evalStateStack.length - 1; i >= 0; i--) {
-    const val = ctx.evalStateStack[i].peek(node)?._fields?.get(field);
-    if (val !== undefined) return val;
-  }
-  return ctx.evalState.peek(node)?._fields?.get(field) ?? (node as any)[field];
-}
-```
-
-### Tree walks
-
-The evaluated tree is the canonical tree with replacements grafted in.
-Some branches are canonical, some are replacements with their own subtrees.
-Both serialization (top-down) and reference lookup (bottom-up) walk this
-mixed tree.
-
-#### The evaluated tree
-
-```
-Canonical:                    Evaluated (canonical + state):
-  Root Rules                    Root Rules
-    Mixin .m(@color)              Mixin .m (skip, not visible)
-      body Rules                  Ruleset .test
-        Decl color: @color          [Call .m(blue) → body Rules]  ← replacement
-    Ruleset .test                     Decl color: blue            ← resolved
-      Call .m(blue)
-```
-
-State structure:
-```
-S0 (root):  Call → { replacement: body, subtree: S1 }
-S1 (call):  @color VarDecl → { fields: { value: Keyword(blue) } }
-```
-
-#### One rule for both directions
-
-Every node lives in exactly one state. When you encounter a node:
-
-1. Check the **active state** for that node's patches/replacement.
-2. If there's a **subtree**, push it before descending into the replacement.
-3. If there's no entry, the node is **canonical** — use its properties directly.
-
-```ts
-function renderNode(node: Node, ctx: Context): string {
-  const ns = ctx.activeState.peek(node);
-  const actual = ns?.replacement ?? node;
-  if (ns?._subtree) ctx.pushState(ns._subtree);
-  const result = actual.toCSS(ctx);
-  if (ns?._subtree) ctx.popState();
-  return result;
-}
-```
-
-That's it. Serialization calls this recursively. Each child checks the
-currently active state. Inside a subtree, that state is the subtree.
-Outside, it's the parent state. The push/pop handles the boundary.
-
-#### Reference lookup (bottom-up)
-
-References walk up the parent chain. The parent chain is a mix of
-canonical parents and state-patched parents. The rule is the same:
-check the active state first, fall through to canonical.
-
-The problem: registry-utils `find` with `searchParents` does this:
-
-```ts
-// Current code (simplified)
-while (rules) {
-  search(rules);                               // search this level
-  rules = getParent(rules, this.context);      // walk up
-}
-```
-
-`getParent` returns the next Rules node but doesn't change the active
-state. If the parent Rules lives in a different EvalState (because
-we've crossed a subtree boundary), the next `search()` uses the wrong
-state and won't see the parent's state-patched children.
-
-#### Solution: walks carry (node, state) pairs
-
-```ts
-// getParent returns both the parent and which state owns it
-function getParentInState(
-  node: Node,
-  state: EvalState
-): [Node | undefined, EvalState] {
-  // Check current state for a patched parent
-  const patched = state.peek(node)?._fields?.get('parent') as Node;
-  const parent = patched ?? node.parent;
-  if (!parent) return [undefined, state];
-
-  // Which state owns the parent? The one that has an entry for it.
-  let s: EvalState | undefined = state;
-  while (s) {
-    if (s.has(parent)) return [parent, s];
-    s = s.parent;
-  }
-  // No state owns it — canonical. Stay in current state.
-  return [parent, state];
-}
-```
-
-The registry walk becomes:
-
-```ts
-let rules: Rules | undefined = startRules;
-let state: EvalState = ctx.activeState;
-
-while (rules) {
-  search(rules, state);                       // search using state
-  [rules, state] = getParentInState(rules, state);  // walk up
-}
-```
-
-Each iteration uses the correct state for the current Rules node.
-When the walk crosses from S2 into S1, the state cursor switches.
-No global state mutation, no stack walking — just a local cursor.
-
-#### Serialization uses the same pattern
-
-```ts
-function renderChildren(rules: Rules, state: EvalState, ctx: Context) {
-  for (const child of getChildren(rules, state)) {
-    const ns = state.peek(child);
-    const actual = ns?.replacement ?? child;
-    const childState = ns?._subtree ?? state;
-    render(actual, childState, ctx);
-  }
-}
-```
-
-Serialization passes `state` down. When it encounters a replacement
-with a subtree, it passes the subtree as the state for that branch.
-
-#### The simple getParent stays simple
-
-For code that does NOT need to cross state boundaries (most node code
-during eval, where the active state is correct), `getParent` stays:
-
-```ts
-function getParent(node: Node, ctx: Context): Node | undefined {
-  return ctx.activeState.peek(node)?._fields?.get('parent')
-    ?? node.parent;
-}
-```
-
-#### Implementation: activeState as a save/restore cursor
-
-Rather than a separate (node, state) pair, the walk just saves/restores
-`ctx.activeState` — same pattern as `rulesContext`, `rulesetFrames`, etc:
-
-```ts
-// Registry parent walk
-while (rules) {
-  search(rules);  // uses ctx.activeState internally
-  const [parent, parentState] = getParentInState(rules, ctx.activeState);
-  if (parent && parentState !== ctx.activeState) {
-    ctx.activeState = parentState;  // swap cursor
-  }
-  rules = parent;
-}
-ctx.activeState = savedState;  // restore
-```
-
-All internal methods (`_getChildren`, `syncRegistryCache`, `getField`,
-`getParent`) use `ctx.activeState` — no changes needed. The walk just
-swaps the pointer when it crosses a boundary.
-
-Serialization does the same:
-
-```ts
-function renderChildren(rules: Rules, ctx: Context) {
-  for (const child of rules._getChildren(ctx)) {
-    const ns = ctx.activeState.peek(child);
-    const actual = ns?.replacement ?? child;
-    if (ns?._subtree) {
-      const prev = ctx.activeState;
-      ctx.activeState = ns._subtree;
-      actual.render(ctx);
-      ctx.activeState = prev;
-    } else {
-      actual.render(ctx);
+function getChild(cursor: Cursor, key: string): Cursor | undefined {
+  const entry = cursor.node.childEdges?.get(key);
+  if (entry instanceof WeakMap) {
+    const overridden = lookupEdge(entry, cursor.root);
+    if (overridden !== undefined) {
+      return overridden ? { node: overridden, root: cursor.root } : undefined;
     }
   }
+
+  const canonicalChild = (cursor.node as Record<string, unknown>)[key] as Node | undefined;
+  return canonicalChild ? { node: canonicalChild, root: cursor.root } : undefined;
+}
+
+function getChildAt(cursor: Cursor, key: string, index: number): Cursor | undefined {
+  const entry = cursor.node.childEdges?.get(key);
+  if (entry instanceof Map) {
+    const overridden = lookupEdge(entry.get(index), cursor.root);
+    if (overridden !== undefined) {
+      return overridden ? { node: overridden, root: cursor.root } : undefined;
+    }
+  }
+
+  const canonicalList = (cursor.node as Record<string, unknown>)[key] as Node[] | undefined;
+  const canonicalChild = canonicalList?.[index];
+  return canonicalChild ? { node: canonicalChild, root: cursor.root } : undefined;
 }
 ```
 
-No push/pop. No stack mutation. Just a pointer swap.
+## What Carries The Cursor
 
-The eval pipeline still uses `pushState`/`popState` for nested calls,
-which sets `activeState` via the stack. The walk/serialize cursor is
-orthogonal — it temporarily overrides `activeState` and restores it.
+Whatever is actively walking the graph.
 
-`activeState` becomes a plain settable property:
+Usually:
+
+- serializer traversal stack
+- eval traversal stack
+- visitor/search traversal
+
+Operationally:
+
+1. save current cursor
+2. move to a new cursor
+3. walk there
+4. restore previous cursor
+
+So yes: this is a cursor stack model.
+
+## Fit With Current `core`
+
+`core` nodes already expose named child fields through `childKeys`.
+
+Examples:
+
+- `Ruleset` fundamentally has `selector`, `rules`, `guard`
+- `Call` has `name`, `args`, `contentNode`
+- `Rules` has `value`
+
+So the traversal model is not:
+
+- one global homogeneous `children` bag
+
+It is:
+
+- named child fields
+- some singular
+- some list-shaped
+
+That is why the runtime API should feel like:
+
 ```ts
-class Context {
-  activeState: EvalState;  // current cursor — eval pipeline or walk
+getChild(cursor, 'rules');
+getChild(cursor, 'selector');
+getChildAt(cursor, 'value', 3);
+```
+
+## `Ruleset` Example
+
+```ts
+class Ruleset extends Node {
+  static override childKeys = [
+    'selector',
+    'rules',
+    'guard'
+  ] as const;
+
+  selector!: Selector | Nil;
+  rules!: Rules;
+  guard!: Condition | Nil | undefined;
 }
 ```
 
-`pushState` saves the previous value and sets the new one.
-`popState` restores it. Same as every other context cursor.
+Notes:
 
-**Key constraint** (unchanged): all field patches for a call MUST be
-written to that call's state. Move all call setup to AFTER pushState.
+- the current runtime still has `selectorBeforeExtend`
+- that should be treated as transitional baggage, not part of the minimal target
+  model
+- if a pre-extend selector snapshot is still needed later, it should be
+  represented explicitly at that point rather than promoted into this core shape
 
-#### Nested calls
+## What Is Not In The Main Model
 
-```
-S0: Call.wrapper → { replacement: wrapperBody, subtree: S1 }
-S1: Call.base   → { replacement: baseBody,    subtree: S2 }
-S2: @color      → { fields: { value: blue } }
-```
+These are intentionally not part of the default shape:
 
-Serialization: push S1, enter wrapperBody, push S2, enter baseBody,
-render @color=blue, pop S2, pop S1.
+- field patches
+- render-root-owned patch tables
+- replacement links like `replacedBy`
 
-Reference inside baseBody: walks up within S2. Everything it needs is
-in S2 or canonical. No cross-state lookups.
+If one of those later proves unavoidable for a specific case, it should be
+added as an explicit future extension, not baked into the main model now.
 
-#### During eval vs during serialization
+## Why This Is Simpler
 
-During **eval**, the subtree IS the activeState (it was pushed onto
-the stack). Writes go to it. Reads check it first, fall through to
-canonical. The eval pipeline naturally pushes/pops states as it enters
-and exits calls.
+- no detached patch-table architecture
+- no `_carriedState` / `subtreeMap` style rescue path for serialization
+- no pretending a naked node can answer render-aware parent questions
+- no routine deep cloning just to isolate placements
 
-During **serialization**, the subtrees are stored on NodeState entries
-(via `_subtree`). The serializer pushes/pops them as it descends into
-replacements. Same push/pop pattern, but driven by the tree structure
-instead of the eval pipeline.
+Instead:
 
-Both use the same `getField`/`getParent` — one implementation, works
-for both directions, no special cases.
+- canonical nodes keep canonical structure
+- alternate edges live with the node they belong to
+- render root selects the path
+- cursor carries `node + root`
 
-### What gets killed
+## Future Considerations Only If Proven Necessary
 
-| Current                        | Proposed                   |
-|--------------------------------|----------------------------|
-| `EvalSession`                  | **Deleted**                |
-| `SessionInstanceRoot`          | **Deleted** (subtree EvalState replaces it) |
-| `EvalPosition`                 | **Deleted** (merged into EvalState) |
-| `RuntimeState` interface       | **Deleted** (fields are just field patches) |
-| `ShadowEntry` interface        | **Deleted**                |
-| `NodePatch` type (untyped bag) | **Deleted** (replaced by typed NodeState) |
-| `resetEvalState` flag          | **Deleted** (no canonical fallback) |
-| `field-helpers.ts` fallback chain | **Simplified** to stack walk |
-| `ctx.session`                  | `ctx.evalState`            |
-| `ctx.instanceRoot`             | subtree stack              |
-| `ctx.position`                 | `ctx.activeState`          |
+These are not part of the target model, but could be added later if profiling
+or runtime constraints prove they are needed:
 
-### Evaluation-wide state (not per-placement)
-
-Some EvalSession responsibilities are per-evaluation-pass, not per-placement.
-These live on Context directly — they're orthogonal to the node/field patch
-system and don't need the recursive subtree model.
-
-- **Scope snapshots** (`Map<string, ScopeSnapshot>`) — per import path
-- **Registry deltas** (`WeakMap<Rules, SessionRegistryDelta>`) — mixin/var registration
-- **Changed vars** (`Set<VarDeclaration>`) — dirty tracking
-- **Dependency tracking** (`WeakMap<Node, EvalDependency>`) — static analysis
+- a more specialized physical layout for indexed child edges
+- caching/flattening for render-root parent fallback
+- a special root-entry replacement mechanism if edge rewiring is truly not enough

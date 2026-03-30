@@ -1,83 +1,110 @@
-# Node EvalState Status
+# Node Update Status
 
-Per-node audit for EvalState migration. Two dimensions:
+This file tracks the next runtime surfaces to move toward the render-root
+cursor model.
 
-1. **EvalState contract** — field reads/writes go through `activeState` (not canonical mutation)
-2. **State carrying** — if the node creates a per-scope EvalState, it carries it on output via `_carriedState`
+It is intentionally short. It should only answer:
 
-## Status Legend
+- what still depends on the old EvalState model?
+- what should be moved next?
 
-| Status | Meaning |
-| --- | --- |
-| `clean` | All reads/writes use EvalState. No canonical mutations during eval. |
-| `needs-fix` | Some eval paths still mutate canonical fields or miss state carrying. |
-| `leaf` | Scalar/opaque node. No eval-time writes. |
-| `inherited` | Inherits from parent class. |
+## Target Checklist
 
-## Core Eval Nodes
+The target model is:
 
-| Node | Status | Notes |
-| --- | --- | --- |
-| `Declaration` | `clean` | All writes via `setField`. All reads via context-aware getters. |
-| `VarDeclaration` | `inherited` | Inherits Declaration. |
-| `Ruleset` | `clean` | preEval uses `setField` for selector/guard. |
-| `Rules` | `clean` | evalNode delegates to `_evaluateQueue` which writes via `activeState`. `_setValueArray` used only in constructor. |
-| `AtRule` | `clean` | All field writes via `setField`. |
-| `Mixin` | `clean` | preEval writes via `setField`. |
-| `Call` | `clean` | evalNode routes through `evalMixinDirect`. No canonical mutations. |
-| `Func` | `clean` | evalCall delegates to mixin machinery. |
-| `Expression` | `clean` | evalNode is read-only + dependency tracking. |
-| `Operation` | `clean` | All left/right writes via `setField`. |
-| `Condition` | `clean` | Read-only eval. |
-| `Sequence` | `clean` | All value writes via `setField` / `_setValue`. |
-| `List` | `clean` | All value writes via `setField`. |
-| `Reference` | `clean` | evalNode is read-only (resolves and returns value). |
-| `Interpolated` | `clean` | Writes replacements via `setField`. |
-| `Block` | `clean` | Writes value via `setField`. |
-| `Paren` | `clean` | Writes value via `setField`, parents via `setParent`. |
-| `Quoted` | `clean` | Writes value via `setField`. |
-| `Control ($for)` | `clean` | pushState/popState per loop. Carries state via `_carriedState`. |
-| `Ampersand` | `clean` | Reads via `getField`. No mutations. |
-| `SelectorCapture` | `clean` | Writes value via `setField`. |
+- canonical nodes own alternate parent/child edges
+- traversal uses a cursor: `{ node, root }`
+- no field-patch architecture
+- no render-root-owned patch tables
+- no clone/materialize escape hatch for ordinary eval flow
 
-## Import Pipeline
+## Immediate Next Surfaces
 
-| Node | Status | Notes |
-| --- | --- | --- |
-| `StyleImport` | `needs-fix` | **3 canonical mutations**: (1) `materializeCloneParentLinks` directly sets `child.parent` (line 228). (2) Restores canonical parents after import eval (line 713). (3) `setData` on deduped cache (line 755). These save/restore canonical state instead of using EvalState. Root cause of 18 import-style test failures. |
-| `ImportJs` | `clean` | Reads via field helpers. |
+### 1. Parent/child traversal helpers
 
-## Selector Nodes
+Status: `next`
 
-| Node | Status | Notes |
-| --- | --- | --- |
-| `BasicSelector` | `leaf` | |
-| `AttributeSelector` | `clean` | Reads via context-aware getters. |
-| `InterpolatedSelector` | `clean` | |
-| `Ampersand` | `clean` | |
-| `PseudoSelector` | `clean` | |
-| `CompoundSelector` | `clean` | |
-| `ComplexSelector` | `clean` | |
-| `SelectorList` | `clean` | |
+Current issue:
 
-## Leaf Nodes
+- parent/child traversal still assumes `Context.activeState` and field helpers
 
-All `leaf` — no eval-time writes: Any, Bool, Color, Comment, Combinator, DefaultGuard, Dimension, JsArray, JsObject, JsFunction, JsExpression, Nil, Num.
+Target:
 
-## Mixin Pipeline (mixin-instance-primitives.ts)
+- introduce cursor-aware edge helpers
+- make parent-aware traversal explicitly depend on `{ node, root }`
 
-| Function | Status | Notes |
-| --- | --- | --- |
-| `evaluateCandidateOutput` | `clean` | pushState/popState, carries state via `_carriedState`. All parent wiring AFTER pushState. |
-| `finalizeMixinInvocationOutput` | `clean` | Creates lightweight `Rules.create(children)` per call. |
-| `prepareMixinCandidateInvocation` | `clean` | No longer sets parents (moved to after pushState). |
-| `prepareMixinInvocationScope` | `clean` | Creates ephemeral scope with canonical params. |
-| `evaluateMixinArgs` | `clean` | Simplified — no deep copy/freeze, just eval. |
-| `matchMixinCandidates` | `needs-fix` | Uses `param.setData('value', boundValue)` (line 1060) — canonical mutation on copied param. Acceptable since params are deep-copied per match, but should eventually use state. |
+Likely files:
 
-## Remaining Issues
+- `packages/core/src/tree/util/field-helpers.ts`
+- `packages/core/src/tree/node-base.ts`
+- `packages/core/src/tree/util/serialize-helper.ts`
 
-1. **StyleImport canonical mutations** — 3 sites that mutate canonical parent/children. Causes 18 test failures.
-2. **Nesting collapse** — `collapseNesting` needs context to compose selectors through state. Fixed in tests (12/13 pass).
-3. **forEachNode array replacement** — writes array child replacements through state when state active, canonical when not. `_forEachNodeSync` still mutates canonical arrays for named-key children.
-4. **`_carriedState`** — still needed because subtree storage on NodeState doesn't survive the eval pipeline's state transitions. See eval-state-sketch.md for architecture discussion.
+### 2. Detached ruleset / mixin output ownership
+
+Status: `next`
+
+Current issue:
+
+- detached/mixin output still relies on hidden carried state and wrapper logic
+
+Target:
+
+- returned output should be explainable as canonical nodes plus edge-selected
+  placement
+- serialization should not need rescue-state discovery
+
+Likely files:
+
+- `packages/core/src/tree/util/mixin-instance-primitives.ts`
+- `packages/core/src/tree/rules.ts`
+- `packages/core/src/tree/call.ts`
+
+### 3. Serialization cursor
+
+Status: `needed`
+
+Current issue:
+
+- serialization still reasons in terms of nodes plus hidden runtime state
+
+Target:
+
+- serializer carries and restores a cursor while walking
+- upward traversal is cursor-based, not naked-node based
+
+Likely files:
+
+- `packages/core/src/tree/util/serialize-helper.ts`
+- `packages/core/src/tree/ruleset.ts`
+- `packages/core/src/tree/rules.ts`
+
+### 4. Context contract cleanup
+
+Status: `later`
+
+Current issue:
+
+- `Context.activeState` still acts as the main internal traversal selector
+
+Target:
+
+- context may temporarily carry current cursor during traversal
+- but cursor is the real source of truth, not detached global state
+
+Likely files:
+
+- `packages/core/src/context.ts`
+- `packages/core/src/tree/util/field-helpers.ts`
+
+## Transitional Baggage To Remove Over Time
+
+- `_carriedState`
+- `subtreeMap`
+- detached wrapper/materialize helpers
+- new code that spreads EvalState assumptions further
+
+## Notes
+
+- `selectorBeforeExtend` should be treated as current-runtime baggage, not part
+  of the target minimal shape
+- `sourceNode` is provenance, not a substitute for render-path selection
