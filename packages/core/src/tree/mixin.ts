@@ -251,19 +251,11 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          if (node === this) {
-            context.activeState.get(node).fields.set('name', key);
-          } else {
-            node.setData('name', key);
-          }
+          node.name = key;
           return node;
         });
       }
-      if (node === this) {
-        context.activeState.get(node).fields.set('name', maybeKey as Any<'name'>);
-      } else {
-        node.setData('name', maybeKey as Any<'name'>);
-      }
+      node.name = maybeKey as Any<'name'>;
     }
     return node;
   }

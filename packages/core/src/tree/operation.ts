@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_STATIC, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -109,8 +109,10 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
           const outOperation = n.clone(false) as Operation;
-          outOperation.setData('left', l);
-          outOperation.setData('right', r);
+          outOperation.adopt(l, context);
+          outOperation.adopt(r, context);
+          (outOperation as unknown as { left: Node }).left = l;
+          (outOperation as unknown as { right: Node }).right = r;
           return applyMergedDependency(outOperation, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -128,8 +130,10 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
             if (error instanceof TypeError) {
               // Preserve canonical operation state by materializing an isolated wrapper when needed.
               const calcOperation = n.clone(false) as Operation;
-              calcOperation.setData('left', l);
-              calcOperation.setData('right', r);
+              calcOperation.adopt(l, context);
+              calcOperation.adopt(r, context);
+              (calcOperation as unknown as { left: Node }).left = l;
+              (calcOperation as unknown as { right: Node }).right = r;
               setEvaluated(calcOperation, true, context);
               setEvaluated(l, true, context);
               setEvaluated(r, true, context);
@@ -153,9 +157,15 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
         out.post = right.post;
         return applyMergedDependency(out, l, r);
       }
-      context.activeState.get(n).fields.set('left', l);
-      context.activeState.get(n).fields.set('right', r);
-      return applyMergedDependency(n, l, r);
+      if (l === n.left && r === n.right) {
+        return applyMergedDependency(n, l, r);
+      }
+      const outOperation = n.clone(false) as Operation;
+      outOperation.adopt(l, context);
+      outOperation.adopt(r, context);
+      (outOperation as unknown as { left: Node }).left = l;
+      (outOperation as unknown as { right: Node }).right = r;
+      return applyMergedDependency(outOperation, l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {
       const maybeRight = right.eval(context);

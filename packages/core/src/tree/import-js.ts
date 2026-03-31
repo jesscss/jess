@@ -55,11 +55,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChild
     const finish = (nextPath: Quoted): JsImport => {
       const out = this.clone() as JsImport;
       if (nextPath !== path) {
-        if (out === this) {
-          context.activeState.get(this).fields.set('path', nextPath);
-        } else {
-          out.setData('path', nextPath);
-        }
+        out.path = nextPath;
       }
       return out;
     };

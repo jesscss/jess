@@ -3,7 +3,6 @@ import {
   F_STATIC,
   defineType,
   type OptionalLocation,
-  type NodeOptions,
   type TreeContext
 } from './node.js';
 import { isNode } from './util/is-node.js';
@@ -22,9 +21,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   getDependency,
-  getField,
   mergeDependencies,
-  setField,
   setDependency
 } from './util/field-helpers.js';
 
@@ -138,9 +135,29 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private _getOptions(context?: Context): Opts | undefined {
-    return context
-      ? getField<Opts | undefined>(this, 'options', context)
-      : this.options;
+    return this.options;
+  }
+
+  private _setOptions(nextOptions: Opts | undefined): void {
+    this.options = nextOptions as Opts;
+  }
+
+  private _setValue(value: Node, _context: Context): void {
+    this.value = value;
+  }
+
+  private _setName(name: NameValue, context: Context): void {
+    if (name instanceof Node) {
+      this.adopt(name, context);
+    }
+    this.name = name;
+  }
+
+  private _setImportant(important: Any<'flag'> | undefined, context: Context): void {
+    if (important instanceof Node) {
+      this.adopt(important, context);
+    }
+    this.important = important;
   }
 
   protected declTrimmedString(options?: PrintOptions) {
@@ -255,7 +272,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            setField(node, 'value', value, context);
+            node._setValue(value, context);
             break;
           }
           case AssignmentType.Add: {
@@ -263,7 +280,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              setField(node, 'value', new List([
+              node._setValue(new List([
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
@@ -274,7 +291,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 value
               ]), context);
             } else {
-              setField(node, 'value', new Operation([
+              node._setValue(new Operation([
                 new Reference({ key }, { type }),
                 '+',
                 value
@@ -283,7 +300,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             break;
           }
           case AssignmentType.CondAssign: {
-            setField(node, 'value', new Reference({ key }, {
+            node._setValue(new Reference({ key }, {
               type,
               fallbackValue: value
             }), context);
@@ -292,16 +309,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         nextOptions.normalizedFromAssign = normalizedAssign;
         nextOptions.assign = AssignmentType.Default;
-        setField(node, 'options', nextOptions, context);
+        node._setOptions(nextOptions);
       }
       const out = node.get('value', context).preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          setField(node, 'value', value, context);
+          node._setValue(value, context);
           return node;
         });
       }
-      setField(node, 'value', out, context);
+      node._setValue(out, context);
       return node;
     };
 
@@ -309,12 +326,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          setField(node, 'name', key, context);
+          node._setName(key, context);
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      setField(node, 'name', key, context);
+      node._setName(key, context);
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);
@@ -484,15 +501,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            setField(node, 'value', new Nil(), context);
+            node._setValue(new Nil(), context);
             return;
           }
           if (rest.length === 1) {
-            setField(node, 'value', cloneWithDependency(rest[0]!), context);
+            node._setValue(cloneWithDependency(rest[0]!), context);
             return;
           }
           const clonedRest = rest.map(item => cloneWithDependency(item));
-          setField(node, 'value', new List(clonedRest), context);
+          node._setValue(new List(clonedRest), context);
           const dependency = mergeDependencies(clonedRest, context);
           if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
             setDependency(node.get('value', context), {
@@ -505,7 +522,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (node.type === 'VarDeclaration') {
           return node;
         }
-        const name = node.get('name', context);
         const value = node.get('value', context);
         if (value instanceof Node) {
           const isCustomProperty = node.isCustomProperty(context);
@@ -525,12 +541,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              setField(node, 'value', newValue, context);
+              node._setValue(newValue, context);
               normalizeMergedLeadingPlaceholder();
               copyDependency(newValue, node.get('value', context));
               // Merge !important from referenced declarations
               if (context.hasImportantSource && !node.get('important', context)) {
-                setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+                node._setImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
@@ -543,14 +559,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          setField(node, 'value', maybeNewValue as Node, context);
+          node._setValue(maybeNewValue as Node, context);
           normalizeMergedLeadingPlaceholder();
           copyDependency(maybeNewValue as Node, node.get('value', context));
           const expanded = expandNestedPropertyDeclaration(node);
           if (isThenable(expanded)) {
             return (expanded as Promise<Declaration | Rules | Nil>).then((resolvedExpanded) => {
               if (context.hasImportantSource && !node.get('important', context) && isNode(resolvedExpanded, N.Declaration)) {
-                setField(resolvedExpanded as Declaration, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+                (resolvedExpanded as Declaration)._setImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               if (context.hasImportantSource) {
                 context.popImportantSource();
@@ -566,7 +582,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           // Merge !important from referenced declarations
           if (context.hasImportantSource && !node.get('important', context)) {
-            setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+            node._setImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
           }
           // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {

@@ -293,18 +293,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         return node;
       };
       const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
-        const clone = node.clone() as T;
-        const nodeState = context.activeState.peek(node);
-        if (nodeState?._fields) {
-          const sn = nodeState._fields.get('sourceNode');
-          if (sn) {
-            clone.sourceNode = sn as Node;
-          }
-          if (nodeState._fields.has('sourceParent')) {
-            clone.sourceParent = nodeState._fields.get('sourceParent') as Node | undefined;
-          }
-        }
-        return clone;
+        return node.clone() as T;
       };
       const materializeDownstreamResult = <T extends Node>(node: T): T => {
         if (node === node.sourceNode) {
@@ -522,13 +511,8 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
             return applyDependencyToResult(new Paren(evalArgItems[0]!), evalArgItems);
           }
         }
-        if (node === this) {
-          context.activeState.get(node).fields.set('name', n);
-          context.activeState.get(node).fields.set('args', evaluatedArgs);
-        } else {
-          node.name = n;
-          node.args = evaluatedArgs;
-        }
+        node.name = n;
+        node.args = evaluatedArgs;
         return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.get('value'));
       }
     })().then(value => value);

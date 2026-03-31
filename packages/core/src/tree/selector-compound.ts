@@ -1,5 +1,6 @@
 import {
-  defineType
+  defineType,
+  type OptionalLocation
 } from './node.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -41,6 +42,25 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
 
   get length() {
     return this.value.length;
+  }
+
+  override clone(_deep?: boolean): this {
+    return this._withValue(this.value) as this;
+  }
+
+  private _withValue(value: SimpleSelector[]): CompoundSelector {
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as OptionalLocation
+      : undefined;
+    const node = new (this.constructor as typeof CompoundSelector)(
+      [],
+      this.options ? { ...this.options } : undefined,
+      location,
+      this.treeContext
+    );
+    node.inherit(this);
+    node.value = value;
+    return node;
   }
 
   override valueOf() {
@@ -115,21 +135,23 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              if (sel === this) {
-                context.activeState.get(sel).fields.set('value', value);
-              } else {
-                sel.setData('value', value);
-              }
+              return sel === this
+                ? this._withValue(value)
+                : (() => {
+                    sel.value = value;
+                    return sel;
+                  })();
             }
             return sel;
           });
         }
         if (changed) {
-          if (sel === this) {
-            context.activeState.get(sel).fields.set('value', value);
-          } else {
-            sel.setData('value', value);
-          }
+          return sel === this
+            ? this._withValue(value)
+            : (() => {
+                sel.value = value;
+                return sel;
+              })();
         }
         return sel;
       },
@@ -149,12 +171,13 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
         if (data.length === 1) {
           return data[0]!.inherit(this) as Selector;
         }
-        if (sel === this) {
-          context.activeState.get(sel).fields.set('value', [...data]);
-        } else {
-          sel.setData('value', [...data]);
-        }
-        return sel;
+        const nextValue = [...data];
+        return sel === this
+          ? this._withValue(nextValue)
+          : (() => {
+              sel.value = nextValue;
+              return sel;
+            })();
       }
     );
   }

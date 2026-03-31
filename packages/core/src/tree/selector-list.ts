@@ -1,7 +1,8 @@
 import {
   defineType,
   F_EXTENDED,
-  F_EXTEND_TARGET
+  F_EXTEND_TARGET,
+  type OptionalLocation
 } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
@@ -36,6 +37,25 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
 
   get length() {
     return this.value.length;
+  }
+
+  override clone(_deep?: boolean): this {
+    return this._withValue(this.value) as this;
+  }
+
+  private _withValue(value: Selector[]): SelectorList {
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as OptionalLocation
+      : undefined;
+    const node = new (this.constructor as typeof SelectorList)(
+      [],
+      this.options ? { ...this.options } : undefined,
+      location,
+      this.treeContext
+    );
+    node.inherit(this);
+    node.value = value;
+    return node;
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -150,21 +170,23 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              if (list === this) {
-                context.activeState.get(list).fields.set('value', value);
-              } else {
-                list.value = value;
-              }
+              return list === this
+                ? this._withValue(value)
+                : (() => {
+                    list.value = value;
+                    return list;
+                  })();
             }
             return list;
           });
         }
         if (changed) {
-          if (list === this) {
-            context.activeState.get(list).fields.set('value', value);
-          } else {
-            list.value = value;
-          }
+          return list === this
+            ? this._withValue(value)
+            : (() => {
+                list.value = value;
+                return list;
+              })();
         }
         return list;
       },
@@ -203,7 +225,7 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
         }
         if (flattened.length !== value.length) {
           if (list === this) {
-            context.activeState.get(list).fields.set('value', flattened);
+            list = this._withValue(flattened);
           } else {
             list.value = flattened;
           }

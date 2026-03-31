@@ -145,10 +145,14 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
       (evaluatedArg) => {
         context.parenFrames.pop();
         if (node === this) {
-          context.activeState.get(node).fields.set('arg', evaluatedArg);
-        } else {
-          node.setData('arg', evaluatedArg);
+          const out = this.clone() as PseudoSelector;
+          out.inherit(this);
+          out.adopt(evaluatedArg, context);
+          out.arg = evaluatedArg;
+          return out;
         }
+        node.adopt(evaluatedArg, context);
+        node.arg = evaluatedArg;
         return node;
       }
     );

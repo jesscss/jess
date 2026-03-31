@@ -1,9 +1,8 @@
 import { type Combinator } from './combinator.js';
-import { type Ampersand, Ampersand as AmpersandClass } from './ampersand.js';
+import { type Ampersand } from './ampersand.js';
 import {
   defineType,
-  F_VISIBLE,
-  F_IMPLICIT_AMPERSAND
+  type OptionalLocation
 } from './node.js';
 import type { Context } from '../context.js';
 import { type Nil } from './nil.js';
@@ -52,6 +51,25 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
 
   get length() {
     return this.value.length;
+  }
+
+  override clone(_deep?: boolean): this {
+    return this._withValue(this.value) as this;
+  }
+
+  private _withValue(value: ComplexSelectorValue): ComplexSelector {
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as OptionalLocation
+      : undefined;
+    const node = new (this.constructor as typeof ComplexSelector)(
+      [],
+      this.options ? { ...this.options } : undefined,
+      location,
+      this.treeContext
+    );
+    node.inherit(this);
+    node.value = value;
+    return node;
   }
 
   override valueOf() {
@@ -121,21 +139,23 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              if (selector === this) {
-                context.activeState.get(selector).fields.set('value', value);
-              } else {
-                selector.value = value;
-              }
+              return selector === this
+                ? this._withValue(value)
+                : (() => {
+                    selector.value = value;
+                    return selector;
+                  })();
             }
             return selector;
           });
         }
         if (changed) {
-          if (selector === this) {
-            context.activeState.get(selector).fields.set('value', value);
-          } else {
-            selector.value = value;
-          }
+          return selector === this
+            ? this._withValue(value)
+            : (() => {
+                selector.value = value;
+                return selector;
+              })();
         }
         return selector;
       },
@@ -145,7 +165,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
           const originalOnly = value[0]!;
           const only = originalOnly.clone();
           only.inherit(selector);
-          if ((context.activeState.peek(this)?.fields.get('hoistToRoot') as boolean | undefined) || this.hoistToRoot || only.hoistToRoot) {
+          if (selector.hoistToRoot || this.hoistToRoot || only.hoistToRoot) {
             only.hoistToRoot = true;
           }
           return only;

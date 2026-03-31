@@ -37,9 +37,7 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = options.context
-      ? ((options.context.activeState.peek(this)?.fields.get('value') as Selector | undefined) ?? this.value)
-      : this.value;
+    const value = this.value;
     w.add('*[', this);
     value.toString(options);
     w.add(']', this);
@@ -52,14 +50,14 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
     }
     const node = this.clone() as this;
     node.preEvaluated = true;
-    const value = ((context.activeState.peek(this)?.fields.get('value') as Selector | undefined) ?? this.value);
     const applyValue = (preEvald: Selector): this => {
-      if (((context.activeState.peek(node)?.fields.get('value') as Selector | undefined) ?? node.value) !== preEvald) {
-        context.activeState.get(node).fields.set('value', preEvald);
+      if (node.value !== preEvald) {
+        node.adopt(preEvald, context);
+        (node as unknown as { value: Selector }).value = preEvald;
       }
       return node;
     };
-    const out = value.preEval(context);
+    const out = this.value.preEval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then(applyValue);
     }
@@ -67,8 +65,7 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const value = ((context.activeState.peek(this)?.fields.get('value') as Selector | undefined) ?? this.value);
-    const out = value.eval(context);
+    const out = this.value.eval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then((selector) => {
         return selector;
