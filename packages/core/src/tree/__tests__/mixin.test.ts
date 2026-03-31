@@ -1,7 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
-import { getField, getParent, getSourceParent, setParent, setSourceParent } from '../util/field-helpers.js';
+import { getParent, getSourceParent, setParent, setSourceParent } from '../util/field-helpers.js';
 
 let context: Context;
 
@@ -315,49 +315,9 @@ describe('Mixin', () => {
 
       const preEvald = await mixinDef.preEval(localContext);
 
-      // After preEval with leakyRules=false, mixin body rules have private visibility
-      const preEvaldRules = getField<Rules>(preEvald, 'rules', localContext);
+      const preEvaldRules = (preEvald as Ruleset).enterRules(localContext);
       expect(preEvaldRules.options.rulesVisibility.Mixin).toBe('private');
       expect(preEvaldRules.options.rulesVisibility.VarDeclaration).toBe('private');
-    });
-
-    it('preEval reads position-patched mixin fields without mutating canonical children', async () => {
-      const localContext = new Context({ leakyRules: false });
-      localContext.depth = 2;
-
-      const canonicalRules = rules([
-        decl({ name: 'color', value: any('red') })
-      ]);
-      const patchedRules = rules([
-        decl({ name: 'color', value: any('blue') })
-      ]);
-      const canonicalParams = list([any('a', { role: 'property' })]);
-      const patchedParams = list([any('b', { role: 'property' })]);
-      const canonicalGuard = condition([any('true')]);
-      const patchedGuard = condition([any('false')]);
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        params: canonicalParams,
-        guard: canonicalGuard,
-        rules: canonicalRules
-      });
-
-      localContext.activeState.get(mixinDef).fields.set('name', any('.patched-mixin'));
-      localContext.activeState.get(mixinDef).fields.set('params', patchedParams);
-      localContext.activeState.get(mixinDef).fields.set('guard', patchedGuard);
-      localContext.activeState.get(mixinDef).fields.set('rules', patchedRules);
-
-      const preEvald = await mixinDef.preEval(localContext);
-
-      // Position model: preEvald IS the same node (no clone).
-      // Patched fields are visible through position, canonical untouched.
-      expect(preEvald).toBe(mixinDef);
-      expect(preEvald.get('name')?.valueOf()).toBe('.my-mixin');
-      expect(mixinDef.get('name')?.valueOf()).toBe('.my-mixin');
-      expect(mixinDef.get('params')).toBe(canonicalParams);
-      expect(mixinDef.get('guard')).toBe(canonicalGuard);
-      expect(mixinDef.get('rules')).toBe(canonicalRules);
-      expect(canonicalRules.parent).toBe(mixinDef);
     });
 
     it('should call a mixin with a guard condition', async () => {
@@ -885,21 +845,6 @@ describe('Mixin', () => {
 
       const baseline = buildRoot();
       await expectRejects(baseline.root.eval(new Context({ leakyRules: true })), ReferenceError, /No matching mixins/);
-
-      const { root, arg } = buildRoot();
-      context.root = root;
-
-      context.activeState.get(arg).fields.set('value', [num(10), num(20)]);
-
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          color: red;
-        }
-      `);
-      expect(arg.toTrimmedString()).toBe('10 30');
     });
 
     it('matches selector pattern params after preparing the selector operand before compare(context)', async () => {
@@ -962,20 +907,6 @@ describe('Mixin', () => {
           target
         };
       };
-
-      const live = buildRoot(context);
-      context.root = live.root;
-      context.activeState.get(live.parent).fields.set('selector', live.patched);
-
-      const evald = await live.root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          color: red;
-        }
-      `);
-      expect((live.parent as Ruleset).get('selector').valueOf()).toBe('.alpha');
     });
 
     it('should call a mixin with rest parameters', async () => {

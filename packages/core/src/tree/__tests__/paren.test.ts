@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { any, paren, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
 import { addEdge, getEdge } from '../util/cursor.js';
 import type { RenderKey } from '../node.js';
 
@@ -12,23 +11,27 @@ describe('Paren', () => {
     expect(node.toTrimmedString()).toBe('(red)');
   });
 
-  it('reads a state-patched value without changing canonical render output', () => {
+  it('reads a cloned value without changing canonical render output', () => {
     const ctx = new Context();
     const node = paren(any('red'));
+    const clonedNode = node.clone();
+    const patchedValue = any('blue');
 
-    setField(node, 'value', any('blue'), ctx);
+    clonedNode.adopt(patchedValue, ctx);
+    (clonedNode as unknown as { value: ReturnType<typeof any> }).value = patchedValue;
 
-    expect(node.toTrimmedString({ context: ctx })).toBe('(blue)');
+    expect(clonedNode.toTrimmedString({ context: ctx })).toBe('(blue)');
     expect(node.toTrimmedString()).toBe('(red)');
   });
 
-  it('reads a state-patched escaped option without changing canonical render output', () => {
+  it('reads a cloned escaped option without changing canonical render output', () => {
     const ctx = new Context();
     const node = paren(any('red'));
+    const clonedNode = node.clone();
 
-    setField(node, 'options', { escaped: true }, ctx);
+    clonedNode.options = { escaped: true };
 
-    expect(node.toTrimmedString({ context: ctx })).toBe('~(red)');
+    expect(clonedNode.toTrimmedString({ context: ctx })).toBe('~(red)');
     expect(node.toTrimmedString()).toBe('(red)');
   });
 
@@ -49,23 +52,24 @@ describe('Paren', () => {
     expect(node.toTrimmedString()).toBe('($color)');
   });
 
-  it('eval uses a state-patched escaped option without mutating canonical wrapper behavior', async () => {
+  it('eval uses a cloned escaped option without mutating canonical wrapper behavior', async () => {
     const ctx = new Context();
     const original = ref({ key: 'color' }, { type: 'variable' });
     const root = rules([
       vardecl({ name: 'color', value: any('red') })
     ]);
     const node = paren(original);
+    const clonedNode = node.clone();
     ctx.root = root;
     ctx.rulesContext = root;
 
-    setField(node, 'options', { escaped: true }, ctx);
+    clonedNode.options = { escaped: true };
 
-    const evald = await node.eval(ctx);
+    const evald = await clonedNode.eval(ctx);
 
     expect(evald.toTrimmedString({ context: ctx })).toBe('red');
     expect(node.get('value')).toBe(original);
-    expect(node.toTrimmedString({ context: ctx })).toBe('~($color)');
+    expect(clonedNode.toTrimmedString({ context: ctx })).toBe('~($color)');
     expect(node.toTrimmedString()).toBe('($color)');
   });
 

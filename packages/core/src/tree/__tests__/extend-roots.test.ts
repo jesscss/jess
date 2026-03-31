@@ -91,8 +91,8 @@ describe('Extend Roots Registry', () => {
 
       await node.eval(context);
 
-      // With EvalState, the extended selector is stored in eval state.
-      // valueOf(context) reads the state-patched selector.
+      // The extended selector is on the current render path.
+      // valueOf(context) reads the current selector view.
       expect(targetRuleset.valueOf(context)).toBe('.base,.ext');
       // Canonical valueOf() still returns the original selector.
       expect(targetRuleset.valueOf()).toBe('.base');

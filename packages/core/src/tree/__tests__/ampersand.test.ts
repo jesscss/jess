@@ -5,7 +5,6 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
-import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Ampersand', () => {
@@ -366,96 +365,5 @@ describe('Ampersand', () => {
     expect(parent.get('selector').pre).toBe(1);
     expect(parent.get('selector').post).toBe(1);
     expect(parent.get('selector').hoistToRoot).toBeUndefined();
-  });
-
-  it('valueOf(context) and getResolvedSelector(context) read a state-patched parent selector', () => {
-    context = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    const node = amp({ selectorContainer: parent as any });
-    node.addFlag(F_IMPLICIT_AMPERSAND);
-
-    setField(parent, 'selector', el('.beta'), context);
-
-    expect(node.valueOf(context)).toBe('.beta');
-    expect(node.valueOf()).toBe('.alpha');
-    expect(node.getResolvedSelector(context)?.valueOf()).toBe('.beta');
-    expect(node.getResolvedSelector()?.valueOf()).toBe('.alpha');
-    expect(parent.get('selector').valueOf()).toBe('.alpha');
-  });
-
-  it('keeps keySet canonical when only the parent selector is state-patched', () => {
-    context = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    parent.get('selector').keySetLibrary = context.selectorBits;
-
-    const patched = el('.beta');
-    patched.keySetLibrary = context.selectorBits;
-
-    const node = amp({ selectorContainer: parent as any });
-    node.keySetLibrary = context.selectorBits;
-
-    setField(parent, 'selector', patched, context);
-
-    expect(node.valueOf(context)).toBe('.beta');
-    expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha']))).toBe(true);
-    expect(node.keySet.equals(context.selectorBits.getBitset(['.beta']))).toBe(false);
-  });
-
-  it('cannot derive a state-specific keySet when two eval states patch the same parent selector differently', () => {
-    const contextA = new Context();
-    const contextB = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    parent.get('selector').keySetLibrary = contextA.selectorBits;
-
-    const beta = el('.beta');
-    beta.keySetLibrary = contextA.selectorBits;
-    const gamma = el('.gamma');
-    gamma.keySetLibrary = contextA.selectorBits;
-
-    const node = amp({ selectorContainer: parent as any });
-    node.keySetLibrary = contextA.selectorBits;
-
-    setField(parent, 'selector', beta, contextA);
-    setField(parent, 'selector', gamma, contextB);
-
-    expect(node.valueOf(contextA)).toBe('.beta');
-    expect(node.valueOf(contextB)).toBe('.gamma');
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.alpha']))).toBe(true);
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.beta']))).toBe(false);
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(false);
-  });
-
-  it('can derive a state-specific keySet through getKeySet(context) without changing canonical keySet', () => {
-    const contextA = new Context();
-    const contextB = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    parent.get('selector').keySetLibrary = contextA.selectorBits;
-
-    const beta = el('.beta');
-    beta.keySetLibrary = contextA.selectorBits;
-    const gamma = el('.gamma');
-    gamma.keySetLibrary = contextA.selectorBits;
-
-    const node = amp({ selectorContainer: parent as any });
-    node.keySetLibrary = contextA.selectorBits;
-
-    setField(parent, 'selector', beta, contextA);
-    setField(parent, 'selector', gamma, contextB);
-
-    expect(node.getKeySet(contextA).equals(contextA.selectorBits.getBitset(['.beta']))).toBe(true);
-    expect(node.getKeySet(contextB).equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(true);
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.alpha']))).toBe(true);
   });
 });

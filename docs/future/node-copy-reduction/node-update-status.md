@@ -39,6 +39,16 @@ This file does not track:
 
 Those only matter here when they directly block edge/cursor conversion.
 
+## Current Reset
+
+The core test suite no longer carries direct `activeState` / `EvalState` /
+`setField` / `getField` usage in `packages/core/src/tree/__tests__` or
+`packages/core/src/tree/util/__tests__`.
+
+That cleanup matters here only because it removes old-model poison from the
+working surface. From this point, remaining reds in focused files should be
+treated as production runtime issues, not test-shim compatibility issues.
+
 ## Verification Rule
 
 Only use tests as hard gates for surfaces that are already edge/cursor-based.
@@ -132,21 +142,21 @@ This section tracks only edge/cursor conversion status.
 | `Rest` | `converted` | Simple child surface converted to direct field + render-key read path. |
 | `Sequence` | `converted` | Canonical container stays in place for same-length render-path child replacement; `valueEdges` carry indexed alternates and only shape changes return a different node. |
 | `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation updates/removes `parentEdges` directly on wrapper-owned paths. Main blocker now is scope ownership still leaking through `renderParent` instead of a pure parent-edge / cursor model. |
-| `Ruleset` | `in_progress` | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Remaining red is not the field API itself; it is hoist/mixin scope ownership that still feeds `Reference` through side channels. |
+| `Ruleset` | `in_progress` | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Remaining blocker is not the field API itself; it is hoist/scope ownership that still feeds `Reference` through side channels. |
 | `AtRule` | `in_progress` | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. Current blocker is nested prelude/body scope ownership, not `AtRule` field access. |
 | `Reference` | `in_progress` | Current lookup-parent walk still depends on `context.rulesContext` and `Rules.renderParent` as side channels. This now directly blocks nested `@media` param lookup and caller-context mixin selector composition. |
-| `Call` | `not_converted` | Old wrapper/materialize characterization tests were deleted. Remaining production seam is returned-result shaping through `util/legacy-node-ops.ts` instead of direct edge/cursor ownership. |
-| `Mixin` | `not_converted` | Invocation/output scope still depends on thin `Rules` wrappers plus `renderParent`; not yet expressed as a pure edge/cursor-owned placement model. |
-| `Control` | `not_converted` | Still relies on hybrid loop/output plumbing rather than direct edge/cursor ownership; remaining focused failures are loop call-iterable lookup and merged declaration coalescing. |
+| `Call` | `not_converted` | Test-side field-patch cases were removed. Remaining production seam is returned-result shaping plus `setData`-style mutation inside call-time result processing instead of direct edge/cursor ownership. |
+| `Mixin` | `not_converted` | Test-side overlay proofs were removed. Invocation/output scope still depends on thin `Rules` wrappers plus `renderParent`; not yet expressed as a pure edge/cursor-owned placement model. |
+| `Control` | `not_converted` | Runtime-generated numeric render keys landed for loop placements, and narrow loop proofs now exist. The remaining work is still production conversion of loop/output ownership, not more test-side patching. |
 
 Only the `converted` rows are valid hard-gate targets for focused edge/cursor tests.
 
 ## Immediate Next Work
 
-1. Replace `Rules.renderParent` lookup semantics with a real parent-edge / cursor-owned scope path.
-2. Convert `Reference` parent/scope resolution to follow that path directly instead of consulting `context.rulesContext` as a side channel.
-3. Revisit nested `AtRule` prelude evaluation and mixin-output selector composition after the lookup owner is explicit.
-4. Only after that, continue broader `Mixin` / `Control` conversion work.
+1. Stay on narrow production surfaces only: pick one component, convert one owner/path seam, and verify it with a focused proof test.
+2. Replace `Rules.renderParent` lookup semantics with a real parent-edge / cursor-owned scope path.
+3. Convert `Reference` parent/scope resolution to follow that path directly instead of consulting `context.rulesContext` as a side channel.
+4. Revisit nested `AtRule` prelude evaluation and other dependent component paths only after the lookup owner is explicit.
 
 ## Transitional Baggage To Remove
 
@@ -158,3 +168,8 @@ Only listed here when it directly blocks edge/cursor work:
 - `packages/core/src/tree/util/field-helpers.ts` as the activeState compatibility sewer
 - `packages/core/src/tree/util/legacy-node-ops.ts` as quarantined returned-result shaping
 - `Rules.renderParent` as an undocumented scope-parent side channel
+
+No longer active baggage in core test files:
+
+- direct `activeState` / `EvalState` test setup
+- direct `setField` / `getField` test mutation APIs

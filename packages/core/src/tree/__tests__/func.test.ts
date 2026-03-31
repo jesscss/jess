@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Context } from '../../context.js';
 import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
-import { setField, setParent } from '../util/field-helpers.js';
+import { setParent } from '../util/field-helpers.js';
 import * as rulesModule from '../rules.js';
 
 afterEach(() => {
@@ -84,7 +84,7 @@ describe('Func', () => {
     expect(body.parent).toBe(node);
   });
 
-  it('evalCall reads a state-patched return declaration value', async () => {
+  it('evalCall reads a cloned return declaration value', async () => {
     const ctx = new Context({ leakyRules: true });
     const node = fn({
       name: any('add'),
@@ -93,10 +93,13 @@ describe('Func', () => {
       ])
     });
     const returnDecl = decl({ name: 'return', value: any('ok') });
-    const evaluatedRules = rules([returnDecl]);
+    const clonedReturnDecl = returnDecl.clone();
+    const patchedValue = any('patched');
+    clonedReturnDecl.adopt(patchedValue, ctx);
+    (clonedReturnDecl as unknown as { value: ReturnType<typeof any> }).value = patchedValue;
+    const evaluatedRules = rules([clonedReturnDecl]);
 
     vi.spyOn(rulesModule, 'getFunctionFromMixins').mockReturnValue(async () => evaluatedRules as any);
-    setField(returnDecl, 'value', any('patched'), ctx);
 
     const result = await node.evalCall(ctx, list([]));
 
@@ -127,7 +130,7 @@ describe('Func', () => {
     expect(mixinWrapperAdopts).toHaveLength(0);
   });
 
-  it('Reference(type=function) honors a state-patched function name on the active lookup path', async () => {
+  it('Reference(type=function) honors a cloned function name on the lookup path', async () => {
     const ctx = new Context({ leakyRules: true });
     const tree = rules([
       fn({
@@ -138,16 +141,19 @@ describe('Func', () => {
       }),
       call({ name: ref('renamed', { type: 'function' }), args: list([]) })
     ]);
-    const functionNode = tree.at(0, ctx) as ReturnType<typeof fn>;
-    const callNode = tree.at(1, ctx) as ReturnType<typeof call>;
-
-    setField(functionNode, 'name', any('renamed'), ctx);
+    const clonedTree = tree.clone(true);
+    const functionNode = clonedTree.at(0, ctx) as ReturnType<typeof fn>;
+    const callNode = clonedTree.at(1, ctx) as ReturnType<typeof call>;
+    const patchedName = any('renamed');
+    functionNode.adopt(patchedName, ctx);
+    (functionNode as unknown as { name: ReturnType<typeof any> }).name = patchedName;
+    ctx.root = clonedTree;
 
     const result = await callNode.eval(ctx);
 
     expect(result.toTrimmedString()).toBe('ok');
     expect(functionNode.toTrimmedString({ context: ctx })).toContain('$function renamed()');
-    expect(functionNode.toTrimmedString()).toContain('$function add()');
+    expect((tree.at(0, new Context()) as ReturnType<typeof fn>).toTrimmedString()).toContain('$function add()');
   });
 
   it('Reference(type=function) uses the state parent chain when the caller Rules is only state-parented', async () => {

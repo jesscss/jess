@@ -30,7 +30,7 @@ import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getChildren, getIndex, getParent, getSourceParent, markChangedVar, markScopeDirty, setField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/field-helpers.js';
+import { getChildren, getIndex, getParent, getSourceParent, markChangedVar, markScopeDirty, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/field-helpers.js';
 import { N } from '../node-type.js';
 import { EVAL } from '../node.js';
 import { addEdgeAt, getParentEdge } from '../util/cursor.js';
@@ -344,7 +344,6 @@ describe('Rules', () => {
         expect(getParent(nested, ctx)).toBe(node);
         expect(node.value[0]).toBe(nested);
       });
-
 
       it('characterizes returned param-mixin nested bodies as correctly parented and already source-rooted in provenance', async () => {
         const paramMixin = mixin({

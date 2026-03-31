@@ -23,6 +23,10 @@ The branch should move away from:
 - render-root-owned patch tables
 - clone/materialize escape hatches for ordinary eval flow
 
+Core tests no longer need to preserve old-model mutation APIs. Do not add new
+`activeState` / `setField` / `getField` test setup back into
+`packages/core/src/tree/__tests__` or `packages/core/src/tree/util/__tests__`.
+
 ## Working Rules
 
 - preserve Jess behavior
@@ -38,14 +42,16 @@ The branch should move away from:
   render-owned container
 - if a node-local value truly changes identity, use a thin derived node only if edge rewiring is not enough
 - do not add new generic `childEdges` maps as target architecture
+- when iterating, prefer one narrow component proof over broad suite churn
 
 ## Work Loop
 
-1. Pick the next target from [node-update-status.md](./node-update-status.md).
-2. Change the smallest surface that moves the runtime toward cursor + edge traversal.
-3. Run focused tests.
-4. Update docs only if the model or migration status actually changed.
-5. Commit and push.
+1. Pick one narrow production target from [node-update-status.md](./node-update-status.md).
+2. Change the smallest owner/path surface that moves that target toward cursor + edge traversal.
+3. Add or update one focused proof test for that exact surface.
+4. Run only the focused proof and the nearest behavioral file while iterating.
+5. Update docs only if the model or migration status actually changed.
+6. Commit and push.
 
 ## What To Delete Over Time
 

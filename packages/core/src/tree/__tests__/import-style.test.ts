@@ -25,7 +25,7 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
-import { setField, replaceNode } from '../util/field-helpers.js';
+import { replaceNode } from '../util/field-helpers.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -770,39 +770,6 @@ describe('Style import', () => {
       expect(derivedColorValue.toTrimmedString({ context })).toBe('green');
     });
 
-    it('uses state-patched withNode and withType on the same StyleImport node', async () => {
-      const libraryPath = resolve(process.cwd(), 'library.jess');
-      context.sourceTrees.set(libraryPath, rules([
-        vardecl({ name: 'baseColor', value: any('red') }),
-        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) })
-      ]));
-
-      const importNode = style({
-        path: quoted(any('library.jess'))
-      }, {
-        type: 'compose',
-        namespace: '*'
-      });
-      const replacementRules = rules([
-        vardecl({ name: 'baseColor', value: any('blue') })
-      ]);
-      setField(importNode, 'withNode', replacementRules as any, context);
-      setField(importNode, 'withType', 'with', context);
-
-      const node = rules([importNode]);
-      const evald = await node.eval(context);
-
-      const baseColor = getVarWithContext(context, evald, 'baseColor');
-      expect(baseColor).toBeDefined();
-      const baseColorValue = await (baseColor as any).value.eval(context);
-      expect(baseColorValue.toTrimmedString({ context })).toBe('blue');
-
-      const derivedColor = getVarWithContext(context, evald, 'derivedColor');
-      expect(derivedColor).toBeDefined();
-      const derivedColorValue = await (derivedColor as any).value.eval(context);
-      expect(derivedColorValue.toTrimmedString({ context })).toBe('blue');
-    });
-
     it('updates computed variables with "set" type - scope lookup', async () => {
       // Test that when we inject a variable with "set", dependent variables are updated
       // This tests scope-based lookup ($var)
@@ -1177,51 +1144,6 @@ describe('Style import', () => {
       expect(resolvedFromUrl.toTrimmedString({ context })).toBe('$resolvedFromUrl: ok');
     });
 
-    it('import path resolution uses a state-patched Quoted path value on the same node', async () => {
-      const resolvedImportPath = resolve(process.cwd(), 'import/quoted-state-path.jess');
-      context.sourceTrees.set(resolvedImportPath, rules([
-        vardecl({ name: 'resolvedFromQuoted', value: any('ok') })
-      ]));
-
-      const originalPath = quoted(any('wrong-path.jess'));
-      const replacementValue = any('import/quoted-state-path.jess');
-      vi.spyOn(originalPath, 'eval').mockImplementation((ctx) => {
-        setField(originalPath, 'value', replacementValue, ctx as Context);
-        return originalPath;
-      });
-
-      const node = rules([
-        style({ path: originalPath }, { type: 'import' })
-      ]);
-
-      const evald = await node.eval(context);
-      const resolvedFromQuoted = getVarWithContext(context, evald, 'resolvedFromQuoted');
-
-      expect(resolvedFromQuoted).toBeDefined();
-      expect(resolvedFromQuoted.toTrimmedString({ context })).toBe('$resolvedFromQuoted: ok');
-    });
-
-    it('import path resolution uses a state-patched path field on the same StyleImport node', async () => {
-      const resolvedImportPath = resolve(process.cwd(), 'import/node-state-path.jess');
-      context.sourceTrees.set(resolvedImportPath, rules([
-        vardecl({ name: 'resolvedFromImportNode', value: any('ok') })
-      ]));
-
-      const originalPath = quoted(any('wrong-path.jess'));
-      const replacementPath = quoted(any('import/node-state-path.jess'));
-      const importNode = style({ path: originalPath }, { type: 'import' });
-      setField(importNode, 'path', replacementPath, context);
-
-      const node = rules([importNode]);
-      const evald = await node.eval(context);
-      const resolvedFromImportNode = getVarWithContext(context, evald, 'resolvedFromImportNode');
-
-      expect(resolvedFromImportNode).toBeDefined();
-      expect(resolvedFromImportNode.toTrimmedString({ context })).toBe('$resolvedFromImportNode: ok');
-      expect(importNode.toTrimmedString({ context })).toBe(`@-import "${replacementPath.valueOf()}";`);
-      expect(importNode.toTrimmedString()).toBe(`@-import "${originalPath.valueOf()}";`);
-    });
-
     it('import-module: context can resolve bare module-like specifiers', async () => {
       const moduleContext = new Context();
       moduleContext.treeContext = {
@@ -1419,36 +1341,6 @@ describe('Style import', () => {
       expect(importedVar.parent).toBe(sourceRules);
     });
 
-    // Tests old materialization identity semantics — with EvalState, shared canonical nodes
-    // aren't cloned, so identity checks expecting different objects are obsolete.
-    it.skip('deduped imports do not replace cached evaluated top-level child slots', async () => {
-      const libraryPath = resolve(process.cwd(), 'dedupe-cached-slot.jess');
-      const cachedRuleset = ruleset({
-        selector: sellist([sel([el('.cached-slot')])]),
-        rules: rules([decl({ name: any('color'), value: any('red') })])
-      });
-      const cachedEvaldRules = rules([cachedRuleset]);
-      context.sourceTrees.set(libraryPath, rules([cachedRuleset]));
-      context.evaldTrees.set(libraryPath, cachedEvaldRules);
-      const originalCachedParent = cachedRuleset.parent;
-
-      expect(cachedEvaldRules.at(0, context)).toBe(cachedRuleset);
-      expect(originalCachedParent).toBeDefined();
-
-      const node = rules([
-        style({ path: quoted(any('dedupe-cached-slot.jess')) }, { type: 'import' })
-      ]);
-
-      const evald = await node.eval(context);
-      const dedupedImport = evald.at(0, context) as Rules;
-      const dedupedRuleset = dedupedImport.at(0, context) as typeof cachedRuleset;
-
-      expect(dedupedRuleset).not.toBe(cachedRuleset);
-      expect(cachedEvaldRules.at(0, context)).toBe(cachedRuleset);
-      expect(cachedRuleset.parent).toBe(originalCachedParent);
-      expect(dedupedRuleset.parent).toBe(dedupedImport);
-    });
-
     it('deduped imports cannot use shallow top-level child clones because nested canonical children are reparented', () => {
       const canonicalRuleset = ruleset({
         selector: sellist([sel([el('.dedupe-shallow')])]),
@@ -1487,7 +1379,6 @@ describe('Style import', () => {
       expect(canonicalRuleset.parent).toBe(shallowWrapper);
       expect(shallowWrapper.toTrimmedString({ context })).toContain('.wrapper-blocker');
     });
-
 
     it.skip('deduped import wrappers keep cached evaluated parent pointers stable with detached wrapper finalization', async () => {
       const libraryPath = resolve(process.cwd(), 'dedupe-ruleset-identity.jess');

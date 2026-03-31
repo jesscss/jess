@@ -2,7 +2,7 @@ import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, c
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getSourceParent, setField } from '../util/field-helpers.js';
+import { getSourceParent } from '../util/field-helpers.js';
 import { addParentEdge, getParentEdge } from '../util/cursor.js';
 
 let context: Context;
@@ -167,7 +167,7 @@ describe('reference', () => {
       `);
     });
 
-    it('evaluates with a state-patched variable key', async () => {
+    it('evaluates with a cloned variable key', async () => {
       const lookup = ref({ key: 'foo' }, { type: 'variable' });
       const scope = rules([
         vardecl({
@@ -183,18 +183,20 @@ describe('reference', () => {
           value: lookup
         })
       ]);
+      const clonedScope = scope.clone(true);
+      const clonedLookup = (clonedScope.at(2, context) as ReturnType<typeof decl>).get('value') as ReturnType<typeof ref>;
 
-      setField(lookup, 'key', 'bar', context);
-      const preEvald = await scope.preEval(context);
+      (clonedLookup as unknown as { key: string }).key = 'bar';
+      const preEvald = await clonedScope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
 
-      const evald = await lookup.eval(context);
+      const evald = await clonedLookup.eval(context);
       expect(evald.render(context)).toBe('blue');
       expect(lookup.get('key')).toBe('foo');
     });
 
-    it('evaluates with a state-patched target reference', async () => {
+    it('evaluates with a cloned target reference', async () => {
       const target = ref({ key: '.theme-a' }, { type: 'mixin-ruleset' });
       const lookup = ref({ target, key: 'primary' }, { type: 'property' });
       const scope = rules([
@@ -215,18 +217,17 @@ describe('reference', () => {
           value: lookup
         })
       ]);
+      const clonedScope = scope.clone(true);
+      const clonedLookup = (clonedScope.at(2, context) as ReturnType<typeof decl>).get('value') as ReturnType<typeof ref>;
+      const patchedTarget = ref({ key: '.theme-b' }, { type: 'mixin-ruleset' });
 
-      setField(
-        lookup,
-        'target',
-        ref({ key: '.theme-b' }, { type: 'mixin-ruleset' }),
-        context
-      );
-      const preEvald = await scope.preEval(context);
+      clonedLookup.adopt(patchedTarget, context);
+      (clonedLookup as unknown as { target: ReturnType<typeof ref> }).target = patchedTarget;
+      const preEvald = await clonedScope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
 
-      const evald = await lookup.eval(context);
+      const evald = await clonedLookup.eval(context);
       expect(evald.render(context)).toBe('blue');
       expect(lookup.get('target')).toBe(target);
     });

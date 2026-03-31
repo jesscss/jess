@@ -1,4 +1,4 @@
-import { any, expr, sel, compound, el, co, pseudo, sellist, amp, rules, ruleset } from '../index.js';
+import { any, expr, sel, compound, el, co, pseudo, sellist } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -95,18 +95,6 @@ describe('Complex selector', () => {
       expect(evald.toTrimmedString({ context })).toBe(':not(blue) > .target');
     });
 
-    it('propagates a state-only hoist flag when a complex selector collapses to one child', async () => {
-      const child = el('.target');
-      const node = sel([child]);
-
-      context.activeState.get(node).fields.set('hoistToRoot', true);
-
-      const evald = await node.eval(context);
-
-      expect(evald.hoistToRoot).toBe(true);
-      expect(node.hoistToRoot).toBeUndefined();
-    });
-
     it('does not re-parent the canonical child when a complex selector collapses to one child with patching', async () => {
       const child = el('.target');
       const node = sel([child]);
@@ -120,25 +108,6 @@ describe('Complex selector', () => {
       expect(child.parent).toBe(node);
     });
 
-    it('keeps valueOf canonical while render reads a state-patched value array', () => {
-      const node = sel([
-        el('.one'),
-        co('>'),
-        el('.two')
-      ]);
-      const canonicalValue = node.valueOf();
-
-      context.activeState.get(node).fields.set('value', [
-        el('.patched'),
-        co('>'),
-        el('.live')
-      ] as any);
-
-      expect(node.toTrimmedString({ context })).toBe('.patched > .live');
-      expect(node.valueOf()).toBe(canonicalValue);
-      expect(node.get('value').map(component => component.valueOf())).toEqual(['.one', '>', '.two']);
-    });
-
     it('does not materialize a non-array value back onto the node when valueOf is called', () => {
       const node = sel([el('.one')]) as any;
       node.value = el('.solo');
@@ -146,33 +115,6 @@ describe('Complex selector', () => {
       expect(node.valueOf()).toBe('.solo');
       expect(Array.isArray(node.value)).toBe(false);
       expect(node.value.valueOf()).toBe('.solo');
-    });
-
-    it('derives a state-specific complex keySet through an ampersand child', () => {
-      const parent = ruleset({
-        selector: el('.alpha'),
-        rules: rules([])
-      });
-      parent.get('selector').keySetLibrary = context.selectorBits;
-
-      const node = sel([
-        amp({ selectorContainer: parent as any }),
-        co('>'),
-        el('.tail')
-      ]);
-      node.keySetLibrary = context.selectorBits;
-      for (const child of node.get('value') as any[]) {
-        if ('keySetLibrary' in child) {
-          child.keySetLibrary = context.selectorBits;
-        }
-      }
-
-      const patched = el('.beta');
-      patched.keySetLibrary = context.selectorBits;
-      context.activeState.get(parent).fields.set('selector', patched);
-
-      expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha', '>', '.tail']))).toBe(true);
-      expect(node.getKeySet(context).equals(context.selectorBits.getBitset(['.beta', '>', '.tail']))).toBe(true);
     });
   });
 });

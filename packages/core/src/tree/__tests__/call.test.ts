@@ -1,6 +1,5 @@
 import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Call', () => {
@@ -73,7 +72,7 @@ describe('Call', () => {
     expect(arg.toTrimmedString()).toBe('12');
   });
 
-  it('uses state-patched args when materializing a fallback call without mutating the patched source args', async () => {
+  it('uses cloned args when materializing a fallback call without mutating the canonical source args', async () => {
     const originalSecond = num(2);
     originalSecond.pre = 0;
     const originalArg = seq([num(1), originalSecond]);
@@ -94,10 +93,14 @@ describe('Call', () => {
       }),
       node
     ]);
+    const clonedRoot = root.clone(true);
+    const clonedNode = clonedRoot.at(1, context) as ReturnType<typeof call>;
+    const patchedArgs = list([patchedArg]);
 
-    setField(node, 'args', list([patchedArg]), context);
+    clonedNode.adopt(patchedArgs, context);
+    (clonedNode as unknown as { args: ReturnType<typeof list> }).args = patchedArgs;
 
-    const evald = await root.eval(context);
+    const evald = await clonedRoot.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('fn(3 4)');
     expect(originalSecond.pre).toBe(0);
@@ -106,7 +109,7 @@ describe('Call', () => {
     expect(patchedArg.toTrimmedString()).toBe('34');
   });
 
-  it('preserves a state-patched content node across fallback-call materialization without mutating the canonical call', async () => {
+  it('preserves a cloned content node across fallback-call materialization without mutating the canonical call', async () => {
     const failingFn = () => {
       throw new Error('boom');
     };
@@ -121,17 +124,21 @@ describe('Call', () => {
       }),
       node
     ]);
+    const clonedRoot = root.clone(true);
+    const clonedNode = clonedRoot.at(1, context) as ReturnType<typeof call>;
+    const patchedContent = any('patched');
 
-    setField(node, 'contentNode', any('patched'), context);
+    clonedNode.adopt(patchedContent, context);
+    (clonedNode as unknown as { contentNode: ReturnType<typeof any> }).contentNode = patchedContent;
 
-    const evald = await root.eval(context);
+    const evald = await clonedRoot.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('fn(1): patched');
     expect(node.get('contentNode')).toBeUndefined();
     expect(node.toTrimmedString()).toBe('$fn??(1)');
   });
 
-  it('passes state-patched nested args into JS function calls without mutating the canonical arg nodes', async () => {
+  it('passes cloned nested args into JS function calls without mutating the canonical arg nodes', async () => {
     const second = num(2);
     second.pre = 0;
     const arg = seq([num(1), second]);
@@ -146,15 +153,21 @@ describe('Call', () => {
       }),
       node
     ]);
+    const clonedRoot = root.clone(true);
+    const clonedNode = clonedRoot.at(1, context) as ReturnType<typeof call>;
+    const clonedArg = clonedNode.get('args').at(0, context) as ReturnType<typeof seq>;
+    const clonedSecond = num(4);
+    clonedSecond.pre = 0;
 
-    setField(arg, 'value', [num(3), num(4)], context);
+    (clonedArg as unknown as { value: ReturnType<typeof num>[] }).value = [num(3), clonedSecond];
 
-    const evald = await root.eval(context);
+    const evald = await clonedRoot.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('3 4');
-    expect(arg.toTrimmedString({ context })).toBe('3 4');
     expect(arg.toTrimmedString()).toBe('12');
     expect(second.pre).toBe(0);
+    expect(clonedArg.toTrimmedString()).toBe('34');
+    expect(clonedSecond.pre).toBe(0);
   });
 
   it('does not clear canonical silentFail in the non-function branch during patch-only eval', async () => {
@@ -170,31 +183,33 @@ describe('Call', () => {
     expect(node.options.silentFail).toBe(true);
   });
 
-  it('reads a state-patched silentFail option during serialization without mutating canonical output', () => {
+  it('reads a cloned silentFail option during serialization without mutating canonical output', () => {
     const node = call({
       name: 'rgb',
       args: list([num(1)])
     });
+    const clonedNode = node.clone();
 
-    setField(node, 'options', { silentFail: true }, context);
+    clonedNode.options = { silentFail: true };
 
-    expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
+    expect(clonedNode.toTrimmedString({ context })).toBe('rgb?(1)');
     expect(node.toTrimmedString()).toBe('rgb(1)');
     expect(node.options.silentFail).toBeUndefined();
   });
 
-  it('reads a state-patched silentFail option during non-function eval without mutating canonical options', async () => {
+  it('reads a cloned silentFail option during non-function eval without mutating canonical options', async () => {
     const node = call({
       name: 'rgb',
       args: list([num(1)])
     });
+    const clonedNode = node.clone();
 
-    setField(node, 'options', { silentFail: true }, context);
+    clonedNode.options = { silentFail: true };
 
-    const evald = await node.eval(context);
+    const evald = await clonedNode.eval(context);
 
     expect(evald.toTrimmedString({ context })).toBe('rgb(1)');
-    expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
+    expect(clonedNode.toTrimmedString({ context })).toBe('rgb?(1)');
     expect(node.toTrimmedString()).toBe('rgb(1)');
     expect(node.options.silentFail).toBeUndefined();
   });
@@ -248,18 +263,18 @@ describe('Call', () => {
     expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
   });
 
-
-  it('reads a state-patched markImportant option for collection results without mutating canonical options', async () => {
+  it('reads a cloned markImportant option for collection results without mutating canonical options', async () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const collectionNode = coll([childDecl]);
     const node = call({
       name: collectionNode,
       args: list([])
     });
+    const clonedNode = node.clone();
 
-    setField(node, 'options', { markImportant: true }, context);
+    clonedNode.options = { markImportant: true };
 
-    const result = await node.eval(context);
+    const result = await clonedNode.eval(context);
 
     expect(result.toTrimmedString({ context })).toContain('color: red !important;');
     expect(node.options.markImportant).toBeUndefined();

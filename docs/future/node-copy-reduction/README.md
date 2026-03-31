@@ -22,6 +22,10 @@ The runtime still uses `EvalState` / `NodeState`.
 
 Treat that as transitional implementation baggage, not the target architecture.
 
+Core tests have already been stripped of direct `activeState` / `EvalState` /
+`setField` / `getField` usage. New work should stay on production conversion
+surfaces and narrow proof tests.
+
 ## Read Order
 
 1. [eval-state-sketch.md](./eval-state-sketch.md) — target cursor/edge model
