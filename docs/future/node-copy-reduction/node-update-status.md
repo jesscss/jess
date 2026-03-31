@@ -128,9 +128,9 @@ This section tracks only edge/cursor conversion status.
 | `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding now indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation now updates/removes `parentEdges` directly on wrapper-owned paths. Still hybrid because render walks and option/state surfaces still mix edge work with overlay-era behavior. |
 | `Ruleset` | `in_progress` | Still hybrid. `rules` container entry is partly render-key aware, but selector/rules/option behavior still mixes edge work with clone/state-era behavior. |
 | `AtRule` | `in_progress` | Current-view `prelude` / `rules` reads improved, but node is not edge/cursor-complete. |
-| `Call` | `not_converted` | Still tied to hybrid mixin output and old eval-state replacement behavior. |
+| `Call` | `not_converted` | Old wrapper/materialize characterization tests were deleted. Remaining production seam is returned-result shaping through `util/legacy-node-ops.ts` instead of direct edge/cursor ownership. |
 | `Mixin` | `not_converted` | Still routes body/current-view handling through hybrid clone/state-era behavior. |
-| `Control` | `not_converted` | Still relies on hybrid loop/output plumbing rather than direct edge/cursor ownership. |
+| `Control` | `not_converted` | Still relies on hybrid loop/output plumbing rather than direct edge/cursor ownership; remaining focused failures are loop call-iterable lookup and merged declaration coalescing. |
 
 Only the `converted` rows are valid hard-gate targets for focused edge/cursor tests.
 
@@ -149,3 +149,5 @@ Only listed here when it directly blocks edge/cursor work:
 - generic child-edge scaffolding
 - hidden no-context fallbacks that still depend on old state overlay
 - clone/materialize behavior used in place of edge/cursor ownership
+- `packages/core/src/tree/util/field-helpers.ts` as the activeState compatibility sewer
+- `packages/core/src/tree/util/legacy-node-ops.ts` as quarantined returned-result shaping

@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type OptionalLocation } from './node.js';
+import { CANONICAL, defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type OptionalLocation } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { cast } from './util/cast.js';
 import type { FindOptions } from './util/registry-utils.js';
@@ -30,6 +30,7 @@ import {
   setSourceParent,
   setDependency
 } from './util/field-helpers.js';
+import { getParentEdge } from './util/cursor.js';
 
 /**
  * The type is determined by syntax
@@ -126,15 +127,23 @@ function isInsideSelectorCapture(node: Node | undefined, context?: Context): boo
     if (cursor.type === 'SelectorCapture') {
       return true;
     }
-    cursor = context ? getParent(cursor, context) : cursor.parent;
+    cursor = context ? getLookupParentNode(cursor, context) : cursor.parent;
   }
   return false;
 }
 
+function getLookupParentNode(node: Node, context: Context): Node | undefined {
+  const renderKey = context.renderKey ?? context.rulesContext?.renderKey;
+  if (renderKey !== undefined && renderKey !== CANONICAL) {
+    return getParentEdge({ node, renderKey })?.node ?? node.parent;
+  }
+  return getParent(node, context);
+}
+
 function getStateRulesParent(node: Node, context: Context): Rules | undefined {
-  let possibleRules: Node | undefined = getParent(node, context);
+  let possibleRules: Node | undefined = getLookupParentNode(node, context);
   while (possibleRules && possibleRules.type !== 'Rules') {
-    possibleRules = getParent(possibleRules, context);
+    possibleRules = getLookupParentNode(possibleRules, context);
   }
   return possibleRules as Rules | undefined;
 }
@@ -143,7 +152,7 @@ function getStateSourceRulesParent(node: Node, context: Context): Rules | undefi
   let current: Node | undefined = node;
   let sourceParent = getSourceParent(node, context);
   while (current && !sourceParent) {
-    current = getParent(current, context);
+    current = getLookupParentNode(current, context);
     sourceParent = current ? getSourceParent(current, context) : undefined;
   }
   return sourceParent ? getStateRulesParent(sourceParent, context) : undefined;
@@ -420,7 +429,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         originalFilter ??= () => true;
         const isInterpolatedVariable =
           this.options.type === 'variable'
-          && getParent(this, context)?.type === 'Interpolated';
+          && getLookupParentNode(this, context)?.type === 'Interpolated';
         /**
          * @removal-target — node-copy-reduction: paramVar filtering
          * With per-call EvalState isolation, mixin param vars live as
@@ -434,7 +443,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             if (cursor === paramParent) {
               return true;
             }
-            cursor = getParent(cursor, context);
+            cursor = getLookupParentNode(cursor, context);
           }
           return false;
         };
@@ -443,7 +452,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           /** @removal-target — see isWithinParamVarScope above */
           const blockedParamVar = isNode(n, N.VarDeclaration)
             && Boolean(n.options?.paramVar)
-            && !isWithinParamVarScope(getParent(n, context), context.rulesContext);
+            && !isWithinParamVarScope(getLookupParentNode(n, context), context.rulesContext);
           const blockedBySearchScope = context.searchScope.has(n);
           return passesOriginal && !blockedBySearchScope && !blockedParamVar;
         };
@@ -467,7 +476,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             // If this node doesn't have an index, climb up until we find one
             if (startIndex === undefined) {
               while (currentNode && startIndex === undefined) {
-                currentNode = getParent(currentNode, context);
+                currentNode = getLookupParentNode(currentNode, context);
                 if (currentNode) {
                   startIndex = currentNode.index;
                 }
@@ -476,7 +485,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
 
             // Now climb up until we find a node that has a Rules parent
             while (currentNode) {
-              const currentParent = getParent(currentNode, context);
+              const currentParent = getLookupParentNode(currentNode, context);
               if (!currentParent || isNode(currentParent, N.Rules)) {
                 break;
               }
@@ -502,7 +511,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
 
               if (startIndex === undefined) {
                 while (currentNode && startIndex === undefined) {
-                  currentNode = getParent(currentNode, context);
+                  currentNode = getLookupParentNode(currentNode, context);
                   if (currentNode) {
                     startIndex = currentNode.index;
                   }
@@ -510,7 +519,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               }
 
               while (currentNode) {
-                const currentParent = getParent(currentNode, context);
+                const currentParent = getLookupParentNode(currentNode, context);
                 if (!currentParent || isNode(currentParent, N.Rules)) {
                   break;
                 }
@@ -569,7 +578,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             case 'function':
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = isArray(valueKey) ? valueKey[0] : valueKey;
-                const inCall = isNode(getParent(this, context), N.Call);
+                const inCall = isNode(getLookupParentNode(this, context), N.Call);
                 const findFunction = () =>
                   targetRules.find('function', `${keyStr}`, undefined, opts)
                   ?? targetRules.findStatePatchedFunction(`${keyStr}`, opts);
@@ -611,7 +620,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
                 }
                 // Some Less built-ins are invoked in mixin-like call positions.
                 // If a mixin lookup misses during a Call, allow function fallback.
-                if (isNode(getParent(this, context), N.Call)) {
+                if (isNode(getLookupParentNode(this, context), N.Call)) {
                   const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                   return targetRules.find('function', `${keyStr}`, undefined, opts);
                 }
@@ -630,7 +639,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
                 if (mixinOrRuleset) {
                   return mixinOrRuleset;
                 }
-                if (isNode(getParent(this, context), N.Call)) {
+                if (isNode(getLookupParentNode(this, context), N.Call)) {
                   const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                   return targetRules.find('function', `${keyStr}`, undefined, opts);
                 }
@@ -657,36 +666,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             if (returnVal === undefined) {
               returnVal = performLookup(activeSourceRulesParent);
             }
-          }
-        }
-        if (type === 'mixin-ruleset') {
-          const keyStr = isArray(valueKey) ? valueKey.join('.') : String(valueKey);
-          if (keyStr.includes('sayGender') || keyStr.includes('nav-justified')) {
-            console.log('REF-LOOKUP', {
-              key: keyStr,
-              lookupTargetType: lookupTarget?.type,
-              lookupTargetRenderKey: isNode(lookupTarget, N.Rules) ? (lookupTarget as Rules).renderKey : undefined,
-              returnValType: Array.isArray(returnVal)
-                ? returnVal.map(item => `${item?.type}:${String((item as any)?.name?.valueOf?.() ?? item?.valueOf?.() ?? '')}:${String((item as any)?.renderKey ?? 'none')}`)
-                : isNode(returnVal) ? returnVal.type : typeof returnVal
-            });
-          }
-        }
-        if (type === 'variable') {
-          const keyStr = isArray(valueKey) ? valueKey.join('.') : String(valueKey);
-          if (keyStr === 'gender' || keyStr === 'gender_') {
-            console.log('VAR-LOOKUP', {
-              key: keyStr,
-              contextRulesType: context.rulesContext?.type,
-              contextRulesRenderKey: context.rulesContext?.renderKey,
-              activeRulesParentType: activeRulesParent?.type,
-              activeRulesParentRenderKey: activeRulesParent?.renderKey,
-              lookupTargetType: lookupTarget?.type,
-              lookupTargetRenderKey: isNode(lookupTarget, N.Rules) ? (lookupTarget as Rules).renderKey : undefined,
-              returnValType: Array.isArray(returnVal)
-                ? returnVal.map(item => `${item?.type}:${String((item as any)?.name?.valueOf?.() ?? item?.valueOf?.() ?? '')}:${String((item as any)?.renderKey ?? 'none')}`)
-                : isNode(returnVal) ? `${returnVal.type}:${String((returnVal as any)?.name?.valueOf?.() ?? returnVal.valueOf?.() ?? '')}:${String((returnVal as any)?.renderKey ?? 'none')}` : typeof returnVal
-            });
           }
         }
         return { returnVal, valueKey };
@@ -769,17 +748,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           // When a mixin-ruleset reference is used as the target of another
           // Reference (e.g. #theme -> .dark -> .navbar), preserve the resolved
           // scope entry instead of eagerly converting it into a callable mixin.
-          if (type === 'mixin-ruleset' && !isNode(getParent(this, context), N.Call) && context.referenceStack > 1) {
+          if (type === 'mixin-ruleset' && !isNode(getLookupParentNode(this, context), N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
-            const firstKey = isArray(valueKey) ? valueKey.join('.') : String(valueKey);
-            if (firstKey.includes('person')) {
-              console.log('REF-TARGET-RETURN', {
-                key: firstKey,
-                firstType: first?.type,
-                firstRenderKey: (first as any)?.renderKey,
-                firstParentType: first?.parent?.type
-              });
-            }
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
               setSourceParent(first as Node, this, context);
               context.popReference();
@@ -804,7 +774,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           if (
             returnVal.length === 1
             && (type === 'mixin' || type === 'mixin-ruleset')
-            && isNode(getParent(this, context), N.Call)
+            && isNode(getLookupParentNode(this, context), N.Call)
           ) {
             context.popReference();
             return returnVal[0] as Node;

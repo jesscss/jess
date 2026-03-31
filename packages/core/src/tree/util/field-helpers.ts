@@ -6,20 +6,6 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { addEdgeAt, addParentEdge, removeParentEdge } from './cursor.js';
 
-/**
- * EvalState-based field read/write helpers.
- *
- * Architecture: single EvalState on context, with a stack for subtrees.
- *   Read:  activeState.peek(node)?.field ?? node.field
- *   Write: activeState.get(node).field = value
- *
- * No legacy fallbacks. No session. No instanceRoot.
- */
-
-/**
- * Read a field from a node, checking EvalState overlay first.
- * Falls back to `node[key]`.
- */
 export function getField<T = unknown>(
   node: Node,
   key: string,
@@ -36,9 +22,6 @@ export function getField<T = unknown>(
   return (node as unknown as Record<string, unknown>)[key] as T;
 }
 
-/**
- * Write a field on a node. Routes through activeState.
- */
 export function setField(
   node: Node,
   key: string,
@@ -65,9 +48,6 @@ export function setField(
   ctx.activeState.get(node).fields.set(key, value);
 }
 
-/**
- * Get the parent of a node.
- */
 export function getParent(
   node: Node,
   ctx: Context
@@ -81,20 +61,9 @@ export function getParent(
       return parent;
     }
   }
-  let state: EvalState | undefined = ctx.activeState;
-  while (state) {
-    const parent = state.peek(node)?._fields?.get('parent');
-    if (parent !== undefined) {
-      return parent as Node | undefined;
-    }
-    state = state.parent;
-  }
   return node.parent;
 }
 
-/**
- * Set the parent of a node.
- */
 export function setParent(
   node: Node,
   parent: Node | undefined,
@@ -108,31 +77,21 @@ export function setParent(
     }
     return;
   }
-  ctx.activeState.get(node).fields.set('parent', parent);
 }
 
-/**
- * Check whether a node has been evaluated.
- */
 export function isEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
-  const renderKey = ctx.renderKey ?? node.renderKey;
-  if (renderKey !== undefined) {
-    return node.evaluatedRenderKeys?.has(renderKey) ?? false;
-  }
-  return ctx.activeState.peek(node)?.evaluated ?? false;
+  return node.evaluated;
 }
 
-/**
- * Mark a node as evaluated.
- */
 export function setEvaluated(
   node: Node,
   value: boolean,
   ctx: Context
 ): void {
+  node.evaluated = value;
   if (ctx.renderKey !== undefined) {
     const keys = (node.evaluatedRenderKeys ??= new Set());
     if (value) {
@@ -142,12 +101,8 @@ export function setEvaluated(
     }
     return;
   }
-  ctx.activeState.get(node).evaluated = value;
 }
 
-/**
- * Check whether a node's preEval phase has completed.
- */
 export function isPreEvaluated(
   node: Node,
   ctx: Context
@@ -159,9 +114,6 @@ export function isPreEvaluated(
   return ctx.activeState.peek(node)?.preEvaluated ?? false;
 }
 
-/**
- * Mark a node's preEval phase as completed.
- */
 export function setPreEvaluated(
   node: Node,
   value: boolean,
@@ -179,9 +131,6 @@ export function setPreEvaluated(
   ctx.activeState.get(node).preEvaluated = value;
 }
 
-/**
- * Get the eval index of a node.
- */
 export function getIndex(
   node: Node,
   ctx: Context
@@ -193,9 +142,6 @@ export function getIndex(
   return node.index;
 }
 
-/**
- * Set the eval index of a node.
- */
 export function setIndex(
   node: Node,
   index: number,
@@ -204,9 +150,6 @@ export function setIndex(
   ctx.activeState.get(node).fields.set('index', index);
 }
 
-/**
- * Get the source parent of a node.
- */
 export function getSourceParent(
   node: Node,
   ctx: Context
@@ -218,9 +161,6 @@ export function getSourceParent(
   return node.sourceParent;
 }
 
-/**
- * Set the source parent of a node.
- */
 export function setSourceParent(
   node: Node,
   parent: Node | undefined,
@@ -229,29 +169,6 @@ export function setSourceParent(
   ctx.activeState.get(node).fields.set('sourceParent', parent);
 }
 
-/**
- * Bulk-set multiple runtime state fields on a node.
- */
-export function setRuntimeState(
-  node: Node,
-  patch: Record<string, unknown>,
-  ctx: Context
-): void {
-  const s = ctx.activeState.get(node);
-  for (const [key, value] of Object.entries(patch)) {
-    if (key === 'evaluated') {
-      s.evaluated = value as boolean;
-    } else if (key === 'preEvaluated') {
-      s.preEvaluated = value as boolean;
-    } else if (value !== undefined) {
-      s.fields.set(key, value);
-    }
-  }
-}
-
-/**
- * Read the children array of a Rules node.
- */
 export function getChildren(
   rules: Rules,
   ctx: Context
@@ -259,9 +176,6 @@ export function getChildren(
   return rules.get('value', ctx);
 }
 
-/**
- * Set the children array of a Rules node.
- */
 export function setChildren(
   rules: Rules,
   nodes: readonly Node[],
@@ -290,9 +204,6 @@ export function setChildren(
   }
 }
 
-/**
- * Set a child at a specific index.
- */
 export function setChildAt(
   rules: Rules,
   index: number,
@@ -348,87 +259,6 @@ export function setChildAt(
   }
 }
 
-/**
- * Append child nodes to a Rules node.
- */
-export function appendChildren(
-  rules: Rules,
-  nodes: Node[],
-  ctx: Context
-): void {
-  if (ctx.renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === ctx.renderKey) {
-    const nextValue = [...rules.value, ...nodes];
-    (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(nextValue);
-    for (const node of nodes) {
-      addParentEdge(node, ctx.renderKey, rules);
-    }
-    markScopeDirty(rules, ctx);
-    return;
-  }
-  const s = ctx.activeState.get(rules);
-  const current = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
-  s.fields.set('value', [...current, ...nodes]);
-  markScopeDirty(rules, ctx);
-}
-
-/**
- * Prepend child nodes to a Rules node.
- */
-export function prependChildren(
-  rules: Rules,
-  nodes: Node[],
-  ctx: Context
-): void {
-  if (ctx.renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === ctx.renderKey) {
-    const nextValue = [...nodes, ...rules.value];
-    (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(nextValue);
-    for (const node of nodes) {
-      addParentEdge(node, ctx.renderKey, rules);
-    }
-    markScopeDirty(rules, ctx);
-    return;
-  }
-  const s = ctx.activeState.get(rules);
-  const current = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
-  s.fields.set('value', [...nodes, ...current]);
-  markScopeDirty(rules, ctx);
-}
-
-/**
- * Remove a child node from a Rules node.
- */
-export function removeChild(
-  rules: Rules,
-  child: Node,
-  ctx: Context
-): void {
-  if (ctx.renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === ctx.renderKey) {
-    const idx = rules.value.indexOf(child);
-    if (idx >= 0) {
-      const nextValue = [...rules.value];
-      nextValue.splice(idx, 1);
-      (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(nextValue);
-      removeParentEdge(child, ctx.renderKey);
-      markScopeDirty(rules, ctx);
-    }
-    return;
-  }
-  const currentChildren = getChildren(rules, ctx);
-  const idx = currentChildren.indexOf(child);
-  if (idx >= 0) {
-    const nextValue = [...currentChildren];
-    nextValue.splice(idx, 1);
-    ctx.activeState.get(rules).fields.set('value', nextValue);
-    setParent(child, undefined, ctx);
-    markScopeDirty(rules, ctx);
-  }
-}
-
-/**
- * Replace a node with a replacement. Uses node patching on the activeState.
- */
 export function replaceNode(
   node: Node,
   replacement: Node,
@@ -437,9 +267,6 @@ export function replaceNode(
   ctx.activeState.get(node).replacement = replacement;
 }
 
-/**
- * Invalidate a Rules node's scope registry so the next lookup rebuilds it.
- */
 export function markScopeDirty(
   _rules: Rules,
   _ctx: Context
@@ -447,9 +274,6 @@ export function markScopeDirty(
   // Registry delta tracking removed with EvalSession.
   // Registry rebuilds from children on next access.
 }
-
-// --- Dependency tracking ---
-// Stored as `_dependency` on NodeState (declare-only, zero cost when unused).
 
 export interface EvalDependency {
   dependsOn: Set<import('../declaration-var.js').VarDeclaration> | null;
@@ -469,14 +293,6 @@ export function setDependency(
   ctx: Context
 ): void {
   ctx.activeState.get(node)._dependency = dependency;
-}
-
-export function isStatic(
-  node: Node,
-  ctx: Context
-): boolean {
-  const dep = getDependency(node, ctx);
-  return !dep?.dependsOn || dep.dependsOn.size === 0;
 }
 
 export function mergeDependencies(
@@ -504,9 +320,6 @@ export function mergeDependencies(
   return merged ? { dependsOn: merged, sourceExpr } : null;
 }
 
-/**
- * Check if a node is a top-level variable declaration.
- */
 export function isTopLevelVarDeclaration(
   node: Node,
   ctx: Context
@@ -518,15 +331,8 @@ export function isTopLevelVarDeclaration(
   return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
 }
 
-// -- Changed variable tracking --
-// Stored per-EvalState using a module-level WeakMap, so each push of an
-// isolated state starts with an empty changed-vars set.
-
 const changedVarsMap = new WeakMap<EvalState, Set<Node>>();
 
-/**
- * Mark a VarDeclaration as changed in the current eval state.
- */
 export function markChangedVar(ctx: Context, node: Node): void {
   const state = ctx.activeState;
   let set = changedVarsMap.get(state);
@@ -537,16 +343,10 @@ export function markChangedVar(ctx: Context, node: Node): void {
   set.add(node);
 }
 
-/**
- * Check whether any vars have been marked as changed.
- */
 export function hasChangedVars(ctx: Context): boolean {
   return (changedVarsMap.get(ctx.activeState)?.size ?? 0) > 0;
 }
 
-/**
- * Get the set of changed vars for the current eval state.
- */
 export function getChangedVars(ctx: Context): Set<Node> | undefined {
   return changedVarsMap.get(ctx.activeState);
 }

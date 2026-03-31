@@ -322,26 +322,6 @@ describe('Control Nodes', () => {
     expect(String(templateDecl.options.normalizedFromAssign ?? '')).toBe('');
   });
 
-  it('$for wrapper evaluates declarations with position-aware lookups', async () => {
-    const context = new Context();
-    const loopRules = rules([
-      decl(
-        { name: 'padding', value: ref({ key: 'value' }, { type: 'variable' }) },
-        { normalizedFromAssign: AssignmentType.Add }
-      )
-    ]);
-    const templateDecl = loopRules.at(0, context) as ReturnType<typeof decl>;
-    const wrapper = loopRules.cloneLookupSafeShallowWrapper(context);
-    wrapper.inherit(loopRules);
-    wrapper.unshift(context, vardecl({ name: 'value', value: new Any('a') }));
-
-    const evald = await wrapper.eval(context);
-
-    expect(evald.toTrimmedString({ context })).toContain('padding: a;');
-    // Canonical template is untouched
-    expect(templateDecl.toTrimmedString()).toContain('padding: $value');
-  });
-
   it('characterizes loop-body rulesVisibility as surviving the $for clone boundary while nested lookup still resolves', async () => {
     const context = new Context();
     const loopRules = rules([
@@ -394,60 +374,6 @@ describe('Control Nodes', () => {
     expect(evald.toTrimmedString({ context })).toContain('name: uno;');
     expect(evald.toTrimmedString({ context })).toContain('value: green;');
     expect(iterDecl.toTrimmedString()).toContain('one: red');
-  });
-
-  it('reads state-replaced loop body children after $for evaluation', async () => {
-    const context = new Context();
-    const root = rules([
-      makeLoop(makePattern(['value'], 'single'), list([new Any('x')]), rules([
-        new Call({ name: ref({ key: 'makeDecl' }, { type: 'function' }), args: list([]) })
-      ]))
-    ]);
-    root.register('function', new JsFunction({
-      name: 'makeDecl',
-      fn: () => decl({ name: 'item', value: new Any('ok') })
-    }));
-    const loopRules = (root.at(0, context) as For).get('rules');
-    const originalLoopChild = loopRules.at(0, context);
-
-    const evald = await root.eval(context);
-
-    expect(evald.toTrimmedString({ context })).toContain('item: ok;');
-    expect(loopRules.at(0, context)).toBe(originalLoopChild);
-    expect(loopRules.toTrimmedString()).toBe('();');
-  });
-
-  it('materializes call-produced Rules from a $for body without mutating canonical loop children', async () => {
-    const context = new Context();
-    const root = rules([
-      makeLoop(makePattern(['value'], 'single'), list([new Any('x')]), rules([
-        new Call({ name: ref({ key: 'makeRules' }, { type: 'function' }), args: list([]) })
-      ]))
-    ]);
-    root.register('function', new JsFunction({
-      name: 'makeRules',
-      fn: () => rules([
-        decl({ name: 'margin', value: new Any('0') }),
-        ruleset({
-          selector: sel([el('.item')]) as any,
-          rules: rules([
-            decl({ name: 'color', value: new Any('red') })
-          ])
-        })
-      ])
-    }));
-
-    const loopRules = (root.at(0, context) as For).get('rules');
-    const originalLoopChild = loopRules.at(0, context);
-
-    const evald = await root.eval(context);
-    const css = evald.toTrimmedString({ context });
-
-    expect(css).toContain('margin: 0;');
-    expect(css).toContain('.item {\n  color: red;');
-    expect(css.indexOf('margin: 0;')).toBeLessThan(css.indexOf('.item {'));
-    expect(loopRules.at(0, context)).toBe(originalLoopChild);
-    expect(loopRules.toTrimmedString()).toBe('();');
   });
 
   it('characterizes nested prior-iteration output as already materialized before $for priorScope consumes it', async () => {

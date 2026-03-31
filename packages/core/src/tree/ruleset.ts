@@ -798,9 +798,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override preEval(context: Context): MaybePromise<this> {
     if (!this._isPreEvaluated(context)) {
-      /** @removal-target — node-copy-reduction: maybeClone → return this.
-       * Selector composition, guard eval, and options writes should go
-       * through position.setField. */
       const node = this.maybeClone(context);
       node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules
@@ -981,11 +978,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return getImplicitSelectorUtil(selector, parentSelector, collapseNesting);
   }
 
-  /**
-   * @removal-target — node-copy-reduction (eval-path callers)
-   * The shallow selector clone and cloneLookupSafeShallowWrapper exist
-   * to isolate selector state between calls. Position patches replace both.
-   */
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const cloned = super.clone(deep, cloneFn, ctx) as this;
     if (!deep && ctx) {
@@ -1004,16 +996,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     if (!deep && ctx && this !== this.sourceNode && cloned.get('rules') === this.rules) {
       const rules = cloned.enterRules(ctx);
-      cloned.setData('rules', rules.cloneLookupSafeShallowWrapper(ctx));
+      cloned.setData('rules', rules.createShallowBodyWrapper(ctx));
     }
     return cloned;
   }
 
-  /** @removal-target — node-copy-reduction: materializeCopy on selector. */
   override copy(deep?: boolean): this {
     const node = super.copy(deep);
     const selectorSource = this.getOwnSelector() ?? this.get('selector');
-    node.setData('selector', selectorSource.materializeCopy(true) as Selector | Nil);
+    node.setData('selector', selectorSource.sourceNode.copy(true) as Selector | Nil);
     return node;
   }
 

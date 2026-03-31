@@ -7,7 +7,7 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { BasicSelector } from '../selector-basic.js';
 import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './ampersand-template.js';
 import type { Ruleset } from '../ruleset.js';
-import type { Node } from '../node.js';
+import type { Node, RenderKey } from '../node.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
@@ -15,6 +15,7 @@ import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
 import type { Ampersand } from '../ampersand.js';
 import type { Context } from '../../context.js';
 import { getParent } from './field-helpers.js';
+import { getParentEdge } from './cursor.js';
 
 const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
 const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
@@ -99,7 +100,10 @@ export function wrapInGeneratedIs(selector: Selector): Selector {
 }
 
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
-export function getCurrentParentNode(node: Node, context?: Context): Node | undefined {
+export function getCurrentParentNode(node: Node, context?: Context | RenderKey): Node | undefined {
+  if (context && typeof context !== 'object') {
+    return getParentEdge({ node, renderKey: context })?.node;
+  }
   return (context ? getParent(node, context) : node.parent) as Node | undefined;
 }
 

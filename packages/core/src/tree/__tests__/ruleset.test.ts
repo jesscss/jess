@@ -4,6 +4,7 @@ import { getPrintOptions } from '../util/print.js';
 import { getField, getParent, setField } from '../util/field-helpers.js';
 import { F_VISIBLE } from '../node.js';
 import type { Node } from '../node-base.js';
+import { getParentEdge } from '../util/cursor.js';
 
 let context: Context;
 
@@ -183,7 +184,7 @@ describe('Rule', () => {
     expect(cloned.get('selector').parent).toBe(cloned);
     expect(cloned.get('rules').parent).toBe(cloned);
     expect(clonedDecl.parent).toBe(derived.get('rules'));
-    expect(getParent(clonedDecl, context)).toBe(cloned.get('rules'));
+    expect(getParentEdge({ node: clonedDecl, renderKey: cloned.get('rules').renderKey })?.node).toBe(cloned.get('rules'));
     expect(derived.get('selector').parent).toBe(derived);
     expect(derived.get('rules').parent).toBe(derived);
     expect(canonical.get('selector').parent).toBe(canonical);

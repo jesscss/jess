@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { defineType, F_MAY_ASYNC, Node } from './node.js';
+import { defineType, F_MAY_ASYNC, Node, type NodeEdge, type RenderKey } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
@@ -24,6 +24,15 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions, List
   eval(context: Context): Promise<this>;
 }
 
+
+export function getListItem<T extends Node | NodeEdge<Node>>(list: T[], index: number, renderKey?: RenderKey) {
+  if (renderKey === undefined) {
+    return list[index];
+  }
+  return list instanceof Map
+    ? list.get(renderKey)?.[index] ?? list[index]
+    : list[index];
+}
 /**
  * A list of expressions
  *
@@ -34,7 +43,18 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions, List
 export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   static override childKeys = ['value'] as const;
 
-  value!: T[];
+  readonly value: T[];
+  readonly valueEdges?: Array<NodeEdge<T> | undefined>;
+
+  getValue() {
+    return this.valueEdges ?? this.value;
+  }
+
+  getValueAt(index: number, renderKey?: RenderKey) {
+    return renderKey !== undefined
+      ? this.valueEdges?.[index]?.get(renderKey) ?? this.value[index]
+      : this.value[index];
+  }
 
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -69,18 +89,18 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
 
-  override toTrimmedString(options?: PrintOptions) {
+  override toTrimmedString(options?: PrintOptions, renderKey?: RenderKey) {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let value = this.get('value', options.context);
+    let value = this.getValue();
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
       return '';
     }
     // Print first item as-is
-    let item = value[0]!;
+    let item = getListItem(value, 0, renderKey);
     let out = w.capture(() => item.toString(options));
     w.add(out.replace(LIST_ITEM_TRIM, ''), item);
     // Subsequent items: emit sep; capture next item to decide spacing precisely

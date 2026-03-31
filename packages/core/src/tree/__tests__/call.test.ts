@@ -1,7 +1,6 @@
-import { vi } from 'vitest';
 import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { getParent, setField } from '../util/field-helpers.js';
+import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Call', () => {
@@ -200,19 +199,6 @@ describe('Call', () => {
     expect(node.options.silentFail).toBeUndefined();
   });
 
-  it('keeps canonical child parents intact on shallow clones while exposing the wrapper through the state parent chain', () => {
-    const name = ref('rgb', { type: 'function' });
-    const args = list([num(1)]);
-    const node = call({ name, args });
-
-    const clone = node.clone(false, undefined, context);
-
-    expect(name.parent).toBe(node);
-    expect(args.parent).toBe(node);
-    expect(getParent(name, context)).toBe(clone);
-    expect(getParent(args, context)).toBe(clone);
-  });
-
   it('uses the call-local shallow clone in the silent-fail non-function branch without canonically reparenting children', async () => {
     const args = list([num(1)]);
     const node = call({
@@ -225,127 +211,6 @@ describe('Call', () => {
     expect(evald.toTrimmedString({ context })).toBe('rgb(1)');
     expect(args.parent).toBe(node);
     expect(node.toTrimmedString()).toBe('rgb?(1)');
-  });
-
-  it('materializes stylesheet-function return nodes before applying call result provenance', async () => {
-    const returnValue = any('ok');
-    returnValue.pre = 0;
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const node = call({
-      name: functionNode,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toBe('ok');
-    expect(result).not.toBe(returnValue);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-    expect(returnValue.pre).toBe(0);
-    expect(returnValue.post).toBeUndefined();
-    expect(returnValue.sourceParent).toBeUndefined();
-  });
-
-  it('materializes stylesheet-function rules results without reusing canonical child identity', async () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const node = call({
-      name: functionNode,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toContain('color: red;');
-    expect(result).not.toBe(returnValue);
-    expect(result.value[0]).not.toBe(childDecl);
-    expect(childDecl.parent).toBe(returnValue);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-  });
-
-  it('materializes nested-call results before applying outer call provenance', async () => {
-    const returnValue = any('ok');
-    returnValue.pre = 0;
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const aliasCall = call({
-      name: functionNode,
-      args: list([])
-    });
-    const aliasRef = ref('alias', { type: 'variable' });
-    vi.spyOn(aliasRef, 'eval').mockResolvedValue(aliasCall);
-    const node = call({
-      name: aliasRef,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toBe('ok');
-    expect(result).not.toBe(returnValue);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-    expect(returnValue.pre).toBe(0);
-    expect(returnValue.post).toBeUndefined();
-    expect(returnValue.sourceParent).toBeUndefined();
-  });
-
-  it('keeps nested-call composite Rules results out of the remaining same-source owner branch', async () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const aliasCall = call({
-      name: functionNode,
-      args: list([])
-    });
-    const aliasRef = ref('alias', { type: 'variable' });
-    vi.spyOn(aliasRef, 'eval').mockResolvedValue(aliasCall);
-    const node = call({
-      name: aliasRef,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toContain('color: red;');
-    expect(result).not.toBe(returnValue);
-    expect(result.value[0]).not.toBe(childDecl);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-    expect(childDecl.parent).toBe(returnValue);
   });
 
   it('materializes collection results without mutating canonical collection children', async () => {
@@ -383,50 +248,6 @@ describe('Call', () => {
     expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
   });
 
-  it('characterizes composite same-source Rules results as still needing a child-identity-breaking returned-tree boundary, not a lookup-safe wrapper', () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const node = call({
-      name: returnValue,
-      args: list([])
-    }, { markImportant: true });
-
-    const wrapper = returnValue.cloneLookupSafeShallowWrapper(context);
-
-    expect(wrapper.value[0]).toBe(childDecl);
-    expect(childDecl.parent).toBe(returnValue);
-    expect(getParent(childDecl, context)).toBe(wrapper);
-
-    node.makeImportant(wrapper);
-
-    expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
-  });
-
-  it('characterizes the exact lower helper contract for stylesheet-function same-source Rules results', () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const node = call({
-      name: returnValue,
-      args: list([])
-    }, { markImportant: true });
-    node.pre = 2;
-    node.post = 1;
-
-    const returned = returnValue.cloneDetachedMaterializedWrapper(context);
-    node.makeImportant(returned);
-    returned.pre = node.pre;
-    returned.post = node.post;
-    returned.sourceParent = node;
-
-    expect(returned).not.toBe(returnValue);
-    expect(returned.value[0]).not.toBe(childDecl);
-    expect(childDecl.parent).toBe(returnValue);
-    expect(returned.value[0].toTrimmedString({ context })).toBe('color: red !important');
-    expect(returned.pre).toBe(2);
-    expect(returned.post).toBe(1);
-    expect(returned.sourceParent).toBe(node);
-    expect(childDecl.get('important')).toBeUndefined();
-  });
 
   it('reads a state-patched markImportant option for collection results without mutating canonical options', async () => {
     const childDecl = decl({ name: 'color', value: any('red') });

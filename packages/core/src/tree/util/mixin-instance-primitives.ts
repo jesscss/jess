@@ -14,7 +14,7 @@ import type { List } from '../list.js';
 import { Sequence } from '../sequence.js';
 import { Any } from '../any.js';
 import { N } from '../node-type.js';
-import { F_VISIBLE } from '../node.js';
+import { CANONICAL, F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
@@ -334,22 +334,6 @@ export function createMixinInvocationRules(
       VarDeclaration: 'public'
     }
   };
-  if (
-    definitionParent
-    && (
-      (isNode(definitionParent, N.Mixin) && String(definitionParent.get('name')?.valueOf?.() ?? '').includes('sayGender'))
-      || (isNode(definitionParent, N.Rules) && String((definitionParent.parent as any)?.name?.valueOf?.() ?? '').includes('sayGender'))
-    )
-  ) {
-    console.log('MIXIN-INVOKE-WRAPPER', {
-      renderKey: String(renderKey),
-      definitionParentType: definitionParent.type,
-      placementParentType: placementParent?.type,
-      wrapperParentType: wrapper.parent?.type,
-      wrapperRenderParentType: wrapper.renderParent?.type,
-      wrapperRenderParentRenderKey: wrapper.renderParent?.renderKey
-    });
-  }
   return wrapper;
 }
 
@@ -594,10 +578,8 @@ export function finalizeMixinInvocationOutput(
  * instead of leaving it implicit inside `getFunctionFromMixins()`.
  */
 /**
- * @removal-target — node-copy-reduction
- * Target: remove materializeEvaluatedCopy on params. Param vars should be
- * readable through the carried position/session, not materialized into
- * the output. The position already holds the bound values.
+ * Param vars should be readable through the carried position/session, not
+ * materialized into the output. The position already holds the bound values.
  */
 export function projectMixinParamScopeIntoOutput(
   output: Rules,
@@ -749,10 +731,6 @@ export function assembleMixinInvocationOutput(
 /**
  * Evaluate a ruleset candidate whose guard already passed during Ruleset
  * evaluation, preserving mixin-output semantics and eval-state-subtree association.
- *
- * @removal-target — node-copy-reduction: clone(true) on sourceRules.
- * Replace with new EvalState(sourceRules) — eval the canonical body
- * with position patches instead of deep cloning it.
  */
 export async function evaluateRulesetMixinCandidateOutput(
   sourceRules: Rules,
@@ -954,12 +932,6 @@ function copyDependency(source: Node, target: Node, context: Context): void {
 
 /**
  * Evaluate raw call args into a flat array of frozen Node values.
- *
- * @removal-target — node-copy-reduction (copy/clonedEval/freeze cycle)
- * Target: evaluate args in a position instead of copy+clonedEval+freeze.
- * The copy(true, freezeChildren) + clonedEval pattern creates full deep
- * copies of every arg. With positions, eval args in a fresh position and
- * bind results via position patches — no copies, no freezing needed.
  */
 export async function evaluateMixinArgs(
   args: any[],
@@ -1032,13 +1004,6 @@ async function preparePatternOperand(node: Node, context: Context): Promise<Node
 /**
  * Match the mixin array against evaluated args. Returns the candidates whose
  * param signatures match (with params bound).
- *
- * @removal-target — node-copy-reduction (copy/freeze in param binding)
- * The copy(true, freezeChildren) calls on bound values create full deep
- * copies of every arg value per candidate. With positions, bind through
- * position.setField instead — no copies needed.
- * The params.copy(true) and mixin.clone(false)/mixin.copy() also create
- * objects that positions can eliminate.
  */
 export async function matchMixinCandidates(
   mixinArr: MixinEntry[],
@@ -1364,7 +1329,9 @@ export async function evaluateCandidateOutput(
 
     let newRules: Rules = await rules.eval(context);
     newRules = finalizeMixinInvocationOutput(newRules, context);
-    newRules.renderKey ??= rules.renderKey;
+    if (newRules.renderKey === CANONICAL) {
+      newRules.renderKey = rules.renderKey;
+    }
     newRules.parent = invocationParent ?? callerParent;
     newRules.sourceParent = sourceParent;
     newRules.index = candidate.index;
@@ -1433,28 +1400,6 @@ export async function dispatchMixinEvalCandidates(
   context.pushState(new EvalState());
 
   for (const candidate of evalCandidates) {
-    if (isNode(candidate, N.Mixin | N.Ruleset)) {
-      const candidateName = isNode(candidate, N.Mixin)
-        ? String(candidate.get('name')?.valueOf?.() ?? '')
-        : String(candidate.valueOf());
-      if (candidateName.includes('sayGender') || candidateName.includes('nav-justified')) {
-        const candidateParent = getCandidateParent(candidate, context);
-        console.log('MIXIN-CANDIDATE', {
-          candidateType: candidate.type,
-          candidateName,
-          candidateRenderKey: candidate.renderKey,
-          candidateParentType: candidateParent?.type,
-          candidateParentRenderKey: (candidateParent as any)?.renderKey,
-          candidateParentChildren: isNode(candidateParent, N.Rules)
-            ? (candidateParent as Rules).getRegistryChildren(context).map(child => `${child.type}:${String((child as any)?.name?.valueOf?.() ?? child.valueOf?.() ?? '')}:${String((child as any)?.renderKey ?? 'none')}`)
-            : undefined,
-          contextRulesType: context.rulesContext?.type,
-          contextRulesRenderKey: context.rulesContext?.renderKey,
-          invocationParentType: invocationParent?.type,
-          sourceParentType: sourceParent?.type
-        });
-      }
-    }
     if (isNode(candidate, N.Ruleset)) {
       if ((candidate as Ruleset).get('guard') instanceof Nil) {
         continue;

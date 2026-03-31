@@ -76,7 +76,7 @@ function shouldReuseInPriorScope(node: Node): boolean {
 
 function cloneForPriorScope(node: Node, context: Context): Node {
   if (isNode(node, N.Rules)) {
-    return node.cloneLookupSafeShallowWrapper(context);
+    return node.createShallowBodyWrapper(context);
   }
   return node.clone(false, undefined, context);
 }

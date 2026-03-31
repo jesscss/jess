@@ -1,8 +1,9 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword, EVAL } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getSourceParent, setField, setParent } from '../util/field-helpers.js';
+import { getSourceParent, setField } from '../util/field-helpers.js';
+import { addParentEdge, getParentEdge } from '../util/cursor.js';
 
 let context: Context;
 
@@ -251,7 +252,7 @@ describe('reference', () => {
       `);
     });
 
-    it('uses the state parent chain to anchor linear variable resolution', async () => {
+    it('uses the render-key parent edge to anchor linear variable resolution', async () => {
       const scope = rules([
         vardecl({
           name: any('foo'),
@@ -274,23 +275,26 @@ describe('reference', () => {
       scope.value.forEach((child, index) => {
         child.index = index;
       });
-      context.root = scope;
-      context.rulesContext = scope;
+      context.renderKey = EVAL;
+      const evalScope = scope.createShallowBodyWrapper(context, EVAL);
+      context.root = evalScope;
+      context.rulesContext = evalScope;
 
-      const hostDecl = scope.at(2, context);
+      const hostDecl = evalScope.at(2, context);
       if (!hostDecl || !isNode(hostDecl)) {
         throw new Error('Expected host declaration at index 2');
       }
 
       const lookup = ref({ key: 'foo' }, { type: 'variable', resolution: 'linear' });
-      setParent(lookup, hostDecl, context);
+      addParentEdge(lookup, EVAL, hostDecl);
+      expect(getParentEdge({ node: lookup, renderKey: EVAL })?.node).toBe(hostDecl);
 
       const evald = await lookup.eval(context);
 
       expect(evald.render(context)).toBe('red');
     });
 
-    it('uses the state parent chain to anchor default variable resolution without rulesContext', async () => {
+    it('uses the render-key parent edge to anchor default variable resolution without rulesContext', async () => {
       const scope = rules([
         vardecl({
           name: any('foo'),
@@ -302,22 +306,24 @@ describe('reference', () => {
         })
       ]);
 
-      context.root = scope;
+      context.renderKey = EVAL;
+      const evalScope = scope.createShallowBodyWrapper(context, EVAL);
+      context.root = evalScope;
 
-      const hostDecl = scope.at(1, context);
+      const hostDecl = evalScope.at(1, context);
       if (!hostDecl || !isNode(hostDecl)) {
         throw new Error('Expected host declaration at index 1');
       }
 
       const lookup = ref({ key: 'foo' }, { type: 'variable' });
-      setParent(lookup, hostDecl, context);
+      addParentEdge(lookup, EVAL, hostDecl);
 
       const evald = await lookup.eval(context);
 
       expect(evald.render(context)).toBe('red');
     });
 
-    it('uses the state parent chain for mixin lookup without an explicit target', async () => {
+    it('uses the render-key parent edge for mixin lookup without an explicit target', async () => {
       const outer = rules([
         mixin({
           name: any('feature'),
@@ -330,11 +336,13 @@ describe('reference', () => {
         call({ name: ref({ key: 'feature' }, { type: 'mixin' }) })
       ]);
 
+      context.renderKey = EVAL;
+      const evalInner = inner.createShallowBodyWrapper(context, EVAL);
       context.root = outer;
-      context.rulesContext = inner;
-      setParent(inner, outer, context);
+      context.rulesContext = evalInner;
+      addParentEdge(evalInner, EVAL, outer);
 
-      const evald = await inner.at(0, context)!.eval(context);
+      const evald = await evalInner.at(0, context)!.eval(context);
 
       expect(evald.render(context)).toContainString('color: red');
     });

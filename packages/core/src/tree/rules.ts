@@ -174,7 +174,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   static override childKeys = ['value'] as const;
 
   readonly value!: readonly Node[];
-  renderKey: RenderKey;
+  declare renderKey: RenderKey;
   renderParent: Rules | undefined;
   private _wrapperRegistrySeeded = false;
   private _wrapperRegistrySeeding = false;
@@ -312,7 +312,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * to rely on raw clone(false) semantics.
    */
   cloneDetachedUnlockWrapper(ctx: Context): this {
-    const wrapper = this.cloneLookupSafeShallowWrapper(ctx);
+    const wrapper = this.createShallowBodyWrapper(ctx) as this;
     if (wrapper.renderKey === CANONICAL) {
       wrapper.renderKey = EVAL;
     }
@@ -325,15 +325,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * resolve through the wrapper during the current session.
    */
   cloneVisibilityIsolationWrapper(ctx: Context): this {
-    const wrapper = this.cloneLookupSafeShallowWrapper(ctx);
+    const wrapper = this.createShallowBodyWrapper(ctx) as this;
     if (wrapper.renderKey === CANONICAL) {
       wrapper.renderKey = EVAL;
     }
     return wrapper;
-  }
-
-  override cloneLookupSafeShallowWrapper(ctx: Context): this {
-    return this.createShallowBodyWrapper(ctx) as this;
   }
 
   /**

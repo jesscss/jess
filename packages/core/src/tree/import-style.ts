@@ -658,7 +658,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         // on the clone, not on the cached evaldRules. EvalState isolation ensures canonical
         // children's parent pointers are protected; preEval creates fresh clones via maybeClone.
           context.pushState(new EvalState());
-          rules = rules.cloneLookupSafeShallowWrapper(context) as Rules;
+          rules = rules.createShallowBodyWrapper(context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
           try {

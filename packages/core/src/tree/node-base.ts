@@ -1,5 +1,4 @@
 import { isPlainObject, NodeTraversalCursor } from './util/collections.js';
-import { getField } from './util/field-helpers.js';
 import {
   type TreeContext,
   type Context
@@ -266,8 +265,13 @@ export abstract class Node<
    * Carried EvalState from a mixin/function call. Used during serialization
    * so child nodes resolve patched fields from their call-site state.
    * Target: replace with subtree stack management during eval.
+   * 
+   * @todo - Remove this.
    */
   _carriedState: unknown;
+
+  preEvaluated = false;
+  evaluated = false;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -343,254 +347,6 @@ export abstract class Node<
   }
 
   /**
-   * @removal-target — node-copy-reduction
-   * Target: remove entirely. Materialization from sourceNode is a clone.
-   * Callers should read through eval state helpers on the canonical node instead.
-   */
-  materializeCopy(deep?: boolean): this {
-    return this.sourceNode.copy(deep) as this;
-  }
-
-  /**
-   * @removal-target — node-copy-reduction
-   * Target: remove entirely. Internal eval paths should never materialize.
-   * Materialization is only allowed at the final CSS output boundary where
-   * Jess serializes the evaluated tree to a standalone object graph.
-   * All internal consumers should read through eval state helpers.
-   */
-  materializeEvaluatedCopy(ctx?: Context): this {
-    if (!ctx) {
-      return this.clone(true);
-    }
-    const state = ctx.activeState;
-    const Class = this.constructor as Class<this>;
-    const ck = (Class as unknown as typeof Node).childKeys;
-    const materializeValue = (value: unknown): unknown => {
-      if (value instanceof Node) {
-        return value.materializeEvaluatedCopy(ctx);
-      }
-      if (isArray(value)) {
-        return value.map(item => materializeValue(item));
-      }
-      return value;
-    };
-    const getFieldFromView = (key: string): unknown => {
-      const patched = state.peek(this)?._fields?.get(key);
-      if (patched !== undefined) {
-        return patched;
-      }
-      return (this as any)[key];
-    };
-
-    if (ck === null) {
-      const value = materializeValue(getFieldFromView('value'));
-      const options = getFieldFromView('options') ?? this._meta?.options;
-      const newNode = new Class(
-        value as any,
-        options ? { ...(options as Record<string, unknown>) } : undefined,
-        this.location,
-        this.treeContext
-      );
-      newNode.inherit(this);
-      const ns = state.peek(this);
-      if (ns) {
-        const sourceNode = ns._fields?.get('sourceNode') as Node | undefined;
-        if (sourceNode) {
-          newNode.sourceNode = sourceNode;
-        }
-        const sourceParent = ns._fields?.get('sourceParent') as Node | undefined;
-        if (sourceParent !== undefined) {
-          newNode.sourceParent = sourceParent;
-        }
-      }
-      return newNode;
-    }
-
-    let cloneData: any;
-    if (ck!.length === 1) {
-      cloneData = materializeValue(getFieldFromView(ck![0]!));
-    } else {
-      cloneData = {};
-      for (const key of ck!) {
-        cloneData[key!] = materializeValue(getFieldFromView(key!));
-      }
-    }
-
-    const options = getFieldFromView('options') ?? this._meta?.options;
-    const newNode = new Class(
-      cloneData,
-      options ? { ...(options as Record<string, unknown>) } : undefined,
-      this.location,
-      this.treeContext
-    );
-    newNode.inherit(this);
-    const ns = state.peek(this);
-    if (ns) {
-      const sourceNode = ns._fields?.get('sourceNode') as Node | undefined;
-      if (sourceNode) {
-        newNode.sourceNode = sourceNode;
-      }
-      const sourceParent = ns._fields?.get('sourceParent') as Node | undefined;
-      if (sourceParent !== undefined) {
-        newNode.sourceParent = sourceParent;
-      }
-    }
-    return newNode;
-  }
-
-  /**
-   * Create a shallow wrapper node that shares this node's immediate children
-   * without taking ownership of them. This is for wrapper metadata use-cases
-   * where the new node needs copied options/provenance, but the shared top-level
-   * children must stay canonically parented to their existing owner.
-   *
-   * Unlike `clone(false)`, this explicitly restores any immediate child parent
-   * links that were changed during wrapper construction.
-   */
-  cloneDetachedShallowWrapper(ctx?: Context): this {
-    const ck = (this.constructor as typeof Node).childKeys;
-    const sharedChildren: Array<{
-      child: Node;
-      canonicalParent: Node | undefined;
-      stateParent: Node | undefined;
-    }> = [];
-
-    if (Array.isArray(ck)) {
-      for (const key of ck) {
-        const field = (this as any)[key!];
-        if (field instanceof Node) {
-          sharedChildren.push({
-            child: field,
-            canonicalParent: field.parent,
-            stateParent: ctx?.activeState.peek(field)?._fields?.get('parent') as Node | undefined
-          });
-        } else if (isArray(field)) {
-          for (const item of field as unknown[]) {
-            if (item instanceof Node) {
-              sharedChildren.push({
-                child: item,
-                canonicalParent: item.parent,
-                stateParent: ctx?.activeState.peek(item)?._fields?.get('parent') as Node | undefined
-              });
-            }
-          }
-        }
-      }
-    }
-
-    const wrapper = this.clone(false, undefined, ctx);
-
-    for (const { child, canonicalParent, stateParent } of sharedChildren) {
-      (child as any).parent = canonicalParent;
-      if (ctx) {
-        const ns = ctx.activeState.peek(child);
-        if (ns?._fields?.has('parent')) {
-          if (stateParent !== undefined) {
-            ns._fields!.set('parent', stateParent);
-          } else if (ns._fields!.get('parent') === wrapper) {
-            ns._fields!.delete('parent');
-          }
-        }
-      }
-    }
-
-    return wrapper;
-  }
-
-  /**
-   * Create a shallow wrapper node that shares this node's immediate children
-   * while making the wrapper their active parent in the eval state.
-   */
-  cloneLookupSafeShallowWrapper(ctx: Context): this {
-    const ck = (this.constructor as typeof Node).childKeys;
-    const sharedChildren: Array<{
-      child: Node;
-      canonicalParent: Node | undefined;
-    }> = [];
-
-    if (Array.isArray(ck)) {
-      for (const key of ck) {
-        const field = (this as any)[key!];
-        if (field instanceof Node) {
-          sharedChildren.push({
-            child: field,
-            canonicalParent: field.parent
-          });
-        } else if (isArray(field)) {
-          for (const item of field as unknown[]) {
-            if (item instanceof Node) {
-              sharedChildren.push({
-                child: item,
-                canonicalParent: item.parent
-              });
-            }
-          }
-        }
-      }
-    }
-
-    const wrapper = this.clone(false, undefined, ctx);
-
-    for (const { child, canonicalParent } of sharedChildren) {
-      ctx.activeState.get(child).fields.set('parent', wrapper);
-      (child as any).parent = canonicalParent;
-    }
-
-    return wrapper;
-  }
-
-  /**
-   * Create a detached shallow wrapper, then materialize its immediate children
-   * from the active eval state.
-   *
-   * This fills the gap between:
-   * - `cloneDetachedShallowWrapper()`, which preserves child identity but keeps
-   *   state-backed child state on the canonical child objects, and
-   * - `materializeEvaluatedCopy()`, which materializes the whole node tree.
-   *
-   * The wrapper metadata remains local to the new node, canonical child parent
-   * links stay intact, and the returned wrapper owns persistent child nodes that
-   * reflect the current eval state without requiring eval state later.
-   */
-  /**
-   * @removal-target — node-copy-reduction
-   * Target: remove entirely. This deep-materializes mixin output from the
-   * eval state, creating a full object tree per call. Replace with
-   * carrying the EvalState on the output node — downstream reads
-   * resolve through position patches, no materialization needed.
-   */
-  cloneDetachedMaterializedWrapper(ctx: Context): this {
-    const wrapper = this.cloneDetachedShallowWrapper(ctx);
-    const ck = (this.constructor as typeof Node).childKeys;
-
-    if (!Array.isArray(ck)) {
-      return wrapper;
-    }
-
-    const materializeValue = (value: unknown): unknown => {
-      if (value instanceof Node) {
-        return value.materializeEvaluatedCopy(ctx);
-      }
-      if (isArray(value)) {
-        return value.map(item => materializeValue(item));
-      }
-      return value;
-    };
-
-    if (ck.length === 1) {
-      const key = ck[0]!;
-      wrapper.setData(materializeValue((wrapper as any)[key]) as NodeValue);
-      return wrapper;
-    }
-
-    for (const key of ck) {
-      wrapper.setData(key!, materializeValue((wrapper as any)[key!]));
-    }
-
-    return wrapper;
-  }
-
-  /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also
@@ -629,6 +385,9 @@ export abstract class Node<
   declare readonly parent: Node | undefined;
   declare parentEdges: NodeEdge<Node> | undefined;
   declare renderKey: RenderKey;
+  /**
+   * @todo - No idea why these two fields need to exist.
+   */
   declare evaluatedRenderKeys: Set<RenderKey> | undefined;
   declare preEvaluatedRenderKeys: Set<RenderKey> | undefined;
 
@@ -1267,27 +1026,11 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  /**
-   * @removal-target — node-copy-reduction
-   * Target: `return this` unconditionally. Position provides isolation;
-   * eval state and field changes go to EvalState patches.
-   * The clone(deep) fallback exists only because not all eval paths
-   * create a position yet. Once every eval path ensures a position,
-   * this entire method becomes `return this`.
-   */
   maybeClone(_context: Context, _deep?: boolean, _cloneFn?: (n: Node) => Node): this {
     // EvalState provides isolation — no clone needed.
     return this;
   }
 
-  /**
-   * @removal-target — node-copy-reduction (eval-path callers)
-   * Eval-path callers (maybeClone, mixin body clone, evalNode clone)
-   * should be replaced with EvalState field patches. The clone
-   * method itself survives for non-eval uses (selector composition,
-   * extend application, output serialization boundary) but should
-   * never be called in the eval hot path.
-   */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     let Class = this.constructor as Class<this>;
     const ck = (Class as unknown as typeof Node).childKeys;

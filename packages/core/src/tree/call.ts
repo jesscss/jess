@@ -12,6 +12,10 @@ import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
 import { getField, getParent, mergeDependencies, setDependency, setParent } from './util/field-helpers.js';
+import {
+  cloneDetachedMaterializedWrapper,
+  materializeEvaluatedCopy
+} from './util/legacy-node-ops.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -173,11 +177,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     }
   }
 
-  /**
-   * @removal-target — node-copy-reduction
-   * Target: remove clone(true) on args. Fallback args should be read
-   * from canonical nodes; spacing normalization should be a print concern.
-   */
   private _materializeFallbackArgs(args: List<Node> | undefined): List<Node> | undefined {
     if (!args) {
       return undefined;
@@ -194,11 +193,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     return clonedArgs;
   }
 
-  /**
-   * @removal-target — node-copy-reduction
-   * Target: remove clone(true) on args. Function args should be evaluated
-   * in a position; freezing is a read-only concern that positions handle.
-   */
   private _materializeFunctionArgs(args: List<Node>, context: Context): List<Node> {
     return list(
       args.get('value').map((arg) => {
@@ -298,8 +292,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         node.sourceParent = this;
         return node;
       };
-      /** @removal-target — node-copy-reduction: clone(false) + runtime copy.
-       * Position isolates; downstream reads resolve through eval state helpers. */
       const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
         const clone = node.clone(false, undefined, context) as T;
         const nodeState = context.activeState.peek(node);
@@ -314,24 +306,19 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         }
         return clone;
       };
-      /** @removal-target — node-copy-reduction: remove entirely.
-       * No internal materialization; position patches provide isolation. */
       const materializeDownstreamResult = <T extends Node>(node: T): T => {
         if (node === node.sourceNode) {
           const childKeys = (node.constructor as typeof Node).childKeys;
           if (childKeys === null) {
             return cloneLeafDownstreamResult(node);
           }
-          return node.materializeEvaluatedCopy(context) as T;
+          return materializeEvaluatedCopy(node, context) as T;
         }
         return node;
       };
-      /** @removal-target — node-copy-reduction: remove entirely.
-       * Output shaping (pre/post/sourceParent/makeImportant) should go through
-       * position.setField on the result node. No materialization boundary. */
       const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
         if (node === node.sourceNode && isNode(node, N.Rules)) {
-          return node.cloneDetachedMaterializedWrapper(context) as T;
+          return cloneDetachedMaterializedWrapper(node, context) as T;
         }
         return materializeDownstreamResult(node);
       };
@@ -350,21 +337,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       context.parenFrames.push(false);
 
       let n = typeof name === 'string' ? name : await name.eval(context);
-      if (isNode(name, N.Reference)) {
-        const rawKey = name.get('key', context);
-        const keyStr = Array.isArray(rawKey) ? rawKey.join('.') : String(rawKey);
-        if (keyStr.includes('sayGender') || keyStr.includes('nav-justified')) {
-          console.log('CALL-RESOLVE', {
-            key: keyStr,
-            resolvedType: Array.isArray(n)
-              ? `array:${n.map(item => item?.type).join(',')}`
-              : isNode(n) ? n.type : typeof n,
-            rulesContextType: context.rulesContext?.type,
-            rulesContextRenderKey: context.rulesContext?.renderKey,
-            contextRenderKey: context.renderKey
-          });
-        }
-      }
       // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
       if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
         n = await n.eval(context);
@@ -391,21 +363,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         context.caller = this;
         try {
           const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
-          if (isNode(name, N.Reference)) {
-            const rawKey = name.get('key', context);
-            const keyStr = Array.isArray(rawKey) ? rawKey.join('.') : String(rawKey);
-            if (keyStr.includes('sayGender') || keyStr.includes('nav-justified')) {
-              console.log('CALL-RESULT', {
-                key: keyStr,
-                resultType: result.type,
-                resultVisible: result.visible,
-                resultRenderKey: (result as any).renderKey,
-                resultValueTypes: isNode(result, N.Rules)
-                  ? (result as Rules).value.map(child => `${child.type}:${String((child as any)?.name?.valueOf?.() ?? child.valueOf?.() ?? '')}`)
-                  : undefined
-              });
-            }
-          }
           // Result is already fully evaluated by the dispatch primitives — no re-eval.
           if (markImportant && isNode(result, N.Rules)) {
             this.makeImportant(result);
@@ -436,8 +393,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           throw new ReferenceError(`Cannot call ${n.type} with arguments`);
         }
         const Rules = await getRules();
-        /** @removal-target — node-copy-reduction: clone(true) for Collection unlock.
-         * Detached ruleset children should be referenced through position, not cloned. */
         let rules = Rules.create(
           n.value.map(child => child.clone(true, undefined, context)),
           n.options ? { ...n.options } : undefined
@@ -526,8 +481,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           if (!callOptions.silentFail || shouldRethrowForMode) {
             throw e;
           }
-          /** @removal-target — node-copy-reduction: clone for silentFail fallback.
-           * Options/name/args changes should go through position patches. */
           let newCall = this.clone(false, undefined, context).inherit(this);
           /** Remove this flag for serialization */
           newCall.options.silentFail = false;
@@ -554,8 +507,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         }
         context.parenFrames.pop();
         context.callStack.pop();
-        /** @removal-target — node-copy-reduction: clone for non-mixin call eval.
-         * All field mutations (name, args, options) should go through position. */
         const needsMaterializedClone = Boolean(callOptions.silentFail);
         const node = needsMaterializedClone
           ? this.clone(false, undefined, context)

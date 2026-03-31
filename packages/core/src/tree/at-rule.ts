@@ -12,8 +12,8 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
-import { getField, getParent, isPreEvaluated } from './util/field-helpers.js';
-import { getImplicitSelector, getParentRuleset } from './util/selector-utils.js';
+import { getField, isPreEvaluated } from './util/field-helpers.js';
+import { getCurrentParentNode, getImplicitSelector, getParentRuleset } from './util/selector-utils.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -100,7 +100,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
   }
 
   private _resolveRenderKey(context?: Context): RenderKey | undefined {
-    return context?.renderKey ?? this.renderKey;
+    return context?.renderKey ?? context?.rulesContext?.renderKey ?? this.renderKey;
   }
 
   private _readPreludeForContext(context?: Context): Node | undefined {
@@ -191,9 +191,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this._isPreEvaluated(context)) {
-      /** @removal-target — node-copy-reduction: maybeClone → return this.
-       * preEval writes (hoistToRoot, frames, ownSelector) should go through
-       * position.setField. sourceNode assignment becomes unnecessary. */
       const node = this.maybeClone(context);
       node._setPreEvaluated(true, context);
       // Index should already be assigned by parent Rules
@@ -508,12 +505,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           let liftedRulesContext = savedRulesContext;
           // If our current rulesContext is a Rules whose parent is an AtRule, lift to the enclosing Rules.
           if (liftedRulesContext && isNode(liftedRulesContext, N.Rules)) {
-            let cursor: any = liftedRulesContext;
+            const renderKey = liftedRulesContext.renderKey;
+            let cursor: Node = liftedRulesContext;
             let depth = 0;
-            while (getParent(cursor, context) && depth++ < 10) {
-              const cursorParent = getParent(cursor, context);
-              if (isNode(cursorParent, N.AtRule) && isNode(getParent(cursorParent, context), N.Rules)) {
-                cursor = getParent(cursorParent, context);
+            while (getCurrentParentNode(cursor, renderKey) && depth++ < 10) {
+              const cursorParent = getCurrentParentNode(cursor, renderKey);
+              if (isNode(cursorParent, N.AtRule) && isNode(getCurrentParentNode(cursorParent, renderKey), N.Rules)) {
+                cursor = getCurrentParentNode(cursorParent, renderKey)!;
                 continue;
               }
               break;
@@ -569,11 +567,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
             // not the canonical one. This is critical for deeply nested rulesets.
             const parentSel = parentRuleset?.get('selector', context);
             const hasParentSel = parentSel && !isNode(parentSel, N.Nil);
-            // Use materializeEvaluatedCopy to capture the fully-resolved selector
-            // (with Ampersands resolved to their evaluated values), not copy() which
-            // would copy the canonical tree and preserve unresolved Ampersands.
             const wrapperSel = hasParentSel
-              ? (parentSel!.materializeEvaluatedCopy(context) as Selector)
+              ? (parentSel!.copy(true) as Selector)
               : undefined;
             let existingRules = rules;
             rules = Rules.create([
@@ -583,7 +578,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
               }, wrapperSel
                 ? {
                     generated: true,
-                    ownSelector: wrapperSel.materializeEvaluatedCopy() as Selector,
+                    ownSelector: wrapperSel.copy(true) as Selector,
                     resolvedHoistWrapper: true
                   }
                 : { generated: true })

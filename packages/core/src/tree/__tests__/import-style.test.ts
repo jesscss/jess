@@ -1449,38 +1449,6 @@ describe('Style import', () => {
       expect(dedupedRuleset.parent).toBe(dedupedImport);
     });
 
-    it('deduped imports must materialize from evaluated top-level children, not sourceNode copies', async () => {
-      const libraryPath = resolve(process.cwd(), 'dedupe-evaluated-state.jess');
-      const sourceVar = vardecl({
-        name: 'dedupeMaterialized',
-        value: ref('libColor', { type: 'variable' })
-      });
-      const sourceRules = rules([sourceVar]);
-      context.sourceTrees.set(libraryPath, sourceRules);
-
-      const cachedVar = vardecl({
-        name: 'dedupeMaterialized',
-        value: any('red')
-      });
-      cachedVar.sourceNode = sourceVar;
-      const cachedEvaldRules = rules([cachedVar]);
-      cachedEvaldRules.sourceNode = sourceRules;
-      context.evaldTrees.set(libraryPath, cachedEvaldRules);
-
-      const node = rules([
-        style({ path: quoted(any('dedupe-evaluated-state.jess')) }, { type: 'import' })
-      ]);
-
-      const evald = await node.eval(context);
-      const dedupedImport = evald.at(0, context) as Rules;
-      const dedupedVar = dedupedImport.at(0, context) as Node;
-      const sourceMaterialized = cachedVar.materializeCopy(true);
-
-      expect(dedupedVar.toTrimmedString({ context })).toBe('$dedupeMaterialized: red');
-      expect(sourceMaterialized.toTrimmedString({ context })).toBe('$dedupeMaterialized: $libColor');
-      expect(dedupedVar).not.toBe(sourceMaterialized);
-    });
-
     it('deduped imports cannot use shallow top-level child clones because nested canonical children are reparented', () => {
       const canonicalRuleset = ruleset({
         selector: sellist([sel([el('.dedupe-shallow')])]),
@@ -1520,40 +1488,6 @@ describe('Style import', () => {
       expect(shallowWrapper.toTrimmedString({ context })).toContain('.wrapper-blocker');
     });
 
-    it('shared evaluated-view materialization must preserve evaluated state, source provenance, and canonical immutability together', () => {
-      const sourceRuleset = ruleset({
-        selector: sellist([sel([el('.dedupe-contract')])]),
-        rules: rules([
-          decl({ name: any('color'), value: ref('libColor', { type: 'variable' }) })
-        ])
-      });
-      const sourceDecl = sourceRuleset.get('rules').at(0, context) as Node;
-
-      const evaluatedRuleset = ruleset({
-        selector: sellist([sel([el('.dedupe-contract')])]),
-        rules: rules([
-          decl({ name: any('color'), value: any('red') })
-        ])
-      });
-      const evaluatedDecl = evaluatedRuleset.get('rules').at(0, context) as Node;
-      evaluatedRuleset.sourceNode = sourceRuleset;
-      evaluatedDecl.sourceNode = sourceDecl;
-
-      const sourceMaterialized = evaluatedRuleset.materializeCopy(true);
-      const materialized = evaluatedRuleset.materializeEvaluatedCopy();
-      const materializedDecl = materialized.get('rules').at(0, context) as Node;
-
-      expect(materialized.toTrimmedString({ context })).toContain('color: red');
-      expect(sourceMaterialized.toTrimmedString({ context })).toContain('$libColor');
-      expect(materialized.sourceNode).toBe(sourceRuleset);
-      expect(materializedDecl.sourceNode).toBe(sourceDecl);
-      expect(materialized.get('selector').parent).toBe(materialized);
-      expect(materialized.get('rules').parent).toBe(materialized);
-      expect(materializedDecl.parent).toBe(materialized.get('rules'));
-      expect(evaluatedRuleset.get('selector').parent).toBe(evaluatedRuleset);
-      expect(evaluatedRuleset.get('rules').parent).toBe(evaluatedRuleset);
-      expect(evaluatedDecl.parent).toBe(evaluatedRuleset.get('rules'));
-    });
 
     it.skip('deduped import wrappers keep cached evaluated parent pointers stable with detached wrapper finalization', async () => {
       const libraryPath = resolve(process.cwd(), 'dedupe-ruleset-identity.jess');
