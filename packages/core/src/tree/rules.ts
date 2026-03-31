@@ -175,7 +175,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   readonly value!: readonly Node[];
   declare renderKey: RenderKey;
-  renderParent: Rules | undefined;
   private _wrapperRegistrySeeded = false;
   private _wrapperRegistrySeeding = false;
 
@@ -480,10 +479,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   getRegistryParent(context?: Context): Rules | undefined {
     return this._withOwnRenderKey(context, () => {
-      if (this.renderParent) {
-        return this.renderParent;
-      }
-
       let parent = getCurrentParentNode(this, context);
       while (parent && parent.type !== 'Rules') {
         parent = getCurrentParentNode(parent, context);
@@ -710,18 +705,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       } else {
         const wrapped = rules.createShallowBodyWrapper(undefined, effectiveRenderKey);
         wrapped.parent = owner;
-        if (context?.rulesContext && context.rulesContext !== wrapped) {
-          wrapped.renderParent = context.rulesContext;
-        }
         addEdge(owner, 'rules', effectiveRenderKey, wrapped);
         if (owner.renderKey === effectiveRenderKey) {
           (owner as unknown as { rules: Rules }).rules = wrapped;
         }
         rules = wrapped;
       }
-    }
-    if (context?.rulesContext && rules.renderParent === undefined && context.rulesContext !== rules) {
-      rules.renderParent = context.rulesContext;
     }
     if (context && getCurrentParentNode(rules, context) !== owner) {
       owner.adopt(rules, context);

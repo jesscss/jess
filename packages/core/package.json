@@ -47,6 +47,7 @@
     "build:types": "node ../../tools/tsdown/write-index-types-shim.mjs",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "cross-env TEST=true vitest",
+    "test:debug": "cross-env TEST=true vitest --run --maxWorkers=1 --fileParallelism=false",
     "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit",

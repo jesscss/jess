@@ -1,6 +1,5 @@
 import { any, nil, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
 import { addEdgeAt, addParentEdge, getEdgeAt, getParentEdge } from '../util/cursor.js';
 import { CANONICAL, EVAL, type RenderKey } from '../node.js';
 
@@ -24,106 +23,145 @@ describe('Sequence', () => {
     expect(`${rule}`).toBe('1020 30');
   });
 
-  it('renders a state-patched value without mutating the canonical array', () => {
-    const context = new Context();
+  it('renders an EVAL-path value without mutating the canonical array', () => {
     const rule = seq([num(10), num(20)]);
+    const first = num(30);
+    const second = num(40);
 
-    setField(rule, 'value', [num(30), num(40)], context);
+    addEdgeAt(rule, 'value', 0, EVAL, first);
+    addEdgeAt(rule, 'value', 1, EVAL, second);
+    addParentEdge(first, EVAL, rule);
+    addParentEdge(second, EVAL, rule);
 
-    expect(rule.toTrimmedString({ context })).toBe('30 40');
+    expect(rule.toTrimmedString({ context: { renderKey: EVAL } as Context })).toBe('30 40');
     expect(rule.toTrimmedString()).toBe('10 20');
     expect(rule.get('value').map(node => node.toTrimmedString())).toEqual(['10', '20']);
   });
 
-  it('preserves a state-patched value across the pre-eval clone boundary', async () => {
+  it('keeps the canonical sequence while eval writes resolved children to the EVAL path', async () => {
     const context = new Context();
-    const rule = seq([num(10), num(20)]);
-
-    setField(rule, 'value', [num(30), num(40)], context);
+    const rule = seq([ref({ key: 'foo' }, { type: 'variable' }), num(20)]);
+    const scope = rules([
+      vardecl({
+        name: any('foo'),
+        value: any('red')
+      })
+    ]);
+    context.root = scope;
+    context.rulesContext = scope;
+    context.renderKey = EVAL;
 
     const evald = await rule.eval(context);
 
-    expect(evald.toTrimmedString({ context })).toBe('30 40');
-    expect(rule.toTrimmedString()).toBe('10 20');
-    expect(rule.get('value').map(node => node.toTrimmedString())).toEqual(['10', '20']);
+    expect(evald).toBe(rule);
+    expect(rule.toTrimmedString({ context })).toBe('red 20');
+    expect(rule.toTrimmedString()).toBe('$foo 20');
+    expect(rule.get('value')[0]?.type).toBe('Reference');
+    expect(getEdgeAt({ node: rule, renderKey: EVAL }, 'value', 0)?.node.toTrimmedString()).toBe('red');
   });
 
-  it('keeps eval-time value writes state-local in patching', async () => {
+  it('clones only when the sequence shape changes during eval', async () => {
     const context = new Context();
-    const rule = seq([num(10), nil(), num(20)]);
+    const rule = seq([ref({ key: 'foo' }, { type: 'variable' }), num(20)]);
+    const scope = rules([
+      vardecl({
+        name: any('foo'),
+        value: nil()
+      })
+    ]);
+    context.root = scope;
+    context.rulesContext = scope;
 
     const evald = await rule.eval(context);
 
-    expect(evald.toTrimmedString({ context })).toBe('10 20');
-    expect(rule.get('value')).toHaveLength(3);
-    expect(rule.get('value')[1]?.type).toBe('Nil');
-    expect(rule.get('value').map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
+    expect(evald.toTrimmedString({ context })).toBe('20');
+    expect(evald).not.toBe(rule);
+    expect(rule.get('value')).toHaveLength(2);
+    expect(rule.get('value')[0]?.type).toBe('Reference');
+    expect(rule.get('value').map(node => node.type)).toEqual(['Reference', 'Num']);
   });
 
-  it('compares against state-patched values when called with context', () => {
+  it('compares against EVAL-path values when called with context', () => {
     const context = new Context();
     const left = seq([num(10), num(20)]);
     const right = seq([num(30), num(40)]);
+    const first = num(30);
+    const second = num(40);
+    context.renderKey = EVAL;
 
-    setField(left, 'value', [num(30), num(40)], context);
+    addEdgeAt(left, 'value', 0, EVAL, first);
+    addEdgeAt(left, 'value', 1, EVAL, second);
+    addParentEdge(first, EVAL, left);
+    addParentEdge(second, EVAL, left);
 
     expect(left.compare(right, context)).toBe(0);
   });
 
-  it('keeps contextless compare canonical when state patches exist', () => {
-    const context = new Context();
+  it('keeps contextless compare canonical when EVAL edges exist', () => {
     const left = seq([num(10), num(20)]);
     const right = seq([num(30), num(40)]);
+    const first = num(30);
+    const second = num(40);
 
-    setField(left, 'value', [num(30), num(40)], context);
+    addEdgeAt(left, 'value', 0, EVAL, first);
+    addEdgeAt(left, 'value', 1, EVAL, second);
 
     expect(left.compare(right)).toBe(-1);
-    expect(left.compare(right, context)).toBe(0);
+    expect(left.compare(right, { renderKey: EVAL } as Context)).toBe(0);
   });
 
-  it('passes context through nested sequence comparisons', () => {
+  it('passes render-key-selected values through nested sequence comparisons', () => {
     const context = new Context();
     const innerLeft = seq([num(10), num(20)]);
     const innerRight = seq([num(30), num(40)]);
     const left = seq([innerLeft]);
     const right = seq([innerRight]);
+    const first = num(30);
+    const second = num(40);
+    context.renderKey = EVAL;
 
-    setField(innerLeft, 'value', [num(30), num(40)], context);
+    addEdgeAt(innerLeft, 'value', 0, EVAL, first);
+    addEdgeAt(innerLeft, 'value', 1, EVAL, second);
+    addParentEdge(first, EVAL, innerLeft);
+    addParentEdge(second, EVAL, innerLeft);
 
     expect(left.compare(right)).toBe(-1);
     expect(left.compare(right, context)).toBe(0);
   });
 
-  it('keeps length canonical when state patches exist', () => {
-    const context = new Context();
+  it('keeps length canonical when EVAL edges exist', () => {
     const node = seq([num(10), num(20)]);
+    const alternate = num(30);
 
-    setField(node, 'value', [num(30)], context);
+    addEdgeAt(node, 'value', 0, EVAL, alternate);
+    addParentEdge(alternate, EVAL, node);
 
     expect(node.length).toBe(2);
-    expect(node.toTrimmedString({ context })).toBe('30');
+    expect(node.toTrimmedString({ context: { renderKey: EVAL } as Context })).toBe('30 20');
   });
 
-  it('keeps length canonical across competing eval states on the same node', () => {
+  it('keeps length canonical across competing render paths on the same node', () => {
     const node = seq([num(10), num(20)]);
-    const leftContext = new Context();
-    const rightContext = new Context();
-    setField(node, 'value', [num(30)], leftContext);
-    setField(node, 'value', [num(40), num(50), num(60)], rightContext);
+    const leftKey = {} as RenderKey;
+    const rightKey = {} as RenderKey;
+    addEdgeAt(node, 'value', 0, leftKey, num(30));
+    addEdgeAt(node, 'value', 0, rightKey, num(40));
+    addEdgeAt(node, 'value', 1, rightKey, num(50));
 
     expect(node.length).toBe(2);
-    expect(node.toTrimmedString({ context: leftContext })).toBe('30');
-    expect(node.toTrimmedString({ context: rightContext })).toBe('40 50 60');
+    expect(node.toTrimmedString({ context: { renderKey: leftKey } as Context })).toBe('30 20');
+    expect(node.toTrimmedString({ context: { renderKey: rightKey } as Context })).toBe('40 50');
   });
 
-  it('keeps inherited contextless valueOf canonical when state patches exist', () => {
-    const context = new Context();
+  it('keeps inherited contextless valueOf canonical when EVAL edges exist', () => {
     const node = seq([num(10), num(20)]);
+    const alternate = num(30);
 
-    setField(node, 'value', [num(30)], context);
+    addEdgeAt(node, 'value', 0, EVAL, alternate);
+    addParentEdge(alternate, EVAL, node);
 
     expect(node.valueOf()).toBe('1020');
-    expect(node.toTrimmedString({ context })).toBe('30');
+    expect(node.toTrimmedString({ context: { renderKey: EVAL } as Context })).toBe('30 20');
   });
 
   it('reads indexed children through the cursor model without mutating the canonical array', () => {

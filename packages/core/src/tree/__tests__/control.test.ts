@@ -66,6 +66,78 @@ describe('Control Nodes', () => {
     expect(evald.render(context)).toContain('index: 2');
   });
 
+  it('proves one loop iteration allocates one runtime key over a canonical template', async () => {
+    const context = new Context();
+    const loop = makeLoop(
+      makePattern(['value'], 'single'),
+      list([new Any('a')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    const canonicalBody = loop.get('rules');
+    const templateDecl = canonicalBody.at(0, context) as ReturnType<typeof decl>;
+    const root = rules([loop]);
+    const evald = await root.eval(context);
+    const css = evald.render(context);
+
+    expect(css).toContain('item: a;');
+    expect(context.renderCounter).toBe(1);
+    expect(canonicalBody.toTrimmedString()).toContain('item: $value;');
+    expect(templateDecl.get('value').toTrimmedString()).toBe('$value');
+    expect(canonicalBody.renderKey).toBeDefined();
+  });
+
+  it('proves three loop iterations allocate three runtime keys over one canonical template', async () => {
+    const context = new Context();
+    const loop = makeLoop(
+      makePattern(['value'], 'single'),
+      list([new Any('a'), new Any('b'), new Any('c')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    const canonicalBody = loop.get('rules');
+    const templateDecl = canonicalBody.at(0, context) as ReturnType<typeof decl>;
+    const root = rules([loop]);
+    const evald = await root.eval(context);
+    const css = evald.render(context);
+
+    expect(css).toContain('item: a;');
+    expect(css).toContain('item: b;');
+    expect(css).toContain('item: c;');
+    expect(css.indexOf('item: a;')).toBeLessThan(css.indexOf('item: b;'));
+    expect(css.indexOf('item: b;')).toBeLessThan(css.indexOf('item: c;'));
+    expect(context.renderCounter).toBe(3);
+    expect(canonicalBody.toTrimmedString()).toContain('item: $value;');
+    expect(templateDecl.get('value').toTrimmedString()).toBe('$value');
+  });
+
+  it('proves short nested loop output can keep outer and inner iteration paths distinct', async () => {
+    const context = new Context();
+    const innerLoop = makeLoop(
+      makePattern(['inner'], 'single'),
+      list([new Any('1'), new Any('2')]),
+      rules([
+        decl({ name: 'outer', value: ref({ key: 'outer' }, { type: 'variable' }) }),
+        decl({ name: 'inner', value: ref({ key: 'inner' }, { type: 'variable' }) })
+      ])
+    );
+    const outerLoop = makeLoop(
+      makePattern(['outer'], 'single'),
+      list([new Any('a'), new Any('b')]),
+      rules([innerLoop])
+    );
+    const root = rules([outerLoop]);
+
+    const evald = await root.eval(context);
+    const css = evald.render(context);
+
+    expect(css).toContain('outer: a;');
+    expect(css).toContain('outer: b;');
+    expect(css).toContain('inner: 1;');
+    expect(css).toContain('inner: 2;');
+    expect(context.renderCounter).toBe(6);
+  });
+
   it('evaluates $for with call iterable branch', async () => {
     const context = new Context();
     const root = rules([]);

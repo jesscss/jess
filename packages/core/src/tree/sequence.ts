@@ -1,4 +1,4 @@
-import { Node, F_STATIC, defineType } from './node.js';
+import { CANONICAL, Node, F_STATIC, defineType, type NodeEdge, type RenderKey } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
@@ -7,7 +7,8 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setParent } from './util/field-helpers.js';
+import { setParent } from './util/field-helpers.js';
+import { addEdgeAt, addParentEdge, removeParentEdge } from './util/cursor.js';
 
 export type SequenceOptions = {
   /**
@@ -35,6 +36,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   static override childKeys = ['value'] as const;
 
   value!: Node[];
+  valueEdges?: Array<NodeEdge<Node> | undefined>;
 
   constructor(value: Node[], options?: SequenceOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -47,7 +49,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   }
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const value = this.get('value', ctx);
+    const value = this.getValue(ctx?.renderKey ?? this.renderKey);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const clonedValue = deep
       ? value.map(child => cloneChild(child))
@@ -77,24 +79,47 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     return this.value.length;
   }
 
-  private _getOptions(context?: Context): SequenceOptions | undefined {
-    return context
-      ? getField<SequenceOptions | undefined>(this, 'options', context)
-      : this.options;
-  }
-
-  private _setValue(value: Node[], context: Context): void {
-    if (context.activeState.peek(this)) {
-      context.activeState.get(this).fields.set('value', value);
-      return;
+  getValue(renderKey?: RenderKey) {
+    if (renderKey === undefined || !this.valueEdges) {
+      return this.value;
     }
-    this.value = value;
-    for (const child of value) {
-      if (child instanceof Node) {
-        this.adopt(child);
+    let resolved: Node[] | undefined;
+    for (let i = 0; i < this.value.length; i++) {
+      const alternate = this.valueEdges[i]?.get(renderKey);
+      if (alternate !== undefined) {
+        (resolved ??= [...this.value])[i] = alternate;
       }
     }
-    this._invalidateValueOf();
+    return resolved ?? this.value;
+  }
+
+  getValueAt(index: number, renderKey?: RenderKey) {
+    return renderKey !== undefined
+      ? this.valueEdges?.[index]?.get(renderKey) ?? this.value[index]
+      : this.value[index];
+  }
+
+  private _replaceValueAt(index: number, node: Node, renderKey: RenderKey): void {
+    const previous = this.getValueAt(index, renderKey);
+    if (previous === node) {
+      return;
+    }
+    if (previous && previous !== node) {
+      removeParentEdge(previous, renderKey);
+    }
+    addEdgeAt(this, 'value', index, renderKey, node);
+    addParentEdge(node, renderKey, this);
+  }
+
+  private _cloneWithValue(value: Node[]): this {
+    const node = this.clone();
+    node.value = value;
+    for (const child of value) {
+      if (child instanceof Node) {
+        node.adopt(child);
+      }
+    }
+    return node;
   }
 
   // NOTE: `length` intentionally remains canonical for now. A state-aware
@@ -105,8 +130,9 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   override compare(other: Node, context?: Context) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const left = this.get('value', context);
-      const right = other.get('value', context);
+      const renderKey = context?.renderKey;
+      const left = this.getValue(renderKey);
+      const right = other.getValue(renderKey);
       const result = !context
         ? compareNodeArray(left, right, equalityMode)
         : compareSequenceItems(left, right, equalityMode, context);
@@ -129,7 +155,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.get('value', options.context);
+    const value = this.getValue(options.context?.renderKey ?? this.renderKey);
     const length = value.length;
 
     if (length === 0) {
@@ -185,28 +211,93 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     }
     let newSequence = this.clone();
     if (b instanceof List) {
-      return new List([newSequence, ...b.get('value')]).inherit(this);
+      return new List([newSequence, ...b.getValue(context.renderKey)]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.get('value', context).map(v => v.clone());
+      const values = b.getValue(context.renderKey).map(v => v.clone());
       if (values.length) {
         values[0]!.pre = 1;
       }
-      if (newSequence === this) {
-        this._setValue([...newSequence.get('value', context), ...values], context);
-      } else {
-        newSequence.setData('value', [...newSequence.get('value', context), ...values]);
+      newSequence.value = [...newSequence.getValue(context.renderKey), ...values];
+      for (const child of newSequence.value) {
+        newSequence.adopt(child);
       }
     } else {
       b = b.clone();
       b.pre = 1;
-      if (newSequence === this) {
-        this._setValue([...newSequence.get('value', context), b], context);
-      } else {
-        newSequence.setData('value', [...newSequence.get('value', context), b]);
+      newSequence.value = [...newSequence.getValue(context.renderKey), b];
+      for (const child of newSequence.value) {
+        newSequence.adopt(child);
       }
     }
     return newSequence;
+  }
+
+  override preEval(context: Context): MaybePromise<Node> {
+    if (this.preEvaluated) {
+      return this;
+    }
+    const renderKey = context.renderKey ?? this.renderKey;
+    const isNonCanonical = renderKey !== undefined && renderKey !== CANONICAL;
+    const value = this.getValue(renderKey);
+    const nextValue = [...value];
+
+    if (!this.hasFlag(F_STATIC)) {
+      const maybe = serialForEach(nextValue, (child, i) => {
+        const result = child.preEval(context);
+        if (isThenable(result)) {
+          return (result as Promise<Node>).then((resolved) => {
+            if (resolved !== child) {
+              nextValue[i] = resolved;
+            }
+          });
+        }
+        if (result !== child) {
+          nextValue[i] = result as Node;
+        }
+      });
+      if (isThenable(maybe)) {
+        return (maybe as Promise<void>).then(() => {
+          if (isNonCanonical) {
+            for (let i = 0; i < nextValue.length; i++) {
+              if (nextValue[i] !== value[i]) {
+                this._replaceValueAt(i, nextValue[i]!, renderKey);
+              }
+            }
+            this.preEvaluated = true;
+            return this;
+          }
+          const changed = nextValue.some((child, i) => child !== value[i]);
+          if (!changed) {
+            this.preEvaluated = true;
+            return this;
+          }
+          const node = this._cloneWithValue(nextValue);
+          node.preEvaluated = true;
+          return node;
+        });
+      }
+      if (isNonCanonical) {
+        for (let i = 0; i < nextValue.length; i++) {
+          if (nextValue[i] !== value[i]) {
+            this._replaceValueAt(i, nextValue[i]!, renderKey);
+          }
+        }
+        this.preEvaluated = true;
+        return this;
+      }
+      const changed = nextValue.some((child, i) => child !== value[i]);
+      if (!changed) {
+        this.preEvaluated = true;
+        return this;
+      }
+      const node = this._cloneWithValue(nextValue);
+      node.preEvaluated = true;
+      return node;
+    }
+
+    this.preEvaluated = true;
+    return this;
   }
 
   /**
@@ -226,10 +317,11 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
+    const renderKey = context.renderKey ?? this.renderKey;
+    const isNonCanonical = renderKey !== undefined && renderKey !== CANONICAL;
     return pipe(
       () => {
-        const node = this;
-        const nextValue = [...node.get('value', context)];
+        const nextValue = [...this.getValue(renderKey)];
         let changed = false;
         const maybe = serialForEach(nextValue.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
@@ -248,24 +340,34 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
-            if (changed) {
-              node._setValue(nextValue, context);
-            }
-            return node;
+            return { changed, nextValue };
           });
         }
-        if (changed) {
-          node._setValue(nextValue, context);
-        }
-        return node;
+        return { changed, nextValue };
       },
-      (node) => {
-        const value = node.get('value', context).filter(n => n && !(n instanceof Nil));
-        node._setValue(value, context);
-        if (value.length === 1 && !node._getOptions(context)?.preserveWhitespace) {
+      ({ changed, nextValue }) => {
+        const currentValue = this.getValue(renderKey);
+        const value = nextValue.filter(n => n && !(n instanceof Nil));
+        const shapeChanged = value.length !== currentValue.length;
+
+        if (isNonCanonical && !shapeChanged) {
+          if (changed) {
+            for (let i = 0; i < value.length; i++) {
+              if (value[i] !== currentValue[i]) {
+                this._replaceValueAt(i, value[i]!, renderKey);
+              }
+            }
+          }
+          return this;
+        }
+
+        if (value.length === 1 && !this.options?.preserveWhitespace) {
           return value[0]!;
         }
-        return node;
+        if (!changed && !shapeChanged) {
+          return this;
+        }
+        return this._cloneWithValue(value);
       }
     );
   }

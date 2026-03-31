@@ -280,6 +280,44 @@ So:
 Generic `childEdges` maps are temporary migration scaffolding only, not the
 target architecture.
 
+### List-Like Containers
+
+List-like nodes should not automatically clone just because one indexed child
+evaluates to a different node on a non-canonical render path.
+
+For nodes such as:
+
+- `Rules`
+- `Sequence`
+- `List`
+
+the preferred rule is:
+
+- keep the canonical container node
+- keep canonical `value`
+- record per-index alternate children in `valueEdges`
+
+So if only slot `i` changes for `EVAL`, the container stays the same node and
+only:
+
+```ts
+valueEdges[i]?.set(EVAL, nextChild)
+```
+
+changes.
+
+Clone the container only when the container's own local shape changes in a way
+that indexed child edges cannot represent cleanly, for example:
+
+- the list length changes
+- the node collapses to a different non-container node
+- a non-child local field changes
+
+So:
+
+- indexed child replacement alone: use `valueEdges`
+- local shape change: return a different node
+
 ### Local `Rules` Wrappers
 
 Local scope registries should live on shallow `Rules` wrappers, not on the

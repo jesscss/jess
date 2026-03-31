@@ -128,25 +128,25 @@ This section tracks only edge/cursor conversion status.
 | `SelectorCapture` | `converted` | Simple child surface converted to direct field + render-key read path. |
 | `SelectorInterpolated` | `converted` | Simple child surface converted to direct field + render-key read path. |
 | `Url` | `converted` | Simple child surface converted to direct field + render-key read path. |
-| `List` | `converted` | List child surface converted to direct field + render-key read path. |
+| `List` | `converted` | Canonical container stays in place for same-length render-path child replacement; `valueEdges` now carry indexed alternates and local shape changes return a different node. |
 | `Rest` | `converted` | Simple child surface converted to direct field + render-key read path. |
-| `Sequence` | `converted` | List child surface converted to direct field + render-key read path. |
-| `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding now indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation now updates/removes `parentEdges` directly on wrapper-owned paths. Still hybrid because render walks and option/state surfaces still mix edge work with overlay-era behavior. |
-| `Ruleset` | `in_progress` | Direct field getters are now field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and invalid overlay-era tests were removed. Remaining red is in mixin/reference lookup, not the `Ruleset` field surface itself. |
-| `AtRule` | `in_progress` | Current-view `prelude` / `rules` reads improved, but node is not edge/cursor-complete. |
+| `Sequence` | `converted` | Canonical container stays in place for same-length render-path child replacement; `valueEdges` carry indexed alternates and only shape changes return a different node. |
+| `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation updates/removes `parentEdges` directly on wrapper-owned paths. Main blocker now is scope ownership still leaking through `renderParent` instead of a pure parent-edge / cursor model. |
+| `Ruleset` | `in_progress` | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Remaining red is not the field API itself; it is hoist/mixin scope ownership that still feeds `Reference` through side channels. |
+| `AtRule` | `in_progress` | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. Current blocker is nested prelude/body scope ownership, not `AtRule` field access. |
+| `Reference` | `in_progress` | Current lookup-parent walk still depends on `context.rulesContext` and `Rules.renderParent` as side channels. This now directly blocks nested `@media` param lookup and caller-context mixin selector composition. |
 | `Call` | `not_converted` | Old wrapper/materialize characterization tests were deleted. Remaining production seam is returned-result shaping through `util/legacy-node-ops.ts` instead of direct edge/cursor ownership. |
-| `Mixin` | `not_converted` | Still routes body/current-view handling through hybrid clone/state-era behavior. |
+| `Mixin` | `not_converted` | Invocation/output scope still depends on thin `Rules` wrappers plus `renderParent`; not yet expressed as a pure edge/cursor-owned placement model. |
 | `Control` | `not_converted` | Still relies on hybrid loop/output plumbing rather than direct edge/cursor ownership; remaining focused failures are loop call-iterable lookup and merged declaration coalescing. |
 
 Only the `converted` rows are valid hard-gate targets for focused edge/cursor tests.
 
 ## Immediate Next Work
 
-1. Keep removing `Context` from reads that only need `renderKey`.
-2. Keep replacing generic traversal assumptions with cursor-based parent/child
-   traversal.
-3. Convert `Rules`, then `Ruleset`, then `AtRule` into real edge/cursor nodes
-   before treating their broader tests as architectural gates.
+1. Replace `Rules.renderParent` lookup semantics with a real parent-edge / cursor-owned scope path.
+2. Convert `Reference` parent/scope resolution to follow that path directly instead of consulting `context.rulesContext` as a side channel.
+3. Revisit nested `AtRule` prelude evaluation and mixin-output selector composition after the lookup owner is explicit.
+4. Only after that, continue broader `Mixin` / `Control` conversion work.
 
 ## Transitional Baggage To Remove
 
@@ -157,3 +157,4 @@ Only listed here when it directly blocks edge/cursor work:
 - clone/materialize behavior used in place of edge/cursor ownership
 - `packages/core/src/tree/util/field-helpers.ts` as the activeState compatibility sewer
 - `packages/core/src/tree/util/legacy-node-ops.ts` as quarantined returned-result shaping
+- `Rules.renderParent` as an undocumented scope-parent side channel

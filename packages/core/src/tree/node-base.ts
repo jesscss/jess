@@ -80,7 +80,7 @@ export type LocationInfoOrEmpty = LocationInfo | [];
  */
 export type OptionalLocation = LocationInfoOrEmpty | undefined;
 
-export type RenderKey = object | symbol;
+export type RenderKey = number | symbol;
 
 export const CANONICAL: unique symbol = Symbol('CANONICAL');
 export const EVAL: unique symbol = Symbol('EVAL');

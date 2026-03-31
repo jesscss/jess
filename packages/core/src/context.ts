@@ -302,6 +302,7 @@ export class Context {
    */
   id = generateId();
   ruleCounter = 0;
+  renderCounter = 0;
 
   /** Rules depth, used to figure out source order */
   depth = -1;
@@ -441,6 +442,10 @@ export class Context {
   private _exports: Set<string> | undefined;
   get exports(): Set<string> {
     return (this._exports ??= new Set());
+  }
+
+  nextRenderKey(): RenderKey {
+    return ++this.renderCounter;
   }
 
   /**

@@ -6,7 +6,7 @@ import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setParent } from './util/field-helpers.js';
+import { getField } from './util/field-helpers.js';
 
 export type ParenOptions = {
   escaped?: boolean;
@@ -118,17 +118,13 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
             return value;
           }
         }
-        let node = this.clone();
-        if (node === this) {
-          const prevValue = this.get('value', context);
-          context.activeState.get(node).fields.set('value', value);
-          if (prevValue instanceof Node && prevValue !== value) {
-            setParent(prevValue, undefined, context);
-          }
-          setParent(value, node, context);
-        } else {
-          node.setData('value', value);
+        const node = this.clone();
+        const previousValue = node.value;
+        node.value = value;
+        if (previousValue instanceof Node && previousValue !== value) {
+          previousValue.parent = undefined;
         }
+        node.adopt(value);
         return node;
       };
       if (isThenable(maybeEvald)) {

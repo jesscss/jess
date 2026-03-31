@@ -36,7 +36,6 @@ export type PreparedMixinCandidateInvocation = {
   rules: Rules;
   params: List<Node> | undefined;
   outerRules: Rules | undefined;
-  lookupScope: Rules;
   guardScopeChildren: readonly Node[] | undefined;
 };
 
@@ -61,7 +60,6 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
   outerRules?: Rules;
   guard?: Condition | Bool;
   parent: Node | undefined;
-  lookupScope: Rules;
   guardScopeChildren?: readonly Node[];
   hasDefault: boolean;
   context: Context;
@@ -137,20 +135,6 @@ export function bindMixinParamValue(
 ): void {
   param.value = value;
   param.adopt(value, context);
-}
-
-/**
- * Attach a canonical mixin body to its transient param scope through the active
- * eval state subtree. This keeps the canonical body parent-free while allowing
- * lookups to walk body -> paramScope -> outer scope.
- */
-export function attachMixinBodyToParamScope(
-  body: Rules,
-  paramScope: Rules,
-  context: Context
-): void {
-  void context;
-  paramScope.adopt(body);
 }
 
 /**
@@ -258,7 +242,7 @@ export function seedMixinGuardScope(
 ): Rules {
   const nextScope = scope ?? Rules.create([]);
   setParent(nextScope, guardParent, context);
-  const activeChildren = scopeChildren ?? getChildren(nextScope, context);
+  const activeChildren = scopeChildren ?? nextScope.getRegistryChildren(context);
   if (scopeChildren) {
     setChildren(nextScope, activeChildren, context, { markDirty: false });
   }
@@ -279,7 +263,6 @@ export function seedMixinGuardScope(
  * canonical body attached through state parent shadow only.
  */
 export function prepareMixinInvocationScope(
-  body: Rules,
   definitionParent: Node | undefined,
   placementParent: Node | undefined,
   index: number,
@@ -291,35 +274,24 @@ export function prepareMixinInvocationScope(
     return undefined;
   }
   const scope = createMixinParamScope(index);
-  void body;
   populateMixinParamScope(scope, params, context);
   defineMixinArgumentsInScope(scope, params, nodeArgs, context);
   scope.parent = placementParent ?? definitionParent;
-  scope.renderParent = isNode(definitionParent, N.Rules)
-    ? definitionParent as Rules
-    : undefined;
   return scope;
 }
 
 export function createMixinInvocationRules(
   body: Rules,
-  definitionParent: Node | undefined,
-  placementParent: Node | undefined,
-  renderParent: Rules | undefined,
+  lookupParent: Node | undefined,
   sourceParent: Node | undefined,
   index: number,
-  _params: List<Node> | undefined,
-  _nodeArgs: readonly Node[],
-  context: Context
+  _context: Context
 ): Rules {
   const renderKey = Symbol('mixin-invocation');
   const wrapper = body.createShallowBodyWrapper(undefined, renderKey);
   wrapper.index = index;
-  wrapper.parent = placementParent ?? definitionParent;
-  wrapper.renderParent = renderParent
-    ?? (isNode(definitionParent, N.Rules) ? definitionParent as Rules : undefined);
+  wrapper.parent = lookupParent;
   wrapper.sourceParent = sourceParent;
-  void context;
 
   wrapper.options = {
     ...wrapper.options,
@@ -401,7 +373,6 @@ export function prepareMixinCandidateInvocation(
   const normalizedParams = normalizeMixinInvocationParams(params, context);
   const outerRules = normalizedParams
     ? prepareMixinInvocationScope(
-        rules,
         parent,
         placementParent,
         index,
@@ -410,15 +381,12 @@ export function prepareMixinCandidateInvocation(
         context
       )
     : undefined;
+  const lookupParent = outerRules ?? placementParent ?? parent;
   const invocationRules = createMixinInvocationRules(
     rules,
-    parent,
-    placementParent,
-    outerRules,
+    lookupParent,
     sourceParent,
     index,
-    normalizedParams,
-    nodeArgs,
     context
   );
 
@@ -426,7 +394,6 @@ export function prepareMixinCandidateInvocation(
     rules: invocationRules,
     params: normalizedParams,
     outerRules,
-    lookupScope: invocationRules,
     guardScopeChildren: outerRules
       ? [...outerRules.value]
       : undefined
@@ -443,26 +410,23 @@ export function withMixinLookupScope<T>(
   fn: () => MaybePromise<T>
 ): MaybePromise<T> {
   const previousRulesContext = context.rulesContext;
-  const previousLookupScope = context.lookupScope;
   const previousRenderKey = context.renderKey;
-  context.lookupScope = scope;
-  context.rulesContext = scope!;
+  if (scope) {
+    context.rulesContext = scope;
+  }
   context.renderKey = scope?.renderKey ?? previousRenderKey;
   try {
     const out = fn();
     if (isThenable(out)) {
       return (out as Promise<T>).finally(() => {
-        context.lookupScope = previousLookupScope;
         context.rulesContext = previousRulesContext;
         context.renderKey = previousRenderKey;
       });
     }
-    context.lookupScope = previousLookupScope;
     context.rulesContext = previousRulesContext;
     context.renderKey = previousRenderKey;
     return out;
   } catch (error) {
-    context.lookupScope = previousLookupScope;
     context.rulesContext = previousRulesContext;
     context.renderKey = previousRenderKey;
     throw error;
@@ -480,7 +444,6 @@ export async function evaluateMixinGuardCandidate(
   guardNode: Condition | Bool | undefined,
   outerRules: Rules | undefined,
   guardParent: Node | undefined,
-  lookupScope: Rules,
   context: Context,
   scopeChildren: readonly Node[] | undefined,
   hasDefault: boolean
@@ -504,7 +467,7 @@ export async function evaluateMixinGuardCandidate(
       );
       context.isDefault = isDefaultValue;
       const probeResult = await withMixinLookupScope(
-        nextScope ?? lookupScope,
+        nextScope,
         context,
         () => guardNode.eval(context)
       );
@@ -537,76 +500,6 @@ export async function evaluateMixinGuardCandidate(
     passes: result.passes,
     outerRules: result.outerRules
   };
-}
-
-/**
- * Turn a session-evaluated mixin body into a portable returned result tree.
- *
- * Direct body eval now writes resolved values through shadow state on the
- * canonical body. Returned mixin output cannot depend on that transient state
- * still being active during later serialization or downstream composition, so
- * this boundary materializes only the returned wrapper/result shape.
- */
-/**
- * Finalize mixin invocation output.
- *
- * Creates a thin distinct wrapper per call so each call's output can
- * carry its own _carriedState. No deep materialization — the wrapper
- * shares children with the canonical body. Only the wrapper itself
- * is a new object (one allocation per call, not N per subtree).
- */
-export function finalizeMixinInvocationOutput(
-  rules: Rules,
-  context: Context,
-  subtree?: EvalState
-): Rules {
-  const output = rules;
-  void context;
-  void subtree;
-  return output;
-}
-
-/**
- * Project bound mixin params into the returned output shape.
- *
- * Older mixin semantics exposed bound param vars at the top of the returned
- * rules block. Keep that behavior as an explicit output-shaping primitive
- * instead of leaving it implicit inside `getFunctionFromMixins()`.
- */
-/**
- * Param vars should be readable through the carried position/session, not
- * materialized into the output. The position already holds the bound values.
- */
-export function projectMixinParamScopeIntoOutput(
-  output: Rules,
-  scope: Rules | undefined,
-  context: Context
-): Rules {
-  if (!scope) {
-    return output;
-  }
-
-  const projectedParams = getChildren(scope, context)
-    .filter((node): node is VarDeclaration => {
-      if (!isNode(node, N.VarDeclaration)) {
-        return false;
-      }
-      if (!node.options?.paramVar) {
-        return false;
-      }
-      return node.get('name', context).valueOf() !== 'arguments';
-    });
-
-  if (projectedParams.length === 0) {
-    return output;
-  }
-
-  const merged = Rules.create(
-    [...projectedParams, ...getChildren(output, context)],
-    output.options ? { ...output.options } : undefined
-  );
-  merged.inherit(output);
-  return merged;
 }
 
 /**
@@ -739,9 +632,6 @@ export async function evaluateRulesetMixinCandidateOutput(
   const renderKey = Symbol('ruleset-mixin');
   let rules = sourceRules.createShallowBodyWrapper(undefined, renderKey);
   rules.parent = parent;
-  if (context.rulesContext && context.rulesContext !== rules) {
-    rules.renderParent = context.rulesContext;
-  }
   rules.sourceParent = sourceParent;
   const previousRulesContext = context.rulesContext;
   const previousRenderKey = context.renderKey;
@@ -757,7 +647,7 @@ export async function evaluateRulesetMixinCandidateOutput(
   }
   seededFrames.reverse();
   context.rulesContext = rules;
-  context.renderKey = renderKey;
+  context.renderKey = rules.renderKey;
   context.frames = seededFrames;
   context.rulesetFrames = seededFrames.filter((frame): frame is Ruleset => isNode(frame, N.Ruleset));
   try {
@@ -770,9 +660,6 @@ export async function evaluateRulesetMixinCandidateOutput(
   }
   rules.sourceParent = sourceParent;
   rules.parent = parent;
-  if (rules.renderParent === undefined && previousRulesContext && previousRulesContext !== rules) {
-    rules.renderParent = previousRulesContext;
-  }
   rules.index = candidateIndex;
   rules.options.isMixinOutput = restrictMixinOutputLookup;
   return rules;
@@ -812,7 +699,6 @@ export async function processPreparedMixinCandidate<TCandidate>(
     outerRules,
     guard,
     parent,
-    lookupScope,
     guardScopeChildren,
     hasDefault,
     context,
@@ -825,7 +711,6 @@ export async function processPreparedMixinCandidate<TCandidate>(
       guard,
       nextOuterRules,
       parent,
-      lookupScope,
       context,
       guardScopeChildren,
       hasDefault
@@ -846,7 +731,7 @@ export async function processPreparedMixinCandidate<TCandidate>(
   }
 
   await withMixinLookupScope(
-    nextOuterRules ?? lookupScope,
+    nextOuterRules ?? rules,
     context,
     () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params)
   );
@@ -1324,21 +1209,26 @@ export async function evaluateCandidateOutput(
   }
   try {
     const callerParent = getParentFn(candidate);
-    void outerRules;
     rules.parent = invocationParent ?? callerParent;
-    rules.renderParent = outerRules ?? rules.renderParent;
     rules.sourceParent = sourceParent;
-
-    let newRules: Rules = await rules.eval(context);
-    newRules = finalizeMixinInvocationOutput(newRules, context);
+    const previousRenderKey = context.renderKey;
+    context.renderKey = rules.renderKey;
+    let newRules: Rules;
+    try {
+      newRules = await rules.eval(context);
+    } finally {
+      context.renderKey = previousRenderKey;
+    }
+    void outerRules;
     if (newRules.renderKey === CANONICAL) {
       newRules.renderKey = rules.renderKey;
     }
     newRules.parent = invocationParent ?? callerParent;
-    newRules.renderParent = outerRules ?? rules.renderParent;
     newRules.sourceParent = sourceParent;
     newRules.index = candidate.index;
-    newRules.options.isMixinOutput = restrictMixinOutputLookup;
+    newRules.options.isMixinOutput = outerRules
+      ? false
+      : restrictMixinOutputLookup;
     if (context.treeContext?.file) {
       newRules.options.rulesVisibility ??= {};
       newRules.options.rulesVisibility.VarDeclaration = 'private';
@@ -1462,7 +1352,6 @@ export async function dispatchMixinEvalCandidates(
       outerRules: prepared.outerRules,
       guard: canonicalGuard,
       parent: getCandidateParent(candidate),
-      lookupScope: prepared.lookupScope,
       guardScopeChildren: prepared.guardScopeChildren,
       hasDefault,
       context,

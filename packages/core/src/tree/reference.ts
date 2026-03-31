@@ -133,12 +133,6 @@ function isInsideSelectorCapture(node: Node | undefined, context?: Context): boo
 }
 
 function getLookupParentNode(node: Node, context: Context): Node | undefined {
-  if (isNode(node, N.Rules)) {
-    const renderRulesParent = (node as Rules).renderParent;
-    if (renderRulesParent) {
-      return renderRulesParent;
-    }
-  }
   const renderKey = context.renderKey ?? context.rulesContext?.renderKey;
   if (renderKey !== undefined && renderKey !== CANONICAL) {
     return getParentEdge({ node, renderKey })?.node ?? node.parent;
@@ -665,6 +659,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         let returnVal: any;
         if (isNode(lookupTarget, N.Rules)) {
           returnVal = performLookup(lookupTarget);
+
+          if (
+            returnVal === undefined
+            && context.lookupScope
+            && context.lookupScope !== lookupTarget
+          ) {
+            returnVal = performLookup(context.lookupScope);
+          }
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {

@@ -1,9 +1,10 @@
 import { type Context } from '../context.js';
-import { defineType, F_MAY_ASYNC, Node, type NodeEdge, type RenderKey } from './node.js';
+import { CANONICAL, defineType, F_MAY_ASYNC, Node, type NodeEdge, type RenderKey } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
+import { addEdgeAt, addParentEdge, removeParentEdge } from './util/cursor.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type ListOptions = {
@@ -46,14 +47,36 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
   value: T[];
   valueEdges?: Array<NodeEdge<T> | undefined>;
 
-  getValue() {
-    return this.valueEdges ?? this.value;
+  getValue(renderKey?: RenderKey) {
+    if (renderKey === undefined || !this.valueEdges) {
+      return this.value;
+    }
+    let resolved: T[] | undefined;
+    for (let i = 0; i < this.value.length; i++) {
+      const alternate = this.valueEdges[i]?.get(renderKey);
+      if (alternate !== undefined) {
+        (resolved ??= [...this.value])[i] = alternate;
+      }
+    }
+    return resolved ?? this.value;
   }
 
   getValueAt(index: number, renderKey?: RenderKey) {
     return renderKey !== undefined
       ? this.valueEdges?.[index]?.get(renderKey) ?? this.value[index]
       : this.value[index];
+  }
+
+  private _replaceValueAt(index: number, node: T, renderKey: RenderKey): void {
+    const previous = this.getValueAt(index, renderKey);
+    if (previous === node) {
+      return;
+    }
+    if (previous && previous !== node) {
+      removeParentEdge(previous, renderKey);
+    }
+    addEdgeAt(this, 'value', index, renderKey, node);
+    addParentEdge(node, renderKey, this);
   }
 
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
@@ -93,7 +116,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let value = this.getValue();
+    const activeRenderKey = renderKey ?? options.context?.renderKey ?? this.renderKey;
+    let value = this.getValue(activeRenderKey);
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
@@ -137,9 +161,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    let { renderKey } = context;
-    const ownItems = this.getValue();
-    const nextItems = b instanceof List ? b.value : [b as T];
+    const ownItems = this.getValue(context.renderKey);
+    const nextItems = b instanceof List ? b.getValue(context.renderKey) : [b as T];
     let newList = this.clone();
     const nextValue = [...ownItems, ...nextItems];
     newList.value = nextValue;
@@ -151,13 +174,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (this.preEvaluated) {
       return this;
     }
-
-    const node = this.clone();
-    node.preEvaluated = true;
-    const value = node.get('value', context);
+    const renderKey = context.renderKey ?? this.renderKey;
+    const isNonCanonical = renderKey !== undefined && renderKey !== CANONICAL;
+    const value = this.getValue(renderKey);
     const nextValue = value.slice();
 
-    if (!node.hasFlag(F_MAY_ASYNC)) {
+    if (!this.hasFlag(F_MAY_ASYNC)) {
       let changed = false;
       for (let i = 0; i < nextValue.length; i++) {
         const child = nextValue[i]!;
@@ -168,13 +190,27 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         }
       }
       if (changed) {
-        if (node === this) {
-          context.activeState.get(node).fields.set('value', nextValue);
+        if (isNonCanonical) {
+          for (let i = 0; i < nextValue.length; i++) {
+            const child = nextValue[i]!;
+            if (child !== value[i]) {
+              this._replaceValueAt(i, child, renderKey);
+            }
+          }
+          this.preEvaluated = true;
+          return this;
         } else {
+          const node = this.clone();
+          node.preEvaluated = true;
           node.value = nextValue;
+          for (const child of nextValue) {
+            node.adopt(child);
+          }
+          return node;
         }
       }
-      return node;
+      this.preEvaluated = true;
+      return this;
     }
 
     let changed = false;
@@ -196,27 +232,57 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          if (node === this) {
-            context.activeState.get(node).fields.set('value', nextValue);
+          if (isNonCanonical) {
+            for (let i = 0; i < nextValue.length; i++) {
+              const child = nextValue[i]!;
+              if (child !== value[i]) {
+                this._replaceValueAt(i, child, renderKey);
+              }
+            }
+            this.preEvaluated = true;
+            return this;
           } else {
+            const node = this.clone();
+            node.preEvaluated = true;
             node.value = nextValue;
+            for (const child of nextValue) {
+              node.adopt(child);
+            }
+            return node;
           }
         }
-        return node;
+        this.preEvaluated = true;
+        return this;
       });
     }
     if (changed) {
-      if (node === this) {
-        context.activeState.get(node).fields.set('value', nextValue);
+      if (isNonCanonical) {
+        for (let i = 0; i < nextValue.length; i++) {
+          const child = nextValue[i]!;
+          if (child !== value[i]) {
+            this._replaceValueAt(i, child, renderKey);
+          }
+        }
+        this.preEvaluated = true;
+        return this;
       } else {
+        const node = this.clone();
+        node.preEvaluated = true;
         node.value = nextValue;
+        for (const child of nextValue) {
+          node.adopt(child);
+        }
+        return node;
       }
     }
-    return node;
+    this.preEvaluated = true;
+    return this;
   }
 
   protected override evalNode(context: Context): MaybePromise<Node> {
-    const value = this.get('value', context.renderKey);
+    const renderKey = context.renderKey ?? this.renderKey;
+    const isNonCanonical = renderKey !== undefined && renderKey !== CANONICAL;
+    const value = this.getValue(renderKey);
     const nextValue = value.slice();
 
     if (!this.hasFlag(F_MAY_ASYNC)) {
@@ -230,7 +296,21 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         }
       }
       if (changed) {
-        context.activeState.get(this).fields.set('value', nextValue);
+        if (isNonCanonical) {
+          for (let i = 0; i < nextValue.length; i++) {
+            const child = nextValue[i]!;
+            if (child !== value[i]) {
+              this._replaceValueAt(i, child, renderKey);
+            }
+          }
+          return this;
+        }
+        const node = this.clone();
+        node.value = nextValue;
+        for (const child of nextValue) {
+          node.adopt(child);
+        }
+        return node;
       }
       return this;
     }
@@ -254,13 +334,41 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          context.activeState.get(this).fields.set('value', nextValue);
+          if (isNonCanonical) {
+            for (let i = 0; i < nextValue.length; i++) {
+              const child = nextValue[i]!;
+              if (child !== value[i]) {
+                this._replaceValueAt(i, child, renderKey);
+              }
+            }
+            return this;
+          }
+          const node = this.clone();
+          node.value = nextValue;
+          for (const child of nextValue) {
+            node.adopt(child);
+          }
+          return node;
         }
         return this;
       });
     }
     if (changed) {
-      context.activeState.get(this).fields.set('value', nextValue);
+      if (isNonCanonical) {
+        for (let i = 0; i < nextValue.length; i++) {
+          const child = nextValue[i]!;
+          if (child !== value[i]) {
+            this._replaceValueAt(i, child, renderKey);
+          }
+        }
+        return this;
+      }
+      const node = this.clone();
+      node.value = nextValue;
+      for (const child of nextValue) {
+        node.adopt(child);
+      }
+      return node;
     }
     return this;
   }
