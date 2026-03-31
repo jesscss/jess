@@ -1,18 +1,14 @@
 import type { Node } from './tree/node-base.js';
 import type { RulesetRegistry, MixinRegistry, DeclarationRegistry, FunctionRegistry } from './tree/util/registry-utils.js';
-import type { EvalDependency } from './tree/util/field-helpers.js';
 
 /**
  * Per-node state within an EvalState.
  *
- * Common fields (replacement, evaluated, preEvaluated) are pre-initialized
- * for a stable V8 hidden class. Rare fields (fields, subtree) use `declare`
+ * Common eval flags are pre-initialized for a stable V8 hidden class.
+ * Rare fields (fields, registries) use `declare`
  * or lazy getters to stay off the instance until needed.
  */
 export class NodeState {
-  /** Tree-structural: this canonical node becomes this node */
-  replacement: Node | undefined = undefined;
-
   /** Common eval flags */
   evaluated = false;
   preEvaluated = false;
@@ -23,38 +19,26 @@ export class NodeState {
     return (this._fields ??= new Map());
   }
 
-  /** Dependency tracking — stays off instance until first access */
-  declare _dependency: EvalDependency | undefined;
-
   /** Per-type registries — created lazily on first register(), never on find() */
   declare rulesetRegistry: RulesetRegistry | undefined;
   declare mixinRegistry: MixinRegistry | undefined;
   declare declarationRegistry: DeclarationRegistry | undefined;
   declare functionRegistry: FunctionRegistry | undefined;
-
-  /** Recursive subtree state — stays off instance until first access */
-  declare _subtree: EvalState | undefined;
-  get subtree(): EvalState {
-    return (this._subtree ??= new EvalState());
-  }
 }
 
 /**
  * Sparse overlay on the canonical AST for one evaluation pass.
  *
- * Two kinds of patches:
- *   - Node patches:  canonical node → replacement node (tree structure)
- *   - Field patches: any node → property overrides (metadata)
+ * Field patches:
+ *   - any node → property overrides (metadata)
  *
- * Recursive: a node patch can carry its own EvalState for the replacement's
+ * Recursive: a node patch can carry its own EvalState for a reused
  * subtree, enabling the same canonical subtree (mixin body, import) to be
  * reused with different bindings at different call sites.
  *
  * Usage:
- *   state.get(node).replacement = newNode;   // auto-creates NodeState
  *   state.get(node).evaluated = true;
  *   state.get(node).fields.set('index', 3);
- *   state.peek(node)?.replacement;            // read-only, no allocation
  */
 export class EvalState extends Map<Node, NodeState> {
   /** Parent state in the eval state chain (set when pushed onto stack) */

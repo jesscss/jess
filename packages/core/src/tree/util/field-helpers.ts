@@ -1,7 +1,6 @@
 import { EVAL, type Node } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
-import type { EvalState } from '../../eval-state.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { addEdgeAt, addParentEdge, removeParentEdge } from './cursor.js';
@@ -212,7 +211,7 @@ export function replaceNode(
   replacement: Node,
   ctx: Context
 ): void {
-  ctx.activeState.get(node).replacement = replacement;
+  ctx.replacementMap.set(node, replacement);
 }
 
 export function markScopeDirty(
@@ -232,7 +231,7 @@ export function getDependency(
   node: Node,
   ctx: Context
 ): EvalDependency | null {
-  return ctx.activeState.resolve(node)?._dependency ?? null;
+  return ctx.dependencyMap.get(node) ?? null;
 }
 
 export function setDependency(
@@ -240,7 +239,7 @@ export function setDependency(
   dependency: EvalDependency,
   ctx: Context
 ): void {
-  ctx.activeState.get(node)._dependency = dependency;
+  ctx.dependencyMap.set(node, dependency);
 }
 
 export function mergeDependencies(
@@ -279,22 +278,14 @@ export function isTopLevelVarDeclaration(
   return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
 }
 
-const changedVarsMap = new WeakMap<EvalState, Set<Node>>();
-
 export function markChangedVar(ctx: Context, node: Node): void {
-  const state = ctx.activeState;
-  let set = changedVarsMap.get(state);
-  if (!set) {
-    set = new Set();
-    changedVarsMap.set(state, set);
-  }
-  set.add(node);
+  ctx.changedVars.add(node);
 }
 
 export function hasChangedVars(ctx: Context): boolean {
-  return (changedVarsMap.get(ctx.activeState)?.size ?? 0) > 0;
+  return ctx.changedVars.size > 0;
 }
 
 export function getChangedVars(ctx: Context): Set<Node> | undefined {
-  return changedVarsMap.get(ctx.activeState);
+  return ctx.changedVars.size > 0 ? ctx.changedVars : undefined;
 }

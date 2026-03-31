@@ -22,6 +22,7 @@ import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
+import type { EvalDependency } from './tree/util/field-helpers.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -505,6 +506,9 @@ export class Context {
   /** Maps output nodes (mixin/import/loop results) to their call-site EvalState.
    *  Global lookup — works from any context, any direction. */
   readonly subtreeMap = new WeakMap<Node, EvalState>();
+  readonly replacementMap = new WeakMap<Node, Node>();
+  readonly dependencyMap = new WeakMap<Node, EvalDependency>();
+  readonly changedVars = new Set<Node>();
 
   /** @deprecated — use activeState directly */
   resolveField(node: Node, field: string): unknown {

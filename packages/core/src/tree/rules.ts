@@ -933,7 +933,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Push this node's subtree (if any) so child nodes resolve
       // patched fields during serialization.
       const subtree = this._carriedState as EvalState | undefined
-        ?? ctx?.activeState.peek(this)?._subtree
         ?? ctx?.subtreeMap.get(this);
       if (ctx && subtree) {
         ctx.pushState(subtree);
@@ -955,7 +954,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       inheritedRenderKey?: RenderKey
     ) => {
       const subtree = (rules._carriedState as EvalState | undefined)
-        ?? context?.activeState.peek(rules)?._subtree
         ?? context?.subtreeMap.get(rules)
         ?? activeSubtree;
       const renderKey = rules.renderKey ?? inheritedRenderKey;
