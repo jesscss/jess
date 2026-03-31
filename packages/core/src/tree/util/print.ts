@@ -135,11 +135,11 @@ export class OutputWriter implements OutputWriter {
     }
 
     // Record a mapping segment if we have origin location info
-    const origin: any = originParam as any;
-    const loc: any = origin && origin.location;
+    const origin = originParam as { location?: unknown; treeContext?: { file?: { fullPath?: string; path?: string; name?: string } } } | undefined;
+    const loc = origin?.location;
     if (loc && Array.isArray(loc) && loc.length === 6) {
-      const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
-      const startColumn = (loc[2] ?? 1) - 1;   // convert to 0-based
+      const startLine = ((loc[1] as number) ?? 1) - 1;     // convert to 0-based
+      const startColumn = ((loc[2] as number) ?? 1) - 1;   // convert to 0-based
       const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
       this._segments.push({
         genLine: this._line,

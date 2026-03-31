@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { Node, F_STATIC, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
@@ -127,7 +128,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     // Keep value focused on channels/node; rendering intent is held in options.
     colorData.format = undefined;
-    super(colorData as any, colorOptions, location, context);
+    super(colorData, colorOptions, location, context);
     this._rgbChannels = colorData.rgb;
     this._hslChannels = colorData.hsl;
     this._alphaValue = colorData.alpha;
@@ -136,14 +137,14 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   override clone(deep?: boolean): this {
-    const options = (this as any)._meta?.options;
+    const options = this._meta?.options;
     const colorData: any = {
       node: this._nodeValue,
       rgb: this._rgbChannels ? [...this._rgbChannels] : undefined,
       hsl: this._hslChannels ? [...this._hslChannels] : undefined,
       alpha: this._alphaValue
     };
-    const newNode = new (this.constructor as any)(
+    const newNode = new (this.constructor as Class<this>)(
       colorData,
       options ? { ...options } : undefined,
       this.location,

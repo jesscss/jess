@@ -58,7 +58,7 @@ export class Any<
     location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
@@ -95,19 +95,17 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherNumber = (other as any).number;
-      const otherUnit = (other as any).unit;
-      if (typeof otherNumber !== 'number') {
+      if (!('number' in other) || typeof other.number !== 'number') {
         return undefined;
       }
-      if (other.type === 'Dimension' && otherUnit) {
+      if (other.type === 'Dimension' && 'unit' in other && other.unit) {
         return undefined;
       }
-      return Number(text) === otherNumber ? 0 : undefined;
+      return Number(text) === other.number ? 0 : undefined;
     }
-    if ((other as any).toString) {
+    if (typeof other.toString === 'function') {
       const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-      return normalize(this.toString()) === normalize((other as any).toString()) ? 0 : undefined;
+      return normalize(this.toString()) === normalize(other.toString()) ? 0 : undefined;
     }
     return undefined;
   }

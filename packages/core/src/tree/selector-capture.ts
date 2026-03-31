@@ -23,7 +23,7 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
   /** @internal */ value!: Selector;
 
   constructor(value: Selector, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     if (this.value instanceof Node) {
       this.adopt(this.value);

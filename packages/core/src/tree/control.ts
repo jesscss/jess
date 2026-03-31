@@ -113,7 +113,7 @@ function getControlDeclarationAssignType(node: Node, context: Context): Assignme
     node,
     'options',
     context,
-    (node as any).options
+    node.options as { normalizedFromAssign?: AssignmentType } | undefined
   );
   return options?.normalizedFromAssign;
 }

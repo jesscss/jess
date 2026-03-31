@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { type Context } from '../context.js';
 import { Color, ColorFormat } from './color.js';
 import {
@@ -50,7 +51,7 @@ export class Dimension extends Node<DimensionValue> {
     location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.number = value.number;
     this.unit = value.unit;
     this.addFlag(F_STATIC);
@@ -72,8 +73,8 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   override clone(deep?: boolean): this {
-    const options = (this as any)._meta?.options;
-    const newNode = new (this.constructor as any)(
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
       { number: this.number, unit: this.unit },
       options ? { ...options } : undefined,
       this.location,
@@ -193,7 +194,7 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String((b as any).value ?? '').trim();
+      const text = String(('value' in b ? b.value : '') ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }

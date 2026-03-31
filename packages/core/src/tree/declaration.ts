@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import {
   Node,
   F_STATIC,
@@ -107,7 +108,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   /** @internal */ important: Any<'flag'> | undefined;
 
   constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.name = value.name;
     this.value = value.value;
     this.important = value.important;
@@ -389,7 +390,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
 
           const expanded: Node[] = [];
-          const declCtor = declNode.constructor as any;
+          const declCtor = declNode.constructor as Class<Declaration>;
           const prefix = String(declNode.name.valueOf());
 
           if (nested.baseValue) {
@@ -399,7 +400,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 value: nested.baseValue.copy(true),
                 important: cloneImportant()
               },
-              { ...declNode.options } as any,
+              { ...declNode.options },
               declNode.location,
               this.treeContext
             ));
@@ -427,7 +428,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   value: resolvedCurrent.value.copy(true),
                   important: (resolvedCurrent.important?.copy(true) as Any<'flag'> | undefined)
                 },
-                { ...resolvedCurrent.options } as any,
+                { ...resolvedCurrent.options },
                 resolvedCurrent.location,
                 this.treeContext
               );

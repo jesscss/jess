@@ -16,7 +16,7 @@ import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError, type JessErrorCode } from './jess-error.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
@@ -680,11 +680,11 @@ export class Context {
     let source: string;
     try {
       source = await sourceGetter.getSource!(resolvedPath);
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw error;
     }
     const parseResult = plugin.safeParse!(resolvedPath, source, {
-      compilerOptions: this.opts as Record<string, any>
+      compilerOptions: this.opts
     });
 
     // Collect normalized errors and warnings from plugin
@@ -696,7 +696,7 @@ export class Context {
       // Throw the first error as a JessError
       const firstError = parseResult.errors[0]!;
       throw new JessError({
-        code: firstError.code as any,
+        code: firstError.code as JessErrorCode,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,
@@ -744,7 +744,7 @@ export class Context {
       column: 1
     });
     return {
-      node: null as any,
+      node: null as unknown as Rules,
       triedPaths,
       resolvedPath
     };
@@ -772,7 +772,7 @@ export class Context {
 
     const plugin = this.findParserPlugin(type, ext);
     const tree = await plugin.parse!(virtualPath, content, {
-      compilerOptions: this.opts as Record<string, any>
+      compilerOptions: this.opts
     });
 
     if (!tree) {

@@ -10,7 +10,7 @@ import { N } from '../node-type.js';
 import { getImplicitSelector, getParentReplacementForAmpersand, wrapParentSelectorForNestedContext } from './selector-utils.js';
 import { selectorMatch } from './selector-match-core.js';
 import type { Node } from '../node.js';
-import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node-base.js';
+import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type NodeValue } from '../node-base.js';
 
 /**
  * @todo Once extend correctness is stabilized and the remaining suites are
@@ -1182,7 +1182,7 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     alternative.setData(lastIndex, wrapped);
 
     const nextData = (target as CompoundSelector).get('value').filter((_, index) => !(index >= location.startIndex! && index <= location.endIndex! && index !== pseudoIndex));
-    target.setData(nextData as any);
+    target.setData(nextData as NodeValue);
     return createSuccessResult(target);
   }
 
@@ -1476,7 +1476,7 @@ export function tryExtendSelector(
       return finalize(createSuccessResult(target, false));
     }
     if (isNode(replacement, preserveRootKinds)) {
-      target.setData([...(replacement as SelectorList | ComplexSelector | CompoundSelector).get('value')] as any);
+      target.setData([...(replacement as SelectorList | ComplexSelector | CompoundSelector).get('value')] as NodeValue);
       markTargetHoist();
       return finalize(createSuccessResult(target));
     }

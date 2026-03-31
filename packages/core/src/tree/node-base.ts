@@ -192,11 +192,23 @@ export abstract class Node<
     return (this._location ??= []);
   }
 
-  private _meta: NodeMeta<O> | undefined;
+  protected _meta: NodeMeta<O> | undefined;
   private _metaFlags = 0;
 
   private _getMeta(): NodeMeta<O> {
     return (this._meta ??= {});
+  }
+
+  protected _existingOptions(): (O & AllNodeOptions) | undefined {
+    return this._meta?.options;
+  }
+
+  protected _field(key: string): unknown {
+    return (this as unknown as Record<string, unknown>)[key];
+  }
+
+  protected _setField(key: string, val: unknown): void {
+    (this as unknown as Record<string, unknown>)[key] = val;
   }
 
   /** Assigned in index to avoid circularity */
@@ -908,7 +920,7 @@ export abstract class Node<
     treeContext?: TreeContext
   ) {
     (this as any).parent = undefined;
-    this.index = undefined as any;
+    this.index = undefined!;
     this._location = location;
     if (options !== undefined || treeContext !== undefined) {
       this._meta = {

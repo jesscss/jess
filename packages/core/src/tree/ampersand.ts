@@ -129,10 +129,10 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
     let finalTemplate: string | Nil | undefined;
     if (typeof value === 'string' || value instanceof Nil) {
       finalTemplate = value;
-      super(value as any, options, location, treeContext);
+      super(value as { template?: string | Nil }, options, location, treeContext);
     } else {
       finalTemplate = value?.template ?? value?.appendValue;
-      super(finalTemplate as any, options, location, treeContext);
+      super(finalTemplate as { template?: string | Nil }, options, location, treeContext);
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
@@ -402,8 +402,8 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
             for (let s of n.nodes(true)) {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
-                if (typeof (s as any).value === 'string') {
-                  s.setData((s as any).value + template);
+                if ('value' in s && typeof s.value === 'string') {
+                  s.setData(s.value + template);
                   appended = true;
                   break;
                 }
@@ -456,7 +456,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newNode = super.clone(deep, cloneFn) as this;
-    // super.clone() for leaf nodes calls new Ampersand((this as any).value, ...).
+    // super.clone() for leaf nodes calls new Ampersand(this.value, ...).
     // Ampersand stores its data in the template instance field, not in .value,
     // so we must patch it explicitly on the clone.
     newNode.template = this.template;

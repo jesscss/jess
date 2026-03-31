@@ -25,7 +25,7 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   /** @internal */ value!: Quoted | Any;
 
   constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     if (value instanceof Node) {
       this.adopt(value);
@@ -49,11 +49,11 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
     if (isNode(value, N.Quoted)) {
       value = value.get('value') as string | Quoted | Any;
       if (isNode(value)) {
-        return String((value as any).value);
+        return String(value);
       }
       return value as string;
     }
-    return (value as any).value;
+    return String(value);
   }
 
   override evalNode(context: Context): MaybePromise<Url> {

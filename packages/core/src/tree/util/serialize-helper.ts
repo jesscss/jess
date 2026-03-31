@@ -101,10 +101,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
-  const deferredExpandedChildren: any[] = [];
-  const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
-    const seen = new Set<any>();
-    const queue: any[] = [start];
+  const deferredExpandedChildren: Node[] = [];
+  const sourceChainHas = (start: Node, predicate: (n: Node) => boolean): boolean => {
+    const seen = new Set<Node>();
+    const queue: (Node | undefined)[] = [start];
     while (queue.length > 0) {
       const current = queue.shift();
       if (!current || seen.has(current)) {
@@ -118,7 +118,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     return false;
   };
-  const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
+  const originatesFromCall = (n: Node): boolean => sourceChainHas(n, current => current?.type === 'Call');
   if (rulesToRender.length === 0) {
     options.referenceMode = previousReferenceMode;
     options.referenceRenderEnabled = previousReferenceRenderEnabled;
@@ -210,7 +210,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     if (isNode(n, N.Rules)) {
       // Reference-mode Rules preserved by flatRules — serialize with referenceMode cascading
-      const ownRefMode = (n as any).options?.referenceMode === true;
+      const ownRefMode = n.options?.referenceMode === true;
       const childRefMode = inReferenceMode || ownRefMode;
       const entering = !inReferenceMode && ownRefMode;
       const childRenderEnabled = childRefMode
@@ -243,7 +243,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
             childSelector === `${parentSelector} ${parentSelector}`
             || childSelector.startsWith(`${parentSelector} ${parentSelector} `)
           );
-        const fromCall = originatesFromCall(n as any);
+        const fromCall = originatesFromCall(n);
         const laterCandidates = rulesToRender.slice(idx + 1);
         const hasLaterExternalNonContainer = laterCandidates.some((later) => {
           if (!later.visible && !later.fullRender) {

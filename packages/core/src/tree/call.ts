@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -111,8 +112,8 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       }
     }
 
-    const options = (this as any)._meta?.options;
-    const newNode = new (this.constructor as any)(
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
       cloneData,
       options ? { ...options } : undefined,
       this.location,
@@ -131,7 +132,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
   }
 
   constructor(value: CallValue, options?: CallOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
@@ -388,7 +389,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await evalArgNodes(args) ?? list([]);
-      const result = await (n as any).evalCall(context, argNodes);
+      const result = await n.evalCall(context, argNodes);
       context.callStack.pop();
       context.parenFrames.pop();
       return applyDependencyToResult(
@@ -451,7 +452,10 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           }
           args = copiedArgs;
         }
-        const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
+        const shouldPassListArgs = Boolean(
+          ('_internal' in fn && fn._internal)
+          || ('options' in fn && typeof fn.options === 'object' && fn.options !== null && 'params' in fn.options && fn.options.params)
+        );
         const fnCallable = fn as (...args: any[]) => any;
         const result = await (
           args

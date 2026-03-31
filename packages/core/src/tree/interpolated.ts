@@ -91,7 +91,7 @@ export class Interpolated<
   /** @internal */ replacements!: Node[];
 
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.source = value.source;
     this.replacements = value.replacements;
     for (const r of this.replacements) {

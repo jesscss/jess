@@ -267,8 +267,8 @@ export const splitSequence = (): PreprocessParams => {
         // Add the right operand if it exists and is not a placeholder (Num with value 0)
         // This handles test cases where Num(0) is used as a placeholder for undefined
         if (right) {
-          const isPlaceholder = right.type === 'Num'
-            && (right as any).number === 0;
+          const isPlaceholder = isNode(right, N.Dimension)
+            && right.number === 0;
           if (!isPlaceholder) {
             splitArgs.push(right);
           }

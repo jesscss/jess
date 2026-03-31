@@ -31,7 +31,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
   readonly escaped: boolean;
 
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     this.quote = options?.quote;
     this.escaped = !!options?.escaped;
@@ -88,13 +88,13 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
       }
       return left > right ? 1 : -1;
     }
-    return (other as any).toString && this.toString() === (other as any).toString() ? 0 : undefined;
+    return typeof other.toString === 'function' && this.toString() === other.toString() ? 0 : undefined;
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
     let value: string | Any | Interpolated | Node = this.get('value', context);
     const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
-      value = v as any;
+      value = v;
       if (this.escaped) {
         if (value instanceof Node) {
           return value as Node as Quoted | Any | Interpolated;

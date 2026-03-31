@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
@@ -6,6 +7,7 @@ import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
 import { EvalState } from '../eval-state.js';
+import { JessError } from '../jess-error.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -155,8 +157,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
   private withType: 'with' | 'set' | undefined;
 
   override clone(deep?: boolean): this {
-    const options = (this as any)._meta?.options;
-    const newNode = new (this.constructor as any)(
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
       {
         path: deep ? this.path.clone(deep) : this.path,
         withNode: deep && this.withNode instanceof Node ? this.withNode.clone(deep) : this.withNode,
@@ -354,11 +356,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     let maybePath;
     try {
       maybePath = path.eval(context);
-    } catch (e: any) {
-      // Tag path-resolution errors so the eval-queue retry policy can
-      // distinguish "path interpolation not ready" (cheap, worth retrying)
-      // from "content evaluation failed" (expensive clone, not worth retrying).
-      e._isPathResolutionError = true;
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        Object.assign(e, { _isPathResolutionError: true });
+      }
       throw e;
     }
     let originalDepth = context.depth;
@@ -418,11 +419,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         } else {
           try {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
-          } catch (error: any) {
+          } catch (error: unknown) {
             if (importOptions!.optional) {
               return Rules.create([]);
             }
-            if (importOptions!.reference && (error?.phase === 'parse' || String(error?.code ?? '').startsWith('parse/'))) {
+            if (importOptions!.reference && error instanceof JessError
+              && (error.phase === 'parse' || String(error.code ?? '').startsWith('parse/'))) {
               return Rules.create([]);
             }
             throw error;

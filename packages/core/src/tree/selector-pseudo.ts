@@ -42,7 +42,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
   /** @internal */ arg: Node | undefined;
 
   constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.name = value.name;
     this.arg = value.arg;
     if (this.arg instanceof Node) {

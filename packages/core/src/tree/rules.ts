@@ -192,7 +192,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _cloneOptionsForContext(context?: Context): (RulesOptions & NodeOptions) | undefined {
     const options = context
       ? this.getCurrentOptions(context)
-      : (this as any)._meta?.options as (RulesOptions & NodeOptions) | undefined;
+      : this._meta?.options as (RulesOptions & NodeOptions) | undefined;
     if (!options) {
       return undefined;
     }
