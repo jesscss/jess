@@ -1,10 +1,9 @@
-import { CANONICAL, Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type RenderKey } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
 import { Sequence } from './sequence.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
-import { AssignmentType } from './declaration.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -13,7 +12,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
-import { getChildren } from './util/field-helpers.js';
+import { appendScopedOutputNodes, createCounterNode, evaluateScopedBodyWithBindings } from './util/scoped-body-eval.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -54,281 +53,6 @@ function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
   return vars;
 }
 
-function sameNodeValue(a: Node | undefined, b: Node | undefined): boolean {
-  const left = String(a?.valueOf?.() ?? '').trim();
-  const right = String(b?.valueOf?.() ?? '').trim();
-  return left === right;
-}
-
-function shouldReuseInPriorScope(node: Node): boolean {
-  if (!isNode(node, N.Declaration)) {
-    return true;
-  }
-  const normalizedFromAssign = node.options.normalizedFromAssign;
-  return (
-    normalizedFromAssign !== AssignmentType.Add
-    && normalizedFromAssign !== AssignmentType.MergeList
-    && normalizedFromAssign !== AssignmentType.MergeSequence
-    && String(node.get('name')) !== 'padding'
-  );
-}
-
-function cloneForPriorScope(node: Node, context: Context): Node {
-  if (isNode(node, N.Rules)) {
-    return node.createShallowBodyWrapper(context);
-  }
-  return node.clone();
-}
-
-function createPriorIterationScope(
-  accumulatedNodes: readonly Node[],
-  loopTemplate: Rules,
-  context: Context
-): Rules | undefined {
-  if (accumulatedNodes.length === 0) {
-    return undefined;
-  }
-  const priorScope = new Rules(
-    accumulatedNodes
-      .filter(shouldReuseInPriorScope)
-      .map(n => cloneForPriorScope(n, context))
-  );
-  priorScope.inherit(loopTemplate);
-  return priorScope;
-}
-
-function createLoopIterationRules(
-  loopTemplate: Rules,
-  priorScope: Rules | undefined,
-  iterationKey: RenderKey,
-  context: Context
-): Rules {
-  // Keep the current deep-clone behavior until child replacement/render-key
-  // inheritance is fully aligned for repeated body evaluation.
-  const loopRules = loopTemplate.clone(true, undefined, context);
-  loopRules.inherit(loopTemplate);
-  if (loopRules.renderKey === CANONICAL) {
-    loopRules.renderKey = iterationKey;
-  }
-  if (priorScope) {
-    (loopRules as unknown as { parent?: Node }).parent = priorScope;
-  }
-  return loopRules;
-}
-
-function createLoopBindings(
-  bindingNames: readonly string[],
-  resolvedValue: Node,
-  resolvedKey: Node,
-  counter: number
-): VarDeclaration[] {
-  const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
-  const declarations: VarDeclaration[] = [];
-  for (let i = Math.min(bindingNames.length, bindings.length) - 1; i >= 0; i--) {
-    declarations.push(new VarDeclaration({
-      name: new Any(bindingNames[i]!, { role: 'property' }),
-      value: bindings[i]!
-    }));
-  }
-  return declarations;
-}
-
-function getControlDeclarationValue(node: Node): Node {
-  return (node as Node & { value: Node }).value;
-}
-
-function getControlDeclarationName(node: Node): string {
-  return String((node as Node & { name: Node }).name);
-}
-
-function getControlDeclarationAssignType(node: Node): AssignmentType | undefined {
-  return (node as Node & { options?: { normalizedFromAssign?: AssignmentType } }).options?.normalizedFromAssign;
-}
-
-function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
-  node.adopt(value, context);
-  (node as Node & { value: Node }).value = value;
-}
-
-function cloneCurrentNodeForOutput<T extends Node>(node: T, context: Context): T {
-  const Class = node.constructor as new (...args: any[]) => T;
-  const childKeys = (node.constructor as unknown as typeof Node).childKeys;
-  const options = node.options ? { ...node.options } : undefined;
-
-  if (childKeys === null) {
-    return node.clone();
-  }
-
-  let cloneData: any;
-  if (childKeys.length === 1) {
-    const value = node.get(childKeys[0]!, context);
-    cloneData = Array.isArray(value) ? [...value] : value;
-  } else {
-    cloneData = {};
-    for (const key of childKeys) {
-      const value = node.get(key!, context);
-      cloneData[key!] = Array.isArray(value) ? [...value] : value;
-    }
-  }
-
-  const cloned = new Class(cloneData, options, node.location, node.treeContext);
-  cloned.inherit(node);
-  return cloned;
-}
-
-function mergeControlDeclarationValues(
-  outNode: Node,
-  prev: Node,
-  normalizedFromAssign: AssignmentType | undefined,
-  context: Context
-): void {
-  if (!isNode(prev, N.Declaration) || !isNode(outNode, N.Declaration)) {
-    return;
-  }
-  const prevValue = getControlDeclarationValue(prev);
-  const nextValue = getControlDeclarationValue(outNode);
-  if (
-    normalizedFromAssign === AssignmentType.Add
-    || normalizedFromAssign === AssignmentType.MergeList
-  ) {
-    const prevItems = isNode(prevValue, N.List)
-      ? prevValue.get('value')
-      : [prevValue];
-    const nextItems = isNode(nextValue, N.List)
-      ? nextValue.get('value')
-      : [nextValue];
-    const nextAlreadyIncludesPrev =
-      nextItems.length >= prevItems.length
-      && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
-    const mergedItems = nextAlreadyIncludesPrev
-      ? [...nextItems]
-      : [...prevItems, ...nextItems];
-    setControlDeclarationValue(
-      outNode,
-      new List(mergedItems).inherit(nextValue),
-      context
-    );
-    return;
-  }
-  if (normalizedFromAssign === AssignmentType.MergeSequence) {
-    const prevItems = isNode(prevValue, N.Sequence)
-      ? prevValue.get('value')
-      : [prevValue];
-    const nextItems = isNode(nextValue, N.Sequence)
-      ? nextValue.get('value')
-      : [nextValue];
-    const nextAlreadyIncludesPrev =
-      nextItems.length >= prevItems.length
-      && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
-    const mergedItems = nextAlreadyIncludesPrev
-      ? [...nextItems]
-      : [...prevItems, ...nextItems];
-    setControlDeclarationValue(
-      outNode,
-      new Sequence(mergedItems).inherit(nextValue),
-      context
-    );
-  }
-}
-
-function findMatchingAccumulatedDeclarationIndex(
-  accumulatedNodes: readonly Node[],
-  outName: string
-): number {
-  for (let i = 0; i < accumulatedNodes.length; i++) {
-    const prev = accumulatedNodes[i]!;
-    if (isNode(prev, N.Declaration) && getControlDeclarationName(prev) === outName) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-function removeDuplicateAccumulatedDeclarationsAfter(
-  accumulatedNodes: Node[],
-  outName: string,
-  firstMatch: number
-): void {
-  for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
-    const prev = accumulatedNodes[i]!;
-    if (isNode(prev, N.Declaration) && getControlDeclarationName(prev) === outName) {
-      accumulatedNodes.splice(i, 1);
-    }
-  }
-}
-
-function insertControlNodeBeforeFirstNestedRuleset(
-  accumulatedNodes: Node[],
-  outNode: Node
-): boolean {
-  for (let i = 0; i < accumulatedNodes.length; i++) {
-    if (isNode(accumulatedNodes[i]!, N.Ruleset | N.Rules)) {
-      accumulatedNodes.splice(i, 0, outNode);
-      return true;
-    }
-  }
-  return false;
-}
-
-function appendControlOutputNode(
-  accumulatedNodes: Node[],
-  outNode: Node,
-  context: Context
-): void {
-  if (isNode(outNode, N.Declaration)) {
-    const normalizedFromAssign = getControlDeclarationAssignType(outNode);
-    const outName = getControlDeclarationName(outNode);
-    const isMergedAssignment =
-      normalizedFromAssign === AssignmentType.Add
-      || normalizedFromAssign === AssignmentType.MergeList
-      || normalizedFromAssign === AssignmentType.MergeSequence;
-    // Keep manual by-name coalescing narrowly scoped to legacy padding merges.
-    // `index` declarations in plain loop bodies should remain per-iteration.
-    const shouldCoalesceByName = outName === 'padding';
-    if (isMergedAssignment || shouldCoalesceByName) {
-      const firstMatch = findMatchingAccumulatedDeclarationIndex(accumulatedNodes, outName);
-      if (firstMatch >= 0) {
-        mergeControlDeclarationValues(
-          outNode,
-          accumulatedNodes[firstMatch]!,
-          normalizedFromAssign,
-          context
-        );
-        accumulatedNodes[firstMatch] = outNode;
-        removeDuplicateAccumulatedDeclarationsAfter(accumulatedNodes, outName, firstMatch);
-        return;
-      }
-      // Keep merged declarations before nested rulesets to avoid split-output
-      // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
-      if (insertControlNodeBeforeFirstNestedRuleset(accumulatedNodes, outNode)) {
-        return;
-      }
-    }
-  }
-  accumulatedNodes.push(outNode);
-}
-
-function collectScopedResultNodes(result: Node, context: Context): Node[] {
-  if (!isNode(result, N.Rules)) {
-    return [result];
-  }
-  return getChildren(result, context).map(rawOutNode => cloneCurrentNodeForOutput(rawOutNode, context));
-}
-
-async function evalScopedRulesForOutput(
-  scopedRules: Rules,
-  context: Context
-): Promise<Node[]> {
-  const previousRenderKey = context.renderKey;
-  try {
-    context.renderKey = scopedRules.renderKey;
-    const result = await scopedRules.eval(context);
-    return collectScopedResultNodes(result, context);
-  } finally {
-    context.renderKey = previousRenderKey;
-  }
-}
-
 async function resolveLoopEntryKey(
   key: number | string | Node,
   counter: number,
@@ -355,16 +79,42 @@ async function evaluateForIteration(
   counter: number,
   context: Context
 ): Promise<Node[]> {
-  const priorScope = createPriorIterationScope(accumulatedNodes, loopTemplate, context);
-  const iterationKey = context.nextRenderKey();
-  const loopRules = createLoopIterationRules(loopTemplate, priorScope, iterationKey, context);
   const resolvedValue = await value.eval(context);
   const resolvedKey = await resolveLoopEntryKey(key, counter, context);
-  const bindings = createLoopBindings(bindingNames, resolvedValue, resolvedKey, counter);
-  for (const varDecl of bindings) {
-    loopRules.unshift(varDecl);
+  return evaluateScopedBodyWithBindings(
+    loopTemplate,
+    accumulatedNodes,
+    [
+      { name: bindingNames[0]!, value: resolvedValue },
+      { name: bindingNames[1] ?? '', value: resolvedKey },
+      { name: bindingNames[2] ?? '', value: createCounterNode(counter) }
+    ].filter(binding => binding.name),
+    context
+  );
+}
+
+async function evaluateForOutput(
+  loopTemplate: Rules,
+  bindingNames: readonly string[],
+  evaluatedIterable: Node,
+  context: Context
+): Promise<Rules> {
+  const accumulatedNodes: Node[] = [];
+  let counter = 1;
+  for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+    const outputNodes = await evaluateForIteration(
+      loopTemplate,
+      accumulatedNodes,
+      bindingNames,
+      value,
+      key,
+      counter,
+      context
+    );
+    counter++;
+    appendScopedOutputNodes(accumulatedNodes, outputNodes, context);
   }
-  return evalScopedRulesForOutput(loopRules, context);
+  return new Rules(accumulatedNodes);
 }
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
@@ -575,26 +325,8 @@ export class For extends Node<ForValue, any, ForChildData> {
       throw new Error('Invalid $for header: missing binding variable');
     }
     const run = async (): Promise<Node> => {
-      const accumulatedNodes: Node[] = [];
-      let counter = 1;
       const evaluatedIterable = await iterable.eval(context);
-      for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const outputNodes = await evaluateForIteration(
-          loopTemplate,
-          accumulatedNodes,
-          bindingNames,
-          value,
-          key,
-          counter,
-          context
-        );
-        counter++;
-        for (const outNode of outputNodes) {
-          appendControlOutputNode(accumulatedNodes, outNode, context);
-        }
-      }
-      const output = new Rules(accumulatedNodes);
-      return output;
+      return evaluateForOutput(loopTemplate, bindingNames, evaluatedIterable, context);
     };
     return run();
   }
