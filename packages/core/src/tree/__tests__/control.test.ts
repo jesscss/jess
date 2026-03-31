@@ -110,7 +110,7 @@ describe('Control Nodes', () => {
     expect(templateDecl.get('value').toTrimmedString()).toBe('$value');
   });
 
-  it('proves short nested loop output can keep outer and inner iteration paths distinct', async () => {
+  it('proves short nested loop output keeps outer and inner iteration paths distinct and preserves outer lookup inside the inner loop', async () => {
     const context = new Context();
     const innerLoop = makeLoop(
       makePattern(['inner'], 'single'),
@@ -134,6 +134,11 @@ describe('Control Nodes', () => {
     expect(css).toContain('outer: b;');
     expect(css).toContain('inner: 1;');
     expect(css).toContain('inner: 2;');
+    expect(css.match(/outer: a;/g)).toHaveLength(2);
+    expect(css.match(/outer: b;/g)).toHaveLength(2);
+    expect(css).toMatch(
+      /outer: a;[\s\S]*inner: 1;[\s\S]*outer: a;[\s\S]*inner: 2;[\s\S]*outer: b;[\s\S]*inner: 1;[\s\S]*outer: b;[\s\S]*inner: 2;/
+    );
     expect(context.renderCounter).toBe(6);
   });
 
