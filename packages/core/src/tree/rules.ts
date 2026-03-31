@@ -605,7 +605,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
-  private _setValueArray(value: Node[]): void {
+  _setValueArray(value: Node[]): void {
     (this as unknown as { value: Node[] }).value = value;
   }
 
@@ -725,7 +725,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _getRenderVisibleChildAt(index: number, context?: Context): Node | undefined {
+  private _getRenderVisibleChildAt(index: number, _context?: Context): Node | undefined {
     const canonical = this.value[index];
     if (this.renderKey === CANONICAL) {
       return canonical;
@@ -779,7 +779,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       setChildren(this, value, context, { markDirty });
       return;
     }
-    this.setData([...value]);
+    const nextValue = [...value];
+    this._setValueArray(nextValue);
+    for (const child of nextValue) {
+      this.adopt(child);
+    }
   }
 
   private _setChildAt(index: number, node: Node, context?: Context, markDirty: boolean = true): void {
@@ -787,7 +791,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       setChildAt(this, index, node, context, { markDirty });
       return;
     }
-    this.setData(index, node);
+    const nextValue = [...this.value];
+    nextValue[index] = node;
+    this._setValueArray(nextValue);
+    this.adopt(node);
   }
 
   /**

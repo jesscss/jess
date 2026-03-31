@@ -12,10 +12,6 @@ import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
 import { getParent, mergeDependencies, setDependency, setParent } from './util/field-helpers.js';
-import {
-  cloneDetachedMaterializedWrapper,
-  materializeEvaluatedCopy
-} from './util/legacy-node-ops.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -153,7 +149,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  private _getOptions(context?: Context): CallOptions | undefined {
+  private _getOptions(_context?: Context): CallOptions | undefined {
     return this.options;
   }
 
@@ -299,13 +295,13 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           if (childKeys === null) {
             return cloneLeafDownstreamResult(node);
           }
-          return materializeEvaluatedCopy(node, context) as T;
+          return node;
         }
         return node;
       };
       const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
         if (node === node.sourceNode && isNode(node, N.Rules)) {
-          return cloneDetachedMaterializedWrapper(node, context) as T;
+          return node.clone(false, undefined, context) as T;
         }
         return materializeDownstreamResult(node);
       };

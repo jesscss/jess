@@ -1,7 +1,6 @@
 import {
   Node,
   F_VISIBLE,
-  F_AMPERSAND,
   F_EXTENDED,
   F_EXTEND_TARGET,
   F_IMPLICIT_AMPERSAND,
@@ -22,16 +21,13 @@ import { atIndex } from './util/collections.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Ampersand } from './ampersand.js';
-import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
-import type { CompoundSelector } from './selector-compound.js';
 import { SelectorList } from './selector-list.js';
 import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getCurrentParentNode, getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
-import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -182,7 +178,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       normalized.push(childRuleset);
     }
     if (normalized.length !== rules.value.length || normalized.some((node, index) => node !== rules.value[index])) {
-      rules.setData(normalized);
+      rules._setValueArray(normalized);
       for (const child of normalized) {
         rules.adopt(child);
       }
@@ -256,7 +252,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       : this.selectorBeforeExtend;
   }
 
-  setSelectorBeforeExtend(selector: Selector | Nil | undefined, context: Context): void {
+  setSelectorBeforeExtend(selector: Selector | Nil | undefined, _context: Context): void {
     this.selectorBeforeExtend = selector;
   }
 
@@ -711,12 +707,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !disableTargetFilteringForTopLevelList
     );
     Ruleset.ensureSelectorVisible(renderSelector);
-    const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
-    let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
-    let selOut = w.capture(() => renderSelector.toString(options));
+    const selOut = w.capture(() => renderSelector.toString(options));
     options.referenceFilterTargets = prevReferenceFilterTargets;
-    /** Normalize single spacing */
-    out += selOut.replace(/[ \t]+/g, ' ');
     return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
   }
 
@@ -729,7 +721,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node.sourceNode ??= this;
       const rulesetOptions = node.options;
       let rules = node.enterRules(context);
-      let guard = node.getGuard(renderKey);
       // On re-eval (e.g. mixin clone), use the pre-composition ownSelector so we
       // compose from the authored selector, not the already-composed one.
       let selector: Selector | Nil = rulesetOptions.ownSelector ?? node.getSelector(renderKey);
@@ -752,23 +743,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         rules.setCurrentOptions(nextRulesOptions, context);
       }
-      // Check if there's a root-only at-rule between us and the parent ruleset
-      // If so, don't inherit the parent selector (root-only at-rules like @keyframes
-      // don't propagate parent selectors to their children)
-      let shouldInheritSelector = true;
       const parentRuleset = context.rulesetFrames.at(-1);
-      const parentRulesetIndex = parentRuleset ? context.frames.lastIndexOf(parentRuleset) : -1;
-      if (parentRulesetIndex >= 0) {
-        // Check frames after the parent ruleset for any root-only at-rules
-        for (let i = parentRulesetIndex + 1; i < context.frames.length; i++) {
-          const frame = context.frames[i];
-          if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
-            shouldInheritSelector = false;
-            break;
-          }
-        }
-      }
-
       const parentSelector = parentRuleset?.getSelector(parentRuleset._resolveRenderKey(context));
       // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
       node.setOwnSelector(selector);
@@ -842,8 +817,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // are registered in source order before we process extends.
           // Push this ruleset to the frame so nested rulesets get the correct parent selector
           // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
-      const childRules = node.enterRules(context);
-      /** @todo ???? */
+          const childRules = node.enterRules(context);
           if (childRules && !(childRules as unknown as Ruleset).preEvaluated) {
             context.rulesetFrames.push(node as Ruleset);
             if (extendRoot) {

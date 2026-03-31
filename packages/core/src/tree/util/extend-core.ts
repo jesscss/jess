@@ -10,7 +10,7 @@ import { N } from '../node-type.js';
 import { getImplicitSelector, getParentReplacementForAmpersand, wrapParentSelectorForNestedContext } from './selector-utils.js';
 import { selectorMatch } from './selector-match-core.js';
 import type { Node } from '../node.js';
-import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node-base.js';
+import { F_AMPERSAND } from '../node-base.js';
 
 /**
  * @todo Once extend correctness is stabilized and the remaining suites are
@@ -144,8 +144,36 @@ function normalizeSelectorListAlternatives(list: SelectorList): void {
   }
 
   if (flattened.length !== list.get('value').length) {
-    list.setData(flattened);
+    list.value = flattened;
+    for (const item of flattened) {
+      list.adopt(item);
+    }
   }
+}
+
+function setPseudoArg(target: PseudoSelector, arg: Selector): void {
+  target.adopt(arg);
+  target.arg = arg;
+}
+
+function setSelectorContainerValue(
+  target: SelectorList | ComplexSelector | CompoundSelector,
+  value: Selector[]
+): void {
+  target.value = value as any;
+  for (const item of value) {
+    target.adopt(item);
+  }
+}
+
+function setSelectorContainerValueAt(
+  target: SelectorList | ComplexSelector | CompoundSelector,
+  index: number,
+  replacement: Selector
+): void {
+  const nextValue = [...target.get('value')] as Selector[];
+  nextValue[index] = replacement;
+  setSelectorContainerValue(target, nextValue);
 }
 
 /**
@@ -163,9 +191,7 @@ function appendAlternative(
 
   if (isNode(target, N.SelectorList)) {
     normalizeSelectorListAlternatives(target);
-    for (const item of next) {
-      target.push(item);
-    }
+    setSelectorContainerValue(target, [...target.get('value'), ...next] as Selector[]);
     normalizeSelectorListAlternatives(target);
     return target;
   }
@@ -174,16 +200,14 @@ function appendAlternative(
     const arg = target.get('arg') as Selector;
     if (isNode(arg, N.SelectorList)) {
       normalizeSelectorListAlternatives(arg);
-      for (const item of next) {
-        arg.push(item);
-      }
+      setSelectorContainerValue(arg, [...arg.get('value'), ...next] as Selector[]);
       normalizeSelectorListAlternatives(arg);
       return target;
     }
 
     const list = SelectorList.create([arg, ...next]).inherit(arg) as SelectorList;
     normalizeSelectorListAlternatives(list);
-    target.setData('arg', list as Selector);
+    setPseudoArg(target, list as Selector);
     return target;
   }
 
@@ -411,7 +435,7 @@ function stripRedundantCompoundContext(
         return undefined;
       }
       const copy = node.copy(true) as PseudoSelector;
-      copy.setData('arg', nextArg);
+      setPseudoArg(copy, nextArg);
       return copy as Selector;
     }
 
@@ -528,7 +552,7 @@ function replaceDirectSelectorChild(
   replacement: Selector
 ): boolean {
   if (isNode(parent, N.PseudoSelector) && parent.get('arg') === child) {
-    parent.setData('arg', replacement);
+    setPseudoArg(parent, replacement);
     return true;
   }
 
@@ -536,7 +560,7 @@ function replaceDirectSelectorChild(
     const parentArr = (parent as unknown as SelectorList | ComplexSelector | CompoundSelector).get('value') as readonly unknown[];
     const index = (parentArr as unknown[]).findIndex((node: unknown) => node === child);
     if (index !== -1) {
-      parent.setData(index, replacement);
+      setSelectorContainerValueAt(parent as SelectorList | ComplexSelector | CompoundSelector, index, replacement);
       return true;
     }
   }
@@ -699,7 +723,7 @@ function materializeAmpersandsForHoist(
 
   if (isNode(selector, N.PseudoSelector) && isNode(selector.get('arg'), N.Selector)) {
     const copy = selector.copy(true) as PseudoSelector;
-    copy.setData('arg', materializeAmpersandsForHoist(selector.get('arg') as Selector, parent));
+    setPseudoArg(copy, materializeAmpersandsForHoist(selector.get('arg') as Selector, parent));
     copy.hoistToRoot = selector.hoistToRoot;
     return copy as Selector;
   }
@@ -1179,10 +1203,10 @@ function tryPullCompoundMatchIntoNestedIsBranch(
     }
 
     const wrapped = wrapSelectorInIs(merged, extendWith);
-    alternative.setData(lastIndex, wrapped);
+    setSelectorContainerValueAt(alternative as ComplexSelector, lastIndex, wrapped);
 
     const nextData = (target as CompoundSelector).get('value').filter((_, index) => !(index >= location.startIndex! && index <= location.endIndex! && index !== pseudoIndex));
-    target.setData(nextData as any);
+    setSelectorContainerValue(target as CompoundSelector, nextData as Selector[]);
     return createSuccessResult(target);
   }
 
@@ -1355,7 +1379,7 @@ function tryHandleMultiDirectChildFullMatches(
     if (replacement !== child || replacement.valueOf() !== childValueBefore) {
       anyChanged = true;
     }
-    target.setData(index, replacement);
+    setSelectorContainerValueAt(target as SelectorList | ComplexSelector | CompoundSelector, index, replacement);
   }
 
   if (crossedAmpersand) {
@@ -1476,7 +1500,10 @@ export function tryExtendSelector(
       return finalize(createSuccessResult(target, false));
     }
     if (isNode(replacement, preserveRootKinds)) {
-      target.setData([...(replacement as SelectorList | ComplexSelector | CompoundSelector).get('value')] as any);
+      setSelectorContainerValue(
+        target as SelectorList | ComplexSelector | CompoundSelector,
+        [...(replacement as SelectorList | ComplexSelector | CompoundSelector).get('value')] as Selector[]
+      );
       markTargetHoist();
       return finalize(createSuccessResult(target));
     }
@@ -1537,7 +1564,7 @@ export function tryExtendSelector(
     const existing = (target as ComplexSelector | CompoundSelector).get('value')[location.startIndex] as Selector;
     const nestedIsListAppend = tryAppendToDirectSelectorListOnFullMatch(existing, find, extendWith, parent, context);
     if (nestedIsListAppend) {
-      target.setData(location.startIndex, nestedIsListAppend.value);
+      setSelectorContainerValueAt(target as ComplexSelector | CompoundSelector, location.startIndex, nestedIsListAppend.value);
       markTargetHoist(!!nestedIsListAppend.value.hoistToRoot);
       return finalize(createSuccessResult(target));
     }
@@ -1548,14 +1575,14 @@ export function tryExtendSelector(
     ) {
       const nested = tryExtendSelector(existing, find, extendWith, true, undefined, context);
       if (!nested.error) {
-        target.setData(location.startIndex, nested.value);
+        setSelectorContainerValueAt(target as ComplexSelector | CompoundSelector, location.startIndex, nested.value);
         markTargetHoist(!!nested.value.hoistToRoot);
         return finalize(createSuccessResult(target, nested.isChanged));
       }
     }
 
     const wrapped = wrapSelectorInIs(existing, stripRedundantCompoundContext(extendWith, compoundOutsideMembers ?? []));
-    target.setData(location.startIndex, wrapped);
+    setSelectorContainerValueAt(target as ComplexSelector | CompoundSelector, location.startIndex, wrapped);
     markTargetHoist();
     return finalize(createSuccessResult(target, wrapped !== existing));
   };
